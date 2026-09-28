@@ -141,8 +141,13 @@
           + '<span class="ms-auto small">' + (ok ? 'dangerous: AUTHORISED'
             : 'dangerous: tick to authorise this exact line') + '</span></label></div>';
       }).join('');
-      body = '<div class="small">Exactly these ' + lines.length
-        + ' line(s) will be sent, in this order</div>'
+      // What the program IS, when it is not something sent (C127): a
+      // capture's diff and an onboarding's startup config are sent nowhere,
+      // and the one sentence said they were.
+      body = '<div class="small"' + (prog.caption ? ' data-pc-caption' : '') + '>'
+        + (prog.caption ? esc(prog.caption) + ' (' + lines.length + ' line(s))'
+                        : 'Exactly these ' + lines.length + ' line(s) will be sent, in this order')
+        + '</div>'
         + '<div class="font-monospace small bg-body-tertiary p-2 rounded" '
         + 'style="max-height:280px;overflow:auto" data-program="' + esc(t.name) + '">'
         + rows + '</div>';

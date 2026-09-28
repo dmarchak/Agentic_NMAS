@@ -663,6 +663,87 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
         record=record, not_watched=FOLLOW_UP_NOT_BUILT["why"])
 
 
+def onboard_preview(plan: dict, bootstrap_config: str, confirm: dict) -> dict:
+    """Onboarding's review, drawn by the preview component (7.1). Replaces
+    `onboardReviewHtml`, a second renderer. Its sentences are kept: every
+    refusal at once with the count, advisories as notes that never block,
+    "Nothing has been created yet", and the startup config it will boot,
+    which is downloaded or served and SENT nowhere (C127)."""
+    plan = plan or {}
+    host = plan.get("hostname") or "(no name)"
+    reasons = list(plan.get("blocking_reasons") or [])
+    notes = list(plan.get("advisories") or [])
+    source = plan.get("address_source") or "static"
+    iface = plan.get("manager_interface") or "(no interface)"
+    if source in ("dhcp", "ztp"):
+        address = f"{plan.get('address_claim') or source.upper()} on {iface}"
+    elif plan.get("mgmt_mask"):
+        address = f"{plan.get('mgmt_ip')} {plan.get('mgmt_mask')} on {iface}"
+    else:
+        address = plan.get("mgmt_ip") or ""
+    n = len(reasons)
+    if n:
+        summary = (f"{n} reason{'' if n == 1 else 's'} this device cannot be onboarded, all of "
+                   f"them, so they can be fixed in one pass: each is a failed gate below. "
+                   f"Nothing has been created yet.")
+    else:
+        summary = (f"Create {host} in {plan.get('list') or 'its list'}: its one-time credential, "
+                   f"its identity and intent in one commit"
+                   + (", its Kea reservation" if source == "ztp" else "")
+                   + ", and the startup config it will boot. Nothing reaches a device.")
+    # Refusals FIRST, then the notes: an advisory must never push a refusal
+    # off the top of the panel, nor read like one (4C.8's rule, kept).
+    what_not = [{"target": host, "kind": "refused", "lines": [],
+                 "text": "Not created: " + r} for r in reasons] + [
+        {"target": host, "kind": "nothing_yet", "lines": [],
+         "text": "Nothing has been created yet. This is what will be. Every step before Create "
+                 "is a read: you can go Back from here without undoing anything."},
+        {"target": host, "kind": "phase_two", "lines": [],
+         "text": "No device is reached, nothing enters the inventory and nothing is created in "
+                 "NetBox: phase 2 (Verify) does those, once the device answers."},
+        {"target": host, "kind": "credential", "lines": [],
+         "text": "The real bootstrap credential is not shown: the one in the startup config is "
+                 "a placeholder. The real one-time credential is generated when you press "
+                 "Create and is never sent to the browser."},
+    ] + [{"target": host, "kind": "advisory", "lines": [],
+          "text": "Worth knowing (this does not block onboarding): " + note} for note in notes]
+    config = (bootstrap_config or "").splitlines()
+    gates = ([gate("refused", "fail", r) for r in reasons] if reasons else
+             [gate("every check the plan makes", "pass", "")])
+    gates.append(gate("the plan rebuilt at Create", "at_apply",
+                      "Create rebuilds the plan from the stores and refuses if anything moved"))
+    target = {
+        "name": host, "state": "blocked" if reasons else "ready", "selectable": not reasons,
+        "program": {"lines": config, "dangerous": [], "authorised": [],
+                    "authorisation_error": "",
+                    "caption": ("The startup config this device will boot with. It is downloaded "
+                                "or served, and sent to no device from here. The credential in it "
+                                "is a placeholder: the real one-time bootstrap credential is "
+                                "generated when you press Create and is never sent to the browser"),
+                    "none": "No startup config: the plan could not render one (its reason is a "
+                            "failed gate below).",
+                    "notes": []},
+        "operands": [
+            {"name": "Name", "value": host},
+            {"name": "Platform", "value": plan.get("platform") or ""},
+            {"name": "List", "value": f"{plan.get('list') or ''} ({plan.get('source_kind') or ''})"},
+            {"name": "Management IP", "value": address},
+            {"name": "Gateway", "value": plan.get("manager_gateway") or
+             "none: the NMAS is on this subnet"},
+            {"name": "Template", "value": plan.get("template") or "(none bound)"},
+            {"name": "Credential source", "value": plan.get("cred_source") or "(not resolved)"},
+            {"name": "NetBox", "value": plan.get("netbox_note") or
+             "created in phase 2, from the first capture"},
+            {"name": "Adds to inventory", "value": plan.get("inventory_note") or
+             "after it answers"},
+        ],
+        "gates": gates,
+    }
+    return build(action="onboard", summary=summary, targets=[target], what_not=what_not,
+                 nothing_left_out="", confirm=confirm,
+                 titles={"program": "What will be created (on no device)"})
+
+
 def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
     """A NetBox Remove, drawn by the result component (7.1, C121), from the
     ROW that records it, so the result at apply and the one read back later
@@ -964,6 +1045,10 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
             "selectable": bool(e.get("read")) and not e.get("busy"),
             "select_data": {"hash": e.get("capture_hash") or ""},
             "program": {"lines": list(e.get("diff") or []) if e.get("read") else [],
+                        # A capture SENDS NOTHING (C127): the diff is what the
+                        # golden will become, not a program for the device.
+                        "caption": ("The difference between the device now and its golden. "
+                                    "Nothing is sent: confirming records the device as it is"),
                         "none": ("Nothing is recorded: it could not be read." if not e.get("read")
                                  else "Unchanged: the device matches its current golden. Confirming "
                                       "records that it was measured.")},

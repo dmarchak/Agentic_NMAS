@@ -400,11 +400,19 @@ def plan():
     return jsonify({
         "ok": True,
         "plan": built.summary,
-        # The review step shows the config that WILL be created. It carries
-        # only the placeholder secret, by construction.
-        "bootstrap_config": built.bootstrap_config,
         "host_vars": built.host_vars,
+        # The review, drawn by the preview component (7.1), as the verified
+        # person who would press Create (its gate kind is `approve`).
+        # The config that WILL be created is its program part (one copy: the
+        # separate `bootstrap_config` key went with the old review). It
+        # carries only the placeholder secret, by construction.
+        "preview": _onboard_preview(built.summary, built.bootstrap_config),
     })
+
+
+def _onboard_preview(summary: dict, bootstrap_config: str) -> dict:
+    from modules.preview_confirm import confirm_part, onboard_preview
+    return onboard_preview(summary, bootstrap_config, confirm_part(request, "approve"))
 
 
 @bp.route("/create", methods=["POST"])

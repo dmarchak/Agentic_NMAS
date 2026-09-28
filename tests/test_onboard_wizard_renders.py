@@ -57,7 +57,7 @@ def page():
 def js(page):
     """The two pure functions, lifted from the rendered page verbatim."""
     out = []
-    for name in ("onboardReviewHtml", "onboardCanCreate"):
+    for name in ("onboardCanCreate",):
         start = page.index(f"function {name}(")
         depth, i, seen = 0, page.index("{", start), False
         while i < len(page):
@@ -73,9 +73,30 @@ def js(page):
     return "\n".join(out)
 
 
-def _html(js, plan, config=""):
-    return dukpy.evaljs(
-        js + f"\nonboardReviewHtml({json.dumps(plan)}, {json.dumps(config)});")
+_COMPONENT = None
+
+
+def _html(js, plan, config="", raw=False):
+    """The review as the operator sees it (7.1): the server's adapter
+    (`preview_confirm.onboard_preview`) drawn by the SHIPPED preview
+    component. It was `onboardReviewHtml`, a second renderer."""
+    import os
+
+    from modules.preview_confirm import onboard_preview
+
+    global _COMPONENT
+    if _COMPONENT is None:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _COMPONENT = open(os.path.join(root, "static", "js", "nmas_preview_confirm.js")).read()
+    preview = onboard_preview(plan, config, {"may": True, "actor": "ops@example.com",
+                                             "kind": "person",
+                                             "statement": "You are confirming as ops@example.com."})
+    import html as _h
+    out = dukpy.evaljs("var window = {};\n" + _COMPONENT
+                       + f"\nwindow.previewConfirmHtml({json.dumps(preview)}, {{}});")
+    # The VISIBLE text, unless the test is about the markup itself (escaping):
+    # the component escapes quotes as well as <, > and &.
+    return out if raw else _h.unescape(out)
 
 
 def _can_create(js, plan):
@@ -192,7 +213,7 @@ class TestTheReviewShowsWhatWillBeCreated:
 
     def test_a_reason_is_escaped(self, js):
         plan = dict(BLOCKED, blocking_reasons=["<script>alert(1)</script>"])
-        html = _html(js, plan)
+        html = _html(js, plan, raw=True)
         assert "<script>alert(1)</script>" not in html
         assert "&lt;script&gt;" in html
 
@@ -572,7 +593,10 @@ class TestAnAdvisoryIsShownAndDoesNotBlock:
         """Different colour and a different heading, or the operator learns
         to read a yellow box as a red one — and then stops reading both."""
         html = _html(js, ADVISED)
-        assert "alert-warning" in html
+        # Marked as an advisory, in words and in markup (7.1: the component's
+        # `data-pc-not` kind), and never as a refusal.
+        assert 'data-pc-not="advisory"' in html and "does not block onboarding" in html
+        assert 'data-pc-not="refused"' not in html
         assert "cannot be onboarded" not in html
 
     def test_a_refusal_alongside_an_advisory_is_still_a_refusal(self, js):
@@ -582,18 +606,18 @@ class TestAnAdvisoryIsShownAndDoesNotBlock:
                     blocking_reasons=["no management address — the device "
                                       "would be created and unreachable"])
         html = _html(js, both)
-        assert "alert-danger" in html
+        assert 'data-pc-not="refused"' in html and 'data-pc-gate="fail"' in html
         assert "no management address" in html
         assert "cannot deploy to this device" in html
         assert _can_create(js, both) is False
         # The refusal is drawn ABOVE the note, so a long advisory cannot push
         # it off the top of the panel.
-        assert html.index("alert-danger") < html.index("alert-warning")
+        assert html.index('data-pc-not="refused"') < html.index('data-pc-not="advisory"')
 
     def test_no_advisories_draws_no_box(self, js):
         """A panel that always carries a note is a panel nobody reads."""
         html = _html(js, CLEAN)
-        assert "alert-warning" not in html
+        assert 'data-pc-not="advisory"' not in html
 
 
 class TestTheReviewStatesWhatKeaSaid:

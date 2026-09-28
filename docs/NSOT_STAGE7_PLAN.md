@@ -878,7 +878,7 @@ run:
 | Deploy | component | component, from receipts; Changes tab |
 | Restore (and its handoffs: an approval's revert, restore from a ref) | component | component, from receipts; Changes tab; C70 passed |
 | Capture (Save All, one device, the "no golden" scope, a drift approval's handoff) | component | component; golden history |
-| Onboarding: Create | **pending** (`onboardReviewHtml`) | component (C86); pending row |
+| Onboarding: Create | component (`onboard_preview`; `onboardReviewHtml` removed) | component (C86); pending row |
 | Onboarding: Verify, Abandon | none (one click each) | **pending** (toasts) |
 | NetBox import, import-all | **pending** (the safety modal's body) | component; the sync card |
 | NetBox remove | **pending** (the safety modal's body) | component (C121); Removals panel |
@@ -923,7 +923,11 @@ It is **not met today**.
 
 ## 9. Deferred, recorded rather than scoped
 
-- **A fleet topology view.** If it returns, it caps the devices shown, and
+- **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's
+  panel draws the fleet graph once `topology_service_url` is set (measured
+  2026-09-28, `http://10.0.0.210:8088`). It is removed in 7.8 because the fleet
+  view is deferred, not because it failed (C126). If a fleet view returns, it
+  reuses that service rather than building something new. If it returns, it caps the devices shown, and
   networks can be organised into groups, with the view showing one group at a
   time. A topology of 200 devices is a picture nobody reads; one site's is
   useful.

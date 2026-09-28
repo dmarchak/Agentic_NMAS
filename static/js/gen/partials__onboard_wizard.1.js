@@ -1,77 +1,9 @@
 /* PURE. Takes a plan summary, returns HTML. No DOM, no network — so the
    test can execute this exact function against a plan with blocking reasons
    and assert what an operator would see. */
-function onboardReviewHtml(plan, bootstrapConfig) {
-  if (!plan) return '';
-  const esc = s => String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const reasons = plan.blocking_reasons || [];
-
-  /* EVERY reason, not the first. `blocking_reasons` collects them all (4C.1)
-     precisely so the operator fixes them in one pass; showing one would put
-     that property back in the plan object where nobody can see it. */
-  const blockers = reasons.length ? `
-    <div class="alert alert-danger py-2 px-3 mb-2">
-      <div class="fw-semibold mb-1">
-        ${reasons.length} reason${reasons.length === 1 ? '' : 's'} this device
-        cannot be onboarded — all of them, so they can be fixed in one pass:
-      </div>
-      <ul class="mb-0">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-    </div>` : '';
-
-  /* ADVISORIES ARE NOT REFUSALS, and are drawn so they cannot be mistaken
-     for one: different colour, different heading, and BELOW the blockers so
-     a real refusal is never pushed off the top of the panel by a note.
-     Rendered from their own key -- concatenating the two lists would make
-     an advisory look like a refusal, and one day the reverse. */
-  const notes = plan.advisories || [];
-  const advisories = notes.length ? `
-    <div class="alert alert-warning py-2 px-3 mb-2">
-      <div class="fw-semibold mb-1">Worth knowing — this does not block
-        onboarding:</div>
-      <ul class="mb-0">${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
-    </div>` : '';
-
-  const rows = [
-    ['Name', plan.hostname], ['Platform', plan.platform],
-    ['List', `${plan.list} (${plan.source_kind})`],
-    /* THE PLAN'S OWN CHECK, not a restatement of the form. `address_claim`
-       is computed server-side from what Kea actually said, so for DHCP this
-       reads "assigned by Kea reservation <mac> -> <address>" -- a claim
-       checked a moment ago -- and never "assigned by DHCP", which is a
-       promise about later that nothing here would notice failing. */
-    ['Management IP', (plan.address_source === 'dhcp' || plan.address_source === 'ztp')
-        ? `${plan.address_claim || plan.address_source.toUpperCase()} on ${plan.manager_interface || '(no interface)'}`
-        : (plan.mgmt_mask
-            ? `${plan.mgmt_ip} ${plan.mgmt_mask} on ${plan.manager_interface || '(no interface)'}`
-            : plan.mgmt_ip)],
-    ['Gateway', plan.manager_gateway || 'none \u2014 NMAS is on this subnet'],
-    ['Template', plan.template || '(none bound)'],
-    ['Credential source', plan.cred_source || '(not resolved)'],
-    ['NetBox', plan.netbox_note || 'created in phase 2, from the first capture'],
-    ['Adds to inventory', plan.inventory_note || 'after it answers'],
-  ];
-
-  return `
-    ${blockers}
-    ${advisories}
-    <div class="alert alert-secondary py-2 px-3 mb-2">
-      <strong>Nothing has been created yet.</strong> This is what will be.
-      Every step before Create is a read — you can go Back from here without
-      undoing anything.
-    </div>
-    <div class="table-responsive">
-      <table class="table table-sm mb-2"><tbody>
-        ${rows.map(([k, v]) => `<tr><td class="text-muted" style="width:12em">${esc(k)}</td>
-          <td>${esc(v)}</td></tr>`).join('')}
-      </tbody></table>
-    </div>
-    <div class="mb-1 fw-semibold">Startup config this device will boot with</div>
-    <pre class="border rounded p-2 small mb-0" style="max-height:18em;overflow:auto">${esc(bootstrapConfig || '')}</pre>
-    <div class="form-text">The credential shown here is a placeholder. The real
-      one-time bootstrap credential is generated when you press Create and is
-      never sent to the browser.</div>`;
-}
+/* The review is drawn by the preview component (7.1): `/onboard/plan` carries
+   `preview`, built by `preview_confirm.onboard_preview()`. It replaced
+   `onboardReviewHtml`, a second renderer of the same six parts. */
 
 /* Also pure, and deliberately separate from the HTML: the button's state is
    a decision about the plan, not a detail of how the plan is drawn. */
@@ -187,7 +119,7 @@ async function onboardRefresh() {
     });
     const d = await r.json();
     if (!d.ok) { host.innerHTML = `<div class="alert alert-danger py-2 px-3">${d.error}</div>`; return; }
-    host.innerHTML = onboardReviewHtml(d.plan, d.bootstrap_config);
+    host.innerHTML = previewConfirmHtml(d.preview, {});
     if (btn) btn.disabled = !onboardCanCreate(d.plan);
     if (note) {
       note.textContent = onboardCanCreate(d.plan)

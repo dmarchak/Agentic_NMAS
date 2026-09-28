@@ -188,11 +188,18 @@ RENDERS = {
         {GR3: ("loadGoldenRepoPanel", "_migrationCard")},
         ((GR3, "loadGoldenRepoPanel", "mRes"), (GR3, "_migrationCard", "m"))),
     "POST /onboard/plan": Render(
+        # With a mask, so the plan renders a config and the program part has
+        # lines (without one the fixture reached only the render refusal).
         _post("/onboard/plan", {"list_name": "Default", "hostname": "bp-x",
-                                "platform": "cisco_iosxe", "mgmt_ip": "203.0.113.6"}),
-        {"partials__onboard_wizard.1.js": ("onboardRefresh", "onboardReviewHtml",
-                                           "onboardCanCreate")},
-        (("partials__onboard_wizard.1.js", "onboardRefresh", "d"),)),
+                                "platform": "cisco_iosxe", "mgmt_ip": "203.0.113.6",
+                                "mgmt_mask": "255.255.255.0",
+                                "manager_interface": "GigabitEthernet2"}),
+        # 7.1: the review is the shared preview, built server-side from the
+        # plan's summary, so the adapter's reads count as drawn.
+        {"partials__onboard_wizard.1.js": ("onboardRefresh", "onboardCanCreate"),
+         PC: PC_FNS},
+        (("partials__onboard_wizard.1.js", "onboardRefresh", "d"),),
+        adapters={"modules/preview_confirm.py": ("onboard_preview", "build")}),
     "GET /inventory/source/<list>": Render(
         _get("/inventory/source/Default"),
         {"partials__inventory_source.1.js": ("loadInventorySource", "applyInventorySourceUI",
@@ -390,6 +397,8 @@ UNDRAWN = {
                   "`statement` sentence, which names them"),
         ("list", LIST)],
     "POST /onboard/plan": [
+        ("actor", "the confirming person, drawn inside the confirm part's "
+                  "`statement` sentence, which names them"),
         ("host_vars", "the intent phase 1 will commit; the review draws the "
                       "bootstrap config, and 7.4 draws the intent too"),
         ("mgmt_mac reservation_address reservation_state ztp_server ztp_subnet_id",
@@ -492,9 +501,25 @@ EMPTY_IN_FIXTURE = {
     "POST /golden/restore/preview un_onboarding": (S_, _STRINGS),
     "POST /onboard/plan host_vars": (R_, "the plan carries no intent for a device "
                                          "not yet onboarded; drawn in 7.4"),
+    "POST /onboard/plan preview.explain": (R_, "no concept is taught on the onboarding "
+                                               "review yet; the concepts harness names it"),
+    "POST /onboard/plan preview.targets[].program.authorised": (S_, "a startup config is "
+                                               "sent to no device, so nothing is authorised"),
+    "POST /onboard/plan preview.targets[].program.dangerous": (S_, "a startup config is "
+                                               "sent to no device, so no line is dangerous"),
+    "POST /onboard/plan preview.targets[].program.notes": (S_, "the caption says what the "
+                                               "config is; there are no per-line notes"),
+    "POST /onboard/plan preview.what.targets[].select_data": (R_, "Create rebuilds the plan "
+                                               "and refuses a changed one, so nothing is "
+                                               "carried to confirm by hash (its gate says so)"),
+    "POST /onboard/plan preview.what_not.items[].lines": (S_, "onboarding's what-not items "
+                                               "are sentences, never config lines"),
 }
 # 14 -> 13: `GET /netbox/status status` is reached (a stored import, C85).
-EMPTY_RECORDS_CEILING = 13
+# 13 -> 15: the onboarding review on the component (7.1) has no concept to
+# teach yet and nothing to confirm by hash (Create rebuilds the plan and its
+# gate says so); both are records by the component's shape, not the fixture's.
+EMPTY_RECORDS_CEILING = 15
 
 
 def _empty_paths(obj, path=""):
@@ -535,7 +560,10 @@ def _flat(table):
 # 104 -> 107: capture (7.1 step 4) is two new payloads; each carries only the
 # confirming person (drawn in the confirm sentence) and the list, the same
 # exemptions every other preview has. Its raw reads were removed, not exempted.
-UNDRAWN_CEILING = 107
+# 107 -> 108: the onboarding review moved onto the component (7.1): it carries
+# the confirming person, the same exemption; its own `bootstrap_config` key
+# was removed (the config is the program part), not exempted.
+UNDRAWN_CEILING = 108
 PHANTOM_CEILING = 18
 
 

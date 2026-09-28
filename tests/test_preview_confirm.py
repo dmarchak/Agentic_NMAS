@@ -229,9 +229,9 @@ class TestConfirmSaysWho:
 #: Screens moved onto the component, and the ones still to move, in the
 #: approved order. RETROFIT_PENDING only shrinks.
 RETROFITTED = {"deploy": "partials__deploy_wizard.1.js",
-               "restore": "partials__golden_repo.3.js"}
+               "restore": "partials__golden_repo.3.js",
+               "onboarding": "partials__onboard_wizard.1.js"}
 RETROFIT_PENDING = {
-    "onboarding": "partials__onboard_wizard.1.js",
     "netbox import/remove": "partials__netbox_safety_modal.1.js",
     # No screen: the routes (/templatize/bulk/preview, /apply) are reached by
     # curl today, measured 2026-09-27. DEFERRED to Fleet (7.4) by the
@@ -269,7 +269,7 @@ class TestNoSecondImplementation:
         assert moved == [], f"retrofitted: move to RETROFITTED: {moved}"
 
     def test_the_pending_list_only_shrinks(self):
-        assert len(RETROFIT_PENDING) <= 3
+        assert len(RETROFIT_PENDING) <= 2
         for screen, f in RETROFIT_PENDING.items():
             assert f is None or os.path.exists(os.path.join(GEN, f)), screen
 
@@ -278,6 +278,46 @@ class TestNoSecondImplementation:
         for gone in ("function _programHtml", "function _attributionHtml",
                      "function _deviceCard"):
             assert gone not in src, gone
+
+    def test_the_old_onboarding_review_is_gone(self):
+        assert "function onboardReviewHtml" not in shipped(RETROFITTED["onboarding"])
+
+
+class TestAProgramSentNowhereDoesNotSaySent:
+    """C127: the program part said "Exactly these N line(s) will be sent" for
+    every preview, and two of them send nothing: a capture READS a device
+    (the lines are what will be recorded) and onboarding writes a startup
+    config to no device. A caption replaces the sentence; with none, the
+    deploy's sentence stands (the control)."""
+
+    def _draw(self, preview):
+        import json
+        import dukpy
+        return dukpy.evaljs("var window = {};\n" + shipped("nmas_preview_confirm.js")
+                            + f"\nwindow.previewConfirmHtml({json.dumps(preview)}, {{}})")
+
+    def test_onboarding_says_where_the_lines_go(self):
+        from modules.preview_confirm import onboard_preview
+        plan = {"hostname": "r9", "list_name": "default", "platform": "cisco_ios",
+                "mgmt_ip": "192.0.2.9", "blocking_reasons": [], "advisories": []}
+        p = onboard_preview(plan, "hostname r9\n!\nend\n",
+                            {"may": True, "actor": "a@example.com", "kind": "person",
+                             "statement": "You are confirming as a@example.com."})
+        out = self._draw(p)
+        assert "will be sent" not in out
+        assert "data-pc-caption" in out and "sent to no device" in out
+
+    def test_capture_says_it_reads(self, monkeypatch, tmp_path):
+        """From the real /golden/capture/preview payload (r2 with the host's
+        exact break, so the program part has lines)."""
+        d = P.capture_preview(monkeypatch, tmp_path)
+        assert any(t["program"]["lines"] for t in d["preview"]["targets"]), "floor"
+        out = self._draw(d["preview"])
+        assert "will be sent" not in out and "data-pc-caption" in out
+
+    def test_without_a_caption_the_deploy_sentence_stands(self):
+        out = self._draw(_preview())
+        assert "will be sent" in out and "data-pc-caption" not in out
 
 
 class TestResidueIsDrawnInItsSection:

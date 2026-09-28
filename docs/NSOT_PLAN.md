@@ -87,11 +87,14 @@ troubleshooting. See Section 7.
    Keep using `subprocess` git as `config_git.py` does; don't add GitPython.
    Front-end libs (e.g. CodeMirror, Chart.js) are **vendored into `static/`**,
    not loaded from a CDN, so the tool works on air-gapped networks.
-   **It was FALSE until 2026-09-28** (D8, recorded 2026-09-26; closed by C123): four libraries loaded from public
-   CDNs, xterm and socket.io UNPINNED, while this line stated the property.
-   It was an assumption, checked only for CodeMirror. They are vendored now
-   from registry-verified tarballs (`static/js/vendor/MANIFEST.json`), and
-   `test_csp.py` holds the constraint for every template, not one library.
+   **TRUE as of 2026-09-28, measured, after being stated and FALSE since Phase 0**
+   (D8, recorded 2026-09-26; closed by C123). Until then four libraries loaded from
+   public CDNs, xterm and socket.io UNPINNED, while this line stated the property:
+   an assumption, checked only for CodeMirror. They are vendored from
+   registry-verified tarballs (`static/js/vendor/MANIFEST.json`); the host serves
+   each at its manifest size; the served page carries no CDN reference and a CSP
+   that admits no host; and in the operator's browser `typeof vis` is "object" and
+   `typeof Sortable` is "function". `test_csp.py` holds it for every template.
 9. **Tests.** Extend `tests/` with pytest. Mock all HTTP and SSH calls; no test
    touches a live network. Existing tests must keep passing.
 
