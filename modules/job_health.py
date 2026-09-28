@@ -40,7 +40,11 @@ JOBS = (
     {"unit": "nmas-netbox-backup", "max_age_minutes": 180,
      "what": "NetBox dump + config, hourly (NSOT_PLAN P.2)"},
     {"unit": "nmas-netbox-restore-test", "max_age_minutes": 50 * 60,
-     "what": "NetBox restore into a scratch postgres, daily (P.2)"},
+     # C144: the row says what it covers. A restore test beside encrypted
+     # off-box copies reads as covering them, and it restores the PLAIN local
+     # copy; the off-box copies are proven only by NETBOX_BACKUP 6g, by hand.
+     "what": "NetBox restore of the plain LOCAL hourly copy into a scratch postgres, "
+             "daily (P.2); it does not read the encrypted off-box copies (NETBOX_BACKUP 6g)"},
     {"unit": "nmas-heartbeat-check", "max_age_minutes": 180,
      "what": "each device's heartbeat window still fits its measured rate, hourly (C16)"},
     {"unit": "nmas-startup-check", "max_age_minutes": 180,

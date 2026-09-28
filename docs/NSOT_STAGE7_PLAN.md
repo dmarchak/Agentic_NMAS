@@ -1160,8 +1160,28 @@ NOTED device, bounded by the rollbacks on record. An unreadable record (C158)
 is ONE row for the list and plans no device: asked per device it returned the
 same blocking note for each and planned the whole fleet to say one thing.
 Revert and retry have no screen (7.3), and each row says so. Remaining from
-section 1a: freshness, Grafana alerts (C17: `grafana_url` empty on the host),
-a failed deploy, an unearned baseline.
+section 1a: freshness, Grafana alerts, a failed deploy, an unearned
+baseline. (**Corrected the same day:** this note first said "C17: `grafana_url`
+empty on the host". C17 had closed on measurement the day before, both URLs
+set; the line was taken from CLAUDE.md's restated gate list without reading
+the register.)
+
+**The rest of 7.2, as it stands (2026-09-28, the operator's review).** One
+shape, a background READER JOB, built once with the Grafana alert reader as
+the first real one (8.6's constraints: each instance kept with its identity,
+start and window; a row per incident with members; a triage slot): it runs on
+a schedule, stores its result with `value_at`, records its own liveness as a
+job-health row, and ANNOUNCES when it finishes (C58, part of the shape, not a
+feature after). Freshness, the status bar's integration health, and C92's
+reachability reader reuse it. Precondition, the operator's to run: which
+Grafana role can read alert state (8.6: measured, not assumed). Simple
+sources on stored data: a failed or partial deploy (receipts), an unearned
+baseline, a line authorised again and again (C140 (1)). The action work:
+C164's host commands lifted into the action field, and C151's (generate the
+rule). C38's adjacency rows. **C92 is SPLIT** (decided): the reader, its
+liveness row and a Needs attention row are 7.2's LAST step; moving its six
+consumers and drawing the dot are 7.3's, where the device list and Device
+page are rebuilt. The reader is the only part of 7.2 that 7.3 needs.
 
 ## 9. Deferred, recorded rather than scoped
 

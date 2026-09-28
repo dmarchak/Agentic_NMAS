@@ -82,6 +82,28 @@ def bucket_problems(text):
     return out
 
 
+#: A bucket that places a row in a stage other than Stage 9 (the deferral
+#: stage): "C, F → 7.2", "→ Stage 8", "→ each screen as it is rebuilt".
+STAGE_PLACED = re.compile(r"→\s*(7\.\d+|Stage [1-8]\b|each (?:screen|route))")
+OPEN = ("## A.", "## B.", "## C.", "## D.", "## E.")
+
+
+def stage_work_in_open_sections(text):
+    """The open count is a claim about DEFERRED work (the operator,
+    2026-09-28). 26 of 61 open rows were `C, F → <stage>`: work a stage owns,
+    counted as deferred findings, so the register overstated its backlog by
+    about 40%, one level up from the 31 done rows. A row a stage owns lives in
+    Scheduled; an open row placed in a stage is the defect."""
+    out = []
+    for sec, rid, cells in rows_by_section(text):
+        if not sec.startswith(OPEN):
+            continue
+        tag = re.match(r"^\*\*\[([^\]]*)\]\*\*", cells[2] if len(cells) > 2 else "")
+        if tag and STAGE_PLACED.search(tag.group(1)):
+            out.append(rid)
+    return out
+
+
 def _real():
     return open(REGISTER, encoding="utf-8").read()
 
@@ -98,6 +120,15 @@ def test_every_live_row_carries_its_bucket():
     assert bucket_problems(_real()) == []
 
 
+def test_no_open_row_is_work_a_stage_owns():
+    text = _real()
+    assert stage_work_in_open_sections(text) == []
+    # The floor: Scheduled really holds the stage work (a check that could
+    # pass because the section vanished would prove nothing).
+    scheduled = [r for s, r, _c in rows_by_section(text) if s.startswith("## Scheduled")]
+    assert len(scheduled) >= 30, len(scheduled)
+
+
 PLANTED = "\n".join([
     "## C. Tooling that reports wrongly", "| # | Finding | Kind | Where |", "|---|---|---|---|",
     "| C900 | a thing | **[C, M; sorted 2026-09-28]** **FIXED 2026-09-28**: done | here |",
@@ -106,8 +137,12 @@ PLANTED = "\n".join([
     "| C903 | a thing | build | here |",
     "| C904 | a thing | **[B; sorted 2026-09-28]** build | here |",
     "| C905 | a thing | **[UNKNOWN; sorted 2026-09-28]** measure | here |",
+    "| C907 | a thing | **[C, F → 7.2; sorted 2026-09-28]** build | here |",
+    "| C908 | a thing | **[C, M → Stage 9; sorted 2026-09-28]** later | here |",
+    "| C909 | a thing | **[C, F → each screen as it is rebuilt; sorted 2026-09-28]** | x |",
     "## Scheduled out of the register", "| # | Finding | Scheduled | Where |", "|---|---|---|---|",
     "| D900 | a thing | **[C, F; sorted 2026-09-28]** 2026-09-26 | **CLOSED** by X |",
+    "| D901 | a thing | **[C, F → 7.3; sorted 2026-09-28]** 2026-09-28 | **7.3** |",
     "## Closed", "| # | Finding | Closed | Reason |", "|---|---|---|---|",
     "| C906 | a thing | 2026-09-28 | **FIXED** |",
 ])
@@ -122,3 +157,6 @@ def test_the_planted_rows_are_found():
     assert bucket_problems(PLANTED) == [
         "C901: no bucket", "C903: no bucket", "C904: B names nothing it blocks",
         "C905: UNKNOWN names no measurement"]
+    # Stage work in an open section is named; Stage 9 (the deferral stage)
+    # and a stage-placed row already in Scheduled are left alone.
+    assert stage_work_in_open_sections(PLANTED) == ["C907", "C909"]

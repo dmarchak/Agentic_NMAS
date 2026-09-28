@@ -1227,7 +1227,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_import_skips_are_named.py` | What the NetBox import deliberately does not model, on r3's REAL config: the excluded VRF's default route (the five /0 refusals of (b)'s import) skipped under the exclusion rule and named, the global static route still imported; the excluded addresses named, not only counted; a /0 outside an excluded VRF skipped as a route; skips merged across devices and lists; the preview and the stored result name each, and a skip is never a failure (`not_modelled`, level unchanged) |
 | `test_authorised_lines.py` | C79 and C140 on r2's REAL config: after a community rotation the ref's old community is refused by its MASKED line (never the value), passes once authorised with a reason, and a reason-less authorisation is not honoured on the path that compares no hash; the apply refuses before connecting; an account added back is refused, a rewritten one stays C75's and is not counted twice, and a restore to what the device holds flags nothing (the control); the mechanism holds no second list of secret forms; through the real preview a C79-only device awaits an authorisation (program shown, not selectable) and the reason is in the hash; the aggregate from real receipts (only sent rows, before-reasons rows counted, an unreadable record said) carried by the plan and drawn by the shipped renderer; the receipt keeps each reason masked and the result draws it as testimony |
 | `test_community_has_one_owner.py` | C139 step 1: the SNMP community's one owner is each device's own secret; two devices on different values each get their own (the transitional state a per-device rotation IS); a device with no secret and an address no device holds are refused by name, never defaulted; the poll route uses the device's value and never the request's; the monitoring form refuses a community naming its owner and stores nothing; the agent's `snmp_poll` success branch, driven through the real `run_chat()` loop, never hands the model the value; no `community` parameter anywhere has a default (AST, floor, planted control) |
-| `test_register_hygiene.py` | The register's open sections hold no finished row (FIXED, CLOSED, DONE or MERGED in its own status cell): 31 of 92 had never moved, so the open count read about twice the work. Floors on open and closed rows; a planted fixed row found, bold or bare, and a code span's `\|\|` split correctly |
+| `test_register_hygiene.py` | The register's open sections hold no finished row (FIXED, CLOSED, DONE or MERGED in its own status cell): 31 of 92 had never moved, so the open count read about twice the work. Floors on open and closed rows; a planted fixed row found, bold or bare, and a code span's `\|\|` split correctly. And no open row is work a stage owns (a bucket placing it in any stage but Stage 9): 26 of 61 were, so the open count overstated the deferred backlog by about 40%; planted rows name the stage-placed ones and leave Stage 9 and Scheduled alone, and the pre-move register fails it |
 | `test_netbox_writes_name_the_actor.py` | C149: every `netbox_guard.for_list()` call and every NetBox writer call (import, removal, onboarding's record, the repair script) passes an actor, by AST with floors and a planted omission; the actor given is the actor the modification record holds, and none is `unattributed` |
 | `test_rotation_row_departed.py` | C54: a rotation row derives from the audit AND the inventory and manifest; a device that left reads `departed` with its last record as history (an unsafe one says so), a device still known keeps its verdict, and an unestablished known set (unread, or no device anywhere) calls nothing departed; the headline names departed rows and does not count them as faults. From the host's recorded probe-r1a row |
 | `test_promoted_row_is_usable.py` | C152: the row `promote_device()` writes, with what phase 2 really passes (no separate secret), opens through the real `stored_connection_params()`; a failure is never recorded as "" (`error_text`, used by both per-device recorders); the reload screen draws each device's polled result, not the route's answer |
@@ -5785,9 +5785,14 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **55 open at 2026-09-28, re-sorted: A 3 (all
-deferred for the lab), B 8 (3 on the critical path: C148, C54, C50),
-UNKNOWN 2, C 42 at the re-sort (C106 corrected from UNKNOWN the same night: sorted from a read that cut every cell at 420 characters, and its answers sat past the cut).** Every live row opens its status with its bucket, and
+present when each was recorded. **Its *Count* section is the ONE statement
+of how many rows are open and in which bucket, and this file points there
+rather than restating it** (the operator, 2026-09-28: a restatement goes
+stale by construction; this file listed C17 as an open 7.2 gate a day after
+the register closed it, and the line was quoted from here as fact). **The
+open count is DEFERRED work**: a row a stage owns lives in *Scheduled*, and
+`test_register_hygiene.py` refuses an open row placed in a stage (26 of 61
+had been). Every live row opens its status with its bucket, and
 `test_register_hygiene.py` refuses one without it: **a new finding gets its
 bucket the turn it is recorded, with the criterion applied.** The first
 triage was a one-time sort, and the functional/lab/minor split replaced the
@@ -5847,17 +5852,12 @@ teardown clean). The ledger is in [docs/P6_ZTP.md](docs/P6_ZTP.md) section
 panels updating live): reachability, invalidation, payload-to-render and
 the nine-concept harness, each with a measured allowlist that only shrinks
 ([docs/NSOT_STAGE7_PLAN.md](docs/NSOT_STAGE7_PLAN.md), "7.0 built"). 7.1
-next. The gate list is **CONFIRMED 2026-09-27**
-([docs/NSOT_PLAN.md](docs/NSOT_PLAN.md), the Stage 7 dependency notes):
-- B1 before 7.0, with C51 inside 7.0's harness;
-- C8 before 7.1;
-- C17, E4, C54 and C53's check RUNNING before 7.2, and 7.1's two real
-  runs (R1 onboarding on a throwaway, R2 the NetBox window), since only
-  restore has been clicked on the host since its retrofit;
-- C50 before 7.3, as the lab map's `kind:` entry;
-- C10 before 7.4;
-- C2 and B3 within 7.6;
-- C7 before 7.7.
+next. The gate list is **CONFIRMED 2026-09-27** and lives in
+[docs/NSOT_PLAN.md](docs/NSOT_PLAN.md) (the Stage 7 dependency notes); each
+gate's current state is its row in the register. **Neither is restated
+here**: the copy that was here listed C17 and E4 as open 7.2 gates for a
+day after both had closed on measurement, and was quoted as fact
+(2026-09-28). Two records of one fact, the wrong one nearer to hand.
 Stage 8's triage trigger is decided as a READ, never an inbound push
 (NSOT_PLAN 8.6): one reader job caches Grafana's alert instances; the
 page and the agent both consume it; grouping is on the ONSET
