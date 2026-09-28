@@ -256,3 +256,35 @@ shows it*) applies to CI first.
    `detect_config_drift` is gone with Stage 8 (feature audit).
 6. **The GUI shows each CI state beside its trigger, with no CI
    destination** (the GUI plan's acceptance carries this).
+
+
+## CI's cost, measured, and the decision (2026-09-28)
+
+The operator asked whether GitHub has to run the suite before a deploy. Measured
+over 2026-09-27 00:00 UTC to 2026-09-28 (~28 h), rather than guessed:
+
+- **90 push runs** (85 green, 3 failed, 2 cancelled). Push to green: median
+  **201 s**, p90 259 s. Inside a run the tests step is **151 s** (steady
+  144-159 s over the last ten), setup ~30 s, queue 2 s. The variance seen across
+  the day is the suite GROWING (about 4,000 to 5,079 tests), on the runner's 4
+  cores; the laptop's 24 run it in 40 s.
+- **The operator's side, from `nmas-deploy`'s own audit rows**: 90 attempts, 46
+  deployed, **35 refused because CI was still running**, in 19 waits. Five ended
+  with a newer commit deployed instead, one was not a CI wait at all (a later
+  commit deployed 65 minutes on), and the other 13 lasted a median **142 s** from
+  the first refused attempt to the deploy: **about 33 minutes of waiting in 28
+  hours**.
+
+**Decided (the operator): keep the gate as it is, and add `nmas-deploy --wait`.**
+The real cost was the retry loop (35 refusals across 19 waits), not the minutes.
+`--wait` follows the run every 20 s, bounded at 600 s (about 2.5x the measured
+p90, the timeout rule of C129), printing the run's state, the time waited and
+the measured typical, so a wait going slowly can be told from one going wrong.
+Any other verdict ends the wait at once; the gate is the same gate.
+
+Declined, with reasons: **(b) a split fast gate**, because "the tests that matter"
+is a proxy population that goes stale, and the whole suite is 151 s; **(c)
+counting `--offline` as a verdict**, because a clean checkout is what CI buys
+(C119's mkdir race, C32's never-ran-clean suite), traded here for ~142 s;
+**(d) a faster runner**, because 33 minutes a day does not justify the cost,
+though it would help roughly in proportion to cores.

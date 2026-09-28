@@ -20,7 +20,9 @@ Exit codes. Each means one thing; none is "probably fine":
   1  CI FAILED for the target: its LATEST CONCLUSIVE run did not pass.
      Do not deploy it
   7  CI is PENDING for the target: a run is still queued or in progress,
-     whatever an earlier run concluded. Wait, then run again
+     whatever an earlier run concluded. Wait, then run again; or run with
+     --wait, which follows the run and deploys when it passes (bounded:
+     still pending after WAIT_BOUND_S is exit 7, saying so)
   8  every CI run for the target was CANCELLED (superseded by a newer push,
      or stopped): no verdict exists. Deploy the newer commit, or re-run CI
   2  COULD NOT ASK: GitHub unreachable, timed out, rate-limited, answered an
@@ -69,6 +71,15 @@ WORKFLOW_PATH = ".github/workflows/ci.yml"
 OK, CI_REFUSED, COULD_NOT_ASK, OFFLINE_FAILED, LOCAL_REFUSED, UNHEALTHY = 0, 1, 2, 3, 4, 5
 CANNOT_RESTART = 6
 CI_PENDING, CI_CANCELLED = 7, 8
+
+#: --wait (the operator, 2026-09-28): 35 "still running" refusals across 19
+#: waits in 28 hours, a retry loop where the waiting itself was ~33 minutes.
+#: The bound comes from a measurement, not a round number (C129): push to
+#: green measured median 201 s, p90 259 s over 85 runs (2026-09-27/28); 600 s
+#: is about 2.5x the p90. The poll is gentle on GitHub's API (60/hour unauth).
+WAIT_BOUND_S = 600
+WAIT_POLL_S = 20
+MEASURED_TYPICAL = "typically ~200 s, p90 ~260 s (measured 2026-09-28)"
 
 
 def can_restart(run=subprocess.run, isatty=None):
@@ -239,7 +250,8 @@ def ci_verdict(repo, target, get=github_get):
         others = _others(runs, run)
         if state == "PENDING":
             return CI_PENDING, (f"PENDING: CI run #{num} is still {run.get('status')} for {short}: "
-                                f"{url}{others}. Wait, and run nmas-deploy again when it completes.")
+                                f"{url}{others}. Wait, and run nmas-deploy again when it completes, or run "
+                                "`nmas-deploy --wait`, which follows the run and deploys when it passes.")
         if state == "CANCELLED":
             return CI_CANCELLED, (f"CANCELLED: every CI run for {short} was cancelled (superseded by a "
                                   f"newer push, or stopped), so no verdict exists: {url}{others}. "
@@ -462,6 +474,10 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     ap.add_argument("--offline", action="store_true",
                     help="run the suite here against the target instead of asking CI")
     ap.add_argument("--repo", default=DEFAULT_REPO)
+    ap.add_argument("--wait", action="store_true",
+                    help=f"when CI is still running for the target, follow it (every "
+                         f"{WAIT_POLL_S} s, at most {WAIT_BOUND_S} s) and deploy when it "
+                         "passes; the gate is unchanged")
     args = ap.parse_args(argv)
     repo = args.repo
     # started_at is when the RUN began, ended_at when its row is written: two
@@ -498,6 +514,8 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
     code, message = (offline_verdict(repo, target, run) if args.offline
                      else ci_verdict(repo, target, get))
     print(message)
+    if args.wait and not args.offline and code == CI_PENDING:
+        code, message = _wait_for_ci(repo, target, get, clock, sleep, row)
     if code != OK:
         return finish(code, message)
 
@@ -542,6 +560,33 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                       + f"{what}, restart issued, but NOT confirmed running: {reason}")
     return finish(OK, f"{what}, restarted: pid {before['MainPID']} -> {state.get('MainPID')}, "
                       f"running {target[:10]} since {state.get('start')} (systemd). {message}")
+
+
+def _wait_for_ci(repo, target, get, clock, sleep, row):
+    """Follow a PENDING verdict for the SAME target until it is anything else,
+    or the bound. Each poll prints what the run is doing and how long this has
+    waited against the measured typical, so a wait going slowly can be told
+    from one going wrong. Any other verdict (passed, failed, cancelled,
+    could-not-ask) ends the wait at once and is returned unchanged: the gate
+    is the same gate, only the retrying moved from the person to the tool."""
+    start = clock()
+    code, message = CI_PENDING, ""
+    while True:
+        waited = clock() - start
+        if waited >= WAIT_BOUND_S:
+            row["waited_s"] = round(waited)
+            return CI_PENDING, (f"still PENDING after waiting {round(waited)} s (the bound, "
+                                f"{WAIT_BOUND_S} s, is ~2.5x the measured p90): {message} "
+                                "Not deployed. Look at the run before waiting again.")
+        sleep(WAIT_POLL_S)
+        code, message = ci_verdict(repo, target, get)
+        waited = clock() - start
+        if code != CI_PENDING:
+            row["waited_s"] = round(waited)
+            print(f"waited {round(waited)} s: {message}")
+            return code, message
+        print(f"waiting {round(waited)} s of at most {WAIT_BOUND_S} s ({MEASURED_TYPICAL}): "
+              f"{message.split('. Wait,')[0]}")
 
 
 def _mixed_headline(health, target: str) -> str:

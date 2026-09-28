@@ -88,7 +88,8 @@ def _fetch_from_real_origin(world):
 
 
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
-         reachable=True, restart_fails=False, ready=(True, "test: sudo authorised")):
+         reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
+         wait=False):
     mod = _script()
     calls = []
 
@@ -98,7 +99,11 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
             return 0, None, "URLError: timed out"
         if "head_sha=" in path:
             sha = path.split("head_sha=")[1].split("&")[0]
-            return 200, {"workflow_runs": runs_by_sha.get(sha, [])}, ""
+            runs = runs_by_sha.get(sha, [])
+            # A function of how many times CI was asked: a run that MOVES
+            # while --wait follows it.
+            runs = runs(sum(1 for c in calls if "head_sha=" in c)) if callable(runs) else runs
+            return 200, {"workflow_runs": runs}, ""
         return 200, {"workflow_runs": [{"head_sha": s, "path": ".github/workflows/ci.yml",
                                         "status": "completed", "conclusion": "success"}
                                        for s in passed]}, ""
@@ -152,7 +157,8 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
             return 200, {"commit": running, "started_at": early, "pid": 999}
         return 200, {"commit": running, "started_at": early, "pid": unit()["MainPID"]}
 
-    code = mod.main(["--repo", world.host] + (["--offline"] if offline else []),
+    code = mod.main(["--repo", world.host] + (["--offline"] if offline else [])
+                    + (["--wait"] if wait else []),
                     get=get, run=lambda *a, **k: Out(), restart=restart,
                     health=fake_health, clock=clock, sleep=sleep, unit=unit,
                     ready=lambda: ready)
@@ -186,6 +192,44 @@ class TestTheGate:
         sha = world.advance({"app.py": "v = 2\n"})
         code, _, _ = _run(world, {sha: _run_entry(sha, None, "in_progress")})
         assert code == 7 and _head(world) == world.base      # PENDING (C124)
+
+    def test_wait_follows_a_running_run_and_deploys_when_it_passes(self, world, capsys):
+        """--wait (the operator, 2026-09-28): 35 "still running" refusals
+        across 19 waits was a retry loop. The tool follows the run instead,
+        printing what it is doing, and the gate is the same gate."""
+        sha = world.advance({"app.py": "v = 2\n"})
+        moving = {sha: lambda asked: (_run_entry(sha) if asked >= 4
+                                      else _run_entry(sha, None, "in_progress"))}
+        code, restarted, calls = _run(world, moving, wait=True)
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha and restarted
+        assert sum(1 for c in calls if "head_sha=" in c) == 4
+        assert out.count("waiting ") == 2, out
+        assert "typically ~200 s" in out and "of at most 600 s" in out
+        assert "waited " in out and "CI passed" in out
+
+    def test_wait_stops_at_the_bound_and_says_so(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, restarted, _ = _run(world, {sha: _run_entry(sha, None, "in_progress")},
+                                  wait=True)
+        err = capsys.readouterr().err
+        assert code == 7 and _head(world) == world.base and not restarted
+        assert "still PENDING after waiting" in err and "the bound, 600 s" in err
+
+    def test_wait_ends_at_once_on_a_failure(self, world, capsys):
+        """The gate is unchanged: a run that fails while followed refuses."""
+        sha = world.advance({"app.py": "v = 2\n"})
+        failing = {sha: lambda asked: (_run_entry(sha, "failure") if asked >= 2
+                                       else _run_entry(sha, None, "in_progress"))}
+        code, restarted, calls = _run(world, failing, wait=True)
+        assert code == 1 and _head(world) == world.base and not restarted
+        assert sum(1 for c in calls if "head_sha=" in c) == 2
+
+    def test_without_wait_a_running_run_still_refuses_at_once(self, world):
+        """The control: --wait is opt-in, and the default is unchanged."""
+        sha = world.advance({"app.py": "v = 2\n"})
+        code, _, calls = _run(world, {sha: _run_entry(sha, None, "in_progress")})
+        assert code == 7 and sum(1 for c in calls if "head_sha=" in c) == 1
 
     def test_a_cancelled_run_is_not_a_pass(self, world):
         sha = world.advance({"app.py": "v = 2\n"})
