@@ -46,7 +46,14 @@ JOBS = (
      "what": "NetBox restore of the plain LOCAL hourly copy into a scratch postgres, "
              "daily (P.2); it does not read the encrypted off-box copies (NETBOX_BACKUP 6g)"},
     {"unit": "nmas-heartbeat-check", "max_age_minutes": 180,
-     "what": "each device's heartbeat window still fits its measured rate, hourly (C16)"},
+     "what": "each device's heartbeat window still fits its measured rate, hourly (C16)",
+     # Both of its failures (a device with no rule, C151; a rate that moved)
+     # are fixed by regenerating the rules (NSOT_PLAN P.1 step 5).
+     "remedy": {"label": "Regenerate the heartbeat rules (a new device gets a provisional "
+                         "window), install the file and reload Grafana's provisioning",
+                "command": "scripts/nmas-heartbeat-rules --datasource-uid <loki-uid> "
+                           "--loki-url http://127.0.0.1:3100",
+                "reference": "NSOT_PLAN P.1 step 5"}},
     {"unit": "nmas-startup-check", "max_age_minutes": 180,
      "what": "every device's startup config carries the credential NMAS holds, hourly (C53)"},
 )
@@ -168,7 +175,9 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
         since = streak_start
     elif state == "stale" and last_ok is not None:
         since = last_ok + max_age
+    remedy = job.get("remedy") if state in ("failing", "never_succeeded") else None
     return {**out, "state": state, "detail": detail, "since": since,
+            **({"action": dict(remedy)} if remedy else {}),
             "last_success": last_ok, "last_failure": last_fail,
             "consecutive_failures": streak if failed_last else 0,
             "last_error": last_error if failed_last else "",
@@ -370,6 +379,14 @@ def image_jobs(now: float = None, client=None) -> list:
         client = ProxmoxIntegration()
 
     def row(unit, state, detail, **extra):
+        # The images' remedy is on Proxmox, the operator's machine (C164): the
+        # action names where to look, never a command run from here.
+        if state in ("failing", "missing", "stale", "never", "will_not_fit"):
+            extra.setdefault("action", {
+                "label": ("Free space on the backup storage, or keep fewer images"
+                          if state == "will_not_fit" else
+                          "Read the backup task's log in Proxmox (Datacenter > Tasks, "
+                          "vzdump) for this VM")})
         return {"unit": unit, "what": _IMAGES_WHAT, "state": state,
                 "detail": detail, "max_age_minutes": IMAGE_MAX_AGE_MINUTES, **extra}
 
@@ -567,9 +584,10 @@ def settings_rows(guards: dict = None, load=None) -> list:
     from modules.config import SettingsUnreadable, load_user_settings
     from modules.settings_schema import DEFAULTS
 
-    def row(unit, state, detail):
+    def row(unit, state, detail, action=None):
         return {"unit": unit, "what": _SETTINGS_WHAT, "state": state,
-                "detail": detail, "max_age_minutes": 0}
+                "detail": detail, "max_age_minutes": 0,
+                **({"action": action} if action else {})}
 
     guards = _guard_settings() if guards is None else guards
     if not guards:
@@ -601,10 +619,18 @@ def settings_rows(guards: dict = None, load=None) -> list:
             else:
                 out.append(row(f"setting:{key}", "unset_guard",
                                f"EMPTY. It gates {where}, which will refuse and say "
-                               "'not configured' until it is set"))
+                               "'not configured' until it is set",
+                               {"label": f"Set {key} in Settings, or record on the host that "
+                                         "nothing here uses it (a decision with who, when "
+                                         "and why)",
+                                "command": f"nmas-setting-not-applicable {key} --reason "
+                                           "'<why>'"}))
         elif decl:
             out.append(row(f"setting:{key}", "contradiction",
-                           f"SET, and also {said}. One of the two is wrong"))
+                           f"SET, and also {said}. One of the two is wrong",
+                           {"label": f"Clear {key} in Settings, or withdraw the declaration "
+                                     "that nothing uses it",
+                            "command": f"nmas-setting-not-applicable {key} --withdraw"}))
         else:
             out.append(row(f"setting:{key}", "ok", "set"))
     return out
@@ -698,6 +724,7 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
                                        "still exists somewhere, nothing here manages it"
                                        if unsafe else ""))})
             continue
+        act = None
         if state == cr.ROTATED_PERSISTED:
             st, detail = "ok", f"persisted and read SAFE at {at}"
         elif state in (cr.REVERTED, cr.NOT_STARTED):
@@ -711,27 +738,38 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
                           f"at {at} the device's startup config did NOT carry the rotated "
                           f"credential: its running config holds the only working one. Do "
                           f"not reload it; run nmas-persist-native {device} --list <list>")
+            act = {"label": "Persist the running credential on the device before anything "
+                            "reloads it (the record names no list: use the device's own)",
+                   "command": f"nmas-persist-native {device} --list <its list>"}
         elif state == cr.ROTATED_UNVERIFIED:
             st, detail = ("not_safe_to_reboot",
                           f"rotated at {at}; persistence FAILED at {stage or 'the chain'}. "
                           f"Fix it, then run nmas-persist-credential {device}")
+            act = {"label": f"Fix the failed stage ({stage or 'the chain'}), then verify the "
+                            "boot file", "command": f"nmas-persist-credential {device}"}
         elif state == cr.ROTATED_NOT_RECORDED:
             st, detail = ("not_recorded",
                           f"rotated at {at} but NOT RECORDED: the device accepts only the "
                           "new password and the tool may hold the old one. Do not rotate "
                           "again or reboot; record it from the kept staging copy")
+            act = {"label": "Record the new credential from the kept staging copy; do not "
+                            "rotate again or reboot until it is recorded"}
         elif state == cr.ROTATED_PENDING_PERSIST:
             st, detail = ("not_safe_to_reboot",
                           f"rotated at {at}; persistence NOT ATTEMPTED. Run "
                           f"nmas-persist-credential {device} to verify the boot file")
+            act = {"label": "Verify the boot file holds the rotated credential",
+                   "command": f"nmas-persist-credential {device}"}
         elif state == cr.REVERT_FAILED:
             st, detail = "revert_failed", (f"the new credential did not verify and the "
                                            f"revert failed at {at}: the device may be "
                                            "locked out; recover on the console")
+            act = {"label": "Recover the device on its console, with the break-glass record"}
         else:
             st, detail = "unknown", f"last recorded state {state or '(none)'} at {at}"
         rows.append({"unit": f"rotation:{device}", "what": _ROTATION_WHAT,
                      "device": device, "state": st, "max_age_minutes": 0,
+                     **({"action": act} if act else {}),
                      "detail": detail + (f" (whether it has left management is unknown: "
                                          f"{why_not})" if why_not and names else "")})
     return rows
@@ -765,10 +803,14 @@ def sync_owner_rows(run=None, get=None) -> list:
     setting = (get("clab_sync_script", "") or "").strip()
     if not setting:
         return [{**row, "state": "unset_guard",
-                 "detail": f"clab_sync_script is EMPTY; the timer runs {unit_path or '?'}"}]
+                 "detail": f"clab_sync_script is EMPTY; the timer runs {unit_path or '?'}",
+                 "action": {"label": f"Set clab_sync_script in Settings to the script the "
+                                     f"timer runs: {unit_path or '(the unit names none)'}"}}]
     if unit_path and setting != unit_path:
         return [{**row, "state": "mismatch",
-                 "detail": f"clab_sync_script is {setting} but the timer runs {unit_path}"}]
+                 "detail": f"clab_sync_script is {setting} but the timer runs {unit_path}",
+                 "action": {"label": f"Make them one: set clab_sync_script to {unit_path}, or "
+                                     "point the timer at the setting's script"}}]
     return [{**row, "state": "ok", "detail": f"both name {setting}"}]
 
 
@@ -804,10 +846,14 @@ def ztp_responder_rows(run=None, get=None) -> list:
                  "detail": "systemctl could not be asked -- not the same as ok"}]
     if props.get("LoadState") == "not-found":
         return [{**row, "state": "not_installed",
-                 "detail": "nmas-ztp-responder.socket is not installed (docs/DEPLOY_LINUX.md)"}]
+                 "detail": "nmas-ztp-responder.socket is not installed (docs/DEPLOY_LINUX.md)",
+                 "action": {"label": "Install and enable the socket on the host",
+                            "reference": "docs/DEPLOY_LINUX.md"}}]
     if props.get("ActiveState") != "active":
         return [{**row, "state": "socket_down",
-                 "detail": f"the socket is {props.get('ActiveState') or '?'}: nothing answers udp/69"}]
+                 "detail": f"the socket is {props.get('ActiveState') or '?'}: nothing answers udp/69",
+                 "action": {"label": "Start the socket on the host",
+                            "command": "sudo systemctl start nmas-ztp-responder.socket"}}]
     ok, lines = _journal("nmas-ztp-responder.service", run)
     if not ok:
         return [{**row, "state": "unknown",
@@ -822,7 +868,10 @@ def ztp_responder_rows(run=None, get=None) -> list:
                  "detail": (f"{len(failed)} request(s) the handler could not finish since the "
                             f"responder last started, the latest at "
                             f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(failed[-1]))}. "
-                            "A device that asked then has probably given up and needs a reload")}]
+                            "A device that asked then has probably given up and needs a reload"),
+                 "action": {"label": "Read the responder's own output on the host",
+                            "command": "journalctl -u nmas-ztp-responder.service -n 50 "
+                                       "--no-pager"}}]
     return [{**row, "state": "ok",
              "detail": (f"listening on {listen}; " + (
                  "no handler failures since it last started" if starts else
@@ -867,7 +916,12 @@ def startup_rows(read=None, now: float = None) -> list:
             continue
         state = "not_safe_to_reboot" if d.get("state") == "not_persisted" else "unknown"
         rows.append({"unit": f"startup:{d.get('list')}/{d.get('device')}", "what": what,
-                     "device": d.get("device"), "list": d.get("list"), "state": state, "max_age_minutes": 0,
+                     "device": d.get("device"), "list": d.get("list"), "state": state,
+                     **({"action": {"label": "Persist the running credential on the device "
+                                             "before anything reloads it",
+                                    "command": f"nmas-persist-native {d.get('device')} "
+                                               f"--list {d.get('list')}"}}
+                        if state == "not_safe_to_reboot" else {}), "max_age_minutes": 0,
                      "detail": f"{d.get('detail', '')} (checked {when})"
                                + ("; a reload would boot a credential NMAS does not hold: "
                                   f"run nmas-persist-native {d.get('device')} --list {d.get('list')}"
@@ -911,7 +965,7 @@ def ssh_session_rows(held: dict = None) -> list:
                            for s in h["sessions"])
         if h["held"] >= h["budget"]:
             rows.append({"unit": f"ssh:{ip}", "what": what, "address": ip,
-                         "state": "at_budget",
+                         "state": "at_budget", "action": {"label": "Read the in-flight panel: it names the operation holding the device, its step and its age (a session held long may be stuck)"},
                          "max_age_minutes": 0,
                          "detail": f"holds {h['held']} of {h['budget']} allowed "
                                    f"({h['lines']} vty lines, one kept for a person): "
@@ -920,7 +974,7 @@ def ssh_session_rows(held: dict = None) -> list:
                   if not s["pooled"] and s["age_s"] > LEAK_AFTER_SECONDS]
         if leaked:
             rows.append({"unit": f"ssh-leak:{ip}", "what": what, "address": ip,
-                         "state": "leaked",
+                         "state": "leaked", "action": {"label": "Read the in-flight panel: it names the operation holding the device, its step and its age (a session held long may be stuck)"},
                          "max_age_minutes": 0,
                          "detail": "an operation's session held past ten minutes: "
                                    + ", ".join(f"{s['owner']} ({s['age_s']}s)"
@@ -971,6 +1025,10 @@ def version_rows(loaded=None, checkout=None) -> list:
     if loaded != checkout:
         return [{"unit": "running-version", "what": what, "state": "mixed_version",
                  "max_age_minutes": 0,
+                 "action": {"label": "Restart the service so it runs the checkout's commit "
+                                     "(a person's step: CI gates what deploys, the operator "
+                                     "when)",
+                            "command": "sudo systemctl restart flask-app.service"},
                  "detail": (f"MIXED VERSION: checkout at {checkout[:10]}, service running "
                             f"{loaded[:10]}. Run `sudo systemctl restart flask-app.service` "
                             "(or nmas-deploy in a terminal on the host).")}]

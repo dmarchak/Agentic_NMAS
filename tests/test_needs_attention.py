@@ -151,30 +151,81 @@ class TestJobHealthAsASource:
         assert res["state"] == "unreadable"
         assert "systemctl gone" in res["rows"][0]["cause"]
 
-    #: One real unit per job-health row family (the unit strings job_health
-    #: writes), so the action each gets is asked of the code, not assumed.
-    FAMILIES = {"systemd": "clab-sync", "image": "vzdump:rcn-lab1",
-                "settings": "setting:clab_host", "rotation": "rotation:r1",
-                "clab-sync-owner": "clab-sync-owner",
-                "ztp-responder": "nmas-ztp-responder",
-                "startup": "startup:lab/r1", "ssh": "ssh:192.0.2.1",
-                "running-version": "running-version", "ztp-posture": "ztp-posture"}
+    def _rows(self):
+        """A REAL non-ok row from each family's own builder (C164): the action
+        is asked of the row the code writes, never of a unit name."""
+        from modules.nsot import credential_rotation as cr
 
-    #: Families whose rows write their remedy into the detail, so the row
-    #: says no separate action is recorded (known: False) rather than
-    #: inventing one. 7.2's later steps lift each; this set only SHRINKS.
-    NO_RECORDED_ACTION = {"image", "settings", "rotation", "clab-sync-owner",
-                          "ztp-responder", "startup", "ssh", "running-version",
-                          "ztp-posture"}
+        def systemd(show, journal=""):
+            return lambda cmd: (0, show) if cmd[0] == "systemctl" else (0, journal)
 
-    def test_the_families_without_a_recorded_action_only_shrink(self):
-        got = {fam for fam, unit in self.FAMILIES.items()
-               if A._job_action({"unit": unit, "state": "failing"}).get("known") is False}
-        assert got == self.NO_RECORDED_ACTION, (
-            f"now without an action: {sorted(got - self.NO_RECORDED_ACTION)}; "
-            f"now with one (shrink the pin): {sorted(self.NO_RECORDED_ACTION - got)}")
-        # The floor: the family that has actions keeps them.
-        assert "systemd" not in got
+        out = {}
+        out["rotation"] = J.rotation_rows([{"device": "r2", "state": cr.ROTATED_UNVERIFIED,
+                                            "failed_stage": "device_startup_config",
+                                            "at": "2026-09-28T10:00:00Z"}], known=({"r2"}, ""))
+        out["startup"] = J.startup_rows(read=lambda: {"at": 900.0, "devices": [
+            {"list": "Default", "device": "s1", "state": "not_persisted", "detail": "old"}]},
+            now=1000.0)
+        out["settings"] = J.settings_rows(guards={"clab_host": ["the persistence chain"]},
+                                          load=lambda: {})
+        out["settings-contradiction"] = J.settings_rows(
+            guards={"clab_host": ["the persistence chain"]},
+            load=lambda: {"clab_host": "h", "settings_not_applicable": {
+                "clab_host": {"by": "p", "at": "t", "reason": "r"}}})
+        out["clab-sync-owner"] = J.sync_owner_rows(
+            run=systemd("LoadState=loaded\nExecStart={ path=/x/sync.sh ; }\n"),
+            get=lambda k, d="": "")
+        out["ztp-responder"] = J.ztp_responder_rows(
+            run=systemd("LoadState=loaded\nActiveState=inactive\nListen=[::]:69\n"),
+            # ZTP configured: with no fragment the builder rightly returns nothing.
+            get=lambda k, d="": "/etc/kea/ztp.json" if k == "kea_ztp_fragment" else "")
+        out["ssh"] = J.ssh_session_rows({"192.0.2.1": {
+            "held": 4, "budget": 4, "lines": 5,
+            "sessions": [{"owner": "pipeline", "age_s": 30, "idle_s": 30, "pooled": False}] * 4}})
+        out["running-version"] = J.version_rows(loaded="a" * 40, checkout="b" * 40)
+        return out
+
+    #: Families whose rows cannot be built here without their own service
+    #: faked end to end; each still carries an action in the builder, and this
+    #: list may only shrink.
+    NOT_DRIVEN = {"vm-images (a Proxmox client)", "ztp-posture (Kea)"}
+
+    def test_every_non_ok_family_row_carries_its_own_action(self):
+        rows = self._rows()
+        assert len(rows) == 8, sorted(rows)
+        for fam, fam_rows in rows.items():
+            bad = [r for r in fam_rows if r["state"] not in J.OK_STATES]
+            assert bad, (fam, fam_rows)
+            for r in bad:
+                act = A._job_action(r)
+                assert act.get("known", True) is True and act["label"], (fam, r)
+        assert len(self.NOT_DRIVEN) == 2
+
+    def test_a_named_command_is_the_command_the_detail_names(self):
+        """The action repeats the remedy the detail already wrote, so the two
+        cannot say different things."""
+        rows = self._rows()
+        r = rows["startup"][0]
+        assert A._job_action(r)["command"] == "nmas-persist-native s1 --list Default"
+        assert "nmas-persist-native s1 --list Default" in r["detail"]
+        v = rows["running-version"][0]
+        assert A._job_action(v)["command"] in v["detail"].replace("`", "")
+
+    def test_a_failing_heartbeat_check_names_its_remedy(self):
+        """C151: a device told to heartbeat with no rule fails the check within
+        the hour; the row's action is regenerating the rules, not the journal."""
+        job = next(j for j in J.JOBS if j["unit"] == "nmas-heartbeat-check")
+        row = J.job_status(job, NOW, _runner(LOADED, "\n".join([_ok(NOW - 7200), _fail(NOW - 60)])))
+        act = A._job_action(row)
+        assert row["state"] == "failing" and "nmas-heartbeat-rules" in act["command"]
+        ok_row = J.job_status(job, NOW, _runner(LOADED, _ok(NOW - 60)))
+        assert "action" not in ok_row, "an ok job names no remedy"
+
+    def test_an_unknown_state_names_no_remedy(self):
+        unknown = J.startup_rows(read=lambda: {"at": 900.0, "devices": [
+            {"list": "Default", "device": "s1", "state": "unknown", "detail": "timeout"}]},
+            now=1000.0)[0]
+        assert A._job_action(unknown)["known"] is False
 
 
 # ---------------------------------------------------------------------------

@@ -1230,6 +1230,20 @@ three times or more is a row. Twice can be a retry; a third is a routine.
 It blocks nothing; 8.8's point is that "ok" typed thirty times is the
 finding.
 
+**7.2 step 8 BUILT (2026-09-28): every row carries its action (C164's 7.2 half,
+and C151).** Each job-health row family's remedy, which its builder wrote into
+the detail, is its row's `action` field, built in the same place: persist for
+rotation and startup rows (the command they name), verify the boot file, record
+from the staging copy, recover on the console, set or declare a setting,
+withdraw a contradicting declaration, match the sync owner, install or start
+the ZTP socket, read its journal, the in-flight panel for SSH sessions, restart
+for a mixed version, Proxmox's task log for the images. The heartbeat check's
+remedy (regenerate the rules, P.1 step 5) is declared with the job itself, which
+closes C151. Every command named was checked against the script's real
+arguments. The page reads the row's own action first; a state with no remedy
+(`unknown`: the check could not ask) says so rather than inventing one. Tested
+on REAL rows from each family's own builder.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's

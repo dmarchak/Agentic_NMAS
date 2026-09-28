@@ -136,6 +136,10 @@ def _job_action(job: dict) -> dict:
     """The ONE action for a job-health row, where the source records one."""
     from modules import job_health as J
 
+    # The row's OWN action first (C164): the builder that wrote the remedy
+    # into the detail is the one place that knows it, and names it as a field.
+    if isinstance(job.get("action"), dict) and job["action"].get("label"):
+        return dict(job["action"])
     systemd_units = {j["unit"] for j in J.JOBS}
     unit, state = job.get("unit", ""), job.get("state", "")
     if unit in systemd_units:
@@ -144,12 +148,11 @@ def _job_action(job: dict) -> dict:
                     "reference": "docs/DEPLOY_LINUX.md"}
         return {"label": "Read the job's own output on the host",
                 "command": f"journalctl -u {unit}.service -n 50 --no-pager"}
-    # The other row families write their remedy INTO the detail (the
-    # rotation and startup rows name `nmas-persist-native`). Lifting it into
-    # a separate action is 7.2's next steps; until then the row says the
-    # action is in the cause rather than inventing one.
-    return {"label": "The cause above is the whole of what this row records; "
-                     "no separate action is recorded yet", "known": False}
+    # A row with no action of its own is a state with no remedy to name (an
+    # `unknown`: the check could not ask), and it says so rather than
+    # inventing one.
+    return {"label": "No remedy is recorded for this state: the cause above is the "
+                     "whole of what is known", "known": False}
 
 
 def job_health_source(health=None, now=None) -> dict:
