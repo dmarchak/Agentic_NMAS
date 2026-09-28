@@ -311,8 +311,10 @@ except Exception as _sec_exc:                 # noqa: BLE001
 if not app.debug:
     # Create logs directory if it doesn't exist (use BASE_DIR for frozen executable)
     logs_dir = os.path.join(BASE_DIR, 'logs')
-    if not os.path.exists(logs_dir):
-        os.mkdir(logs_dir)
+    # exist_ok, never check-then-create (C119): two processes importing the
+    # app at once (the suite's parallel workers on a fresh checkout, which has
+    # no logs/) both passed the check and the second mkdir raised.
+    os.makedirs(logs_dir, exist_ok=True)
 
     # Configure rotating file handler (10MB per file, keep 10 backups)
     file_handler = RotatingFileHandler(
