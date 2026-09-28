@@ -261,3 +261,21 @@ class TestTheOutcomeReachesTheScreen:
         assert "previewConfirmResultLevel(summary.result)" in card
         assert "previewConfirmResultHtml(summary.result" in card
         assert "summary.failed && summary.failed.length ? 'warning text-dark' : 'success'" not in card
+
+    def test_every_summary_key_the_card_reads_is_carried(self, monkeypatch, tmp_path):
+        """The card drew `scanned 0/9` beside `devices updated 9` for every
+        import: it read `summary.scanned`, a key the summary never carried
+        (it carries `synced`), and `|| 0` drew the miss as a zero (the
+        operator's reading, 2026-09-28). The payload check's reverse direction
+        sees depth-one reads only, and this is a nested one. So: every
+        `summary.<key>` the card reads is a key the REAL stored summary carries."""
+        import re
+
+        from tests import payload_providers as P
+        from tests.payload_render import lift, shipped
+
+        card = lift(shipped("index.4.js"), "loadNetboxTab")
+        reads = set(re.findall(r"\bsummary\.([a-z_]+)", card))
+        carried = set(P.netbox_status(monkeypatch, tmp_path)["status"]["lists"]["Default"])
+        assert len(reads) >= 6, reads
+        assert reads - carried == set(), f"read and never carried: {reads - carried}"

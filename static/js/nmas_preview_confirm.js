@@ -106,7 +106,7 @@
           return '<div class="small mt-1" data-pc-not="' + esc(i.kind) + '"><strong>'
             + esc(i.target) + '</strong>: ' + esc(i.text)
             + ((i.lines || []).length
-                ? '<pre class="small bg-body-tertiary p-2 rounded mb-0" '
+                ? '<pre class="small bg-body-tertiary text-body p-2 rounded mb-0" '
                   + 'style="max-height:180px;overflow:auto">' + esc(i.lines.join('\n')) + '</pre>'
                 : '')
             + '</div>';
@@ -149,7 +149,7 @@
         + (prog.caption ? esc(prog.caption) + ' (' + lines.length + ' line(s))'
                         : 'Exactly these ' + lines.length + ' line(s) will be sent, in this order')
         + '</div>'
-        + '<div class="font-monospace small bg-body-tertiary p-2 rounded" '
+        + '<div class="font-monospace small bg-body-tertiary text-body p-2 rounded" '
         + 'style="max-height:280px;overflow:auto" data-program="' + esc(t.name) + '">'
         + rows + '</div>';
     }
@@ -160,7 +160,7 @@
     (prog.notes || []).forEach(function (n) {
       var mine = n.from_this_edit || [], old = n.pre_existing || [];
       var pre = function (x) {
-        return '<pre class="small bg-body-tertiary p-2 rounded mt-1 mb-1" '
+        return '<pre class="small bg-body-tertiary text-body p-2 rounded mt-1 mb-1" '
           + 'style="max-height:140px;overflow:auto">' + esc(x.join('\n')) + '</pre>';
       };
       // A plain note: a title and its lines (the restore's "what these lines
@@ -304,7 +304,7 @@
           + esc(String(s.matches)) + '"' + (s.matches === false ? ' class="text-danger fw-semibold"' : '')
           + '>' + esc(s.match_words) + '</span></div>'
         : '<div class="small">' + esc(s.caption || (s.lines.length + ' line(s)')) + '</div>')
-        + '<div class="font-monospace small bg-body-tertiary p-2 rounded" '
+        + '<div class="font-monospace small bg-body-tertiary text-body p-2 rounded" '
         + 'style="max-height:220px;overflow:auto;white-space:pre" data-pr-program="'
         + esc(t.name) + '">' + esc(s.lines.join('\n')) + '</div>';
     }
@@ -321,7 +321,7 @@
            + ' line(s) not undone because the device never applied them' : '')
         + (rb.detail ? '<div' + (ROLLBACK_BADGE[rb.state] && ROLLBACK_BADGE[rb.state][2]
              ? '' : ' class="text-danger fw-semibold"') + '>' + esc(rb.detail) + '</div>' : '')
-        + ((rb.remaining || []).length ? '<pre class="small bg-body-tertiary p-2 rounded mb-0">'
+        + ((rb.remaining || []).length ? '<pre class="small bg-body-tertiary text-body p-2 rounded mb-0">'
            + esc(rb.remaining.join('\n')) + '</pre>' : '')
         + '</div>';
     }
@@ -341,7 +341,7 @@
         + (c.ok ? '<span class="badge bg-success">' + esc(words[0]) + '</span> '
                 : '<span class="badge bg-warning text-dark">' + esc(words[1]) + '</span> ')
         + c.statements.map(esc).join('; ') + '</div>'
-        + ((c.issues || []).length ? '<pre class="small bg-body-tertiary p-2 rounded mb-0">'
+        + ((c.issues || []).length ? '<pre class="small bg-body-tertiary text-body p-2 rounded mb-0">'
            + esc(c.issues.join('\n')) + '</pre>' : '');
     } else {
       var protocols = c.checked_protocols || [];
@@ -402,7 +402,7 @@
       ? (dn.items || []).map(function (i) {
           return '<div class="small mt-1" data-pr-not="' + esc(i.kind) + '"><strong>'
             + esc(i.target) + '</strong>: ' + esc(i.text)
-            + ((i.lines || []).length ? '<pre class="small bg-body-tertiary p-2 rounded mb-0">'
+            + ((i.lines || []).length ? '<pre class="small bg-body-tertiary text-body p-2 rounded mb-0">'
                + esc(i.lines.join('\n')) + '</pre>' : '') + '</div>';
         }).join('')
       : '<div class="small" data-pr-none>' + esc(dn.none) + '</div>';

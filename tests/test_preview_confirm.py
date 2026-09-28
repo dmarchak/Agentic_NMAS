@@ -449,3 +449,21 @@ class TestTheResultHalf:
             got = dukpy.evaljs("var window = {};\n" + src + "\nwindow.previewConfirmResultLevel("
                                + json.dumps({"level": level}) + ")")
             assert got == toast, (level, got)
+
+
+class TestATintedBlockSetsItsOwnTextColour:
+    """The NetBox sync card drew its import outcome as eight EMPTY code blocks
+    (the operator, 2026-09-28): the card hard-codes a dark background and
+    light text, the component's blocks use the theme's `bg-body-tertiary`
+    (near-white in the light theme), and the light text inherited onto
+    near-white was unreadable. The text was there. A block that sets its
+    background sets its text colour with it, so it reads on any card."""
+
+    def test_every_tinted_block_pairs_its_background_and_text(self):
+        import re
+
+        src = shipped("nmas_preview_confirm.js")
+        classes = re.findall(r'class="([^"]*bg-body-tertiary[^"]*)"', src)
+        assert len(classes) >= 7, classes
+        unpaired = [c for c in classes if "text-body" not in c.split()]
+        assert unpaired == [], unpaired

@@ -319,7 +319,7 @@ async function loadNetboxTab() {
                   <div class="small mt-1">
                     <span class="badge bg-primary me-1">devices created ${summary.created || 0}</span>
                     <span class="badge bg-info me-1">devices updated ${summary.updated || 0}</span>
-                    <span class="badge bg-secondary me-1">scanned ${summary.scanned || 0}/${summary.total || 0}</span>
+                    <span class="badge bg-secondary me-1" title="devices whose golden config was read without error, of the list">read ${summary.synced != null ? summary.synced : '?'}/${summary.total != null ? summary.total : '?'}</span>
                     ${fails.length ? `<span class="badge bg-warning text-dark">failed ${fails.length}</span>` : ''}
                   </div>
                   <details class="small mt-1" data-nb-outcome><summary>Outcome of the last import</summary>

@@ -1151,7 +1151,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_import_preview_is_what_happens.py` | C134, C135: through the real sync against FakeNetBox, an import PREVIEW writes no sync status and leaves the last real import's record byte-identical (a real import still records, the control); a dry-run PATCH returns the object as NetBox holds it with the payload over it (so no phantom `tags` write), and the preview names what each update CHANGES, says "changes nothing" for a re-send, and counts changes apart from re-sends |
 | `test_netbox_holds_no_secret.py` | C95 (a): over the nine REAL fleet configs, through the import's own builders, no credential-slot value reaches NetBox's `local_context_data` (read with a pattern independent of `redact.py`, the lines kept and masked), and the structured SNMP communities keep their permission and carry no value; a floor on the slots to mask |
 | `test_checker_reads_netbox.py` | C95 (d): `nmas-check-secret-storage --netbox` reads what NetBox HOLDS; on the nine REAL fleet configs as NetBox held them every device is a finding (the positive control, naming slot kinds and never a value), and on what the import writes after (a) none is; no devices read and an unreachable NetBox are UNPROVEN, never a pass |
-| `test_netbox_preview_token_round_trip.py` | C136: a REAL NetBox import preview's one-shot token driven into the REAL apply, for import and import-all (the preview had masked its own token, so the import could never be confirmed); the preview is still masked |
+| `test_netbox_preview_token_round_trip.py` | C136: a REAL NetBox import preview's one-shot token driven into the REAL apply, for import and import-all (the preview had masked its own token, so the import could not be confirmed from 6f6b917's deploy until 482f4f5's); the preview is still masked |
 | `test_netbox_preview_progress.py` | C137: a NetBox preview or import says what it is doing while it runs: the registry's states, requests counted through the REAL sync's session hook, the progress route (and `unknown` never read as not running), the in-flight panel listing a running NetBox operation, and the shipped `nbProgressText` executed for every state including a failed poll |
 | `test_results_are_drawn.py` | C121: EVERY green toast in the shipped pages declared in `GREEN_TOASTS` with why green is earned, by a parsing scan, exact both ways (a planted multi-line call found). 7.1 step 1: every action gated confirm, approve or publish_remote (41, the gate table) shows its result where it can be read again, or is placed: drawn by the component with a reader (deploy, restore; evidence from source), pending (31, measured, only shrinks) or no GUI (tied to the reachability list); a toast is never enough for this population, and the bar is shown refusing; colour is part of the result (`FALSE_GREEN`: Save All, the NetBox sync card, onboarding Create) and the first XSS-shaped finding is pinned (`UNESCAPED`) |
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
@@ -5552,6 +5552,18 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   delete the false record): "no import recorded" invites a question;
   "synced 9, updated 9, complete" closes one, and is what someone would cite
   later as evidence.
+- **A MASK KEYED ON A FIELD NAME MASKS EVERY FIELD WITH THAT NAME, including
+  the ones that make the system work, and silently, because a masked value
+  looks like a value** (the operator's naming, C136, 2026-09-28).
+  `outbound.mask_payload` masks `token` by key, so the NetBox import preview
+  sent `<redacted:token>` where its one-shot confirmation belonged and the
+  import could not be confirmed for 9 h 40 min, with a refusal naming two
+  states when the real one was a third. A security control silently
+  disabling an operation. Asked once and measured: every response that
+  masks by key was driven through its real payload and every key-named
+  field listed; `token` was the only one. A capability this server issued
+  for the client to hand back is not a stored secret: mask the drawn part,
+  attach the capability after.
 - **A PROVENANCE REPORT THAT TRUSTS THE RECORD IT IS AUDITING CANNOT FIND A
   WRONG RECORD** (the operator, C131, 2026-09-28). `nmas-netbox-untagged`
   printed the record's own names, so "lab dcim/devices/7 R1" could not show
