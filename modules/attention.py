@@ -1028,9 +1028,57 @@ def integrations_source(cached=None) -> dict:
                  f"{c.get('down', 0)} down, {c.get('not_configured', 0)} not configured"))
 
 
+# ---------------------------------------------------------------------------
+# Source: the running commit's CI verdict, from the ci-verdict READER (7.2):
+# nmas-deploy's own gate, never a second implementation of it.
+# ---------------------------------------------------------------------------
+
+_CI_ROWS = {"failed": ("its CI run failed", "danger"),
+            "cancelled": ("its CI run was cancelled, so no verdict exists", "warning"),
+            "pending": ("its CI run is still going", "warning"),
+            "could_not_ask": ("whether it passed CI could not be asked", "unknown")}
+
+
+def ci_source(cached=None) -> dict:
+    """A running commit CI did not pass is a row; a verified one is not."""
+    from modules import reader_job
+    from routes import health
+
+    started = time.time()
+    got = reader_job.read_cached("ci-verdict") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("ci", "Running commit's CI", read_at=started, took_ms=took,
+                             error=f"not judged yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    commit = str(v.get("commit") or "")
+    if commit != str(health._COMMIT or ""):
+        return source_result("ci", "Running commit's CI", read_at=started, took_ms=took,
+                             value_at=value_at, stale_after_seconds=promise,
+                             checked=f"the stored verdict is for {commit[:10]}, not the running "
+                                     f"{str(health._COMMIT)[:10]}: not judged yet")
+    rows = []
+    if v.get("state") in _CI_ROWS:
+        words, level = _CI_ROWS[v["state"]]
+        rows.append(row(source="ci", key=commit[:10], level=level,
+                        what=f"The running commit {commit[:10]}: {words}",
+                        cause=v.get("sentence") or "no sentence recorded",
+                        action={"label": "Read nmas-deploy's sentence above: it names the run and "
+                                         "what it found", "known": False}))
+    return source_result("ci", "Running commit's CI", read_at=started, took_ms=took, rows=rows,
+                         value_at=value_at, stale_after_seconds=promise,
+                         checked=f"{commit[:10]}: {v.get('state')}")
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
-           grafana_source, freshness_source, integrations_source)
+           grafana_source, freshness_source, integrations_source, ci_source)
 
 
 def _attach(rows: list) -> list:

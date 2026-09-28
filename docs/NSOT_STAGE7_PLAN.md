@@ -1422,6 +1422,23 @@ does not answer. Rule 11 held: the per-integration Test button
 other two items (the deployed version and its CI result, and who you are)
 are next, from sources already in-process.
 
+**7.2 step 17 BUILT (2026-09-28): the status bar's version item, composed
+from answers that each have ONE implementation** (the operator: two
+implementations of "what is running" is the pattern this project keeps
+removing). What is running is `routes.health._COMMIT`, what `/health` serves
+`nmas-deploy`; whether it is the checkout's commit is job health's
+running-version row (C129), read from the job-health reader's stored value;
+its CI verdict is `nmas-deploy`'s own `ci_verdict()` (C170's walk included),
+which the new ci-verdict reader (`modules/readers/ci_verdict.py`) LOADS from
+the script and calls. `GET /health/version` composes the three and computes
+none (counted in its test), and an AST test pins that no module defines a
+second verdict. Every 15 min: GitHub allows 60 unauthenticated requests an
+hour per address, shared with `nmas-deploy`, and a verdict costs one (up to
+eleven walking back). A stored verdict for another commit is never this
+commit's ("not judged yet"). Needs attention makes a row when the running
+commit's CI failed (danger), was cancelled or is still going (warning), or
+could not be asked (unknown). The bar's last item, who you are, is next.
+
 
 ## 9. Deferred, recorded rather than scoped
 

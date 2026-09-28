@@ -192,7 +192,8 @@ def readers() -> list:
 DECLARED_MODULES: tuple = ("modules.readers.job_health_reader",
                            "modules.readers.grafana_alerts",
                            "modules.readers.freshness_reader",
-                           "modules.readers.integration_health")
+                           "modules.readers.integration_health",
+                           "modules.readers.ci_verdict")
 
 
 # ---------------------------------------------------------------------------

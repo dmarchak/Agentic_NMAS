@@ -49,6 +49,49 @@ _COMMIT, _COMMIT_ERROR = _commit_loaded()
 _STARTED = time.time()
 
 
+@bp.route("/health/version", methods=["GET"])
+def version():
+    """The status bar's version item, COMPOSED from answers that each have
+    one implementation, never computed here (the operator, 2026-09-28):
+    what is running is `_COMMIT` (what `/health` serves `nmas-deploy`);
+    whether it is the checkout's commit is job health's running-version row
+    (C129) as the job-health reader stored it; its CI verdict is
+    `nmas-deploy`'s own gate, as the ci-verdict reader stored it. Each
+    stored answer carries its time and promise."""
+    from modules import reader_job
+
+    def stored(name):
+        got = reader_job.read_cached(name)
+        doc = got.get("doc") or {}
+        good = doc.get("last_good") or {}
+        if got["state"] != "ok" or not good:
+            return None, {"error": got.get("why") if got["state"] != "ok" else
+                          "never read; last attempt: "
+                          + ((doc.get("last_attempt") or {}).get("error") or "none recorded")}
+        return good.get("value") or {}, {"value_at": good.get("value_at"),
+                                         "stale_after_seconds": doc.get("stale_after_seconds")}
+
+    body = {"ok": True, "running": _COMMIT, "started_at": _iso_ms(_STARTED)}
+    jobs, jmeta = stored("job-health")
+    rows = [j for j in ((jobs or {}).get("health") or {}).get("jobs") or []
+            if j.get("unit") == "running-version"]
+    body["version"] = dict(jmeta, **({"state": rows[0].get("state"), "detail": rows[0].get("detail")}
+                                     if rows else {"state": "unknown",
+                                                   "detail": jmeta.get("error")
+                                                   or "job health stored no running-version row"}))
+    ci, cmeta = stored("ci-verdict")
+    if ci is None:
+        body["ci"] = dict(cmeta, state="unknown", sentence="not judged yet: " + cmeta["error"])
+    elif ci.get("commit") != _COMMIT:
+        body["ci"] = dict(cmeta, state="not_judged",
+                          sentence=f"the stored verdict is for {str(ci.get('commit'))[:10]}, not the "
+                                   f"running {str(_COMMIT)[:10]}: this commit is not judged yet")
+    else:
+        body["ci"] = dict(cmeta, state=ci.get("state"), sentence=ci.get("sentence"),
+                          commit=ci.get("commit"))
+    return jsonify(body)
+
+
 @bp.route("/health", methods=["GET"])
 def health():
     body = {"ok": _COMMIT is not None, "commit": _COMMIT,

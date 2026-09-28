@@ -106,7 +106,7 @@ RENDERS = {
                                            "baseline_source", "authorisation_source",
                                            "grafana_source", "_member", "_onset",
                                            "_incidents", "freshness_source",
-                                           "integrations_source")}),
+                                           "integrations_source", "ci_source")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,
