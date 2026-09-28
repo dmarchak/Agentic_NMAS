@@ -145,7 +145,7 @@ def _print(census: dict) -> None:
         print(f"  {what:28s} {why}")
 
 
-def _modification_report(since: str = "") -> list:
+def _modification_report(since: str = "", taking: str = "") -> list:
     """``(status, lines)`` stating what NMAS has MODIFIED.
 
     The census compares objects by identity, and an update changes neither the
@@ -173,9 +173,18 @@ def _modification_report(since: str = "") -> list:
             "recorder is not reaching the file, so read this as "
             "'unknown', not as 'none'."]
 
-    scope = ("since this baseline" if got["scope"] == "since"
-             else "all time — the baseline carries no taken_at, so this "
-                  "could not be scoped to the run")
+    # WHY it is all time, named correctly (the operator, R1, 2026-09-28): a
+    # run that TAKES a baseline has no baseline to scope by, and saying "the
+    # baseline carries no taken_at" there sent the reader to fix a snapshot
+    # that carried one.
+    if got["scope"] == "since":
+        scope = "since this baseline"
+    elif taking:
+        scope = (f"all time: this run is TAKING the baseline, and a --compare "
+                 f"against it counts only what NMAS modified from {taking} on")
+    else:
+        scope = ("all time — the baseline carries no taken_at, so this "
+                 "could not be scoped to the run")
     lines = [f"modifications: {got['count']} object(s) modified by NMAS "
              f"({scope}), out of {got['total_recorded']} recorded in total"]
     if got["unknown_before"]:
@@ -291,6 +300,12 @@ def main() -> int:
                   "record the run as unmeasured rather than taking one.")
             return EXIT_UNPROVEN
 
+    # Stamped BEFORE the read, never after: a modification made while the
+    # census is being read must fall INSIDE a later --compare's window. A
+    # stamp taken after the read could leave it out, which is the direction
+    # that misses; stamping first can only over-report.
+    started = datetime.datetime.now(
+        datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     census = take()
 
     if args.compare:
@@ -332,7 +347,7 @@ def main() -> int:
 
     _print(census)
     print()
-    for line in _modification_report()[1]:
+    for line in _modification_report(taking=started if args.out else "")[1]:
         print(line)
     if args.out:
         from modules.config import open_secure
@@ -341,8 +356,7 @@ def main() -> int:
         # probe began writing contains the probe's own objects and would
         # report a teardown clean while leaving them behind -- worse than
         # having none, and unreadable from the file without this.
-        census["taken_at"] = datetime.datetime.now(
-            datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        census["taken_at"] = started
         with open_secure(args.out, "w", encoding="utf-8") as fh:
             json.dump(census, fh, indent=2)
         print(f"\nsnapshot written to {args.out}")

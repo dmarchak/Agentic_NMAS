@@ -297,6 +297,79 @@ class TestATeardownThatCannotBeMeasuredHasNotPassed:
         assert written["taken_at"].endswith("Z")
         assert written["taken_at"][:2] == "20"
 
+    def test_the_time_is_stamped_BEFORE_the_census_is_read(
+            self, census, monkeypatch, tmp_path):
+        """A modification made while the census is being read must fall
+        INSIDE a later --compare's window. Stamped after the read (as it was
+        until R1, 2026-09-28), such a write could fall outside it: the
+        direction that misses."""
+        import datetime as real
+        order = []
+
+        class Clock(real.datetime):
+            ticks = iter(["2026-09-28T06:45:43Z", "2026-09-28T06:45:50Z"])
+
+            @classmethod
+            def now(cls, tz=None):
+                v = next(cls.ticks)
+                order.append(("now", v))
+                return real.datetime.strptime(v, "%Y-%m-%dT%H:%M:%SZ")
+
+        monkeypatch.setattr(census, "datetime", type("M", (), {
+            "datetime": Clock, "timezone": real.timezone}))
+        snap = _snapshot(sites=(["a"], []))
+        monkeypatch.setattr(census, "take",
+                            lambda *a, **k: order.append(("take", None)) or snap)
+        monkeypatch.setattr(census.sys, "argv",
+                            ["nmas-netbox-census", "--out", str(tmp_path / "b.json")])
+        census.main()
+
+        written = json.loads((tmp_path / "b.json").read_text(encoding="utf-8"))
+        assert order[0] == ("now", "2026-09-28T06:45:43Z") and order[1][0] == "take", order
+        assert written["taken_at"] == "2026-09-28T06:45:43Z"
+
+    def test_a_run_TAKING_the_baseline_says_so_and_never_blames_the_snapshot(
+            self, census, monkeypatch, tmp_path, capsys):
+        """The operator read "the baseline carries no taken_at" on the run
+        that wrote /tmp/census-before-r1.json, which carried one. A run that
+        takes a baseline has no baseline to scope by; the message says that,
+        and names the time a later --compare will count from."""
+        from modules import netbox_guard
+        monkeypatch.setattr(netbox_guard, "modified_since", lambda since="", **k: {
+            "ok": True, "exists": True, "scope": "since" if since else "all",
+            "count": 57, "total_recorded": 57, "unknown_before": 0, "entries": []})
+        out = tmp_path / "b.json"
+        self._main(census, monkeypatch, ["--out", str(out)],
+                   taken=_snapshot(sites=(["a"], [])))
+
+        text = capsys.readouterr().out
+        written = json.loads(out.read_text(encoding="utf-8"))
+        assert "TAKING the baseline" in text and written["taken_at"] in text, text
+        assert "carries no taken_at" not in text
+
+        # The control: a --compare against a baseline that really lacks the
+        # field still says exactly that.
+        old = tmp_path / "old.json"
+        old.write_text(json.dumps(_snapshot(sites=(["a"], ["a"]))), encoding="utf-8")
+        self._main(census, monkeypatch, ["--compare", str(old)],
+                   taken=_snapshot(sites=(["a"], ["a"])))
+        assert "carries no taken_at" in capsys.readouterr().out
+
+    def test_a_modification_in_the_SAME_second_as_the_baseline_is_counted(
+            self, monkeypatch):
+        """Both sides are whole seconds. `<=` dropped a write made in the
+        second the baseline was stamped; a scope may over-report, never miss.
+        The row a second earlier stays outside (the floor)."""
+        from modules import netbox_guard
+        rows = [{"at": "2026-09-28T06:45:42Z", "fields": {}},
+                {"at": "2026-09-28T06:45:43Z", "fields": {}},
+                {"at": "2026-09-28T06:45:44Z", "fields": {}}]
+        monkeypatch.setattr(netbox_guard, "read_modified",
+                            lambda *a, **k: ({"lab": {"dcim/devices": rows}}, ""))
+        got = netbox_guard.modified_since(since="2026-09-28T06:45:43Z")
+        assert [e["at"] for e in got["entries"]] == [
+            "2026-09-28T06:45:43Z", "2026-09-28T06:45:44Z"]
+
     def test_the_comparison_reports_that_time(self, census, monkeypatch,
                                               tmp_path, capsys):
         snap = _snapshot(sites=(["a"], ["a"]))

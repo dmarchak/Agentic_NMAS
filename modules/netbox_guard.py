@@ -579,7 +579,11 @@ def modified_since(since: str = "", list_name: str = "") -> dict:
             continue
         for endpoint, rows in (endpoints or {}).items():
             for row in rows:
-                if since and (row.get("at") or "") <= since:
+                # Strictly before is outside the window; the SAME second is
+                # inside. Both sides are whole seconds, so `<=` dropped a
+                # write made in the second the baseline was stamped, and a
+                # scope may over-report but never miss.
+                if since and (row.get("at") or "") < since:
                     continue
                 entries.append({**row, "endpoint": endpoint, "list": slug})
 
