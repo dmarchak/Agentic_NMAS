@@ -146,8 +146,13 @@ def planted_stores():
                                  csv_path)
         values["devices_csv"] = [_p("DevPw"), _p("DevSec")]
 
-        collector_config.set_snmp_community(_p("CollRo"), "ro")
-        collector_config.set_snmp_community(_p("CollRw"), "rw")
+        # No code writes a community here any more (C139: its one owner is
+        # each device's own secret). An install that set one before still
+        # holds it in the file, so it is planted as that residue, written
+        # straight to the file, and no route may return it.
+        collector_config._save({**collector_config._load(),
+                                "snmp_community_ro": _p("CollRo"),
+                                "snmp_community_rw": _p("CollRw")})
         values["collector_config"] = [_p("CollRo"), _p("CollRw")]
 
         R.save_golden(LIST, [R.GoldenItem("r1", _config_body("Gold"), DEVICE["ip"])],

@@ -422,24 +422,17 @@ async function loadMonitoringTab() {
     const src  = cfg.collector_ip_source || 'none';
 
     const ipInput = document.getElementById('collectorIpInput');
-    const roInput = document.getElementById('snmpCommunityRo');
     const trapPort = document.getElementById('snmpTrapPort');
     const nfPort   = document.getElementById('netflowPort');
     const srcLabel = document.getElementById('collectorIpSource');
 
     if (ipInput)  ipInput.value  = ip;
-    // The communities are WRITE-ONLY (register C55): the page is told
-    // whether each is set, never its value. The field stays empty, and an
-    // empty field saves nothing; a poll with no community typed uses the
-    // stored one on the server.
-    if (roInput) {
-      roInput.value = '';
-      roInput.placeholder = cfg.snmp_community_ro_set
-        ? 'set: type to replace' : "not set: the default 'public' applies";
-    }
+    // The community has ONE owner (C139): each device's own secret, which
+    // intent renders from. This form was a second owner that nothing set, so
+    // the code's literal default (the fleet's real value, C141) configured
+    // it. The page states the owner; it neither shows nor takes a value.
     const commState = document.getElementById('snmpCommunityState');
-    if (commState) commState.textContent =
-      `RO ${cfg.snmp_community_ro_set ? 'set' : 'not set'} · RW ${cfg.snmp_community_rw_set ? 'set' : 'not set'} (write-only)`;
+    if (commState) commState.textContent = cfg.snmp_community || '';
     // Pre-fill Configure tab SNMP trap fields with collector settings
     const cfgTrapHost = document.getElementById('cfg_snmp_trap_host');
     const cfgTrapPort = document.getElementById('cfg_snmp_trap_port');
@@ -508,17 +501,13 @@ async function detectCollectorIp() {
 
 async function saveMonitoringConfig() {
   const ip  = (document.getElementById('collectorIpInput')?.value || '').trim();
-  // Sent only when typed: an empty write-only field saves nothing (C55).
-  const ro  = (document.getElementById('snmpCommunityRo')?.value  || '').trim();
   const trap = parseInt(document.getElementById('snmpTrapPort')?.value || '1162');
   const nf   = parseInt(document.getElementById('netflowPort')?.value  || '9996');
   try {
     const r = await fetch('/monitoring/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign(
-        { collector_ip: ip, snmp_trap_port: trap, netflow_port: nf },
-        ro ? { snmp_community_ro: ro } : {}))
+      body: JSON.stringify({ collector_ip: ip, snmp_trap_port: trap, netflow_port: nf })
     });
     const data = await r.json();
     if (data.ok) {
@@ -538,24 +527,20 @@ async function snmpPollDevice() {
   if (!ip) { showToast('Enter a device IP', 'warning'); return; }
   if (res) res.textContent = 'Polling…';
   try {
-    // Use the explicit community field; fall back to the collector's configured RO community
-    const communityField = document.getElementById('snmpPollCommunity');
-    // Typed here, or typed in the RO field; otherwise none is sent and the
-    // server uses the stored RO community (the values are write-only, C55).
-    const community = (communityField?.value || '').trim()
-                      || (document.getElementById('snmpCommunityRo')?.value || '').trim();
+    // The server polls with the DEVICE's own community (C139); none is typed
+    // or sent from here, and none is shown.
     const version = parseInt(document.getElementById('snmpPollVersion')?.value || '2', 10);
     const r = await fetch('/monitoring/snmp/poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_ip: ip, community: community || undefined, version,
+      body: JSON.stringify({ device_ip: ip, version,
         oids: ['sysName', 'sysDescr', 'sysUpTime', 'sysLocation'] })
     });
     const data = await r.json();
     if (data.error) {
       if (res) res.textContent = 'Error: ' + data.error;
     } else {
-      const label = `Community: ${community}  Version: v${version === 1 ? '1' : '2c'}\n\n`;
+      const label = `Community: the device's own  Version: v${version === 1 ? '1' : '2c'}\n\n`;
       if (res) res.textContent = label + data.results.map(x => `${x.oid}\n  = ${x.value}`).join('\n\n');
     }
   } catch (e) {

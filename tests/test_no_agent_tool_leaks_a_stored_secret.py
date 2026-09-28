@@ -155,7 +155,7 @@ class TestEveryToolThroughTheRealBoundary:
 
         real = collector_config.public_config
         monkeypatch.setattr(collector_config, "public_config", lambda: dict(
-            real(), collector_ip=collector_config.get_snmp_community("rw")))
+            real(), collector_ip=collector_config._load().get("snmp_community_rw")))
         tool = [t for t in ai.TOOLS if t.get("name") == "get_monitoring_config"]
         leaks = _leaks(drive(tool), planted)
         assert leaks == [("get_monitoring_config", "collector_config")]

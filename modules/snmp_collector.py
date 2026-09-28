@@ -135,7 +135,7 @@ def _check_pysnmp():
         return False
 
 
-def snmp_get(host: str, oids: list, community: str = "public",
+def snmp_get(host: str, oids: list, community: str,
              version: int = 2, port: int = 161, timeout: int = 5) -> list:
     """
     Fetch one or more OIDs from a device.
@@ -196,7 +196,7 @@ def snmp_get(host: str, oids: list, community: str = "public",
         raise RuntimeError(f"SNMP get error: {exc}") from exc
 
 
-def snmp_walk(host: str, oid: str, community: str = "public",
+def snmp_walk(host: str, oid: str, community: str,
               version: int = 2, port: int = 161, timeout: int = 10,
               max_rows: int = 256) -> list:
     """
@@ -267,7 +267,7 @@ def _format_snmp_value(val) -> str:
         return str(val)
 
 
-def get_device_summary(host: str, community: str = "public",
+def get_device_summary(host: str, community: str,
                        version: int = 2) -> dict:
     """
     Poll a device for a standard summary: system info + interface table.

@@ -66,17 +66,47 @@ def set_collector_ip(ip: str) -> None:
     log.info("collector_config: collector IP set to %s", ip)
 
 
-def get_snmp_community(direction: str = "ro") -> str:
-    """Return stored SNMP community string.  direction: 'ro' | 'rw'"""
-    key = "snmp_community_ro" if direction == "ro" else "snmp_community_rw"
-    return _load().get(key, "public" if direction == "ro" else "private")
+class NoCommunity(LookupError):
+    """No SNMP community is held for this device. Never answered with a
+    default: a default that equals a live secret is how the fleet's community
+    came to be configured by source code (C139, C141)."""
 
 
-def set_snmp_community(community: str, direction: str = "ro") -> None:
-    key = "snmp_community_ro" if direction == "ro" else "snmp_community_rw"
-    data = _load()
-    data[key] = community
-    _save(data)
+#: What the community's owner is, for a reader of the monitoring config.
+COMMUNITY_OWNER = ("each device's own secret in the credential store "
+                   "(`<list>:<host>:snmp_community_ro`, the one intent renders "
+                   "from); set by the rotation, never here")
+
+
+def device_community(list_name: str, hostname: str) -> str:
+    """The SNMP community *hostname* holds, from its OWN secret: the value the
+    device's committed intent renders (C139, the operator's decision). ONE
+    owner per fact, and per DEVICE, so the state between two devices'
+    rotations is not a special case. No fallback, ever."""
+    from modules.credentials import get_template_secret, template_secret_key
+
+    value = get_template_secret(template_secret_key(list_name, hostname, "snmp_community_ro"))
+    if not value:
+        raise NoCommunity(
+            f"no SNMP community is held for {hostname} in list {list_name}: its secret "
+            "snmp_community_ro is not in the credential store (extract its intent, or "
+            "rotate it). Nothing was polled; no default is ever used.")
+    return value
+
+
+def community_for_address(list_name: str, ip: str) -> tuple:
+    """``(hostname, community)`` for the inventory device at *ip*. An address
+    no device in the list holds refuses by name rather than polling blind."""
+    from modules.device import get_device_lists, load_saved_devices
+    from modules.config import LISTS_DIR
+
+    slug = next((l["filename"] for l in get_device_lists() if l["name"] == list_name), None)
+    rows = load_saved_devices(os.path.join(LISTS_DIR, slug, "devices.csv")) if slug else []
+    host = next((r.get("hostname") for r in rows if r.get("ip") == ip), None)
+    if not host:
+        raise NoCommunity(f"no device at {ip} in list {list_name}, so no community is "
+                          "known for it. Nothing was polled.")
+    return host, device_community(list_name, host)
 
 
 def get_netflow_port() -> int:
@@ -105,10 +135,7 @@ def public_config() -> dict:
     is set is carried; its value never is. `get_full_config()` below is for
     the collectors themselves."""
     full = get_full_config()
-    stored = _load()
-    for key in ("snmp_community_ro", "snmp_community_rw"):
-        full.pop(key, None)
-        full[f"{key}_set"] = bool(stored.get(key))
+    full["snmp_community"] = COMMUNITY_OWNER
     return full
 
 
@@ -123,8 +150,6 @@ def get_full_config() -> dict:
         "collector_ip_source": "stored" if data.get("collector_ip") else (
             "detected" if detected else "none"
         ),
-        "snmp_community_ro": data.get("snmp_community_ro", "public"),
-        "snmp_community_rw": data.get("snmp_community_rw", "private"),
         "snmp_trap_port":    data.get("snmp_trap_port", 1162),
         "netflow_port":      data.get("netflow_port", 9996),
     }

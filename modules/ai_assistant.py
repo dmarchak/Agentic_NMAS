@@ -2428,7 +2428,6 @@ TOOLS = [
                     "type": "array", "items": {"type": "string"},
                     "description": "OIDs or friendly names to fetch",
                 },
-                "community":  {"type": "string", "description": "SNMP community string (default: from list config or 'public')"},
                 "version":    {"type": "integer", "enum": [1, 2], "description": "SNMP version (default: 2)"},
             },
             "required": ["device_ip", "oids"],
@@ -2446,7 +2445,6 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "device_ip": {"type": "string"},
-                "community": {"type": "string", "description": "SNMP community string (default: from list config or 'public')"},
                 "version":   {"type": "integer", "enum": [1, 2], "description": "SNMP version (default: 2)"},
             },
             "required": ["device_ip"],
@@ -3830,16 +3828,24 @@ def run_chat(
 
             elif name == "snmp_poll":
                 from modules.snmp_collector import snmp_get
-                from modules.collector_config import get_snmp_community
+                from modules.collector_config import NoCommunity, community_for_address
+                from modules.config import get_current_list_name
                 device_ip = args.get("device_ip", "").strip()
                 oids      = args.get("oids", [])
-                community = args.get("community") or get_snmp_community("ro")
                 version   = int(args.get("version", 2))
                 if not device_ip or not oids:
                     return "Error: device_ip and oids are required"
                 try:
+                    _host, community = community_for_address(get_current_list_name(), device_ip)
+                except NoCommunity as exc:
+                    return f"SNMP poll refused: {exc}"
+                try:
                     rows = snmp_get(device_ip, oids, community, version)
-                    lines = [f"SNMP GET {device_ip} (community={community}, v{version}c):"]
+                    # The community is never written into what the provider
+                    # receives: this line printed it in prose, which
+                    # positional redaction cannot see (C56's class, on a
+                    # branch only a live SNMP answer reaches).
+                    lines = [f"SNMP GET {device_ip} (the device's own community, v{version}c):"]
                     for oid_str, val in rows:
                         lines.append(f"  {oid_str} = {val}")
                     return "\n".join(lines)
@@ -3848,12 +3854,16 @@ def run_chat(
 
             elif name == "snmp_get_device_summary":
                 from modules.snmp_collector import get_device_summary
-                from modules.collector_config import get_snmp_community
+                from modules.collector_config import NoCommunity, community_for_address
+                from modules.config import get_current_list_name
                 device_ip = args.get("device_ip", "").strip()
-                community = args.get("community") or get_snmp_community("ro")
                 version   = int(args.get("version", 2))
                 if not device_ip:
                     return "Error: device_ip is required"
+                try:
+                    _host, community = community_for_address(get_current_list_name(), device_ip)
+                except NoCommunity as exc:
+                    return f"SNMP summary refused: {exc}"
                 try:
                     summary = get_device_summary(device_ip, community, version)
                     if "system_error" in summary:
@@ -3952,13 +3962,11 @@ def run_chat(
                 cfg = public_config()
                 collector_ip = cfg.get("collector_ip", "not set")
                 source       = cfg.get("collector_ip_source", "none")
-                ro_state = "set" if cfg.get("snmp_community_ro_set") else "not set (the default applies)"
-                rw_state = "set" if cfg.get("snmp_community_rw_set") else "not set (the default applies)"
+                owner = cfg.get("snmp_community", "")
                 return (
                     f"Monitoring configuration for this list:\n"
                     f"  Collector IP:         {collector_ip}  [{source}]\n"
-                    f"  SNMP community (RO):  {ro_state} (write-only: never shown)\n"
-                    f"  SNMP community (RW):  {rw_state} (write-only: never shown)\n"
+                    f"  SNMP community:       {owner} (never shown)\n"
                     f"  SNMP trap port:       {cfg.get('snmp_trap_port', 1162)}\n"
                     f"  NetFlow port:         {cfg.get('netflow_port', 9996)}\n\n"
                     f"Device config snippets (use EXACTLY these commands):\n"

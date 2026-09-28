@@ -4053,17 +4053,20 @@ def monitoring_config():
     # The communities are WRITE-ONLY (register C55): no response carries a
     # value, and an empty field saves nothing (B11's rule).
     from modules.collector_config import (
-        public_config, set_collector_ip, set_snmp_community,
+        COMMUNITY_OWNER, public_config, set_collector_ip,
         set_netflow_port, set_snmp_trap_port,
     )
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
+        # The community has ONE owner, each device's own secret (C139). This
+        # form was a second, which nothing on the host ever set, so the code's
+        # literal default was the configuration. A request still carrying
+        # one is refused by name rather than stored where nothing reads it.
+        if any(data.get(k) for k in ("snmp_community_ro", "snmp_community_rw")):
+            return jsonify({"ok": False, "error": "The SNMP community is not set here: it is "
+                            + COMMUNITY_OWNER + "."}), 400
         if "collector_ip" in data:
             set_collector_ip(data["collector_ip"])
-        for direction in ("ro", "rw"):
-            value = (data.get(f"snmp_community_{direction}") or "").strip()
-            if value:
-                set_snmp_community(value, direction)
         if "netflow_port" in data:
             set_netflow_port(int(data["netflow_port"]))
         if "snmp_trap_port" in data:
@@ -4083,14 +4086,19 @@ def monitoring_interfaces():
 def monitoring_snmp_poll():
     """Poll a device OID via SNMP."""
     from modules.snmp_collector import snmp_get
-    from modules.collector_config import get_snmp_community
+    from modules.collector_config import NoCommunity, community_for_address
     data      = request.get_json(silent=True) or {}
     device_ip = data.get("device_ip", "").strip()
     oids      = data.get("oids", ["sysDescr", "sysName", "sysUpTime"])
-    community = data.get("community") or get_snmp_community("ro")
     version   = int(data.get("version", 2))
     if not device_ip:
         return jsonify({"error": "device_ip required"}), 400
+    # The DEVICE's own community, never one from the request and never a
+    # default (C139: the literal default was the fleet's real value, C141).
+    try:
+        _host, community = community_for_address(get_current_device_list()[0], device_ip)
+    except NoCommunity as exc:
+        return jsonify({"error": str(exc)}), 409
     try:
         rows = snmp_get(device_ip, oids, community, version)
         return jsonify({"device_ip": device_ip, "results": [{"oid": o, "value": v} for o, v in rows]})
