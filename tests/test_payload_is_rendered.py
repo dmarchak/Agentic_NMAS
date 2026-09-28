@@ -101,7 +101,8 @@ RENDERS = {
                                            "job_health_source", "_job_action",
                                            "drift_source", "approvals_source",
                                            "pending_onboarding_source", "_attach",
-                                           "rollback_source", "deploy_source")}),
+                                           "rollback_source", "deploy_source",
+                                           "baseline_source")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,

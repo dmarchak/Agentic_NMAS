@@ -532,11 +532,69 @@ def deploy_source(read=None) -> dict:
                                   f"{len(latest) - len(rows)} clean"))
 
 
+# ---------------------------------------------------------------------------
+# Source: the last baseline decision (a baseline that was not earned)
+# ---------------------------------------------------------------------------
+
+def baseline_source(log_fn=None) -> dict:
+    """The NEWEST `Baseline:` decision recorded in the list's golden history
+    (`save_golden()` writes it into the commit it judged). A row when that
+    decision was a denial, with its reasons; a later earned baseline
+    supersedes it. One `git log`, never a read per device (section 0a).
+    Commits before 2026-09-28 carry no decision, and the source says so
+    rather than reading their silence as either answer."""
+    import os
+
+    from modules.config import get_current_list_name, get_list_data_dir
+
+    started = time.time()
+    try:
+        lst = get_current_list_name()
+        if log_fn is None:
+            from modules.nsot.repo import git
+            repo = os.path.join(get_list_data_dir(lst), "config_repo")
+            rc, out, err = git(repo, "log", "-1", "-E", "--grep=^Baseline: ",
+                               "--format=%H%x1f%ct%x1f%B")
+            if rc != 0:
+                raise RuntimeError(f"git log failed: {err.strip() or rc}")
+        else:
+            out = log_fn()
+    except Exception as exc:                       # noqa: BLE001
+        return source_result("baseline", "Baseline", read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             error=f"it raised {type(exc).__name__}: {exc}")
+    took = int((time.time() - started) * 1000)
+    if not out.strip():
+        return source_result("baseline", "Baseline", read_at=started, took_ms=took,
+                             checked=f"list {lst}: no baseline decision recorded yet "
+                                     "(decisions are recorded from 2026-09-28)")
+    sha, ct, body = out.split("\x1f", 2)
+    decision = next((ln.split(":", 1)[1].strip() for ln in body.splitlines()
+                     if ln.startswith("Baseline: ")), "")
+    source_line = next((ln.split(":", 1)[1].strip() for ln in body.splitlines()
+                        if ln.startswith("Source: ")), "")
+    at = float(ct)
+    rows = []
+    if decision.startswith("denied"):
+        reasons = decision.split(":", 1)[1].strip() if ":" in decision else ""
+        rows.append(row(
+            source="baseline", key=f"{lst}:last", level="warning",
+            what=f"The network's last baseline was not earned ({source_line or 'a save'})",
+            cause=reasons or "the decision recorded no reason",
+            action={"label": "Resolve what the reasons name, then capture the fleet again "
+                             "with Save All"},
+            since=at, operands={"list": lst, "commit": sha[:10], "source": source_line}))
+    return source_result("baseline", "Baseline", read_at=started, took_ms=took, rows=rows,
+                         value_at=at,
+                         checked=f"list {lst}: the last baseline decision, {sha[:10]}: "
+                                 f"{decision.split(':', 1)[0] or 'unreadable'}")
+
+
 #: Every source, in the order a person reads them. Section 1a's other
-#: sources (freshness, Grafana alerts, unearned baselines) join HERE, each
-#: through `source_result`.
+#: sources (freshness, Grafana alerts) join HERE through `source_result`,
+#: both through the reader-job pattern.
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
-           rollback_source, deploy_source)
+           rollback_source, deploy_source, baseline_source)
 
 
 def _attach(rows: list) -> list:

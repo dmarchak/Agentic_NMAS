@@ -990,6 +990,8 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
                          actor=request_actor(),
                          message=subject, pipeline_id=batch_id,
                          baseline=earned["baseline"], allow_new=False,
+                         baseline_reasons=(None if earned["baseline"]
+                                           else earned.get("baseline_reasons")),
                          extra_trailers=trailers, extra_paths=extra_paths)
 
     repo = _os.path.join(get_list_data_dir(list_name), "config_repo")

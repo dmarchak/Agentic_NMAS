@@ -611,6 +611,31 @@ def _baseline_decision(baseline, source: str, changed_count: int, measured: list
     return not reasons, reasons
 
 
+def _baseline_trailer(earned: bool, denied: list, baseline, source: str,
+                      changed_count: int, caller_reasons) -> str:
+    """The baseline DECISION as a trailer, or "" when none was made (7.2).
+
+    The reasons a baseline was denied lived only in `save_golden()`'s return
+    value, so a denial was drawn once on the result screen and could not be
+    read again: Needs attention's "a baseline that was not earned, with its
+    reason" had no durable source. It is decided BEFORE the commit now (every
+    input is known by then) and recorded IN it, beside what it judged.
+    ``baseline=False`` with no reasons means the save never claimed to mark
+    the network (a single-device capture): no decision, no trailer.
+    ``earned`` records the decision; the `baseline/<ts>` tag is the fact."""
+    def one_line(text):
+        return " ".join(str(text).split())
+
+    if baseline is False and caller_reasons:
+        return "Baseline: denied: " + "; ".join(one_line(r) for r in caller_reasons)
+    if not _baseline_wanted(baseline, source, changed_count):
+        return ""
+    if earned:
+        return "Baseline: earned"
+    return "Baseline: denied: " + ("; ".join(one_line(r) for r in denied)
+                                   or "no reason was recorded")
+
+
 def _covers_inventory(measured: list, inventory_size: int, skipped) -> bool:
     """Was EVERY device in the inventory actually measured?
 
@@ -632,8 +657,12 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                 extra_trailers: list = None, extra_paths: list = None,
                 acknowledge_structural_change: bool = False,
                 inventory_size: int = 0, skipped: list = None,
-                operational: dict = None) -> dict:
+                operational: dict = None, baseline_reasons: list = None) -> dict:
     """Promote golden configs for one or more devices in a single commit.
+
+    *baseline_reasons*: a caller that decided the baseline itself (deploy and
+    restore measure coverage, then pass ``baseline``) passes WHY it was not
+    earned, so the commit can record it (`Baseline:` trailer, 7.2).
 
     Returns ``{"ok", "commit", "changed", "unchanged", "tags", "renamed", "error"}``.
     An unchanged device produces no commit but is still reported.
@@ -825,6 +854,18 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         # COMPUTED, whatever the path (C89 (d)): which captures enshrined a
         # state that departs from committed intent, answerable from git.
         trailers.append(_intent_trailer(intent))
+        # The baseline is DECIDED here, before the commit, and the decision
+        # rides in it (7.2): every input is known now, and a denial's reasons
+        # otherwise lived only in the return value.
+        earned, denied = _baseline_decision(
+            baseline, source, len(changed), [c["hostname"] for c in changed] + unchanged,
+            inventory_size, skipped, intent, require_coverage=baseline is None)
+        if baseline is False and baseline_reasons:
+            denied = [str(r) for r in baseline_reasons]
+        decision = _baseline_trailer(earned, denied, baseline, source, len(changed),
+                                     baseline_reasons)
+        if decision:
+            trailers.append(decision)
         trailers.extend(extra_trailers or [])
 
         commit_message = f"{subject}\n\n" + "\n".join(trailers) + "\n"
@@ -854,9 +895,6 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         # it. Without this a single-device deploy left no reference to restore
         # the network to — the change was recorded and the moment was not.
         baseline_tag = ""
-        earned, denied = _baseline_decision(
-            baseline, source, len(changed), [c["hostname"] for c in changed] + unchanged,
-            inventory_size, skipped, intent, require_coverage=baseline is None)
         if earned:
             baseline_tag = _unique_tag(repo, f"baseline/{stamp}", sha)
             if git(repo, "tag", "-a", baseline_tag, "-m",

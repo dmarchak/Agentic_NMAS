@@ -399,6 +399,10 @@ def needs_attention(mp, tmp):
                                    "checks": {"ran": True, "ok": False,
                                               "issues": ["ospf: 1 -> 0 neighbours"]},
                                    "rollback": {"performed": True, "state": "restored"}}]}),
+                              lambda: A.baseline_source(lambda: (
+                                  "0123456789abcdef\x1f1790600000\x1fgolden: 9 device(s) via "
+                                  "save_all\n\nSource: save_all\nBaseline: denied: r2 does not "
+                                  "match its committed intent (+1 -1)\n")),
                               unreadable))
     return _ok(_client().get("/attention"))
 

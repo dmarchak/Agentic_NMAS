@@ -1206,6 +1206,20 @@ source derives from git (the newest golden commit against the newest baseline
 tag, with its Intent-Match trailer) and states the coverage reason as not
 recorded, or the reason is made durable first; a decision for that step.
 
+**7.2 step 6 BUILT (2026-09-28): the baseline decision, made durable, then
+read.** The operator chose durable first. `save_golden()` decides the
+baseline BEFORE the commit now (every input is known by then) and records it
+IN the commit: `Baseline: earned`, or `Baseline: denied: <reasons>`. A caller
+that decided itself (deploy and restore measure coverage, then pass
+`baseline`) passes its reasons (`baseline_reasons`), which lived only in its
+report. A save that never claimed the network (a one-device capture:
+`baseline=False`, no reasons) records nothing, because it made no decision.
+The source reads the NEWEST DECISION (one `git log --grep`), never the newest
+commit, so a capture after a denial cannot hide it, and a later earned
+baseline supersedes it. **Not recorded, stated:** the no-commit path (a Save
+All that changed nothing) decides without a commit to carry the decision;
+the earlier decision stands, and the result screen shows this one.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's

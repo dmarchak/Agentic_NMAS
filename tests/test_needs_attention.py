@@ -552,3 +552,92 @@ class TestDeploysAsASource:
         assert bad["state"] == "unreadable" and "line 3 is not JSON" in bad["rows"][0]["cause"]
         none = A.deploy_source(lambda: {"state": "absent", "rows": []})
         assert none["rows"] == [] and "no deploy or restore recorded" in none["checked"]
+
+
+# ---------------------------------------------------------------------------
+# Source: the last baseline decision, recorded IN the commit it judged
+# ---------------------------------------------------------------------------
+
+from tests.test_intent_match import _broken, lab  # noqa: E402,F401  (the fixture)
+
+
+def _message(repo):
+    import subprocess
+    return subprocess.run(["git", "-C", repo, "log", "-1", "--format=%B"],
+                          capture_output=True, text=True).stdout
+
+
+def _save(config, **kw):
+    from modules.nsot.repo import GoldenItem, save_golden
+    return save_golden("Lab", [GoldenItem("r2", config, "203.0.113.12")],
+                       actor="t", **{"source": "save_all", "inventory_size": 1, **kw})
+
+
+class TestTheBaselineDecisionIsDurable:
+    def test_a_denial_is_recorded_in_the_commit_with_its_reasons(self, lab):
+        repo, captured = lab
+        out = _save(_broken(captured))
+        assert out["ok"] and not out["baseline"]
+        msg = _message(repo)
+        assert "Baseline: denied: " in msg and "r2 does not match its committed intent" in msg
+
+    def test_an_earned_baseline_is_recorded_too(self, lab):
+        repo, captured = lab
+        out = _save(captured)
+        assert out["baseline"].startswith("baseline/")
+        assert "Baseline: earned" in _message(repo)
+
+    def test_a_save_that_never_claimed_the_network_records_no_decision(self, lab):
+        """A single-device capture passes baseline=False with no reasons: it
+        did not ask, so there is no decision to record."""
+        repo, captured = lab
+        _save(_broken(captured), source="capture", baseline=False)
+        assert "Baseline:" not in _message(repo)
+
+    def test_a_caller_that_decided_records_its_own_reasons(self, lab):
+        """Deploy and restore measure coverage themselves and pass
+        baseline=False: their reasons lived only in their report."""
+        repo, captured = lab
+        _save(_broken(captured), source="pipeline", baseline=False,
+              baseline_reasons=["the batch targeted 1 of 9 inventory devices"])
+        assert "Baseline: denied: the batch targeted 1 of 9 inventory devices" in _message(repo)
+
+
+class TestBaselineAsASource:
+    @pytest.fixture(autouse=True)
+    def _list(self, monkeypatch):
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+
+    def test_a_denial_is_a_row_with_its_reasons_and_its_time(self, lab):
+        repo, captured = lab
+        _save(_broken(captured))
+        res = A.baseline_source()
+        [r] = res["rows"]
+        assert r["level"] == "warning" and "save_all" in r["what"]
+        assert "r2 does not match its committed intent" in r["cause"]
+        assert r["since"] and res["value_at"] == r["since"]
+        assert "Save All" in r["action"]["label"]
+
+    def test_a_later_earned_baseline_supersedes_it(self, lab):
+        repo, captured = lab
+        _save(_broken(captured))
+        _save(captured)
+        res = A.baseline_source()
+        assert res["rows"] == [] and res["checked"].endswith(": earned")
+
+    def test_a_later_capture_that_never_asked_does_not_hide_it(self, lab):
+        """The NEWEST DECISION decides, not the newest commit: a one-device
+        capture after a denial made no decision and must not clear it."""
+        repo, captured = lab
+        _save(_broken(captured))
+        _save(captured, source="capture", baseline=False)
+        assert len(A.baseline_source()["rows"]) == 1
+
+    def test_no_decision_recorded_says_so_and_a_failed_read_is_a_row(self, lab):
+        none = A.baseline_source(lambda: "")
+        assert none["rows"] == [] and "no baseline decision recorded yet" in none["checked"]
+
+        def boom():
+            raise RuntimeError("git log failed: not a repository")
+        bad = A.baseline_source(boom)
+        assert bad["state"] == "unreadable" and "not a repository" in bad["rows"][0]["cause"]
