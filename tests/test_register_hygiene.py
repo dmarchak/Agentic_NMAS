@@ -83,8 +83,8 @@ def bucket_problems(text):
 
 
 #: A bucket that places a row in a stage other than Stage 9 (the deferral
-#: stage): "C, F → 7.2", "→ Stage 8", "→ each screen as it is rebuilt".
-STAGE_PLACED = re.compile(r"→\s*(7\.\d+|Stage [1-8]\b|each (?:screen|route))")
+#: stage): "C, F → 7.2", "→ P.7", "→ Stage 8", "→ each screen as it is rebuilt".
+STAGE_PLACED = re.compile(r"→\s*(7\.\d+|P\.\d+|Stage [1-8]\b|each (?:screen|route))")
 OPEN = ("## A.", "## B.", "## C.", "## D.", "## E.")
 
 
@@ -153,6 +153,7 @@ PLANTED = "\n".join([
     "| C907 | a thing | **[C, F → 7.2; sorted 2026-09-28]** build | here |",
     "| C908 | a thing | **[C, M → Stage 9; sorted 2026-09-28]** later | here |",
     "| C909 | a thing | **[C, F → each screen as it is rebuilt; sorted 2026-09-28]** | x |",
+    "| C910 | a thing | **[C, F → P.7; sorted 2026-09-28]** build | here |",
     "## Scheduled out of the register", "| # | Finding | Scheduled | Where |", "|---|---|---|---|",
     "| D900 | a thing | **[C, F; sorted 2026-09-28]** 2026-09-26 | **CLOSED** by X |",
     "| D901 | a thing | **[C, F → 7.3; sorted 2026-09-28]** 2026-09-28 | **7.3** |",
@@ -172,4 +173,4 @@ def test_the_planted_rows_are_found():
         "C905: UNKNOWN names no measurement"]
     # Stage work in an open section is named; Stage 9 (the deferral stage)
     # and a stage-placed row already in Scheduled are left alone.
-    assert stage_work_in_open_sections(PLANTED) == ["C907", "C909"]
+    assert stage_work_in_open_sections(PLANTED) == ["C907", "C909", "C910"]

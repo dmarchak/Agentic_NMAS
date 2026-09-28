@@ -5159,6 +5159,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   every device's config to the LAN, unauthenticated (C143). **A stage number
   is not a date.** And a register whose done rows sit among its open ones
   (31 of 92) overstates its backlog, and is read as more urgent than it is.
+- **A claim about ALL TIME needs a window that covers all time** (the operator's instance, 2026-09-28, and the
+  operator asked for it recorded as theirs). "The rule has never fired and never could" was drawn from a
+  24-hour window, and the rule had fired 9 times in 30 days; the same shape as the s4 heartbeat "never
+  persisted" reading two days earlier. It came one message after the C165 note that a control must establish
+  what it measures: the window is part of what a measurement measures. And the rule it described works BY
+  ACCIDENT (it matched mnemonics whose NAME contains CRIT), which is harder to find than a rule that never
+  fires: "it has alerted 9 times" satisfies anyone checking.
 - **A CLASS CLOSED AGAINST A LIST IS CLOSED AGAINST THE SURVEY, NOT THE
   CODE** (the operator, 2026-09-27, C121). When `FALSE_GREEN` emptied, "the
   false-green class is zero" was said and repeated back. It was true of the
