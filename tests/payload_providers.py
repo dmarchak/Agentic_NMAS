@@ -220,6 +220,15 @@ def capture_preview(mp, tmp):
     return _ok(lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}))
 
 
+def golden_panel(mp, tmp, path):
+    """The golden panel's reads against a repository with baselines in every
+    state and a legacy store holding a retired device and an unknown one."""
+    from tests.test_golden_panel_says_what_to_do import build_golden_panel_lab
+
+    lab = build_golden_panel_lab(mp, tmp)
+    return _ok(lab["client"].get(path))
+
+
 def seed_preview(mp, tmp):
     """C148: r2's real golden with only onboarding's bootstrap committed as
     its intent, so the preview carries a whole document against it, and one

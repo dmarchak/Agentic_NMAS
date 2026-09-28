@@ -42,6 +42,16 @@ def _devices_of(list_name: str) -> list:
                                            "devices.csv"))
 
 
+class WithdrawnBaseline(Exception):
+    """The ref is a baseline a person withdrew: it is never re-applied."""
+
+    def __init__(self, record: dict):
+        self.record = record
+        super().__init__(f"{record['tag']} is withdrawn ({record['decided']}, "
+                         f"{record['by']}): {record['why']}. It is not re-applied; "
+                         "nothing was sent.")
+
+
 def build_targets(list_name: str, ref: str, devices: list = None,
                   un_onboard: list = None, authorise: dict = None) -> tuple:
     """``(targets, skipped)`` for a re-apply of *ref*. Reads only.
@@ -67,6 +77,11 @@ def build_targets(list_name: str, ref: str, devices: list = None,
     from modules.nsot import authorisation as _authorisation
 
     repo = _repo_for(list_name)
+    # A withdrawn baseline (record_exceptions, C70) is refused where the ref
+    # is READ, so every screen that re-applies one meets the same refusal.
+    withdrawn = _repo.withdrawn_ref(repo, ref)
+    if withdrawn:
+        raise WithdrawnBaseline(withdrawn)
     # Declared, not remembered: intent restore needs host_vars/ and says so.
     source = _repo.RefSource(repo, ref, allow=("golden/", "host_vars/"))
     at_ref = source.devices()

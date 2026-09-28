@@ -132,6 +132,88 @@ function _gBaselineClaim(b) {
       title="${_gEsc(b.claim_detail || '')}">${_gEsc(b.claim || 'configured')}</span>`;
 }
 
+/* What the baseline's own commit says it EARNED. Every baseline before 7.2's
+   `Baseline:` trailer says nothing, and is drawn as "not recorded", never as
+   fine: the newest such tag on the host held a device broken by hand (C70). */
+function _gBaselineDecision(b) {
+  if (b.decision === 'earned') {
+    return `<span class="badge bg-success-subtle text-success-emphasis" data-baseline-decision="earned"
+      title="${_gEsc(b.intent_match ? 'Intent-Match: ' + b.intent_match : '')}">earned</span>`;
+  }
+  if (b.decision === 'denied') {
+    return `<span class="badge bg-warning-subtle text-warning-emphasis" data-baseline-decision="denied"
+      title="${_gEsc(b.decision_detail || '')}">denied</span>`;
+  }
+  return `<span class="badge bg-secondary-subtle text-secondary-emphasis" data-baseline-decision="unrecorded"
+    title="${_gEsc(b.decision_detail || '')}">decision not recorded</span>`;
+}
+
+/* One baseline row. A WITHDRAWN one (record_exceptions, C70) is drawn with
+   its reason and the commands that delete it, and is never offered for
+   re-apply (the restore routes refuse it too); a deleted one is drawn where
+   it was, so a vanished row never reads as a point that never existed. */
+function _gBaselineRow(b) {
+  const w = b.withdrawn;
+  if (b.deleted) {
+    return `<tr class="text-muted" data-baseline-row="deleted">
+      <td class="font-monospace small text-decoration-line-through">${_gEsc(b.tag)}</td>
+      <td class="small">${_gEsc(_gWhen(b.created))}</td>
+      <td colspan="4" class="small">Deleted: withdrawn ${_gEsc(w.decided)} by ${_gEsc(w.by)} (${_gEsc(w.finding)}), because
+        ${_gEsc(w.why)}. Its commit <code>${_gEsc((b.commit || '').slice(0, 12))}</code> stays in history.</td>
+    </tr>`;
+  }
+  if (w) {
+    return `<tr class="table-warning" data-baseline-row="withdrawn">
+      <td class="font-monospace small">${_gEsc(b.tag)}</td>
+      <td class="small text-muted">${_gEsc(_gWhen(b.created))}</td>
+      <td colspan="3" class="small"><span class="badge bg-danger">withdrawn</span>
+        ${_gEsc(w.decided)}, ${_gEsc(w.by)} (${_gEsc(w.finding)}): ${_gEsc(w.why)}.
+        ${(b.delete_commands || []).length ? `<div class="mt-1">Delete it on the host (the tag here and on the remote):
+          ${b.delete_commands.map(c => `<div><code>${_gEsc(c)}</code></div>`).join('')}</div>` : ''}</td>
+      <td class="text-end small text-muted">not offered for re-apply</td>
+    </tr>`;
+  }
+  return `<tr data-baseline-row="current">
+    <td class="font-monospace small">${_gEsc(b.tag)}</td>
+    <td class="small text-muted">${_gEsc(_gWhen(b.created))}</td>
+    <td>${_gCredWarning(b)}</td>
+    <td>${_gBaselineCoverage(b)}</td>
+    <td>${_gBaselineClaim(b)} ${_gBaselineDecision(b)}</td>
+    <td class="text-end">
+      <button class="btn btn-outline-warning btn-sm"
+              onclick="confirmBaselineRestore('${_gEsc(b.tag)}')"
+              title="Re-applies stored configuration. Does not remove lines devices have gained.">
+        Re-apply this baseline
+      </button>
+    </td>
+  </tr>`;
+}
+
+/* The table, COLLAPSED (the operator, 2026-09-28: the presentation rule).
+   Shown: every row down to and including the newest one that can be
+   re-applied, so a withdrawn newest row is seen beside the one that would
+   actually be used; the rest behind one toggle, never cut (the table used to
+   stop at ten with nothing saying so). PURE: a string from the payload. */
+function _gBaselinesHtml(baselines) {
+  const all = baselines || [];
+  if (!all.length) {
+    return '<p class="text-muted small mb-0">No baselines yet. Save All takes one when every device is captured and matches its committed intent.</p>';
+  }
+  const firstUsable = all.findIndex(b => !b.deleted && !b.withdrawn);
+  const shown = firstUsable < 0 ? all.length : firstUsable + 1;
+  const head = all.slice(0, shown), rest = all.slice(shown);
+  return `<div class="table-responsive"><table class="table table-sm align-middle mb-0">
+      <tbody>${head.map(_gBaselineRow).join('')}</tbody>
+      ${rest.length ? `<tbody class="d-none" data-baselines-older>${rest.map(_gBaselineRow).join('')}</tbody>` : ''}
+    </table></div>
+    ${rest.length ? `<button type="button" class="btn btn-link btn-sm px-0" data-baselines-toggle
+        onclick="const t=this.previousElementSibling.querySelector('[data-baselines-older]');
+                 t.classList.toggle('d-none');
+                 this.textContent = t.classList.contains('d-none')
+                   ? 'Show ${rest.length} older baseline(s)' : 'Hide older baselines';">
+        Show ${rest.length} older baseline(s)</button>` : ''}`;
+}
+
 function _gBaselineCoverage(b) {
   const count = b.device_count;
   const total = b.inventory_size;

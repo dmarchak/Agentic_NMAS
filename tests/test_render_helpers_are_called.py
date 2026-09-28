@@ -152,7 +152,8 @@ class TestTheOneThatMotivatedIt:
         string returns to the baselines table, the call site was replaced
         rather than added to."""
         page = read_shipped(os.path.join(TEMPLATES, "partials", "golden_repo.html"))
-        block = page[page.index("baselines.map"):]
-        block = block[:block.index("</table>")]
+        # The row is ONE function since the table collapses (2026-09-28).
+        block = page[page.index("function _gBaselineRow"):]
+        block = block[:block.index("function _gBaselinesHtml")]
         assert "device_count" not in block, \
             "the baseline row renders the count directly again"

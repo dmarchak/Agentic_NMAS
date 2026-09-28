@@ -1649,13 +1649,60 @@ def list_baselines(repo: str) -> list:
                      f"--format=%(refname:short){sep}%(creatordate:iso-strict){sep}%(subject)")
     if rc != 0 or not out:
         return []
-    baselines = []
-    for line in out.splitlines():
+    from modules.nsot.record_exceptions import WITHDRAWN_BASELINES, withdrawn_baseline
+
+    baselines, present = [], set()
+    for line in (out or "").splitlines() if rc == 0 else []:
         parts = line.split(sep)
         if len(parts) >= 3:
+            commit = git(repo, "rev-parse", f"{parts[0]}^{{commit}}")[1].strip()
+            present.add(commit)
             baselines.append({"tag": parts[0], "created": parts[1], "subject": parts[2],
-                              **_baseline_claim(repo, parts[0])})
-    return sorted(baselines, key=lambda b: b["created"], reverse=True)
+                              "commit": commit, "withdrawn": withdrawn_baseline(commit),
+                              "deleted": False,
+                              **_baseline_claim(repo, parts[0]),
+                              **_baseline_recorded(repo, commit)})
+    # A withdrawn baseline whose tag is gone is drawn as that, where it was:
+    # a row that vanished would read as a restore point that never existed.
+    for sha, w in WITHDRAWN_BASELINES.items():
+        if sha not in present and git(repo, "cat-file", "-e", f"{sha}^{{commit}}")[0] == 0:
+            created = git(repo, "log", "-1", "--format=%aI", sha)[1].strip()
+            baselines.append({"tag": w["tag"], "created": created, "subject": "",
+                              "commit": sha, "withdrawn": w, "deleted": True})
+    # Newest first; the tag's own UTC name breaks a tie between tags made in
+    # the same second.
+    return sorted(baselines, key=lambda b: (b["created"], b["tag"]), reverse=True)
+
+
+def _baseline_recorded(repo: str, commit: str) -> dict:
+    """What the baseline's own commit says it EARNED (7.2's `Baseline:` and
+    C89's `Intent-Match:` trailers). A baseline taken before those were
+    recorded says nothing, and is drawn as "not recorded", never as fine: its
+    tag was taken on coverage alone, and the newest such tag on the host holds
+    a device broken by hand (C70)."""
+    _rc, body, _ = git(repo, "log", "-1", "--format=%B", commit)
+    decision = intent = ""
+    for line in (body or "").splitlines():
+        if line.startswith("Baseline: "):
+            decision = line[len("Baseline: "):].strip()
+        elif line.startswith("Intent-Match: "):
+            intent = line[len("Intent-Match: "):].strip()
+    if not decision:
+        return {"decision": "unrecorded", "intent_match": intent,
+                "decision_detail": ("taken before baselines recorded what they earned: "
+                                    "nothing says every device was at its committed intent"
+                                    + (f" (Intent-Match: {intent})" if intent else ""))}
+    return {"decision": "earned" if decision == "earned" else "denied",
+            "intent_match": intent, "decision_detail": decision}
+
+
+def withdrawn_ref(repo: str, ref: str):
+    """The withdrawal recorded for the commit *ref* names, or None. The
+    restore routes refuse a withdrawn baseline, whichever screen asked."""
+    from modules.nsot.record_exceptions import withdrawn_baseline
+
+    rc, sha, _ = git(repo, "rev-parse", f"{ref}^{{commit}}")
+    return withdrawn_baseline(sha.strip()) if rc == 0 else None
 
 
 def device_restore_points(repo: str, hostname: str) -> list:
@@ -1679,6 +1726,8 @@ def device_restore_points(repo: str, hostname: str) -> list:
             own.append({"ref": parts[0], "kind": "device", "created": parts[1],
                         "subject": parts[2]})
     for b in list_baselines(repo):
+        if b["deleted"] or b["withdrawn"]:
+            continue    # a withdrawn restore point is not offered (C70)
         if name in devices_at(repo, b["tag"]):
             own.append({"ref": b["tag"], "kind": "baseline", "created": b["created"],
                         "subject": b["subject"], "claim": b["claim"],

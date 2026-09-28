@@ -41,7 +41,7 @@ async function loadGoldenRepoPanel() {
       fetch('/golden/legacy_store').then(r => r.json()),
     ]);
 
-    const baselines = (bRes.baselines || []).slice(0, 10);
+    const baselines = bRes.baselines || [];   // all of them: the table collapses, never cuts
     window._gBaselineCache = baselines;
     const pending = (rRes.pending || []);
     const needsMigration = mRes.ok && mRes.device_count > 0 && !mRes.already_migrated;
@@ -62,24 +62,7 @@ async function loadGoldenRepoPanel() {
           <h6 class="text-primary fw-semibold mb-2">Baselines
             <span class="text-muted fw-normal small ms-1">(stored network-wide configuration)</span>
           </h6>
-          ${baselines.length ? `
-            <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-              <tbody>${baselines.map(b => `
-                <tr>
-                  <td class="font-monospace small">${_gEsc(b.tag)}</td>
-                  <td class="small text-muted">${_gEsc(_gWhen(b.created))}</td>
-                  <td>${_gBaselineCoverage(b)}</td>
-                  <td>${_gBaselineClaim(b)}</td>
-                  <td>${_gCredWarning(b)}</td>
-                  <td class="text-end">
-                    <button class="btn btn-outline-warning btn-sm"
-                            onclick="confirmBaselineRestore('${_gEsc(b.tag)}')"
-                            title="Re-applies stored configuration. Does not remove lines devices have gained.">
-                      Re-apply this baseline
-                    </button>
-                  </td>
-                </tr>`).join('')}</tbody></table></div>`
-            : '<p class="text-muted small mb-0">No baselines yet. Save All takes one when every device is captured and matches its committed intent.</p>'}
+          ${_gBaselinesHtml(baselines)}
         </div>
       </div>`;
   } catch (e) { console.error('loadGoldenRepoPanel', e); }
@@ -123,11 +106,12 @@ function _gLegacyStoreCard(l) {
         <p class="text-muted small mb-1">
           These are in <code>golden_configs/</code> and not in the repository
           manifest, so they resolve through the deprecated header scan. The
-          directory can be retired once this list is empty.
+          directory can be retired once this list is empty; what to do for each:
         </p>
         <ul class="small mb-0">
-          ${only.map(d => `<li><code>${_gEsc(d.hostname)}</code>
-             <span class="text-muted">(${_gEsc(d.device_ip)} · ${_gEsc(d.file)})</span></li>`).join('')}
+          ${only.map(d => `<li data-legacy-state="${_gEsc(d.state || '')}"><code>${_gEsc(d.hostname)}</code>
+             <span class="text-muted">(${_gEsc(d.device_ip)} · ${_gEsc(d.file)})</span>
+             <div>${_gEsc(d.action || 'No action is recorded for this device.')}</div></li>`).join('')}
         </ul>
       </div>
     </div>`;

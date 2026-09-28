@@ -1,0 +1,216 @@
+"""The Device tab's golden panel says what to DO (the operator, 2026-09-28).
+
+1. The legacy-store notice stated a state and a condition for clearing it,
+   and no action, while the tool knew r5 was retired. Each legacy-only file
+   now carries its state and ONE action, decided from the record: a retired
+   device (a `Retired-Device:` commit) has residue to delete; a device in the
+   inventory is captured; anything else is neither, and is not called safe.
+2. The Baselines table collapses to the newest row that can be re-applied,
+   the rest behind a toggle, never cut (it stopped at ten, silently, and the
+   host has twelve).
+3. Each row says what its commit recorded it EARNED, and the twelve that
+   predate that say "not recorded", never implying fine. A WITHDRAWN baseline
+   (the newest on the host held r2 broken by hand for C70) is refused by the
+   restore wherever the ref is read, drawn with its reason and the commands
+   that delete it, and drawn as deleted once its tag is gone.
+"""
+
+import json
+import os
+
+import pytest
+
+from modules.nsot import repo as R
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LIST = "Lab"
+INVENTORY = [{"hostname": "r1", "ip": "203.0.113.1", "platform": "cisco_ios"},
+             {"hostname": "r2", "ip": "203.0.113.2", "platform": "cisco_ios"}]
+
+
+def _commit(repo, msg):
+    R.git(repo, "add", "-A", "--", "golden", ".nsot")
+    R.git(repo, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-q",
+          "--allow-empty", "-m", msg)
+    return R.git(repo, "rev-parse", "HEAD")[1].strip()
+
+
+def _tag(repo, name, sha):
+    R.git(repo, "-c", "user.name=t", "-c", "user.email=t@x", "tag", "-a", name,
+          "-m", f"network baseline {name}", sha)
+
+
+def build_golden_panel_lab(monkeypatch, tmp_path):
+    """A real repository with baselines in every state (not recorded, earned,
+    withdrawn, withdrawn and deleted), and a legacy store holding a retired
+    device (r5) and one nobody knows (r9). The payload check's provider too."""
+    import app as A
+    from modules.nsot import record_exceptions
+
+    list_dir = tmp_path / "lab"
+    repo = str(list_dir / "config_repo")
+    monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
+    # A module that imported the function by name keeps its own binding;
+    # LISTS_DIR is read at call time by every caller (CLAUDE.md's rule).
+    monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path / "lists"))
+    monkeypatch.setattr("modules.config.get_current_list_name", lambda: LIST)
+    monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+    monkeypatch.setattr("modules.device.load_saved_devices", lambda p: [dict(d) for d in INVENTORY])
+    monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(d) for d in INVENTORY])
+    R.init_repo(repo)
+    for d in INVENTORY:
+        with open(os.path.join(repo, "golden", f"{d['hostname']}.cfg"), "w") as fh:
+            fh.write(f"hostname {d['hostname']}\n")
+    shas = {}
+    shas["old"] = _commit(repo, "golden: baseline via save_all\n\nSource: save_all\nActor: t")
+    _tag(repo, "baseline/20260921T000000Z", shas["old"])
+    with open(os.path.join(repo, "golden", "r1.cfg"), "a") as fh:
+        fh.write("! the deleted one\n")
+    shas["deleted"] = _commit(repo, "golden: baseline via save_all\n\nSource: save_all")
+    with open(os.path.join(repo, "golden", "r1.cfg"), "a") as fh:
+        fh.write("! earned\n")
+    shas["earned"] = _commit(repo, "golden: 2 device(s) via save_all\n\nSource: save_all\n"
+                                   "Intent-Match: yes (2 of 2)\nBaseline: earned")
+    _tag(repo, "baseline/20260926T000000Z", shas["earned"])
+    with open(os.path.join(repo, "golden", "r2.cfg"), "a") as fh:
+        fh.write("! broken by hand\n")
+    shas["withdrawn"] = _commit(repo, "golden: baseline via save_all\n\nSource: save_all")
+    _tag(repo, "baseline/20260927T000000Z", shas["withdrawn"])
+    # r5's retirement, as nmas-retire records it.
+    _commit(repo, "retire: r5 -- outside our boundary\n\nRetired-Device: r5\nSource: retire")
+    monkeypatch.setattr(record_exceptions, "WITHDRAWN_BASELINES", {
+        shas["withdrawn"]: {"list": LIST, "tag": "baseline/20260927T000000Z",
+                            "finding": "C70", "decided": "2026-09-28", "by": "the operator",
+                            "why": "it records r2 broken by hand"},
+        shas["deleted"]: {"list": LIST, "tag": "baseline/20260922T000000Z",
+                          "finding": "C70", "decided": "2026-09-28", "by": "the operator",
+                          "why": "a planted deletion"},
+    })
+    legacy = list_dir / "golden_configs"
+    legacy.mkdir(parents=True)
+    for host, ip in (("r5", "203.0.113.5"), ("r9", "203.0.113.9")):
+        (legacy / f"{host}.cfg").write_text(
+            f"! Golden config — {host} ({ip})\nhostname {host}\n", encoding="utf-8")
+    return {"client": A.app.test_client(), "repo": repo, "shas": shas,
+            "legacy": str(legacy)}
+
+
+@pytest.fixture
+def lab(tmp_path, monkeypatch):
+    return build_golden_panel_lab(monkeypatch, tmp_path)
+
+
+def _baselines(lab):
+    d = lab["client"].get("/golden/baselines").get_json()
+    assert d["ok"], d
+    return {b["tag"]: b for b in d["baselines"]}
+
+
+class TestEachBaselineSaysWhatItEarned:
+    def test_the_decision_is_read_from_its_commit(self, lab):
+        b = _baselines(lab)
+        assert b["baseline/20260926T000000Z"]["decision"] == "earned"
+        assert b["baseline/20260926T000000Z"]["intent_match"] == "yes (2 of 2)"
+        old = b["baseline/20260921T000000Z"]
+        assert old["decision"] == "unrecorded"
+        assert "nothing says every device was at its committed intent" in old["decision_detail"]
+
+    def test_every_baseline_is_carried_none_cut(self, lab):
+        assert len(_baselines(lab)) == 4, "three tags and one deletion"
+
+
+class TestAWithdrawnBaseline:
+    def test_it_is_drawn_withdrawn_with_the_commands_that_delete_it(self, lab):
+        w = _baselines(lab)["baseline/20260927T000000Z"]
+        assert w["withdrawn"]["why"] == "it records r2 broken by hand" and not w["deleted"]
+        (cmd,) = w["delete_commands"]
+        assert "tag -d baseline/20260927T000000Z && " in cmd
+        assert "push origin --delete refs/tags/baseline/20260927T000000Z" in cmd
+
+    def test_a_deleted_one_is_drawn_where_it_was(self, lab):
+        d = _baselines(lab)["baseline/20260922T000000Z"]
+        assert d["deleted"] and d["commit"] == lab["shas"]["deleted"]
+
+    @pytest.mark.parametrize("route", ["/golden/restore/preview", "/golden/restore/apply"])
+    def test_both_restore_routes_refuse_it_and_send_nothing(self, lab, route):
+        r = lab["client"].post(route, json={"ref": "baseline/20260927T000000Z",
+                                            "devices": ["r2"], "confirmations": {"r2": "x"}})
+        assert r.status_code == 409, r.get_data(as_text=True)[:300]
+        out = r.get_json()
+        assert out["withdrawn"]["tag"] == "baseline/20260927T000000Z"
+        assert "nothing was sent" in out["error"]
+
+    def test_the_control_a_current_baseline_is_not_refused(self, lab):
+        r = lab["client"].post("/golden/restore/preview",
+                               json={"ref": "baseline/20260926T000000Z", "devices": ["r2"]})
+        assert r.status_code != 409, r.get_data(as_text=True)[:300]
+
+    def test_the_device_chooser_does_not_offer_it(self, lab):
+        refs = [p["ref"] for p in R.device_restore_points(lab["repo"], "r2")]
+        assert "baseline/20260926T000000Z" in refs
+        assert "baseline/20260927T000000Z" not in refs
+
+    def test_the_host_record_is_a_full_sha(self):
+        from modules.nsot.record_exceptions import WITHDRAWN_BASELINES
+        sha, w = next(iter(WITHDRAWN_BASELINES.items()))
+        assert len(sha) == 40 and w["tag"] == "baseline/20260927T154517Z"
+
+
+class TestTheLegacyStoreSaysWhatToDo:
+    def test_each_file_carries_its_state_and_one_action(self, lab):
+        d = lab["client"].get("/golden/legacy_store").get_json()
+        by = {e["hostname"]: e for e in d["only_legacy"]}
+        assert by["r5"]["state"] == "retired"
+        assert by["r5"]["action"].endswith(f"rm {os.path.join(lab['legacy'], 'r5.cfg')}")
+        assert by["r9"]["state"] == "unknown" and "nothing here says it is safe" in by["r9"]["action"]
+
+    def test_a_device_still_managed_is_captured_not_deleted(self, lab, monkeypatch):
+        monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [
+            *INVENTORY, {"hostname": "r9", "ip": "203.0.113.9"}])
+        by = {e["hostname"]: e for e in
+              lab["client"].get("/golden/legacy_store").get_json()["only_legacy"]}
+        assert by["r9"]["state"] == "managed" and "Capture it" in by["r9"]["action"]
+        assert "rm " not in by["r9"]["action"]
+
+
+def _js(fn_names):
+    from tests.payload_render import lift, shipped
+    src = shipped("partials__golden_repo.1.js")
+    return "\n".join(lift(src, n) for n in fn_names)
+
+
+FNS = ("_gEsc", "_gWhen", "_gBaselineClaim", "_gBaselineCoverage", "_gCredWarning",
+       "_gBaselineDecision", "_gBaselineRow", "_gBaselinesHtml")
+
+
+class TestTheShippedTable:
+    def _draw(self, lab):
+        import dukpy
+        payload = lab["client"].get("/golden/baselines").get_json()["baselines"]
+        return dukpy.evaljs(_js(FNS) + "\n_gBaselinesHtml(" + json.dumps(payload) + ")")
+
+    def test_it_collapses_to_the_newest_usable_row_and_hides_the_rest(self, lab):
+        html = self._draw(lab)
+        shown, older = html.split("data-baselines-older", 1)
+        # The withdrawn newest row is SHOWN beside the one that would be used.
+        assert "baseline/20260927T000000Z" in shown and "baseline/20260926T000000Z" in shown
+        assert "baseline/20260921T000000Z" in older and "baseline/20260922T000000Z" in older
+        assert "Show 2 older baseline(s)" in html
+
+    def test_the_rows_say_what_they_are(self, lab):
+        html = self._draw(lab)
+        assert 'data-baseline-row="withdrawn"' in html and "not offered for re-apply" in html
+        assert "push origin --delete" in html
+        assert 'data-baseline-row="deleted"' in html and "stays in history" in html
+        assert 'data-baseline-decision="earned"' in html
+        assert 'data-baseline-decision="unrecorded"' in html and "decision not recorded" in html
+        # The credential column stays on every re-applicable row.
+        assert html.count("credentials current") == 2
+        # A withdrawn row offers no re-apply.
+        withdrawn = html[html.index('data-baseline-row="withdrawn"'):]
+        withdrawn = withdrawn[:withdrawn.index("</tr>")]
+        assert "confirmBaselineRestore" not in withdrawn
+
+    def test_the_panel_no_longer_cuts_at_ten(self):
+        from tests.payload_render import shipped
+        assert ".slice(0, 10)" not in shipped("partials__golden_repo.3.js")

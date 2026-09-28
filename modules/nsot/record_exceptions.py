@@ -77,3 +77,31 @@ def exception_for(sha: str):
     """The known exception for a commit, or None. A full sha only: a prefix
     match is the weaker-match class this project keeps catching."""
     return EXCEPTIONS.get((sha or "").strip())
+
+
+# ---------------------------------------------------------------------------
+# Withdrawn baselines: a restore point a person decided must never be re-applied
+# ---------------------------------------------------------------------------
+
+#: {full sha of the baseline's commit: the decision}. A baseline is a claim
+#: that the network was right at that moment, and the newest one is the one
+#: anyone would re-apply. Keyed on the COMMIT, so the record survives the tag's
+#: deletion and the table can say what was there. The restore routes refuse a
+#: withdrawn commit while its tag still exists; once the tag is gone, the
+#: Baselines table draws the deletion in its place.
+WITHDRAWN_BASELINES = {
+    "e63b2e6d64f7b61dd116e0460b8913644ea2a056": {
+        "list": "default", "tag": "baseline/20260927T154517Z", "finding": "C70",
+        "decided": "2026-09-28", "by": "the operator",
+        "why": ("it records r2 deliberately broken for C70 (OSPFv3 removed from "
+                "GigabitEthernet2, load-interval 30 added), captured by Save All 30 s "
+                "after the break. It was kept as the only record of the pre-restore "
+                "state, and that reason expired when C70 finished. The commit stays "
+                "in history; only the restore point is withdrawn"),
+    },
+}
+
+
+def withdrawn_baseline(sha: str):
+    """The withdrawal recorded for a baseline's commit, or None. Full sha only."""
+    return WITHDRAWN_BASELINES.get((sha or "").strip())

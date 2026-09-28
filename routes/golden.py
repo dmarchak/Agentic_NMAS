@@ -118,6 +118,15 @@ def baselines():
             os.path.join(get_list_data_dir(list_name), "devices.csv"))}
 
         for entry in entries:
+            if entry.get("deleted"):
+                continue        # no tag to read: drawn from its record
+            if entry.get("withdrawn"):
+                # Both halves, local and the remote the tags are pushed to,
+                # chained so the second runs only if the first did. The
+                # person runs them: a write to the record and to the remote.
+                entry["delete_commands"] = [
+                    f"git -C {repo} tag -d {entry['tag']} && "
+                    f"git -C {repo} push origin --delete refs/tags/{entry['tag']}"]
             devices = devices_at(repo, entry["tag"])
             entry["device_count"] = len(devices)
             # The scope chooser (C80) lists these, none ticked.
@@ -426,7 +435,7 @@ def restore_preview():
                                      merge_commands, merge_diff,
                                      prepare_restore, residue_in_context)
     from modules.nsot import normalize
-    from modules.nsot.restore import build_targets
+    from modules.nsot.restore import WithdrawnBaseline, build_targets
     from routes.deploy import _capture_hash
 
     data = request.get_json(silent=True) or {}
@@ -444,6 +453,8 @@ def restore_preview():
         targets, skipped = build_targets(list_name, ref, data.get("devices"),
                                          un_onboard=data.get("un_onboard"),
                                          authorise=authorise)
+    except WithdrawnBaseline as exc:
+        return jsonify({"ok": False, "withdrawn": exc.record, "error": str(exc)}), 409
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: restore preview failed")
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -630,7 +641,8 @@ def restore_apply():
     queued is rejected on first use of this route, because executing one now
     would send exactly the payload this replaced.
     """
-    from modules.nsot.restore import build_targets, invalidate_queued_restores
+    from modules.nsot.restore import (WithdrawnBaseline, build_targets,
+                                      invalidate_queued_restores)
     from routes.deploy import run_targets
 
     data = request.get_json(silent=True) or {}
@@ -648,6 +660,8 @@ def restore_apply():
         targets, skipped = build_targets(list_name, ref, list(confirmations),
                                          un_onboard=data.get("un_onboard"),
                                          authorise=data.get("authorise") or {})
+    except WithdrawnBaseline as exc:
+        return jsonify({"ok": False, "withdrawn": exc.record, "error": str(exc)}), 409
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: restore apply failed")
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -740,6 +754,43 @@ def sync_renames():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+def _legacy_action(list_name: str, legacy_dir: str, entry: dict) -> dict:
+    """What to DO about one legacy-only file (the operator, 2026-09-28: the
+    notice stated a state and a condition for clearing it, and no action).
+    Decided from the record, never guessed: a device RETIRED has a commit
+    carrying `Retired-Device: <name>` (nmas-retire writes it), and its file is
+    residue the retirement did not remove (C176); one still in the inventory
+    gets its first repository golden by a capture; anything else is neither,
+    and its file may be the only copy of a config, so nothing says delete."""
+    from modules.nsot.restore import _devices_of
+
+    host = entry["hostname"]
+    path = os.path.join(legacy_dir, entry["file"])
+    rc, out, _ = _git_repo(list_name, "log", "-1", "--format=%h %as",
+                           "--grep", f"^Retired-Device: {host}$")
+    retired = out.strip().split() if rc == 0 and out.strip() else []
+    if retired:
+        return {"state": "retired",
+                "action": (f"{host} was retired ({retired[0]}, "
+                           f"{retired[1] if len(retired) > 1 else ''}), and nothing reads "
+                           "this file for it any more. Delete it on the host: "
+                           f"rm {path}")}
+    if host in {d.get("hostname", "") for d in _devices_of(list_name)}:
+        return {"state": "managed",
+                "action": (f"{host} is in the inventory with no repository golden. "
+                           "Capture it (Capture as golden on its Device page): its "
+                           "first repository golden replaces this file's role.")}
+    return {"state": "unknown",
+            "action": (f"{host} is neither in the inventory nor retired on record, so "
+                       "this file may be the only copy of its config. Find out what it "
+                       "was before deleting it; nothing here says it is safe to.")}
+
+
+def _git_repo(list_name: str, *args):
+    from modules.nsot.repo import git
+    return git(_repo_for(list_name), *args)
+
+
 @bp.route("/legacy_store", methods=["GET"])
 def legacy_store():
     """What still depends on the deprecated ``golden_configs/`` directory.
@@ -774,7 +825,9 @@ def legacy_store():
             "legacy_files": len(files),
             "only_legacy": [{"hostname": e["hostname"],
                              "device_ip": e["device_ip"],
-                             "file": e["file"]} for e in only_legacy],
+                             "file": e["file"],
+                             **_legacy_action(list_name, legacy_dir, e)}
+                            for e in only_legacy],
             "retirable": not only_legacy,
         })
     except Exception as exc:                   # noqa: BLE001

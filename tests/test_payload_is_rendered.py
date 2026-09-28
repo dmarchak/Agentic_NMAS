@@ -204,9 +204,10 @@ RENDERS = {
                                             "approvalEvidenceText")},
         (("partials__template_editor.1.js", "approvalCellHtml", "d"),)),
     "GET /golden/baselines": Render(
-        _get("/golden/baselines"),
+        lambda mp, tmp: P.golden_panel(mp, tmp, "/golden/baselines"),
         {GR3: ("loadGoldenRepoPanel",), GR1: ("_gBaselineCoverage", "_gCredWarning",
-                                               "_gBaselineClaim"),
+                                               "_gBaselineClaim", "_gBaselineDecision",
+                                               "_gBaselineRow", "_gBaselinesHtml"),
          RS: ("baselineScopeHtml",)},
         ((GR3, "loadGoldenRepoPanel", "bRes"),)),
     "GET /golden/history/<host>": Render(
@@ -214,7 +215,7 @@ RENDERS = {
         {GR1: ("showGoldenHistory",)},
         ((GR1, "showGoldenHistory", "d"),)),
     "GET /golden/legacy_store": Render(
-        _get("/golden/legacy_store"),
+        lambda mp, tmp: P.golden_panel(mp, tmp, "/golden/legacy_store"),
         {GR3: ("loadGoldenRepoPanel", "_gLegacyStoreCard")},
         ((GR3, "loadGoldenRepoPanel", "lRes"), (GR3, "_gLegacyStoreCard", "l"))),
     "GET /golden/renames": Render(
@@ -365,6 +366,15 @@ UNDRAWN = {
     "GET /golden/legacy_store": [
         ("in_repo", "the complement of only_legacy, which is drawn; 7.5 draws both"),
         ("list", LIST)],
+    # Carried since before 2026-09-28 and never EXAMINED: the fixture had no
+    # baseline tag until the panel's own fixture reached one.
+    "GET /golden/baselines": [
+        ("credential_detail credential_guarded credential_refused",
+         "the per-device detail and the two subsets behind the stale list; the row "
+         "draws the stale devices and the ones an account would be added back on, "
+         "and the restore preview names each refusal. 7.5 (Versions) draws them"),
+        ("subject", "the tag's subject; the row is named by its tag"),
+        ("list", "the list the withdrawal record belongs to; the panel is that list's")],
     "GET /golden/migrate/plan": [
         ("candidates devices marker merge_count staged_files",
          "the migration has run on every list; the card says only whether it "
@@ -500,12 +510,8 @@ EMPTY_IN_FIXTURE = {
                                      "fields the panel draws were never examined"),
     "GET /ai/approvals entries": (R_, "no queued item in the fixture; the approval "
                                       "card has never been drawn from a real item"),
-    "GET /golden/baselines baselines": (R_, "no baseline tag in the fixture's repo; "
-                                            "E7 and 7.5 draw baselines, so reach it there"),
     "GET /golden/history/<host> history": (R_, "no golden commit for the device in "
                                                "the fixture; 7.3's History draws it"),
-    "GET /golden/legacy_store only_legacy": (R_, "no legacy-only golden; each entry is "
-                                                 "{hostname, file}"),
     "GET /golden/migrate/plan devices": (R_, "nothing to migrate in the fixture"),
     "GET /golden/migrate/plan merges": (R_, "no duplicate to merge in the fixture"),
     "GET /golden/migrate/plan staged_files": (S_, _STRINGS),
@@ -626,7 +632,9 @@ EMPTY_IN_FIXTURE = {
 # plan and the restore preview, each twice) needs a receipt BEFORE the plan,
 # which no provider writes; reached through real receipts in
 # test_authorised_lines.py. And the apply's refused row authorises nothing.
-EMPTY_RECORDS_CEILING = 25
+# 25 -> 23: the golden panel's own fixture reaches baselines and legacy-only
+# files (2026-09-28), which found four baseline fields nobody had examined.
+EMPTY_RECORDS_CEILING = 23
 
 
 def _empty_paths(obj, path=""):
@@ -680,7 +688,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 102
+UNDRAWN_CEILING = 107
 PHANTOM_CEILING = 18
 
 
