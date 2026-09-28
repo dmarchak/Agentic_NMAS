@@ -3650,7 +3650,39 @@ and the host check reads its real one from uncapped history.
 **Placement:** before 8.6, whose triage reader consumes these rules and is only as good as they are. Where it
 falls against 7.2 and 7.3 is the operator's to decide; nothing in 7.2 depends on it.
 
-### P.8 — Per-list settings: two lists are two networks (SCOPED 2026-09-28, not built; placement after 7.2, before P.7's generators and 7.3)
+### P.8 — Per-list settings: two lists are two networks (SCOPED and DECIDED 2026-09-28, not built; after 7.2, before P.7's generators and 7.3)
+
+**DECIDED 2026-09-28 (the operator), closing every ambiguity below: 78 keys per
+network, 40 global, 11 read by nothing, none ambiguous.**
+- **One NetBox per network.** Sites, devices, interfaces, addresses, VLANs and
+  prefixes are facts about a network, not about NMAS. A shared NetBox would put
+  list B's devices in list A's source of truth, while the provenance record of
+  what NMAS created for which list is already per list. So the five NetBox
+  connection keys and the three platform and role maps are per network.
+  **`netbox_allow_writes` stays GLOBAL**: a safety switch for the NMAS process,
+  not a property of a network. Nothing changes today (one NetBox, one list,
+  Default points at it), which is the right time to decide it.
+- **Proxmox: GLOBAL.** It holds NMAS's own backups and VMs. A second lab on a
+  second Proxmox host is a per-list override of a global default, which the
+  inheritance model already supports.
+- **Deploy tuning: PER NETWORK.** The settle windows were measured on this
+  fleet, and another fleet converges differently: C92's reasoning for a probe
+  threshold.
+- **The collectors: PER NETWORK, and `collector_config.json` folds into the
+  store.** The split was half done (ports per list, on/off switches global);
+  finishing it in the same direction beats two mechanisms.
+- **`settings_not_applicable`: per list.**
+- **The group rule is a SECURITY PROPERTY, and is stated as one**: an
+  integration inherits as a group, never key by key, so a list with its own
+  URL cannot quietly inherit Default's credential, and NMAS never sends one
+  service's credential to another. It gets its own test, with a control that
+  inherits key by key and is shown sending Default's token to the list's URL.
+- **"Deliberately none" never inherits**: C31's distinction carried into the
+  new store, four states per key, not two.
+- **Placement: after 7.2, before P.7 and 7.3**, on the correctness argument: a
+  screen built on global settings shows list A's Grafana beside list B's device
+  WITH EVERY CHECK PASSING. Rework is recoverable; a screen that lies with its
+  checks green is not something a later refactor finds.
 
 **The gap (the operator, 2026-09-28): lists separate devices, and settings are
 global.** Every list is meant to be its own network, and the settings that
