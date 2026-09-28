@@ -1021,11 +1021,16 @@ def integrations_source(cached=None) -> dict:
                         action={"label": f"Check {i.get('label')} at the URL set in Settings > "
                                          "Integrations; its Test button probes it now"}))
     c = v.get("counts") or {}
+    # Named, never only counted: "2 not configured" hid that one of the two
+    # was the NSoT repository committing all evening (C171).
+    unset = [i.get("label") for i in v.get("integrations") or []
+             if i.get("state") == "not_configured"]
     return source_result(
         "integrations", "Integrations", read_at=started, took_ms=took, rows=rows,
         value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
         checked=(f"{len(v.get('integrations') or [])} integration(s): {c.get('up', 0)} up, "
-                 f"{c.get('down', 0)} down, {c.get('not_configured', 0)} not configured"))
+                 f"{c.get('down', 0)} down, {c.get('not_configured', 0)} not configured"
+                 + (f" ({', '.join(unset)})" if unset else "")))
 
 
 # ---------------------------------------------------------------------------
