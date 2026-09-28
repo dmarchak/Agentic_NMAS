@@ -4851,6 +4851,11 @@ the environment does.
   separation of duties) and E6 (the device as witness of its own changes).
   **Stage 6 (6.1 to 6.5) is this half's list**, so Stage 6's items are
   scheduled here rather than as a separate stage.
+  **Its FIRST item is a sweep** (the operator, 2026-09-28): every plan
+  document read for exposure that the register does not list. C143 was
+  invisible to the register BY CONSTRUCTION, because it had a stage, so
+  nothing but a sweep of the plans can find its siblings. It was not run
+  when security was deferred; it is this half's entry task.
 - **(M) MINOR.** Genuinely small, whatever the environment: C6, C7, C9, C13,
   C40, C45, C47, C71, C72, C93, C94, C113, B10 and E2, plus C41 (the
   device-boundary harness), the one large item in this half.
