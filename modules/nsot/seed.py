@@ -216,7 +216,7 @@ def apply(list_name: str, inventory: list, confirmations: dict, actor: str) -> d
                 list_name, seeded, actor=actor, source=SOURCE,
                 message=f"host_vars: seed {', '.join(seeded)} from the committed golden",
                 extra_trailers=goldens,
-                paths=[os.path.relpath(p, repo) for p in written])
+                paths=[hostvars.committed_rel(h) for h in seeded])
             if not save.get("ok"):
                 _put_back(repo, written)
             for o in outcomes:

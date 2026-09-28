@@ -158,6 +158,12 @@ def committed_path(repo: str, hostname: str) -> str:
     return os.path.join(committed_dir(repo), f"{_safe_hostname(hostname)}.yml")
 
 
+def committed_rel(hostname: str) -> str:
+    """The repo-relative path of a device's intent: what a commit stages for
+    it, and nothing else (C175)."""
+    return f"{COMMITTED_REL}/{_safe_hostname(hostname)}.yml"
+
+
 def read_committed(repo: str, hostname: str):
     """Committed intent for *hostname*, or ``None`` if it has none.
 

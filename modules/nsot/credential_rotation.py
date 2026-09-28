@@ -1784,7 +1784,9 @@ def _commit(list_name, repo, hostname, device, username, privilege, password,
             list_name, items, source="rotation", actor=actor or "operator",
             message=f"credential: {hostname} rotated to a device-generated "
                     "type-9 secret",
-            allow_new=False, extra_paths=["host_vars"])
+            allow_new=False,
+            # Exactly this device's intent, never the tree (C175).
+            extra_paths=[hostvars.committed_rel(hostname)])
         out["commit"] = commit.get("commit", "")
         out["ok"] = bool(commit.get("ok"))
         if not commit.get("ok"):

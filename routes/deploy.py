@@ -973,7 +973,10 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     if source_ref:
         intent = _write_restored_intent(list_name, report, source_ref)
         if intent["restored"] or intent["un_onboarded"]:
-            extra_paths = ["host_vars"]
+            # Exactly the restored devices' files, never the tree (C175).
+            from modules.nsot.hostvars import committed_rel
+            extra_paths = [committed_rel(h)
+                           for h in intent["restored"] + intent["un_onboarded"]]
             trailers.append(f"Restored-Intent: {','.join(intent['restored'])}")
             if intent["un_onboarded"]:
                 trailers.append(

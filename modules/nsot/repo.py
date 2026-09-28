@@ -204,6 +204,73 @@ def git_raw(repo: str, *args) -> tuple:
         return 124, "", f"git {args[0] if args else ''} timed out after {GIT_TIMEOUT}s"
 
 
+# ---------------------------------------------------------------------------
+# Staging: exactly the files a commit wrote (register C175)
+# ---------------------------------------------------------------------------
+
+#: The trees a commit may never stage whole. C104 made every READER take what
+#: is committed; the WRITERS still ran `git add -A host_vars` (or `golden`,
+#: `templates`, `.nsot`), so another device's uncommitted hand edit was
+#: committed under an unrelated commit's subject, `Actor:` and `Source:`, and
+#: the deploy then read it as committed intent and SENT it. The same defect
+#: from the other end. Measured on the host 2026-09-28: 102 commits and none
+#: carried a file for a device it did not name (latent), while four hand
+#: commits of intent on 09-24 show the trigger, a hand edit, is practice.
+#: The migration is the one declared exception (a one-shot first commit).
+WHOLE_TREES = ("golden", "host_vars", "templates", ".nsot", "intended", "infra")
+
+#: The manifest: the one tracked file under ``.nsot`` (measured on the host).
+MANIFEST_REL = ".nsot/manifest.json"
+
+
+class StagesMoreThanItWrote(ValueError):
+    """A commit asked to stage a directory, or the index already holds a path
+    outside the commit's scope that ``git commit`` would carry with it."""
+
+
+def _rel(path: str) -> str:
+    return path.replace(os.sep, "/").strip("/")
+
+
+def stage_exactly(repo: str, paths: list) -> list:
+    """Stage exactly *paths* (repo-relative FILES), and return them.
+
+    Refuses a directory, and refuses when the index already holds a path
+    outside *paths*: `git commit` takes the whole index, so a path somebody
+    staged by hand would ride along just as an unstaged edit did under
+    `add -A <dir>`. On a refusal nothing this call staged stays staged. A
+    path that is on disk nowhere and not tracked has nothing to stage and is
+    skipped (a file this commit deletes is still staged as a deletion)."""
+    wanted = [_rel(p) for p in paths if p]
+    for p in wanted:
+        if p in WHOLE_TREES or os.path.isdir(os.path.join(repo, p)):
+            raise StagesMoreThanItWrote(
+                f"{p} is a directory: a commit stages the files it wrote, never a "
+                f"tree, or another device's uncommitted edit rides along (C175)")
+    _rc, before, _err = git(repo, "diff", "--cached", "--name-only")
+    outside = sorted(set(l for l in (before or "").splitlines() if l.strip()) - set(wanted))
+    if outside:
+        raise StagesMoreThanItWrote(
+            "the index already holds " + ", ".join(outside) + ", which this commit "
+            "would carry under its own name; unstage it (git reset -- <path>) or "
+            "commit it on its own. Nothing was committed")
+    for p in wanted:
+        if (not os.path.exists(os.path.join(repo, p))
+                and git(repo, "ls-files", "--error-unmatch", "--", p)[0] != 0):
+            continue    # nothing to stage, or its deletion is staged already (git rm)
+        rc, _out, err = git(repo, "add", "-A", "--", p)
+        if rc != 0:
+            unstage(repo, wanted)
+            raise StagesMoreThanItWrote(f"could not stage {p}: {err}")
+    return wanted
+
+
+def unstage(repo: str, paths: list) -> None:
+    """Unstage exactly *paths*: never a blanket reset of a tree."""
+    if paths:
+        git(repo, "reset", "-q", "--", *[_rel(p) for p in paths])
+
+
 def init_repo(repo: str) -> bool:
     """Create the repo and its NSoT layout. Idempotent."""
     os.makedirs(repo, exist_ok=True)
@@ -351,15 +418,19 @@ def apply_pending_renames(repo: str, actor: str = "nmas") -> dict:
             # what matters is that the commit carries it.
             manifest_before = _read_bytes(_manifest.manifest_path(repo))
             _manifest.clear_pending_rename(repo, identity, new_name, new_rel)
-            git(repo, "add", "-A", "golden", ".nsot")
-            rc, _, err = git(repo, "commit", "-m", message)
+            own = [old_rel, new_rel, MANIFEST_REL]
+            try:
+                stage_exactly(repo, own)
+                rc, _, err = git(repo, "commit", "-m", message)
+            except StagesMoreThanItWrote as exc:
+                rc, err = 1, str(exc)
             if rc != 0:
                 # Put the move and the manifest back, so the rename stays
                 # PENDING and is retried alone. Left staged, the next golden
                 # save's `add golden .nsot` swept it into a content commit,
                 # which is exactly what "a rename is committed alone" forbids.
                 log.error("repo: rename commit failed, undone: %s", err)
-                git(repo, "reset", "-q", "--", "golden", ".nsot")
+                unstage(repo, own)
                 try:
                     os.replace(os.path.join(repo, new_rel), old_abs)
                 except OSError as exc:
@@ -750,7 +821,14 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         # `extra_paths` is explicit so a template deploy's commit never starts
         # silently carrying intent. A restore passes "host_vars" because device
         # and intent are one unit for that event; nothing else does.
-        git(repo, "add", "-A", "golden", ".nsot", *(extra_paths or []))
+        own = [c["path"] for c in changed] + [MANIFEST_REL] + list(extra_paths or [])
+        try:
+            stage_exactly(repo, own)
+        except StagesMoreThanItWrote as exc:
+            log.error("repo: %s", exc)
+            _undo_golden_writes(repo, before, [])
+            return {"ok": False, "error": str(exc), "changed": [],
+                    "unchanged": unchanged, "tags": []}
 
         # "No content changed" has to mean the whole commit, not just golden/.
         # A restore to a ref a device already matches changes no golden and
@@ -765,7 +843,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         if not changed and not extra_dirty:
             # Scoped: unstage exactly what this function staged, never a
             # blanket reset of whatever else might be in the index.
-            git(repo, "reset", "-q", "--", "golden", ".nsot", *(extra_paths or []))
+            unstage(repo, own)
 
             # NO CHANGES IS A MEASUREMENT, AND IT IS THE BEST ONE.
             #
@@ -871,7 +949,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         commit_message = f"{subject}\n\n" + "\n".join(trailers) + "\n"
         rc, _, err = git(repo, "commit", "-m", commit_message)
         if rc != 0:
-            _undo_golden_writes(repo, before, extra_paths)
+            _undo_golden_writes(repo, before, own)
             return {"ok": False, "error": f"commit failed: {err}",
                     "changed": [], "unchanged": unchanged, "tags": []}
 
@@ -982,7 +1060,7 @@ def _write_bytes(path: str, data) -> None:
         fh.write(data)
 
 
-def _undo_golden_writes(repo: str, before: dict, extra_paths=None) -> None:
+def _undo_golden_writes(repo: str, before: dict, staged=None) -> None:
     """A save whose commit FAILED leaves nothing behind (register C104).
 
     It used to return `changed: []` with every golden it had written still on
@@ -995,7 +1073,7 @@ def _undo_golden_writes(repo: str, before: dict, extra_paths=None) -> None:
     manifest is left as it is: it is updated eagerly by design, on the refusal
     paths too, and committed with the next save.
     """
-    git(repo, "reset", "-q", "--", "golden", ".nsot", *(extra_paths or []))
+    unstage(repo, staged or [])
     for path, data in before.items():
         _write_bytes(path, data)
 
@@ -1022,8 +1100,11 @@ def _commit_paths(list_name: str, paths: list, subject: str, trailers: list,
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
     with repo_lock(repo):
         init_repo(repo)
-        for path in paths:
-            git(repo, "add", "-A", path)
+        try:
+            paths = stage_exactly(repo, paths)
+        except StagesMoreThanItWrote as exc:
+            log.error("repo: %s", exc)
+            return {"ok": False, "error": str(exc)}
 
         rc, out, _ = git(repo, "status", "--porcelain")
         if not out.strip():
@@ -1067,8 +1148,9 @@ def save_templates(list_name: str, files: list, actor: str = "user",
     names = ", ".join(files) if files else "templates"
     subject = message or f"template: update {names}"
     trailers = [f"Actor: {actor}", f"Template-Files: {','.join(files)}"]
-    return _commit_paths(list_name, paths or ["templates"], subject,
-                         trailers, "template")
+    # *files* are relative to ``templates/``; only they are staged (C175).
+    return _commit_paths(list_name, paths or [f"templates/{f}" for f in files],
+                         subject, trailers, "template")
 
 
 #: What an ``Actor:`` trailer may hold, and why the distinction is load-bearing.
@@ -1126,11 +1208,12 @@ def save_host_vars(list_name: str, devices: list, actor: str = "user",
         trailers.append(f"Tool: {tool}")
     trailers.append(f"Devices: {','.join(devices)}")
     trailers.extend(extra_trailers or [])
-    # *paths* stages exactly those files. The default stages the whole
-    # ``host_vars`` tree, so ANOTHER device's uncommitted edit rides along
-    # under this commit's subject and `Devices:` trailer (register C175);
-    # the seed passes its own files.
-    return _commit_paths(list_name, paths or ["host_vars"], subject, trailers, source)
+    # Exactly the named devices' files (C175): staging the whole tree
+    # carried ANOTHER device's uncommitted edit under this commit's subject
+    # and `Devices:` trailer, and the deploy then read it as committed intent.
+    from modules.nsot.hostvars import committed_rel
+    return _commit_paths(list_name, paths or [committed_rel(d) for d in devices],
+                         subject, trailers, source)
 
 
 def _prune_device_tags(repo: str, hostnames: list) -> None:

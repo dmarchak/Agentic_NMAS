@@ -486,6 +486,14 @@ tools refuse to act on it, and its pooled SSH session is closed.
   `tests/test_readers_use_what_is_committed.py` hand-writes an uncommitted
   change and drives each consumer; its first drift control passed because
   the test computed its expected value with the reader under test.
+  **And every WRITER stages exactly the files it wrote** (C175, A, fixed
+  2026-09-28): every writer ran `git add -A <tree>`, so another device's
+  uncommitted hand edit rode into an unrelated commit, with a real
+  `Source:`, and was then read as committed. The reader rule from the
+  other end. `repo.stage_exactly()` refuses a directory and refuses when
+  the index already holds a path outside the commit, naming it; the
+  migration is the one declared exception, and a scan finds the next
+  writer that hands over a tree.
 - **One write path.** Everything that promotes a golden config goes through
   `nsot.repo.save_golden()`. **One call is one commit**, even for a nine-device
   Save All. An unchanged device creates no commit but is still reported.
@@ -1284,6 +1292,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_store_integrity_c158_c160.py` | C158, C160: the NetBox created-object record, `rolled_back.json` and devices.csv lose nothing to two PROCESSES writing at once; an unreadable created record refuses every write and keeps the file; an unreadable rolled-back record BLOCKS every plan naming the record (it lifted every block); a devices.csv write replaces the file (a new inode), never truncates it; Reorder keeps a device the order does not name; Refresh Hostnames keeps a rotation made while it ran; `csv.DictWriter` lives in one module; two lock instances for one path nest without blocking (bounded, so a regression fails rather than hangs) |
 | `test_version_item.py` | 7.2 step 18: who you are, from the real identity diagnostic's payload (a person by email, a service by its audit name, not identified with the reason on hover). 7.2 step 17: the verdict is `scripts/nmas-deploy`'s own, and no module or route defines a second (AST); the exit codes named by the script's constants; an unknown loaded commit a failed read; `/health/version` composes the stored running-version row and verdict and CALLS NEITHER (counted); a stored verdict for another commit is "not judged yet", never this commit's; the source rows a failed verdict and never reads another commit's; the SHIPPED item draws the commit, a MIXED VERSION in red, each verdict's words and a stale verdict |
 | `test_reachability_reader.py` | C92 (7.2 step 19): one miss is a missed probe and the threshold-th is not answering, since then; an answer resets the count and keeps an unbroken state's since; the threshold comes from the one function; the claim names the probe; `STATUS` is the app's dict, updated in place, a departed device leaving; every list probed, an address once; an announce-on-change reader with no keepalive refused; it announces on a change, skips an unchanged cycle and keeps alive; the source is ONE row naming every device not answering; the session reaper never probes |
+| `test_commits_stage_what_they_wrote.py` | C175: every writer (an intent commit, a golden commit, one carrying intent by file, a template commit, a rename, a seed) driven with another device's golden and intent edited on disk commits only its own files; a hand-staged path refuses the commit and names it, left staged; `stage_exactly` refuses every tree and any directory; a scan of the program and its scripts finds no writer handing over a tree, as a literal or a built `paths`/`extra_paths` list, the migration declared, with a planted floor |
 | `test_seed_intent.py` | C148 (7.3 step 1), on r2's REAL config with onboarding's bootstrap intent: the preview draws the document against the bootstrap with every gate and writes nothing, and no secret value leaves; full intent is drawn and not selectable, and intent committed AFTER the preview is never replaced (the hash cannot see it); no golden says capture it first; the apply commits exactly `host_vars/r2.yml` as the person, `Source: seed`, `Seeded-From:` naming the golden, the committed text line for line what the preview drew, the secrets in the store, and the deploy plan's bootstrap refusal gone; a moved golden, a held device (from another thread) and no list named commit nothing; a failed commit puts the file back; an unmodelled line (planted) is named and the result partial; another device's uncommitted edit stays uncommitted, with the control that the default staging carries it (C175); the four replaced routes answer 404 |
 | `test_integration_health.py` | 7.2 step 16: each integration recorded with its state and probe time, probed in PARALLEL (five 0.4 s probes well under 2 s), a raising probe down with its reason, messages redacted, none registered a failed read; the route serves the stored value and PROBES NOTHING (counted, since the old path swallowed a raising probe: the first control passed), 503 with nothing stored; the Test button stays a live check; the source makes a danger row per configured integration down and none for unconfigured; the SHIPPED bar draws states, its age and STALE past the promise, and a failed read never as all up; every page carries it; a compact stamp adds no second age line; the Settings strip says a failed read |
 | `test_freshness_reader.py` | 7.2 step 15, reports built by the REAL `freshness.reconcile()`: every registered list compared and one that raises stored WITH its reason (never absent), no lists a failed read; the route serves the stored list with its time and promise and never asks Oxidized, 503 with nothing stored ("not the same as nothing having diverged"), 404 naming what the value holds, lines masked; the source makes UNAPPROVED and INCONCLUSIVE rows and counts the rest, a list not compared is one unknown row; the shipped panel stamps the value's age and hears the reader |
@@ -5216,6 +5225,11 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   nested acquire therefore took a second `flock` on a new descriptor, which
   blocks on the process's own lock: the first test run hung. `flock` is per
   open file description, so depth is per (thread, path) now.
+- **A COMMAND WHOSE EXIT CODE YOU RELY ON IS NEVER PIPED, AND NEVER FOLLOWS A `;`** (the operator,
+  2026-09-28, three instances): `;` ran the next step whatever the last one did (the containerlab
+  chain; `e986e66`'s gate reading a stale result), and `| tail` exits 0 whatever it reads, so
+  piping the removal checker into it (`195fdbe`'s gate) removed the gate. Chain with `&&`, and
+  filter output only from a file written first.
 - **A CHECK THAT READS A FILE SOME EARLIER RUN WROTE MUST PROVE THE FILE IS THIS RUN'S** (the
   operator's general form; `value_at`'s rule one layer down). The instance, a gate that reads a
   result file must first REMOVE it (2026-09-28, mine: `e986e66`). A

@@ -338,16 +338,14 @@ class TestOnlyTheSeededFileIsCommitted:
         assert "host_vars/s1.yml" in _git(lab["repo"], "status", "--porcelain")
 
     def test_the_fixture_can_exhibit_the_case(self, lab):
-        """The control: the DEFAULT staging carries the planted edit, so the
-        test above is not passing on a fixture that could not show it."""
-        from modules.nsot.repo import save_host_vars
-
+        """The control: staging the TREE (what every writer did before C175's
+        fix) carries the planted edit, so the tests of the fix are not passing
+        on a fixture that could not show it."""
         self._plant(lab)
         before = _git(lab["repo"], "rev-parse", "HEAD")
-        with open(os.path.join(lab["repo"], "host_vars", "r2.yml"), "a",
-                  encoding="utf-8") as fh:
-            fh.write("# edit\n")
-        assert save_host_vars(LIST, ["r2"], actor="t")["ok"]
+        _git(lab["repo"], "add", "-A", "host_vars")
+        _git(lab["repo"], "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-q",
+             "-m", "a tree-staging commit")
         assert "host_vars/s1.yml" in _git(lab["repo"], "diff", "--name-only", before,
                                          "HEAD").split()
 

@@ -364,7 +364,9 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             trailers = [f"Actor: {actor}", "Tool: nmas-retire",
                         f"Retired-Device: {hostname}", f"Reason: {reason}"]
             trailers += [f"Not-Done: {n}" for n in p["not_doing"]]
-            result = R._commit_paths(list_name, ["host_vars", "golden", ".nsot"],
+            # Exactly what retire removed and the manifest, never the trees
+            # (C175): another device's uncommitted edit must not leave with r5.
+            result = R._commit_paths(list_name, list(p["files"]) + [R.MANIFEST_REL],
                                      f"retire: {hostname} -- {reason}",
                                      trailers, "retire")
             if not result.get("ok"):

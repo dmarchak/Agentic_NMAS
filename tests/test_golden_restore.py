@@ -418,7 +418,7 @@ class TestIntentCommitsWithTheDevice:
         items = [R.GoldenItem("R1", "hostname R1\nnew line\n", "203.0.113.1",
                               netbox_id=1)]
         result = _seed("Lab", items, source="pipeline",
-                               extra_paths=["host_vars"])
+                               extra_paths=["host_vars/R1.yml"])
 
         _rc, files, _e = R.git(lab["repo"], "show", "--name-only",
                                "--format=", result["commit"])
@@ -437,7 +437,7 @@ class TestIntentCommitsWithTheDevice:
         hostvars.write_committed_text(lab["repo"], "R1", "device: R1\nx: 1\n")
         items = [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1", netbox_id=1)]
         result = _seed("Lab", items, source="pipeline",
-                               extra_paths=["host_vars"])
+                               extra_paths=["host_vars/R1.yml"])
 
         assert result["changed"] == []
         assert result["commit"], "intent moved, so there is something to record"
@@ -450,7 +450,7 @@ class TestIntentCommitsWithTheDevice:
         before = R.git(lab["repo"], "rev-parse", "HEAD")[1].strip()
         items = [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1", netbox_id=1)]
         result = _seed("Lab", items, source="pipeline",
-                               extra_paths=["host_vars"])
+                               extra_paths=["host_vars/R1.yml"])
 
         assert result["commit"] == ""
         assert R.git(lab["repo"], "rev-parse", "HEAD")[1].strip() == before

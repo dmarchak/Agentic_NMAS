@@ -62,7 +62,10 @@ def world(tmp_path, monkeypatch):
         with open(os.path.join(repo, "golden", f"{h}.cfg"), "w") as fh:
             fh.write(f"hostname {h}\nevent manager applet NMAS-HEARTBEAT\n"
                      if h == "r5" else f"hostname {h}\n")
-    R._commit_paths("Lab", ["host_vars", "golden", ".nsot"], "seed", [], "test")
+    # The fixture's own files, by name: a commit never stages a tree (C175).
+    R._commit_paths("Lab", [f"{d}/{h}.{x}" for h in ("r4", "r5")
+                            for d, x in (("host_vars", "yml"), ("golden", "cfg"))]
+                    + [R.MANIFEST_REL], "seed", [], "test")
     return {"repo": repo, "csv": csv_path, "settings": settings, "R": R}
 
 
