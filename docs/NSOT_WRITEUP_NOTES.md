@@ -10594,3 +10594,35 @@ page. Its acceptance, the loop on a throwaway, is the next real run.
 **Stage 8's agent: 27 recorded runs, zero tool calls.** The agent has a tool
 library, an authority model and a triage design, and has never called a tool.
 Stage 8 is not a review of tools that work; it is their first run.
+
+## The deploy's safety check was wrong in ten independent ways (2026-09-27 and 28)
+
+Verify is what decides whether a deploy is rolled back. Counted from the
+register, it had ten separate defects, each of which made it pass, or report a
+check it never made, where it should have failed:
+
+- **C62**: it read one routing protocol per device, the first it found;
+- **C64**: its BGP count expected eight fields where IOS prints ten, so it
+  counted nothing, and compared 0 with 0;
+- **C65**: its RIP count read the empty `"application"` table printed first;
+- **C66**: route retention read the Networks column (4 where r3 has 30);
+- **C67**: the canary passed on any "up", and Loopback0 is always up;
+- **C68**: any count above zero was "progress", so a permanent partial loss
+  read "not yet converged" and never failed;
+- **C108**: it took its protocol list from the BEFORE state, so the protocol
+  a restore existed to bring back was the one it could not check;
+- **C114**: losing a protocol's only neighbour was within tolerance;
+- **C115**: the route check was skipped on every deploy and restore, and the
+  result drew it as compared;
+- **C178**: it accepts the FIRST healthy reading, 10 s in, while IOS holds a
+  BGP session for up to 180 s, so a break that has not yet reset the session
+  passes, on r3 and r4, which run default timers.
+
+All ten were found in two days, and none by reading the code for
+correctness. Each was found by asking the same code a different question:
+running it against real captures (C62, C64 to C67), a fix's own test (C68),
+a real restore (C108), "what counts as failure" (C114, C115), and the design
+of the rollback's acceptance run (C178). The suite was green throughout, and
+the deploy receipts recorded "verified". The general form is in CLAUDE.md:
+a check that accepts the first healthy reading must wait out the subject's own
+settling time.

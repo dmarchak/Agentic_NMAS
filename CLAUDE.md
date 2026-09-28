@@ -5229,6 +5229,14 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   nested acquire therefore took a second `flock` on a new descriptor, which
   blocks on the process's own lock: the first test run hung. `flock` is per
   open file description, so depth is per (thread, path) now.
+- **A CHECK THAT ACCEPTS THE FIRST HEALTHY READING MUST WAIT OUT THE SUBJECT'S OWN SETTLING
+  TIME** (the operator, 2026-09-28, C178). The settle window's rule applied to the READING
+  rather than the protocol: `convergence.wait_for` returns at its first passing read, 10 s
+  in, while IOS holds a BGP session for up to its 180 s hold time, so a break that has not
+  yet reset the session reads healthy. A reading taken before the subject COULD have shown
+  the failure is not evidence that it did not. Verify has now been wrong in ten independent
+  ways (C62, C64 to C68, C108, C114, C115, C178), all found by asking the same code a new
+  question, none by review (docs/NSOT_WRITEUP_NOTES.md).
 - **A COMMAND WHOSE EXIT CODE YOU RELY ON IS NEVER PIPED, AND NEVER FOLLOWS A `;`** (the operator,
   2026-09-28, three instances): `;` ran the next step whatever the last one did (the containerlab
   chain; `e986e66`'s gate reading a stale result), and `| tail` exits 0 whatever it reads, so
