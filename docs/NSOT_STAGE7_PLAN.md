@@ -1040,6 +1040,13 @@ recorded the turn it is raised, after searching the register.
     window (R2a, R2b) have each been run by a person. Its one stated limit, the cascade not
     re-read after the removal, is C150. **Three real runs, three sets of findings no test could
     reach** (C70, R2a, R1): the rate has not dropped.
+  - **R1's total, the run that kept paying (the operator, 2026-09-28):** onboarding one device and
+    trying to USE it produced C147 (the golden committed by the rotation before `remove_rw`), C148
+    (no path from onboarding to deployable), C151 (heartbeat config with no alert rule), C152 (a row
+    the tool's session paths could not open, and a reload that said "sent" over nothing), C153
+    (reload's success is the session dropping) and C154 (the plan rendered a bootstrap intent, and
+    the shared handler said "check the logs"), closed C57, and PROVED THE REBOOT: probe-r1a came
+    back from a GUI reload in a minute and NMAS logged in on the credential it holds.
   - **R2b, the real removal, after R1**: Remove `probe-r1` (the list R1
     onboarded into). Every delete named, what NetBox takes with them asked,
     then confirm, read the result, re-read it on the NetBox tab's Removals
