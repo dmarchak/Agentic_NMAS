@@ -774,7 +774,9 @@ def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
     did_not = []
     if failed:
         did_not.append({"target": name, "kind": "refused",
-                        "text": "NetBox refused these deletes; they are still in NetBox:",
+                        "text": "Not deleted: NetBox refused the delete, or the object could "
+                                "not be read (each reason says which). They may still be in "
+                                "NetBox, and NMAS still records them:",
                         "lines": [f"{_line(o)}: {o.get('reason') or 'no reason'}" for o in failed]})
     if skipped:
         did_not.append({"target": name, "kind": "skipped",
@@ -896,6 +898,10 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
     not be established is its own statement, never "nothing"."""
     name = d.get("list") or "the list"
     deleted, skipped = d.get("deleted") or [], d.get("skipped") or []
+    # C130: a recorded object NetBox could not be READ is not gone. The
+    # preview names it and cannot be confirmed; one that answered 404 is gone,
+    # and only a real removal drops it from the record.
+    unreadable, gone = d.get("failed") or [], d.get("gone") or []
     cascade = d.get("cascade") or {}
     foreign, taken = cascade.get("foreign") or [], cascade.get("taken") or []
     unproven = cascade.get("unproven") or []
@@ -911,6 +917,11 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
                       "because they hang off one of these: read them below." if foreign else ""))
     else:
         summary = d.get("message") or f"Nothing NMAS created for {name} is left to delete."
+    if unreadable:
+        # The headline leads with what blocks it: "nothing left to delete"
+        # over objects that could not be read is the wrong thing looking right.
+        summary = (f"This removal cannot be confirmed: {len(unreadable)} object(s) NMAS recorded "
+                   f"for {name} could not be read from NetBox (not gone). " + summary)
     notes = []
     if foreign:
         notes.append({"title": f"ALSO DELETED BY NETBOX: {len(foreign)} object(s) NMAS did NOT "
@@ -935,6 +946,20 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
                                  "are not both, so they are treated as a person's:",
                          "lines": [f"{_nb_line('keep', o)} ({o.get('reason') or ''})"
                                    for o in skipped]})
+    if unreadable:
+        what_not.insert(0, {"target": name, "kind": "unreadable",
+                            "text": f"Could NOT be read from NetBox ({len(unreadable)}), which is "
+                                    "not the same as gone: nothing will be deleted or forgotten "
+                                    "for them, and this preview cannot be confirmed until they "
+                                    "can be read:",
+                            "lines": [f"{_nb_line('read', o)}: {o.get('reason') or ''}"
+                                      for o in unreadable]})
+    if gone:
+        what_not.append({"target": name, "kind": "gone",
+                         "text": f"Already gone from NetBox ({len(gone)}, it answered 404). A real "
+                                 "removal drops them from NMAS's record; this preview wrote "
+                                 "nothing:",
+                         "lines": [_nb_line("gone", o) for o in gone]})
     if unproven:
         what_not.append({"target": name, "kind": "unproven",
                          "text": "This preview could NOT establish what some of these deletions "
@@ -967,9 +992,12 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
                             "pass", f"asked: {len(taken)} further object(s) go with them"
                             if taken else "asked: nothing further goes with them")
     gates.insert(1, cascade_gate)
+    gates.insert(1, gate("every recorded object read from NetBox", "fail" if unreadable else "pass",
+                         f"{len(unreadable)} could not be read: not gone, and not forgotten"
+                         if unreadable else "read, or answered 404 (gone)"))
     target = {
-        "name": name, "state": "ready" if deleted else "unchanged",
-        "selectable": bool(deleted),
+        "name": name, "state": "blocked" if unreadable else "ready" if deleted else "unchanged",
+        "selectable": bool(deleted) and not unreadable,
         "program": {"lines": [_nb_line("delete", o) for o in deleted], "dangerous": [],
                     "authorised": [], "authorisation_error": "", "notes": notes,
                     "caption": "What NetBox will be told to delete",

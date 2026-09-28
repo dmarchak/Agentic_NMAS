@@ -949,35 +949,67 @@ as a wrong row in the reader, one layer from its cause. Each run's findings
 are budgeted as part of its cost (the scheduling principle), and each is
 recorded the turn it is raised, after searching the register.
 
-- **R1, onboarding, on a throwaway device** (a probe lab, never a fleet
-  device: a lost device must cost a `containerlab destroy`).
+- **R1, onboarding, on a throwaway device, into a THROWAWAY LIST** (a probe
+  lab, never a fleet device: a lost device must cost a `containerlab
+  destroy`). Its own list (say `probe-r1`), so that the NetBox objects its
+  phase 2 creates are recorded under a list whose Remove touches nothing
+  else: that is R2's real target (below).
+  0. Take the census baseline BEFORE anything writes (step 0a's rule):
+     `python3 scripts/nmas-netbox-census --out /tmp/census-before-r1.json`
+     on the host, fresh. The ZTP probe's `/tmp/census-ztp-a.json` is hours
+     old and the fleet has moved since: a compare against it would attribute
+     every change in between to this run.
   1. The review: the preview component draws the plan, the bootstrap config
      under its caption ("sent to no device"), every refusal first.
   2. Create: the result reads "Partly done" and PENDING, never onboarded.
   3. Verify BEFORE the node has booted: a real "did not answer" result, its
-     causes in order, left on screen; after a reload, the pending row's last
-     run reads it back.
-  4. Boot it, Verify again: onboarded; the row leaves the list, and
-     "Finished recently" reads the run back after a reload.
+     causes in order and the recovery line, left on screen. **After a page
+     reload, the pending row shows that failed run UNDER it** (the operator's
+     addition): the causes and recovery are the parts nobody reads when
+     things work, so this is their first real drawing.
+  4. Boot it, Verify again: onboarded. **The row leaves the pending list and
+     the device appears under "Finished recently" rather than vanishing**
+     (the operator's addition): a successful Verify takes the row away, which
+     is the whole reason the run record exists, so this transition is the
+     thing to watch.
   5. A second device created and ABANDONED without booting (it needs no
      node): the result names every step and "the name is free", and it is
      read back under "Finished recently".
   The acceptance: each of the five results drawn by the component and read
   back after a reload, and the in-flight panel naming Verify while it runs.
-- **R2, the NetBox window**, against the ztp-a list's leftovers (or, if they
-  are not NMAS's own, as a dry run only).
-  0. Take the census baseline FIRST (the step-0a rule: a baseline taken
-     after the first write measures the probe's own objects as clean).
-  1. Import preview on a real list: each object by name, each update's
-     fields, "nothing is deleted"; confirm nothing if nothing is meant to
-     change.
-  2. Remove preview on the ztp-a leftovers: every delete named, what NetBox
-     takes with them asked (not NOT asked), what is left alone and why.
-  3. Only if the preview lists nothing but the probe's own objects: confirm,
-     read the result, re-read it on the NetBox tab's Removals panel, and run
-     the census `--compare` against the step-0 baseline.
-  The acceptance: the preview's count is the executed count, the result
-  matches the census, and nothing a person curated moved.
+- **R2, the NetBox window, in two halves** (revised 2026-09-28 after reading
+  the host, read-only).
+  **There are no ztp-a leftovers**: no `ztp-a` list, no `ztp-a` entry in the
+  created-object record, no NetBox device matching "ztp", and the only
+  objects tagged `nmas-managed` are r6 and its eight. The P.6 teardown removed
+  its own. And the host's record holds a `lab` slug that is the suite's
+  fixture, with ids pointing at REAL fleet objects (C131).
+  - **R2a, now, previews only, after the C130 fix is deployed** (a preview
+    used to forget the record of any object it could not read).
+    1. Import preview on `Default`: each object by name, each update's
+       fields, "nothing is deleted". Confirm nothing.
+    2. Remove preview on `Default`, **read and NOT confirmed**: confirming it
+       would delete r6, a managed device, from NetBox. What it should show,
+       from the host's record and NetBox read 2026-09-28:
+       - 9 deletes: `ipam/ip-addresses` 85 (10.255.0.32/24) and 87
+         (10.255.1.16/32); `ipam/prefixes` 55 and 56 (both 10.255.1.16/32,
+         in two VRFs, C133) and 57 (10.255.0.0/16); `dcim/interfaces` 62
+         (Gi1), 63 (Gi2) and 66 (Loopback0); `dcim/devices` 11 (r6);
+       - left alone: none, gone: none, could not be read: none;
+       - the gate "every recorded object read from NetBox" PASS, and the
+         cascade gate "asked";
+       - "ALSO DELETED BY NETBOX" only if NetBox holds another object on
+         r6's three interfaces: that would be a real finding, named, not a
+         defect of the preview.
+       A defect is anything else: a delete not in that list, a "Could NOT be
+       read" line, or a gone line.
+  - **R2b, the real removal, after R1**: Remove `probe-r1` (the list R1
+    onboarded into). Every delete named, what NetBox takes with them asked,
+    then confirm, read the result, re-read it on the NetBox tab's Removals
+    panel, and `nmas-netbox-census --compare /tmp/census-before-r1.json`.
+    The acceptance: the preview's count is the executed count, the compare
+    PASSes (its modifications status read, not assumed), and nothing a
+    person curated moved.
 
 ### The forecast, corrected (2026-09-28)
 

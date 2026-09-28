@@ -71,7 +71,9 @@ class TestThePreviewSimulatesNMASNotTheDatabase:
         from modules import netbox_client as nc
 
         src = inspect.getsource(nc.remove_list_from_netbox)
-        assert "_nb_get_by_id" in src, "the scan is not reading the function"
+        # C130: the removal reads through `_nb_read_by_id`, which keeps a
+        # 404 apart from a failed read.
+        assert "_nb_read_by_id" in src, "the scan is not reading the function"
         # It fetches each object it plans to delete, and nothing else.
         assert "_nb_get(" not in src, (
             "something now queries NetBox during removal — if it is a "

@@ -191,7 +191,9 @@ class TestAFailedDeleteIsNotASkip:
         src = inspect.getsource(nc)
         assert '"reason": "delete failed"' not in src, \
             "a failed delete must not share the skip bucket"
-        assert src.count('failed.append({"endpoint": endpoint, "id": obj_id,') == 2
+        # 3 since C130: the removal loop's third is an object that could not
+        # be READ, which is neither gone nor deleted.
+        assert src.count('failed.append({"endpoint": endpoint, "id": obj_id,') == 3
         assert src.count('"failed": failed,') >= 2
 
 

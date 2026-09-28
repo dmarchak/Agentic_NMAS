@@ -1147,6 +1147,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_run_results.py` | 7.1: Verify and Abandon recorded in `onboarding_runs.jsonl` (0600, masked on the way in, absent vs unreadable), each result drawn FROM the recorded row as the verified person; a record that could not be written is part of the result (planted as a directory: `open_secure` creates missing parents, so a missing one would be written); a dry-run abandon records nothing; the pending banner reads back each row's last run and, for a run that took its device off the list, "finished recently"; an unreadable record is drawn as that |
 | `test_suite_bound.py` | the suite's bound (NMAS_TEST_TIMEOUT, 300 s, from the measured serial time) through the REAL runner over a test that hangs: rc 124, the hanging test and its line named, a finished test not named; a run that finishes is never reported as a timeout |
 | `test_no_duplicate_definitions.py` | C90's sibling: no module or class body defines a name twice (a second `def` silently replaces the first; in a test class it drops a test), across the program, scripts and tests (floor 300 files); a property's setter is the one exemption, anchored on the real one |
+| `test_removal_reads_before_it_forgets.py` | C130: a NetBox removal forgets a record entry only for an object NetBox answered 404 for, and a preview forgets nothing; an object that could not be read (a 500) is `failed`, neither deleted nor forgotten, and the preview names it first, fails its read gate and cannot be confirmed; a clean preview stays confirmable (the floor) |
 | `test_results_are_drawn.py` | C121: EVERY green toast in the shipped pages declared in `GREEN_TOASTS` with why green is earned, by a parsing scan, exact both ways (a planted multi-line call found). 7.1 step 1: every action gated confirm, approve or publish_remote (41, the gate table) shows its result where it can be read again, or is placed: drawn by the component with a reader (deploy, restore; evidence from source), pending (31, measured, only shrinks) or no GUI (tied to the reachability list); a toast is never enough for this population, and the bar is shown refusing; colour is part of the result (`FALSE_GREEN`: Save All, the NetBox sync card, onboarding Create) and the first XSS-shaped finding is pinned (`UNESCAPED`) |
 | `test_preview_confirm.py` | 7.1 (and C73: residue drawn under its section, a nested case from r3's real config, from a real residue plan): the builder refuses each silent part (the six are a floor); the SHIPPED renderer draws them in order, draws a none sentence rather than omitting a part, names every gate state in words (`at_apply` and `not_reached` are never "pass"), refuses a preview whose parts differ from its own; the real `/deploy/plan` drawn; confirm names the person or states the refusal, on the button too; no retrofitted screen draws a preview part itself, and the pending retrofits only shrink |
 | `test_concepts_are_taught.py` | 7.0 (4): the nine concepts, read from the plan's own table and matched both ways; 4 live screens executed in duktape against real payloads (marked, non-empty, visible, and saying the concept's words); 5 pending, each naming its step, no ghosts |
@@ -3794,6 +3795,15 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   they began making **real DNS calls** and passing or failing on name
   resolution, in a suite whose rule is that no test touches a live network.
   One `_patch_settings()` helper and one seam (`_oxidized_get`) now.
+- **"The harness imports the program first" must include what the program
+  imports LAZILY** (C132, 2026-09-28, the laptop's first 24-worker run).
+  `app` loads `modules.agent_timers` only inside the functions using it, so
+  a fixture that patched `config.DATA_DIR` and then named the module in a
+  dotted `monkeypatch.setattr` string was its first importer, binding its
+  data path for the rest of the worker. conftest now imports every module
+  under `modules/` and `routes/` (117, no thread started). A dotted setattr
+  string IMPORTS its module: patch the path's owner after the import, never
+  before it.
 - **A control that passes is either a missing test or a broken control** —
   and this time it was broken. Replacing the client's cached session to drop
   the auth changed nothing, because `OxidizedIntegration.session()` re-applies

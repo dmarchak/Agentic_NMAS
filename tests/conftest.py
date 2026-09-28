@@ -212,8 +212,29 @@ def _import_the_application_first(_the_store_is_the_test_store):
     `nmas-netbox-modified` counts recorder failures from (C5), so a test run
     would read as failures of the running app.
     """
+    import importlib
     import logging
+    import pkgutil
+
     import app  # noqa: F401
+    import modules
+    import routes
+
+    # **"The program imports everything at start-up" is false for LAZY
+    # imports** (2026-09-28, the laptop's first 24-worker run). `app` loads
+    # `modules.agent_timers` only inside the functions that use it, so the
+    # first importer on an xdist worker could be a fixture that had just
+    # patched `config.DATA_DIR` (`test_drift_routes`'s client: DATA_DIR, then
+    # `monkeypatch.setattr("modules.agent_timers.save", ...)`, which imports
+    # the module to patch it). The module then bound `_TIMERS_FILE` inside
+    # that test's tmp_path for the rest of the worker, and
+    # `test_derived_paths_follow_it` failed on whichever worker drew both.
+    # Serial runs and 4 workers had always imported it earlier by chance.
+    # So every module and route is imported here, before any test: 117,
+    # measured to start no thread.
+    for pkg in (modules, routes):
+        for info in pkgutil.walk_packages(pkg.__path__, pkg.__name__ + "."):
+            importlib.import_module(info.name)
 
     # **And it initialises the store, as the first page load does** (C43,
     # C45). The first read of the device-list config creates the default

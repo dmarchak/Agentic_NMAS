@@ -3087,19 +3087,39 @@ def _nb_delete(session, base: str, path: str, obj_id: int) -> bool:
         return False
 
 
-def _nb_get_by_id(session, base: str, endpoint: str, obj_id: int) -> Optional[dict]:
-    """Fetch one object by id. Returns None if it is gone or unreadable."""
+def _nb_read_by_id(session, base: str, endpoint: str, obj_id: int) -> tuple:
+    """Fetch one object by id: ``("ok", obj)``, ``("gone", None)`` for a 404
+    and nothing else, or ``("unreadable", reason)``.
+
+    GONE AND UNREADABLE ARE DIFFERENT FACTS (register C130). The removal loop
+    read this function's old single ``None`` as "already gone" and FORGOT the
+    record entry, in the dry run too: a 500, a 403 or a timeout during a
+    preview dropped provenance for an object that still existed, leaving it
+    tagged and unrecorded, which Remove can never act on, logged at DEBUG.
+    """
     try:
         r = session.get(f"{base}/api/{endpoint.strip('/')}/{obj_id}/", timeout=15)
-        if r.status_code == 404:
-            return None
-        if not r.ok:
-            log.debug("netbox: GET %s/%s returned %s", endpoint, obj_id, r.status_code)
-            return None
-        return r.json()
-    except Exception as exc:
-        log.debug("netbox: GET %s/%s failed: %s", endpoint, obj_id, exc)
-        return None
+    except Exception as exc:                  # noqa: BLE001
+        log.warning("netbox: GET %s/%s failed: %s", endpoint, obj_id, exc)
+        return "unreadable", f"the read failed: {exc}"
+    if r.status_code == 404:
+        return "gone", None
+    if not r.ok:
+        log.warning("netbox: GET %s/%s returned %s", endpoint, obj_id, r.status_code)
+        return "unreadable", f"NetBox answered HTTP {r.status_code}"
+    try:
+        return "ok", r.json()
+    except ValueError as exc:
+        return "unreadable", f"NetBox's answer was not JSON: {exc}"
+
+
+def _nb_get_by_id(session, base: str, endpoint: str, obj_id: int) -> Optional[dict]:
+    """Fetch one object by id, or None if it is gone OR unreadable. Only for
+    a caller whose None means "unknown" either way (the modification record's
+    before-read, which records `before_unknown`). A caller that ACTS on
+    absence uses `_nb_read_by_id`, which keeps the two apart."""
+    state, obj = _nb_read_by_id(session, base, endpoint, obj_id)
+    return obj if state == "ok" else None
 
 
 #: Removal order, chosen so referential integrity holds: terminations before
@@ -3343,6 +3363,7 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
     deleted: list = []
     skipped: list = []
     failed:  list = []
+    gone:    list = []
     counts:  dict = {}
 
     def _run() -> None:
@@ -3350,11 +3371,23 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
             for entry in list(created.get(endpoint, [])):
                 obj_id = entry.get("id")
                 name   = entry.get("name", "")
-                obj    = _nb_get_by_id(session, base, endpoint, obj_id)
+                state, obj = _nb_read_by_id(session, base, endpoint, obj_id)
 
-                if obj is None:
-                    # Already gone, or cascaded by an earlier device delete.
-                    _guard.forget_created(list_name, endpoint, obj_id)
+                if state == "unreadable":
+                    # NOT gone (C130): it may still exist. Nothing is deleted
+                    # and nothing is forgotten; the removal is incomplete, and
+                    # a preview carrying this cannot be confirmed.
+                    failed.append({"endpoint": endpoint, "id": obj_id, "name": name,
+                                   "reason": f"could not be read, so neither deleted "
+                                             f"nor forgotten: {obj}"})
+                    continue
+                if state == "gone":
+                    # NetBox answered 404: already gone, or cascaded by an
+                    # earlier device delete. The record entry is dropped only
+                    # by a REAL removal: a preview writes nothing (C130).
+                    gone.append({"endpoint": endpoint, "id": obj_id, "name": name})
+                    if not dry_run:
+                        _guard.forget_created(list_name, endpoint, obj_id)
                     continue
 
                 if not _guard.has_managed_tag(obj):
@@ -3403,6 +3436,9 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
         # (register C8). `complete` is the claim that everything landed.
         "failed": failed,
         "complete": not failed,
+        # Recorded, and NetBox answered 404 (C130): named, not silent. A real
+        # removal drops them from the record; a preview only says it would.
+        "gone": gone,
         "counts": counts,
         "cascade": cascade,
         # Kept for the existing NetBox tab, which reads both of these.
