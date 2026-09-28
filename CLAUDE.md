@@ -5702,7 +5702,7 @@ explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
 present when each was recorded. **55 open at 2026-09-28, re-sorted: A 3 (all
 deferred for the lab), B 8 (3 on the critical path: C148, C54, C50),
-UNKNOWN 3, C 41.** Every live row opens its status with its bucket, and
+UNKNOWN 2, C 42 at the re-sort (C106 corrected from UNKNOWN the same night: sorted from a read that cut every cell at 420 characters, and its answers sat past the cut).** Every live row opens its status with its bucket, and
 `test_register_hygiene.py` refuses one without it: **a new finding gets its
 bucket the turn it is recorded, with the criterion applied.** The first
 triage was a one-time sort, and the functional/lab/minor split replaced the

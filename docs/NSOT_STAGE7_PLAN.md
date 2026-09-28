@@ -1019,6 +1019,16 @@ recorded the turn it is raised, after searching the register.
     `local_context_data` changes are C95's field: the import's whole remaining
     device-level work was writing unmasked credentials, so no import is
     confirmed until C95 (a) is deployed.
+  - **WHERE IT STOPPED, 2026-09-28 night (the operator), nothing half-applied.** On the host:
+    probe-r1a is up and onboarded in the `probe-r1` list, its credential override (`10.255.0.33`)
+    is still held, the throwaway lab (`~/labs/r1-probe` on the clab host) is up, and
+    `rotation:probe-r1a` is LEFT in job health deliberately, as C54's real instance.
+    **First, before any teardown step: reboot probe-r1a** (the product's persist step has never
+    had its reboot run): reload it from the GUI, wait for `Startup complete`, then
+    `show version | include uptime` through the command box. Pass: a short uptime, NMAS in on
+    the credential it holds. Fail is A, and the teardown stops. **Then the teardown**: the
+    evidence tarball (C147's `105905a`), delete the list, clear the override (read before and
+    after), destroy the node without `--cleanup`, re-run the heartbeat check. **Then 7.2, from C54.**
   - **R1 and R2b DONE 2026-09-28 (the operator): 7.1's stated limit is CLOSED.** R1 ran all seven steps
     (onboarding's review, Create, Verify before and after the boot, and Abandon, each drawn by the
     component and read back) and found C147 and C148 and closed C57. R2b: the Remove preview for
