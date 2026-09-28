@@ -1449,6 +1449,34 @@ The identity diagnostic stays reachable directly as well; a page now draws it.
 The bar is complete: integration health, the deployed version and its CI
 verdict, and who you are. C92's reader is 7.2's last step.
 
+**7.2 step 19 BUILT (2026-09-28): C92's reachability reader, 7.2's last step.**
+The online dot was one probe, and one miss drew "offline": 93% of 2,946
+offline runs on the host ended at the next probe. `readers/reachability.py`
+probes EVERY list's devices every 5 s and keeps, per device, the last result,
+which probe answered (on the host ICMP is not permitted for the service user,
+so the honest claim there is TCP 22), the consecutive-miss count, since when
+the state has held, and the threshold it was judged against. "Answering" is
+fewer misses than the threshold; one miss is "missed a probe".
+- **One threshold function** (`miss_threshold()`, 3, from C92's measurement:
+  195 runs at two misses, 99 at three), so P.8 makes it per network in one
+  place.
+- **It owns the answer every consumer already read**: `device_status_cache`
+  IS its `STATUS`, updated key by key, so the dot, Refresh Hostnames,
+  Auto-Create, the topology reads, the agent's context and the NetBox sync
+  act on the thresholded answer with no edit. `ping_worker` is gone;
+  `session_reaper` keeps the idle-session reaping it also did (C97).
+- **Announcing on change needs a keepalive**, now part of rule 9: the value
+  moves every cycle, so the reader announces when who answers CHANGES, and
+  at least once a minute regardless. `register()` refuses an announce-on-
+  change reader without one, because its silence would read as nothing
+  having changed; the page's promise for such a reader is 2.5 keepalives.
+- **Needs attention draws ONE row** naming every device not answering, each
+  with its misses and since when: genuine outages came six to eight devices
+  at once (the path from the NMAS), and nine rows would bury that.
+- **Not built here:** the dot's own drawing of the claim and its age
+  ("answering, checked 40 s ago"; "not answering for 3 probes, since
+  18:04"; "not checked") is 7.3's, with the Device page. **7.2 is built.**
+
 **THE PRESENTATION RULE FOR STAGE 7, decided 2026-09-28 (the operator): THE
 SCREEN ANSWERS THE QUESTION THE PERSON CAME WITH, AND THE EVIDENCE FOR THE
 ANSWER IS ONE LEVEL DOWN.** People want to know what needs their attention.

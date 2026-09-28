@@ -68,7 +68,7 @@ from modules.config import (
     load_user_settings,
     save_user_settings,
 )
-from modules.connection import ping_worker, get_persistent_connection, close_persistent_connection, with_temp_connection, get_device_send_lock
+from modules.connection import session_reaper, get_persistent_connection, close_persistent_connection, with_temp_connection, get_device_send_lock
 from modules.terminal import ensure_terminal_session, start_terminal_reader
 from modules import route_gates
 from modules.identity import request_actor
@@ -91,15 +91,14 @@ from modules.topology import discover_topology, shorten_interface
 
 # Device status cache and ping worker setup
 #
-# `device_status_cache` is a lightweight in-memory mapping kept up to
-# date by the background `ping_worker` thread. The web handlers read
-# this cache to show online/offline state without performing blocking
-# network I/O on each web request. `ping_worker` monitors the current
-# device list file and re-reads the inventory when it changes.
-device_status_cache = {}
+# `device_status_cache` is the reachability reader's `STATUS` (C92): address
+# -> answering, judged over consecutive probes of every list's devices, never
+# one probe. The web handlers and every action that asks "is it online" read
+# it without network I/O; the reader keeps it current.
+from modules.readers.reachability import STATUS as device_status_cache  # noqa: E402
 
 def _get_current_devices_file():
-    """Helper for ping_worker to get the current device list file."""
+    """The current device list's file (the reader probes every list)."""
     _, filepath = get_current_device_list()
     return filepath
 
@@ -4241,8 +4240,7 @@ def _start_background_daemons():
     and a script run on the host would contend for the service's ports. A
     service starts because a program runs, not because a module is imported.
     """
-    ping_worker(device_status_cache, filename=_get_current_devices_file,
-                interval=PING_INTERVAL)
+    session_reaper(interval=PING_INTERVAL)
 
     # Repair any corrupted chat histories on startup (orphaned tool_use blocks
     # left by interrupted or max_tokens-truncated sessions cause 400 errors).

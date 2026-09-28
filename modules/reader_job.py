@@ -59,6 +59,14 @@ produced it.
    a failed read too, because the failure changes what the page must say.
    An announcement that could not be sent is counted (`announce_health()`),
    never raised into the read.
+   **A reader whose value moves every cycle** (a probe time) may announce only
+   when something a page draws CHANGES (`announce_if`), and then MUST announce
+   at least every `announce_at_least_every` seconds regardless: without the
+   keepalive, a reader that stopped and a reader with nothing new are the same
+   silence (the operator's point about the live-data contract). Registration
+   refuses the first without the second. The page's promise for such a value is
+   2.5 keepalives, because the page's copy is legitimately that old; the
+   reader's own liveness row still judges the read cycle (C92's reader).
 
 10. **A cache is re-derivable, so an UNREADABLE one is replaced, never
     refused.** The opposite of a record (`filestore.read_json_for_write`
@@ -133,6 +141,8 @@ class Reader:
     remedy: str = ""          # what a person does when it fails, if anything is known
     stale_after_intervals: int = STALE_AFTER_INTERVALS
     window: str = field(default="")   # what time range the value covers (rule 6)
+    announce_if: Callable = None      # (previous value, value) -> announce? (rule 9)
+    announce_at_least_every: int = 0  # the keepalive that makes announce_if safe
 
 
 _REGISTRY: dict = {}
@@ -161,6 +171,9 @@ def register(reader: Reader) -> Reader:
     unknown = [k for k in reader.invalidates if k not in VOCABULARY]
     if unknown:
         problems.append(f"it announces keys the vocabulary does not hold: {', '.join(unknown)}")
+    if reader.announce_if is not None and not reader.announce_at_least_every:
+        problems.append("it announces only on change with no keepalive, so its silence cannot "
+                        "be told from its stopping (rule 9)")
     if reader.stale_after_intervals < 2:
         problems.append("stale after fewer than two intervals would call one slow read a stop")
     with _REGISTRY_MU:
@@ -189,7 +202,8 @@ def readers() -> list:
 
 #: The modules that register a reader when imported. A reader module is
 #: listed here, or it is not in the population job health watches.
-DECLARED_MODULES: tuple = ("modules.readers.job_health_reader",
+DECLARED_MODULES: tuple = ("modules.readers.reachability",
+                           "modules.readers.job_health_reader",
                            "modules.readers.grafana_alerts",
                            "modules.readers.freshness_reader",
                            "modules.readers.integration_health",
@@ -253,7 +267,17 @@ def _redacted(text: str) -> str:
         return "(the error text could not be redacted, so it is withheld)"
 
 
-_ANNOUNCE = {"sent": 0, "failed": 0, "last_error": ""}
+_ANNOUNCE = {"sent": 0, "failed": 0, "last_error": "", "skipped_unchanged": 0}
+_LAST_ANNOUNCED: dict = {}
+
+
+def page_promise(reader: Reader) -> int:
+    """How long a PAGE's copy of this reader's value stays current: 2.5
+    keepalives for a reader that announces only on change, else the read
+    cycle's own staleness."""
+    if reader.announce_at_least_every:
+        return int(reader.announce_at_least_every * 2.5)
+    return reader.interval_seconds * reader.stale_after_intervals
 
 
 def announce_health() -> dict:
@@ -294,6 +318,7 @@ def run_once(reader: Reader, announce=None, clock=time.time) -> dict:
             _filestore.preserve_corrupt(path, prior["why"])
             replaced = prior["why"]
         before = prior["doc"] or {}
+        previous_value = (before.get("last_good") or {}).get("value")
         doc = {
             "reader": reader.name,
             "what": reader.what,
@@ -301,7 +326,7 @@ def run_once(reader: Reader, announce=None, clock=time.time) -> dict:
             "window": reader.window,
             "interval_seconds": reader.interval_seconds,
             "interval_basis": reader.interval_basis,
-            "stale_after_seconds": reader.interval_seconds * reader.stale_after_intervals,
+            "stale_after_seconds": page_promise(reader),
             "last_attempt": {"at": _iso(started), "ok": not error, "took_ms": took,
                              **({"error": _redacted(error)} if error else {})},
             "last_good": before.get("last_good"),
@@ -321,7 +346,18 @@ def run_once(reader: Reader, announce=None, clock=time.time) -> dict:
             doc["last_good"] = {"value": value, "value_at": _iso(started), "took_ms": took}
         _filestore.write_atomic(path, json.dumps(doc, indent=1, sort_keys=True))
 
-    if announce is not None:
+    should = True
+    if announce is not None and not error and reader.announce_if is not None:
+        try:
+            moved = bool(reader.announce_if(previous_value, value))
+        except Exception:                               # noqa: BLE001
+            moved = True                                # when unsure, announce
+        due = started - _LAST_ANNOUNCED.get(reader.name, 0) >= reader.announce_at_least_every
+        should = moved or due
+        if not should:
+            _ANNOUNCE["skipped_unchanged"] += 1
+    if announce is not None and should:
+        _LAST_ANNOUNCED[reader.name] = started
         try:
             announce(list(reader.invalidates), reader.name, doc["last_attempt"]["ok"])
             _ANNOUNCE["sent"] += 1

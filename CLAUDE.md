@@ -169,7 +169,7 @@ tracked in git.
   time of its value, a failed read keeping the last good value, its
   liveness a job-health row, and an announcement when it finishes (C58).
   Job health is the first reader (it was 9.8 s of a 10 s landing page,
-  measured); Grafana is the second; the rest reuse it, so its ten rules
+  measured); Grafana is the second; the rest reuse it, so its twelve rules
   are written in its docstring, each naming its finding. Readers live in
   **[modules/readers/](modules/readers/)**, listed in
   `reader_job.DECLARED_MODULES`. `readers/grafana_alerts.py` reads the
@@ -186,7 +186,12 @@ tracked in git.
   `readers/ci_verdict.py` stores the running commit's CI verdict by LOADING
   `scripts/nmas-deploy` and calling its own `ci_verdict()` (one
   implementation); `GET /health/version` composes it with `_COMMIT` and
-  job health's running-version row and computes none of them
+  job health's running-version row and computes none of them.
+  `readers/reachability.py` (C92) probes every list's devices every 5 s and
+  judges "answering" over consecutive misses against ONE
+  `miss_threshold()` (3, measured); it OWNS `STATUS`, which the app hands
+  every consumer as `device_status_cache`, and announces on a change with a
+  60 s keepalive
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
@@ -330,7 +335,8 @@ dashboard), `device.html` (1,239 — per-device page), and
   Without it, items linger and the operator learns to clear the queue by
   rejecting things, which is the habit that makes an approval queue worthless.
 - **Connection pool:** Netmiko SSH connections reused via `modules/connection.py`;
-  background ping worker tracks online/offline
+  the reachability reader (C92) tracks answering / not answering over
+  consecutive probes; `session_reaper` closes idle pooled sessions
 - **No auto-continue** (P.3 step 8): the agent loops tool calls until the task completes, and a
   question it asks is for a person. It used to answer its own confirmation questions with a canned
   "yes, continue"; only the continuation of a reply the token limit cut off remains
@@ -1267,6 +1273,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_credential_store_integrity.py` | C157: the credential store gets the settings file's C20 fixes: two PROCESSES writing at once lose nothing (without the flock, 37-47% of writes were lost, measured), an unreadable store refuses every write and keeps the file byte-identical with a `0600` `.corrupt-` copy while a read survives on empty, every write is logged with its process and the key names it changes (never a value), and a save outside the lock is refused |
 | `test_store_integrity_c158_c160.py` | C158, C160: the NetBox created-object record, `rolled_back.json` and devices.csv lose nothing to two PROCESSES writing at once; an unreadable created record refuses every write and keeps the file; an unreadable rolled-back record BLOCKS every plan naming the record (it lifted every block); a devices.csv write replaces the file (a new inode), never truncates it; Reorder keeps a device the order does not name; Refresh Hostnames keeps a rotation made while it ran; `csv.DictWriter` lives in one module; two lock instances for one path nest without blocking (bounded, so a regression fails rather than hangs) |
 | `test_version_item.py` | 7.2 step 18: who you are, from the real identity diagnostic's payload (a person by email, a service by its audit name, not identified with the reason on hover). 7.2 step 17: the verdict is `scripts/nmas-deploy`'s own, and no module or route defines a second (AST); the exit codes named by the script's constants; an unknown loaded commit a failed read; `/health/version` composes the stored running-version row and verdict and CALLS NEITHER (counted); a stored verdict for another commit is "not judged yet", never this commit's; the source rows a failed verdict and never reads another commit's; the SHIPPED item draws the commit, a MIXED VERSION in red, each verdict's words and a stale verdict |
+| `test_reachability_reader.py` | C92 (7.2 step 19): one miss is a missed probe and the threshold-th is not answering, since then; an answer resets the count and keeps an unbroken state's since; the threshold comes from the one function; the claim names the probe; `STATUS` is the app's dict, updated in place, a departed device leaving; every list probed, an address once; an announce-on-change reader with no keepalive refused; it announces on a change, skips an unchanged cycle and keeps alive; the source is ONE row naming every device not answering; the session reaper never probes |
 | `test_integration_health.py` | 7.2 step 16: each integration recorded with its state and probe time, probed in PARALLEL (five 0.4 s probes well under 2 s), a raising probe down with its reason, messages redacted, none registered a failed read; the route serves the stored value and PROBES NOTHING (counted, since the old path swallowed a raising probe: the first control passed), 503 with nothing stored; the Test button stays a live check; the source makes a danger row per configured integration down and none for unconfigured; the SHIPPED bar draws states, its age and STALE past the promise, and a failed read never as all up; every page carries it; a compact stamp adds no second age line; the Settings strip says a failed read |
 | `test_freshness_reader.py` | 7.2 step 15, reports built by the REAL `freshness.reconcile()`: every registered list compared and one that raises stored WITH its reason (never absent), no lists a failed read; the route serves the stored list with its time and promise and never asks Oxidized, 503 with nothing stored ("not the same as nothing having diverged"), 404 naming what the value holds, lines masked; the source makes UNAPPROVED and INCONCLUSIVE rows and counts the rest, a list not compared is one unknown row; the shipped panel stamps the value's age and hears the reader |
 | `test_grafana_reader.py` | 7.2 step 14, against a REAL read-only capture (`tests/fixtures/grafana/`, every firing case a minimal edit of a real instance): sixteen rules read, the quiet fleet no row; which device from where per rule, and a line rule with another pattern named as not the definition; a rule counting more instances than it lists, and a next-page token, refused; the same capture read four minutes later is a stalled evaluator; an alerting address instance joined to its Alertmanager fingerprint and stored as an address; Grafana's own DatasourceNoData is no data, never a condition; the three endpoints named and a refusal naming its endpoint; the source: nothing stored is unknown, an address resolved or said to match nothing, one silence across the fleet ONE incident whose subject is the pipeline, two silences 420 s apart two, a no-data rule a row, the floor naming a device with no rule the reader sees, a device that left named; members drawn with their device's origin and onset basis |

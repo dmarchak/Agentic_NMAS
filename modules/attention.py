@@ -1093,9 +1093,63 @@ def ci_source(cached=None) -> dict:
                          checked=f"{commit[:10]}: {v.get('state')}")
 
 
+# ---------------------------------------------------------------------------
+# Source: reachability, from the reachability READER (C92, 7.2): a device not
+# answering over consecutive probes, never one miss.
+# ---------------------------------------------------------------------------
+
+def reachability_source(cached=None) -> dict:
+    """ONE row listing every device not answering, each with its misses and
+    since when: C92 measured genuine outages six to eight devices at once (the
+    path from the NMAS, not each device), and nine rows would bury that. The
+    claim names the probe (on the host, a TCP connection to port 22)."""
+    from modules import reader_job
+
+    started = time.time()
+    got = reader_job.read_cached("reachability") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("reachability", "Reachability", read_at=started, took_ms=took,
+                             error=f"not probed yet: {why}")
+    v = good.get("value") or {}
+    down = sorted((d for d in (v.get("devices") or {}).values() if not d.get("answering")),
+                  key=lambda d: d.get("since") or "")
+    rows = []
+    if down:
+        names = [d.get("hostname") or d.get("address") for d in down]
+        rows.append(row(
+            source="reachability", key="not-answering", level="danger",
+            what=(f"{names[0]} is not answering" if len(down) == 1
+                  else f"{len(down)} devices are not answering"),
+            devices=names, since=_ts(down[0].get("since")),
+            cause="; ".join(f"{d.get('hostname') or d.get('address')} ({d.get('address')}): "
+                            f"{d.get('consecutive_misses')} consecutive misses, the threshold is "
+                            f"{d.get('threshold')}; {d.get('claim')}" for d in down)
+                  + (". Several at once is more often the path from the NMAS than each device"
+                     if len(down) > 1 else ""),
+            operands={"probe": "ICMP, then TCP 22"},
+            action={"label": "Check the path from the NMAS first when several stop together; "
+                             "one alone, its own management interface",
+                    "known": False}))
+    c = v.get("counts") or {}
+    return source_result(
+        "reachability", "Reachability", read_at=started, took_ms=took, rows=rows,
+        value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
+        reader="reachability",
+        checked=(f"{c.get('answering', 0)} answering, {c.get('not_answering', 0)} not answering"
+                 + (f", {c.get('missed_last_probe', 0)} missed only the last probe"
+                    if c.get("missed_last_probe") else "")))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
-           grafana_source, freshness_source, integrations_source, ci_source)
+           grafana_source, freshness_source, integrations_source, ci_source,
+           reachability_source)
 
 
 def _attach(rows: list) -> list:

@@ -10578,3 +10578,17 @@ real operation on the real system and reading what it did, the same method
 as C70's restore. The last one was found by the checker built for C95 on
 its first real use: it read what NetBox STORES rather than what the import
 sends, and so it reached the one device no import reaches.
+
+## Two capabilities that exist only in the past (2026-09-28)
+
+Listing what does not exist yet, at the end of 7.2, found two things worth a
+sentence each.
+
+**Seed intent has no path at all, not even a host command.** Nine devices are
+deployable because their intent was extracted on 09-20 and 09-21 through a
+route P.3 correctly closed, and nothing replaced it. So the one step that makes
+a device deployable is a step the tool can no longer take (C148).
+
+**Stage 8's agent: 27 recorded runs, zero tool calls.** The agent has a tool
+library, an authority model and a triage design, and has never called a tool.
+Stage 8 is not a review of tools that work; it is their first run.

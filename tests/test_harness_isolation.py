@@ -157,7 +157,7 @@ class TestImportingStartsNothing:
         module_calls = [n for n in tree.body if isinstance(n, ast.Expr)
                         and isinstance(n.value, ast.Call)
                         and getattr(n.value.func, "id", "") in
-                        ("_start_background_daemons", "ping_worker")]
+                        ("_start_background_daemons", "session_reaper")]
         assert module_calls == []
         main = next(n for n in tree.body if isinstance(n, ast.If)
                     and "__main__" in ast.unparse(n.test))
