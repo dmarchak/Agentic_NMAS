@@ -341,6 +341,18 @@ def netbox_remove_preview(mp, tmp):
         netbox_guard.forget_created("Default")
 
 
+def integration_status(mp, tmp):
+    """7.2: the integration-health reader stores a value (the real reader,
+    the real registry, nothing configured in the test store), then the REAL
+    route serves it."""
+    from modules import config, reader_job
+    from modules.readers import integration_health
+
+    mp.setattr(config, "DATA_DIR", str(tmp))
+    reader_job.run_once(integration_health.READER)
+    return _client().get("/settings/integrations/status")
+
+
 def needs_attention(mp, tmp):
     """7.2: the landing list through the REAL route, from job health over
     the systemd and journal shapes measured on the host: a failing job, a

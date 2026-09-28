@@ -988,9 +988,49 @@ def freshness_source(cached=None) -> dict:
                  f"{c.get('authorised', 0)} authorised"))
 
 
+# ---------------------------------------------------------------------------
+# Source: integration health, from the integration-health READER (7.2): the
+# same stored value the status bar draws, so the two cannot disagree.
+# ---------------------------------------------------------------------------
+
+def integrations_source(cached=None) -> dict:
+    """A configured integration that does not answer is a row; one left
+    unconfigured is a state, counted (job health names the guard it gates)."""
+    from modules import reader_job
+
+    started = time.time()
+    got = reader_job.read_cached("integrations") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("integrations", "Integrations", read_at=started, took_ms=took,
+                             error=f"not probed yet: {why}")
+    v = good.get("value") or {}
+    rows = []
+    for i in v.get("integrations") or []:
+        if i.get("state") != "down":
+            continue
+        rows.append(row(source="integrations", key=i.get("name", "?"), level="danger",
+                        what=f"{i.get('label')} is not answering",
+                        cause=f"its health probe failed: {i.get('message') or 'no reason recorded'}",
+                        operands={"probe_ms": i.get("took_ms")},
+                        action={"label": f"Check {i.get('label')} at the URL set in Settings > "
+                                         "Integrations; its Test button probes it now"}))
+    c = v.get("counts") or {}
+    return source_result(
+        "integrations", "Integrations", read_at=started, took_ms=took, rows=rows,
+        value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
+        checked=(f"{len(v.get('integrations') or [])} integration(s): {c.get('up', 0)} up, "
+                 f"{c.get('down', 0)} down, {c.get('not_configured', 0)} not configured"))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
-           grafana_source, freshness_source)
+           grafana_source, freshness_source, integrations_source)
 
 
 def _attach(rows: list) -> list:

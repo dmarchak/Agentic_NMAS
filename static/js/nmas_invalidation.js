@@ -258,9 +258,13 @@
      given, re-renders the panel from what it last fetched (no request). */
   var stamps = {};
 
-  function stamp(panel, valueAt, staleAfter, label, redraw) {
+  /* *opts.ownAge*: a compact panel (the status bar) that draws its own age
+     and staleness in its redraw; the tick still redraws it, and no separate
+     age line is added. */
+  function stamp(panel, valueAt, staleAfter, label, redraw, opts) {
     stamps[panel] = {valueAt: valueAt, staleAfter: staleAfter == null ? null : staleAfter,
-                     label: label || '', redraw: redraw || null};
+                     label: label || '', redraw: redraw || null,
+                     ownAge: !!(opts && opts.ownAge)};
     drawAge(panel);
   }
 
@@ -298,7 +302,7 @@
     if (st.redraw) {
       try { st.redraw(now()); } catch (e) { record({event: 'redraw_failed', panel: panel}); }
     }
-    if (!el.querySelector) return;
+    if (st.ownAge || !el.querySelector) return;
     var old = el.querySelector('[data-nmas-age]');
     if (old && old.parentNode) old.parentNode.removeChild(old);
     el.insertAdjacentHTML('beforeend', ageHtml(st, now()));

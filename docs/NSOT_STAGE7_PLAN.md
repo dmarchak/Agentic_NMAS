@@ -1405,6 +1405,23 @@ the list two answers to one question. An integration left unconfigured is a
 state, not a row: where the emptiness switches a guard off, job health's
 `unset_guard` row already says so.
 
+**7.2 step 16 BUILT (2026-09-28): integration health, the pattern's fourth
+instance, and the status bar's first item** (`modules/readers/
+integration_health.py`, every 60 s). All ten integrations answered in 266 ms
+on the host (measured); one that is down is bounded by its 5 s timeout and
+two retries, so the probes run in PARALLEL and a read is bounded by the
+slowest single probe, never the sum. `GET /settings/integrations/status`
+serves the stored value (503 "not probed yet" with nothing stored); the
+Settings strip reads it and no longer goes blank on a failed read; the
+status bar (`static/js/nmas_status_bar.js`, in base.html on every page)
+draws each integration's state with its message and probe time, its own age,
+and STALE past the reader's 180 s promise (compact: `NMAS.stamp(..., {ownAge:
+true})`); Needs attention makes a danger row per configured integration that
+does not answer. Rule 11 held: the per-integration Test button
+(`POST /settings/integrations/<name>/test`) stays a live check. The bar's
+other two items (the deployed version and its CI result, and who you are)
+are next, from sources already in-process.
+
 
 ## 9. Deferred, recorded rather than scoped
 

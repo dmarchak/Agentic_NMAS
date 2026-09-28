@@ -88,6 +88,7 @@ VOCABULARY = {
     "bulk_ops": "bulk operation records",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
+    "integration_health": "whether each integration answers, as the integration-health reader last stored it",
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state

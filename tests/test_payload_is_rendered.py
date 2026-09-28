@@ -105,7 +105,8 @@ RENDERS = {
                                            "rollback_source", "deploy_source",
                                            "baseline_source", "authorisation_source",
                                            "grafana_source", "_member", "_onset",
-                                           "_incidents", "freshness_source")}),
+                                           "_incidents", "freshness_source",
+                                           "integrations_source")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,
@@ -263,9 +264,14 @@ RENDERS = {
         (("partials__topology_service.1.js", "topoSvcRefresh", "d"),
          ("partials__topology_service.1.js", "topoSvcStateFor", "d"))),
     "GET /settings/integrations/status": Render(
-        _get("/settings/integrations/status"),
-        {"partials__settings_integrations.1.js": ("loadIntegrationStatus",)},
-        (("partials__settings_integrations.1.js", "loadIntegrationStatus", "d"),)),
+        # The reader stores a value first (the real reader over the real
+        # registry, every integration unconfigured in the test store): the
+        # route serves only what was stored.
+        lambda mp, tmp: _answer(P.integration_status(mp, tmp)),
+        {"partials__settings_integrations.1.js": ("loadIntegrationStatus",),
+         "nmas_status_bar.js": ("statusBarHtml",)},
+        (("partials__settings_integrations.1.js", "loadIntegrationStatus", "d"),
+         ("nmas_status_bar.js", "statusBarHtml", "d"))),
     "GET /ai/agent_timers": Render(
         _get("/ai/agent_timers"),
         {I4: ("loadAgentTimers",)},
@@ -392,8 +398,6 @@ UNDRAWN = {
         ("tftp_server_ip", "carried and absent from the form's _GENERAL_MAP; "
                            "the TFTP server is set elsewhere (save_tftp_server). "
                            "7.7 gives it one home")],
-    "GET /settings/integrations/status": [
-        ("name", "each integration's key; the card is keyed by it")],
     "GET /templates": [
         ("bindings overrides", "which template each device uses: 7.6 draws "
                                "and edits bindings (reachability group a)"),
@@ -660,7 +664,8 @@ def _flat(table):
 # apply records the verified actor; the statement names the person), found
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
-UNDRAWN_CEILING = 103
+# 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
+UNDRAWN_CEILING = 102
 PHANTOM_CEILING = 18
 
 

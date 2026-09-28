@@ -132,7 +132,15 @@ async function loadIntegrationStatus() {
   try {
     const r = await fetch('/settings/integrations/status');
     const d = await r.json();
-    if (!d.ok) return;
+    if (!d.ok) {
+      // A strip that goes blank when the read failed looked like "nothing to
+      // show"; it says what failed, and that it is not "all up".
+      document.getElementById('integrationStatusStrip').innerHTML =
+        '<span class="badge bg-warning text-dark">Integration health could not be read: '
+        + String(d.error || 'no answer').replace(/</g, '&lt;')
+        + '. This is not the same as every integration being up.</span>';
+      return;
+    }
     const cls = {up: 'bg-success', down: 'bg-danger', not_configured: 'bg-secondary'};
     document.getElementById('integrationStatusStrip').innerHTML = d.statuses.map(s =>
       `<span class="badge ${cls[s.state] || 'bg-secondary'}" title="${(s.message || '').replace(/"/g, '&quot;')}">

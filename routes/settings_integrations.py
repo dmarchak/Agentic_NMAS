@@ -12,7 +12,7 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
-from modules.integrations import REGISTRY, all_statuses, get_integration
+from modules.integrations import REGISTRY, get_integration
 from modules.settings_schema import DEFAULTS, get_setting, migrate, validate
 from modules.config import load_user_settings, save_user_settings, settings_lock
 from modules.secrets_store import SECRET_KEYS
@@ -77,12 +77,24 @@ def test_integration(name):
 
 @bp.route("/status", methods=["GET"])
 def integration_status():
-    """Badge state for the dashboard strip: green / red / grey per tool."""
-    try:
-        return jsonify({"ok": True, "statuses": all_statuses()})
-    except Exception as exc:                  # noqa: BLE001
-        log.exception("settings_integrations: status failed")
-        return jsonify({"ok": False, "error": str(exc)}), 500
+    """Badge state for the Settings strip and the status bar: green / red /
+    grey per tool, from the integration-health READER's stored value, never
+    probed per request (modules/readers/integration_health.py, 7.2). The
+    per-integration Test button stays a live check (`/<name>/test`)."""
+    from modules import reader_job
+    from modules.readers import integration_health
+
+    got = reader_job.read_cached(integration_health.READER.name)
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return jsonify({"ok": False, "error": f"not probed yet: {why}"}), 503
+    return jsonify({"ok": True, "statuses": (good.get("value") or {}).get("integrations") or [],
+                    "value_at": good.get("value_at"),
+                    "stale_after_seconds": doc.get("stale_after_seconds")})
 
 
 @bp.route("/general", methods=["GET", "POST"])
