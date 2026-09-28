@@ -67,6 +67,14 @@ RESULT_COMPONENT = {
     # back is the device's pending row.
     "onboard.create": ("static/js/gen/partials__onboard_wizard.1.js", "onboardCreate",
                        "onboard.pending"),
+    # Onboarding's Verify and Abandon (7.1): drawn from the row the route
+    # recorded in the onboarding run record, and read back by the pending
+    # banner (each row's last run; a run that took its device off the list
+    # under "finished recently").
+    "onboard.verify": ("static/js/gen/partials__onboard_wizard.2.js", "onboardShowRunResult",
+                       "onboard.pending"),
+    "onboard.abandon": ("static/js/gen/partials__onboard_wizard.2.js", "onboardShowRunResult",
+                        "onboard.pending"),
     # NetBox Remove (C121): drawn from the recorded row; the record re-read
     # on the NetBox tab.
     "netbox_safety.apply_removal": ("static/js/nmas_netbox_removals.js",
@@ -96,8 +104,6 @@ PENDING = {
     "remote.auto_push": "the remote panel's output box",
     "remote.acknowledge": "the remote panel's output box",
     # -- a toast, gone in seconds --
-    "onboard.verify": "a toast on success (the failure IS drawn)",
-    "onboard.abandon": "a toast; what it removed is not shown",
     "bulk_reload": "a toast",
     "ai_agent_run": "nothing: the response is never read (the agent is off)",
     "ai_approval_approve": "a toast; the commit an approval makes is never shown",
@@ -137,14 +143,12 @@ GREEN_TOASTS = {
     ("static/js/gen/index.1.js", "Bulk operation finished"): "level from the failed and succeeded counts (C121)",
     ("templates/device.html", "Output copied to clipboard"): "a clipboard copy",
     ("templates/device.html", "showToast(data.message, 'success')"): "one TFTP server setting",
-    ("static/js/gen/partials__onboard_wizard.2.js", "answered and is now in the inventory"): "phase 2's ok is every step, promotion last",
     ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
     ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
     ("templates/index.html", "'Settings saved'"): "saved with no errors (warnings have their own)",
     ("static/js/gen/partials__security_posture.1.js", "is now set explicitly"): "one ratification, ok checked",
     ("static/js/gen/partials__netbox_safety_modal.1.js", "Import started for"): "says STARTED; the outcome is the sync card's (C85)",
     ("static/js/gen/partials__inventory_source.1.js", "Refreshed from NetBox"): "green only with nothing skipped (C121)",
-    ("static/js/gen/partials__onboard_wizard.2.js", "abandoned; the name is free"): "abandon's ok is complete; a partial abandon is not ok",
     ("static/js/gen/partials__golden_repo.3.js", "Renames synced"): "one rename commit, ok checked",
     ("static/js/gen/partials__golden_repo.3.js", "Migrated ${d.migrated.length}"): "the one-shot migration, ok checked",
     ("templates/partials/onboard_wizard.html", ".cfg downloaded"): "a file download",
@@ -157,7 +161,8 @@ UNESCAPED = {
     # by the component, which escapes every value (C102, 2026-09-27).
 }
 
-CEILINGS = {"PENDING": 23, "FALSE_GREEN": 0, "UNESCAPED": 0}
+# PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
+CEILINGS = {"PENDING": 21, "FALSE_GREEN": 0, "UNESCAPED": 0}
 
 
 def _population():

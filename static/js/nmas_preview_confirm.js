@@ -334,9 +334,12 @@
     if (!c.ran) {
       body = '<div class="small text-muted" data-pr-none>Nothing was checked: ' + esc(c.why) + '</div>';
     } else if (c.statements) {
+      // The badge's words are the operation's where it gives them ("answered"
+      // is not "matches"); intent's comparison is the default.
+      var words = c.words || ['matches', 'departs'];
       body = '<div class="small" data-pr-statements>'
-        + (c.ok ? '<span class="badge bg-success">matches</span> '
-                : '<span class="badge bg-warning text-dark">departs</span> ')
+        + (c.ok ? '<span class="badge bg-success">' + esc(words[0]) + '</span> '
+                : '<span class="badge bg-warning text-dark">' + esc(words[1]) + '</span> ')
         + c.statements.map(esc).join('; ') + '</div>'
         + ((c.issues || []).length ? '<pre class="small bg-body-tertiary p-2 rounded mb-0">'
            + esc(c.issues.join('\n')) + '</pre>' : '');

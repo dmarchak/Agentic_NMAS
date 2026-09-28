@@ -24,7 +24,29 @@ function pendingBannerHtml(data) {
   }
 
   const rows = data.pending || [];
-  if (!rows.length) { return ''; }
+  /* 7.1: Verify's and Abandon's results, READ BACK from the run record. A
+     row's last run is under it; a run that took its device off the list
+     (promoted, abandoned) is under "Finished recently", because otherwise
+     the result most worth reading again leaves with the row. Drawn by the
+     result component, collapsed. An unreadable record says so: it is not
+     the same as no runs. */
+  const runs = data.runs || {};
+  const runHtml = (run, name) => `<details class="small mt-1" data-onboard-run="${esc(run.kind)}">
+      <summary>${name ? `<code>${esc(name)}</code> ` : ''}${esc(run.kind)} ${esc(run.at)}
+        by ${esc(run.by || 'an unrecorded actor')}: ${esc(run.result.happened.summary)}</summary>
+      ${previewConfirmResultHtml(run.result, {})}</details>`;
+  const finished = (runs.finished || []).length
+    ? `<div class="small mt-2" data-onboard-finished><div class="fw-semibold">Finished
+        recently (read back from the onboarding run record)</div>
+        ${runs.finished.map(f => runHtml(f, f.device)).join('')}</div>` : '';
+  const unreadable = runs.state === 'unreadable'
+    ? `<div class="small text-danger" data-onboard-runs-unreadable>The onboarding run
+        record could not be read (${esc(runs.error)}), so no Verify or Abandon
+        result is shown. That is not the same as none.</div>` : '';
+  if (!rows.length) {
+    return (finished || unreadable)
+      ? `<div class="alert alert-secondary py-2 px-3 mb-0">${unreadable}${finished}</div>` : '';
+  }
 
   const worst = rows.some(r => r.state === 'stale') ? 'stale'
               : rows.some(r => r.state === 'overdue') ? 'overdue' : 'in_flight';
@@ -57,7 +79,8 @@ function pendingBannerHtml(data) {
        the server read (reservation, lease, fetch; reached ends pending). A
        row with no progress says so rather than looking like a quiet one. */
     const ztp = r.address_source === 'ztp'
-      ? `ZTP: ${esc((r.ztp && r.ztp.summary) || 'its progress was not reported')}`
+      ? `ZTP${r.ztp && r.ztp.stage ? ` (<span data-ztp-stage>${esc(r.ztp.stage)}</span>)` : ''}: `
+        + `${esc((r.ztp && r.ztp.summary) || 'its progress was not reported')}`
       : '';
     const where = ztp ? ztp : r.address_source === 'dhcp'
       ? (r.reserved_address
@@ -82,7 +105,8 @@ function pendingBannerHtml(data) {
         title="Re-rendered from the staged credential; gone once it is rotated"
         >Config</button>
       <button class="btn btn-sm btn-outline-primary py-0 px-1"
-        onclick="onboardVerify('${esc(r.name)}', '${esc(data.list)}')">Verify now</button>${abandon}</li>`;
+        onclick="onboardVerify('${esc(r.name)}', '${esc(data.list)}')">Verify now</button>${abandon}
+      ${r.last_run ? runHtml(r.last_run, '') : ''}</li>`;
   }).join('');
 
   return `<div class="alert ${tone} py-2 px-3 mb-0">
@@ -96,7 +120,7 @@ function pendingBannerHtml(data) {
       <strong>unverified</strong> until the tool reaches them — it was
       checked for spelling, never against the device. They are deliberately
       not in the inventory until then.</div>
-    <ul class="mb-0 small">${body}</ul></div>`;
+    <ul class="mb-0 small">${body}</ul>${unreadable}${finished}</div>`;
 }
 
 /* THE ENTRY POINT.

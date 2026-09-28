@@ -879,7 +879,7 @@ run:
 | Restore (and its handoffs: an approval's revert, restore from a ref) | component | component, from receipts; Changes tab; C70 passed |
 | Capture (Save All, one device, the "no golden" scope, a drift approval's handoff) | component | component; golden history |
 | Onboarding: Create | component (`onboard_preview`; `onboardReviewHtml` removed) | component (C86); pending row |
-| Onboarding: Verify, Abandon | none (one click each) | **pending** (toasts) |
+| Onboarding: Verify, Abandon | none (one click each; Abandon asks first) | component, from the onboarding run record; the pending banner (each row's last run, and "finished recently" for a run that took its device off the list) |
 | NetBox import, import-all | component (`netbox_import_preview`) | component; the sync card |
 | NetBox remove | component (`netbox_removal_preview`, the cascade drawn in it) | component (C121); Removals panel |
 
@@ -899,17 +899,19 @@ implied):
 - **Freshness authorise (NO_GUI): 7.6.** Also intent revert and retry, and
   remote adopt (NO_GUI).
 
-**The numbers, 2026-09-28:**
-- **Results:** 7 drawn by the component, **23 pending**, 8 with no GUI, of 38.
-  - Of the 23, **two are 7.1's own** (onboarding Verify and Abandon); the other
-    21 are homed above.
+**The numbers, 2026-09-28, measured by the two checks (not counted by hand):**
+- **Results:** **9 of 38 drawn by the result component**, each with a record read
+  back: deploy, restore, capture, onboarding Create, Verify and Abandon, NetBox
+  remove, import and import-all. **21 pending, every one homed in a later stage**
+  (the list above: 7.3, 7.4, 7.5, 7.6, Stage 8), and 8 with no GUI. `TOAST_ENOUGH`
+  is empty.
   - The survey began at 33 not drawn: 16 drawn until closed and 17 toasts, of a
     population of 41 before removals.
   - A figure of "25" reported on 2026-09-27 was the check's CEILING, not its
-    count; the ceiling is now the count, 23.
-- **Previews:** 2 on the component (deploy, restore) plus capture, which was
-  built on it. **3 pending**: onboarding, NetBox import/remove, and bulk intent,
-  which is deferred to 7.4. **7.1's own are two.**
+    count (C125); the ceiling is the count now, 21.
+- **Previews:** deploy, restore, capture, onboarding and NetBox import/remove on
+  the component. **Bulk intent is the one not moved, deferred to 7.4 by the
+  operator**, and `RETROFIT_PENDING` holds it and nothing else.
 
 **7.1 is met when:**
 - onboarding's review and the NetBox safety modal draw with the preview
@@ -919,7 +921,15 @@ implied):
 - `RETROFIT_PENDING` holds only bulk intent, marked deferred;
 - `PENDING` holds nothing homed in 7.1.
 
-It is **not met today**.
+**It is MET (2026-09-28), on the laptop suite (5025 passed, 0 errors, serial).**
+Each condition is a check, not a sentence: `test_preview_confirm.py`
+(`RETROFITTED` has five screens, `RETROFIT_PENDING` only bulk intent) and
+`test_results_are_drawn.py` (`RESULT_COMPONENT` 9, `PENDING` 21, its ceiling
+equal to its count). What it does NOT claim: C70's restore is the only one of
+these operations run for real on the host since its retrofit. Onboarding's
+review, Verify and Abandon, and the NetBox modal have been driven through their
+REAL routes in the suite and not yet clicked on the host. Walking each once is
+the next thing, by the rule that a path never run fails on first use.
 
 ## 9. Deferred, recorded rather than scoped
 

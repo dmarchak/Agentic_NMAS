@@ -351,7 +351,9 @@ class TestTheBannerDrawsIt:
     def test_the_summary_is_drawn(self, banner_js):
         html = _banner(banner_js, self._data({"stage": "fetched_not_reached",
                                               "summary": "fetched its config at T"}))
-        assert "ZTP: fetched its config at T" in html
+        assert "fetched its config at T" in html
+        # The stage word is drawn beside it (7.1: it was carried and not drawn).
+        assert "<span data-ztp-stage>fetched_not_reached</span>" in html
 
     def test_a_row_with_no_progress_says_so(self, banner_js):
         html = _banner(banner_js, self._data(None))
@@ -601,24 +603,41 @@ def test_a_phase_two_stop_is_logged_with_its_step_and_reason(tmp_path, monkeypat
 
 class TestTheVerifyFailureStaysOnScreen:
     """Executed in duktape: the shipped functions, with the asynchrony
-    stripped and nothing else changed."""
+    stripped and nothing else changed. Since 7.1 the route returns a result
+    built by `onboard_verify_result` from the recorded row, drawn by the
+    result component; the payloads here are built by that real builder."""
 
     @staticmethod
     def _js():
         from tests.js_source import read_shipped
         return read_shipped("static/js/gen/partials__onboard_wizard.2.js")
 
-    def _run(self, payload):
-        import json as _json
+    @staticmethod
+    def _payload(run):
+        from modules.nsot.onboard import PHASE_TWO_STEPS
+        from modules.preview_confirm import onboard_verify_result
 
+        steps = run.pop("steps")
+        ran = {st["step"] for st in steps}
+        steps += [{"step": st, "ok": False, "detail": "did not run"}
+                  for st in PHASE_TWO_STEPS if st not in ran]
+        row = dict({"at": "2026-09-28T10:00:00Z", "kind": "verify", "device": "bp-ztp-a",
+                    "actor": "p@example.com", "mgmt_ip": "192.0.2.50", "steps": steps}, **run)
+        return dict(run, steps=steps, result=onboard_verify_result(row))
+
+    def _run(self, payload):
         import dukpy
+
+        from tests.js_source import read_shipped
 
         js = self._js()
         start = js.index("async function onboardVerify")
         end = js.index("async function onboardAbandon")
         code = js[start:end].replace("async function", "function").replace("await ", "")
         assert "await" not in code
-        harness = """
+        harness = ("var window = {};\n" + read_shipped("static/js/nmas_preview_confirm.js") + """
+        var previewConfirmResultHtml = window.previewConfirmResultHtml;
+        var previewConfirmResultLevel = window.previewConfirmResultLevel;
         var calls = [], banner = {innerHTML: ''};
         var document = {getElementById: function (id) {
             return id === 'onboardPendingBanner' ? banner : null; }};
@@ -629,29 +648,47 @@ class TestTheVerifyFailureStaysOnScreen:
         """ + code + """
         onboardVerify('bp-ztp-a', 'ztp-a');
         ({calls: calls, html: banner.innerHTML})
-        """
+        """)
         return dukpy.evaljs(harness, payload=payload)
 
     def test_a_failure_is_left_on_screen_not_reloaded_over(self):
-        out = self._run({"ok": False, "reason": "did not answer", "steps": [
+        out = self._run(self._payload({"ok": False, "reason": "did not answer", "steps": [
             {"step": "verify", "ok": False, "detail": "did_not_answer"}],
-            "verify": {"error": "tcp/22 refused", "causes": []}})
+            "verify": {"state": "did_not_answer", "error": "tcp/22 refused", "causes": [
+                {"cause": "not booted", "why": "nothing answers", "where": "console",
+                 "command": "show version"}]}}))
         assert "reload:ztp-a" not in out["calls"], out["calls"]
+        assert "toast:danger" in out["calls"], "a failure drawn in the failure colour"
         assert "did not answer" in out["html"] and "Back to the pending list" in out["html"]
+        assert "nothing about it has changed" in out["html"]
+        assert "tcp/22 refused" in out["html"] and "1. not booted" in out["html"]
 
     def test_a_stop_after_verify_names_the_step_and_the_reason(self):
-        out = self._run({"ok": False, "reason": "the capture timed out", "steps": [
+        out = self._run(self._payload({"ok": False, "reason": "the capture timed out", "steps": [
             {"step": "verify", "ok": True, "detail": "answered"},
-            {"step": "capture", "ok": False, "detail": "timeout"},
-            {"step": "rotate", "ok": False, "detail": "did not run"}],
-            "verify": {"state": "answered"}})
-        assert "stopped" in out["html"] and "<code>capture</code>" in out["html"]
+            {"step": "capture", "ok": False, "detail": "timeout"}],
+            "verify": {"state": "answered"}}))
+        assert "stopped at capture" in out["html"]
         assert "the capture timed out" in out["html"]
         assert "nothing about it has changed" not in out["html"]
+        assert "toast:warning" in out["calls"], "some steps ran: partly done, never green"
 
-    def test_a_success_still_reloads(self):
-        out = self._run({"ok": True})
-        assert "reload:ztp-a" in out["calls"]
+    def test_a_success_is_drawn_and_left_too(self):
+        """The row it came from is gone once promoted, so the result stays
+        until the operator goes back; the pending banner reads it again under
+        "finished recently"."""
+        from modules.nsot.onboard import PHASE_TWO_STEPS
+
+        out = self._run(self._payload({"ok": True, "golden": {"commit": "0123456789ab"},
+                                       "steps": [{"step": st, "ok": True, "detail": ""}
+                                                 for st in PHASE_TWO_STEPS],
+                                       "verify": {"state": "answered"}}))
+        assert "toast:success" in out["calls"]
+        assert "is onboarded" in out["html"] and "Back to the pending list" in out["html"]
+
+    def test_no_result_is_a_toast_with_its_reason_never_a_blank(self):
+        out = self._run({"ok": False, "error": "requires a verified person"})
+        assert out["calls"][-2:] == ["toast:danger", "reload:ztp-a"]
 
 
 class TestAZtpRenderUsesTheStrongerCredentialForm:

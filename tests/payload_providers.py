@@ -137,6 +137,31 @@ def onboard_pending(mp, tmp_path):
     mp.setattr("modules.nsot.manifest.pending_devices", lambda repo: rows)
     mp.setattr("modules.nsot.ztp.progress",
                lambda row: {"stage": "reserved_not_leased", "summary": "reserved"})
+    # 7.1: runs in the REAL record, through the real recorder, so a pending
+    # row carries its last run and the finished list is not empty: r7 did
+    # not answer (still pending), r9 was onboarded and r8 abandoned (both
+    # off the list, so read back only under "finished").
+    from modules.nsot.onboard import PHASE_TWO_STEPS, record_run
+
+    repo = str(tmp_path / "probe" / "config_repo")
+    record_run(repo, "verify", "probe", "r7", "p@example.com", {
+        "ok": False, "reason": "did not answer", "mgmt_ip": "192.0.2.7",
+        "steps": [{"step": "verify", "ok": False, "detail": "did_not_answer"}]
+        + [{"step": st, "ok": False, "detail": "did not run"} for st in PHASE_TWO_STEPS[1:]],
+        "verify": {"state": "did_not_answer", "error": "tcp/22 refused",
+                   "credential_source": "override",
+                   "causes": [{"cause": "the device has not booted", "why": "nothing answers",
+                               "where": "console", "command": "show version"}],
+                   "recovery": {"available": False, "note": "no recovery is needed"}}})
+    record_run(repo, "verify", "probe", "r9", "p@example.com", {
+        "ok": True, "reason": "", "mgmt_ip": "192.0.2.9", "promoted": True,
+        "golden": {"ok": True, "commit": "0123456789abcdef"},
+        "steps": [{"step": st, "ok": True, "detail": ""} for st in PHASE_TWO_STEPS],
+        "verify": {"state": "answered", "credential_source": "override"}})
+    record_run(repo, "abandon", "probe", "r8", "p@example.com", {
+        "ok": True, "released": "r8", "remaining": [],
+        "steps": [{"step": "intent", "ok": True, "detail": "removed host_vars/r8.yml"},
+                  {"step": "identity", "ok": True, "detail": "released 'r8'"}]})
     return _ok(_client().get("/onboard/pending?list_name=probe"))
 
 

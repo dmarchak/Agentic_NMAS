@@ -57,8 +57,12 @@ def _deploy_program(mp, tmp):
 
 def _pending_banner(mp, tmp):
     data = P.onboard_pending(mp, tmp)
-    return _run("partials__onboard_pending.1.js", ("pendingAgeText", "pendingBannerHtml"),
-                f"pendingBannerHtml({json.dumps(data)})")
+    # The banner draws each run's result with the result component (7.1).
+    return dukpy.evaljs("var window = {};\n" + shipped("nmas_preview_confirm.js")
+                        + "\nvar previewConfirmResultHtml = window.previewConfirmResultHtml;\n"
+                        + "\n".join(lift(shipped("partials__onboard_pending.1.js"), n)
+                                     for n in ("pendingAgeText", "pendingBannerHtml"))
+                        + f"\npendingBannerHtml({json.dumps(data)})")
 
 
 def _approval_badge(mp, tmp):

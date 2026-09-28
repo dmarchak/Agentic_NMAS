@@ -1555,6 +1555,95 @@ ABANDON_STEPS = ("intent", "netbox", "credentials", "identity")
 ZTP_ABANDON_STEPS = ("reservation",) + ABANDON_STEPS
 
 
+# ---------------------------------------------------------------------------
+# The run record: every Verify and Abandon, read back (7.1)
+# ---------------------------------------------------------------------------
+
+#: One row per Verify (phase 2) and Abandon, beside the list's repository.
+#: The pending row cannot hold these: a Verify that promotes the device and an
+#: Abandon that releases it both take the row away, and those are the results
+#: most worth reading again. Masked on the way in, like the modification
+#: record: a reason is text from a device or a service, and nobody restores
+#: anything from this file, so there is nothing a mask would break.
+RUNS_FILE = "onboarding_runs.jsonl"
+
+
+def runs_path(repo: str) -> str:
+    """The record's path, from the list's repository: derived, so resolving
+    it can never create a list (C51)."""
+    import os
+
+    return os.path.join(os.path.dirname(os.path.abspath(repo)), RUNS_FILE)
+
+
+def record_run(repo: str, kind: str, list_name: str, hostname: str, actor: str,
+               result: dict) -> dict:
+    """Append one Verify or Abandon: ``{"ok", "row", "error"}``. Never raises:
+    the run happened whether or not its record could be written, and the
+    result says which."""
+    import json
+    import time
+
+    from modules.redact import redact_text
+
+    def _t(v):
+        return redact_text(str(v)) if v not in (None, "") else ""
+
+    v = result.get("verify") or {}
+    rec = v.get("recovery") or {}
+    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "kind": kind, "list": list_name, "device": hostname, "actor": actor,
+           "ok": bool(result.get("ok")), "reason": _t(result.get("reason")),
+           "error": _t(result.get("error")),
+           "steps": [{"step": st.get("step", ""), "ok": bool(st.get("ok")),
+                      "detail": _t(st.get("detail"))} for st in result.get("steps") or []],
+           "remaining": [{"step": r.get("step", ""),
+                          "detail": _t(r.get("detail") or r.get("why")),
+                          "how_to_finish": _t(r.get("how_to_finish"))}
+                         for r in result.get("remaining") or []],
+           "released": result.get("released", ""), "mgmt_ip": result.get("mgmt_ip", ""),
+           "promoted": bool(result.get("promoted")),
+           "golden_commit": (result.get("golden") or {}).get("commit", ""),
+           "verify": {"state": v.get("state", ""), "error": _t(v.get("error")),
+                      "credential_source": v.get("credential_source", ""),
+                      "causes": [{k: _t(c.get(k)) for k in ("cause", "why", "where", "command")}
+                                 for c in v.get("causes") or []],
+                      "recovery": {"available": bool(rec.get("available")),
+                                   "note": _t(rec.get("note")),
+                                   "command": _t(rec.get("command"))}} if v else {}}
+    try:
+        from modules.config import open_secure
+        with open_secure(runs_path(repo), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+        return {"ok": True, "row": row, "error": ""}
+    except Exception as exc:                  # noqa: BLE001
+        log.error("onboard: run record NOT written for %s: %s", hostname, exc)
+        return {"ok": False, "row": row, "error": str(exc)}
+
+
+def run_heading(row: dict) -> dict:
+    """When, what and by whom, from a RECORDED run: ``{"at", "kind", "by"}``.
+    The person recorded at the time, read back, never one from a request."""
+    return {"at": row.get("at", ""), "kind": row.get("kind", ""), "by": row.get("actor", "")}
+
+
+def read_runs(repo: str) -> dict:
+    """``{"state": "ok"|"absent"|"unreadable", "rows": [...newest first],
+    "error"}``. Absent and unreadable are different facts."""
+    import json
+    import os
+
+    path = runs_path(repo)
+    if not os.path.exists(path):
+        return {"state": "absent", "rows": [], "error": ""}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            rows = [json.loads(line) for line in fh if line.strip()]
+    except Exception as exc:                  # noqa: BLE001
+        return {"state": "unreadable", "rows": [], "error": str(exc)}
+    return {"state": "ok", "rows": list(reversed(rows)), "error": ""}
+
+
 def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                        actor: str = "", dry_run: bool = False,
                        remove_netbox=None, remove_reservation=None) -> dict:

@@ -235,7 +235,14 @@ def pending():
                 except Exception as exc:       # noqa: BLE001
                     r["ztp"] = {"stage": "unknown",
                                 "summary": f"its progress could not be read: {exc}"}
+        runs = _run_history(_repo_for(list_name), {r["name"] for r in rows})
+        for r in rows:
+            r["last_run"] = runs["last"].get(r["name"])
         return jsonify({"ok": True, "list": list_name, "pending": rows,
+                        # Absent and unreadable are different facts: an
+                        # unreadable record is drawn as that, never as "none".
+                        "runs": {"state": runs["state"], "error": runs["error"],
+                                 "finished": runs["finished"]},
                         "counts": {"total": len(rows),
                                    "overdue": sum(1 for r in rows
                                                   if r["state"] != "in_flight")},
@@ -308,14 +315,15 @@ def verify(hostname):
 
     from modules.nsot.onboard import run_phase_two
 
+    repo = _repo_for(list_name)
     try:
-        out = run_phase_two(
-            _repo_for(list_name), hostname, list_name, actor=ident.actor,
-            actor_kind=ident.kind)
+        out = run_phase_two(repo, hostname, list_name, actor=ident.actor,
+                            actor_kind=ident.kind)
     except Exception as exc:                   # noqa: BLE001
         log.exception("onboard: verify failed for %r", hostname)
-        return jsonify({"ok": False, "error": str(exc)}), 500
-    return jsonify(out), (200 if out.get("ok") else 409)
+        out = {"ok": False, "reason": f"phase 2 raised: {exc}", "steps": []}
+    return jsonify(_recorded_run(repo, "verify", list_name, hostname, ident.actor, out)), \
+        (200 if out.get("ok") else 409)
 
 
 @bp.route("/abandon/<hostname>", methods=["POST"])
@@ -336,14 +344,51 @@ def abandon(hostname):
 
     from modules.nsot.onboard import abandon_onboarding
 
+    repo = _repo_for(list_name)
+    dry_run = bool(data.get("dry_run"))
     try:
-        out = abandon_onboarding(_repo_for(list_name), hostname, list_name,
-                                 actor=ident.actor,
-                                 dry_run=bool(data.get("dry_run")))
+        out = abandon_onboarding(repo, hostname, list_name, actor=ident.actor,
+                                 dry_run=dry_run)
     except Exception as exc:                   # noqa: BLE001
         log.exception("onboard: abandon failed for %r", hostname)
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        out = {"ok": False, "error": f"abandon raised: {exc}", "steps": []}
+    if not dry_run:                            # a dry run removes nothing: no record
+        out = _recorded_run(repo, "abandon", list_name, hostname, ident.actor, out)
     return jsonify(out), (200 if out.get("ok") else 409)
+
+
+def _recorded_run(repo: str, kind: str, list_name: str, hostname: str, actor: str,
+                  out: dict) -> dict:
+    """Record the run, then draw its result FROM the recorded row (7.1), so
+    the result now and the one the pending banner reads back later are one
+    computation. The record failing is part of the result, never silent."""
+    from modules.nsot.onboard import record_run
+    from modules.preview_confirm import onboard_run_result
+
+    rec = record_run(repo, kind, list_name, hostname, actor, out)
+    return {**out, "result": onboard_run_result(rec["row"], rec)}
+
+
+def _run_history(repo: str, pending_names: set) -> dict:
+    """What the pending banner reads back: each pending device's last run,
+    and the runs that took a device OFF the list (promoted or abandoned),
+    newest first. A row that leaves the list takes its result with it
+    otherwise, and those are the results most worth reading again."""
+    from modules.nsot.onboard import read_runs, run_heading
+    from modules.preview_confirm import onboard_run_result
+
+    read = read_runs(repo)
+    last, finished = {}, []
+    for r in read["rows"]:
+        name = r.get("device", "")
+        if name in last:
+            continue
+        last[name] = {**run_heading(r), "result": onboard_run_result(r)}
+        if name not in pending_names and len(finished) < 10:
+            finished.append(dict(last[name], device=name))
+    return {"state": read["state"], "error": read["error"],
+            "last": {n: v for n, v in last.items() if n in pending_names},
+            "finished": finished}
 
 
 @bp.route("/lists", methods=["GET"])

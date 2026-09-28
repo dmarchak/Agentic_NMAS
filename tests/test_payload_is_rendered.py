@@ -93,8 +93,14 @@ I1, I4 = "index.1.js", "index.4.js"
 RENDERS = {
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
-        {"partials__onboard_pending.1.js": ("loadOnboardPending", "pendingBannerHtml")},
-        (("partials__onboard_pending.1.js", "pendingBannerHtml", "data"),)),
+        # 7.1: each Verify and Abandon result, read back from the run record,
+        # drawn by the result component and built server-side.
+        {"partials__onboard_pending.1.js": ("loadOnboardPending", "pendingBannerHtml"),
+         PC: PC_RESULT_FNS},
+        (("partials__onboard_pending.1.js", "pendingBannerHtml", "data"),),
+        adapters={"modules/preview_confirm.py": ("onboard_run_result", "onboard_verify_result",
+                                                 "onboard_abandon_result",
+                                                 "_run_record_statement", "build_result")}),
     "POST /deploy/plan": Render(
         lambda mp, tmp: P.deploy_plan(mp),
         {DW: ("openDeployPlan", "_renderDeployPlan", "_reauthoriseDevice",
@@ -357,8 +363,11 @@ UNDRAWN = {
         ("counts total overdue stale thresholds",
          "the banner derives its counts from the rows; the server's counts "
          "and thresholds are unread duplicates, drawn or dropped in 7.4"),
-        ("onboarded_at", "the banner draws the age (age_seconds), not the time"),
-        ("stage", "a ztp row's stage word; the banner draws its summary sentence")],
+        ("onboarded_at", "the banner draws the age (age_seconds), not the time")],
+    # (`stage`, a ztp row's stage word, left this list in 7.1 by being DRAWN
+    # beside its summary. This check matches key NAMES, and the result
+    # builder reads its own `stage`, so it would have passed as "read"
+    # without the banner drawing it.)
     "GET /onboard/platforms": [
         ("dialect", "the config dialect beside the slug; the wizard offers slugs"),
         ("ok", OK)],
@@ -546,6 +555,10 @@ EMPTY_IN_FIXTURE = {
                                             "device, so no line is dangerous"),
     "POST /netbox/safety/remove/preview preview.what.targets[].select_data": (R_, "the one-shot token binds the plan's "
                                             "hash, carried beside the preview, not per target"),
+    "GET /onboard/pending runs.finished[].result.did_not.items": (R_, "the finished runs "
+        "in the fixture both succeeded; a failed run's items are drawn under r7's last run"),
+    "GET /onboard/pending runs.finished[].result.record.tags": (S_, "an onboarding run "
+        "makes no tag"),
     "POST /onboard/plan preview.explain": (R_, "no concept is taught on the onboarding "
                                                "review yet; the concepts harness names it"),
     "POST /onboard/plan preview.targets[].program.authorised": (S_, "a startup config is "
@@ -568,7 +581,9 @@ EMPTY_IN_FIXTURE = {
 # (7.1); each has no concept yet and no per-target confirm data (the one-shot
 # token binds the plan's hash beside the preview). New coverage, not a
 # fixture that stopped reaching a state.
-EMPTY_RECORDS_CEILING = 21
+# 21 -> 22: the pending read's finished runs are all successes in its fixture
+# (a failed run's items are drawn under a pending row's last run instead).
+EMPTY_RECORDS_CEILING = 22
 
 
 def _empty_paths(obj, path=""):
@@ -615,7 +630,8 @@ def _flat(table):
 # 108 -> 104: the confirm part's `actor` echo removed from every preview (the
 # apply records the verified actor; the statement names the person), found
 # when the NetBox previews would have added three more copies of the exemption.
-UNDRAWN_CEILING = 104
+# 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
+UNDRAWN_CEILING = 103
 PHANTOM_CEILING = 18
 
 

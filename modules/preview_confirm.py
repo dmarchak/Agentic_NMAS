@@ -1068,6 +1068,164 @@ def onboard_create_result(run: dict, plan) -> dict:
                 "checks": "What was checked on the device"})
 
 
+def _run_record_statement(row: dict, rs: dict, tail: str) -> str:
+    if not (rs or {"ok": True}).get("ok"):
+        return (f"THE RUN RECORD WAS NOT WRITTEN: {(rs or {}).get('error') or 'no reason'}. "
+                "The run happened; only this screen shows it.")
+    return (f"Recorded {row.get('at', '?')} by {row.get('actor') or 'an unrecorded actor'} in "
+            f"the onboarding run record. {tail}")
+
+
+def onboard_verify_result(row: dict, record_status: dict = None) -> dict:
+    """Onboarding's Verify (phase 2), drawn by the result component (7.1),
+    from the ROW that records it, so the result at apply and the one read back
+    from the pending banner are one computation. It keeps the diagnosis the
+    old failure panel drew (`verifyFailureHtml`, removed): "did not answer" is
+    never "wrong interface", the causes in the order worth checking, and the
+    recovery command. `ok` is every step, promotion last."""
+    host = row.get("device") or "the device"
+    ip = row.get("mgmt_ip") or "its address"
+    steps = row.get("steps") or []
+    v = row.get("verify") or {}
+    failed = next((st for st in steps if not st.get("ok") and st.get("detail") != "did not run"),
+                  None)
+    at = (failed or {}).get("step") or ("verify" if not row.get("ok") else "")
+    ran = [st["step"] for st in steps if st.get("ok")]
+    not_run = [st["step"] for st in steps if st.get("detail") == "did not run"]
+    did_not = []
+    if row.get("ok"):
+        level = "success"
+        summary = (f"{host} is onboarded: reached at {ip}, its credential rotated and saved on "
+                   "the device, its first golden recorded, its NetBox record created, and it "
+                   "is now in the inventory.")
+    elif at == "verify":
+        level = "failed"
+        summary = (f"{host} did not answer at {ip}: nothing about it has changed, and it is "
+                   "still pending. Not answering proves nothing about why; the causes below "
+                   "are possibilities, in the order they are worth checking.")
+        did_not.append({"target": host, "kind": "did_not_answer", "lines": [],
+                        "text": v.get("error") or row.get("reason") or "no reason was reported"})
+        causes = v.get("causes") or []
+        if causes:
+            did_not.append({"target": host, "kind": "causes",
+                            "text": "Worth checking, in this order:",
+                            "lines": [f"{i}. {c.get('cause', '')}: {c.get('why', '')} "
+                                      f"({c.get('where', '')}: {c.get('command', '')})"
+                                      for i, c in enumerate(causes, 1)]})
+        rec = v.get("recovery") or {}
+        if rec.get("available"):
+            did_not.append({"target": host, "kind": "recovery",
+                            "text": "Locked out? " + (rec.get("note") or ""),
+                            "lines": [rec.get("command") or ""]})
+        elif rec.get("note"):
+            did_not.append({"target": host, "kind": "recovery", "lines": [],
+                            "text": rec["note"]})
+    else:
+        level = "partial" if ran else "failed"
+        summary = (f"{host} answered, and phase 2 stopped at {at}: "
+                   f"{row.get('reason') or 'no reason was reported'}. It is still PENDING. "
+                   f"Steps that ran: {', '.join(ran) or 'none'}. The device may have changed; "
+                   "read the steps before trying again.")
+    if not row.get("ok") and not_run:
+        did_not.append({"target": host, "kind": "not_run",
+                        "text": "Did not run, because phase 2 stopped first:",
+                        "lines": not_run})
+    lines = [f"{st.get('step')}: " + ("done" if st.get("ok") else
+                                      "did not run" if st.get("detail") == "did not run"
+                                      else "FAILED")
+             + (f" ({st['detail']})" if st.get("detail") and st.get("detail") != "did not run"
+                else "") for st in steps]
+    answered = v.get("state") == "answered" or bool(ran)
+    target = {
+        "name": host, "stage": at, "reason": row.get("reason") or "",
+        "outcome": "deployed" if row.get("ok") else ("partial" if level == "partial" else "failed"),
+        "words": "onboarded" if row.get("ok") else f"stopped at {at}",
+        "sent": {"lines": lines, "program_hash": "",
+                 "caption": "The steps phase 2 ran, in order. Rotate and persist change the "
+                            "device; the rest read it or write the record",
+                 "none": "No step ran."},
+        "checks": {"ran": True, "ok": answered, "words": ["answered", "did not answer"],
+                   "statements": [f"reaching the device IS the verification: {host} "
+                                  + (f"answered at {ip}" if answered else f"did not answer at {ip}")
+                                  + (f" with the {v['credential_source']} credential"
+                                     if v.get("credential_source") else "")]},
+    }
+    tail = (f"Its first golden is commit {row['golden_commit'][:12]}; its history is the "
+            "golden history, and it is in the inventory." if row.get("ok") and
+            row.get("golden_commit") else
+            "The device's pending row shows it until the next run.")
+    return build_result(
+        action="onboard_verify", level=level, summary=summary, targets=[target],
+        did_not=did_not, nothing_left_out="Nothing: every step of phase 2 ran.",
+        record={"commit": row.get("golden_commit", ""), "tags": [], "baseline": "",
+                "statement": _run_record_statement(row, record_status, tail)},
+        not_watched=("Nothing re-reads the device after promotion except what watches every "
+                     "device: drift, heartbeats and backups." if row.get("ok") else
+                     "Nothing retries: the device stays pending until Verify is pressed again "
+                     "or it is abandoned."),
+        titles={"sent": "What phase 2 did", "checks": "Whether the device answered"})
+
+
+def onboard_abandon_result(row: dict, record_status: dict = None) -> dict:
+    """Onboarding's Abandon, drawn by the result component (7.1), from the
+    row that records it. The toast it replaces said "abandoned; the name is
+    free" and showed nothing it removed. `ok` is every step AND the name
+    released, and release re-derives the references itself."""
+    host = row.get("device") or "the device"
+    steps = row.get("steps") or []
+    remaining = row.get("remaining") or []
+    done = [st for st in steps if st.get("ok")]
+    if row.get("ok"):
+        level = "success"
+        summary = (f"{host} is abandoned: what its onboarding created is removed, and the name "
+                   f"'{row.get('released') or host}' is free.")
+    elif not steps:
+        level = "failed"
+        summary = f"{host} was not abandoned: {row.get('error') or 'no reason was reported'}"
+    else:
+        level = "partial" if done else "failed"
+        summary = (f"{host} was NOT fully abandoned: {len(remaining)} step(s) remain, and the "
+                   "name is not free. " + (row.get("error") or ""))
+    did_not = []
+    if remaining:
+        did_not.append({"target": host, "kind": "remaining",
+                        "text": "Still there, with how to finish each:",
+                        "lines": [f"{r.get('step')}: {r.get('detail')}"
+                                  + (f" -- to finish: {r['how_to_finish']}"
+                                     if r.get("how_to_finish") else "") for r in remaining]})
+    target = {
+        "name": host, "reason": row.get("error") or "",
+        "outcome": "deployed" if row.get("ok") else ("partial" if level == "partial" else "failed"),
+        "words": "abandoned" if row.get("ok") else "not fully abandoned",
+        "sent": {"lines": [f"{st.get('step')}: {'done' if st.get('ok') else 'NOT done'}"
+                           + (f" ({st['detail']})" if st.get("detail") else "") for st in steps],
+                 "program_hash": "",
+                 "caption": "What abandon removed, in the reverse of the order onboarding "
+                            "created it. Nothing reaches the device",
+                 "none": "Nothing was removed."},
+        "checks": {"ran": bool(steps), "ok": bool(row.get("released")),
+                   "words": ["released", "not released"],
+                   "why": "abandon refused before any step",
+                   "statements": ["the name is released only when nothing references it, "
+                                  "re-derived rather than trusted from the steps above"]},
+    }
+    return build_result(
+        action="onboard_abandon", level=level, summary=summary, targets=[target],
+        did_not=did_not, nothing_left_out="Nothing: every step ran and the name is free.",
+        record={"commit": "", "tags": [], "baseline": "",
+                "statement": _run_record_statement(
+                    row, record_status, "The removal of its intent is a commit in the list's "
+                                        "repository.")},
+        not_watched=("Nothing re-reads NetBox, Kea or the credential store after the abandon; "
+                     "the steps above are what each answered."),
+        titles={"sent": "What abandon did", "checks": "Whether the name was released"})
+
+
+def onboard_run_result(row: dict, record_status: dict = None) -> dict:
+    return (onboard_verify_result if row.get("kind") == "verify"
+            else onboard_abandon_result)(row, record_status)
+
+
 def receipt_history(rows: list, device: str = "") -> list:
     """The receipt store read back as results (7.1 step 3): one per batch,
     newest first, each drawn by the same component as the result shown at
