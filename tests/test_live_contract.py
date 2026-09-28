@@ -227,9 +227,13 @@ class TestNeedsAttentionJudgesEachSource:
         html = self._draw(self._page("2026-09-28T20:51:38Z", 900), "2026-09-28T20:55:00Z")
         assert html.startswith("<details") and "stale" not in html
 
-    def test_past_its_promise_the_source_is_drawn_stale_and_the_list_opens(self):
+    def test_past_its_promise_the_source_is_a_row(self):
         """The operator's case: the job-health reader died, nothing announces,
-        and the page's own clock notices."""
+        and the page's own clock notices. A stale source is something needing
+        attention, so it is a ROW (answer first), not a word in the evidence."""
         html = self._draw(self._page("2026-09-28T20:51:38Z", 900), "2026-09-28T21:10:00Z")
-        assert "<details" not in html
-        assert "stale</strong> (older than the 900 s its source promises)" in html
+        assert 'data-attention="rows"' in html
+        rows = html[:html.index('data-attention="evidence"')]
+        assert "Job health&#39;s value is older than its source promises" in rows \
+            or "Job health's value is older than its source promises" in rows
+        assert "current for 900 s" in rows

@@ -33,32 +33,94 @@
     return !isNaN(at) && nowMs - at > s.stale_after_seconds * 1000;
   }
 
-  function sourcesLine(sources, nowMs) {
-    return (sources || []).map(function (s) {
-      return esc(s.label) + ': ' + (s.state === 'read'
-        ? (isStale(s, nowMs)
-           ? '<strong class="text-danger">stale</strong> (older than the '
-             + esc(s.stale_after_seconds) + ' s its source promises), ' : '')
-          + (s.value_at && s.value_at !== s.read_at
-           ? 'value from ' + when(s.value_at) + ', read ' : 'read ')
-          + when(s.read_at) + ' in ' + esc(s.took_ms) + ' ms, ' + esc(s.checked)
-          + ', ' + esc(s.count) + ' row(s) here'
-        : '<strong>could not be read</strong> (' + when(s.read_at) + ')');
-    }).join('; ');
+  function ago(ms) {
+    var s = Math.max(0, Math.round(ms / 1000));
+    return s < 90 ? s + ' s ago' : s < 5400 ? Math.round(s / 60) + ' min ago'
+      : s < 172800 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago';
+  }
+
+  function ageOf(iso, nowMs) {
+    var at = iso ? Date.parse(iso) : NaN;
+    return isNaN(at) ? 'not recorded' : ago(nowMs - at);
+  }
+
+  /* THE EVIDENCE, one level down (the operator's presentation rule for Stage
+     7, 2026-09-28: the screen answers the question the person came with, and
+     the evidence for the answer is one level down). One row per source: what
+     it found and how old its value is, scannable down a column. The debugger's
+     detail (absolute times, the read's cost, the endpoints) is on hover, not
+     in the reader's way. */
+  function sourcesTable(sources, nowMs) {
+    var body = (sources || []).map(function (s) {
+      var stale = isStale(s, nowMs);
+      var debug = 'value ' + (s.value_at || 'not recorded') + '; read ' + (s.read_at || '?')
+        + ' in ' + s.took_ms + ' ms' + (s.stale_after_seconds
+          ? '; promised current for ' + s.stale_after_seconds + ' s' : '')
+        + (s.detail ? '; ' + s.detail : '');
+      return '<tr data-attention-source-row="' + esc(s.source) + '" title="' + esc(debug) + '">'
+        + '<td>' + esc(s.label) + '</td>'
+        + (s.state === 'read'
+          ? '<td>' + esc(s.checked) + '</td><td class="text-nowrap' + (stale ? ' text-danger' : '')
+            + '">' + ageOf(s.value_at, nowMs) + (stale ? ' (stale)' : '') + '</td>'
+          : '<td colspan="2" class="text-danger">could not be read</td>')
+        + '</tr>';
+    }).join('');
+    return '<table class="table table-sm small mb-0" data-attention="sources">'
+      + '<thead><tr><th>Source</th><th>Found</th><th>Value</th></tr></thead>'
+      + '<tbody>' + body + '</tbody></table>';
+  }
+
+  /* A source that is stale, or did not answer, is something needing
+     attention, so it is a ROW, never only a line in the evidence (the
+     operator). The server already makes rows for a reader that stopped
+     (job health's reader row) and a drift run past its bound: those are
+     not drawn twice. */
+  function sourceRows(sources, rows, nowMs) {
+    var ids = {};
+    (rows || []).forEach(function (r) { ids[r.id] = true; });
+    var covered = function (s) {
+      if (s.reader && ids['job_health:reader:' + s.reader]) return true;
+      return (rows || []).some(function (r) {
+        return r.source === s.source && /:(stale|unreadable)$/.test(r.id || '');
+      });
+    };
+    var out = [];
+    (sources || []).forEach(function (s) {
+      if (covered(s)) return;
+      if (s.state !== 'read') {
+        out.push({id: 'page:unread:' + s.source, source: s.source, level: 'unknown',
+                  what: s.label + ' could not be read', devices: [], since: s.read_at,
+                  cause: 'This is not the same as nothing needing attention: whatever '
+                    + 'this source would show is unknown.',
+                  action: {label: 'Find why the source cannot be read', known: false}});
+      } else if (isStale(s, nowMs)) {
+        out.push({id: 'page:stale:' + s.source, source: s.source, level: 'warning',
+                  what: s.label + "'s value is older than its source promises",
+                  devices: [], since: null,
+                  cause: 'Its value is ' + ageOf(s.value_at, nowMs) + ', and it promises to be '
+                    + 'current for ' + s.stale_after_seconds + ' s: what produces it has '
+                    + 'stopped, or this page has stopped hearing it.',
+                  action: {label: 'Reload the page to ask again; if it stays, the reader has '
+                                  + 'stopped (see job health)', known: false}});
+      }
+    });
+    return out;
   }
 
   /* PURE: the collapsed claim. The OLDEST value is named, with its source,
      because a summary is only as fresh as its weakest source, and a value
      that is old for a reason (a baseline decided days ago) reads as that
      source's age rather than as the page's. */
-  function summaryLine(d, sources) {
+  function summaryLine(d, sources, nowMs) {
+    if (nowMs == null) nowMs = Date.now();
     var readAt = sources.map(function (s) { return s.read_at || ''; }).sort().pop();
     var oldest = sources.filter(function (s) { return s.value_at; })
       .sort(function (a, b) { return a.value_at < b.value_at ? -1 : a.value_at > b.value_at ? 1 : 0; })[0];
     return '<strong>' + esc(d.headline) + '</strong> &middot; ' + sources.length + ' of '
-      + sources.length + ' sources answered, read ' + when(readAt)
-      + (oldest ? ' &middot; oldest value: ' + esc(oldest.label) + ', from '
-         + when(oldest.value_at) : '');
+      + sources.length + ' sources answered, read <span title="' + esc(readAt) + '">'
+      + ageOf(readAt, nowMs) + '</span>'
+      + (oldest ? ' &middot; oldest value: ' + esc(oldest.label) + ', <span title="'
+         + esc(oldest.value_at) + '">' + ageOf(oldest.value_at, nowMs) + '</span>' : '');
   }
 
   function actionHtml(a) {
@@ -91,7 +153,9 @@
     return esc(typeof v === 'object' && v !== null ? JSON.stringify(v) : v);
   }
 
-  function rowHtml(r) {
+  function rowHtml(r, nowMs) {
+    r = r || {};
+    if (nowMs == null) nowMs = Date.now();
     var members = (r.operands || {}).members || [];
     var ops = Object.keys(r.operands || {}).filter(function (k) { return k !== 'members'; })
       .map(function (k) { return esc(k) + ': ' + operandValue(r.operands[k]); }).join(', ');
@@ -101,7 +165,8 @@
       + esc(LEVEL_WORDS[r.level] || r.level) + '</span>'
       + '<strong>' + esc(r.what) + '</strong>'
       + ((r.devices || []).length ? ' on ' + r.devices.map(esc).join(', ') : '')
-      + '<div class="text-muted">since ' + when(r.since) + '</div>'
+      + '<div class="text-muted">since ' + (r.since ? '<span title="' + esc(r.since) + '">'
+         + ageOf(r.since, nowMs) + '</span>' : 'not recorded') + '</div>'
       + '<div>' + esc(r.cause) + '</div>'
       + (ops ? '<div class="text-muted">' + ops + '</div>' : '')
       + (members.length ? '<ul class="small mb-0">' + members.map(memberHtml).join('') + '</ul>' : '')
@@ -135,33 +200,27 @@
         + (d && d.error ? ': ' + esc(d.error) : '') + '. This is not the same as '
         + 'nothing needing attention.</div>';
     }
-    var rows = d.rows || [];
+    var sources = d.sources || [];
+    // What needs attention: the server's rows, and any source that is stale
+    // or did not answer, as a row of its own (never only in the evidence).
+    var rows = (d.rows || []).concat(sourceRows(sources, d.rows, nowMs));
     if (!rows.length) {
-      var sources = d.sources || [];
-      var allRead = sources.length > 0 && sources.every(function (s) {
-        return s.state === 'read' && !isStale(s, nowMs); });
-      // The full list whenever any source did not answer, or answered with
-      // a value older than its promise: that is when the provenance matters,
-      // so it is never behind a click. (An unreadable source is a row of its
-      // own too; this holds even if one forgot.)
-      if (!allRead) {
-        return '<div class="alert alert-light border small mb-0" data-attention="none">'
-          + '<strong>' + esc(d.headline) + '</strong>. Looked at: '
-          + sourcesLine(sources, nowMs) + '.</div>';
-      }
       // The healthy, common case: ONE line that still makes the positive
-      // claim (every source answered, and how old the oldest value is), with
-      // the full list one click away (the operator's (a), 2026-09-28).
+      // claim (every source answered, how old the oldest value is), with the
+      // evidence one level down (the operator's (a), 2026-09-28).
       return '<details class="alert alert-light border small mb-0 py-1" data-attention="none">'
-        + '<summary>' + summaryLine(d, sources) + '</summary>'
-        + '<div class="mt-1">Looked at: ' + sourcesLine(sources, nowMs) + '.</div></details>';
+        + '<summary>' + summaryLine(d, sources, nowMs) + '</summary>'
+        + '<div class="mt-1">' + sourcesTable(sources, nowMs) + '</div></details>';
     }
+    var headline = rows.length === (d.rows || []).length ? d.headline
+      : rows.length + ' thing(s) need attention';
     return '<div class="card border-warning" data-attention="rows">'
-      + '<div class="card-header py-1 small"><strong>' + esc(d.headline) + '</strong>'
+      + '<div class="card-header py-1 small"><strong>' + esc(headline) + '</strong>'
       + unreadableNote(d) + '</div>'
-      + '<ul class="list-group list-group-flush">' + rows.map(rowHtml).join('')
-      + '</ul><div class="card-footer py-1 small text-muted">Looked at: '
-      + sourcesLine(d.sources, nowMs) + '.</div></div>';
+      + '<ul class="list-group list-group-flush">' + rows.map(function (r) { return rowHtml(r, nowMs); }).join('')
+      + '</ul><details class="card-footer py-1 small text-muted" data-attention="evidence">'
+      + '<summary>What was checked: ' + sources.length + ' source(s)</summary>'
+      + sourcesTable(sources, nowMs) + '</details></div>';
   }
 
   //: The panel's own promise: it re-fetches every minute (for the sources
@@ -204,7 +263,7 @@
     // judged again without a request.
     if (root.NMAS && root.NMAS.stamp) {
       NMAS.stamp('needsAttentionPanel', newestRead(d), PANEL_STALE_AFTER,
-                 'Needs attention', draw);
+                 'Needs attention', draw, {ownAge: true});
     }
   }
 

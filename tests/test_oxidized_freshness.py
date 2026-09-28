@@ -666,7 +666,7 @@ def signal_js():
                  .replace(/>/g, '&gt;'); } };
     } };
     """
-    return stub + _lift(page, "_freshEscape", "freshnessSignalHtml") + """
+    return stub + _lift(page, "_freshEscape", "freshnessSignalHtml", "_freshTable") + """
     var _FRESH_VERDICTS = {
       match: ['bg-success', 'approved'],
       poll_race: ['bg-info', 'poll race'],
@@ -697,7 +697,9 @@ class TestTheSignalRenders:
         html = _render(signal_js, {"ok": False, "error": "Oxidized unreachable"})
         assert "could not run" in html
         assert "not</em> the same as" in html or "not the same as" in html
-        assert "matches the approved config" not in html
+        # The CURRENT clean sentence, or this negative check passes vacuously
+        # when the sentence is reworded (2026-09-28: it was).
+        assert "No device holds a change nobody approved" not in html
 
     def test_the_control_a_clean_report_says_so(self, signal_js):
         """Without this, a renderer that always warned would pass the above."""
@@ -705,8 +707,21 @@ class TestTheSignalRenders:
             "ok": True, "summary": "2 of 2 checked", "devices": [
                 {"device": "r1", "verdict": "match"},
                 {"device": "r2", "verdict": "match"}]})
-        assert "matches the approved config" in html
+        assert "No device holds a change nobody approved" in html
         assert "could not run" not in html
+
+    def test_what_needs_attention_comes_first_and_the_evidence_one_level_down(self, signal_js):
+        """The operator's presentation rule (2026-09-28): the unapproved device
+        before the counts, and a poll race (not a problem) inside the
+        evidence, never above it."""
+        html = _render(signal_js, {
+            "ok": True, "summary": "3 of 3 checked", "devices": [
+                {"device": "r1", "verdict": "poll_race", "reason": "the golden is newer"},
+                {"device": "r2", "verdict": "unapproved", "reason": "Oxidized is newer"},
+                {"device": "r3", "verdict": "match"}]})
+        evidence = html.index('data-freshness="evidence"')
+        assert html.index("r2") < evidence < html.index("r1")
+        assert html.index("3 of 3 checked") > evidence
 
     def test_an_unapproved_device_is_named_with_what_differs(self, signal_js):
         html = _render(signal_js, {

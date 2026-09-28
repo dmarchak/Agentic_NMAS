@@ -2171,6 +2171,15 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   `no snmp-server community public RW` against a device whose line reads
   `… RW 99` is a command that does not match. The plan reports what is
   **kept** as well as what is removed.
+- **THE SCREEN ANSWERS THE QUESTION THE PERSON CAME WITH; THE EVIDENCE IS ONE LEVEL DOWN**
+  (the operator's presentation rule for Stage 7, 2026-09-28). People want to know what needs
+  their attention: all well is one line that still makes the positive claim, something wrong
+  is the rows with what to do, and a source that is stale or did not answer is itself a row.
+  What was checked, with ages first and absolute times, read costs and endpoints on hover, is
+  the evidence: reachable, never first, nothing summarised away. It exists because WE needed
+  to trust the page while building it. Needs attention, the status bar, the freshness panel
+  and the drift panel were brought to it the day it was decided; every later screen inherits
+  it (NSOT_STAGE7_PLAN, 7.2).
 - **NEVER LET A WRONG THING LOOK LIKE A WORKING THING.** The governing
   design requirement, and the one this tool can actually keep.
   **What infrastructure-as-code here genuinely protects:** drift between

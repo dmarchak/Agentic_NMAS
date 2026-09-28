@@ -33,12 +33,32 @@
         + 'Integration health could not be read: ' + esc((d && d.error) || 'no answer')
         + '. This is not the same as every integration being up.</span>';
     }
-    var items = (d.statuses || []).map(function (s) {
+    // ANSWER FIRST (the operator's presentation rule, 2026-09-28): is anything
+    // down? Down integrations are named, in red, first; when none is, one
+    // badge says so. Each integration's message and probe time are one level
+    // down, on hover. Unconfigured ones are NAMED, never only counted (C171).
+    var all = d.statuses || [];
+    function tip(list) {
+      return list.map(function (s) {
+        return s.label + ': ' + (WORD[s.state] || s.state) + '. ' + (s.message || '')
+          + ' (probe ' + s.took_ms + ' ms)';
+      }).join(' | ');
+    }
+    var down = all.filter(function (s) { return s.state !== 'up' && s.state !== 'not_configured'; });
+    var up = all.filter(function (s) { return s.state === 'up'; });
+    var unset = all.filter(function (s) { return s.state === 'not_configured'; });
+    var items = down.map(function (s) {
       return '<span class="badge ' + (CLS[s.state] || 'bg-danger') + '" data-integration="'
-        + esc(s.name) + '" title="' + esc(s.label) + ': ' + esc(WORD[s.state] || s.state)
-        + '. ' + esc(s.message) + ' (probe ' + esc(s.took_ms) + ' ms)">' + esc(s.label)
-        + (s.state === 'down' ? ' down' : '') + '</span>';
+        + esc(s.name) + '" title="' + esc(tip([s])) + '">' + esc(s.label) + ' down</span>';
     }).join(' ');
+    items += (items ? ' ' : '') + '<span class="badge ' + (down.length ? 'bg-dark border' : 'bg-success')
+      + '" data-status-bar="' + (down.length ? 'others-up' : 'all-up') + '" title="' + esc(tip(up))
+      + '">' + (down.length ? up.length + ' up' : 'All ' + up.length + ' integrations up') + '</span>';
+    if (unset.length) {
+      items += ' <span class="text-muted" data-status-bar="not-configured" title="' + esc(tip(unset))
+        + '">not configured: ' + unset.map(function (s) { return esc(s.label); }).join(', ')
+        + '</span>';
+    }
     var at = d.value_at ? Date.parse(d.value_at) : NaN;
     var age;
     if (isNaN(at)) {

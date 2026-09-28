@@ -93,9 +93,10 @@ I1, I4 = "index.1.js", "index.4.js"
 RENDERS = {
     "GET /attention": Render(
         lambda mp, tmp: P.needs_attention(mp, tmp),
-        {"nmas_attention.js": ("attentionPanelHtml", "loadAttention", "sourcesLine",
+        {"nmas_attention.js": ("attentionPanelHtml", "loadAttention",
                                "rowHtml", "actionHtml", "unreadableNote",
-                               "memberHtml", "operandValue")},
+                               "memberHtml", "operandValue", "sourcesTable",
+                               "sourceRows", "ageOf", "ago")},
         (("nmas_attention.js", "attentionPanelHtml", "d"),),
         maps=("operands",),
         adapters={"modules/attention.py": ("needs_attention", "source_result", "row",

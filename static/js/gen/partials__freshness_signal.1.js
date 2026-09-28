@@ -37,16 +37,27 @@ function freshnessSignalHtml(data) {
   }
 
   const counts = data.counts || {};
-  const rows = (data.devices || []).filter(r => r.verdict !== 'match');
-  const head = '<div class="small text-muted mb-2">' +
-        _freshEscape(data.summary || '') + '</div>';
-
-  if (!rows.length) {
-    return head + '<div class="text-success small">' +
-      'Every device Oxidized holds matches the approved config.</div>';
+  // ANSWER FIRST (the operator's presentation rule, 2026-09-28): what needs
+  // attention is a change nobody approved, or a device that cannot be told.
+  // A poll race and an authorised divergence are evidence, one level down
+  // with the counts, beside what was compared.
+  const problems = (data.devices || []).filter(r => r.verdict === 'unapproved' ||
+                                                    r.verdict === 'inconclusive');
+  const others = (data.devices || []).filter(r => r.verdict === 'poll_race' ||
+                                                  r.verdict === 'authorised');
+  let html = problems.length ? _freshTable(problems)
+    : '<div class="text-success small">No device holds a change nobody approved.</div>';
+  for (const note of (data.errors || [])) {
+    html += '<div class="text-warning small mt-1">' + _freshEscape(note) + '</div>';
   }
+  html += '<details class="small text-muted mt-1" data-freshness="evidence"><summary>What was '
+    + 'compared</summary><div>' + _freshEscape(data.summary || '') + '</div>'
+    + (others.length ? _freshTable(others) : '') + '</details>';
+  return html;
+}
 
-  let html = head + '<div class="table-responsive"><table class="table table-sm ' +
+function _freshTable(rows) {
+  let html = '<div class="table-responsive"><table class="table table-sm ' +
              'table-dark align-middle mb-0"><tbody>';
   for (const row of rows) {
     const [cls, label] = _FRESH_VERDICTS[row.verdict] || ['bg-secondary', row.verdict];
@@ -67,9 +78,6 @@ function freshnessSignalHtml(data) {
     html += '</td></tr>';
   }
   html += '</tbody></table></div>';
-  for (const note of (data.errors || [])) {
-    html += '<div class="text-warning small mt-1">' + _freshEscape(note) + '</div>';
-  }
   return html;
 }
 

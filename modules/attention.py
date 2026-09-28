@@ -80,7 +80,8 @@ def row(*, source: str, key: str, what: str, cause: str, action: dict,
 
 def source_result(source: str, label: str, *, read_at: float, took_ms: int,
                   rows=None, checked: str = "", error: str = "",
-                  value_at: float = None, stale_after_seconds: int = None) -> dict:
+                  value_at: float = None, stale_after_seconds: int = None,
+                  reader: str = None, detail: str = "") -> dict:
     """One source, read. *error* makes the source a row of its own.
 
     *read_at* is when this request read the source; *value_at* is the time of
@@ -93,7 +94,15 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
     drift run's interval times two). The PAGE judges age against it on its
     own clock (the live-data contract, 7.2 step 13), so a stored value whose
     producer has stopped is drawn stale without another request. None means
-    the value was read for this request, and its freshness is the panel's."""
+    the value was read for this request, and its freshness is the panel's.
+
+    *reader* names the reader job behind a stored value, so the page can tell
+    that job health's row for a stopped reader already covers a stale source
+    and not draw the same fact twice.
+
+    *checked* says what was FOUND, for a person; *detail* is the debugger's
+    part (endpoints, read costs), drawn one level down, on hover (the
+    operator's presentation rule, 2026-09-28)."""
     if error:
         return {"source": source, "label": label, "state": "unreadable",
                 "read_at": _iso(read_at), "value_at": None, "took_ms": took_ms,
@@ -112,7 +121,7 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
     return {"source": source, "label": label, "state": "read",
             "read_at": _iso(read_at),
             "value_at": _iso(read_at if value_at is None else value_at),
-            "stale_after_seconds": stale_after_seconds,
+            "stale_after_seconds": stale_after_seconds, "reader": reader, "detail": detail,
             "took_ms": took_ms, "checked": checked, "rows": list(rows or [])}
 
 
@@ -242,7 +251,8 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
     n_ok = len(jobs) - len(rows)
     return source_result("job_health", "Job health", read_at=started, took_ms=took,
                          rows=rows, value_at=value_at, stale_after_seconds=promise,
-                         checked=f"{len(jobs)} job-health row(s), {n_ok} ok ({where})")
+                         reader=JOB_HEALTH_READER if promise else None, detail=where,
+                         checked=f"{len(jobs)} job-health row(s), {n_ok} ok")
 
 
 # ---------------------------------------------------------------------------
@@ -909,7 +919,8 @@ def grafana_source(cached=None) -> dict:
     return source_result(
         "grafana", "Grafana alerts", read_at=started, took_ms=took, rows=rows,
         value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
-        checked=(f"{c.get('rules', 0)} rule(s) from {', '.join(doc.get('endpoints') or [])}; "
+        reader=GRAFANA_READER, detail="read from " + ", ".join(doc.get("endpoints") or []),
+        checked=(f"{c.get('rules', 0)} rule(s); "
                  f"{c.get('condition', 0)} alerting, {c.get('no_data', 0)} no data, "
                  f"{c.get('error', 0)} error, {c.get('pending', 0)} pending, "
                  f"{c.get('normal_no_data', 0)} reading no data as healthy by decision"
@@ -982,7 +993,7 @@ def freshness_source(cached=None) -> dict:
     c = report.get("counts") or {}
     return source_result(
         "freshness", "Freshness", read_at=started, took_ms=took, rows=rows,
-        value_at=value_at, stale_after_seconds=promise,
+        value_at=value_at, stale_after_seconds=promise, reader="freshness",
         checked=(f"list {lst}: {report.get('checked', 0)} of {report.get('population', 0)} "
                  f"compared; {c.get('match', 0)} approved, {c.get('poll_race', 0)} poll race, "
                  f"{c.get('authorised', 0)} authorised"))
@@ -1028,6 +1039,7 @@ def integrations_source(cached=None) -> dict:
     return source_result(
         "integrations", "Integrations", read_at=started, took_ms=took, rows=rows,
         value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
+        reader="integrations",
         checked=(f"{len(v.get('integrations') or [])} integration(s): {c.get('up', 0)} up, "
                  f"{c.get('down', 0)} down, {c.get('not_configured', 0)} not configured"
                  + (f" ({', '.join(unset)})" if unset else "")))
@@ -1077,7 +1089,7 @@ def ci_source(cached=None) -> dict:
                         action={"label": "Read nmas-deploy's sentence above: it names the run and "
                                          "what it found", "known": False}))
     return source_result("ci", "Running commit's CI", read_at=started, took_ms=took, rows=rows,
-                         value_at=value_at, stale_after_seconds=promise,
+                         value_at=value_at, stale_after_seconds=promise, reader="ci-verdict",
                          checked=f"{commit[:10]}: {v.get('state')}")
 
 

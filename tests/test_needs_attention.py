@@ -12,6 +12,7 @@ measured on the NMAS host (tests/test_job_health.py).
 
 import json
 import os
+import re
 
 import dukpy
 import pytest
@@ -107,7 +108,8 @@ class TestJobHealthAsASource:
     def test_ok_jobs_are_not_rows_and_are_counted_as_looked_at(self):
         res = A.job_health_source(_health(_ok(NOW - 60)))
         assert res["rows"] == []
-        assert res["checked"] == f"{len(J.JOBS)} job-health row(s), {len(J.JOBS)} ok (read now)"
+        assert res["checked"] == f"{len(J.JOBS)} job-health row(s), {len(J.JOBS)} ok"
+        assert res["detail"] == "read now"
 
     def test_a_stale_job_says_since_it_went_stale(self):
         res = A.job_health_source(_health(_ok(NOW - 4 * 3600)))
@@ -246,7 +248,10 @@ class TestThePageAndThePanel:
         src = page["sources"][0]
         assert src["state"] == "read" and src["read_at"] and src["checked"]
         html = _panel(page)
-        assert "Nothing needs attention" in html and "Job health: read" in html
+        # The evidence is one level down, one row per source (the operator's
+        # presentation rule, 2026-09-28): the source and what it found.
+        assert "Nothing needs attention" in html
+        assert 'data-attention-source-row="job_health"' in html and "<td>Job health</td>" in html
         assert src["checked"] in html and 'data-attention="none"' in html
 
     def test_rows_are_worst_first_and_drawn_with_every_part(self, monkeypatch):
@@ -262,7 +267,9 @@ class TestThePageAndThePanel:
         assert levels == ["danger"] * len(J.JOBS) + ["unknown"], levels
         html = _panel(page)
         assert "clab-sync is failing" in html and "command not found" in html
-        assert "journalctl -u clab-sync.service" in html and "since 20" in html
+        # An age, with the absolute time on hover (answer first, detail below).
+        assert "journalctl -u clab-sync.service" in html and 'since <span title="20' in html
+        assert re.search(r"since <span title=\"20[^\"]+\">\d+ (s|min|h|d) ago", html)
         assert "cannot tell" in html and "since not recorded" in html
 
     def test_a_failed_read_is_never_drawn_as_nothing(self):
@@ -380,6 +387,9 @@ class TestDriftAsASource:
         html = dukpy.evaljs(js + f"\ndriftDetailHtml({json.dumps(status)});")
         assert "Drifted: r2" in html and "diff line(s)" in html
         assert "triggered by manual" in html and status["last_run"]["timestamp"] in html
+        # Answer first (the operator's presentation rule, 2026-09-28): what is
+        # wrong before the accounting that is its evidence.
+        assert html.index("Drifted: r2") < html.index("checked ")
 
 
 # ---------------------------------------------------------------------------
@@ -799,7 +809,7 @@ class TestJobHealthFromTheReader:
         res = A.job_health_source(readers_now=[])
         assert res["state"] == "read" and res["value_at"] == A._iso(NOW - 120)
         assert [r["id"] for r in res["rows"]] == ["job_health:clab-sync"]
-        assert "(stored by the reader" in res["checked"]
+        assert res["detail"].startswith("stored by the reader")   # debug, one level down
 
     def test_a_stopped_reader_is_stale_although_its_cached_row_said_ok(self, monkeypatch):
         """The self-referential case: the cached value carries a
@@ -846,16 +856,44 @@ class TestTheHealthyPageIsOneLine:
         summary = html[html.index("<summary>"):html.index("</summary>")]
         assert "Nothing needs attention" in summary
         assert "2 of 2 sources answered" in summary
-        assert "oldest value: Drift, from " + A._iso(NOW - 900).replace("T", " ").replace(
-            "Z", " UTC") in summary
+        assert "oldest value: Drift, <span title=\"" + A._iso(NOW - 900) + "\">" in summary
         # The full list is still in the page, one click away.
         assert "checked 9 of 9" in html[html.index("</summary>"):]
 
-    def test_a_source_that_did_not_answer_forces_the_full_list(self, monkeypatch):
-        """Even with no row (a source that forgot to make one), the claim is
-        never collapsed over a source that did not answer."""
+    def test_the_healthy_line_carries_the_answer_and_the_debug_is_one_level_down(self, monkeypatch):
+        """The operator's rule: the one-liner is the answer; read costs and
+        endpoints are for us, on hover in the evidence table, never in the line."""
+        page = self._page(monkeypatch)
+        page["sources"][0]["detail"] = "read from api/ruler, api/prometheus"
+        html = _panel(page)
+        summary = html[html.index("<summary>"):html.index("</summary>")]
+        assert " ms" not in summary and "api/" not in summary
+        table = html[html.index('data-attention="sources"'):]
+        assert 'title="value ' in table and "read from api/ruler" in table and " ms" in table
+
+    def test_a_stale_reader_job_health_already_rows_is_not_drawn_twice(self, monkeypatch):
+        """The server's `job_health:reader:<name>` row covers a stale reader
+        source; the page adds its own row only when nothing covers it."""
+        page = self._page(monkeypatch)
+        src = dict(page["sources"][0], reader="grafana-alerts", source="grafana",
+                   label="Grafana alerts", value_at=A._iso(NOW - 3600), stale_after_seconds=180)
+        page["sources"].append(src)
+        alone = _panel(page)
+        assert "Grafana alerts&#39;s value is older" in alone or \
+            "Grafana alerts's value is older" in alone
+        page["rows"] = [A.row(source="job_health", key="reader:grafana-alerts", what="x",
+                              cause="stopped", action={"label": "restart"}, level="warning")]
+        covered = _panel(page)
+        assert "value is older than its source promises" not in covered
+
+    def test_a_source_that_did_not_answer_is_a_row_even_if_it_made_none(self, monkeypatch):
+        """Even with no row (a source that forgot to make one), a source that
+        did not answer is itself something needing attention: a ROW, never a
+        line in the evidence (the operator, 2026-09-28)."""
         page = self._page(monkeypatch)
         page["sources"].append({"label": "Drift", "state": "unreadable",
                                 "read_at": A._iso(NOW), "rows": []})
         html = _panel(page)
-        assert "<details" not in html and "could not be read" in html
+        assert 'data-attention="rows"' in html
+        rows = html[:html.index('data-attention="evidence"')]
+        assert "Drift could not be read" in rows and "not the same as nothing" in rows

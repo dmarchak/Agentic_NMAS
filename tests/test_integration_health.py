@@ -160,6 +160,23 @@ class TestTheShippedBar:
         assert 'data-integration="grafana"' in html and "Grafana down" in html
         assert 'data-status-bar-age="fresh"' in html and "40 s ago" in html
 
+    def test_all_up_is_one_answer_and_the_unconfigured_are_named(self):
+        """Answer first: is anything down? One badge says no; the ten equal
+        badges are gone. What is not configured is named (C171)."""
+        d = dict(PAYLOAD, statuses=[
+            {"name": "prometheus", "label": "Prometheus", "state": "up", "message": "ok", "took_ms": 6},
+            {"name": "loki", "label": "Loki", "state": "up", "message": "Ready", "took_ms": 5},
+            {"name": "s3", "label": "S3 archive", "state": "not_configured", "message": "x",
+             "took_ms": 0}])
+        html = bar(d, "2026-09-28T21:30:10Z")
+        assert "All 2 integrations up" in html and 'data-integration="' not in html
+        assert "not configured: S3 archive" in html
+        assert "Prometheus: up. ok (probe 6 ms)" in html, "the detail is on hover"
+
+    def test_a_down_integration_comes_first(self):
+        html = bar(PAYLOAD, "2026-09-28T21:30:10Z")
+        assert html.index("Grafana down") < html.index("1 up")
+
     def test_past_its_promise_the_bar_says_stale(self):
         html = bar(PAYLOAD, "2026-09-28T21:34:00Z")
         assert 'data-status-bar-age="stale"' in html and "older than the 180 s" in html

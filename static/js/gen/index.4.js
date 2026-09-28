@@ -1148,7 +1148,30 @@ function driftDetailHtml(data) {
      sentence. A stored result from before 3.3b has no `inventory`, and a
      sentence is not a place to keep numbers: "All 9 device(s) clean" reads
      identically for 9 of 9 and for 9 of 10. */
+  /* ANSWER FIRST (the operator's presentation rule, 2026-09-28): what is
+     wrong comes first (drifted, unreachable, not checked, pending approvals),
+     and the accounting and the run that produced it come after, as the
+     evidence. Nothing is dropped; only the order says which is the answer. */
   let html = '';
+  (lr.drifted_devices || []).forEach(x => {
+    html += `<div class="text-danger small">Drifted: ${esc(x.hostname)} — `
+         +  `${esc(x.diff_lines)} diff line(s) from its golden</div>`;
+  });
+  /* Every device not checked, NAMED with its reason. "checked 9 of 10"
+     without the tenth device's name is a number nobody can act on -- and a
+     device onboarded a minute ago is exactly who lands here. */
+  (lr.errors || []).forEach(x => {
+    html += `<div class="text-danger small">Unreachable: `
+         +  `${esc(x.hostname)} — ${esc(x.reason)}</div>`;
+  });
+  (lr.skipped || []).forEach(x => {
+    html += `<div class="text-warning small">Not checked: `
+         +  `${esc(x.hostname)} — ${esc(x.reason)}</div>`;
+  });
+  if (pending > 0) {
+    html += `<span class="badge bg-warning text-dark">${pending} pending `
+         +  `approval${pending !== 1 ? 's' : ''}</span>`;
+  }
   if (inventory > 0) {
     const bits = [`<strong>checked ${checked} of ${inventory}</strong>`];
     if (lr.drifted)                bits.push(`${lr.drifted} drifted`);
@@ -1168,26 +1191,6 @@ function driftDetailHtml(data) {
     html += `<div class="text-muted small">run ${esc(lr.timestamp || 'at an unrecorded time')}`
          +  `, triggered by ${esc(lr.triggered_by || 'unrecorded')}</div>`;
   }
-  (lr.drifted_devices || []).forEach(x => {
-    html += `<div class="text-danger small mt-1">Drifted: ${esc(x.hostname)} — `
-         +  `${esc(x.diff_lines)} diff line(s) from its golden</div>`;
-  });
-
-  if (pending > 0) {
-    html += `<span class="badge bg-warning text-dark mt-1">${pending} pending `
-         +  `approval${pending !== 1 ? 's' : ''}</span>`;
-  }
-  /* Every device not checked, NAMED with its reason. "checked 9 of 10"
-     without the tenth device's name is a number nobody can act on -- and a
-     device onboarded a minute ago is exactly who lands here. */
-  (lr.skipped || []).forEach(x => {
-    html += `<div class="text-warning small mt-1">Not checked: `
-         +  `${esc(x.hostname)} — ${esc(x.reason)}</div>`;
-  });
-  (lr.errors || []).forEach(x => {
-    html += `<div class="text-danger small mt-1">Unreachable: `
-         +  `${esc(x.hostname)} — ${esc(x.reason)}</div>`;
-  });
   return html;
 }
 

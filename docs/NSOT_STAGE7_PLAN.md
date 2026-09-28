@@ -1439,6 +1439,41 @@ commit's ("not judged yet"). Needs attention makes a row when the running
 commit's CI failed (danger), was cancelled or is still going (warning), or
 could not be asked (unknown). The bar's last item, who you are, is next.
 
+**THE PRESENTATION RULE FOR STAGE 7, decided 2026-09-28 (the operator): THE
+SCREEN ANSWERS THE QUESTION THE PERSON CAME WITH, AND THE EVIDENCE FOR THE
+ANSWER IS ONE LEVEL DOWN.** People want to know what needs their attention.
+Everything working is the one line that still makes the positive claim;
+something wrong is the rows, prominent, with what and what to do; a source
+that is stale or did not answer IS something needing attention, so it is a
+row, never a line in a provenance list. What was checked, and how (ages,
+then absolute times, read costs and endpoints on hover), exists because we
+needed to trust the page while building it: a debugging need, so it is
+reachable and never first. Nothing is summarised away. The preview's operands
+and the result's record already had this shape, which is why they read well.
+Every screen after this inherits it. **Applied 2026-09-28 to the four built
+panels**, each asked "does it lead with what's wrong or with what was
+checked?":
+- **Needs attention** (led with a provenance paragraph when rows existed, and
+  a stale source was a red word in it): a stale source, or one that did not
+  answer without making a row, is now a row of its own (not drawn twice when
+  job health's reader row or drift's stale row covers it); the evidence is a
+  table, one row per source with what it found and its value's age, behind
+  "What was checked"; the debugger's part (endpoints, the reader's read time)
+  is a `detail` field on hover; `since` is an age with the time on hover.
+- **The status bar** (ten equal badges): one badge answers ("All 8
+  integrations up") or the down ones are named first in red; the unconfigured
+  are named; each integration's message and probe time are on hover.
+- **Freshness** (the counts line and a standing explanation first): the
+  unapproved and inconclusive devices first, or "No device holds a change
+  nobody approved"; poll races, authorised divergences and the counts one
+  level down; the explanation behind "About this check". The old clean
+  sentence ("every device matches the approved config") was false beside a
+  poll race, and its negative check would have passed vacuously on a
+  reworded sentence: both moved together.
+- **Drift** (the badge already answered first; the detail opened with the
+  accounting): drifted, unreachable and not-checked devices first, then the
+  accounting and the run.
+
 
 ## 9. Deferred, recorded rather than scoped
 
