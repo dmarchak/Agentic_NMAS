@@ -1937,6 +1937,15 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   pass an explicit, ordered file list, and write down the command that
   produced it. Same family as *a pattern that can appear in English*: in
   both, the measuring apparatus matched or moved the thing it was pointed at.
+  **Second instance, C120, and silent** (the operator, 2026-09-27): the
+  runner itself. A control's same-size edit, restored within the same
+  second, left bytecode the next run executed, so a check reported on code
+  that was not the code on disk. No error and no warning; the only symptom
+  was an unrelated test failing later. The trigger is what a good control
+  IS (a small edit, reverted at once), which is why it is structural now:
+  the runner writes no bytecode. Past instances are unknowable (the timing
+  was never recorded) and bounded: control verdicts and CI verdicts hold,
+  and only a laptop run right after a restore could be wrong.
 - **A document asserting a property the code does not have is worse than no
   document, because it stops the next person looking.** CLAUDE.md said
   `write_settings()` was "the one path into `user_settings.json`". There was
