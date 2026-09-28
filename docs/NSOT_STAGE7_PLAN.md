@@ -1003,6 +1003,17 @@ recorded the turn it is raised, after searching the register.
          defect of the preview.
        A defect is anything else: a delete not in that list, a "Could NOT be
        read" line, or a gone line.
+  - **R2a DONE 2026-09-28 (the operator), nothing confirmed.** Remove preview:
+    exactly the expected nine, left alone 0, nothing gone or unreadable, the
+    read gate passing, the cascade line drawn as fixed. Import preview, after
+    C135: 39 lines down to 14, updates 38 down to 13, so **25 of 39 were
+    phantom**, writes the real import never makes; what remains is one create
+    (`ipam/prefixes 0.0.0.0/0`), nine devices that change `local_context_data`,
+    three addresses that change `vrf` and one interface description. R2a's
+    own findings: C130, C131, C133, C134, C135. The nine
+    `local_context_data` changes are C95's field: the import's whole remaining
+    device-level work was writing unmasked credentials, so no import is
+    confirmed until C95 (a) is deployed.
   - **R2b, the real removal, after R1**: Remove `probe-r1` (the list R1
     onboarded into). Every delete named, what NetBox takes with them asked,
     then confirm, read the result, re-read it on the NetBox tab's Removals

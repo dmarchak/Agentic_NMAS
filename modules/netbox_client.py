@@ -1623,32 +1623,22 @@ _RE_CFG_HOSTNAME = re.compile(r"^hostname\s+(\S+)", re.MULTILINE)
 _RE_CFG_BANNER   = re.compile(
     r"^banner\s+\w+\s+\^C.*?\^C", re.MULTILINE | re.DOTALL
 )
-_RE_CFG_SECRET   = re.compile(
-    # enable secret [type] <hash>  — optional hash-type digit before the actual secret
-    r"^(enable\s+(?:secret|password)\s+(?:\d+\s+)?)\S+", re.MULTILINE
-)
-_RE_CFG_USERNAME = re.compile(
-    # username <name> secret|password [type] <hash>
-    r"^(username\s+\S+\s+(?:secret|password)\s+(?:\d+\s+)?)\S+", re.MULTILINE
-)
-_RE_CFG_PASSWORD = re.compile(
-    # <whitespace> password [type] <hash>  (interface / line / ospf etc.)
-    r"(\s+password\s+(?:\d+\s+)?)\S+", re.MULTILINE
-)
-_RE_CFG_KEY      = re.compile(
-    # IOS key-string <secret>  (hyphenated keyword)
-    r"(^\s+key-string\s+)\S+", re.MULTILINE
-)
-
-
 def _sanitise_config(raw: str) -> str:
-    """Strip secrets from a running config before storing in NetBox."""
-    s = _RE_CFG_BANNER.sub("banner motd ^C[REMOVED]^C", raw)
-    s = _RE_CFG_SECRET.sub(r"\g<1>[REMOVED]", s)
-    s = _RE_CFG_USERNAME.sub(r"\g<1>[REMOVED]", s)
-    s = _RE_CFG_PASSWORD.sub(r"\g<1>[REMOVED]", s)
-    s = _RE_CFG_KEY.sub(r"\g<1>[REMOVED]", s)
-    return s
+    """Mask a running config on its way INTO NetBox (register C95 (a)).
+
+    NetBox is not a deploy source and nobody restores a network from its copy,
+    so it is masked at rest, like the modification record (section 13), and
+    unlike `golden/`, which must restore a network. This had four private
+    patterns of its own, a SECOND redactor, and they missed the fleet: the
+    username pattern expected `username <name> secret ...` while every device
+    says `username admin privilege 15 secret 9 ...`, and nothing matched
+    `snmp-server community`. Measured on the host 2026-09-28: 2 credential-slot
+    lines unmasked on every device, in NetBox since the first import. One
+    redactor now, `redact.redact_text` (positional AND by known value), the
+    one measured at 0 unmasked lines across the fleet."""
+    from modules.redact import redact_text
+
+    return redact_text(_RE_CFG_BANNER.sub("banner motd ^C[REMOVED]^C", raw))
 
 
 def _build_config_context(hostname: str, ip: str, facts: dict,
@@ -2701,8 +2691,10 @@ def _parse_routing_context_from_config(config: str) -> dict:
     # SNMP communities / version
     snmp: dict = {}
     for sm in re.finditer(r"^snmp-server community\s+(\S+)\s+(RO|RW)", config, re.MULTILINE):
+        # The community is a CREDENTIAL, and this field held it in plaintext
+        # (C95). What a community grants is kept; the value is left out, as
+        # the operator decided. `running_config` carries the line masked.
         snmp.setdefault("communities", []).append({
-            "community":  sm.group(1),
             "permission": sm.group(2),
         })
     sv_m = re.search(r"^snmp-server version\s+(\S+)", config, re.MULTILINE)
