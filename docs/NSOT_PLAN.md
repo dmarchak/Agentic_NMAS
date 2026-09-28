@@ -1617,6 +1617,7 @@ not an order**; the ordering constraints are named below it.
 | **6** — security | **5** (6.1–6.5) | 4 | 1 | infrastructure and device-side; touches no GUI. 6.5 added 2026-09-25 (C5) |
 | **7** — the interface | **11** (7.0–7.9, incl. 7.2b) | 8 | 2 | **7.2b is DONE** — §0b's script extraction and §6c's cache headers both landed |
 | **8** — AI and agent | **6** (8.0–8.5) | 4 | 2 | plus three named sub-findings inside 8.2/8.3 |
+| **9** — loose ends and the remaining register | **19 candidates** (2026-09-28 triage), each entering by decision | — | 19 | **ADDED 2026-09-28 (the operator).** Improvement on a program already shaped and functional; never finishing it is an acceptable end state. Precondition: register buckets A and B empty |
 
 **⚠ Stage 5's seven was a different kind of number from the others**, and
 the fold resolves it: the paragraph is now enumerated as 7.3's acceptance,
@@ -1782,7 +1783,12 @@ configured by hand.
 
 ### STAGE 6 — security
 
-**6.1 Docker publishes past ufw.** Measured on the deployment host: NetBox
+**6.1 Docker publishes past ufw. STILL LIVE, re-measured 2026-09-28 from
+the laptop (C143):** TCP 8888, 8000, 3100 and 9116 answer from another LAN
+host, and oxidized-web's `/nodes.json` answers 200 with no credential. "On
+its own schedule" had no date, so it is register bucket A and precedes the
+community rotation (a new value would be served on the LAN the day it lands).
+Measured on the deployment host: NetBox
 `:8000`, Loki `:3100` and oxidized-web `:8888` are reachable from the whole
 LAN despite ufw's default deny, because Docker's rules in `DOCKER`/`DOCKER-USER`
 are evaluated ahead of ufw's chains. **oxidized-web serves every device's full
@@ -4797,3 +4803,62 @@ no tool reaches a device outside the confirmed deploy path; the prompt
 examples name only devices in this lab; and the background agent is enabled
 **last**, with one real run observed and reported -- the same bar drift
 had to clear; and triage is triggered as 8.6 decides (a read, never an inbound push).
+
+---
+
+### STAGE 9 — loose ends and the remaining register (ADDED 2026-09-28, the operator)
+
+**What it is for.** The register's C bucket needs a HOME, so that a real
+finding can be recorded, deferred, and not compete for attention with the
+stage in progress. Until now every row argued for itself whenever it was
+looked at, and that is how 7.1's close became a dozen findings and no 7.2.
+
+**What it is NOT: "finish the program".** The program is **shaped and
+functional** when three things hold:
+- the operations work from the interface;
+- the record is honest;
+- nothing leaks.
+
+Stage 9 is improvement on top of that. **If it never finishes, that is an
+acceptable end state, not a failure.**
+
+**Precondition: register buckets A (live exposure) and B (blocking) are
+empty.** If anything in Stage 9 turns out to be exposure or a blocker, the
+triage was wrong about it, and it moves earlier. The triage's rule applies
+here too: a finding's severity is a claim about the world, so an UNKNOWN is
+measured before it is placed, never placed on a feeling
+([OPEN_FINDINGS.md](OPEN_FINDINGS.md), "Triage, 2026-09-28").
+
+**An item enters by DECISION, not by deferral.** Its row records who decided,
+when, and why it can wait, with the same discipline as a withdrawn decision
+that stays visible. "Deferred to 9" with no reason is only a longer register.
+
+**Stage 9 is not the only exit.** A C row also leaves the register:
+- **CLOSED as won't-fix**, with the reasoning recorded;
+- **MERGED into the stage that rebuilds its code**: a row whose code 7.3
+  deletes is not fixed twice;
+- **HOMED in a stage that already owns it** (6, 8, Mode B).
+
+The register should shrink by decision rather than grow by politeness.
+
+**Its candidates, from the 2026-09-28 triage** (19 of the 50 C rows; the
+other 31 have one of the exits above). Each is a candidate until its
+decision is recorded:
+- NetBox's record: A2, A3, A4;
+- seeding and settings: C6, C40;
+- the fleet's clock and hostnames: C9, C13;
+- latent tooling: C25, C33, C47, C48, C58, C113;
+- the suite: C45, C71, C72;
+- the lab host: C94;
+- the devices: E2, E3.
+
+**One candidate moves out, because doing it later means doing it twice:** C71's
+sanitiser half goes into C39's placeholder work. The sanitiser is the producer
+of the fixture files, and it must emit placeholders. Fixing eleven files by
+hand now, then regenerating them later through a sanitiser that still leaks,
+is the same repair made twice. The refresh itself stays a candidate, and once
+the sanitiser is fixed it is a re-run.
+
+*Acceptance:* none, by design. Each item carries its own. The stage's only
+standing check is that its precondition still holds: a row found to be A or
+B leaves for an earlier stage the day it is found.

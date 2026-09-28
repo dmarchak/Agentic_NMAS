@@ -5063,6 +5063,19 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   recorded the same four CDN libraries: with ~60 open rows nobody recalls them all,
   so a new row needs a search first, the way a new store needs declaring. Extend a
   matching row rather than adding a second.
+- **A FINDING'S SEVERITY IS A CLAIM ABOUT THE WORLD, and claims about the
+  world are measured, not assumed** (the operator, the register triage,
+  2026-09-28). C95 read as tidying and was a secret in a shared system. C141
+  read as a code default and was a published value. C136 read as cosmetic,
+  and it stopped the import being performed for 9 hours. Each became live
+  exposure only when something was measured. So a triage has a fourth state,
+  UNKNOWN: a row whose severity rests on an unmeasured fact, named with the
+  one measurement that settles it. The triage's own first measurement proved
+  it: NSOT_PLAN 6.1, parked "on its own schedule" since 2026-09-25 and
+  outside the register because it had a stage, was LIVE. oxidized-web served
+  every device's config to the LAN, unauthenticated (C143). **A stage number
+  is not a date.** And a register whose done rows sit among its open ones
+  (31 of 92) overstates its backlog, and is read as more urgent than it is.
 - **A CLASS CLOSED AGAINST A LIST IS CLOSED AGAINST THE SURVEY, NOT THE
   CODE** (the operator, 2026-09-27, C121). When `FALSE_GREEN` emptied, "the
   false-green class is zero" was said and repeated back. It was true of the
@@ -5671,7 +5684,10 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **59 open at 2026-09-27**, counted from the rows: 53 recorded only in
+present when each was recorded. **61 open at 2026-09-28, triaged** (the
+register's top: A 3 rows and 2 exposures, B 4, UNKNOWN 4, C 50; the C rows'
+home is NSOT_PLAN's Stage 9, entered by decision, with A and B empty as its
+precondition). Before the triage: **59 open at 2026-09-27**, counted from the rows: 53 recorded only in
 prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
 scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
 because it adjusted a previous count instead of counting.
