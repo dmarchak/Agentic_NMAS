@@ -207,7 +207,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.grafana_alerts",
                            "modules.readers.freshness_reader",
                            "modules.readers.integration_health",
-                           "modules.readers.ci_verdict")
+                           "modules.readers.ci_verdict",
+                           "modules.readers.baseline_usability")
 
 
 # ---------------------------------------------------------------------------

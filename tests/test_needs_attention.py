@@ -687,7 +687,7 @@ class TestBaselineAsASource:
         _save(_broken(captured))
         _save(captured)
         res = A.baseline_source()
-        assert res["rows"] == [] and res["checked"].endswith(": earned")
+        assert res["rows"] == [] and ": earned;" in res["checked"]
 
     def test_a_later_capture_that_never_asked_does_not_hide_it(self, lab):
         """The NEWEST DECISION decides, not the newest commit: a one-device

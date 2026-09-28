@@ -770,11 +770,15 @@ def _legacy_action(list_name: str, legacy_dir: str, entry: dict) -> dict:
                            "--grep", f"^Retired-Device: {host}$")
     retired = out.strip().split() if rc == 0 and out.strip() else []
     if retired:
-        return {"state": "retired",
-                "action": (f"{host} was retired ({retired[0]}, "
-                           f"{retired[1] if len(retired) > 1 else ''}), and nothing reads "
-                           "this file for it any more. Delete it on the host: "
-                           f"rm {path}")}
+        survives = _legacy_survives(list_name, host, path)
+        head = (f"{host} was retired ({retired[0]}, "
+                f"{retired[1] if len(retired) > 1 else ''}), and nothing reads this file "
+                f"for it any more. {survives['words']}")
+        if survives["state"] == "lost":
+            return {"state": "retired",
+                    "action": head + (" Keep a copy of it before deleting it; nothing else "
+                                      "holds those lines.")}
+        return {"state": "retired", "action": head + f" Delete it on the host: rm {path}"}
     if host in {d.get("hostname", "") for d in _devices_of(list_name)}:
         return {"state": "managed",
                 "action": (f"{host} is in the inventory with no repository golden. "
@@ -784,6 +788,59 @@ def _legacy_action(list_name: str, legacy_dir: str, entry: dict) -> dict:
             "action": (f"{host} is neither in the inventory nor retired on record, so "
                        "this file may be the only copy of its config. Find out what it "
                        "was before deleting it; nothing here says it is safe to.")}
+
+
+def _legacy_survives(list_name: str, host: str, path: str) -> dict:
+    """Whether a legacy file's content SURVIVES in the repository, where, and
+    what deleting it would lose (the operator's rule, 2026-09-28: an action
+    that removes data says all three). Compared with every committed version of
+    `golden/<host>.cfg`, newest first: the same configuration (section-aware,
+    comments and headers aside) at a commit is survival at that commit; none
+    means the lines are nowhere else."""
+    from modules.nsot.roundtrip import configs_equivalent
+
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError as exc:
+        return {"state": "unknown", "words": f"Its content could not be read ({exc})."}
+    # The migration committed each legacy file VERBATIM as a backup (measured
+    # on the host: 32dbab7 holds .nsot/migration-backup/golden_configs-r5.cfg,
+    # 332 lines), and the store is read-only since: the most exact survival.
+    backup = f".nsot/migration-backup/golden_configs-{os.path.basename(path)}"
+    rc0, shas0, _ = _git_repo(list_name, "log", "--format=%h", "--diff-filter=AMR",
+                              "--", backup)
+    for sha in ((shas0 or "").split() if rc0 == 0 else []):
+        rc1, body, _ = _git_raw_repo(list_name, "show", f"{sha}:{backup}")
+        if rc1 == 0 and body == text:
+            return {"state": "survives", "commit": sha,
+                    "words": (f"This file survives VERBATIM in the repository as {backup} "
+                              f"at {sha} (the migration's backup; git show {sha}:{backup}), "
+                              "so deleting it loses nothing but the copy.")}
+    rel = f"golden/{host}.cfg"
+    # Commits where the file EXISTS: the retire commit deletes it and is not
+    # a version of it.
+    rc, shas, _ = _git_repo(list_name, "log", "--format=%h", "--diff-filter=AMR",
+                            "--", rel)
+    versions = [s for s in (shas or "").split() if s] if rc == 0 else []
+    for sha in versions:
+        rc2, body, _ = _git_repo(list_name, "show", f"{sha}:{rel}")
+        if rc2 == 0 and body and configs_equivalent(text, body)["equal"]:
+            return {"state": "survives", "commit": sha,
+                    "words": (f"Its configuration survives in the repository as {rel} at "
+                              f"{sha} (git show {sha}:{rel}), so deleting it loses nothing "
+                              "but the copy.")}
+    if not versions:
+        return {"state": "lost", "words": (f"The repository never held {rel}, so this file "
+                                           "is the only copy of its configuration.")}
+    return {"state": "lost", "words": (
+        f"It differs from all {len(versions)} committed version(s) of {rel} (newest "
+        f"{versions[0]}), so deleting it loses the lines only it holds.")}
+
+
+def _git_raw_repo(list_name: str, *args):
+    from modules.nsot.repo import git_raw
+    return git_raw(_repo_for(list_name), *args)
 
 
 def _git_repo(list_name: str, *args):

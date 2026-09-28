@@ -76,7 +76,11 @@ def build_golden_panel_lab(monkeypatch, tmp_path):
         fh.write("! broken by hand\n")
     shas["withdrawn"] = _commit(repo, "golden: baseline via save_all\n\nSource: save_all")
     _tag(repo, "baseline/20260927T000000Z", shas["withdrawn"])
-    # r5's retirement, as nmas-retire records it.
+    # r5's golden, then its retirement removing it, as nmas-retire does.
+    with open(os.path.join(repo, "golden", "r5.cfg"), "w") as fh:
+        fh.write("hostname r5\ninterface Loopback0\n ip address 192.0.2.5 255.255.255.255\n")
+    shas["r5_golden"] = _commit(repo, "golden: r5\n\nSource: capture")
+    R.git(repo, "rm", "-q", "--", "golden/r5.cfg")
     _commit(repo, "retire: r5 -- outside our boundary\n\nRetired-Device: r5\nSource: retire")
     monkeypatch.setattr(record_exceptions, "WITHDRAWN_BASELINES", {
         shas["withdrawn"]: {"list": LIST, "tag": "baseline/20260927T000000Z",
@@ -90,7 +94,9 @@ def build_golden_panel_lab(monkeypatch, tmp_path):
     legacy.mkdir(parents=True)
     for host, ip in (("r5", "203.0.113.5"), ("r9", "203.0.113.9")):
         (legacy / f"{host}.cfg").write_text(
-            f"! Golden config — {host} ({ip})\nhostname {host}\n", encoding="utf-8")
+            f"! Golden config — {host} ({ip})\nhostname {host}\n"
+            "interface Loopback0\n ip address 192.0.2.5 255.255.255.255\n",
+            encoding="utf-8")
     return {"client": A.app.test_client(), "repo": repo, "shas": shas,
             "legacy": str(legacy)}
 
@@ -162,6 +168,35 @@ class TestTheLegacyStoreSaysWhatToDo:
         by = {e["hostname"]: e for e in d["only_legacy"]}
         assert by["r5"]["state"] == "retired"
         assert by["r5"]["action"].endswith(f"rm {os.path.join(lab['legacy'], 'r5.cfg')}")
+        # What survives, where, and what is lost: the operator's removal rule.
+        sha = lab["shas"]["r5_golden"][:7]
+        assert "survives in the repository as golden/r5.cfg" in by["r5"]["action"]
+        assert f"git show {sha}" in by["r5"]["action"]
+        assert "loses nothing but the copy" in by["r5"]["action"]
+
+    def test_the_migrations_verbatim_backup_is_the_survival_it_names_first(self, lab):
+        """The host's case: the migration committed each legacy file verbatim."""
+        legacy = os.path.join(lab["legacy"], "r5.cfg")
+        backup = os.path.join(lab["repo"], ".nsot", "migration-backup")
+        os.makedirs(backup, exist_ok=True)
+        with open(legacy, encoding="utf-8") as fh, \
+                open(os.path.join(backup, "golden_configs-r5.cfg"), "w", encoding="utf-8") as out:
+            out.write(fh.read())
+        R.git(lab["repo"], "add", "-f", "--", ".nsot/migration-backup/golden_configs-r5.cfg")
+        R.git(lab["repo"], "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-q",
+              "-m", "migration: backup")
+        by = {e["hostname"]: e for e in
+              lab["client"].get("/golden/legacy_store").get_json()["only_legacy"]}
+        assert "survives VERBATIM" in by["r5"]["action"]
+        assert "golden_configs-r5.cfg" in by["r5"]["action"] and "rm " in by["r5"]["action"]
+
+    def test_a_file_whose_lines_are_nowhere_else_is_kept_not_deleted(self, lab):
+        with open(os.path.join(lab["legacy"], "r5.cfg"), "a", encoding="utf-8") as fh:
+            fh.write("snmp-server location only-here\n")
+        by = {e["hostname"]: e for e in
+              lab["client"].get("/golden/legacy_store").get_json()["only_legacy"]}
+        assert "differs from all 1 committed version(s)" in by["r5"]["action"]
+        assert "Keep a copy" in by["r5"]["action"] and "rm " not in by["r5"]["action"]
         assert by["r9"]["state"] == "unknown" and "nothing here says it is safe" in by["r9"]["action"]
 
     def test_a_device_still_managed_is_captured_not_deleted(self, lab, monkeypatch):
@@ -180,7 +215,8 @@ def _js(fn_names):
 
 
 FNS = ("_gEsc", "_gWhen", "_gBaselineClaim", "_gBaselineCoverage", "_gCredWarning",
-       "_gBaselineDecision", "_gBaselineRow", "_gBaselinesHtml")
+       "_gBaselineDecision", "_gBaselineRow", "_gBaselineUsable", "_gToggle",
+       "_gBaselinesHtml")
 
 
 class TestTheShippedTable:
@@ -195,7 +231,11 @@ class TestTheShippedTable:
         # The withdrawn newest row is SHOWN beside the one that would be used.
         assert "baseline/20260927T000000Z" in shown and "baseline/20260926T000000Z" in shown
         assert "baseline/20260921T000000Z" in older and "baseline/20260922T000000Z" in older
-        assert "Show 2 older baseline(s)" in html
+        assert "Show 1 older baseline(s)" in html and "Show withdrawn (1)" in html
+        # The deleted row sits behind the withdrawn toggle, not among the older.
+        withdrawn = html[html.index("data-baselines-withdrawn>"):]
+        assert "baseline/20260922T000000Z" in withdrawn
+        assert "baseline/20260922T000000Z" not in html[:html.index("data-baselines-withdrawn>")]
 
     def test_the_rows_say_what_they_are(self, lab):
         html = self._draw(lab)
@@ -211,6 +251,90 @@ class TestTheShippedTable:
         withdrawn = withdrawn[:withdrawn.index("</tr>")]
         assert "confirmBaselineRestore" not in withdrawn
 
+    def test_a_withdrawn_row_is_one_line_with_its_reasoning_on_hover(self, lab):
+        html = self._draw(lab)
+        row = html[html.index('data-baseline-row="withdrawn"'):]
+        row = row[:row.index("</tr>")]
+        visible = row.split('title="Withdrawn by the operator: it records r2 broken by hand"', 1)[1]
+        assert "withdrawn</span> 2026-09-28 (C70)" in visible
+        assert "it records r2 broken by hand" not in visible, "the reasoning is on hover only"
+        assert "loses only the restore point" in row and "<details" in row
+
+    def test_when_none_can_be_reapplied_it_is_said_once(self, lab):
+        import dukpy
+        payload = lab["client"].get("/golden/baselines").get_json()["baselines"]
+        for b in payload:
+            if not b.get("deleted") and not b.get("withdrawn"):
+                b["credential_stale"] = ["s1"]
+        html = dukpy.evaljs(_js(FNS) + "\n_gBaselinesHtml(" + json.dumps(payload) + ")")
+        assert html.count("No stored baseline can be re-applied") == 1
+        head = html[:html.index("data-baselines-older")]
+        # The newest kept row is shown, with the withdrawn row above it.
+        assert "baseline/20260926T000000Z" in head and "baseline/20260921T000000Z" not in head
+
     def test_the_panel_no_longer_cuts_at_ten(self):
         from tests.payload_render import shipped
         assert ".slice(0, 10)" not in shipped("partials__golden_repo.3.js")
+
+
+class TestNoUsableBaselineIsANeedsAttentionRow:
+    """The operator (2026-09-28): the fleet had no usable baseline and the
+    panel said it twelve times without saying it once."""
+
+    def test_the_reader_judges_each_baseline_and_names_the_usable_one(self, lab):
+        from modules.readers import baseline_usability as BU
+
+        v = BU.read(lists=[LIST], previous={})["lists"][LIST]
+        assert v["usable"] == "baseline/20260926T000000Z" and v["count"] == 3
+        judged = {b["tag"]: b for b in v["baselines"]}
+        assert judged["baseline/20260927T000000Z"]["withdrawn"]
+        assert not judged["baseline/20260927T000000Z"]["usable"]
+
+    def test_it_recomputes_only_when_head_or_the_tags_move(self, lab, monkeypatch):
+        from modules.readers import baseline_usability as BU
+
+        first = BU.read(lists=[LIST], previous={})
+        calls = []
+        monkeypatch.setattr(BU, "judge", lambda *a: calls.append(a) or {})
+        again = BU.read(lists=[LIST], previous=first)
+        assert calls == [] and again == first, "nothing moved: the stored answer stands"
+        _tag(lab["repo"], "baseline/20260928T000000Z", lab["shas"]["earned"])
+        BU.read(lists=[LIST], previous=first)
+        assert len(calls) == 1, "a new tag is a new question"
+
+    def _cached(self, value):
+        return {"state": "ok", "doc": {"last_good": {
+            "value": {"lists": {LIST: value}}, "value_at": "2026-09-28T20:00:00Z"}}}
+
+    def _none_usable(self):
+        return {"usable": "", "count": 2, "baselines": [
+            {"tag": "baseline/20260927T154517Z", "withdrawn": True, "stale": []},
+            {"tag": "baseline/20260925T201032Z", "withdrawn": False, "stale": ["s1"]}]}
+
+    def test_none_usable_is_one_row_naming_the_newest_and_the_remedy(self):
+        from modules.attention import _baseline_usability_row
+
+        out = _baseline_usability_row(LIST, cached=self._cached(self._none_usable()))
+        (r,) = out["rows"]
+        assert r["what"] == "No stored baseline can be re-applied"
+        assert "baseline/20260925T201032Z" in r["cause"] and "s1" in r["cause"]
+        assert "Withdrawn: baseline/20260927T154517Z" in r["cause"]
+        assert "Save All" in r["action"]["label"]
+
+    def test_a_usable_baseline_is_no_row(self):
+        from modules.attention import _baseline_usability_row
+
+        out = _baseline_usability_row(LIST, cached=self._cached(
+            {"usable": "baseline/x", "count": 1, "baselines": []}))
+        assert out["rows"] == [] and "baseline/x can be re-applied" in out["checked"]
+
+    def test_the_row_appears_when_no_decision_is_recorded_yet(self, monkeypatch):
+        """The host's state: no `Baseline:` decision in any commit. The first
+        version returned before asking, so the row could never be drawn."""
+        from modules import attention, reader_job
+
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: LIST)
+        monkeypatch.setattr(reader_job, "read_cached",
+                            lambda name: self._cached(self._none_usable()))
+        res = attention.baseline_source(log_fn=lambda: "")
+        assert [r["what"] for r in res["rows"]] == ["No stored baseline can be re-applied"]

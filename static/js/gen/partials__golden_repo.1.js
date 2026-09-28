@@ -148,28 +148,35 @@ function _gBaselineDecision(b) {
     title="${_gEsc(b.decision_detail || '')}">decision not recorded</span>`;
 }
 
-/* One baseline row. A WITHDRAWN one (record_exceptions, C70) is drawn with
-   its reason and the commands that delete it, and is never offered for
-   re-apply (the restore routes refuse it too); a deleted one is drawn where
-   it was, so a vanished row never reads as a point that never existed. */
+/* One baseline row. A WITHDRAWN one (record_exceptions, C70) is one line:
+   when and which finding, the reasoning on hover (the register holds it in
+   full; a table cell is not where a paragraph goes), and the command that
+   deletes it behind a disclosure, saying what deleting loses. A DELETED one
+   is drawn where it was, so a vanished row never reads as a point that never
+   existed, and sits behind the "withdrawn" toggle. Neither is offered for
+   re-apply (the restore routes refuse them too). */
 function _gBaselineRow(b) {
   const w = b.withdrawn;
+  const commit = (b.commit || '').slice(0, 12);
   if (b.deleted) {
     return `<tr class="text-muted" data-baseline-row="deleted">
       <td class="font-monospace small text-decoration-line-through">${_gEsc(b.tag)}</td>
       <td class="small">${_gEsc(_gWhen(b.created))}</td>
-      <td colspan="4" class="small">Deleted: withdrawn ${_gEsc(w.decided)} by ${_gEsc(w.by)} (${_gEsc(w.finding)}), because
-        ${_gEsc(w.why)}. Its commit <code>${_gEsc((b.commit || '').slice(0, 12))}</code> stays in history.</td>
+      <td colspan="4" class="small" title="Withdrawn by ${_gEsc(w.by)}: ${_gEsc(w.why)}. Its commit ${_gEsc(commit)} stays in history.">
+        Deleted: withdrawn ${_gEsc(w.decided)} (${_gEsc(w.finding)})</td>
     </tr>`;
   }
   if (w) {
     return `<tr class="table-warning" data-baseline-row="withdrawn">
       <td class="font-monospace small">${_gEsc(b.tag)}</td>
       <td class="small text-muted">${_gEsc(_gWhen(b.created))}</td>
-      <td colspan="3" class="small"><span class="badge bg-danger">withdrawn</span>
-        ${_gEsc(w.decided)}, ${_gEsc(w.by)} (${_gEsc(w.finding)}): ${_gEsc(w.why)}.
-        ${(b.delete_commands || []).length ? `<div class="mt-1">Delete it on the host (the tag here and on the remote):
-          ${b.delete_commands.map(c => `<div><code>${_gEsc(c)}</code></div>`).join('')}</div>` : ''}</td>
+      <td colspan="3" class="small" title="Withdrawn by ${_gEsc(w.by)}: ${_gEsc(w.why)}">
+        <span class="badge bg-danger">withdrawn</span> ${_gEsc(w.decided)} (${_gEsc(w.finding)})
+        ${(b.delete_commands || []).length ? `<details class="d-inline-block ms-2"><summary>delete the tag</summary>
+          ${b.delete_commands.map(c => `<div><code>${_gEsc(c)}</code></div>`).join('')}
+          <div>Deleting it loses only the restore point, here and on the remote: its commit
+            <code>${_gEsc(commit)}</code> and every golden in it stay in history
+            (<code>git show ${_gEsc(commit)}</code>).</div></details>` : ''}</td>
       <td class="text-end small text-muted">not offered for re-apply</td>
     </tr>`;
   }
@@ -189,29 +196,51 @@ function _gBaselineRow(b) {
   </tr>`;
 }
 
+/* A baseline that can be re-applied: not withdrawn, and no device whose
+   credential it would change (the restore's guard refuses those, C75). */
+function _gBaselineUsable(b) {
+  return !b.deleted && !b.withdrawn && !(b.credential_stale || []).length;
+}
+
+function _gToggle(label, hideLabel, attr) {
+  return `<button type="button" class="btn btn-link btn-sm px-0 me-3" data-baselines-toggle="${attr}"
+      onclick="const t=this.parentElement.querySelector('[${attr}]');
+               t.classList.toggle('d-none');
+               this.textContent = t.classList.contains('d-none') ? '${label}' : '${hideLabel}';">
+      ${label}</button>`;
+}
+
 /* The table, COLLAPSED (the operator, 2026-09-28: the presentation rule).
-   Shown: every row down to and including the newest one that can be
-   re-applied, so a withdrawn newest row is seen beside the one that would
-   actually be used; the rest behind one toggle, never cut (the table used to
-   stop at ten with nothing saying so). PURE: a string from the payload. */
+   Shown: rows down to and including the newest one that can be re-applied,
+   so a withdrawn newer row is seen beside the one that would actually be
+   used. When NONE can be, one sentence says so above the newest row: the
+   rows used to say it once each, and nobody derives a conclusion from twelve
+   rows saying the same thing. Older rows behind one toggle, deleted ones
+   behind another, none cut (the table used to stop at ten, silently). PURE. */
 function _gBaselinesHtml(baselines) {
   const all = baselines || [];
   if (!all.length) {
     return '<p class="text-muted small mb-0">No baselines yet. Save All takes one when every device is captured and matches its committed intent.</p>';
   }
-  const firstUsable = all.findIndex(b => !b.deleted && !b.withdrawn);
-  const shown = firstUsable < 0 ? all.length : firstUsable + 1;
-  const head = all.slice(0, shown), rest = all.slice(shown);
-  return `<div class="table-responsive"><table class="table table-sm align-middle mb-0">
+  const live = all.filter(b => !b.deleted), gone = all.filter(b => b.deleted);
+  const firstUsable = live.findIndex(_gBaselineUsable);
+  const newestKept = live.findIndex(b => !b.withdrawn);
+  const shown = firstUsable >= 0 ? firstUsable + 1 : Math.max(newestKept + 1, 1);
+  const head = live.slice(0, shown), rest = live.slice(shown);
+  const none = live.length && firstUsable < 0
+    ? `<div class="alert alert-warning py-1 px-2 small mb-2" data-baselines-none>
+         No stored baseline can be re-applied: each is withdrawn or would change a credential a
+         device holds now (the restore refuses those, C75). A baseline's usefulness decays with
+         every rotation. Take a current one with Save All.</div>` : '';
+  return `${none}<div class="table-responsive"><table class="table table-sm align-middle mb-0">
       <tbody>${head.map(_gBaselineRow).join('')}</tbody>
       ${rest.length ? `<tbody class="d-none" data-baselines-older>${rest.map(_gBaselineRow).join('')}</tbody>` : ''}
-    </table></div>
-    ${rest.length ? `<button type="button" class="btn btn-link btn-sm px-0" data-baselines-toggle
-        onclick="const t=this.previousElementSibling.querySelector('[data-baselines-older]');
-                 t.classList.toggle('d-none');
-                 this.textContent = t.classList.contains('d-none')
-                   ? 'Show ${rest.length} older baseline(s)' : 'Hide older baselines';">
-        Show ${rest.length} older baseline(s)</button>` : ''}`;
+      ${gone.length ? `<tbody class="d-none" data-baselines-withdrawn>${gone.map(_gBaselineRow).join('')}</tbody>` : ''}
+    </table>
+    ${rest.length ? _gToggle(`Show ${rest.length} older baseline(s)`, 'Hide older baselines',
+                             'data-baselines-older') : ''}
+    ${gone.length ? _gToggle(`Show withdrawn (${gone.length})`, 'Hide withdrawn',
+                             'data-baselines-withdrawn') : ''}</div>`;
 }
 
 function _gBaselineCoverage(b) {

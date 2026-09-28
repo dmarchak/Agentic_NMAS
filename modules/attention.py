@@ -632,9 +632,14 @@ def baseline_source(log_fn=None) -> dict:
                              error=f"it raised {type(exc).__name__}: {exc}")
     took = int((time.time() - started) * 1000)
     if not out.strip():
+        # The host's state on 2026-09-28: no decision recorded yet, and no
+        # baseline usable. The usability row must not wait for a decision.
+        usability = _baseline_usability_row(lst)
         return source_result("baseline", "Baseline", read_at=started, took_ms=took,
+                             rows=usability["rows"],
                              checked=f"list {lst}: no baseline decision recorded yet "
-                                     "(decisions are recorded from 2026-09-28)")
+                                     "(decisions are recorded from 2026-09-28); "
+                                     + usability["checked"])
     sha, ct, body = out.split("\x1f", 2)
     decision = next((ln.split(":", 1)[1].strip() for ln in body.splitlines()
                      if ln.startswith("Baseline: ")), "")
@@ -657,10 +662,54 @@ def baseline_source(log_fn=None) -> dict:
             action={"label": "Resolve what the reasons name, then capture the fleet again "
                              "with Save All"},
             since=at, operands={"list": lst, "commit": sha[:10], "source": source_line}))
+    usability = _baseline_usability_row(lst)
+    rows += usability["rows"]
     return source_result("baseline", "Baseline", read_at=started, took_ms=took, rows=rows,
                          value_at=at,
                          checked=f"list {lst}: the last baseline decision, {sha[:10]}: "
-                                 f"{decision.split(':', 1)[0] or 'unreadable'}")
+                                 f"{decision.split(':', 1)[0] or 'unreadable'}; "
+                                 + usability["checked"])
+
+
+def _baseline_usability_row(lst: str, cached=None) -> dict:
+    """No stored baseline can be re-applied (the operator, 2026-09-28): every
+    one predates a credential rotation (the restore's guard refuses each,
+    C75) or is withdrawn. The Baselines panel said it once per row and never
+    once. Read from the `baseline-usability` reader (the per-row check costs
+    8 to 9 s on the host); a reader that has not answered is job health's row,
+    so this says only what it read."""
+    from modules import reader_job
+
+    got = reader_job.read_cached("baseline-usability") if cached is None else cached
+    good = ((got.get("doc") or {}).get("last_good") or {})
+    value = ((good.get("value") or {}).get("lists") or {}).get(lst)
+    if got.get("state") != "ok" or value is None:
+        return {"rows": [], "checked": "whether a baseline can be re-applied: not judged yet"}
+    if value.get("error"):
+        return {"rows": [], "checked": f"whether a baseline can be re-applied: {value['error']}"}
+    if value.get("usable"):
+        return {"rows": [], "checked": f"{value['usable']} can be re-applied"}
+    if not value.get("count"):
+        return {"rows": [], "checked": "no baseline is stored yet"}
+    newest = next((b for b in value["baselines"] if not b["withdrawn"]), None)
+    withdrawn = [b["tag"] for b in value["baselines"] if b["withdrawn"]]
+    cause = (f"all {value['count']} stored baseline(s) predate a credential rotation or are "
+             "withdrawn, so the restore's credential guard (C75) refuses part of any re-apply."
+             + (f" The newest, {newest['tag']}, would change the credential on "
+                f"{', '.join(newest['stale'])}." if newest else "")
+             + (f" Withdrawn: {', '.join(withdrawn)}." if withdrawn else "")
+             + " A baseline's usefulness decays with every rotation.")
+    return {"rows": [row(
+        source="baseline", key=f"{lst}:unusable", level="warning",
+        what="No stored baseline can be re-applied",
+        cause=cause,
+        action={"label": "Take a current baseline: Save All captures every device, and earns "
+                         "a baseline if each is at its committed intent (the first to record "
+                         "its decision); if not, it says which device is not"},
+        operands={"list": lst, "baselines": str(value["count"]),
+                  "newest": newest["tag"] if newest else "none"},
+        since=_ts(good.get("value_at")))],
+        "checked": "no baseline can be re-applied"}
 
 
 # ---------------------------------------------------------------------------

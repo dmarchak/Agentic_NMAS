@@ -205,7 +205,8 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         "its running configuration is not changed",
         "its backups are kept",
         "a session the app has pooled to it is not closed by this command, "
-        "which runs outside the app",
+        "which runs outside the app; the app's idle reaper closes it within "
+        "two minutes of its last use (C97)",
     ]
     golden_path = os.path.join(repo, rel_golden)
     if os.path.exists(golden_path):

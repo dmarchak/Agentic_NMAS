@@ -1477,6 +1477,15 @@ fewer misses than the threshold; one miss is "missed a probe".
   ("answering, checked 40 s ago"; "not answering for 3 probes, since
   18:04"; "not checked") is 7.3's, with the Device page. **7.2 is built.**
 
+**7.3's retire screen has its model already: r5's retire commit** (the operator,
+2026-09-28). `nmas-retire` recorded the reason, the actor, the tool and six
+`Not-Done:` trailers: NetBox kept, Oxidized still polling, the startup config
+frozen, the running config untouched, backups kept, a pooled session left to the
+reaper. That list answers "what should retirement retain" empirically, so 7.3
+does not design a policy: the screen draws exactly that list before the confirm
+and again in the result, and 7.3 closes the gaps it names (C176's legacy file,
+the heartbeat rules and scrape targets, C139's NetBox masking).
+
 **7.3 step 1 BUILT (2026-09-28): seed intent (C148), the path from onboarded to
 deployable.** One operation where there were four routes with no screen:
 `POST /templatize/seed/preview` parses each device's COMMITTED golden into the
