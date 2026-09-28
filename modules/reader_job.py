@@ -67,6 +67,21 @@ produced it.
     replaces it says so, because a replaced cache also lost its last good
     value and a consumer must not read that as "nothing was ever read".
 
+11. **A CHECK stays live; only a REPORT is cached** (the operator, 2026-09-28,
+    on the freshness gate). A report describes the world as of some time, and
+    a stored value with its time is the right shape for it. A check guards an
+    action at the moment of acting: the sanitiser's freshness gate compares
+    the exact bytes it is about to write, and no stored value can stand for
+    those. Cache everything is the tempting wrong answer, so ask of each new
+    reader: is anything DECIDING on this value at the moment it acts? If so,
+    that decision reads live, and the reader serves only the ones reading.
+
+12. **A reader's promise is about how fast NMAS NOTICES, never about how fast
+    the source notices the world.** The freshness reader re-reads every 300 s,
+    and Oxidized polls each device every 3600 s: two latencies, and a page
+    must never let the first stand for the second. State both where a person
+    reads the value.
+
 Nothing here starts a thread at import (C36): `start()` is called from the
 app's `_start_background_daemons()`, and only there.
 """

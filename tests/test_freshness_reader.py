@@ -74,6 +74,9 @@ class TestTheRead:
     def test_it_is_declared_with_its_measured_basis(self):
         assert FR.READER in R.readers() and FR.READER.interval_seconds == 300
         assert "4 ms per device" in FR.READER.interval_basis
+        # Two latencies, both stated (reader_job rule 12): how fast NMAS notices,
+        # and how far behind the device Oxidized's own copy can be.
+        assert "within 5 min" in FR.READER.interval_basis and "3600 s" in FR.READER.interval_basis
         assert FR.READER.invalidates == ("freshness",)
 
 

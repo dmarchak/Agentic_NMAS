@@ -51,10 +51,11 @@ READER = reader_job.register(reader_job.Reader(
     endpoints=("Oxidized nodes.json", "Oxidized config per node",
                "the committed goldens (HEAD)"),
     interval_seconds=INTERVAL_SECONDS,
-    interval_basis=("a divergence is seen within 5 min of Oxidized recording it; at one "
-                    "read (2026-09-28) the ten nodes' last polls spread over 44 min, and "
-                    "Oxidized's own interval is not served by its API. The read costs 16 ms "
-                    "for the index and about 4 ms per device (measured)"),
+    interval_basis=("NMAS sees a divergence within 5 min of Oxidized recording it; "
+                    "Oxidized itself polls each device every 3600 s (`interval: 3600` in "
+                    "/opt/oxidized/config on the host, read 2026-09-28; its API does not "
+                    "serve it), so its copy can be up to an hour behind the device. The read "
+                    "costs 16 ms for the index and about 4 ms per device (measured)"),
     read=read,
     invalidates=("freshness",),
     remedy="Read the error above: it names what the comparison could not ask",
