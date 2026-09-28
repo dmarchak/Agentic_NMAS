@@ -1173,7 +1173,10 @@ start and window; a row per incident with members; a triage slot): it runs on
 a schedule, stores its result with `value_at`, records its own liveness as a
 job-health row, and ANNOUNCES when it finishes (C58, part of the shape, not a
 feature after). Freshness, the status bar's integration health, and C92's
-reachability reader reuse it. Precondition, the operator's to run: which
+reachability reader reuse it. **A reader names its endpoint and its time** (the
+operator, C165): Grafana's rules view and its alertmanager disagreed on what
+was firing (0 against 2), so a row says "read from alertmanager at T", never
+"2 alerts firing". Precondition, the operator's to run: which
 Grafana role can read alert state (8.6: measured, not assumed). Simple
 sources on stored data: a failed or partial deploy (receipts), an unearned
 baseline, a line authorised again and again (C140 (1)). The action work:
