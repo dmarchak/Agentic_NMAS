@@ -120,6 +120,19 @@ def test_every_live_row_carries_its_bucket():
     assert bucket_problems(_real()) == []
 
 
+def malformed_rows(text):
+    """A row whose leading pipe was lost is not a row to any check here, so a
+    bad edit could hide a finding from every rule at once (measured
+    2026-09-28: a scripted C166 edit dropped the pipe, and every hygiene test
+    still passed)."""
+    return [ln[:12] for ln in text.split("\n") if re.match(r"^[A-E]\d+ \|", ln)]
+
+
+def test_no_row_has_lost_its_leading_pipe():
+    assert malformed_rows(_real()) == []
+    assert malformed_rows("| C1 | ok | x | y |\nC166 | lost | x | y |") == ["C166 | lost "]
+
+
 def test_no_open_row_is_work_a_stage_owns():
     text = _real()
     assert stage_work_in_open_sections(text) == []
