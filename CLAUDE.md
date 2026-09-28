@@ -789,6 +789,15 @@ The only part of the NSoT work that reaches a device.
 - **Reads never commit.** `ensure_repo_hygiene()` appends `.gitignore` rules on
   every `git()` call; only `init_repo()` commits the top-up, and it is reached
   solely from write paths.
+- **A rollback says what it ACHIEVED, per device, never only that it ran**
+  (C112, 2026-09-27). A rollback that raised was drawn "rolled back", a
+  device with no pre-change snapshot was recorded nowhere, and a sent undo
+  was never read back. Now each device's rollback is `restored` (read back
+  over a fresh connection: the undo computed again against what landed now
+  is empty), `nothing_to_undo`, `incomplete`, `sent_unverified`, `failed`
+  or `not_attempted`; the receipt and the screen carry it, and
+  `final_status` is `rollback_failed` unless every device is back. It is
+  the most dangerous moment to draw a wrong thing as a working one.
 - **Rollback fires whenever a push was attempted**, and targets every device
   not explicitly skipped — including one whose push failed mid-stream, which is
   the state most in need of restoring.
@@ -1040,7 +1049,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 
 | File | Covers |
 |---|---|
-| `test_pipeline.py` | 9-stage pipeline, stage ordering, CI gate |
+| `test_pipeline.py` | 9-stage pipeline, stage ordering, CI gate; C112: each rollback outcome named (restored only when the read-back finds the push gone; incomplete names what remains; unreadable, raising and no-snapshot each their own state), `final_status` never `rolled_back` over a device not back, and the receipt and shipped renderer never draw "rolled back" over a failure |
 | `test_netbox_write_gate.py` | write gate, dry run, provenance-based removal |
 | `test_netbox_authz.py` | one-shot tokens, plan hashing, stale-plan abort |
 | `test_netbox_preview_fidelity.py` | preview counts == executed counts; tag scope |

@@ -264,6 +264,17 @@
     unread: 'bg-warning text-dark', partial: 'bg-warning text-dark'
   };
 
+  // [class, words, restored?] per rollback state (modules/pipeline.py
+  // ROLLBACK_STATES). Only the first two leave the device as it was.
+  var ROLLBACK_BADGE = {
+    restored: ['bg-success', 'rolled back, read back', true],
+    nothing_to_undo: ['bg-secondary', 'nothing to roll back', true],
+    incomplete: ['bg-danger', 'rollback INCOMPLETE'],
+    sent_unverified: ['bg-warning text-dark', 'rollback sent, NOT read back'],
+    failed: ['bg-danger', 'rollback FAILED'],
+    not_attempted: ['bg-danger', 'NOT rolled back']
+  };
+
   function resultSection(part, title, body) {
     return '<section class="mb-2" data-pr-part="' + part + '">'
       + '<div class="small fw-semibold text-uppercase text-muted">' + esc(title) + '</div>'
@@ -293,10 +304,20 @@
     }
     var rb = t.rollback || {};
     if (rb.performed) {
-      body += '<div class="small mt-1" data-pr-rollback><span class="badge bg-info text-dark">rolled back</span> '
-        + (rb.commands || []).length + ' line(s)'
+      // What the rollback ACHIEVED, never only that it ran (C112): a rollback
+      // that raised used to be drawn "rolled back". A row from before the
+      // state was recorded says so rather than guessing.
+      var st = ROLLBACK_BADGE[rb.state] || ['bg-secondary', 'rollback: outcome not recorded'];
+      body += '<div class="small mt-1" data-pr-rollback="' + esc(rb.state || 'unrecorded')
+        + '"><span class="badge ' + st[0] + '">' + esc(st[1]) + '</span> '
+        + (rb.commands || []).length + ' line(s) sent'
         + ((rb.not_undone || []).length ? ', ' + rb.not_undone.length
-           + ' line(s) not undone because the device never applied them' : '') + '</div>';
+           + ' line(s) not undone because the device never applied them' : '')
+        + (rb.detail ? '<div' + (ROLLBACK_BADGE[rb.state] && ROLLBACK_BADGE[rb.state][2]
+             ? '' : ' class="text-danger fw-semibold"') + '>' + esc(rb.detail) + '</div>' : '')
+        + ((rb.remaining || []).length ? '<pre class="small bg-body-tertiary p-2 rounded mb-0">'
+           + esc(rb.remaining.join('\n')) + '</pre>' : '')
+        + '</div>';
     }
     return resultSection('sent', title(r, 'sent', 'What was sent'), body);
   }

@@ -205,6 +205,10 @@ class PipelineContext:
     #: ip -> rollback lines that would have tripped the CI gate, exempt by
     #: provenance. Recorded so the exemption is visible in the report.
     rollback_dangerous: dict = field(default_factory=dict)
+    #: ip -> what the rollback ACHIEVED (C112): ``{"state", "detail",
+    #: "remaining"}``, state one of ROLLBACK_STATES. A rollback that raised,
+    #: or never ran, used to be drawn "rolled back".
+    rollback_outcome: dict = field(default_factory=dict)
 
     # ---- Phase 3c: convergence and golden-save state ---------------------
     convergence:         dict = field(default_factory=dict)  # Stage 8: ip -> checks
@@ -1333,6 +1337,45 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
         ctx.failure_state[ip] = entry
 
 
+#: What a rollback achieved on one device (C112). Only the first two leave
+#: the device where it was before the push.
+ROLLBACK_STATES = {
+    "restored": "the undo program was sent and a read-back finds nothing left to undo",
+    "nothing_to_undo": "nothing of the push landed, so there was nothing to undo",
+    "incomplete": "the undo was sent and a read-back still finds pushed lines on the device",
+    "sent_unverified": "the undo was sent and the device could not be read back",
+    "failed": "sending the undo program failed",
+    "not_attempted": "no rollback could be built (no pre-change snapshot, or no device)",
+}
+ROLLBACK_OK = ("restored", "nothing_to_undo")
+
+
+def _rollback_readback(ctx, dev, pushed, pre_cfg) -> dict:
+    """Read the device back after its undo (fresh connection, as the failure
+    capture does) and compute the undo AGAIN against what landed now: an
+    empty program means the push is gone."""
+    from modules.connection import with_temp_connection
+    from modules.nsot.deploy import rollback_commands
+    from modules.settings_schema import get_setting
+
+    try:
+        timeout = get_setting("nsot_config_read_timeout", 120)
+        post = with_temp_connection(
+            dev, lambda c: c.send_command("show running-config", read_timeout=timeout))
+    except Exception as exc:                    # noqa: BLE001
+        return {"state": "sent_unverified",
+                "detail": f"the device could not be read back: {exc}", "remaining": []}
+    pre_set = {l.rstrip() for l in (pre_cfg or "").splitlines()}
+    landed = [l.rstrip() for l in (post or "").splitlines()
+              if l.strip() and l.rstrip() not in pre_set]
+    remaining = rollback_commands(pushed, pre_cfg, landed=landed)
+    if remaining:
+        return {"state": "incomplete", "remaining": remaining,
+                "detail": f"{len(remaining)} line(s) of undo still needed after the rollback"}
+    return {"state": "restored", "remaining": [],
+            "detail": "read back: nothing of the push remains"}
+
+
 def _stage_rollback(ctx: PipelineContext) -> None:
     """
     Restore the pre-change running-config on every device that was successfully pushed.
@@ -1354,6 +1397,8 @@ def _stage_rollback(ctx: PipelineContext) -> None:
     for ip in targets:
         dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
         if not dev:
+            ctx.rollback_outcome[ip] = {"state": "not_attempted", "remaining": [],
+                                        "detail": "the device is not in this run's inventory"}
             continue
         hostname = dev.get("hostname", ip)
         try:
@@ -1362,6 +1407,10 @@ def _stage_rollback(ctx: PipelineContext) -> None:
                 log.error(
                     "pipeline[rollback]: no pre-change file for %s — cannot restore", hostname
                 )
+                # Recorded, not only logged: it used to be in no list at all.
+                ctx.rollback_outcome[ip] = {
+                    "state": "not_attempted", "remaining": [],
+                    "detail": "no pre-change snapshot, so no undo program could be built"}
                 continue
 
             # Merge-computed, not replayed. Replaying the pre-change snapshot
@@ -1393,6 +1442,8 @@ def _stage_rollback(ctx: PipelineContext) -> None:
 
             if not undo:
                 log.info("pipeline[rollback]: %s — nothing to undo", hostname)
+                ctx.rollback_outcome[ip] = {"state": "nothing_to_undo", "remaining": [],
+                                            "detail": ROLLBACK_STATES["nothing_to_undo"]}
                 continue
 
             # Rollback is EXEMPT from the dangerous-command gate, structurally:
@@ -1412,16 +1463,27 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
             _restore_config(conn, undo)
             ctx.rolled_back_ips.append(ip)
-            log.info("pipeline[rollback]: %s restored with %d command(s): %s",
+            log.info("pipeline[rollback]: %s undo sent, %d command(s): %s",
                      hostname, len(undo), undo)
+            # Sent is not restored: read it back.
+            ctx.rollback_outcome[ip] = _rollback_readback(ctx, dev, pushed, pre_cfg)
+            if ctx.rollback_outcome[ip]["state"] != "restored":
+                log.error("pipeline[rollback]: %s NOT confirmed restored: %s", hostname,
+                          ctx.rollback_outcome[ip]["detail"])
         except Exception as exc:
             ctx.rollback_failures[ip] = str(exc)
+            ctx.rollback_outcome[ip] = {"state": "failed", "remaining": [],
+                                        "detail": str(exc)}
             log.error("pipeline[rollback]: FAILED to restore %s: %s", hostname, exc)
 
     # Rollback restored the DEVICE. The intent still says the change should be
     # there, so without this the next plan proposes exactly what just failed.
     _note_rolled_back_intent(ctx)
     ctx.rollback_performed = True
+    # "rolled_back" only when every device the push was attempted on is back.
+    not_back = [ip for ip, o in ctx.rollback_outcome.items()
+                if o.get("state") not in ROLLBACK_OK]
+    ctx.final_status = "rollback_failed" if not_back else "rolled_back"
 
 
 def _note_rolled_back_intent(ctx: PipelineContext) -> None:
@@ -1453,7 +1515,6 @@ def _note_rolled_back_intent(ctx: PipelineContext) -> None:
         except Exception as exc:              # noqa: BLE001
             log.error("pipeline[rollback]: could not note rolled-back intent "
                       "for %s: %s", hostname, exc)
-    ctx.final_status       = "rolled_back"
 
 
 def _restore_config(conn, commands) -> None:

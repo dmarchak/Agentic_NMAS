@@ -586,6 +586,13 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
             did_not.append({"target": name, "kind": outcome,
                             "text": f"{words}" + (f": {r['reason']}" if r.get("reason") else ""),
                             "lines": []})
+        rb = r.get("rollback") or {}
+        if rb.get("performed") and rb.get("state") not in ("", "restored", "nothing_to_undo"):
+            did_not.append({"target": name, "kind": "not_restored",
+                            "text": "The rollback did NOT leave this device as it was "
+                                    f"({rb.get('state')}): {rb.get('detail') or 'no detail'}. "
+                                    "Read it before anything else is sent to it.",
+                            "lines": list(rb.get("remaining") or [])})
         not_undone = (r.get("rollback") or {}).get("not_undone") or []
         if not_undone:
             did_not.append({"target": name, "kind": "not_undone",

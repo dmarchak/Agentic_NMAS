@@ -144,6 +144,12 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             "checks": _checks(result),
             "rollback": {
                 "performed": bool(result.get("rolled_back")),
+                # What it achieved (C112): `performed` said a rollback RAN,
+                # and was drawn "rolled back" over one that raised.
+                "state": (result.get("rollback_outcome") or {}).get("state", ""),
+                "detail": redact_text((result.get("rollback_outcome") or {}).get("detail", "")),
+                "remaining": [redact_text(c) for c in
+                              (result.get("rollback_outcome") or {}).get("remaining") or []],
                 "commands": [redact_text(c) for c in result.get("rollback_commands") or []],
                 "not_undone": list(result.get("rollback_not_undone") or []),
             },

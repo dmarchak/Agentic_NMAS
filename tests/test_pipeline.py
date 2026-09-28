@@ -688,19 +688,26 @@ class TestRollbackFiresOnAMidPushFailure:
         import modules.connection as C
         import modules.pipeline as P
 
-        original, orig_load, orig_conn = (P._restore_config,
-                                          A._load_pre_change_file,
-                                          C.get_persistent_connection)
+        original, orig_load, orig_conn, orig_temp = (P._restore_config,
+                                                     A._load_pre_change_file,
+                                                     C.get_persistent_connection,
+                                                     C.with_temp_connection)
         P._restore_config = lambda conn, cmds: sent.extend(cmds)
         A._load_pre_change_file = lambda ip: (
             "interface GigabitEthernet0/0\n description core\n")
         C.get_persistent_connection = lambda dev, pool, lock: object()
+
+        class _Back:        # the read-back (C112): the shutdown is gone
+            def send_command(self, _c, read_timeout=None):
+                return "interface GigabitEthernet0/0\n description core\n"
+        C.with_temp_connection = lambda dev, func: func(_Back())
         try:
             _stage_rollback(ctx)
         finally:
             P._restore_config = original
             A._load_pre_change_file = orig_load
             C.get_persistent_connection = orig_conn
+            C.with_temp_connection = orig_temp
 
         assert sent == ["interface GigabitEthernet0/0", " no shutdown", "exit"], (
             f"a replay cannot undo a shutdown; got {sent}")
@@ -977,3 +984,89 @@ class TestGoldenIsNeverSavedForARolledBackChange:
         assert "rollback" in ran, "rollback did not fire on a verify failure"
         assert "save_golden" not in ran, "a rolled-back change reached golden"
         assert result.final_status == "failed"
+
+
+
+class TestARollbackSaysWhatItAchieved:
+    """C112: a rollback that raised was drawn "rolled back", a device with no
+    pre-change file was recorded nowhere, and a sent undo was never read
+    back. Each outcome is now named, carried by the receipt and drawn."""
+
+    PRE = "interface GigabitEthernet0/0\n description core\n"
+    PUSHED = ["interface GigabitEthernet0/0", " shutdown", "exit"]
+
+    def _run(self, monkeypatch, *, pre=PRE, restore=None, readback=None):
+        import modules.ai_assistant as A
+        import modules.connection as C
+        import modules.pipeline as P
+
+        ctx = _ctx()
+        ctx.push_results = {"10.0.0.1": {"ok": False}}
+        ctx.confirmed_commands = {"10.0.0.1": list(self.PUSHED)}
+        monkeypatch.setattr(A, "_load_pre_change_file", lambda ip: pre)
+        monkeypatch.setattr(C, "get_persistent_connection", lambda *a: object())
+        monkeypatch.setattr(P, "_restore_config", restore or (lambda conn, cmds: None))
+
+        def temp(dev, func):
+            if isinstance(readback, Exception):
+                raise readback
+
+            class _Back:
+                def send_command(self, _c, read_timeout=None):
+                    return readback
+            return func(_Back())
+        monkeypatch.setattr(C, "with_temp_connection", temp)
+        P._stage_rollback(ctx)
+        return ctx, ctx.rollback_outcome["10.0.0.1"]
+
+    def test_restored_only_when_the_read_back_finds_the_push_gone(self, monkeypatch):
+        ctx, out = self._run(monkeypatch, readback=self.PRE)
+        assert out["state"] == "restored" and ctx.final_status == "rolled_back"
+
+    def test_a_push_still_on_the_device_is_incomplete(self, monkeypatch):
+        ctx, out = self._run(monkeypatch, readback=self.PRE.replace(
+            " description core\n", " description core\n shutdown\n"))
+        assert out["state"] == "incomplete" and " no shutdown" in out["remaining"]
+        assert ctx.final_status == "rollback_failed"
+
+    def test_an_unreadable_device_is_sent_unverified(self, monkeypatch):
+        ctx, out = self._run(monkeypatch, readback=OSError("read timed out"))
+        assert out["state"] == "sent_unverified" and ctx.final_status == "rollback_failed"
+
+    def test_a_raising_rollback_is_failed(self, monkeypatch):
+        def boom(conn, cmds):
+            raise RuntimeError("channel closed")
+        ctx, out = self._run(monkeypatch, restore=boom, readback=self.PRE)
+        assert out == {"state": "failed", "remaining": [], "detail": "channel closed"}
+        assert ctx.final_status == "rollback_failed"
+
+    def test_no_pre_change_file_is_recorded_not_only_logged(self, monkeypatch):
+        ctx, out = self._run(monkeypatch, pre="", readback=self.PRE)
+        assert out["state"] == "not_attempted" and ctx.final_status == "rollback_failed"
+
+    def test_the_receipt_and_the_screen_never_say_rolled_back_over_a_failure(self, monkeypatch):
+        import json
+        import os
+
+        import dukpy
+
+        from modules import preview_confirm as PC
+        from modules.nsot import receipts
+
+        def boom(conn, cmds):
+            raise RuntimeError("channel closed")
+        ctx, out = self._run(monkeypatch, restore=boom, readback=self.PRE)
+        rows = receipts.rows_for(
+            {"results": [{"device": "R1", "outcome": "failed", "commands": self.PUSHED,
+                          "rolled_back": ctx.rollback_performed,
+                          "rollback_outcome": out, "stage": "verify"}], "golden": {}},
+            list_name="Lab", action="deploy", actor="ops@example.com", actor_kind="person")
+        assert rows[0]["rollback"]["state"] == "failed"
+        result = PC.operation_result(rows, {"golden": {}}, {"ok": True, "written": 1}, "deploy")
+        assert any(i["kind"] == "not_restored" for i in result["did_not"]["items"])
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        src = open(os.path.join(root, "static", "js", "nmas_preview_confirm.js")).read()
+        html = dukpy.evaljs("var window = {};\n" + src
+                            + f"\nwindow.previewConfirmResultHtml({json.dumps(result)}, {{}});")
+        assert "rollback FAILED" in html and "channel closed" in html
+        assert ">rolled back<" not in html

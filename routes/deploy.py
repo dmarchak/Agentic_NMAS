@@ -793,6 +793,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         "rollback_commands": list(
             (result.rollback_commands or {}).get(device.get("ip", ""), [])),
         "rollback_failures": dict(result.rollback_failures or {}),
+        # What the rollback ACHIEVED on this device (C112), not whether one ran.
+        "rollback_outcome": dict((result.rollback_outcome or {}).get(device.get("ip", ""), {})),
         "rollback_not_undone": list(
             (result.rollback_not_undone or {}).get(device.get("ip", ""), [])),
         "rollback_dangerous_exempt": list(
