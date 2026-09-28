@@ -1270,6 +1270,22 @@ sources read; its minute's poll stays for the sources nothing announces
 (systemd units, receipts written by another process). The drift run, the
 post-commit push and the NetBox refresh are C58's remaining members.
 
+**7.2 step 11 BUILT (2026-09-28): job health is the first reader.** The
+operator measured the landing view on the host: job health 9,797 ms, every
+other source together under 60 ms, so job health was 99.4% of the page. The
+page built to surface problems asked systemd, the journal and Proxmox on every
+load: the section 0a violation in its own landing view. It is now a reader
+(`modules/readers/job_health_reader.py`, every 300 s: the read costs 9.8 s, its
+timers move hourly or daily, and the two rows that move in minutes are drawn
+live elsewhere). Needs attention reads the stored value, dated by it.
+**Its own liveness is not in its value:** the stored rows exclude every
+`reader:*` row, and the page judges the readers from their stores at request
+time. Otherwise a stopped job-health reader would freeze a cache whose own
+row said ok for ever. A cache that holds no value yet is an unknown row
+("not read yet"), never "nothing needs attention". `/jobs/health` stays the
+live, ask-now read. Grafana's reader is next, then the empty state collapsed
+to one line (the operator's (a), with (c)'s forcing: decided 2026-09-28).
+
 
 ## 9. Deferred, recorded rather than scoped
 

@@ -217,7 +217,7 @@ class TestLiveness:
         r = make(boom)
         R.run_once(r, clock=clock)
         row = one_row(r, clock.t + 5)
-        assert row["state"] == "failing" and row["since"] == R._iso(clock.t)
+        assert row["state"] == "failing" and row["since"] == clock.t
         assert row["action"] == {"label": "check the test service"}
         assert "api/test" in row["detail"] and "401" in row["detail"]
 
@@ -234,7 +234,7 @@ class TestLiveness:
         R.run_once(r, clock=clock)
         assert one_row(r, clock.t + 179)["state"] == "ok"
         row = one_row(r, clock.t + 181)
-        assert row["state"] == "stale" and row["since"] == R._iso(clock.t + 180)
+        assert row["state"] == "stale" and row["since"] == clock.t + 180
 
     def test_an_unreadable_store_is_unknown_never_absent(self):
         r = make(lambda: {})

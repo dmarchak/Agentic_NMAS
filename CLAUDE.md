@@ -168,8 +168,11 @@ tracked in git.
   READER JOB, one background read of an outside service, stored with the
   time of its value, a failed read keeping the last good value, its
   liveness a job-health row, and an announcement when it finishes (C58).
-  Grafana's alert state is the first reader; the next three reuse it, so
-  its ten rules are written in its docstring, each naming its finding
+  Job health is the first reader (it was 9.8 s of a 10 s landing page,
+  measured); Grafana is the second; the rest reuse it, so its ten rules
+  are written in its docstring, each naming its finding. Readers live in
+  **[modules/readers/](modules/readers/)**, listed in
+  `reader_job.DECLARED_MODULES`
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**

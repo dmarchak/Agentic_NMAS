@@ -168,7 +168,7 @@ def readers() -> list:
 
 #: The modules that register a reader when imported. A reader module is
 #: listed here, or it is not in the population job health watches.
-DECLARED_MODULES: tuple = ()
+DECLARED_MODULES: tuple = ("modules.readers.job_health_reader",)
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +338,10 @@ def health_rows(now: float = None, population: list = None) -> list:
         at = _parse_iso(attempt.get("at"))
         stale_after = r.interval_seconds * r.stale_after_intervals
         if at is None or now - at > stale_after:
-            since = _iso(at + stale_after) if at is not None else None
+            # `since` is epoch seconds, as every job-health row carries it
+            # (Needs attention formats it); an ISO string here crashed the
+            # page's source on the first stopped reader.
+            since = at + stale_after if at is not None else None
             rows.append({**base, "state": "stale", "since": since,
                          "detail": (f"no read since {attempt.get('at', 'ever')} (it reads every "
                                     f"{r.interval_seconds} s; stale after {stale_after} s): the "
@@ -349,7 +352,7 @@ def health_rows(now: float = None, population: list = None) -> list:
             continue
         if not attempt.get("ok"):
             state = "failing" if good else "never_succeeded"
-            rows.append({**base, "state": state, "since": doc.get("failing_since"),
+            rows.append({**base, "state": state, "since": _parse_iso(doc.get("failing_since")),
                          "detail": (f"its last read of {', '.join(doc.get('endpoints') or [])} "
                                     f"at {attempt.get('at')} failed: {attempt.get('error', '?')}. "
                                     + (f"The value shown is from {good['value_at']}"

@@ -38,9 +38,7 @@ GEN = os.path.join(ROOT, "static", "js", "gen")
 NOT_YET_SUBSCRIBED = {
     "active_list": "switching lists reloads the page today; 7.4 (Fleet, Networks)",
     "agent": "the agent tab; 8.4 (the agent returns last)",
-    "approvals": "the approvals queue panel; 7.2 (Needs attention)",
     "backups": "backups; 7.5 (Versions)",
-    "baselines": "the Baselines panel; 7.5 (Versions)",
     "bulk_ops": "bulk operation records; cut in 7.8",
     "chat": "the chat panel draws its own stream",
     "credentials": "credential profiles; 7.6 (Source of truth, Credentials)",
@@ -52,18 +50,16 @@ NOT_YET_SUBSCRIBED = {
     "lists": "the list selector; 7.4 (Fleet, Networks)",
     "monitoring": "the collectors' cards; 7.3 (Device, Monitoring)",
     "netbox": "the NetBox summary; 7.6 (Source of truth)",
-    "pending": "the pending banner; 7.4 (Fleet)",
     "playbooks": "the chat panel's playbooks; 8.2",
     "posture": "the posture panel; 7.7 (Settings)",
     "quick_actions": "the device page's quick actions; 7.3 (Device)",
-    "rolled_back": "blocked changes; 7.2 (Needs attention)",
     "settings": "the Settings panels; 7.7 (Settings)",
     "staging": "extraction's staged review; 7.3 (Device, Actions)",
     "templates": "the template library; 7.6 (Source of truth, Templates)",
     "topology": "the topology layout is drawn by its own editor",
     "variables": "the CSV-era variable store; cut in 7.8",
 }
-NOT_YET_CEILING = 26  # the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
+NOT_YET_CEILING = 22  # Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
 
 _SUB = re.compile(r"^\s*NMAS\.subscribe\(\s*'([a-z_]+)'\s*,\s*'(\w+)'\s*,\s*(\w+)", re.M)
 
@@ -72,7 +68,13 @@ def shipped_subscriptions() -> list:
     """[(key, name, loader, file)] from the shipped scripts, anchored at the
     start of a line so prose quoting the call is not a subscription."""
     out = []
-    files = [os.path.join(GEN, f) for f in sorted(os.listdir(GEN))] + [CLIENT]
+    # The components (static/js/nmas_*.js) subscribe too: Needs attention's
+    # panel is one, and a scan of the generated scripts alone could not see
+    # it (the payload check's population had the same hole, C82's era).
+    comp = os.path.dirname(CLIENT)
+    files = ([os.path.join(GEN, f) for f in sorted(os.listdir(GEN))]
+             + sorted(os.path.join(comp, f) for f in os.listdir(comp)
+                      if f.startswith("nmas_") and f.endswith(".js")))
     for path in files:
         text = open(path, encoding="utf-8").read()
         for m in _SUB.finditer(text):
@@ -81,9 +83,14 @@ def shipped_subscriptions() -> list:
 
 
 def _defined(name: str) -> bool:
+    """Defined in a generated script or a component (the same population
+    `shipped_subscriptions` scans)."""
     pat = re.compile(r"(?:^|\s)(?:async\s+)?function\s+%s\s*\(" % re.escape(name), re.M)
-    return any(pat.search(open(os.path.join(GEN, f), encoding="utf-8").read())
-               for f in os.listdir(GEN))
+    comp = os.path.dirname(CLIENT)
+    paths = ([os.path.join(GEN, f) for f in os.listdir(GEN)]
+             + [os.path.join(comp, f) for f in os.listdir(comp)
+                if f.startswith("nmas_") and f.endswith(".js")])
+    return any(pat.search(open(p, encoding="utf-8").read()) for p in paths)
 
 
 # ── the declarations ────────────────────────────────────────────────────────

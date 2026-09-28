@@ -156,19 +156,62 @@ def _job_action(job: dict) -> dict:
                      "whole of what is known", "known": False}
 
 
-def job_health_source(health=None, now=None) -> dict:
-    """Every job-health row that is not ok, as a Needs attention row."""
+JOB_HEALTH_READER = "job-health"
+
+
+def job_health_source(health=None, now=None, cached=None, readers_now=None) -> dict:
+    """Every job-health row that is not ok, as a Needs attention row.
+
+    By default from the job-health READER's stored value, never from systemd
+    (rule 1 of modules/reader_job.py): read live, it was 9.8 s of a 10 s
+    page (measured on the host, 2026-09-28). *health* is a live read for a
+    caller that has one (the tests; `/jobs/health` stays live by design).
+
+    The readers' OWN liveness is judged now, from their stores (*readers_now*,
+    a file read each), never taken from the cached value: a stopped
+    job-health reader would otherwise report itself ok for ever."""
     from modules import job_health as J
+    from modules import reader_job
 
     started = time.time()
-    try:
-        h = (health or J.health)()
-        jobs = list(h["jobs"])
-    except Exception as exc:                       # noqa: BLE001
-        log.error("attention: job health could not be read: %s", exc)
-        return source_result("job_health", "Job health", read_at=started,
-                             took_ms=int((time.time() - started) * 1000),
-                             error=f"it raised {type(exc).__name__}: {exc}")
+    value_at = None
+    if health is not None:
+        try:
+            h = health()
+            jobs = list(h["jobs"])
+        except Exception as exc:                   # noqa: BLE001
+            log.error("attention: job health could not be read: %s", exc)
+            return source_result("job_health", "Job health", read_at=started,
+                                 took_ms=int((time.time() - started) * 1000),
+                                 error=f"it raised {type(exc).__name__}: {exc}")
+        where = "read now"
+    else:
+        got = reader_job.read_cached(JOB_HEALTH_READER) if cached is None else cached
+        doc = got.get("doc") or {}
+        good = doc.get("last_good") or {}
+        took = int((time.time() - started) * 1000)
+        if got["state"] != "ok" or not good:
+            # Never a "nothing needs attention": no value is not an empty value.
+            why = (got.get("why") if got["state"] != "ok" else
+                   "the job-health reader has never stored a value; its last attempt: "
+                   + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+            return source_result("job_health", "Job health", read_at=started, took_ms=took,
+                                 error=f"not read yet: {why} (it runs in the app, every "
+                                       f"{doc.get('interval_seconds') or 'few'} s)")
+        try:
+            jobs = [j for j in good["value"]["health"]["jobs"]
+                    if not str(j.get("unit", "")).startswith("reader:")]
+        except (KeyError, TypeError) as exc:
+            return source_result("job_health", "Job health", read_at=started, took_ms=took,
+                                 error=f"the stored value has no job rows ({type(exc).__name__})")
+        value_at = reader_job._parse_iso(good.get("value_at"))
+        where = f"stored by the reader, read in {good.get('took_ms', '?')} ms"
+        try:
+            live = (reader_job.health_rows() if readers_now is None else list(readers_now))
+        except Exception as exc:                   # noqa: BLE001
+            live = [{"unit": "reader:*", "what": "the reader jobs' liveness", "state": "unknown",
+                     "detail": f"the readers could not be judged: {type(exc).__name__}: {exc}"}]
+        jobs += live
     took = int((time.time() - started) * 1000)
     rows = []
     for job in jobs:
@@ -189,8 +232,8 @@ def job_health_source(health=None, now=None) -> dict:
             action=_job_action(job), level=level))
     n_ok = len(jobs) - len(rows)
     return source_result("job_health", "Job health", read_at=started, took_ms=took,
-                         rows=rows,
-                         checked=f"{len(jobs)} job-health row(s), {n_ok} ok")
+                         rows=rows, value_at=value_at,
+                         checked=f"{len(jobs)} job-health row(s), {n_ok} ok ({where})")
 
 
 # ---------------------------------------------------------------------------

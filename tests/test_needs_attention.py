@@ -27,7 +27,7 @@ def _health(journal, **rows):
     """job_health.health() over the measured systemd shapes, with every other
     family empty unless given."""
     kw = dict(images=[], settings=[], rotations=[], owner=[], ztp=[], responder=[],
-              startup=[], sessions=[], version=[])
+              startup=[], sessions=[], version=[], readers=[])
     kw.update(rows)
     return lambda: J.health(NOW, _runner(LOADED, journal), **kw)
 
@@ -107,7 +107,7 @@ class TestJobHealthAsASource:
     def test_ok_jobs_are_not_rows_and_are_counted_as_looked_at(self):
         res = A.job_health_source(_health(_ok(NOW - 60)))
         assert res["rows"] == []
-        assert res["checked"] == f"{len(J.JOBS)} job-health row(s), {len(J.JOBS)} ok"
+        assert res["checked"] == f"{len(J.JOBS)} job-health row(s), {len(J.JOBS)} ok (read now)"
 
     def test_a_stale_job_says_since_it_went_stale(self):
         res = A.job_health_source(_health(_ok(NOW - 4 * 3600)))
@@ -745,3 +745,83 @@ class TestRepeatedAuthorisationsAsASource:
         assert bad["state"] == "unreadable"
         os.remove(store)
         assert "no deploy or restore recorded" in A.authorisation_source()["checked"]
+
+
+# ---------------------------------------------------------------------------
+# 7.2 step 11: job health is read from its READER's store, never from systemd
+# (it was 9.8 s of a 10 s landing page), and the readers' own liveness is
+# judged at request time, never taken from the cached value.
+# ---------------------------------------------------------------------------
+
+from modules import config as _config  # noqa: E402
+from modules import reader_job as _R  # noqa: E402
+from modules.readers import job_health_reader as _JHR  # noqa: E402
+
+
+class TestJobHealthFromTheReader:
+    @pytest.fixture(autouse=True)
+    def store(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(_config, "DATA_DIR", str(tmp_path))
+
+    def _stored(self, monkeypatch, jobs, clock):
+        monkeypatch.setattr(J, "health", lambda **kw: {"ok": True, "jobs": jobs})
+        return _R.run_once(_JHR.READER, clock=clock)
+
+    def test_the_reader_is_declared_and_says_what_its_interval_rests_on(self):
+        assert _JHR.READER in _R.readers()
+        assert "modules.readers.job_health_reader" in _R.DECLARED_MODULES
+        assert "9.8 s" in _JHR.READER.interval_basis
+
+    def test_its_read_leaves_out_every_readers_own_row(self, monkeypatch):
+        seen = {}
+        monkeypatch.setattr(J, "health", lambda **kw: seen.update(kw) or {"jobs": []})
+        _JHR.read()
+        assert seen == {"readers": []}
+
+    def test_no_stored_value_is_an_unknown_row_never_nothing(self):
+        res = A.job_health_source(readers_now=[])
+        assert res["state"] == "unreadable"
+        (r,) = res["rows"]
+        assert r["level"] == "unknown" and "not read yet" in r["cause"]
+
+    def test_a_reader_that_never_succeeded_names_its_last_error(self, monkeypatch):
+        def boom(**kw):
+            raise RuntimeError("systemctl refused")
+        monkeypatch.setattr(J, "health", boom)
+        _R.run_once(_JHR.READER, clock=lambda: NOW)
+        res = A.job_health_source(readers_now=[])
+        assert res["state"] == "unreadable" and "systemctl refused" in res["rows"][0]["cause"]
+
+    def test_the_stored_rows_are_drawn_dated_by_the_value(self, monkeypatch):
+        failing = {"unit": "clab-sync", "what": "x", "state": "failing", "detail": "it failed",
+                   "since": NOW - 600}
+        self._stored(monkeypatch, [failing, {"unit": "b", "state": "ok"}], lambda: NOW - 120)
+        res = A.job_health_source(readers_now=[])
+        assert res["state"] == "read" and res["value_at"] == A._iso(NOW - 120)
+        assert [r["id"] for r in res["rows"]] == ["job_health:clab-sync"]
+        assert "(stored by the reader" in res["checked"]
+
+    def test_a_stopped_reader_is_stale_although_its_cached_row_said_ok(self, monkeypatch):
+        """The self-referential case: the cached value carries a
+        reader:job-health row reading ok, from the moment it was written.
+        The page must judge the reader NOW, from its store, and find it
+        stopped."""
+        frozen_self = {"unit": "reader:job-health", "what": "x", "state": "ok"}
+        self._stored(monkeypatch, [frozen_self], lambda: NOW - 3600)
+        live = _R.health_rows(now=NOW, population=[_JHR.READER])
+        res = A.job_health_source(readers_now=live)
+        rows = {r["id"]: r for r in res["rows"]}
+        assert rows["job_health:reader:job-health"]["what"].endswith("has not succeeded recently")
+        assert len([r for r in res["rows"] if r["id"] == "job_health:reader:job-health"]) == 1
+
+    def test_a_reader_row_frozen_in_the_cache_is_never_drawn(self, monkeypatch):
+        """The filter's own case: a reader row cached as failing, while that
+        reader is fine NOW, must not appear (a problem already fixed, drawn
+        from a value written before the fix)."""
+        frozen = {"unit": "reader:job-health", "what": "x", "state": "failing",
+                  "detail": "an old failure", "since": NOW - 900}
+        self._stored(monkeypatch, [frozen], lambda: NOW - 30)
+        live = _R.health_rows(now=NOW, population=[_JHR.READER])
+        assert [x["state"] for x in live] == ["ok"]
+        res = A.job_health_source(readers_now=live)
+        assert res["rows"] == [], res["rows"]
