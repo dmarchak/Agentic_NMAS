@@ -103,8 +103,10 @@ class TestEveryRenderHelperIsCalled:
             f"the helper pattern matched only {sorted(helpers)}"
         # The five that motivated this sweep must be among them, or the
         # pattern has drifted away from the thing it was built for.
-        for known in ("nbCascadeHtml", "_gBaselineCoverage",
-                      "pendingBannerHtml", "agentHealthBanner"):
+        # (nbCascadeHtml, the third, was removed in 7.1: the cascade is drawn
+        # by the preview component from the server's adapter now.)
+        for known in ("_gBaselineCoverage", "pendingBannerHtml", "agentHealthBanner",
+                      "freshnessSignalHtml"):
             assert known in helpers, f"{known} is no longer recognised"
 
     def test_none_is_defined_and_never_used(self):

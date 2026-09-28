@@ -218,3 +218,89 @@ def capture_apply(mp, tmp):
     ids = [i["id"] if isinstance(i, dict) else i for i in ids]
     return _ok(lab["client"].post("/golden/capture/apply", json={
         "confirmations": {"r2": h}, "approvals": {"r2": [ids[0]], "s9": [ids[1]]}}))
+
+
+def _netbox_behind(mp):
+    """A FakeNetBox behind a URL nothing answers, configured, with the
+    managed-tag cache cleared (it is keyed on the base URL)."""
+    from tests.fake_netbox import FakeNetBox
+    import modules.netbox_client as nbc
+
+    nb = FakeNetBox()
+    mp.setattr(nbc, "get_netbox_config", lambda: {"url": "http://127.0.0.1:9", "token": "t"})
+    mp.setattr(nbc, "_session_from_config", lambda cfg: nb)
+    mp.setattr(nbc, "_managed_tag_ids", {})
+    return nb
+
+
+def _import_dry_run(nb, hosts):
+    """The REAL dry run of the device upsert (the import's own code), for r1
+    already in NetBox (an update) and r2 new (creates)."""
+    from modules import netbox_guard
+    from modules.netbox_client import _upsert_device
+
+    site = nb.seed("dcim/sites", {"name": "Lab", "slug": "lab"})
+    role = nb.seed("dcim/device-roles", {"name": "Router", "slug": "router"})
+    nb.seed("dcim/devices", {"name": "r1", "serial": "SER0001", "site": {"id": site["id"]}})
+    with netbox_guard.dry_run() as plan, netbox_guard.for_list("Default"):
+        for i, host in enumerate(hosts, start=1):
+            _upsert_device(nb, "http://127.0.0.1:9", hostname=host, ip=f"203.0.113.{i}",
+                           facts={"manufacturer": "Cisco", "model": "C8000v",
+                                  "platform": "IOS-XE", "serial": f"SER{i:04d}",
+                                  "sw_version": "17.6"},
+                           interfaces=[{"name": f"GigabitEthernet{i}", "ip": f"203.0.113.{i}",
+                                        "prefix_len": 24, "enabled": True}],
+                           site_id=site["id"], role_id=role["id"], ipam_stats={})
+    return {"ok": True, "plan": plan.summary()}
+
+
+def netbox_import_preview(mp, tmp):
+    """7.1: the import preview on the component. The list's devices and the
+    sync are stood in for by the real device upsert run dry, so the plan
+    carries a real update (r1, already in NetBox) and real creates (r2)."""
+    import modules.netbox_client as nbc
+    import routes.netbox_safety as ns
+
+    nb = _netbox_behind(mp)
+    devices = [{"hostname": "r1", "ip": "203.0.113.1"}, {"hostname": "r2", "ip": "203.0.113.2"}]
+    mp.setattr(ns, "_load_list_devices", lambda name: ("Default", devices))
+    mp.setattr(nbc, "sync_list_to_netbox",
+               lambda name, devs, dry_run=False: _import_dry_run(nb, ["r1", "r2"]))
+    return _ok(_client().post("/netbox/safety/import/preview", json={"list_name": "Default"}))
+
+
+def netbox_import_all_preview(mp, tmp):
+    import modules.netbox_client as nbc
+    import routes.netbox_safety as ns
+
+    nb = _netbox_behind(mp)
+    mp.setattr(ns, "_all_lists_with_devices",
+               lambda: [("Default", [{"hostname": "r1"}, {"hostname": "r2"}])])
+    mp.setattr(nbc, "sync_all_lists_to_netbox",
+               lambda items, dry_run=False: _import_dry_run(nb, ["r1", "r2"]))
+    return _ok(_client().post("/netbox/safety/import_all/preview", json={}))
+
+
+def netbox_remove_preview(mp, tmp):
+    """7.1: the removal preview on the component, through the REAL removal
+    dry run and cascade query. NMAS created and tagged a device; the
+    database would take its interface and that interface's address with it,
+    neither of which NMAS created (the 2026-09-24 incident's shape); and a
+    site NMAS recorded carries no tag, so it is left alone."""
+    from modules import netbox_guard
+
+    nb = _netbox_behind(mp)
+    tag = [{"slug": netbox_guard.MANAGED_TAG_SLUG, "name": netbox_guard.MANAGED_TAG}]
+    dev = nb.seed("dcim/devices", {"name": "r6", "tags": tag})
+    site = nb.seed("dcim/sites", {"name": "branch", "slug": "branch", "tags": []})
+    iface = nb.seed("dcim/interfaces", {"name": "Gi2", "device": {"id": dev["id"]}})
+    nb.seed("ipam/ip-addresses", {"address": "10.0.0.15/24",
+                                  "assigned_object_type": "dcim.interface",
+                                  "assigned_object_id": iface["id"]})
+    netbox_guard.record_created("Default", "dcim/devices", dev["id"], "r6")
+    netbox_guard.record_created("Default", "dcim/sites", site["id"], "branch")
+    try:
+        return _ok(_client().post("/netbox/safety/remove/preview",
+                                  json={"list_name": "Default"}))
+    finally:
+        netbox_guard.forget_created("Default")

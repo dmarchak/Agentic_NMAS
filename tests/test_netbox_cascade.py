@@ -331,115 +331,88 @@ class TestThePreviewShowsWhatTheDatabaseWillTake:
 
 
 class TestTheOperatorCanSEEIt:
-    """**The shipped renderer, executed.**
+    """**The shipped renderer, executed** against the preview the removal
+    route builds.
 
     A preview finding nobody can see is the defect this project keeps
-    rediscovering: `loadOnboardPending` had no caller, the pending banner's
-    buttons read an empty select, and the agent panel had three guards each
-    hiding the same data while every server test passed. So the consequence
-    is rendered by a **pure** function, and this runs that function's
-    shipped source against the payload the endpoint returns.
+    rediscovering: `loadOnboardPending` had no caller, and the agent panel had
+    three guards each hiding the same data while every server test passed.
+    Since 7.1 the consequence is built server-side
+    (`preview_confirm.netbox_removal_preview`) and drawn by the one preview
+    component, so these draw that component over the adapter's output, and
+    the wiring test drives the REAL route (`payload_providers`).
     """
 
     @staticmethod
-    def _source():
-        """`nbCascadeHtml` out of the template, brace-matched, plus the
-        escaper it calls."""
-        path = os.path.join(ROOT, "templates", "partials",
-                            "netbox_safety_modal.html")
-        page = read_shipped(path)
-        out = []
-        for name in ("_nbEscape", "nbCascadeHtml"):
-            start = page.index(f"function {name}(")
-            depth, i, seen = 0, page.index("{", start), False
-            while i < len(page):
-                if page[i] == "{":
-                    depth += 1
-                    seen = True
-                elif page[i] == "}":
-                    depth -= 1
-                    if seen and depth == 0:
-                        break
-                i += 1
-            out.append(page[start:i + 1])
-        return "\n".join(out)
-
-    def _render(self, cascade):
+    def _draw(preview):
         import json
 
         dukpy = pytest.importorskip("dukpy")
-        return dukpy.evaljs(self._source()
-                            + f"\nnbCascadeHtml({json.dumps(cascade)})")
+        return dukpy.evaljs("var window = {};\n"
+                            + read_shipped(os.path.join(ROOT, "static", "js",
+                                                        "nmas_preview_confirm.js"))
+                            + f"\nwindow.previewConfirmHtml({json.dumps(preview)}, {{}})")
 
-    def test_a_foreign_object_is_named_and_flagged_danger(self):
-        html = self._render({
-            "taken": [{"endpoint": "ipam/ip-addresses", "id": 22,
-                       "name": "10.0.0.15/24", "via": "dcim/interfaces",
-                       "foreign": True}],
-            "foreign": [{"endpoint": "ipam/ip-addresses", "id": 22,
-                         "name": "10.0.0.15/24", "via": "dcim/interfaces",
-                         "foreign": True}],
-            "unproven": [], "proven": True})
+    def _render(self, cascade, deleted=True):
+        from modules.preview_confirm import netbox_removal_preview
 
-        assert "alert-danger" in html
+        d = {"list": "Lab", "deleted": [{"endpoint": "dcim/interfaces", "id": 60,
+                                         "name": "Gi1"}] if deleted else [],
+             "skipped": [], "cascade": cascade, "writes_allowed": True, "plan_hash": "ab"}
+        return self._draw(netbox_removal_preview(
+            d, {"may": True, "actor": "p", "statement": "You are confirming as p."}))
+
+    FOREIGN = {"endpoint": "ipam/ip-addresses", "id": 22, "name": "10.0.0.15/24",
+               "via": "dcim/interfaces", "foreign": True}
+
+    def test_a_foreign_object_is_named_and_flagged(self):
+        html = self._render({"taken": [self.FOREIGN], "foreign": [self.FOREIGN],
+                             "unproven": [], "proven": True})
+
         assert "10.0.0.15/24" in html, "the object is not named"
-        assert "did not create" in html
+        assert "ALSO DELETED BY NETBOX" in html
+        assert "NMAS did NOT create" in html
+        assert "NetBox will ALSO delete 1 object(s) NMAS did not create" in html, \
+            "the summary, which is read first, does not say it"
 
-    def test_unproven_is_its_own_banner_and_says_it_is_not_nothing(self):
+    def test_unproven_is_its_own_statement_and_says_it_is_not_nothing(self):
         html = self._render({"taken": [], "foreign": [], "proven": False,
                              "unproven": ["dcim/sites: not measured"]})
 
-        assert "alert-warning" in html
-        assert "incomplete" in html
-        assert "not</em> the same as nothing" in html
+        assert 'data-pc-not="unproven"' in html
+        assert "not the same as nothing" in html
         assert "dcim/sites: not measured" in html
+        assert 'data-pc-gate="not_reached"' in html
 
     def test_a_clean_proven_preview_adds_no_alarm(self):
         """**The floor.** A renderer that always warned would satisfy both
         tests above and train the operator to click through."""
-        html = self._render({"taken": [], "foreign": [], "unproven": [],
-                             "proven": True})
+        html = self._render({"taken": [], "foreign": [], "unproven": [], "proven": True})
 
-        assert "alert-danger" not in html
-        assert "alert-warning" not in html
-        assert html.strip() == ""
+        assert "ALSO DELETED" not in html and "further" not in html.split("Gates")[0]
+        assert 'data-pc-not="unproven"' not in html
+        assert "asked: nothing further goes with them" in html
 
     def test_NMAS_owned_collateral_is_stated_without_alarm(self):
-        html = self._render({
-            "taken": [{"endpoint": "ipam/ip-addresses", "id": 99,
-                       "name": "x", "via": "dcim/interfaces",
-                       "foreign": False}],
-            "foreign": [], "unproven": [], "proven": True})
+        own = dict(self.FOREIGN, id=99, name="x", foreign=False)
+        html = self._render({"taken": [own], "foreign": [], "unproven": [], "proven": True})
 
-        assert "alert-danger" not in html
-        assert "1 further" in html
+        assert "ALSO DELETED" not in html
+        assert "1 further object(s), all of them NMAS&#39;s own" in html
 
-    def test_a_missing_cascade_key_renders_nothing_rather_than_throwing(self):
-        """An older payload, or an apply response, carries no cascade."""
-        assert self._render(None) == ""
+    def test_a_missing_cascade_is_not_asked_rather_than_nothing(self):
+        """Absent is not empty: with no cascade the gate says it was NOT
+        asked; it must not draw "nothing further"."""
+        html = self._render(None)
+        assert "NOT asked" in html and "nothing further" not in html
 
-    def test_the_renderer_is_actually_CALLED_by_the_modal(self):
-        """**Added because the control passed.**
+    def test_the_real_route_carries_the_cascade_into_what_is_drawn(self, monkeypatch, tmp_path):
+        """**The wiring.** Deleting the old renderer's call site once left every
+        renderer test green (they executed it directly). This drives the REAL
+        /netbox/safety/remove/preview, whose dry run and cascade query run
+        against a FakeNetBox holding the 2026-09-24 shape."""
+        from tests import payload_providers as P
 
-        Deleting the call site from the modal left every test above green:
-        they execute `nbCascadeHtml` directly, which tests the render and
-        not the wiring. That is `loadOnboardPending` having no caller, and
-        the `/onboard/create` payload seam, for the third time — *a test
-        that constructs its subject cannot notice that nothing else does.*
-
-        Counted excluding the definition, so the function existing is not
-        mistaken for the function being used.
-        """
-        path = os.path.join(ROOT, "templates", "partials",
-                            "netbox_safety_modal.html")
-        page = read_shipped(path)
-
-        defs = page.count("function nbCascadeHtml(")
-        calls = page.count("nbCascadeHtml(") - defs
-        assert defs == 1, f"expected one definition, found {defs}"
-        assert calls >= 1, (
-            "nbCascadeHtml is defined and never called — the consequence is "
-            "computed by the server, carried to the browser, and drawn "
-            "nowhere")
-        assert "${nbCascadeHtml(d.cascade)}" in page, \
-            "it is called with something other than the preview payload"
+        html = self._draw(P.netbox_remove_preview(monkeypatch, tmp_path)["preview"])
+        assert "10.0.0.15/24" in html and "ALSO DELETED BY NETBOX" in html
+        assert "delete dcim/devices #1 r6" in html

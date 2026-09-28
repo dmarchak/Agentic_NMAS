@@ -14,63 +14,27 @@ function _nbEscape(s) {
     ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 }
 
-function _nbGroupTable(title, byType, emptyMsg) {
-  const rows = Object.entries(byType || {});
-  if (!rows.length) return `<p class="small text-muted mb-2">${emptyMsg}</p>`;
-  return `<h6 class="fw-semibold mt-3 mb-1">${title}</h6>
-    <div class="table-responsive"><table class="table table-sm mb-1">
-      <tbody>${rows.map(([ep, n]) =>
-        `<tr><td class="font-monospace small">${_nbEscape(ep)}</td>
-             <td class="text-end"><span class="badge bg-primary-subtle text-primary-emphasis">${n}</span></td></tr>`
-      ).join('')}</tbody></table></div>`;
-}
-
-/* ── Import ─────────────────────────────────────────────────────────────── */
-/**
- * What the DATABASE will take, beyond NMAS's own delete list.
- *
- * Pure, and separate from the modal, so the shipped source can be executed
- * against the payload the endpoint returns -- the correction that came out
- * of the agent panel, where three guards each hid the same data and every
- * server test passed while the screen said nothing.
- *
- * Three states, never two. An empty consequence and an unmeasured one look
- * identical in a preview, and the one that reads as safe is the one nobody
- * checked -- so "could not ask" gets its own banner.
- */
-function nbCascadeHtml(cascade) {
-  if (!cascade) return '';
-  const taken = cascade.taken || [];
-  const foreign = cascade.foreign || [];
-  const unproven = cascade.unproven || [];
-  let html = '';
-
-  if (foreign.length) {
-    html += `<div class="alert alert-danger py-2 px-3 small mt-3">
-      <strong>${foreign.length} object(s) NMAS did not create will be deleted
-      too.</strong> The database removes them along with the objects above.
-      They carry no <code>nmas-managed</code> tag, so the provenance check
-      would have left them alone &mdash; it protects an object, and this
-      travels a relationship.
-      <ul class="mb-0 mt-1">${foreign.slice(0, 20).map(o =>
-        `<li><span class="font-monospace">${_nbEscape(o.endpoint)}</span>
-           ${_nbEscape(o.name || o.id)} <em>(via ${_nbEscape(o.via)})</em></li>`
-        ).join('')}</ul></div>`;
-  } else if (taken.length) {
-    html += `<p class="small text-muted mt-3">${taken.length} further
-      object(s) will be removed by the database along with these, all of them
-      NMAS's own.</p>`;
+/* The preview, drawn by the shared component (7.1): the server builds it
+ * (modules/preview_confirm.py netbox_import_preview / netbox_removal_preview),
+ * including what the database takes with a delete, so this modal draws
+ * nothing itself. The Confirm button's state comes from the component too;
+ * the only thing added here is the separate, saved write switch. */
+function _nbShowPreview(d) {
+  const body = document.getElementById('netboxSafetyBody');
+  body.innerHTML = previewConfirmHtml(d.preview, {});
+  const target = ((d.preview.what || {}).targets || [])[0] || {};
+  const btn = document.getElementById('netboxSafetyConfirmBtn');
+  const st = previewConfirmButton(d.preview, target.selectable ? 1 : 0, 'Confirm');
+  btn.textContent = st.text;
+  const consent = document.getElementById('netboxSafetyEnableWrites');
+  if (!d.writes_allowed && !st.disabled) {
+    document.getElementById('netboxSafetyConsent').classList.remove('d-none');
+    consent.checked = false;
+    btn.disabled = true;
+    consent.onchange = e => { btn.disabled = !e.target.checked; };
+  } else {
+    btn.disabled = st.disabled;
   }
-
-  if (unproven.length) {
-    html += `<div class="alert alert-warning py-2 px-3 small">
-      <strong>This preview is incomplete.</strong> It could not establish
-      what some of these deletions will take with them, which is
-      <em>not</em> the same as nothing.
-      <ul class="mb-0 mt-1">${unproven.slice(0, 10).map(u =>
-        `<li>${_nbEscape(u)}</li>`).join('')}</ul></div>`;
-  }
-  return html;
 }
 
 async function netboxPreviewImport(listName, allLists) {
@@ -107,35 +71,7 @@ async function netboxPreviewImport(listName, allLists) {
     _netboxSafetyState.writesAllowed = d.writes_allowed;
     _netboxSafetyState.token = d.token || '';
     _netboxSafetyState.expiresIn = d.expires_in || 0;
-    const p = d.plan || {};
-
-    body.innerHTML = `
-      <p class="mb-2">Importing <strong>${_nbEscape(d.list)}</strong>
-         (${d.device_count} device(s)) would:</p>
-      <div class="alert alert-info py-2 px-3 small">${_nbEscape(d.summary)}</div>
-      ${_nbGroupTable('Create', p.creates_by_type, 'Nothing new to create.')}
-      ${_nbGroupTable('Update', p.updates_by_type, 'Nothing to update.')}
-      <p class="small text-muted mt-3 mb-0">
-        This preview was read-only. Everything NMAS creates is tagged
-        <code>nmas-managed</code> so it can be told apart from records you curated by hand.
-      </p>
-      <p class="small text-muted mb-0">
-        Confirmation is valid for ${Math.round((d.expires_in || 300) / 60)} minute(s) and
-        applies only to these changes. If NetBox changes in the meantime the import is
-        refused and you will be asked to preview again.
-      </p>`;
-
-    if (!d.writes_allowed) {
-      document.getElementById('netboxSafetyConsent').classList.remove('d-none');
-      document.getElementById('netboxSafetyEnableWrites').checked = false;
-      const confirmBtn = document.getElementById('netboxSafetyConfirmBtn');
-      confirmBtn.disabled = true;
-      document.getElementById('netboxSafetyEnableWrites').onchange = e => {
-        confirmBtn.disabled = !e.target.checked;
-      };
-    } else {
-      document.getElementById('netboxSafetyConfirmBtn').disabled = false;
-    }
+    _nbShowPreview(d);
   } catch (e) {
     document.getElementById('netboxSafetyLoading').classList.add('d-none');
     const body = document.getElementById('netboxSafetyBody');
@@ -172,47 +108,10 @@ async function netboxPreviewRemoval(listName) {
     _netboxSafetyState.writesAllowed = d.writes_allowed;
     _netboxSafetyState.token = d.token || '';
     _netboxSafetyState.expiresIn = d.expires_in || 0;
-    const deleted = d.deleted || [];
-    const skipped = d.skipped || [];
-
-    if (d.message && !deleted.length) {
-      body.innerHTML = `<div class="alert alert-secondary mb-0">${_nbEscape(d.message)}</div>`;
-      document.getElementById('netboxSafetyForgetBtn').classList.remove('d-none');
-      return;
-    }
-
-    body.innerHTML = `
-      <div class="alert alert-danger py-2 px-3 small">
-        <strong>${deleted.length} object(s) would be permanently deleted.</strong>
-        Only objects NMAS created and tagged <code>nmas-managed</code> are eligible.
-      </div>
-      <div class="table-responsive"><table class="table table-sm">
-        <thead><tr><th>Type</th><th>Name</th></tr></thead>
-        <tbody>${deleted.map(o =>
-          `<tr><td class="font-monospace small">${_nbEscape(o.endpoint)}</td>
-               <td>${_nbEscape(o.name || o.id)}</td></tr>`).join('')}</tbody>
-      </table></div>
-      ${skipped.length ? `
-        <h6 class="fw-semibold mt-3 mb-1">Left alone (${skipped.length})</h6>
-        <p class="small text-muted">These are not tracked as NMAS-created, so they are
-           treated as yours and will not be touched.</p>
-        <ul class="small text-muted">${skipped.slice(0, 20).map(o =>
-          `<li>${_nbEscape(o.endpoint)} — ${_nbEscape(o.name || o.id)}
-             <em>(${_nbEscape(o.reason)})</em></li>`).join('')}</ul>` : ''}
-      ${nbCascadeHtml(d.cascade)}`;
-
+    // "Just stop tracking" deletes nothing, so it is offered with or
+    // without anything to delete.
     document.getElementById('netboxSafetyForgetBtn').classList.remove('d-none');
-    if (!d.writes_allowed) {
-      document.getElementById('netboxSafetyConsent').classList.remove('d-none');
-      document.getElementById('netboxSafetyEnableWrites').checked = false;
-      const confirmBtn = document.getElementById('netboxSafetyConfirmBtn');
-      confirmBtn.disabled = true;
-      document.getElementById('netboxSafetyEnableWrites').onchange = e => {
-        confirmBtn.disabled = !e.target.checked;
-      };
-    } else {
-      document.getElementById('netboxSafetyConfirmBtn').disabled = false;
-    }
+    _nbShowPreview(d);
   } catch (e) {
     document.getElementById('netboxSafetyLoading').classList.add('d-none');
     const body = document.getElementById('netboxSafetyBody');

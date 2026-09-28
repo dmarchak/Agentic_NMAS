@@ -880,8 +880,8 @@ run:
 | Capture (Save All, one device, the "no golden" scope, a drift approval's handoff) | component | component; golden history |
 | Onboarding: Create | component (`onboard_preview`; `onboardReviewHtml` removed) | component (C86); pending row |
 | Onboarding: Verify, Abandon | none (one click each) | **pending** (toasts) |
-| NetBox import, import-all | **pending** (the safety modal's body) | component; the sync card |
-| NetBox remove | **pending** (the safety modal's body) | component (C121); Removals panel |
+| NetBox import, import-all | component (`netbox_import_preview`) | component; the sync card |
+| NetBox remove | component (`netbox_removal_preview`, the cascade drawn in it) | component (C121); Removals panel |
 
 **Explicitly NOT in 7.1** (each with its home, so the boundary is stated and not
 implied):

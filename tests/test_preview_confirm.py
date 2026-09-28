@@ -197,7 +197,10 @@ class TestConfirmSaysWho:
     def test_a_person_is_named(self, monkeypatch):
         plan = P.deploy_plan(monkeypatch)
         c = plan["preview"]["confirm"]
-        assert c["may"] is True and c["actor"] in c["statement"]
+        # The person is named in the statement; there is no separate `actor`
+        # echo (7.1: read by nothing, since the apply records the verified one).
+        assert c["may"] is True and "actor" not in c
+        assert c["statement"].startswith("You are confirming as ") and "@" in c["statement"]
 
     def test_no_identity_is_a_stated_refusal_and_the_button_says_it(self, monkeypatch):
         import dukpy
@@ -230,9 +233,9 @@ class TestConfirmSaysWho:
 #: approved order. RETROFIT_PENDING only shrinks.
 RETROFITTED = {"deploy": "partials__deploy_wizard.1.js",
                "restore": "partials__golden_repo.3.js",
-               "onboarding": "partials__onboard_wizard.1.js"}
+               "onboarding": "partials__onboard_wizard.1.js",
+               "netbox import/remove": "partials__netbox_safety_modal.1.js"}
 RETROFIT_PENDING = {
-    "netbox import/remove": "partials__netbox_safety_modal.1.js",
     # No screen: the routes (/templatize/bulk/preview, /apply) are reached by
     # curl today, measured 2026-09-27. DEFERRED to Fleet (7.4) by the
     # operator: a fleet-shaped operation, and a button now would be the same
@@ -269,7 +272,7 @@ class TestNoSecondImplementation:
         assert moved == [], f"retrofitted: move to RETROFITTED: {moved}"
 
     def test_the_pending_list_only_shrinks(self):
-        assert len(RETROFIT_PENDING) <= 2
+        assert len(RETROFIT_PENDING) <= 1
         for screen, f in RETROFIT_PENDING.items():
             assert f is None or os.path.exists(os.path.join(GEN, f)), screen
 

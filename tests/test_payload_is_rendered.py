@@ -77,6 +77,7 @@ def _post(path, body):
     return lambda mp, tmp: _answer(P._client().post(path, json=body))
 
 
+NBS = "partials__netbox_safety_modal.1.js"
 PC = "nmas_preview_confirm.js"
 PC_RESULT_FNS = ("previewConfirmResultHtml", "sentHtml", "checksHtml", "resultSection",
                  "pair", "previewConfirmResultLevel", "title")
@@ -200,6 +201,26 @@ RENDERS = {
          PC: PC_FNS},
         (("partials__onboard_wizard.1.js", "onboardRefresh", "d"),),
         adapters={"modules/preview_confirm.py": ("onboard_preview", "build")}),
+    # 7.1: the NetBox safety modal on the component. Each preview is built
+    # server-side, so the adapter's reads count as drawn.
+    "POST /netbox/safety/import/preview": Render(
+        lambda mp, tmp: P.netbox_import_preview(mp, tmp),
+        {NBS: ("netboxPreviewImport", "_nbShowPreview"), PC: PC_FNS},
+        ((NBS, "netboxPreviewImport", "d"), (NBS, "_nbShowPreview", "d")),
+        adapters={"modules/preview_confirm.py": ("netbox_import_preview", "_nb_gates",
+                                                 "_nb_line", "build")}),
+    "POST /netbox/safety/import_all/preview": Render(
+        lambda mp, tmp: P.netbox_import_all_preview(mp, tmp),
+        {NBS: ("netboxPreviewImport", "_nbShowPreview"), PC: PC_FNS},
+        ((NBS, "netboxPreviewImport", "d"), (NBS, "_nbShowPreview", "d")),
+        adapters={"modules/preview_confirm.py": ("netbox_import_preview", "_nb_gates",
+                                                 "_nb_line", "build")}),
+    "POST /netbox/safety/remove/preview": Render(
+        lambda mp, tmp: P.netbox_remove_preview(mp, tmp),
+        {NBS: ("netboxPreviewRemoval", "_nbShowPreview"), PC: PC_FNS},
+        ((NBS, "netboxPreviewRemoval", "d"), (NBS, "_nbShowPreview", "d")),
+        adapters={"modules/preview_confirm.py": ("netbox_removal_preview", "_nb_gates",
+                                                 "_nb_line", "build")}),
     "GET /inventory/source/<list>": Render(
         _get("/inventory/source/Default"),
         {"partials__inventory_source.1.js": ("loadInventorySource", "applyInventorySourceUI",
@@ -322,8 +343,6 @@ UNDRAWN = {
     "GET /monitoring/stack/<tool>": [
         ("name", "the tool's key; the card is keyed by it at the call site")],
     "POST /golden/capture/preview": [
-        ("actor", "the confirming person, drawn inside the confirm part's "
-                  "`statement` sentence, which names them"),
         ("list", LIST)],
     "POST /golden/capture/apply": [("list", LIST)],
     "GET /netbox/status": [
@@ -382,8 +401,6 @@ UNDRAWN = {
                      "reproduces the device; every line modelled or acknowledged)"),
         ("deployable_count", "the summary sentence recomputes it from the "
                              "devices the preview draws"),
-        ("actor", "the confirming person, drawn inside the confirm part's "
-                  "`statement` sentence, which names them"),
         ("list", LIST)],
     "POST /golden/restore/preview": [
         ("add intent_restored inventory_size mode partial ref un_onboarding",
@@ -393,12 +410,8 @@ UNDRAWN = {
                                       "client draws its own copy of what it sent"),
         ("scope", "drawn as the preview's `scope` what-not item; the adapter "
                   "takes it as an argument, so no `.get` reads it"),
-        ("actor", "the confirming person, drawn inside the confirm part's "
-                  "`statement` sentence, which names them"),
         ("list", LIST)],
     "POST /onboard/plan": [
-        ("actor", "the confirming person, drawn inside the confirm part's "
-                  "`statement` sentence, which names them"),
         ("host_vars", "the intent phase 1 will commit; the review draws the "
                       "bootstrap config, and 7.4 draws the intent too"),
         ("mgmt_mac reservation_address reservation_state ztp_server ztp_subnet_id",
@@ -501,6 +514,38 @@ EMPTY_IN_FIXTURE = {
     "POST /golden/restore/preview un_onboarding": (S_, _STRINGS),
     "POST /onboard/plan host_vars": (R_, "the plan carries no intent for a device "
                                          "not yet onboarded; drawn in 7.4"),
+    "POST /netbox/safety/import/preview preview.explain": (R_, "no concept is taught on the NetBox safety "
+                                            "modal yet; the concepts harness names it"),
+    "POST /netbox/safety/import/preview preview.targets[].program.authorised": (S_, "a NetBox write is sent to no "
+                                            "device, so no line is authorised"),
+    "POST /netbox/safety/import/preview preview.targets[].program.dangerous": (S_, "a NetBox write is sent to no "
+                                            "device, so no line is dangerous"),
+    "POST /netbox/safety/import/preview preview.what.targets[].select_data": (R_, "the one-shot token binds the plan's "
+                                            "hash, carried beside the preview, not per target"),
+    "POST /netbox/safety/import/preview preview.targets[].program.notes": (S_, "an import has no cascade; notes "
+                                            "carry only a removal's"),
+    "POST /netbox/safety/import/preview preview.what_not.items[].lines": (S_, "an import's what-not items are "
+                                            "sentences; a removal's carry lines"),
+    "POST /netbox/safety/import_all/preview preview.explain": (R_, "no concept is taught on the NetBox safety "
+                                            "modal yet; the concepts harness names it"),
+    "POST /netbox/safety/import_all/preview preview.targets[].program.authorised": (S_, "a NetBox write is sent to no "
+                                            "device, so no line is authorised"),
+    "POST /netbox/safety/import_all/preview preview.targets[].program.dangerous": (S_, "a NetBox write is sent to no "
+                                            "device, so no line is dangerous"),
+    "POST /netbox/safety/import_all/preview preview.what.targets[].select_data": (R_, "the one-shot token binds the plan's "
+                                            "hash, carried beside the preview, not per target"),
+    "POST /netbox/safety/import_all/preview preview.targets[].program.notes": (S_, "an import has no cascade; notes "
+                                            "carry only a removal's"),
+    "POST /netbox/safety/import_all/preview preview.what_not.items[].lines": (S_, "an import's what-not items are "
+                                            "sentences; a removal's carry lines"),
+    "POST /netbox/safety/remove/preview preview.explain": (R_, "no concept is taught on the NetBox safety "
+                                            "modal yet; the concepts harness names it"),
+    "POST /netbox/safety/remove/preview preview.targets[].program.authorised": (S_, "a NetBox write is sent to no "
+                                            "device, so no line is authorised"),
+    "POST /netbox/safety/remove/preview preview.targets[].program.dangerous": (S_, "a NetBox write is sent to no "
+                                            "device, so no line is dangerous"),
+    "POST /netbox/safety/remove/preview preview.what.targets[].select_data": (R_, "the one-shot token binds the plan's "
+                                            "hash, carried beside the preview, not per target"),
     "POST /onboard/plan preview.explain": (R_, "no concept is taught on the onboarding "
                                                "review yet; the concepts harness names it"),
     "POST /onboard/plan preview.targets[].program.authorised": (S_, "a startup config is "
@@ -519,7 +564,11 @@ EMPTY_IN_FIXTURE = {
 # 13 -> 15: the onboarding review on the component (7.1) has no concept to
 # teach yet and nothing to confirm by hash (Create rebuilds the plan and its
 # gate says so); both are records by the component's shape, not the fixture's.
-EMPTY_RECORDS_CEILING = 15
+# 15 -> 21: the three NetBox previews entered this check for the first time
+# (7.1); each has no concept yet and no per-target confirm data (the one-shot
+# token binds the plan's hash beside the preview). New coverage, not a
+# fixture that stopped reaching a state.
+EMPTY_RECORDS_CEILING = 21
 
 
 def _empty_paths(obj, path=""):
@@ -563,7 +612,10 @@ def _flat(table):
 # 107 -> 108: the onboarding review moved onto the component (7.1): it carries
 # the confirming person, the same exemption; its own `bootstrap_config` key
 # was removed (the config is the program part), not exempted.
-UNDRAWN_CEILING = 108
+# 108 -> 104: the confirm part's `actor` echo removed from every preview (the
+# apply records the verified actor; the statement names the person), found
+# when the NetBox previews would have added three more copies of the exemption.
+UNDRAWN_CEILING = 104
 PHANTOM_CEILING = 18
 
 

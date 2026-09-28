@@ -48,6 +48,7 @@
     refused: ['bg-warning text-dark', 'refused'],
     not_authorised: ['bg-danger', 'dangerous line(s) not authorised'],
     capturable: ['bg-success', 'will be recorded'],
+    ready: ['bg-success', 'ready'],
     unchanged: ['bg-secondary', 'unchanged'],
     unread: ['bg-warning text-dark', 'could not be read']
   };

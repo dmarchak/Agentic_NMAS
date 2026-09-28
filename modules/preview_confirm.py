@@ -54,10 +54,13 @@ def confirm_part(request, action: str = "confirm") -> dict:
 
     ident = identity.identify(request)
     allowed, reason = identity.may(ident, action)
+    # No `actor` field: the apply records the VERIFIED actor from the request,
+    # never one the browser echoes back, and the statement names the person.
+    # A separate field was carried to every preview and read by nothing.
     if allowed and ident.is_identified:
-        return {"may": True, "actor": ident.actor, "kind": ident.kind,
+        return {"may": True, "kind": ident.kind,
                 "statement": f"You are confirming as {ident.actor}."}
-    return {"may": bool(allowed), "actor": ident.actor if ident.is_identified else "",
+    return {"may": bool(allowed),
             "kind": ident.kind,
             "statement": ("You may not confirm: " + (reason or "no verified person"))
             if not allowed else f"You are confirming as {ident.actor or 'an unverified caller'}."}
@@ -801,6 +804,189 @@ def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
         not_watched=("NetBox cascades a delete through relationships: the preview named "
                      "what else would go, and nothing re-reads NetBox after the removal."),
         titles={"sent": "What was deleted from NetBox", "checks": "What NetBox answered"})
+
+
+def _nb_gates(d: dict, what: str) -> list:
+    """The gates every NetBox write shares, in the words of what each
+    establishes (netbox_authz, netbox_guard). None has passed at preview
+    except the dry run itself: the rest are checked when Confirm is pressed."""
+    minutes = max(1, round((d.get("expires_in") or 300) / 60))
+    return [
+        gate(f"a dry run of the real {what} against the real NetBox", "pass",
+             "this preview ran the same code with every write captured; nothing was written"),
+        gate("NetBox writes permitted for this instance", "pass" if d.get("writes_allowed")
+             else "at_apply",
+             "the saved switch is on" if d.get("writes_allowed") else
+             "the saved switch is OFF: the 'Permit NetBox writes' box below turns it on "
+             "when you confirm, and without it the confirm is refused"),
+        gate("NetBox unchanged since this preview", "at_apply",
+             "the plan is recomputed when you confirm and its hash compared; if NetBox "
+             "moved, nothing is written and you are asked to preview again"),
+        gate("a one-shot confirmation", "at_apply",
+             f"valid {minutes} minute(s), once, for this plan only; it never leaves "
+             "NetBox open for writes"),
+    ]
+
+
+def _nb_line(verb: str, o: dict) -> str:
+    oid = o.get("id")
+    ident = f" #{oid}" if isinstance(oid, int) and oid > 0 else ""
+    payload = o.get("payload") or {}
+    # A device type is named by its model, not a `name` (the dry run's label
+    # reads name, address, prefix, display).
+    label = o.get("name") or payload.get("model") or payload.get("slug") or ""
+    return f"{verb} {o.get('endpoint', '')}{ident} {label}".rstrip()
+
+
+def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) -> dict:
+    """The NetBox import's preview, drawn by the component (7.1). Replaces
+    the safety modal's own body, which drew two count tables: what it
+    creates and updates is now each object by name, and an update names the
+    fields it sets (never their values, which carry configs)."""
+    plan = d.get("plan") or {}
+    name = "every device list" if all_lists else (d.get("list") or "the list")
+    creates, updates = plan.get("creates") or [], plan.get("updates") or []
+    n = len(creates) + len(updates)
+    lines = ([_nb_line("create", o) for o in creates]
+             + [_nb_line("update", o) + (": sets " + ", ".join(sorted(o.get("payload") or {}))
+                                         if o.get("payload") else "") for o in updates])
+    summary = (f"Import {name} ({d.get('device_count', 0)} device(s)) into NetBox: create "
+               f"{len(creates)} object(s) and update {len(updates)}." if n else
+               f"Import {name} ({d.get('device_count', 0)} device(s)): nothing to create or "
+               "update. NetBox already matches.")
+    what_not = [
+        {"target": name, "kind": "no_delete", "lines": [],
+         "text": "Nothing is deleted: an import only creates and updates. Remove is its own "
+                 "operation."},
+        {"target": name, "kind": "no_device", "lines": [],
+         "text": "No device is reached: the import reads each device's committed golden "
+                 "config, not the device."},
+        {"target": name, "kind": "provenance", "lines": [],
+         "text": "An object it UPDATES is not tagged nmas-managed and is never made removable: "
+                 "the tag marks only what NMAS creates. Each update's before and after goes to "
+                 "the modification record."},
+    ]
+    target = {
+        "name": name, "state": "ready" if n else "unchanged", "selectable": True,
+        "program": {"lines": lines, "dangerous": [], "authorised": [],
+                    "authorisation_error": "", "notes": [],
+                    "caption": "What NetBox will be told to create and update. Nothing is "
+                               "sent to a device",
+                    "none": "Nothing: NetBox already holds what the golden configs describe."},
+        "operands": [
+            {"name": "List", "value": name},
+            {"name": "Devices", "value": str(d.get("device_count", 0))},
+            {"name": "Creates", "value": str(len(creates))},
+            {"name": "Updates", "value": str(len(updates))},
+            {"name": "Plan hash", "value": (d.get("plan_hash") or "")[:16]},
+        ],
+        "gates": _nb_gates(d, "import"),
+    }
+    return build(action="netbox_import_all" if all_lists else "netbox_import",
+                 summary=summary, targets=[target], what_not=what_not,
+                 nothing_left_out="", confirm=confirm,
+                 titles={"program": "What will be written to NetBox"})
+
+
+def netbox_removal_preview(d: dict, confirm: dict) -> dict:
+    """NetBox Remove's preview, drawn by the component (7.1). What the
+    database takes WITH each delete (the cascade, `netbox_cascade`) is drawn
+    only when there is some, as before: a clean, proven preview adds no
+    alarm, or the operator learns to click through it. A cascade that could
+    not be established is its own statement, never "nothing"."""
+    name = d.get("list") or "the list"
+    deleted, skipped = d.get("deleted") or [], d.get("skipped") or []
+    cascade = d.get("cascade") or {}
+    foreign, taken = cascade.get("foreign") or [], cascade.get("taken") or []
+    unproven = cascade.get("unproven") or []
+    own = [o for o in taken if not o.get("foreign")]
+
+    def _via(o):
+        return f"{o.get('endpoint', '')} {o.get('name') or o.get('id')} (via {o.get('via', '?')})"
+
+    if deleted:
+        summary = (f"{len(deleted)} object(s) will be PERMANENTLY deleted from NetBox for "
+                   f"{name}. Only objects NMAS created AND tagged nmas-managed are eligible."
+                   + (f" NetBox will ALSO delete {len(foreign)} object(s) NMAS did not create, "
+                      "because they hang off one of these: read them below." if foreign else ""))
+    else:
+        summary = d.get("message") or f"Nothing NMAS created for {name} is left to delete."
+    notes = []
+    if foreign:
+        notes.append({"title": f"ALSO DELETED BY NETBOX: {len(foreign)} object(s) NMAS did NOT "
+                               "create. They carry no nmas-managed tag, so the provenance check "
+                               "would leave them alone; it protects an object, and this travels "
+                               "a relationship.",
+                      "lines": [_via(o) for o in foreign]})
+    if own:
+        notes.append({"title": f"Also removed by NetBox with these: {len(own)} further "
+                               "object(s), all of them NMAS's own.",
+                      "lines": [_via(o) for o in own]})
+    what_not = []
+    if not deleted:
+        what_not.append({"target": name, "kind": "nothing", "lines": [],
+                         "text": "Nothing to delete: " + summary})
+    if skipped:
+        what_not.append({"target": name, "kind": "skipped",
+                         # Removal needs BOTH the record and the tag. These
+                         # lack one, and the reason on each line says which.
+                         "text": f"Left alone ({len(skipped)}): removal needs an object NMAS "
+                                 "recorded creating AND NetBox shows tagged nmas-managed; these "
+                                 "are not both, so they are treated as a person's:",
+                         "lines": [f"{_nb_line('keep', o)} ({o.get('reason') or ''})"
+                                   for o in skipped]})
+    if unproven:
+        what_not.append({"target": name, "kind": "unproven",
+                         "text": "This preview could NOT establish what some of these deletions "
+                                 "take with them, which is not the same as nothing:",
+                         "lines": list(unproven)})
+    what_not += [
+        {"target": name, "kind": "updated", "lines": [],
+         "text": "Nothing NMAS only UPDATED is deleted: removal needs an object NMAS created."},
+        {"target": name, "kind": "no_device", "lines": [],
+         "text": "No device is reached and nothing in git changes."},
+        {"target": name, "kind": "forget", "lines": [],
+         "text": "'Just stop tracking' is the other choice: it deletes nothing, and NMAS "
+                 "forgets what it created for this list, so NetBox keeps every object."},
+    ]
+    gates = _nb_gates(d, "removal")
+    if not deleted:
+        cascade_gate = gate("what the database takes with each delete, asked of NetBox",
+                            "not_applicable", "nothing is deleted")
+    elif not d.get("cascade"):
+        # Absent is not empty: a preview that never asked must not say "nothing".
+        cascade_gate = gate("what the database takes with each delete, asked of NetBox",
+                            "not_reached", "NOT asked: nothing is known about what goes with "
+                                           "these deletes, which is not the same as nothing")
+    elif unproven:
+        cascade_gate = gate("what the database takes with each delete, asked of NetBox",
+                            "not_reached", "NOT established for some deletes: see what will "
+                                           "not happen")
+    else:
+        cascade_gate = gate("what the database takes with each delete, asked of NetBox",
+                            "pass", f"asked: {len(taken)} further object(s) go with them"
+                            if taken else "asked: nothing further goes with them")
+    gates.insert(1, cascade_gate)
+    target = {
+        "name": name, "state": "ready" if deleted else "unchanged",
+        "selectable": bool(deleted),
+        "program": {"lines": [_nb_line("delete", o) for o in deleted], "dangerous": [],
+                    "authorised": [], "authorisation_error": "", "notes": notes,
+                    "caption": "What NetBox will be told to delete",
+                    "none": "Nothing: " + summary},
+        "operands": [
+            {"name": "List", "value": name},
+            {"name": "Deletes", "value": str(len(deleted))},
+            {"name": "Left alone", "value": str(len(skipped))},
+            {"name": "Taken with them by NetBox", "value":
+             f"{len(taken)} ({len(foreign)} NMAS did not create)"},
+            {"name": "Plan hash", "value": (d.get("plan_hash") or "")[:16]},
+        ],
+        "gates": gates,
+    }
+    return build(action="netbox_remove", summary=summary, targets=[target],
+                 what_not=what_not, nothing_left_out="", confirm=confirm,
+                 titles={"program": "What will be deleted from NetBox"})
 
 
 #: What phase 1 of onboarding creates, per completed step, in words (C86).

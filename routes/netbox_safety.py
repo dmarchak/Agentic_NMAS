@@ -162,14 +162,9 @@ def preview_import():
     # in `local_context_data`, and this returned its secrets verbatim. What the
     # import WRITES to NetBox is register C95, a separate decision.
     from modules.outbound import mask_payload
-    return jsonify(mask_payload({
-        "ok": True,
-        "list": list_name,
-        "device_count": len(devices),
-        "plan": plan,
-        "summary": _describe_plan(plan),
-        **_authorization_for("import", list_name, plan),
-    }))
+    out = {"ok": True, "list": list_name, "device_count": len(devices), "plan": plan,
+           **_authorization_for("import", list_name, plan)}
+    return jsonify(mask_payload(_drawn(out, _preview("import", out))))
 
 
 @bp.route("/import/apply", methods=["POST"])
@@ -257,14 +252,9 @@ def preview_import_all():
     # Masked after the authorisation is bound to the truthful plan (C77's
     # sweep): the same device payloads as a single list's preview.
     from modules.outbound import mask_payload
-    return jsonify(mask_payload({
-        "ok": True,
-        "list": _ALL_LISTS,
-        "device_count": sum(len(d) for _, d in payload),
-        "plan": plan,
-        "summary": _describe_plan(plan),
-        **_authorization_for("import_all", _ALL_LISTS, plan),
-    }))
+    out = {"ok": True, "list": _ALL_LISTS, "device_count": sum(len(d) for _, d in payload),
+           "plan": plan, **_authorization_for("import_all", _ALL_LISTS, plan)}
+    return jsonify(mask_payload(_drawn(out, _preview("import_all", out))))
 
 
 @bp.route("/import_all/apply", methods=["POST"])
@@ -334,7 +324,7 @@ def preview_removal():
     plan = {"deletes": [{"endpoint": o["endpoint"], "name": o.get("name", ""),
                          "id": o.get("id")} for o in result.get("deleted", [])]}
     result.update(_authorization_for("remove", list_name, plan))
-    return jsonify(result)
+    return jsonify(_drawn(result, _preview("remove", result)))
 
 
 @bp.route("/remove/apply", methods=["POST"])
@@ -403,15 +393,26 @@ def removals():
                                  for r in read["rows"][:20]]})
 
 
-def _describe_plan(plan: dict) -> str:
-    """One-line human summary for the confirm modal."""
-    if not plan:
-        return "Nothing to do."
-    parts = []
-    if plan.get("create_count"):
-        parts.append(f"create {plan['create_count']} object(s)")
-    if plan.get("update_count"):
-        parts.append(f"update {plan['update_count']} object(s)")
-    if plan.get("delete_count"):
-        parts.append(f"delete {plan['delete_count']} object(s)")
-    return "Will " + ", ".join(parts) + "." if parts else "No changes — NetBox already matches."
+def _drawn(d: dict, preview: dict) -> dict:
+    """What a preview response carries: the preview, and what the modal needs
+    to confirm it (7.1). The raw dry run stays on the server. It had carried
+    every object's payload, a device's `local_context_data` config among them,
+    to a browser that drew two counts from it; the payload-to-render check
+    named 80-odd keys nothing read. The token is bound to the plan's hash
+    before this, so the confirm still covers the whole plan."""
+    return {"ok": d.get("ok", True), "list": d.get("list", ""), "preview": preview,
+            **({"device_count": d["device_count"]} if "device_count" in d else {}),
+            "writes_allowed": d.get("writes_allowed", False),
+            "token": d.get("token", ""), "expires_in": d.get("expires_in", 0),
+            "plan_hash": d.get("plan_hash", "")}
+
+
+def _preview(operation: str, d: dict) -> dict:
+    """The preview, drawn by the component (7.1), as the verified person who
+    would confirm (the apply routes are gated `approve`)."""
+    from modules.preview_confirm import (confirm_part, netbox_import_preview,
+                                         netbox_removal_preview)
+    confirm = confirm_part(request, "approve")
+    if operation == "remove":
+        return netbox_removal_preview(d, confirm)
+    return netbox_import_preview(d, confirm, all_lists=operation == "import_all")

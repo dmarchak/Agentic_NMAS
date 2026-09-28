@@ -128,7 +128,11 @@ def _bodies(v):
 #: the diff as an approval item, which the GET sweep covers.
 REACHES = {"compare_backups_route", "deploy.plan", "freshness.gate",
            "golden.capture_preview", "golden.restore_preview", "templates.preview",
-           "templatize.preview_committed_edit", "netbox_safety.preview_import"}
+           "templatize.preview_committed_edit"}
+# `netbox_safety.preview_import` LEFT this set in 7.1: its response no longer
+# carries the dry run's object payloads (each device's golden rode in
+# `local_context_data`), only the preview drawn from them, so there is no
+# stored config in it to mask. The sweep still drives it for a planted value.
 
 #: The two masks: the outbound redactor's, and the template preview's
 #: (`render_artifact.MASK`, which JSON carries escaped).
@@ -326,7 +330,7 @@ class TestEveryRouteReachedItsState:
         missing = sorted(k for k in REACHES
                          if not any(m in swept["person"][k][1] for m in MASKS))
         assert missing == [], missing
-        assert len(REACHES) >= 8
+        assert len(REACHES) >= 7   # 8 -> 7: the import preview left it (7.1)
 
 
 class TestNoPostReturnsAStoredSecret:
