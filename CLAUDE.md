@@ -176,7 +176,13 @@ tracked in git.
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
-  (panels subscribe; a failed re-fetch marks the panel stale with a time)
+  (panels subscribe; a failed re-fetch marks the panel stale with a time).
+  Since 7.2 it also carries the LIVE-DATA CONTRACT every panel inherits: a
+  background job ANNOUNCES its keys over the socket (C58), the channel's
+  heartbeat proves it alive, each panel shows the AGE of its value against
+  the source's promise (`stale_after_seconds`) on a local tick that makes no
+  request, a dead channel is marked on every panel's data, and a reconnect
+  catches every panel up. No data polling: every change has a sender
 - **[modules/preview_confirm.py](modules/preview_confirm.py)** — Stage 7.1:
   the preview-then-confirm contract. One builder for the six parts (what,
   what will NOT happen, program, operands, gates, confirm), refusing a part
@@ -1246,6 +1252,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_write_authority.py` | C155: a real NetBox write with no declared authority is refused at the chokepoint (the switch still refuses first, and a dry run needs none); both records store the authority beside the actor; every `for_list()` in the program and its scripts declares one (AST, floor) |
 | `test_credential_store_integrity.py` | C157: the credential store gets the settings file's C20 fixes: two PROCESSES writing at once lose nothing (without the flock, 37-47% of writes were lost, measured), an unreadable store refuses every write and keeps the file byte-identical with a `0600` `.corrupt-` copy while a read survives on empty, every write is logged with its process and the key names it changes (never a value), and a save outside the lock is refused |
 | `test_store_integrity_c158_c160.py` | C158, C160: the NetBox created-object record, `rolled_back.json` and devices.csv lose nothing to two PROCESSES writing at once; an unreadable created record refuses every write and keeps the file; an unreadable rolled-back record BLOCKS every plan naming the record (it lifted every block); a devices.csv write replaces the file (a new inode), never truncates it; Reorder keeps a device the order does not name; Refresh Hostnames keeps a rotation made while it ran; `csv.DictWriter` lives in one module; two lock instances for one path nest without blocking (bounded, so a regression fails rather than hangs) |
+| `test_live_contract.py` | 7.2 step 13, the live-data contract: the server's heartbeat beats on its interval (half the fastest reader's), survives a failed beat, reaches a connected page through the app's emitter and is started with the app's services; a source read for the request makes no freshness promise and a reader's value carries its own; the SHIPPED client on a controlled clock names a silent channel after 2.5 beats and recovers on the next, marks EVERY subscribed panel on its data (never only a status area), catches each panel up once on reconnect and never on the first connect, draws fresh, stale, no-promise and unknown ages, redraws a stamped panel on the tick with no request; Needs attention draws a source past its promise stale and opens the full list |
 | `test_announce.py` | C58: a reader finishing reaches a CONNECTED Socket.IO test client through the app's own emitter (a failed read too); keys outside the vocabulary refused, no emitter raises, the message carries names never data; the SHIPPED client executed in duktape re-fetches only the subscribed panel, draws a dropped or failed connection in `#nmasLiveNote` and nothing before the first connect, and the header path works with no socket |
 | `test_reader_job.py` | 7.2's reader-job pattern: a reader omitting a claim (endpoint, interval basis, announced key) is refused at registration; the value is dated by the read and a failed read keeps it (streak start kept, a success ends it); exactly-full pages refused; the error redacted; an unreadable cache replaced and preserved; announced after a failure too, a failed announcement counted; liveness `not_run`, `ok`, `failing` since the streak, `never_succeeded`, `stale` from the window's end, `unknown` |
 | `test_needs_attention.py` | 7.2: a row with no what, cause or action is refused, and since stays None when not recorded; an unreadable source and a raising adapter are rows. Five sources: job health over the measured systemd shapes (a failing job with its cause, since its streak's FIRST failure; a stale one since it aged out; a device named as a field; ok, departed and not-applicable not rows; an unmapped state drawn loud; the families with no recorded action pinned to shrink); drift through a REAL `run_drift_check()` (a row per device the run did not clear, the checker's own state, the value dated by the RUN not the read, since left empty, and the drift panel drawing what the run found, C96); approvals through a read that writes nothing (unreadable is its own answer; a drift item FOLDS into its drift row, one event one row, and one whose drift is gone says so); pending onboardings (first-day counted, overdue a row, an unfindable credential danger); rollback blocks through the ONE classifier on a REAL plan with a real planted block (standing a row, gone counted, an unreadable record ONE row planning nothing). The shipped panel executed; the route masks what a row quotes |
@@ -5151,6 +5158,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   nested acquire therefore took a second `flock` on a new descriptor, which
   blocks on the process's own lock: the first test run hung. `flock` is per
   open file description, so depth is per (thread, path) now.
+- **A gate that reads a result file must first REMOVE it** (2026-09-28, mine: `e986e66`). A
+  docs script failed, which correctly skipped the suite; the chain then read the result file
+  after a `;`, found the PREVIOUS commit's `5330 passed`, and committed with it. The suite had
+  not run (measured afterwards on the same tree: 5344 passed). The commit-message-file rule
+  (a write that failed leaves the previous content in place) in the gate's own result. The gate
+  now deletes the file before the run, so a skipped run leaves nothing to read, and refuses on
+  a missing file. `e986e66` is left unrewritten; the next commit states its real result.
 - **A finding is recorded the turn it is raised, AFTER searching the register for it** (the
   operator, 2026-09-27 and 2026-09-28). C108 lived only in conversation until the
   re-run found it again, and C123 was registered as new two days after D8 had
