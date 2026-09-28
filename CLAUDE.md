@@ -300,7 +300,15 @@ dashboard), `device.html` (1,239 — per-device page), and
 NetBox reads are unrestricted. **Writes are fail-closed** and go through exactly
 three chokepoints in `netbox_client.py`: `_nb_post`, `_nb_patch`, `_nb_delete`.
 
-Two independent conditions must both hold before any write executes:
+Two independent conditions must both hold before a write from the **NetBox
+tab** (import, import-all, Remove) executes. **Only there** (C155, measured
+2026-09-28): the chokepoints check the master switch alone, and the token is
+consumed by the NetBox tab's routes before they call the writer, so any other
+path that reaches a writer passes on the switch: onboarding's phase 2 and
+Abandon, the host scripts, and list deletion's opt-in NetBox removal (which
+deletes with no preview and no token when `netbox_remove_on_list_delete` is
+on or a request carries `remove_from_netbox`). The sentence said "before
+any write" until then:
 
 1. `netbox_allow_writes` — the **master switch**, meaning "this instance may
    write to NetBox at all". Defaults off. A persistent operator decision; it is
