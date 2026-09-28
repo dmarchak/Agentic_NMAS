@@ -157,7 +157,7 @@ UNESCAPED = {
     # by the component, which escapes every value (C102, 2026-09-27).
 }
 
-CEILINGS = {"PENDING": 25, "FALSE_GREEN": 0, "UNESCAPED": 0}
+CEILINGS = {"PENDING": 23, "FALSE_GREEN": 0, "UNESCAPED": 0}
 
 
 def _population():
@@ -207,9 +207,13 @@ class TestEveryResultIsPlaced:
             assert set(keys) <= pop, (name, sorted(set(keys) - pop))
 
     def test_the_lists_only_shrink(self):
-        assert len(PENDING) <= CEILINGS["PENDING"]
-        assert len(FALSE_GREEN) <= CEILINGS["FALSE_GREEN"]
-        assert len(UNESCAPED) <= CEILINGS["UNESCAPED"]
+        # EQUAL, not at most (C125): the ceiling lagged the list by two when it
+        # was lowered by hand, and "25" was reported as the count while the
+        # list held 23. Equal means removing an entry lowers the ceiling in
+        # the same commit, so the ceiling IS the count.
+        assert len(PENDING) == CEILINGS["PENDING"], (len(PENDING), CEILINGS["PENDING"])
+        assert len(FALSE_GREEN) == CEILINGS["FALSE_GREEN"]
+        assert len(UNESCAPED) == CEILINGS["UNESCAPED"]
 
 
 class TestTheToastBar:

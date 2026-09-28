@@ -846,6 +846,81 @@ to match exactly, both ways. A new green toast fails until someone states
 its reason. What it cannot see: a green badge or colour drawn other than
 by a toast; `FALSE_GREEN`'s shape remains for those.
 
+
+### 7.1 acceptance, stated 2026-09-28
+
+**What it asserts** (the operator's wording): *every operation that changes a
+device or the record has one preview, one confirm, one result and one record,
+and none of it requires a console.* Concretely, for each operation in scope:
+- the PREVIEW is drawn by the preview component (`nmas_preview_confirm.js`);
+- the CONFIRM is bound by hash and made as the verified person;
+- the RESULT is drawn by the result component from the record the apply
+  wrote, so the screen and the record are one computation;
+- the RECORD is read back later from a named route;
+- no step needs a terminal, a network tab or the log.
+
+**How it is measured.** Two checks, each a list that only shrinks, plus one real
+run:
+- `test_preview_confirm.py`: previews on the component (`RETROFITTED`) against
+  those not yet moved (`RETROFIT_PENDING`);
+- `test_results_are_drawn.py`: of the 38 actions gated `confirm`, `approve` or
+  `publish_remote`, the results drawn by the component with a reader
+  (`RESULT_COMPONENT`), the pending ones (`PENDING`, every entry naming what it
+  draws today) and those with no GUI (`NO_GUI`, each homed by the reachability
+  list);
+- **C70**, the restore run for real on r2 in the browser, passed on its
+  re-run with the result screen rendering (C84 closed).
+
+**In scope, and where each stands:**
+
+| Operation | Preview | Result and record |
+|---|---|---|
+| Deploy | component | component, from receipts; Changes tab |
+| Restore (and its handoffs: an approval's revert, restore from a ref) | component | component, from receipts; Changes tab; C70 passed |
+| Capture (Save All, one device, the "no golden" scope, a drift approval's handoff) | component | component; golden history |
+| Onboarding: Create | **pending** (`onboardReviewHtml`) | component (C86); pending row |
+| Onboarding: Verify, Abandon | none (one click each) | **pending** (toasts) |
+| NetBox import, import-all | **pending** (the safety modal's body) | component; the sync card |
+| NetBox remove | **pending** (the safety modal's body) | component (C121); Removals panel |
+
+**Explicitly NOT in 7.1** (each with its home, so the boundary is stated and not
+implied):
+- **rotate and retire: 7.3.** They have no route at all; they are host CLIs.
+- **bulk intent: 7.4, deferred by the operator.** It is fleet-shaped, and its CLI
+  is the path in use.
+- **The Device page's actions: 7.3.** Run command, save config, save to startup,
+  upload and delete a file.
+- **Bulk operations: 7.4.** Execute, upload, delete, reload; also refresh
+  hostnames.
+- **Template approve and save: 7.6.** Also the intent editor's commit, and
+  revoke, bindings and extraction (NO_GUI).
+- **Remote push, auto-push, acknowledge and verify-write: 7.5.**
+- **The agent's run, chat, approval approve and reject: Stage 8.**
+- **Freshness authorise (NO_GUI): 7.6.** Also intent revert and retry, and
+  remote adopt (NO_GUI).
+
+**The numbers, 2026-09-28:**
+- **Results:** 7 drawn by the component, **23 pending**, 8 with no GUI, of 38.
+  - Of the 23, **two are 7.1's own** (onboarding Verify and Abandon); the other
+    21 are homed above.
+  - The survey began at 33 not drawn: 16 drawn until closed and 17 toasts, of a
+    population of 41 before removals.
+  - A figure of "25" reported on 2026-09-27 was the check's CEILING, not its
+    count; the ceiling is now the count, 23.
+- **Previews:** 2 on the component (deploy, restore) plus capture, which was
+  built on it. **3 pending**: onboarding, NetBox import/remove, and bulk intent,
+  which is deferred to 7.4. **7.1's own are two.**
+
+**7.1 is met when:**
+- onboarding's review and the NetBox safety modal draw with the preview
+  component;
+- onboarding's Verify and Abandon draw their results with the result component,
+  with a reader (the pending row);
+- `RETROFIT_PENDING` holds only bulk intent, marked deferred;
+- `PENDING` holds nothing homed in 7.1.
+
+It is **not met today**.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** If it returns, it caps the devices shown, and
