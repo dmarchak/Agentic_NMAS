@@ -63,6 +63,10 @@ RESULT_COMPONENT = {
     # Capture (7.1 step 4): Save All is its whole-fleet form, and the one-click
     # route it replaced is gone. The record read back is the golden history.
     "golden.capture_apply": ("static/js/nmas_capture.js", "previewCapture", "golden.history"),
+    # Onboarding's Create (C86): phase 1, drawn as pending; the record read
+    # back is the device's pending row.
+    "onboard.create": ("static/js/gen/partials__onboard_wizard.1.js", "onboardCreate",
+                       "onboard.pending"),
     "netbox_safety.apply_import": ("static/js/gen/index.4.js", "loadNetboxTab", "netbox_status"),
     "netbox_safety.apply_import_all": ("static/js/gen/index.4.js", "loadNetboxTab",
                                        "netbox_status"),
@@ -90,7 +94,6 @@ PENDING = {
     # -- a toast, gone in seconds --
     "onboard.verify": "a toast on success (the failure IS drawn)",
     "onboard.abandon": "a toast; what it removed is not shown",
-    "onboard.create": "a toast, and a false one: 'Device onboarded.' after phase 1 (C86)",
     "bulk_reload": "a toast",
     "ai_agent_run": "nothing: the response is never read (the agent is off)",
     "ai_approval_approve": "a toast; the commit an approval makes is never shown",
@@ -111,10 +114,8 @@ NO_GUI = {
 
 #: (file, the literal that draws success unearned) -> reason. Only shrinks.
 FALSE_GREEN = {
-    ("static/js/gen/partials__onboard_wizard.1.js",
-     "showToast(d.ok ? 'Device onboarded.'"):
-        "Create: a success toast asserting the outcome of phase 2, which "
-        "has not happened (C86)",
+    # Onboarding's Create said "Device onboarded." after phase 1; it is drawn
+    # by the component now, "Partly done" and pending (C86, 2026-09-27).
 }
 
 #: (file, the unescaped interpolation) -> where. Only shrinks.
@@ -124,7 +125,7 @@ UNESCAPED = {
     # by the component, which escapes every value (C102, 2026-09-27).
 }
 
-CEILINGS = {"PENDING": 27, "FALSE_GREEN": 1, "UNESCAPED": 0}
+CEILINGS = {"PENDING": 26, "FALSE_GREEN": 0, "UNESCAPED": 0}
 
 
 def _population():
@@ -208,9 +209,18 @@ class TestColourAndEscaping:
     """Pinned by the literal each draws: fixing one fails its entry until the
     entry is removed, so the lists cannot keep ghosts."""
 
-    @pytest.mark.parametrize("rel,literal", sorted(FALSE_GREEN))
-    def test_each_false_green_is_still_there(self, rel, literal):
-        assert literal in _read(rel), f"fixed? remove it from FALSE_GREEN: {literal}"
+    def test_each_false_green_is_still_there(self):
+        """A loop, not a parametrisation, for UNESCAPED's reason: the list is
+        empty since onboarding's Create was drawn (C86), and an empty
+        parametrisation reports a SKIP, which reads as something that did not
+        run."""
+        gone = [lit for (rel, lit) in sorted(FALSE_GREEN) if lit not in _read(rel)]
+        assert not gone, f"fixed? remove it from FALSE_GREEN: {gone}"
+
+    def test_the_false_onboarding_toast_is_gone(self):
+        """The one FALSE_GREEN entry, fixed: its literal is absent from the
+        shipped file (a removed entry cannot come back unnoticed)."""
+        assert "'Device onboarded.'" not in _read("static/js/gen/partials__onboard_wizard.1.js")
 
     def test_each_unescaped_interpolation_is_still_there(self):
         """A loop, not a parametrisation: with the list empty (the last entry

@@ -663,6 +663,85 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
         record=record, not_watched=FOLLOW_UP_NOT_BUILT["why"])
 
 
+#: What phase 1 of onboarding creates, per completed step, in words (C86).
+_ONBOARD_STEP_WORDS = {
+    "credentials": "the bootstrap credential, staged in the credential store for this device",
+    "commit": "the device's identity and committed intent, in one commit",
+    "reserve": "the Kea reservation that gives the device its address",
+    "render": "the bootstrap config, downloadable from the device's pending row",
+}
+
+
+def onboard_create_result(run: dict, plan) -> dict:
+    """Onboarding's Create, drawn by the result component (7.1, C86).
+
+    Create is PHASE 1: it touches no device, and the device it leaves is
+    PENDING (in the manifest and in git, not in the inventory, never
+    reached). The toast it replaces said "Device onboarded.", the outcome of
+    phase 2. So a complete phase 1 is "Partly done", never green: what the
+    operator asked for is an onboarded device, and that needs the device
+    booted and Verify pressed.
+    """
+    host = getattr(plan, "hostname", "") or "the device"
+    completed = list(run.get("completed") or [])
+    failed_at = run.get("failed_at") or ""
+    commit = run.get("commit") or ""
+    source = getattr(plan, "address_source", "static") or "static"
+    lines = []
+    for step in completed:
+        words = _ONBOARD_STEP_WORDS.get(step, step)
+        if step == "commit" and commit:
+            words += f" ({commit[:12]})"
+        if step == "reserve":
+            words += (f" ({getattr(plan, 'mgmt_mac', '') or '?'} -> "
+                      f"{getattr(plan, 'mgmt_ip', '') or '?'})")
+        lines.append(f"{step}: {words}")
+    if run.get("ok"):
+        level = "partial"
+        outcome, words = "pending", "created, and PENDING: not reached, not onboarded"
+        summary = (f"{host} is created and PENDING, not onboarded: nothing has reached it. "
+                   f"Next: boot it with its bootstrap config"
+                   + (" (it fetches its config over ZTP)" if source == "ztp" else "")
+                   + ", then press Verify on its pending row. Verify is phase 2, and "
+                     "only a device the tool has REACHED is onboarded.")
+    else:
+        level = "failed"
+        outcome, words = "failed", f"not created: stopped at {failed_at or 'an unnamed step'}"
+        summary = (f"{host} was not created: onboarding stopped at "
+                   f"{failed_at or 'an unnamed step'}. "
+                   + ("What it had already written is listed below; Abandon removes it."
+                      if completed else "Nothing was written."))
+    did_not = []
+    if not run.get("ok") or failed_at:
+        did_not.append({"target": host, "kind": failed_at or "failed",
+                        "text": run.get("reason") or "no reason was reported", "lines": []})
+    did_not.append({"target": host, "kind": "phase_two",
+                    "text": "Not reached, not in the inventory, not in NetBox: phase 2 "
+                            "(Verify) reaches the device, rotates its credential, records "
+                            "its first golden, creates its NetBox record and promotes it.",
+                    "lines": []})
+    target = {
+        "name": host, "outcome": outcome, "words": words, "stage": failed_at,
+        "reason": run.get("reason") or "",
+        "sent": {"lines": lines, "program_hash": "",
+                 "caption": f"{len(lines)} thing(s) created, none of them on a device",
+                 "none": "Nothing was created." if not lines else ""},
+        "checks": {"ran": False,
+                   "why": "phase 1 touches no device; phase 2 (Verify) reaches it and "
+                          "checks what it finds"},
+    }
+    statement = (f"Commit {commit[:12]} records {host} as pending." if commit
+                 else "No commit was made.") + " Onboarding takes no baseline."
+    return build_result(
+        action="onboard", level=level, summary=summary, targets=[target],
+        did_not=did_not, nothing_left_out="",
+        record={"commit": commit, "tags": [], "baseline": "", "statement": statement},
+        not_watched=("Nothing watches a pending device but its pending row: it has not "
+                     "been reached, so no heartbeat, drift check or backup covers it yet."),
+        titles={"sent": "What was created (on no device)",
+                "checks": "What was checked on the device"})
+
+
 def receipt_history(rows: list, device: str = "") -> list:
     """The receipt store read back as results (7.1 step 3): one per batch,
     newest first, each drawn by the same component as the result shown at

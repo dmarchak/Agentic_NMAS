@@ -1188,7 +1188,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_plan.py` | `build_plan` the only constructor; every refusal at once; a check that did not run has not passed |
 | `test_onboard_bootstrap_credential.py` | the crash window survives; one staging mechanism; a failed rotation does not report success |
 | `test_onboard_ordering.py` | no commit CREATED on failure — count, sha, reflog, orphan, hook; the commit last among the fallible |
-| `test_onboard_wizard_renders.py` | the shipped renderer executed: every blocking reason on screen with Create disabled |
+| `test_onboard_wizard_renders.py` | the shipped renderer executed: every blocking reason on screen with Create disabled; C86: the real Create route drawn by the result component, a complete phase 1 "Partly done" and pending (never "onboarded"), a failure naming its step and what Abandon removes |
 | `test_onboard_snmp.py` | RW removed verbatim; the nine RO communities untouched, against the fleet fixtures |
 | `test_platform_keying.py` | every consumer declares its namespace; one translation table; the boundary refuses a slug |
 | `test_onboard_drift_enrolment.py` | a device is covered the moment it is in the inventory; named before its first capture |

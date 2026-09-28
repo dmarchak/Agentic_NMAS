@@ -445,4 +445,9 @@ def create():
 
     result = run_onboarding(plan, repo=repo,
                             **real_steps(repo, actor=ident.actor))
+    # What happened, drawn by the result component (7.1, C86): Create is
+    # phase 1 and leaves the device PENDING, which the toast it replaces
+    # called "Device onboarded.".
+    from modules.preview_confirm import onboard_create_result
+    result["result"] = onboard_create_result(result, plan)
     return jsonify(result), (200 if result.get("ok") else 500)

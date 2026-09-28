@@ -205,8 +205,24 @@ async function onboardCreate() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(onboardFormPayload())});
     const d = await r.json();
-    showToast(d.ok ? 'Device onboarded.' : (d.error || 'Create failed'),
-              d.ok ? 'success' : 'danger');
+    // THE RESULT, drawn by the component in place of the review (7.1, C86).
+    // The toast said "Device onboarded." after phase 1, which leaves the
+    // device PENDING: the outcome of phase 2, claimed before it happened.
+    const host = document.getElementById('onboardReview');
+    if (d.result && host) {
+      host.innerHTML = previewConfirmResultHtml(d.result, {});
+      const btn = document.getElementById('onboardCreateBtn');
+      if (btn) btn.disabled = true;
+      const note = document.getElementById('onboardFooterNote');
+      if (note) note.textContent = d.ok
+        ? 'Created. The device is pending until Verify reaches it.'
+        : 'Nothing more was written. Fix the reason above, or Abandon what exists.';
+      showToast(d.result.happened.summary, previewConfirmResultLevel(d.result));
+    } else {
+      showToast(d.error || 'Create failed', 'danger');
+    }
+    // The pending row is where this device's state is read again later.
+    if (typeof loadOnboardPending === 'function') loadOnboardPending(onboardFormPayload().list_name);
   } catch (e) { showToast('Create failed: ' + e, 'danger'); }
 }
 

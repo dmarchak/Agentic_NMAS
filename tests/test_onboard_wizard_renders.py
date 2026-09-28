@@ -641,3 +641,65 @@ class TestTheReviewStatesWhatKeaSaid:
             mgmt_mask="255.255.255.0", address_claim="ignored for static"))
         assert "203.0.113.32 255.255.255.0" in html
         assert "ignored for static" not in html
+
+
+class TestCreateDrawsItsResult:
+    """C86 (7.1's onboarding retrofit): Create is PHASE 1. Its toast said
+    "Device onboarded." while the device was pending and never reached. The
+    real route and the real `run_onboarding`, with the plan and the step
+    adapters stubbed, drawn by the SHIPPED result component."""
+
+    @pytest.fixture
+    def create(self, monkeypatch, tmp_path):
+        import types
+
+        import app as nmas
+        from modules import identity as ident_mod
+
+        monkeypatch.setattr(ident_mod, "require",
+                            lambda request, action="", operation="": (
+                                types.SimpleNamespace(actor="ops@example.com"), None))
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path))
+        plan = types.SimpleNamespace(onboardable=True, hostname="r7", address_source="static",
+                                     mgmt_ip="203.0.113.7", mgmt_mac="", blocking_reasons=[])
+        monkeypatch.setattr("modules.nsot.onboard.build_plan", lambda **kw: plan)
+        monkeypatch.setattr("routes.onboard._plan_args", lambda data, ln, secret="": {})
+
+        def steps(commit_raises=None):
+            def commit(p):
+                if commit_raises:
+                    raise RuntimeError(commit_raises)
+                return "a1b2c3d4e5f60718293a"
+            monkeypatch.setattr("modules.nsot.onboard.real_steps", lambda repo, actor="": {
+                "bind_credentials": lambda p: None, "commit": commit, "render": lambda p: ""})
+            return nmas.app.test_client().post("/onboard/create",
+                                               json={"list_name": "Default"})
+        return steps
+
+    def _draw(self, result):
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        src = open(os.path.join(root, "static", "js", "nmas_preview_confirm.js")).read()
+        return dukpy.evaljs("var window = {};\n" + src
+                            + f"\nwindow.previewConfirmResultHtml({json.dumps(result)}, {{}});")
+
+    def test_a_complete_phase_one_is_pending_never_onboarded(self, create):
+        r = create()
+        d = r.get_json()
+        assert r.status_code == 200 and d["result"]["level"] == "partial"
+        assert "PENDING" in d["result"]["happened"]["summary"]
+        html = self._draw(d["result"])
+        assert "Partly done" in html and "press Verify" in html
+        # The false claim, exactly: never that THIS device is onboarded. (A
+        # bare "onboarded." matched the true sentence "only a device the
+        # tool has REACHED is onboarded.")
+        assert "Device onboarded" not in html and "r7 is onboarded" not in html
+        assert "a1b2c3d4e5f6" in html            # the commit, in the record
+
+    def test_a_failed_create_names_where_and_why(self, create):
+        r = create(commit_raises="git refused: no identity")
+        d = r.get_json()
+        assert r.status_code == 500 and d["result"]["level"] == "failed"
+        html = self._draw(d["result"])
+        assert "Not done" in html and "git refused: no identity" in html
+        assert "Abandon removes it" in html      # credentials were written first
