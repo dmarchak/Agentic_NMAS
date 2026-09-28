@@ -1219,6 +1219,16 @@ commit, so a capture after a denial cannot hide it, and a later earned
 baseline supersedes it. **Not recorded, stated:** the no-commit path (a Save
 All that changed nothing) decides without a commit to carry the decision;
 the earlier decision stands, and the result screen shows this one.
+The row names the decision's OWN commit and time (the operator), so a reader
+can see it predates a save that decided nothing.
+
+**7.2 step 7 BUILT (2026-09-28): a line authorised again and again (C140
+(1)).** From ONE read of the receipts, through the counting the preview's
+aggregate already used (`receipts._authorisation_counts`, now shared; the
+preview's shape unchanged): the same line on the same device authorised
+three times or more is a row. Twice can be a retry; a third is a routine.
+It blocks nothing; 8.8's point is that "ok" typed thirty times is the
+finding.
 
 ## 9. Deferred, recorded rather than scoped
 

@@ -617,6 +617,9 @@ class TestBaselineAsASource:
         assert "r2 does not match its committed intent" in r["cause"]
         assert r["since"] and res["value_at"] == r["since"]
         assert "Save All" in r["action"]["label"]
+        # Whose decision it is: a Save All that changed nothing decides with
+        # no commit to carry it, so the row names the decision's own commit.
+        assert f"decided by commit {r['operands']['commit']}" in r["cause"]
 
     def test_a_later_earned_baseline_supersedes_it(self, lab):
         repo, captured = lab
@@ -641,3 +644,53 @@ class TestBaselineAsASource:
             raise RuntimeError("git log failed: not a repository")
         bad = A.baseline_source(boom)
         assert bad["state"] == "unreadable" and "not a repository" in bad["rows"][0]["cause"]
+
+
+# ---------------------------------------------------------------------------
+# Source: a line authorised again and again (C140 (1)), from REAL receipt rows
+# ---------------------------------------------------------------------------
+
+class TestRepeatedAuthorisationsAsASource:
+    @pytest.fixture
+    def store(self, monkeypatch):
+        from modules.nsot import receipts
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+        path = receipts.path_for("Lab")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        return path
+
+    def _write(self, path, rows):
+        with open(path, "w") as fh:
+            fh.write("".join(json.dumps(r) + "\n" for r in rows))
+
+    def _row(self, at, device, reason, sent=True, outcome="deployed"):
+        return {"at": at, "device": device, "actor": "p@example.invalid", "sent": sent,
+                "outcome": outcome, "authorised": [{"line": " shutdown", "reason": reason}]}
+
+    def test_the_third_authorisation_of_one_line_on_one_device_is_a_row(self, store):
+        self._write(store, [
+            self._row("2026-09-20T10:00:00Z", "s4", "port unused this week"),
+            self._row("2026-09-22T10:00:00Z", "s4", "port unused again today"),
+            self._row("2026-09-23T10:00:00Z", "s4", "refused, not counted", sent=False,
+                      outcome="refused"),
+            self._row("2026-09-25T10:00:00Z", "s4", "still the same port"),
+            self._row("2026-09-26T10:00:00Z", "s3", "a one-off on s3 only")])
+        res = A.authorisation_source()
+        [r] = res["rows"]
+        assert r["devices"] == ["s4"] and r["operands"]["count"] == 3
+        assert r["since"] == "2026-09-20T10:00:00Z" and "still the same port" in r["cause"]
+        assert r["level"] == "warning" and "Changes tab" in r["action"]["label"]
+        assert "2 device(s)" in res["checked"]
+
+    def test_twice_is_not_a_pattern(self, store):
+        self._write(store, [self._row("2026-09-20T10:00:00Z", "s4", "retry after a failure"),
+                            self._row("2026-09-20T10:05:00Z", "s4", "retry after a failure")])
+        assert A.authorisation_source()["rows"] == []
+
+    def test_unreadable_receipts_are_a_row_and_none_recorded_says_so(self, store):
+        with open(store, "w") as fh:
+            fh.write("{not json\n")
+        bad = A.authorisation_source()
+        assert bad["state"] == "unreadable"
+        os.remove(store)
+        assert "no deploy or restore recorded" in A.authorisation_source()["checked"]

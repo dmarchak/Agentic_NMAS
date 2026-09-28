@@ -403,6 +403,12 @@ def needs_attention(mp, tmp):
                                   "0123456789abcdef\x1f1790600000\x1fgolden: 9 device(s) via "
                                   "save_all\n\nSource: save_all\nBaseline: denied: r2 does not "
                                   "match its committed intent (+1 -1)\n")),
+                              lambda: A.authorisation_source(lambda: {"state": "ok", "error": "",
+                                  "devices": {"s4": {" shutdown": {
+                                      "count": 3, "first_at": "2026-09-20T10:00:00Z",
+                                      "last_at": "2026-09-25T10:00:00Z",
+                                      "last_actor": "p@example.invalid",
+                                      "last_reason": "still the same port"}}}}),
                               unreadable))
     return _ok(_client().get("/attention"))
 

@@ -217,6 +217,29 @@ def read(list_name: str, device: str = "", limit: int = 50) -> dict:
     return {"state": "ok", "rows": list(reversed(rows))[:limit]}
 
 
+def _authorisation_counts(rows: list, want=None) -> dict:
+    """``{device: {line: {count, first_at, last_at, last_actor, last_reason}}}``
+    from receipt rows given NEWEST FIRST: the one counting both readers use
+    (a preview asks for one device, Needs attention for all of them)."""
+    from modules.nsot import authorisation
+
+    out: dict = {}
+    for row in reversed(rows):                         # oldest first
+        if row.get("outcome") == "refused" or not row.get("sent"):
+            continue
+        for a in authorisation.normalise(
+                [a if isinstance(a, dict) else {"line": a, "reason": ""}
+                 for a in (row.get("authorised") or [])]):
+            if want is not None and a["line"] not in want:
+                continue
+            e = out.setdefault(row.get("device", ""), {}).setdefault(
+                a["line"], {"count": 0, "first_at": row.get("at", "")})
+            e.update({"count": e["count"] + 1, "last_at": row.get("at", ""),
+                      "last_actor": row.get("actor", ""),
+                      "last_reason": a["reason"] or "(none recorded: before reasons existed)"})
+    return out
+
+
 def prior_authorisations(list_name: str, device: str, lines=None) -> dict:
     """How often each line was authorised on *device* before, from the
     receipts: ``{"state", "lines": {key: {"count", "last_at", "last_actor",
@@ -227,23 +250,22 @@ def prior_authorisations(list_name: str, device: str, lines=None) -> dict:
     reasons existed counts, with no reason recorded. *lines* narrows it to
     the keys a preview is showing. An unreadable record is said, never read
     as "never authorised"."""
-    from modules.nsot import authorisation
-
     got = read(list_name, device=device, limit=10 ** 6)
     if got["state"] != "ok":
         return {"state": got["state"], "lines": {}}
     want = set(lines) if lines is not None else None
-    out: dict = {}
-    for row in reversed(got["rows"]):                  # oldest first
-        if row.get("outcome") == "refused" or not row.get("sent"):
-            continue
-        for a in authorisation.normalise(
-                [a if isinstance(a, dict) else {"line": a, "reason": ""}
-                 for a in (row.get("authorised") or [])]):
-            if want is not None and a["line"] not in want:
-                continue
-            e = out.setdefault(a["line"], {"count": 0})
-            e.update({"count": e["count"] + 1, "last_at": row.get("at", ""),
-                      "last_actor": row.get("actor", ""),
-                      "last_reason": a["reason"] or "(none recorded: before reasons existed)"})
-    return {"state": "ok", "lines": out}
+    # The preview's shape, unchanged: `first_at` is the page's, and a key the
+    # preview carries and does not draw would be a new undrawn field.
+    return {"state": "ok",
+            "lines": {k: {f: v for f, v in e.items() if f != "first_at"}
+                      for k, e in _authorisation_counts(got["rows"], want).get(device, {}).items()}}
+
+
+def authorisations_by_device(list_name: str) -> dict:
+    """Every device's authorisation counts, from ONE read of the receipts:
+    ``{"state", "error", "devices": {device: {line: {...}}}}`` (7.2's
+    repeated-authorisation row). Absent and unreadable stay different."""
+    got = read(list_name, limit=10 ** 6)
+    if got["state"] != "ok":
+        return {"state": got["state"], "error": got.get("error", ""), "devices": {}}
+    return {"state": "ok", "error": "", "devices": _authorisation_counts(got["rows"])}

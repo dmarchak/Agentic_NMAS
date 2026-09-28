@@ -580,7 +580,13 @@ def baseline_source(log_fn=None) -> dict:
         rows.append(row(
             source="baseline", key=f"{lst}:last", level="warning",
             what=f"The network's last baseline was not earned ({source_line or 'a save'})",
-            cause=reasons or "the decision recorded no reason",
+            # The decision's OWN commit and time: a Save All that changed
+            # nothing since decided without a commit to carry it, so this can
+            # be older than the newest save, and the row says whose it is.
+            cause=(reasons or "the decision recorded no reason")
+                  + f" (decided by commit {sha[:10]} at {_iso(at)}; a save since that made "
+                    "no decision, a one-device capture or a Save All that changed nothing, "
+                    "leaves it standing)",
             action={"label": "Resolve what the reasons name, then capture the fleet again "
                              "with Save All"},
             since=at, operands={"list": lst, "commit": sha[:10], "source": source_line}))
@@ -590,11 +596,68 @@ def baseline_source(log_fn=None) -> dict:
                                  f"{decision.split(':', 1)[0] or 'unreadable'}")
 
 
+# ---------------------------------------------------------------------------
+# Source: a line authorised again and again (C140 (1))
+# ---------------------------------------------------------------------------
+
+#: How many authorisations of ONE line on ONE device make a pattern. Twice
+#: can be a retry after a failed push; a third time is a routine, and an
+#: exception that is routine is what 8.8 wants seen ("ok" typed thirty
+#: times is the finding, not a defeat of the control).
+REPEAT_THRESHOLD = 3
+
+
+def authorisation_source(counts=None) -> dict:
+    """The same dangerous or secret line authorised on the same device at
+    least `REPEAT_THRESHOLD` times, from ONE read of the receipts through the
+    counting the preview's aggregate uses. It makes behaviour visible; it
+    blocks nothing."""
+    from modules.config import get_current_list_name
+    from modules.nsot import receipts
+
+    started = time.time()
+    try:
+        lst = get_current_list_name()
+        got = (counts or (lambda: receipts.authorisations_by_device(lst)))()
+    except Exception as exc:                       # noqa: BLE001
+        got = {"state": "unreadable", "error": f"it raised {type(exc).__name__}: {exc}"}
+    took = int((time.time() - started) * 1000)
+    if got.get("state") == "unreadable":
+        return source_result("authorisations", "Repeated authorisations", read_at=started,
+                             took_ms=took,
+                             error=f"the deploy receipts could not be read ({got.get('error')})")
+    rows, n_lines = [], 0
+    for device, lines in sorted((got.get("devices") or {}).items()):
+        for line, e in sorted(lines.items()):
+            n_lines += 1
+            if e.get("count", 0) < REPEAT_THRESHOLD:
+                continue
+            rows.append(row(
+                source="authorisations", key=f"{lst}:{device}:{line}", level="warning",
+                what=f"{line.strip()!r} has been authorised {e['count']} times on {device}",
+                cause=(f"last by {e.get('last_actor') or 'an unrecorded actor'} at "
+                       f"{e.get('last_at') or 'an unrecorded time'}, stated reason: "
+                       f"{e.get('last_reason')}. An exception authorised again and again "
+                       "is a routine, not an exception"),
+                action={"label": "Read the stated reasons on the device's Changes tab: a line "
+                                 "authorised routinely belongs in intent, or its cause does"},
+                devices=[device], since=_ts(e.get("first_at")),
+                operands={"list": lst, "count": e["count"], "threshold": REPEAT_THRESHOLD,
+                          "last_at": e.get("last_at")}))
+    return source_result("authorisations", "Repeated authorisations", read_at=started,
+                         took_ms=took, rows=rows,
+                         checked=(f"list {lst}: no deploy or restore recorded"
+                                  if got.get("state") == "absent" else
+                                  f"list {lst}: {n_lines} authorised line(s) across "
+                                  f"{len(got.get('devices') or {})} device(s), a row from "
+                                  f"{REPEAT_THRESHOLD} authorisations"))
+
+
 #: Every source, in the order a person reads them. Section 1a's other
 #: sources (freshness, Grafana alerts) join HERE through `source_result`,
 #: both through the reader-job pattern.
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
-           rollback_source, deploy_source, baseline_source)
+           rollback_source, deploy_source, baseline_source, authorisation_source)
 
 
 def _attach(rows: list) -> list:
