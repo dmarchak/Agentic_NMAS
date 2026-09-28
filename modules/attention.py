@@ -129,6 +129,7 @@ _JOB_STATES = {
     "mixed_version": ("is running a different commit from its checkout", "danger"),
     "socket_down": ("is not listening", "danger"),
     "mismatch": ("does not match what was declared", "warning"),
+    "not_run": ("has never run on this host", "warning"),
 }
 
 

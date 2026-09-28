@@ -1244,6 +1244,21 @@ arguments. The page reads the row's own action first; a state with no remedy
 (`unknown`: the check could not ask) says so rather than inventing one. Tested
 on REAL rows from each family's own builder.
 
+**7.2 step 9 BUILT (2026-09-28): the reader-job machinery**
+(`modules/reader_job.py`). One background read of an outside service,
+stored under `data/readers/<name>.json` with the time of its value, a failed
+read keeping the last good one, its liveness a job-health row (`not_run`,
+`failing` since the streak began, `never_succeeded`, `stale`, `unknown`),
+and an announcement of its data keys when it finishes (C58, wired to the
+page in the next step). A reader is refused at registration when it omits a
+claim a consumer relies on: its endpoints, the measurement its interval
+comes from, the keys it announces. The ten rules this thread produced are
+its docstring, each naming its finding, because the next three readers
+inherit them by reuse. Measured for Grafana before building: both rule
+groups evaluate every 60 s, and the three endpoints answer in 35 to 150 ms.
+C58's premise was false: the index page holds no Socket.IO connection.
+
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's

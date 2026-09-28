@@ -4278,6 +4278,15 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.warning("Drift checker startup: %s", _e)
 
+    # The reader jobs (modules/reader_job.py): each reads one outside service
+    # on its own thread and stores the result for every consumer. A reader
+    # that did not start is a `not_run` or `stale` job-health row as well.
+    try:
+        from modules import reader_job as _reader_job
+        _reader_job.start()
+    except Exception as _e:
+        app.logger.error("Reader jobs did not start: %s", _e)
+
     # Start SNMP trap receiver and NetFlow collector using per-list config
     try:
         from modules.collector_config import get_snmp_trap_port, get_netflow_port

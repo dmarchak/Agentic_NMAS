@@ -1048,9 +1048,21 @@ def ztp_rows() -> list:
                  "detail": f"the check raised {type(exc).__name__}: {exc}"}]
 
 
+def reader_rows() -> list:
+    """Each reader job's liveness (modules/reader_job.py, rule 7). A reader
+    whose store cannot be judged is one `unknown` row, never no row."""
+    try:
+        from modules import reader_job
+        return reader_job.health_rows()
+    except Exception as exc:                            # noqa: BLE001
+        return [{"unit": "reader:*", "what": "the reader jobs' liveness",
+                 "state": "unknown", "max_age_minutes": 0,
+                 "detail": f"the readers could not be judged: {type(exc).__name__}: {exc}"}]
+
+
 def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None, ztp=None, responder=None,
-           startup=None, sessions=None, version=None) -> dict:
+           startup=None, sessions=None, version=None, readers=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -1063,6 +1075,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += startup_rows() if startup is None else list(startup)
     jobs += ssh_session_rows() if sessions is None else list(sessions)
     jobs += version_rows() if version is None else list(version)
+    jobs += reader_rows() if readers is None else list(readers)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     gone = sum(1 for j in jobs if j["state"] == "departed")
