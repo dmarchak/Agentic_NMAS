@@ -25,7 +25,9 @@ FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
 
 #: A credential slot and its value, read independently of `redact.py`.
 SLOT = re.compile(r"^\s*(username \S+ (?:privilege \d+ )?(?:secret|password)(?: \d)?|"
-                  r"snmp-server community|enable (?:secret|password)(?: \d)?|"
+                  r"snmp-server community|"
+                  r"snmp-server host \S+(?: (?:informs|traps))?(?: version \S+)?|"
+                  r"enable (?:secret|password)(?: \d)?|"
                   r"key-string(?: \d)?)\s+(\S+)", re.M)
 
 
