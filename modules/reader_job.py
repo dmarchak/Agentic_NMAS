@@ -89,6 +89,12 @@ log = logging.getLogger(__name__)
 _NAME = re.compile(r"^[a-z][a-z0-9_-]{1,40}$")
 
 
+#: How many intervals may pass before a reader's value is stale: one late
+#: read is not a stop. Stored with the value (`stale_after_seconds`), so the
+#: page judges the same promise on its own clock.
+STALE_AFTER_INTERVALS = 3
+
+
 class ReaderRefused(ValueError):
     """A reader declared wrongly: refused at registration, not at its first run."""
 
@@ -110,7 +116,7 @@ class Reader:
     read: Callable[[], dict]  # returns the value; raises when it could not ask
     invalidates: tuple        # data keys the result feeds (rule 9)
     remedy: str = ""          # what a person does when it fails, if anything is known
-    stale_after_intervals: int = 3
+    stale_after_intervals: int = STALE_AFTER_INTERVALS
     window: str = field(default="")   # what time range the value covers (rule 6)
 
 
@@ -276,6 +282,7 @@ def run_once(reader: Reader, announce=None, clock=time.time) -> dict:
             "window": reader.window,
             "interval_seconds": reader.interval_seconds,
             "interval_basis": reader.interval_basis,
+            "stale_after_seconds": reader.interval_seconds * reader.stale_after_intervals,
             "last_attempt": {"at": _iso(started), "ok": not error, "took_ms": took,
                              **({"error": _redacted(error)} if error else {})},
             "last_good": before.get("last_good"),

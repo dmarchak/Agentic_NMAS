@@ -4283,6 +4283,13 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.warning("Drift checker startup: %s", _e)
 
+    # The channel's heartbeat (the live-data contract, 7.2 step 13): a page
+    # that stops hearing it marks every live panel as not updating.
+    try:
+        socketio.start_background_task(_invalidation.heartbeat_loop, socketio.sleep)
+    except Exception as _e:
+        app.logger.error("Heartbeat did not start: %s", _e)
+
     # The reader jobs (modules/reader_job.py): each reads one outside service
     # on its own thread and stores the result for every consumer. A reader
     # that did not start is a `not_run` or `stale` job-health row as well.

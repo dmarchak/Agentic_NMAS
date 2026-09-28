@@ -264,6 +264,37 @@ ANNOUNCE_EVENT = "nmas_invalidate"
 
 _emitter = None
 
+#: The channel's heartbeat. The page names a dead socket when none arrives
+#: for 2.5 intervals. 30 s is half the fastest reader's interval (60 s,
+#: Grafana's rule evaluation): the channel is judged faster than the fastest
+#: data it carries, so "live updates stopped" is drawn within 75 s.
+HEARTBEAT_EVENT = "nmas_heartbeat"
+HEARTBEAT_SECONDS = 30
+
+
+def heartbeat_message() -> dict:
+    return {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "interval_seconds": HEARTBEAT_SECONDS}
+
+
+def heartbeat_loop(sleep, beats: int = None) -> int:
+    """Send the heartbeat for ever (or *beats* times, for tests). A beat that
+    cannot be sent is logged and the loop goes on: the page names the
+    silence, which is the point. Returns the beats sent."""
+    sent, n = 0, 0
+    while beats is None or n < beats:
+        n += 1
+        sleep(HEARTBEAT_SECONDS)
+        try:
+            if _emitter is None:
+                raise RuntimeError("no emitter")
+            _emitter(HEARTBEAT_EVENT, heartbeat_message())
+            sent += 1
+        except Exception as exc:                        # noqa: BLE001
+            log.error("heartbeat not sent: %s; open pages will mark themselves "
+                      "as not updating", exc)
+    return sent
+
 
 def set_emitter(emit) -> None:
     """The app hands over its socket's emit once, at import (no thread)."""

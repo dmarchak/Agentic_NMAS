@@ -23,10 +23,23 @@
     return iso ? esc(iso.replace('T', ' ').replace('Z', ' UTC')) : 'not recorded';
   }
 
-  function sourcesLine(sources) {
+  /* A source is STALE when its value is older than the source's own promise
+     (`stale_after_seconds`), judged on the page's clock (the live-data
+     contract): a producer that stopped announces nothing, and the page must
+     say so without another request. */
+  function isStale(s, nowMs) {
+    if (!s || s.state !== 'read' || !s.stale_after_seconds || !s.value_at) return false;
+    var at = Date.parse(s.value_at);
+    return !isNaN(at) && nowMs - at > s.stale_after_seconds * 1000;
+  }
+
+  function sourcesLine(sources, nowMs) {
     return (sources || []).map(function (s) {
       return esc(s.label) + ': ' + (s.state === 'read'
-        ? (s.value_at && s.value_at !== s.read_at
+        ? (isStale(s, nowMs)
+           ? '<strong class="text-danger">stale</strong> (older than the '
+             + esc(s.stale_after_seconds) + ' s its source promises), ' : '')
+          + (s.value_at && s.value_at !== s.read_at
            ? 'value from ' + when(s.value_at) + ', read ' : 'read ')
           + when(s.read_at) + ' in ' + esc(s.took_ms) + ' ms, ' + esc(s.checked)
           + ', ' + esc(s.count) + ' row(s) here'
@@ -93,7 +106,8 @@
       + ' source(s) could not be read: ' + u.map(esc).join(', ') + '</span>' : '';
   }
 
-  function attentionPanelHtml(d) {
+  function attentionPanelHtml(d, nowMs) {
+    if (nowMs == null) nowMs = Date.now();
     if (!d || d.ok !== true) {
       return '<div class="alert alert-warning small mb-0" data-attention="unknown">'
         + '<strong>Could not ask what needs attention</strong>'
@@ -104,28 +118,52 @@
     if (!rows.length) {
       var sources = d.sources || [];
       var allRead = sources.length > 0 && sources.every(function (s) {
-        return s.state === 'read'; });
-      // The full list whenever any source did not answer: that is when the
-      // provenance matters, so it is never behind a click. (An unreadable
-      // source is a row of its own too; this holds even if one forgot.)
+        return s.state === 'read' && !isStale(s, nowMs); });
+      // The full list whenever any source did not answer, or answered with
+      // a value older than its promise: that is when the provenance matters,
+      // so it is never behind a click. (An unreadable source is a row of its
+      // own too; this holds even if one forgot.)
       if (!allRead) {
         return '<div class="alert alert-light border small mb-0" data-attention="none">'
           + '<strong>' + esc(d.headline) + '</strong>. Looked at: '
-          + sourcesLine(sources) + '.</div>';
+          + sourcesLine(sources, nowMs) + '.</div>';
       }
       // The healthy, common case: ONE line that still makes the positive
       // claim (every source answered, and how old the oldest value is), with
       // the full list one click away (the operator's (a), 2026-09-28).
       return '<details class="alert alert-light border small mb-0 py-1" data-attention="none">'
         + '<summary>' + summaryLine(d, sources) + '</summary>'
-        + '<div class="mt-1">Looked at: ' + sourcesLine(sources) + '.</div></details>';
+        + '<div class="mt-1">Looked at: ' + sourcesLine(sources, nowMs) + '.</div></details>';
     }
     return '<div class="card border-warning" data-attention="rows">'
       + '<div class="card-header py-1 small"><strong>' + esc(d.headline) + '</strong>'
       + unreadableNote(d) + '</div>'
       + '<ul class="list-group list-group-flush">' + rows.map(rowHtml).join('')
       + '</ul><div class="card-footer py-1 small text-muted">Looked at: '
-      + sourcesLine(d.sources) + '.</div></div>';
+      + sourcesLine(d.sources, nowMs) + '.</div></div>';
+  }
+
+  //: The panel's own promise: it re-fetches every minute (for the sources
+  //: nothing announces yet), so a value older than 2.5 minutes means the
+  //: fetches stopped. The page marks itself stale past it.
+  var PANEL_STALE_AFTER = 150;
+  var last = null;
+
+  function draw(nowMs) {
+    var el = document.getElementById('needsAttentionPanel');
+    if (!el || !last) return;
+    // A person who opened the list keeps it open across every redraw.
+    var was = el.querySelector && el.querySelector('details[data-attention="none"]');
+    var open = !!(was && was.open);
+    el.innerHTML = attentionPanelHtml(last, nowMs);
+    var again = open && el.querySelector && el.querySelector('details[data-attention="none"]');
+    if (again) again.open = true;
+  }
+
+  function newestRead(d) {
+    var reads = ((d && d.sources) || []).map(function (s) { return s.read_at || ''; }).sort();
+    var at = reads.length ? Date.parse(reads[reads.length - 1]) : NaN;
+    return isNaN(at) ? null : at;
   }
 
   async function loadAttention() {
@@ -138,12 +176,15 @@
     } catch (e) {
       d = {ok: false, error: e.message};
     }
-    // A person who opened the list keeps it open across the minute's redraw.
-    var was = el.querySelector && el.querySelector('details[data-attention="none"]');
-    var open = !!(was && was.open);
-    el.innerHTML = attentionPanelHtml(d);
-    var now = open && el.querySelector && el.querySelector('details[data-attention="none"]');
-    if (now) now.open = true;
+    last = d;
+    draw(Date.now());
+    // The live-data contract: the panel shows its own age and marks itself
+    // stale, and the tick redraws it from `last` so each source's age is
+    // judged again without a request.
+    if (root.NMAS && root.NMAS.stamp) {
+      NMAS.stamp('needsAttentionPanel', newestRead(d), PANEL_STALE_AFTER,
+                 'Needs attention', draw);
+    }
   }
 
   root.attentionPanelHtml = attentionPanelHtml;

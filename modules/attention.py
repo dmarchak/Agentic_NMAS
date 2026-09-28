@@ -80,13 +80,20 @@ def row(*, source: str, key: str, what: str, cause: str, action: dict,
 
 def source_result(source: str, label: str, *, read_at: float, took_ms: int,
                   rows=None, checked: str = "", error: str = "",
-                  value_at: float = None) -> dict:
+                  value_at: float = None, stale_after_seconds: int = None) -> dict:
     """One source, read. *error* makes the source a row of its own.
 
     *read_at* is when this request read the source; *value_at* is the time of
     the VALUE it shows (section 1a), which for a stored result (the last drift
     run) is earlier, and for a live read (job health) is the same. Collapsing
-    them would draw a day-old drift run as read "just now"."""
+    them would draw a day-old drift run as read "just now".
+
+    *stale_after_seconds* is how long the value stays current, by the
+    source's own promise (a reader's interval times its staleness factor, a
+    drift run's interval times two). The PAGE judges age against it on its
+    own clock (the live-data contract, 7.2 step 13), so a stored value whose
+    producer has stopped is drawn stale without another request. None means
+    the value was read for this request, and its freshness is the panel's."""
     if error:
         return {"source": source, "label": label, "state": "unreadable",
                 "read_at": _iso(read_at), "value_at": None, "took_ms": took_ms,
@@ -105,6 +112,7 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
     return {"source": source, "label": label, "state": "read",
             "read_at": _iso(read_at),
             "value_at": _iso(read_at if value_at is None else value_at),
+            "stale_after_seconds": stale_after_seconds,
             "took_ms": took_ms, "checked": checked, "rows": list(rows or [])}
 
 
@@ -184,7 +192,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             return source_result("job_health", "Job health", read_at=started,
                                  took_ms=int((time.time() - started) * 1000),
                                  error=f"it raised {type(exc).__name__}: {exc}")
-        where = "read now"
+        where, promise = "read now", None
     else:
         got = reader_job.read_cached(JOB_HEALTH_READER) if cached is None else cached
         doc = got.get("doc") or {}
@@ -205,6 +213,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             return source_result("job_health", "Job health", read_at=started, took_ms=took,
                                  error=f"the stored value has no job rows ({type(exc).__name__})")
         value_at = reader_job._parse_iso(good.get("value_at"))
+        promise = doc.get("stale_after_seconds")
         where = f"stored by the reader, read in {good.get('took_ms', '?')} ms"
         try:
             live = (reader_job.health_rows() if readers_now is None else list(readers_now))
@@ -232,7 +241,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             action=_job_action(job), level=level))
     n_ok = len(jobs) - len(rows)
     return source_result("job_health", "Job health", read_at=started, took_ms=took,
-                         rows=rows, value_at=value_at,
+                         rows=rows, value_at=value_at, stale_after_seconds=promise,
                          checked=f"{len(jobs)} job-health row(s), {n_ok} ok ({where})")
 
 
@@ -329,6 +338,7 @@ def drift_source(status=None, now=None) -> dict:
             "unknown", devices=[d["hostname"]], operands={"coverage": coverage})
     return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,
                          value_at=last_ts,
+                         stale_after_seconds=int(DRIFT_STALE_INTERVALS * interval) or None,
                          checked=f"list {lst}, the run of {_iso(last_ts) or 'an unrecorded time'}: "
                                  f"{coverage}, triggered by {last.get('triggered_by') or 'unrecorded'}")
 

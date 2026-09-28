@@ -157,8 +157,23 @@
   /* C58: a change the server makes AFTER a response, or on its own schedule
      (a reader job finishing), is ANNOUNCED over the socket with the same
      keys, and dispatched by the same registry: a panel subscribes once and
-     hears both. Never a timer. */
-  var live = {state: 'not_connected', since: null};
+     hears both. Never a data poll.
+
+     THE LIVE-DATA CONTRACT (7.2 step 13, the operator's standing
+     requirement: a page showing live information updates itself, and one
+     that cannot tell whether it is current SAYS SO). Three parts, each for
+     one way of looking current while not being:
+       - the HEARTBEAT proves the channel: none for 2.5 intervals and every
+         subscribed panel is marked, on its own data, as not updating;
+       - AGE against the source's promise proves the SOURCE: a stamped panel
+         shows how old its value is and marks itself stale past the promise,
+         judged on a local tick that makes no request (a reader that died
+         announces nothing, and silence must not read as "nothing changed");
+       - CATCH-UP on reconnect: every subscribed panel re-fetches once,
+         covering whatever was announced while the channel was down. */
+  var live = {state: 'not_connected', since: null, lastBeat: null, beatSeconds: 30};
+  var BEATS_MISSED = 2.5;
+  var TICK_MS = 15000;   // a fifth of the tightest bound (75 s): a mark is at most 20% late
 
   function onAnnounce(msg) {
     var keys = (msg && msg.keys && msg.keys.length !== undefined) ? msg.keys : [];
@@ -169,8 +184,21 @@
   }
 
   function setLive(state) {
+    var was = live.state;
     if (live.state !== state) { live.state = state; live.since = now(); }
     record({event: 'socket', state: state});
+    markPanels();
+    // Catch-up: a panel that was not hearing re-fetches once on the way back.
+    // Not on the first connect: a page that has just loaded is current.
+    if (state === 'connected' && was !== 'connected' && was !== 'not_connected') {
+      var seen = {};
+      for (var i = 0; i < subs.length; i++) {
+        if (seen[subs[i].name]) continue;
+        seen[subs[i].name] = true;
+        refresh(subs[i]);
+      }
+      record({event: 'caught_up', panels: Object.keys(seen)});
+    }
     // Drawn in ONE place every page has (base.html), so no panel has to
     // remember it. Nothing is drawn before the first connect: a page that
     // has just loaded holds fresh values, and a warning at every load would
@@ -188,12 +216,109 @@
     if (state.state === 'connected') return '';
     var what = state.state === 'disconnected'
       ? 'Live updates stopped at ' + clockTime(state.since)
-      : state.state === 'failed'
-        ? 'Live updates could not connect (since ' + clockTime(state.since) + ')'
-        : 'Live updates are not connected';
+      : state.state === 'silent'
+        ? 'Live updates went silent at ' + clockTime(state.since)
+          + ' (no heartbeat from the server)'
+        : state.state === 'failed'
+          ? 'Live updates could not connect (since ' + clockTime(state.since) + ')'
+          : 'Live updates are not connected';
     return '<div class="small text-warning" data-nmas-live="' + state.state + '">'
       + what + ': a background read that finishes now is not shown until the '
       + 'panel is next loaded.</div>';
+  }
+
+  /* ON THE DATA, not only in a status area (the operator): every subscribed
+     panel carries the mark while the channel is down, because a stale panel
+     that looks current is the failure. Nothing before the first attempt. */
+  function markPanels() {
+    var html = (live.state === 'connected' || live.state === 'not_connected')
+      ? '' : liveNoteHtml();
+    var seen = {};
+    for (var i = 0; i < subs.length; i++) {
+      var sub = subs[i];
+      if (!sub.panel || seen[sub.panel]) continue;
+      seen[sub.panel] = true;
+      var el = panelOf(sub);
+      if (!el || !el.querySelector) continue;
+      var old = el.querySelector('[data-nmas-live]');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      if (html) el.insertAdjacentHTML('afterbegin', html);
+    }
+  }
+
+  function onHeartbeat(msg) {
+    live.lastBeat = now();
+    if (msg && msg.interval_seconds) live.beatSeconds = msg.interval_seconds;
+    if (live.state !== 'connected') setLive('connected');
+  }
+
+  /* A panel's value and how long it stays current. *staleAfter* in seconds,
+     from the source's own promise; null when the source made none, and then
+     the panel says it cannot tell rather than looking fresh. *redraw*, when
+     given, re-renders the panel from what it last fetched (no request). */
+  var stamps = {};
+
+  function stamp(panel, valueAt, staleAfter, label, redraw) {
+    stamps[panel] = {valueAt: valueAt, staleAfter: staleAfter == null ? null : staleAfter,
+                     label: label || '', redraw: redraw || null};
+    drawAge(panel);
+  }
+
+  function ago(ms) {
+    var s = Math.max(0, Math.round(ms / 1000));
+    return s < 90 ? s + ' s ago' : s < 5400 ? Math.round(s / 60) + ' min ago'
+      : Math.round(s / 3600) + ' h ago';
+  }
+
+  /* PURE: the age line a stamped panel carries. */
+  function ageHtml(st, nowMs) {
+    if (!st || st.valueAt == null) {
+      return '<div class="small text-warning" data-nmas-age="unknown">The time of this '
+        + 'value is not known, so whether it is current cannot be told.</div>';
+    }
+    var age = nowMs - st.valueAt;
+    var from = 'value from ' + clockTime(st.valueAt) + ' (' + ago(age) + ')';
+    if (st.staleAfter == null) {
+      return '<div class="small text-muted" data-nmas-age="no_promise">' + from
+        + '; its source states no freshness, so how long it stays current is not known.</div>';
+    }
+    if (age > st.staleAfter * 1000) {
+      return '<div class="small text-danger" data-nmas-age="stale"><strong>Stale:</strong> '
+        + from + ', older than the ' + st.staleAfter + ' s its source promises. It has not '
+        + 'been refreshed and may no longer be true.</div>';
+    }
+    return '<div class="small text-muted" data-nmas-age="fresh">' + from + '</div>';
+  }
+
+  function drawAge(panel) {
+    var st = stamps[panel];
+    var doc = root.document;
+    var el = (doc && doc.getElementById) ? doc.getElementById(panel) : null;
+    if (!st || !el) return;
+    if (st.redraw) {
+      try { st.redraw(now()); } catch (e) { record({event: 'redraw_failed', panel: panel}); }
+    }
+    if (!el.querySelector) return;
+    var old = el.querySelector('[data-nmas-age]');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    el.insertAdjacentHTML('beforeend', ageHtml(st, now()));
+  }
+
+  /* The local tick: judges the channel and every stamped panel's age. It
+     makes no request, so its cost is the same at nine devices or 900. */
+  function tick() {
+    var t = now();
+    if (live.state === 'connected') {
+      var since = live.lastBeat != null ? live.lastBeat : live.since;
+      if (since != null && t - since > BEATS_MISSED * live.beatSeconds * 1000) setLive('silent');
+    }
+    for (var panel in stamps) {
+      if (Object.prototype.hasOwnProperty.call(stamps, panel)) drawAge(panel);
+    }
+  }
+
+  if (root.setInterval && root.document && !root.__nmasTick) {
+    root.__nmasTick = root.setInterval(tick, TICK_MS);
   }
 
   if (root.io && !root.__nmasSocket) {
@@ -206,6 +331,7 @@
         if (live.state !== 'disconnected') setLive('failed');
       });
       sock.on('nmas_invalidate', onAnnounce);
+      sock.on('nmas_heartbeat', onHeartbeat);
     } catch (e) {
       record({event: 'socket', state: 'failed', error: String(e)});
     }
@@ -222,7 +348,8 @@
 
   root.NMAS = {
     subscribe: subscribe, invalidate: invalidate, onResponse: onResponse,
-    onAnnounce: onAnnounce, liveNoteHtml: liveNoteHtml,
+    onAnnounce: onAnnounce, liveNoteHtml: liveNoteHtml, onHeartbeat: onHeartbeat,
+    stamp: stamp, ageHtml: ageHtml, tick: tick,
     live: function () { return {state: live.state, since: live.since}; },
     keysFrom: keysFrom, staleMarkerHtml: staleMarkerHtml, _subs: subs,
     log: function () { return log.slice(); },

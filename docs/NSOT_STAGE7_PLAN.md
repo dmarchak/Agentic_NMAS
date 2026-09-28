@@ -1300,6 +1300,51 @@ with no row (an unreadable source is already a row; the guard holds if one
 forgets). Stale sources are rows of their own, so a zero-row page already
 means none is past its own bound. Grafana's reader is next.
 
+**7.2 step 13 BUILT (2026-09-28): the live-data contract, decided once for
+every Stage 7 panel.** The operator's standing requirement: a page showing
+live information updates itself, and a panel that cannot tell whether it is
+current SAYS SO. The absence of an update is otherwise indistinguishable from
+nothing having changed: absent against unreadable, in the browser. Three
+parts, each covering one way of looking current while not being:
+- **the heartbeat proves the CHANNEL.** The server beats every 30 s (half the
+  fastest reader's interval), and a page that misses 2.5 beats marks every
+  subscribed panel ON ITS DATA as not updating, not only in a status area;
+- **age against the source's own promise proves the SOURCE.** A heartbeat
+  keeps arriving while a reader is dead, so every time-sensitive value
+  carries `value_at` and `stale_after_seconds` (a reader's interval times
+  three, stored with its value; a drift run's interval times two), and the
+  page judges it on a local 15 s tick that makes NO request. A stamped panel
+  shows its age and marks itself stale past the promise; a value with no
+  promise says how long it stays current is not known; a value with no time
+  says whether it is current cannot be told;
+- **catch-up on reconnect** re-fetches every subscribed panel once, covering
+  what was announced while the channel was down (not on the first connect).
+
+**No data polling, and that answers the cadence question under section 0a.**
+Every change to displayed data has a sender: a mutating route (its keys
+broadcast to every OTHER page: another browser's deploy or push), a
+background job in the app (it announces when it finishes: the drift run,
+the post-commit push, the NetBox refresh; C58's remaining members), or
+something outside NMAS (a reader, whose interval comes from how fast the
+source changes). The browser's periodic work is the local tick, whose cost
+is the same at nine devices or 900; server cost is per reader per
+interval, never per open page. Needs attention keeps its 60 s poll until
+every sender announces, because it is what catches a write from another
+process; its own promise (150 s) marks the panel stale if those fetches
+stop. **An announcement closes the delay in HEARING a result, not the
+delay in PRODUCING one**: the page's freshness is bounded by the slowest
+checker's schedule (drift, 30 min), which is the checker's to change.
+Needs attention adopted it first: each source is judged against its own
+promise, a stale source forces the full list open, and the panel redraws
+from its last payload on the tick.
+
+**Baseline history, confirmed as expected (the operator's note 3):** the
+decision trailer is written from 2026-09-28, so the eleven older baselines
+carry none and the source says so. Their tags ARE the earned half of that
+history, so the line can name the newest baseline tag as the last decision
+known to be earned, while a denial before 2026-09-28 stays unrecoverable.
+Scheduled with the rest of the baseline source's work, not built now.
+
 
 ## 9. Deferred, recorded rather than scoped
 
