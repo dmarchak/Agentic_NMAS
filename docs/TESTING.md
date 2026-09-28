@@ -124,6 +124,15 @@ untested in code that STAYS.
 2. **The browser.** Render functions run in an embedded JavaScript engine
    against real payloads. Event handling, the order of fetches, and real DOM
    behaviour are covered only by source scans.
+   **"Drawn" is where the mechanised checks stop** (the operator, C138,
+   2026-09-28). The payload-to-render and results checks prove a field
+   reaches a renderer and lands in the markup. They cannot prove a person can
+   SEE it: eight code blocks full of the import's failures rendered as light
+   text on a near-white block, every check passing. No contrast check is
+   built, deliberately: it would test the stylesheet, not the reading. The
+   only detector for "drawn and unreadable" is somebody looking at the
+   screen, which is why a real run (R1, R2, C70) belongs to every stage and
+   is not a formality.
 3. **The host.** systemd units and timers, file ownership, and the lab-host
    shell scripts (partly: one script's case block runs under bash).
 4. **Concurrency beyond settings writes.** Nothing tests two simultaneous

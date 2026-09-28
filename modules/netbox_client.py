@@ -1641,6 +1641,27 @@ def _sanitise_config(raw: str) -> str:
     return redact_text(_RE_CFG_BANNER.sub("banner motd ^C[REMOVED]^C", raw))
 
 
+def masked_context(ctx: dict) -> dict:
+    """A STORED `local_context_data` as the import writes it now (C95 (a)):
+    the running config through the one redactor, and the structured SNMP
+    communities without their value, every other key untouched.
+
+    For a context no import will reach again (C139: a retired device keeps its
+    NetBox record, so the re-import that masked the fleet never touched it).
+    Only for a RAW context: `redact_text` is not idempotent over text it
+    already masked (it falls back to the next token), so a caller refuses a
+    context holding a mask rather than masking it twice."""
+    out = dict(ctx or {})
+    if out.get("running_config"):
+        out["running_config"] = _sanitise_config(out["running_config"])
+    snmp = out.get("snmp")
+    if isinstance(snmp, dict) and isinstance(snmp.get("communities"), list):
+        out["snmp"] = {**snmp, "communities": [
+            {k: v for k, v in c.items() if k != "community"} if isinstance(c, dict) else c
+            for c in snmp["communities"]]}
+    return out
+
+
 def _build_config_context(hostname: str, ip: str, facts: dict,
                            interfaces: list[dict],
                            vlans: list, vrfs: list,

@@ -1173,6 +1173,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_no_agent_tool_leaks_a_stored_secret.py` | C56 (agent side): every agent tool driven through the REAL `run_chat()` loop and provider boundary with a fake client, every store planted; no tool result the provider would receive holds a planted value; `read_variables` reached the store and withholds; a tool made to leak in prose is found |
 | `test_netbox_write_failures_are_counted.py` | C8: against a NetBox that REFUSES chosen writes, the failures reported equal the failures injected, each naming device and write; the report's `complete` is false with no failed device and one missing write; an AST rule that every handler guarding a write records, re-raises, retries or refuses (floor 18); a refused delete is `failed` with its reason, never a skip |
 | `test_netbox_untagged.py` | C59: a create whose tag cannot be ensured is REFUSED and counted, and a tag failure is never cached; `nmas-netbox-untagged` finds recorded-but-untagged objects and unrecorded creates by NMAS's account (identified from a recorded object's own changelog entry), never lists another account's, and reads an unreadable object or changelog as UNPROVEN, not gone |
+| `test_netbox_mask_context.py` | C139: r5's REAL config in the stored-context shape the live NetBox holds is flagged by the checker's scan; masked with the import's own `masked_context()` it passes that INDEPENDENT scan with every other key unchanged; no record of NMAS writing the context, a record of other fields, or another device's record is refused by name; a partly masked context is refused, not masked twice; the dry run writes nothing; apply reads NetBox back, and a write NetBox did not keep is named; no device is UNPROVEN |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_pipeline_reads_real_output.py` | C108: verify checks what the TARGET intent declares (from r1's real captures, OSPFv3 absent before: checked and passes once up; still absent is not a pass and not a rollback; no intent known checks the before-state and says so; the receipt and the shipped renderer draw it; `_deploy_one` carries the ref's intent for a restore and the committed intent for a deploy). C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
@@ -5589,6 +5590,25 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   r1 broken: it hears s1 and installs nothing, because OSPFv3 wins on
   distance. The next-hop table was the right evidence, found before building
   rather than after a false alarm.
+- **"Drawn" is where the mechanised checks stop, and "drawn and unreadable"
+  is past it** (the operator, C138, 2026-09-28). The payload-to-render and
+  results checks prove a field reaches a renderer and lands in the markup.
+  (b)'s import failures reached eight code blocks and rendered as light text
+  on near-white, with every check passing. No contrast check is built: it
+  would test the stylesheet, not the reading. The only detector is a person
+  looking at the screen, and that is the argument for a real run (R1, R2,
+  C70) in EVERY stage, not a formality at the end of one.
+- **Retiring a device removes it from every path that would correct its
+  data** (the operator, C139, 2026-09-28). `nmas-retire` keeps the NetBox
+  record by design, and the import's population is list membership, so C95's
+  re-import masked nine devices and never reached r5. r5's community was the
+  value eight managed devices carry NOW: after the fix, the one readable copy
+  of the fleet's current community in NetBox was on the device the fix could
+  not reach. A decision that removes something from management also removes
+  it from every future repair, and nobody traced that when retire was
+  designed. `scripts/nmas-netbox-mask-context` corrects what NetBox HOLDS:
+  its population is the checker's scan, and its authority is the
+  modification record, never a list.
 - Silent failure is the dominant failure mode in this stack. Every integration
   call must log and surface its failures rather than swallowing them.
 - `modules/pipeline.py` is real, tested and WIRED: every deploy and every
