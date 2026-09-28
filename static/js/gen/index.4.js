@@ -221,6 +221,8 @@ const _NB_LEVEL_BADGE = {success: 'success', warning: 'warning text-dark',
                          danger: 'danger', secondary: 'secondary'};
 
 async function loadNetboxTab() {
+  // Every recorded Remove, the latest drawn in full (C121).
+  if (typeof loadNetboxRemovals === 'function') loadNetboxRemovals();
   const statusPanel = document.getElementById('netboxStatusPanel');
   if (!statusPanel) return;
 

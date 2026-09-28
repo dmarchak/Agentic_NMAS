@@ -244,11 +244,15 @@ async function netboxSafetyApply(forgetOnly) {
     });
     const d = await r.json();
     _nbSafetyModal().hide();
-    if (d.ok) {
+    if (mode === 'remove' && d.result) {
+      // THE RESULT, drawn by the component from the recorded row (C121). The
+      // toast said "Removed N object(s)" in green whenever the request
+      // succeeded, including when NetBox refused some of the deletes.
+      showNetboxRemovalResult(d.result);
+      if (typeof loadNetboxRemovals === 'function') loadNetboxRemovals();
+    } else if (d.ok) {
       showToast(d.message
-        || (mode === 'remove'
-            ? `Removed ${(d.deleted || []).length} object(s) from NetBox`
-            : `Import started for ${_nbEscape(d.list)} (${d.device_count} device(s))`), 'success');
+        || `Import started for ${_nbEscape(d.list)} (${d.device_count} device(s))`, 'success');
     } else if (d.stale) {
       // The plan changed, the token expired, or it was already used.
       showToast(d.error || 'Confirmation no longer valid — preview again', 'warning');

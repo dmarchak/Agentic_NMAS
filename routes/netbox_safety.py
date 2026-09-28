@@ -349,7 +349,8 @@ def apply_removal():
 
     # "Forget" needs neither the switch nor a token — it deletes nothing.
     if data.get("forget_only"):
-        return jsonify(remove_list_from_netbox(list_name, forget_only=True))
+        return jsonify(_recorded_removal(list_name, remove_list_from_netbox(
+            list_name, forget_only=True), forget_only=True))
 
     _maybe_permit_writes(data)
 
@@ -363,10 +364,43 @@ def apply_removal():
         return jsonify(err), status
 
     try:
-        return jsonify(remove_list_from_netbox(list_name))
+        result = remove_list_from_netbox(list_name)
     except Exception as exc:                  # noqa: BLE001
         log.exception("netbox_safety: removal failed for '%s'", list_name)
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        result = {"ok": False, "error": str(exc)}
+    out = _recorded_removal(list_name, result)
+    return jsonify(out), (200 if result.get("ok") else 500)
+
+
+def _recorded_removal(list_name: str, result: dict, forget_only: bool = False) -> dict:
+    """Record the removal (C121) and attach its result, drawn by the result
+    component from the recorded row, by the verified person."""
+    from modules import netbox_guard
+    from modules.identity import request_actor
+    from modules.preview_confirm import netbox_removal_result
+
+    status = netbox_guard.record_removal(list_name, request_actor(), result,
+                                         forget_only=forget_only)
+    return {**result, "result": netbox_removal_result(status["row"], status)}
+
+
+@bp.route("/removals", methods=["GET"])
+def removals():
+    """Every recorded removal for a list, newest first, each drawn by the
+    result component as it was at apply (C121). A removal nothing recorded
+    existed only in a toast and in NetBox's changelog."""
+    from modules import netbox_guard
+    from modules.preview_confirm import netbox_removal_result
+
+    list_name = (request.args.get("list") or "").strip()
+    read = netbox_guard.read_removals(list_name)
+    if read["state"] == "unreadable":
+        return jsonify({"ok": False, "state": "unreadable",
+                        "error": f"the removal record could not be read: {read['error']}"}), 500
+    return jsonify({"ok": True, "state": read["state"], "list": list_name,
+                    "removals": [{**netbox_guard.removal_heading(r),
+                                  "result": netbox_removal_result(r)}
+                                 for r in read["rows"][:20]]})
 
 
 def _describe_plan(plan: dict) -> str:

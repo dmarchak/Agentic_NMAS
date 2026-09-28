@@ -59,6 +59,12 @@ _CREATED_IDS_FILE = os.path.join(DATA_DIR, "netbox_created_ids.json")
 #: -- every defence there was -- had nothing to report. Weeks of silence.
 _MODIFIED_FILE = os.path.join(DATA_DIR, "netbox_modified.json")
 
+#: What a Remove DELETED, skipped and was refused, per run (C121). Nothing
+#: recorded a removal: the sync status is cleared and the objects are gone,
+#: so what was removed existed only in a toast and NetBox's changelog. Names
+#: and ids only; a NetBox object name is not a secret. Append-only, 0600.
+_REMOVALS_FILE = os.path.join(DATA_DIR, "netbox_removals.jsonl")
+
 #: A before-value that could not be read. **Not** ``None`` and not absent: a
 #: field NetBox did not return and a field that was genuinely null are
 #: different facts, and the second is a real before-value.
@@ -789,3 +795,58 @@ TAGGABLE_ENDPOINTS = (
 
 def is_taggable(endpoint: str) -> bool:
     return endpoint.strip("/") + "/" in TAGGABLE_ENDPOINTS
+
+
+# ---------------------------------------------------------------------------
+# Removal record (C121)
+# ---------------------------------------------------------------------------
+
+def record_removal(list_name: str, actor: str, result: dict, *,
+                   forget_only: bool = False) -> dict:
+    """Append one removal's outcome: ``{"ok", "row", "error"}``. Never raises:
+    a removal has happened whether or not its record could be written, and
+    the result says which."""
+    import json
+    import time
+
+    def _objs(key):
+        return [{"endpoint": o.get("endpoint", ""), "id": o.get("id"),
+                 "name": o.get("name", ""), "reason": o.get("reason", "")}
+                for o in (result.get(key) or [])]
+    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "list": list_name, "actor": actor, "forget_only": bool(forget_only),
+           "ok": bool(result.get("ok")), "error": result.get("error", ""),
+           "complete": bool(result.get("complete", result.get("ok"))),
+           "deleted": _objs("deleted"), "skipped": _objs("skipped"),
+           "failed": _objs("failed"), "message": result.get("message", "")}
+    try:
+        from modules.config import open_secure
+        with open_secure(_REMOVALS_FILE, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+        return {"ok": True, "row": row, "error": ""}
+    except Exception as exc:                  # noqa: BLE001
+        log.error("netbox: removal record NOT written for %s: %s", list_name, exc)
+        return {"ok": False, "row": row, "error": str(exc)}
+
+
+def read_removals(list_name: str = "") -> dict:
+    """``{"state": "ok"|"absent"|"unreadable", "rows": [...newest first],
+    "error"}``. Absent and unreadable are different facts."""
+    import json
+
+    if not os.path.exists(_REMOVALS_FILE):
+        return {"state": "absent", "rows": [], "error": ""}
+    try:
+        with open(_REMOVALS_FILE, encoding="utf-8") as fh:
+            rows = [json.loads(line) for line in fh if line.strip()]
+    except Exception as exc:                  # noqa: BLE001
+        return {"state": "unreadable", "rows": [], "error": str(exc)}
+    if list_name:
+        rows = [r for r in rows if r.get("list") == list_name]
+    return {"state": "ok", "rows": list(reversed(rows)), "error": ""}
+
+
+def removal_heading(row: dict) -> dict:
+    """When and by whom, from a RECORDED removal row: ``{"at", "by"}``. The
+    person recorded at the time, read back, never one from a request."""
+    return {"at": row.get("at", ""), "by": row.get("actor", "")}

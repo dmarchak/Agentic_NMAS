@@ -144,8 +144,12 @@ async function refreshInventory() {
     const r = await fetch(`/inventory/refresh/${encodeURIComponent(listName)}`, {method: 'POST'});
     const d = await r.json();
     if (d.ok) {
+      // Amber when any device was skipped: a skipped device is NOT in the
+      // inventory, for a named reason, and green said the list was whole (C121).
+      const skipped = (d.skipped || []).length;
       showToast(`Refreshed from NetBox — ${d.device_count} device(s)`
-        + (d.skipped && d.skipped.length ? `, ${d.skipped.length} skipped` : ''), 'success');
+        + (skipped ? `, ${skipped} SKIPPED (not in the inventory; the list names why)` : ''),
+        skipped ? 'warning' : 'success');
       if (typeof loadDevices === 'function') loadDevices();
     } else {
       showToast('Refresh failed: ' + (d.error || 'unknown'), 'danger');

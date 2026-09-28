@@ -604,7 +604,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.operation.status === 'completed') {
               clearInterval(pollInterval);
               document.getElementById('bulkProgressBar').classList.remove('progress-bar-animated');
-              showToast('Bulk operation completed', 'success');
+              // "completed" means every device was TRIED; failures are counted
+              // apart, and the toast was green over them (C121's class).
+              const bad = data.operation.failed || 0, good = data.operation.completed || 0;
+              showToast(bad ? `Bulk operation finished: ${good} succeeded, ${bad} FAILED`
+                            : `Bulk operation finished: ${good} succeeded`,
+                        bad ? (good ? 'warning' : 'danger') : 'success');
             }
           }
         })

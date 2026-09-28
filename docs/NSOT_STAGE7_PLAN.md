@@ -807,6 +807,39 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
 Device-page ACTIONS. 7.3 builds the rest of that page around them rather
 than beside them.
 
+
+### 7.1, onboarding and NetBox Remove retrofitted, 2026-09-27
+
+**Onboarding's Create (C86).** Drawn by the result component in place of the
+review. A complete phase 1 is "Partly done" and PENDING, never green, with
+the next step stated. The record is re-read from the device's pending row.
+
+**NetBox Remove (C121).** Drawn by the component from the ROW that records
+the removal (`data/netbox_removals.jsonl`, 0600, scanned for secrets like
+the modification record). So the result at apply and the record read back on
+the NetBox tab's Removals panel (`GET /netbox/safety/removals`) are one
+computation. Its level comes from `complete`: NetBox refusing some deletes
+is "Partly done", with each refusal and its reason under "What did not
+happen". Nothing recorded a removal before this.
+
+**The false-green class, and a correction to "now zero".** When
+`FALSE_GREEN` emptied with C86, the claim was that the class of "colour
+asserting more than the operation earned" was zero. It was not. The list
+held what the result survey had found, and three more were green and on no
+list:
+- NetBox Remove over a partial removal;
+- a bulk run with failed devices ("completed" means every device was
+  tried);
+- a NetBox inventory refresh that skipped devices.
+
+All three are fixed. The class is now held by a CONSTRAINT rather than a
+list: `GREEN_TOASTS` declares every green toast in the shipped pages with
+why green is earned there, and a scan that parses each `showToast(` call
+(the first line-based count missed six multi-line calls) requires the two
+to match exactly, both ways. A new green toast fails until someone states
+its reason. What it cannot see: a green badge or colour drawn other than
+by a toast; `FALSE_GREEN`'s shape remains for those.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** If it returns, it caps the devices shown, and

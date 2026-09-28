@@ -67,6 +67,10 @@ RESULT_COMPONENT = {
     # back is the device's pending row.
     "onboard.create": ("static/js/gen/partials__onboard_wizard.1.js", "onboardCreate",
                        "onboard.pending"),
+    # NetBox Remove (C121): drawn from the recorded row; the record re-read
+    # on the NetBox tab.
+    "netbox_safety.apply_removal": ("static/js/nmas_netbox_removals.js",
+                                    "showNetboxRemovalResult", "netbox_safety.removals"),
     "netbox_safety.apply_import": ("static/js/gen/index.4.js", "loadNetboxTab", "netbox_status"),
     "netbox_safety.apply_import_all": ("static/js/gen/index.4.js", "loadNetboxTab",
                                        "netbox_status"),
@@ -98,7 +102,6 @@ PENDING = {
     "ai_agent_run": "nothing: the response is never read (the agent is off)",
     "ai_approval_approve": "a toast; the commit an approval makes is never shown",
     "ai_approval_reject": "a toast",
-    "netbox_safety.apply_removal": "a toast with a count; what was removed is not shown",
     "refresh_hostnames": "a toast, then a page reload",
     "templates.approve": "a toast carrying the per-device evidence",
     "templates.write_template": "a toast",
@@ -118,6 +121,35 @@ FALSE_GREEN = {
     # by the component now, "Partly done" and pending (C86, 2026-09-27).
 }
 
+#: EVERY green toast the shipped pages draw, each with why green is EARNED
+#: there (C121). FALSE_GREEN held the instances a survey found, and NetBox
+#: Remove's partial removal and a bulk run with failed devices were both
+#: green and on no list: the class was not zero, the list was. Keyed by
+#: (file, a literal from the call); a scan finds them all, both ways.
+GREEN_TOASTS = {
+    ("static/js/gen/index.3.js", "Topology updated"): "topology read with nodes (0 nodes is a warning)",
+    ("static/js/gen/index.3.js", "topology: ${n} node(s)"): "green only when nodes were found",
+    ("static/js/gen/index.4.js", "Deleted \"${pbName}\""): "one playbook deleted after an HTTP ok",
+    ("static/js/gen/index.4.js", "Monitoring config saved"): "one settings write, ok checked",
+    ("static/js/gen/index.4.js", "data.drifted > 0 ? 'warning'"): "level from drifted and errors",
+    ("static/js/gen/index.4.js", "Approved and executed"): "one item; failure and note have their own",
+    ("static/js/gen/index.1.js", "showToast(data.message, 'success')"): "single-request actions (list create/delete, TFTP server, bulk STARTED): the per-device outcome is the bulk modal's",
+    ("static/js/gen/index.1.js", "Bulk operation finished"): "level from the failed and succeeded counts (C121)",
+    ("templates/device.html", "Output copied to clipboard"): "a clipboard copy",
+    ("templates/device.html", "showToast(data.message, 'success')"): "one TFTP server setting",
+    ("static/js/gen/partials__onboard_wizard.2.js", "answered and is now in the inventory"): "phase 2's ok is every step, promotion last",
+    ("static/js/gen/partials__template_editor.1.js", "saveToastText(d)"): "one template save, ok checked",
+    ("static/js/gen/partials__template_editor.1.js", "Approved: ${approvalEvidenceText"): "the approval, with its evidence named",
+    ("templates/index.html", "'Settings saved'"): "saved with no errors (warnings have their own)",
+    ("static/js/gen/partials__security_posture.1.js", "is now set explicitly"): "one ratification, ok checked",
+    ("static/js/gen/partials__netbox_safety_modal.1.js", "Import started for"): "says STARTED; the outcome is the sync card's (C85)",
+    ("static/js/gen/partials__inventory_source.1.js", "Refreshed from NetBox"): "green only with nothing skipped (C121)",
+    ("static/js/gen/partials__onboard_wizard.2.js", "abandoned; the name is free"): "abandon's ok is complete; a partial abandon is not ok",
+    ("static/js/gen/partials__golden_repo.3.js", "Renames synced"): "one rename commit, ok checked",
+    ("static/js/gen/partials__golden_repo.3.js", "Migrated ${d.migrated.length}"): "the one-shot migration, ok checked",
+    ("templates/partials/onboard_wizard.html", ".cfg downloaded"): "a file download",
+}
+
 #: (file, the unescaped interpolation) -> where. Only shrinks.
 UNESCAPED = {
     # Auto-Create's result toast (hostnames and failure reasons into HTML)
@@ -125,7 +157,7 @@ UNESCAPED = {
     # by the component, which escapes every value (C102, 2026-09-27).
 }
 
-CEILINGS = {"PENDING": 26, "FALSE_GREEN": 0, "UNESCAPED": 0}
+CEILINGS = {"PENDING": 25, "FALSE_GREEN": 0, "UNESCAPED": 0}
 
 
 def _population():
@@ -228,6 +260,55 @@ class TestColourAndEscaping:
         something that did not run."""
         gone = [lit for (rel, lit) in sorted(UNESCAPED) if lit not in _read(rel)]
         assert not gone, f"fixed? remove it from UNESCAPED: {gone}"
+
+
+class TestEveryGreenToastIsDeclared:
+    """C121: the constraint, not the survey. Every showToast whose arguments
+    carry a literal 'success' is declared in GREEN_TOASTS with its reason;
+    a new one fails until someone says why green is earned there."""
+
+    FILES = ("static/js", "templates")
+
+    def _calls(self, root=ROOT):
+        import re
+        out = []
+        for top in self.FILES:
+            for dirpath, _d, files in os.walk(os.path.join(root, top)):
+                for f in files:
+                    if not f.endswith((".js", ".html")) or ".min." in f or "bootstrap" in f:
+                        continue
+                    path = os.path.join(dirpath, f)
+                    rel = os.path.relpath(path, root)
+                    text = open(path, encoding="utf-8").read()
+                    for m in re.finditer(r"showToast\(", text):
+                        depth, i = 0, m.end() - 1
+                        while i < len(text):
+                            depth += {"(": 1, ")": -1}.get(text[i], 0)
+                            if depth == 0:
+                                break
+                            i += 1
+                        call = text[m.start():i + 1]
+                        if "'success'" in call:
+                            out.append((rel, call))
+        return out
+
+    def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
+        calls = self._calls()
+        assert len(calls) >= 18, len(calls)          # the scan can see them
+        undeclared = [(rel, call[:90]) for rel, call in calls
+                      if not any(rel == f and lit in call for (f, lit) in GREEN_TOASTS)]
+        assert undeclared == [], undeclared
+        ghosts = [k for k in GREEN_TOASTS
+                  if not any(rel == k[0] and k[1] in call for rel, call in calls)]
+        assert ghosts == [], ghosts
+
+    def test_the_scan_finds_a_planted_one(self, tmp_path):
+        """A multi-line call too: the first line-based count missed six."""
+        (tmp_path / "static" / "js").mkdir(parents=True)
+        (tmp_path / "templates").mkdir()
+        (tmp_path / "static" / "js" / "x.js").write_text(
+            "showToast(`done ${n}`,\n    'success');\nshowToast('no', 'danger');")
+        assert [c[0] for c in self._calls(str(tmp_path))] == ["static/js/x.js"]
 
 
 class TestTheComponentDrawsTheseResults:

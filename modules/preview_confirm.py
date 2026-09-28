@@ -663,6 +663,65 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
         record=record, not_watched=FOLLOW_UP_NOT_BUILT["why"])
 
 
+def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
+    """A NetBox Remove, drawn by the result component (7.1, C121), from the
+    ROW that records it, so the result at apply and the one read back later
+    are one computation. Its level comes from `complete`: a removal NetBox
+    refused part of was drawn in green."""
+    def _line(o):
+        return f"{o.get('endpoint', '')} #{o.get('id')} {o.get('name', '')}".strip()
+    deleted, skipped, failed = (row.get("deleted") or [], row.get("skipped") or [],
+                                row.get("failed") or [])
+    name = row.get("list") or "the list"
+    if row.get("forget_only"):
+        level, summary = "nothing", (f"Nothing was deleted from NetBox. NMAS no longer "
+                                     f"records the objects it created for {name}.")
+    elif not row.get("ok"):
+        level, summary = "failed", f"The removal for {name} did not run: {row.get('error') or 'no reason'}"
+    elif failed:
+        level = "partial" if deleted else "failed"
+        summary = (f"{len(deleted)} object(s) deleted from NetBox for {name}; NetBox REFUSED "
+                   f"{len(failed)}, which are still there.")
+    elif deleted:
+        level, summary = "success", f"{len(deleted)} object(s) deleted from NetBox for {name}."
+    else:
+        level, summary = "nothing", (row.get("message") or
+                                     f"Nothing NMAS created for {name} was left to delete.")
+    did_not = []
+    if failed:
+        did_not.append({"target": name, "kind": "refused",
+                        "text": "NetBox refused these deletes; they are still in NetBox:",
+                        "lines": [f"{_line(o)}: {o.get('reason') or 'no reason'}" for o in failed]})
+    if skipped:
+        did_not.append({"target": name, "kind": "skipped",
+                        "text": "Left alone: no nmas-managed tag, so treated as a person's:",
+                        "lines": [_line(o) for o in skipped]})
+    target = {"name": name,
+              "outcome": {"success": "deployed", "partial": "partial"}.get(level, level),
+              "words": {"success": "removed", "partial": "partly removed",
+                        "failed": "not removed", "nothing": "nothing deleted"}[level],
+              "sent": {"lines": [_line(o) for o in deleted], "program_hash": "",
+                       "caption": f"{len(deleted)} object(s) deleted",
+                       "none": "Nothing was deleted from NetBox."},
+              "checks": {"ran": bool(deleted or failed), "ok": not failed,
+                         "statements": [f"NetBox accepted {len(deleted)} delete(s) and "
+                                        f"refused {len(failed)}"],
+                         "why": "no delete was sent"}}
+    rs = record_status or {"ok": True}
+    statement = (f"Recorded {row.get('at', '?')} by {row.get('actor') or 'an unrecorded actor'} "
+                 "in the removal record; NetBox's own changelog holds each delete."
+                 if rs.get("ok") else
+                 f"THE REMOVAL RECORD WAS NOT WRITTEN: {rs.get('error') or 'no reason'}. "
+                 "The removal happened; only NetBox's changelog holds it.")
+    return build_result(
+        action="netbox_remove", level=level, summary=summary, targets=[target],
+        did_not=did_not, nothing_left_out="Nothing: every object NMAS created was removed.",
+        record={"commit": "", "tags": [], "baseline": "", "statement": statement},
+        not_watched=("NetBox cascades a delete through relationships: the preview named "
+                     "what else would go, and nothing re-reads NetBox after the removal."),
+        titles={"sent": "What was deleted from NetBox", "checks": "What NetBox answered"})
+
+
 #: What phase 1 of onboarding creates, per completed step, in words (C86).
 _ONBOARD_STEP_WORDS = {
     "credentials": "the bootstrap credential, staged in the credential store for this device",
