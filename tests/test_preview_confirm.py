@@ -250,7 +250,7 @@ class TestNoSecondImplementation:
 
     #: Phrases only a preview renderer produces.
     OWN = ("line(s) will be sent", "data-dangerous-line", "data-pc-part",
-           "tick to authorise this exact line")
+           "authorise this exact line with your reason")
 
     def test_a_retrofitted_screen_calls_the_component_and_draws_nothing_itself(self):
         assert RETROFITTED, "floor"

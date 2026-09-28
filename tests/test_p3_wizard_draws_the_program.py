@@ -67,6 +67,10 @@ def client(monkeypatch):
     return c
 
 
+#: An authorisation, with its stated reason (C140).
+SHUT = {"line": "shutdown", "reason": "planned maintenance, port unused"}
+
+
 def _plan(client, authorise=None):
     body = {"devices": ["s4"]}
     if authorise is not None:
@@ -88,17 +92,17 @@ class TestTheFixtureCanExhibitTheCase:
 
 class TestAuthorisationEndToEnd:
     def test_an_authorised_shutdown_deploys_and_reaches_the_pipeline(self, client):
-        _, d = _plan(client, {"s4": ["shutdown"]})
+        _, d = _plan(client, {"s4": [SHUT]})
         assert d["authorisation_ok"] is True
         out = client.post("/deploy/apply", json={
             "confirmations": {"s4": d["capture_hash"]},
             "command_hashes": {"s4": d["command_hash"]},
-            "authorise": {"s4": ["shutdown"]}}).get_json()
+            "authorise": {"s4": [SHUT]}}).get_json()
         assert "s4" in out.get("deployed", []), out
-        assert client.sent == [{"device": "s4", "authorise": {"s4": ["shutdown"]}}]
+        assert client.sent == [{"device": "s4", "authorise": {"s4": [SHUT]}}]
 
     def test_withdrawing_the_authorisation_after_the_plan_is_refused(self, client):
-        _, d = _plan(client, {"s4": ["shutdown"]})
+        _, d = _plan(client, {"s4": [SHUT]})
         out = client.post("/deploy/apply", json={
             "confirmations": {"s4": d["capture_hash"]},
             "command_hashes": {"s4": d["command_hash"]},
@@ -113,7 +117,7 @@ class TestAuthorisationEndToEnd:
         out = client.post("/deploy/apply", json={
             "confirmations": {"s4": d["capture_hash"]},
             "command_hashes": {"s4": d["command_hash"]},
-            "authorise": {"s4": ["shutdown"]}}).get_json()
+            "authorise": {"s4": [SHUT]}}).get_json()
         assert "s4" not in out.get("deployed", [])
         refusal = next(r for r in out["results"] if r["device"] == "s4")
         assert refusal["outcome"] == "refused" and "confirmed_hash" in refusal, refusal
@@ -172,9 +176,11 @@ class TestTheWizardDrawsIt:
     def test_the_dangerous_line_has_its_own_authorise_box(self, client):
         plan, _d = _plan(client)
         html = _card(plan)
-        boxes = re.findall(r'data-auth-device="s4" data-line="([^"]*)"', html)
+        boxes = re.findall(r'type="checkbox"[^>]*data-auth-device="s4" data-line="([^"]*)"', html)
         assert [_unesc(b) for b in boxes] == ["shutdown"], boxes
-        assert "tick to authorise this exact line" in html
+        assert "authorise this exact line with your reason" in html
+        # C140: a reason field beside the box, and no reason yet.
+        assert re.search(r'data-auth-reason data-auth-device="s4" data-line="shutdown"', html)
 
     def test_an_unauthorised_device_cannot_be_ticked(self, client):
         plan, _d = _plan(client)
@@ -185,11 +191,11 @@ class TestTheWizardDrawsIt:
 
     def test_once_authorised_it_can_be_ticked_and_says_so(self, client):
         """Control for the one above."""
-        plan, d = _plan(client, {"s4": ["shutdown"]})
+        plan, d = _plan(client, {"s4": [SHUT]})
         html = _card(plan)
         device_box = re.search(r'<input [^>]*data-pc-select id="pc_sel_s4"[^>]*>', html).group(0)
         assert "disabled" not in device_box
-        assert "dangerous: AUTHORISED" in html
+        assert 'dangerous: AUTHORISED, stated reason: "planned maintenance, port unused"' in html
         assert f'data-command-hash="{d["command_hash"]}"' in html
 
     def test_the_attribution_split_is_drawn(self, client):
@@ -215,7 +221,8 @@ class TestTheWizardSendsTheAuthorisationItsHashCovers:
         hash moved is left unticked, so it is confirmed as now shown."""
         fn = _lift(self.SRC, "_reauthoriseDevice")
         assert "fetch('/deploy/plan'" in fn
-        assert "input[data-auth-device]" in fn and "authorise})" in fn
+        assert "input[type=checkbox][data-auth-device]" in fn and "authorise})" in fn
+        assert "input[data-auth-reason]" in fn and "reason:" in fn, "each line carries its reason"
         assert "_renderDeployPlan(d)" in fn
         assert "kept[b.dataset.device] === b.dataset.commandHash" in fn
 
@@ -252,9 +259,9 @@ class TestTheRestorePathCanAuthorise:
         c = app.test_client()
         plain = c.post("/golden/restore/preview", json={"ref": "HEAD"}).get_json()["devices"][0]
         authed = c.post("/golden/restore/preview",
-                        json={"ref": "HEAD", "authorise": {"s4": ["shutdown"]}}).get_json()["devices"][0]
+                        json={"ref": "HEAD", "authorise": {"s4": [SHUT]}}).get_json()["devices"][0]
         assert plain["dangerous"] == ["shutdown"] and plain["authorisation_ok"] is False
-        assert authed["authorisation_ok"] is True and authed["authorised"] == ["shutdown"]
+        assert authed["authorisation_ok"] is True and authed["authorised"] == [SHUT]
         assert plain["command_hash"] != authed["command_hash"]
 
     def test_the_client_asks_then_sends_it_on_both_calls(self):
@@ -276,10 +283,10 @@ class TestTheRestorePathCanAuthorise:
         c = app.test_client()
         refused = c.post("/golden/restore/preview", json={"ref": "HEAD"}).get_json()
         authed = c.post("/golden/restore/preview",
-                        json={"ref": "HEAD", "authorise": {"s4": ["shutdown"]}}).get_json()
+                        json={"ref": "HEAD", "authorise": {"s4": [SHUT]}}).get_json()
         a_html, r_html = render_preview(authed["preview"]), render_preview(refused["preview"])
-        assert "dangerous: AUTHORISED" in a_html
-        assert "dangerous: tick to authorise this exact line" in r_html
+        assert "dangerous: AUTHORISED, stated reason" in a_html
+        assert "dangerous: authorise this exact line with your reason" in r_html
         assert refused["preview"]["what"]["targets"][0]["state"] == "not_authorised"
         assert refused["preview"]["what"]["targets"][0]["selectable"] is False
         assert authed["preview"]["what"]["targets"][0]["selectable"] is True

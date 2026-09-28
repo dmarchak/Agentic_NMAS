@@ -30,8 +30,11 @@
   };
 
   // What re-applying this point would do to the device's credentials, as the
-  // Baselines panel measures it. `silent` is the one that matters: nothing
-  // refuses it, and an account the ref has and the device lacks is ADDED back.
+  // Baselines panel measures it. `silent` was the one that mattered: an
+  // account the ref has and the device lacks was ADDED back and nothing
+  // refused it. Since C79 the restore's own check refuses it (the line may
+  // be authorised with a stated reason), so it reads `refused`; `silent` is
+  // kept for the state a removed guard would produce.
   var CRED_WORDS = {
     current: ['bg-success-subtle text-success-emphasis', 'credentials current'],
     refused: ['bg-secondary-subtle text-secondary-emphasis',

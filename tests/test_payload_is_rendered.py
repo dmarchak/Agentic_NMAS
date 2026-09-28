@@ -572,6 +572,22 @@ EMPTY_IN_FIXTURE = {
                                                "carried to confirm by hash (its gate says so)"),
     "POST /onboard/plan preview.what_not.items[].lines": (S_, "onboarding's what-not items "
                                                "are sentences, never config lines"),
+    # C140 / C79 (2026-09-28): the authorisation's reason and its aggregate.
+    "POST /deploy/apply result.targets[].sent.authorised": (R_, "the fixture's refused "
+        "device authorised nothing; the deployed row's {line, reason} is drawn "
+        "(data-pr-authorised)"),
+    "POST /deploy/plan devices[].prior_authorised.lines": (R_, "no receipt precedes the "
+        "plan in the fixture; each {count, last_at, last_actor, last_reason} is reached "
+        "through real receipts in test_authorised_lines.py"),
+    "POST /deploy/plan preview.targets[].program.prior.lines": (R_, "as above: the "
+        "preview's copy of the aggregate, reached in test_authorised_lines.py"),
+    "POST /deploy/plan preview.targets[].program.secret": (S_, "a deploy never flags a "
+        "secret line: an account added from intent is additive (C75); only a restore "
+        "does (C79), and the restore provider reaches it"),
+    "POST /golden/restore/preview devices[].prior_authorised.lines": (R_, "no receipt "
+        "precedes the preview; reached in test_authorised_lines.py"),
+    "POST /golden/restore/preview preview.targets[].program.prior.lines": (R_, "the "
+        "preview's copy of the aggregate; reached in test_authorised_lines.py"),
 }
 # 14 -> 13: `GET /netbox/status status` is reached (a stored import, C85).
 # 13 -> 15: the onboarding review on the component (7.1) has no concept to
@@ -583,7 +599,11 @@ EMPTY_IN_FIXTURE = {
 # fixture that stopped reaching a state.
 # 21 -> 22: the pending read's finished runs are all successes in its fixture
 # (a failed run's items are drawn under a pending row's last run instead).
-EMPTY_RECORDS_CEILING = 22
+# 22 -> 27: C140's aggregate (four: the prior-authorisation map on the deploy
+# plan and the restore preview, each twice) needs a receipt BEFORE the plan,
+# which no provider writes; reached through real receipts in
+# test_authorised_lines.py. And the apply's refused row authorises nothing.
+EMPTY_RECORDS_CEILING = 27
 
 
 def _empty_paths(obj, path=""):

@@ -275,6 +275,38 @@ class RestoreTarget:
     #: for a device the ref predates. Never a default: every host_vars commit
     #: is a human review, and dropping one silently is "undo the onboarding".
     un_onboard: bool = False
+    #: The KEYS of this device's authorised lines whose reason has the shape
+    #: of one (`authorisation.valid_keys`). Read by :attr:`checks`, which
+    #: runs on every path that prepares a restore, so a secret line cannot be
+    #: re-added where the confirm hash happens not to be compared.
+    authorised: tuple = ()
+
+    @property
+    def reintroduced_secrets(self) -> list:
+        """The program's lines in a secret position the device does not hold
+        (C79), as authorisation keys (masked). A restore program sends only
+        lines the device lacks in their section, so every such line is a
+        secret being INTRODUCED: an account added back, or, after a
+        rotation, the old community landing beside the new one. A line that
+        rewrites an account the device HOLDS is C75's refusal, not this one,
+        and is not counted twice."""
+        from modules.nsot import authorisation
+        from modules.nsot.render_artifact import credential_lines
+
+        try:
+            program = merge_commands(self.target_config, self.captured)
+        except Exception:                      # noqa: BLE001
+            return []
+        held = self.capture_credentials
+        out = []
+        for line in program:
+            s = str(line).strip()
+            if not authorisation.secret_lines_in([s]):
+                continue
+            if any(k in held for k in credential_lines(s)):
+                continue
+            out.append(authorisation.key(s))
+        return sorted(set(out))
 
     @property
     def checks(self) -> list:
@@ -294,7 +326,8 @@ class RestoreTarget:
             out.append(("golden config at this ref", "fail",
                         f"no golden config for this device at {self.ref}"))
             return out + [(n, "not_reached", "no stored config to check")
-                          for n in ("printable ASCII", "credential unchanged")]
+                          for n in ("printable ASCII", "credential unchanged",
+                                    "no secret re-added")]
         out.append(("golden config at this ref", "pass", ""))
 
         # Sendability is a property of the PROGRAM, and `merge_commands()`
@@ -331,6 +364,30 @@ class RestoreTarget:
                         if held else "the capture holds no credential line"))
         except CredentialWouldChange as exc:
             out.append(("credential unchanged", "fail", str(exc)))
+
+        # A RESTORE MAY NOT ADD A SECRET THE DEVICE DOES NOT HOLD (C79).
+        # C75 guards a REWRITE of an account; a stored config from before a
+        # rotation also carries lines the device no longer has at all (a
+        # removed account, the old SNMP community), and those arrive as
+        # ADDITIONS that every other guard passes. "Secret position" is the
+        # positional redactor's definition, the one list there is.
+        secrets = self.reintroduced_secrets
+        unauthorised = [k for k in secrets if k not in set(self.authorised)]
+        if not secrets:
+            out.append(("no secret re-added", "pass",
+                        "the program adds no line in a secret position"))
+        elif unauthorised:
+            out.append(("no secret re-added", "fail",
+                        f"re-applying {self.ref} would ADD {len(unauthorised)} line(s) in "
+                        "a secret position the device does not hold: "
+                        + ", ".join(repr(k) for k in unauthorised)
+                        + ". A rotated-away secret is a different line, so it would land "
+                        "beside the current one and nothing else refuses it. If re-adding "
+                        "it is deliberate, authorise each exact line with your reason."))
+        else:
+            out.append(("no secret re-added", "pass",
+                        f"{len(secrets)} secret-position line(s) re-added, each authorised "
+                        "with a stated reason"))
         return out
 
     @property
@@ -1092,8 +1149,11 @@ def assert_rollback_provenance(rollback: list, pushed: list,
                                       for line, why in orphans[:5])))
 
 
-class NotAuthorised(RuntimeError):
-    """A dangerous command was not authorised, or an authorisation matched nothing."""
+# ONE authorisation mechanism for every line that needs one, dangerous or a
+# re-added secret, each with the person's stated reason (C140, C79):
+# `modules/nsot/authorisation.py`. These names stay because every route
+# imports them from here; they are the module's, not a second copy.
+from modules.nsot.authorisation import NotAuthorised  # noqa: E402
 
 
 def dangerous_in(commands: list) -> list:
@@ -1102,50 +1162,19 @@ def dangerous_in(commands: list) -> list:
     return dangerous_commands(commands)
 
 
-def assert_authorised(commands: list, authorised) -> None:
-    """Every dangerous line must be authorised, and every authorisation used.
-
-    Both halves matter. The first is the gate. The second stops an
-    authorisation list becoming a standing blanket: a string that matches
-    nothing in the program is either a typo — so the line it was meant to cover
-    is *not* authorised — or a leftover from an earlier plan, and neither
-    should pass quietly.
-    """
-    allowed = {a.strip() for a in (authorised or [])}
-    flagged = set(dangerous_in(commands))
-
-    unauthorised = sorted(flagged - allowed)
-    if unauthorised:
-        raise NotAuthorised(
-            "%d dangerous command(s) are not authorised: %s. Authorise the "
-            "exact string(s) at plan time." % (len(unauthorised),
-                                               ", ".join(repr(u) for u in unauthorised)))
-
-    unused = sorted(allowed - flagged)
-    if unused:
-        raise NotAuthorised(
-            "%d authorisation(s) match no dangerous command in this program: "
-            "%s. An authorisation that matches nothing is a typo or a leftover."
-            % (len(unused), ", ".join(repr(u) for u in unused)))
+def assert_authorised(commands: list, authorised, extra=()) -> None:
+    """Every flagged line (dangerous, plus *extra*: a restore's re-added
+    secret lines) authorised with a reason of the right shape, and every
+    authorisation used. See `authorisation.problems`."""
+    from modules.nsot import authorisation
+    authorisation.assert_authorised(commands, authorised, extra)
 
 
 def command_fingerprint(commands: list, authorised=None) -> str:
     """Stable hash of what was confirmed: the exact program **and** what was
-    authorised within it.
-
-    The authorisation is part of the confirmation, not an argument added later.
-    "These lines, with these authorised" is one decision, and changing either
-    half after it was displayed makes the confirmation no longer describe what
-    would happen.
-    """
-    import hashlib
-    import json as _json
-
-    payload = _json.dumps(
-        {"commands": list(commands),
-         "authorised": sorted(a.strip() for a in (authorised or []))},
-        sort_keys=True)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    authorised within it, reasons included (`authorisation.fingerprint`)."""
+    from modules.nsot import authorisation
+    return authorisation.fingerprint(commands, authorised)
 
 
 class CommandsChanged(RuntimeError):

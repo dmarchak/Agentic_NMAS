@@ -46,9 +46,15 @@ function _renderDeployPlan(plan) {
 // result is SHOWN before anyone can confirm it.
 async function _reauthoriseDevice(device) {
   const authorise = {};
-  document.querySelectorAll('#deployPlanBody input[data-auth-device]').forEach(b => {
+  // Each authorisation carries the person's stated reason (C140), read from
+  // the reason field beside its box; the server refuses one without.
+  document.querySelectorAll('#deployPlanBody input[type=checkbox][data-auth-device]').forEach(b => {
     if (!b.checked) return;
-    (authorise[b.dataset.authDevice] = authorise[b.dataset.authDevice] || []).push(b.dataset.line);
+    const reasonEl = Array.from(
+      document.querySelectorAll('#deployPlanBody input[data-auth-reason]')).find(
+      r => r.dataset.authDevice === b.dataset.authDevice && r.dataset.line === b.dataset.line);
+    (authorise[b.dataset.authDevice] = authorise[b.dataset.authDevice] || []).push(
+      {line: b.dataset.line, reason: reasonEl ? reasonEl.value : ''});
   });
   const kept = {};
   document.querySelectorAll('#deployPlanBody input[data-pc-select]:checked').forEach(b => {

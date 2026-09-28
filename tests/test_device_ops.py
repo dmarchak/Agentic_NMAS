@@ -144,7 +144,7 @@ class TestEveryChangingPathHoldsIt:
             body = P._client().post("/deploy/apply", json={
                 "confirmations": {"s4": device["capture_hash"]},
                 "command_hashes": {"s4": device["command_hash"]},
-                "authorise": {"s4": ["shutdown"]}}).get_json()
+                "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
         assert ran == []
         row = next(r for r in body["results"] if r["device"] == "s4")
         assert row["outcome"] == "refused"

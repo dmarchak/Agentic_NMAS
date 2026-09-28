@@ -43,7 +43,7 @@ def _devices_of(list_name: str) -> list:
 
 
 def build_targets(list_name: str, ref: str, devices: list = None,
-                  un_onboard: list = None) -> tuple:
+                  un_onboard: list = None, authorise: dict = None) -> tuple:
     """``(targets, skipped)`` for a re-apply of *ref*. Reads only.
 
     **Scope is declared, not remembered.** Every read goes through a
@@ -64,6 +64,7 @@ def build_targets(list_name: str, ref: str, devices: list = None,
     from modules.inventory import is_stale, stale_message
     from modules.nsot.deploy import RestoreTarget
     from modules.nsot.platform import platform_for_device
+    from modules.nsot import authorisation as _authorisation
 
     repo = _repo_for(list_name)
     # Declared, not remembered: intent restore needs host_vars/ and says so.
@@ -165,7 +166,11 @@ def build_targets(list_name: str, ref: str, devices: list = None,
             device=hostname, platform=platform,
             target_config=stored, captured=captured, ref=ref, device_row=row,
             ref_intent=ref_intent, ref_intent_text=ref_intent_text,
-            un_onboard=(ref_intent is None)))
+            un_onboard=(ref_intent is None),
+            # Per device, and only authorisations whose reason has the shape
+            # of one: the target's own check (C79) honours nothing else.
+            authorised=tuple(_authorisation.valid_keys(
+                (authorise or {}).get(hostname) or []))))
 
     return targets, skipped
 
@@ -248,9 +253,10 @@ def baseline_credential_gaps(repo: str, ref: str, list_name: str,
 
     ``silent`` is the set that matters. A stale device the restore already
     refuses is a nuisance; a stale device it does not refuse is a lockout.
-    ``guarded`` is the stale devices the restore's own credential guard
-    refuses (C75), asked of a real ``RestoreTarget``; with that guard in
-    place ``silent`` is empty, and a test asserts it on real fleet configs.
+    ``guarded`` is the stale devices the restore's own guards refuse, asked
+    of a real ``RestoreTarget``: a rewritten account (C75) or one ADDED back
+    (C79, unless its line is authorised with a stated reason). With both in
+    place ``silent`` is empty, and tests assert it on real fleet configs.
     """
     import yaml
 
@@ -302,8 +308,11 @@ def baseline_credential_gaps(repo: str, ref: str, list_name: str,
 
         _rc1, at_ref_text, _e1 = git(repo, "show", f"{ref}:golden/{host}.cfg")
         _rc2, at_head_text, _e2 = git(repo, "show", f"HEAD:golden/{host}.cfg")
-        if RestoreTarget(device=host, platform="", target_config=at_ref_text,
-                         captured=at_head_text, ref=ref).credential_would_change:
+        target = RestoreTarget(device=host, platform="", target_config=at_ref_text,
+                               captured=at_head_text, ref=ref)
+        # C75 refuses a rewritten account; C79 refuses one ADDED back (the
+        # shape `silent` named before C79 was built). Both asked of the target.
+        if target.credential_would_change or target.reintroduced_secrets:
             guarded.append(host)
 
     return {"stale": stale, "refused": sorted(refused),

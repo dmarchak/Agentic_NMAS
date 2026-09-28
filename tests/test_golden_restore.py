@@ -789,7 +789,7 @@ class TestTheHandoffScopesToOneDevice:
 
         seen = {}
 
-        def _build(list_name, ref, devices=None, un_onboard=None):
+        def _build(list_name, ref, devices=None, un_onboard=None, authorise=None):
             seen["ref"] = ref
             seen["devices"] = devices
             return [], []

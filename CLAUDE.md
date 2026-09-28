@@ -131,6 +131,10 @@ tracked in git.
   modifier after a `|`, no URL, no target-less ping, no line editing. The
   agent's tools use it; the lens, `/run_command` and `bulk_execute` adopt it
   in 7.3
+- **[modules/nsot/authorisation.py](modules/nsot/authorisation.py)** — C140,
+  C79: the ONE mechanism for a line that needs an authorisation (a dangerous
+  line, or a secret a restore would add): its key, the reason's shape rule,
+  the problems, the fingerprint. 8.8's written override reuses it
 - **[modules/nsot/receipts.py](modules/nsot/receipts.py)** — C60 (7.1): the
   deploy receipt, one masked row per device per batch, written by the deploy
   and restore apply paths after the golden commit: the program sent and its
@@ -737,10 +741,25 @@ The only part of the NSoT work that reaches a device.
   not supply it, so any program containing `shutdown`, `no ip address`,
   `no router ospf`, `reload`, `erase nvram` or `crypto key zeroize` was
   unrunnable. The plan flags each dangerous line as an exact string; the
-  authorisation is `{device: [lines]}`, is folded into the confirmation hash
-  alongside the commands, and apply recomputes both. An authorisation matching
-  nothing in the program is refused — a typo means the line it was meant to
-  cover is *not* authorised.
+  authorisation is `{device: [{line, reason}]}`, is folded into the
+  confirmation hash alongside the commands, and apply recomputes both. An
+  authorisation matching nothing in the program is refused — a typo means the
+  line it was meant to cover is *not* authorised.
+  **Every authorised line carries the person's stated reason** (C140, the
+  operator's decision (a), 2026-09-28). Until then it was `{device: [lines]}`:
+  the receipt recorded which lines and who, never why, so an authorised
+  `shutdown` read afterwards exactly like a misclick. ONE mechanism,
+  `modules/nsot/authorisation.py`, for both classes that need one: a
+  dangerous line, and a secret-position line a restore would ADD (C79). The
+  reason's minimum is SHAPE, never quality (not empty, three words, not a
+  copy of the line); it is drawn as TESTIMONY ("stated reason"), never as a
+  cause; it is in the confirm hash and the receipt; and each preview shows
+  how often that line was authorised on that device before (the aggregate:
+  the same line again and again is the pattern worth seeing). The pipeline's
+  gate and a restore target's checks run on every path, so they honour only
+  an authorisation whose reason has the shape of one. 8.8's written override
+  reuses this module. A line is named by `authorisation.key()`, its secret
+  positions masked, because the browser only ever sees a masked program.
 - **Rollback is exempt from that gate, structurally** — it never passes through
   stage 3. Undoing an authorised `no shutdown` is `shutdown`, and a gate that
   blocked the repair would leave the device in the state the rollback was
@@ -1175,6 +1194,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_untagged.py` | C59: a create whose tag cannot be ensured is REFUSED and counted, and a tag failure is never cached; `nmas-netbox-untagged` finds recorded-but-untagged objects and unrecorded creates by NMAS's account (identified from a recorded object's own changelog entry), never lists another account's, and reads an unreadable object or changelog as UNPROVEN, not gone |
 | `test_netbox_mask_context.py` | C139: r5's REAL config in the stored-context shape the live NetBox holds is flagged by the checker's scan; masked with the import's own `masked_context()` it passes that INDEPENDENT scan with every other key unchanged; no record of NMAS writing the context, a record of other fields, or another device's record is refused by name; a partly masked context is refused, not masked twice; the dry run writes nothing; apply reads NetBox back, and a write NetBox did not keep is named; no device is UNPROVEN |
 | `test_import_skips_are_named.py` | What the NetBox import deliberately does not model, on r3's REAL config: the excluded VRF's default route (the five /0 refusals of (b)'s import) skipped under the exclusion rule and named, the global static route still imported; the excluded addresses named, not only counted; a /0 outside an excluded VRF skipped as a route; skips merged across devices and lists; the preview and the stored result name each, and a skip is never a failure (`not_modelled`, level unchanged) |
+| `test_authorised_lines.py` | C79 and C140 on r2's REAL config: after a community rotation the ref's old community is refused by its MASKED line (never the value), passes once authorised with a reason, and a reason-less authorisation is not honoured on the path that compares no hash; the apply refuses before connecting; an account added back is refused, a rewritten one stays C75's and is not counted twice, and a restore to what the device holds flags nothing (the control); the mechanism holds no second list of secret forms; through the real preview a C79-only device awaits an authorisation (program shown, not selectable) and the reason is in the hash; the aggregate from real receipts (only sent rows, before-reasons rows counted, an unreadable record said) carried by the plan and drawn by the shipped renderer; the receipt keeps each reason masked and the result draws it as testimony |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_pipeline_reads_real_output.py` | C108: verify checks what the TARGET intent declares (from r1's real captures, OSPFv3 absent before: checked and passes once up; still absent is not a pass and not a rollback; no intent known checks the before-state and says so; the receipt and the shipped renderer draw it; `_deploy_one` carries the ref's intent for a restore and the committed intent for a deploy). C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
@@ -5534,8 +5554,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   and requiring the masked slot in every response that draws stored config.
 - **Restore is gated by `RestoreTarget.checks`, ONE list read twice**:
   `blocking_reasons` derives from it, and the preview draws it as gates.
-  The list covers a stored config at the ref, printable ASCII, and
-  credential unchanged. The refusal says "re-apply <ref> to", never
+  The list covers a stored config at the ref, printable ASCII, credential
+  unchanged (C75: a rewrite), and **no secret re-added** (C79: a
+  secret-position line the device does not hold, which after a rotation is
+  the old value landing beside the new one; authorisable with a stated
+  reason, and a device refused only by it is drawn as awaiting an
+  authorisation, its program shown, not as blocked). The refusal says
+  "re-apply <ref> to", never
   "deploy to". When both sides carry the same credential form, it says
   "with a different value", because the value is never printed and two
   identical strings read as no difference.

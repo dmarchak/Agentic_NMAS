@@ -79,7 +79,7 @@ def deploy_apply(mp):
 
     deploy_plan(mp)          # installs the artifact stubs
     plan = _ok(_client().post("/deploy/plan", json={
-        "devices": ["s4"], "authorise": {"s4": ["shutdown"]}}))
+        "devices": ["s4"], "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}))
     device = plan["devices"][0]
     assert device["authorisation_ok"] is True, device
 
@@ -88,7 +88,7 @@ def deploy_apply(mp):
         (the first version invented a `verified` key it never returns)."""
         from modules.nsot.deploy import DEPLOYED
         return {"device": entry["artifact"].device, "outcome": DEPLOYED, "stage": "",
-                "reason": "", "commands": device["commands"], "authorised": ["shutdown"],
+                "reason": "", "commands": device["commands"], "authorised": [{"line": "shutdown", "reason": "planned maintenance, port unused"}],
                 "program_hash": device["command_hash"], "rolled_back": False,
                 "pending_convergence": [], "golden_commit": "",
                 "verify": {"ok": True, "issues": [], "checked_protocols": ["ospf"],
@@ -113,14 +113,24 @@ def deploy_apply(mp):
     return _ok(_client().post("/deploy/apply", json={
         "confirmations": {"s4": device["capture_hash"], "s3": device["capture_hash"]},
         "command_hashes": {"s4": device["command_hash"], "s3": "0000000000000000"},
-        "authorise": {"s4": ["shutdown"], "s3": ["shutdown"]},
+        "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}], "s3": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]},
     }))
 
 
 def restore_preview(mp):
-    from tests.test_p3_restore_is_guarded import _real_payload
+    """test_p3_restore_is_guarded's targets, with r1's ref also holding an SNMP
+    community the device lacks: C79's case, authorised by its masked line with
+    a reason, so `secret_readded` and the program's `secret` are REACHED."""
+    from tests.test_p3_restore_is_guarded import TARGET, _preview_for, _target
 
-    return _real_payload(mp)
+    return _preview_for(
+        mp, [_target("r1", target_config=TARGET + "snmp-server community RESTORECOMM1 RO\n"),
+             _target("r2", target_config="")],
+        [{"hostname": "r9", "reason": "stale"}],
+        {"ref": "HEAD", "devices": ["r1", "r2"], "authorise": {"r1": [
+            {"line": "shutdown", "reason": "new interface, left down for now"},
+            {"line": "snmp-server community <redacted:snmp_community> RO",
+             "reason": "restoring the pre-rotation community on purpose"}]}})
 
 
 def onboard_pending(mp, tmp_path):

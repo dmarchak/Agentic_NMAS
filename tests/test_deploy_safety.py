@@ -665,9 +665,13 @@ class TestDangerousCommandsNeedAuthorisation:
         assert dangerous_in(["interface GigabitEthernet0/1",
                              " description x", "exit"]) == []
 
+    @staticmethod
+    def _a(line, reason="planned maintenance, port no longer used"):
+        return {"line": line, "reason": reason}
+
     def test_an_authorised_line_proceeds(self):
         from modules.nsot.deploy import assert_authorised
-        assert_authorised(self.PROGRAM, ["shutdown"])
+        assert_authorised(self.PROGRAM, [self._a("shutdown")])
 
     def test_an_unauthorised_dangerous_line_is_refused(self):
         from modules.nsot.deploy import NotAuthorised, assert_authorised
@@ -680,22 +684,56 @@ class TestDangerousCommandsNeedAuthorisation:
         meant to cover is not authorised."""
         from modules.nsot.deploy import NotAuthorised, assert_authorised
         with pytest.raises(NotAuthorised) as exc:
-            assert_authorised(self.PROGRAM, ["shutdown", "reload"])
-        assert "match no dangerous command" in str(exc.value)
+            assert_authorised(self.PROGRAM, [self._a("shutdown"), self._a("reload")])
+        assert "match no line that needs one" in str(exc.value)
 
     def test_a_near_miss_authorisation_does_not_count(self):
         from modules.nsot.deploy import NotAuthorised, assert_authorised
         with pytest.raises(NotAuthorised):
-            assert_authorised(self.PROGRAM, ["shut"])
+            assert_authorised(self.PROGRAM, [self._a("shut")])
+
+    # C140: every authorisation carries a reason, and the minimum is SHAPE.
+    def test_the_old_shape_without_a_reason_is_refused(self):
+        from modules.nsot.deploy import NotAuthorised, assert_authorised
+        with pytest.raises(NotAuthorised) as exc:
+            assert_authorised(self.PROGRAM, ["shutdown"])
+        assert "has no reason" in str(exc.value)
+
+    @pytest.mark.parametrize("reason,words", [
+        ("", "has no reason"),
+        ("   ", "has no reason"),
+        ("ok", "too short"),
+        ("port unused", "too short"),       # two words: 8.8's minimum is three
+        ("shutdown", "a copy of the line"),
+        ("  Shutdown ", "a copy of the line"),
+    ])
+    def test_a_reason_of_the_wrong_shape_is_refused_by_name(self, reason, words):
+        from modules.nsot.deploy import NotAuthorised, assert_authorised
+        with pytest.raises(NotAuthorised) as exc:
+            assert_authorised(self.PROGRAM, [self._a("shutdown", reason)])
+        assert words in str(exc.value) and "never judged" in str(exc.value)
+
+    @pytest.mark.parametrize("reason", [
+        "port no longer used", "lab rebuild tonight", "customer asked to disable it tonight"])
+    def test_any_reason_of_the_right_shape_passes_it_is_never_judged(self, reason):
+        from modules.nsot.deploy import assert_authorised
+        assert_authorised(self.PROGRAM, [self._a("shutdown", reason)])
 
     def test_the_authorisation_is_part_of_the_confirmation_hash(self):
         from modules.nsot.deploy import command_fingerprint
         assert (command_fingerprint(self.PROGRAM, [])
-                != command_fingerprint(self.PROGRAM, ["shutdown"]))
+                != command_fingerprint(self.PROGRAM, [self._a("shutdown")]))
+
+    def test_the_reason_is_part_of_the_confirmation_hash(self):
+        """What was confirmed is these lines, these authorised, for these
+        stated reasons: a different reason at apply is a different decision."""
+        from modules.nsot.deploy import command_fingerprint
+        assert (command_fingerprint(self.PROGRAM, [self._a("shutdown", "port no longer used")])
+                != command_fingerprint(self.PROGRAM, [self._a("shutdown", "lab rebuild tonight")]))
 
     def test_changing_the_authorisation_between_plan_and_apply_is_caught(self):
         from modules.nsot.deploy import command_fingerprint
-        confirmed = command_fingerprint(self.PROGRAM, ["shutdown"])
+        confirmed = command_fingerprint(self.PROGRAM, [self._a("shutdown")])
         at_apply = command_fingerprint(self.PROGRAM, [])
         assert at_apply != confirmed
 
@@ -704,17 +742,25 @@ class TestDangerousCommandsNeedAuthorisation:
         from modules.nsot.deploy import command_fingerprint
         program = ["interface GigabitEthernet0/1", " shutdown", "exit",
                    "interface GigabitEthernet0/2", " no ip address", "exit"]
-        assert (command_fingerprint(program, ["shutdown", "no ip address"])
-                == command_fingerprint(program, ["no ip address", "shutdown"]))
+        a, b = self._a("shutdown"), self._a("no ip address")
+        assert command_fingerprint(program, [a, b]) == command_fingerprint(program, [b, a])
 
     def test_authorisation_is_scoped_per_device(self):
         """Authorising a line for one device must not authorise it elsewhere."""
         from modules.nsot.deploy import NotAuthorised, assert_authorised
 
-        authorise = {"s4": ["shutdown"], "s3": []}
+        authorise = {"s4": [self._a("shutdown")], "s3": []}
         assert_authorised(self.PROGRAM, authorise["s4"])
         with pytest.raises(NotAuthorised):
             assert_authorised(self.PROGRAM, authorise["s3"])
+
+    def test_the_pipeline_gate_honours_only_a_reason_of_the_right_shape(self):
+        """The gate runs on every path, including one where no confirm hash
+        was compared, so a reason-less authorisation must not pass it."""
+        from modules.nsot.authorisation import valid_keys
+        assert valid_keys([self._a("shutdown")]) == ["shutdown"]
+        assert valid_keys(["shutdown"]) == []
+        assert valid_keys([self._a("shutdown", "ok")]) == []
 
     def test_the_gate_accepts_a_stripped_match(self):
         """The gate compares cmd.strip(); the flag must produce that string."""

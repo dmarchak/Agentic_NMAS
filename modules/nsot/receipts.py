@@ -104,6 +104,14 @@ def _checks(result: dict) -> dict:
     return checks
 
 
+def _authorised_record(given) -> list:
+    from modules.nsot import authorisation
+    from modules.redact import redact_text
+
+    return [{"line": a["line"], "reason": redact_text(a["reason"])}
+            for a in authorisation.normalise(given)]
+
+
 def rows_for(report: dict, *, list_name: str, action: str, actor: str,
              actor_kind: str, confirmations: dict = None,
              command_hashes: dict = None, source_ref: str = "") -> list:
@@ -143,7 +151,10 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             "matches_confirmed": (program_hash == confirmed) if (confirmed and program_hash)
             else None,
             "capture_hash": confirmations.get(host),
-            "authorised": list(result.get("authorised") or []),
+            # Each authorised line WITH the person's stated reason (C140):
+            # an exception with no stated cause is indistinguishable from an
+            # accident. The reason is testimony, masked like the program.
+            "authorised": _authorised_record(result.get("authorised")),
             "checks": _checks(result),
             "rollback": {
                 "performed": bool(result.get("rolled_back")),
@@ -204,3 +215,35 @@ def read(list_name: str, device: str = "", limit: int = 50) -> dict:
     if device:
         rows = [r for r in rows if r.get("device") == device]
     return {"state": "ok", "rows": list(reversed(rows))[:limit]}
+
+
+def prior_authorisations(list_name: str, device: str, lines=None) -> dict:
+    """How often each line was authorised on *device* before, from the
+    receipts: ``{"state", "lines": {key: {"count", "last_at", "last_actor",
+    "last_reason"}}}``. The AGGREGATE (the operator, C140, from 8.8's written
+    override): the same line authorised on the same device again and again is
+    a pattern worth seeing, and a control that makes behaviour visible is
+    measured by whether anyone would notice. A receipt written before
+    reasons existed counts, with no reason recorded. *lines* narrows it to
+    the keys a preview is showing. An unreadable record is said, never read
+    as "never authorised"."""
+    from modules.nsot import authorisation
+
+    got = read(list_name, device=device, limit=10 ** 6)
+    if got["state"] != "ok":
+        return {"state": got["state"], "lines": {}}
+    want = set(lines) if lines is not None else None
+    out: dict = {}
+    for row in reversed(got["rows"]):                  # oldest first
+        if row.get("outcome") == "refused" or not row.get("sent"):
+            continue
+        for a in authorisation.normalise(
+                [a if isinstance(a, dict) else {"line": a, "reason": ""}
+                 for a in (row.get("authorised") or [])]):
+            if want is not None and a["line"] not in want:
+                continue
+            e = out.setdefault(a["line"], {"count": 0})
+            e.update({"count": e["count"] + 1, "last_at": row.get("at", ""),
+                      "last_actor": row.get("actor", ""),
+                      "last_reason": a["reason"] or "(none recorded: before reasons existed)"})
+    return {"state": "ok", "lines": out}

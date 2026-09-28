@@ -18,6 +18,10 @@ import json
 import pytest
 
 ADDED = "ADDEDPLANT77"
+#: The added community's authorisation, named by its MASKED line (the browser
+#: never sees the value) and carrying a reason (C79, C140).
+RESTORE_AUTH = {"line": "snmp-server community <redacted:snmp_community> RO",
+                "reason": "restoring the pre-rotation community on purpose"}
 RESIDUE = "RESIDUEPLANT77"
 
 
@@ -40,7 +44,7 @@ def _deploy_plan(monkeypatch):
     # The fixture's program shuts an interface: authorised, so the only
     # refusal left open to the apply below is the command hash.
     plan = P._ok(P._client().post("/deploy/plan", json={
-        "devices": ["s4"], "authorise": {"s4": ["shutdown"]}}))
+        "devices": ["s4"], "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}))
     return plan, intent, capture
 
 
@@ -49,8 +53,12 @@ def _restore_preview(monkeypatch):
 
     target = f"hostname r1\nsnmp-server community {ADDED} RO\n"
     captured = f"hostname r1\nsnmp-server community {RESIDUE} RO\n"
+    # The ref holds a community the device lacks: exactly C79's case, so the
+    # line is authorised (by its masked key, with a reason) or it is refused.
     return _preview_for(monkeypatch, [_target("r1", target_config=target,
-                                              captured=captured)]), target, captured
+                                              captured=captured)],
+                        body={"ref": "HEAD", "authorise": {"r1": [RESTORE_AUTH]}}), \
+        target, captured
 
 
 class TestNoPreviewCarriesASecret:
@@ -79,7 +87,7 @@ class TestTheHashIsStillOfWhatIsSent:
         device = plan["devices"][0]
         truthful = merge_commands(intent, capture)
         assert any(ADDED in line for line in truthful), "the program adds the secret"
-        assert device["command_hash"] == command_fingerprint(truthful, ["shutdown"])
+        assert device["command_hash"] == command_fingerprint(truthful, [{"line": "shutdown", "reason": "planned maintenance, port unused"}])
 
     def test_the_restore_command_hash_is_of_the_truthful_program(self, monkeypatch):
         from modules.nsot.deploy import command_fingerprint, merge_commands
@@ -88,7 +96,7 @@ class TestTheHashIsStillOfWhatIsSent:
         device = payload["devices"][0]
         truthful = merge_commands(target, captured)
         assert any(ADDED in line for line in truthful)
-        assert device["command_hash"] == command_fingerprint(truthful, [])
+        assert device["command_hash"] == command_fingerprint(truthful, [RESTORE_AUTH])
 
     def test_a_masked_plan_driven_into_the_apply_is_not_refused(self, monkeypatch):
         """The seam: the apply recomputes the program from the truthful render
@@ -100,7 +108,7 @@ class TestTheHashIsStillOfWhatIsSent:
         body = P._client().post("/deploy/apply", json={
             "confirmations": {"s4": device["capture_hash"]},
             "command_hashes": {"s4": device["command_hash"]},
-            "authorise": {"s4": ["shutdown"]}}).get_json()
+            "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
         refused = [r for r in body.get("results") or []
                    if r.get("device") == "s4" and r.get("outcome") == "refused"]
         assert refused == [], refused
@@ -115,7 +123,7 @@ class TestTheHashIsStillOfWhatIsSent:
         body = P._client().post("/deploy/apply", json={
             "confirmations": {"s4": device["capture_hash"]},
             "command_hashes": {"s4": "0" * 16},
-            "authorise": {"s4": ["shutdown"]}}).get_json()
+            "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
         assert "s4" in (body.get("by_outcome") or {}).get("refused", []), body.get("by_outcome")
 
 
@@ -132,7 +140,7 @@ class TestTheApplyResponsesAreMaskedToo:
         body = P._client().post("/deploy/apply", json={
             "confirmations": {"s4": device["capture_hash"]},
             "command_hashes": {"s4": device["command_hash"]},
-            "authorise": {"s4": ["shutdown"]}}).get_json()
+            "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
         rows = [r for r in body.get("results") or [] if r.get("device") == "s4"]
         # Floor: the row that carried it is there, with its program drawn.
         assert rows and any("snmp-server community <redacted" in c

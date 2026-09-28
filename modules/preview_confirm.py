@@ -243,7 +243,8 @@ def deploy_preview(devices: list, request) -> dict:
     for d in devices:
         name = d.get("device", "?")
         blocked = not d.get("deployable")
-        unauthorised = bool(d.get("dangerous")) and d.get("authorisation_ok") is False
+        unauthorised = (bool(d.get("dangerous")) or bool(d.get("secret_readded"))) \
+            and d.get("authorisation_ok") is False
         failed = d.get("refused") or d.get("error") or ""
         state = ("blocked" if blocked else "refused" if failed
                  else "not_authorised" if unauthorised else "deployable")
@@ -301,7 +302,12 @@ def deploy_preview(devices: list, request) -> dict:
             "select_data": {"hash": d.get("capture_hash") or "",
                             "command-hash": d.get("command_hash") or ""},
             "program": {"lines": commands, "dangerous": d.get("dangerous") or [],
+                        # A restore's secret-position lines it would ADD
+                        # (C79), authorised by the same box as a dangerous one.
+                        "secret": d.get("secret_readded") or [],
                         "authorised": d.get("authorised") or [],
+                        # How often each was authorised here before (C140).
+                        "prior": d.get("prior_authorised") or {"state": "ok", "lines": {}},
                         "authorisation_error": d.get("authorisation_error") or "",
                         "none": "" if commands else none, "notes": notes},
             "operands": operands, "gates": _deploy_gates(d, failed)})
@@ -354,12 +360,13 @@ def _restore_gates(d: dict, failed: str) -> list:
                     "round-trips through today's template; every secret it names is "
                     "held" if action in ("restore", "unchanged")
                     else "no intent at this ref to check"))
-    dangerous = d.get("dangerous") or []
-    out.append(gate("dangerous lines",
-                    "not_applicable" if not dangerous
+    flagged = list(d.get("dangerous") or []) + list(d.get("secret_readded") or [])
+    out.append(gate("lines needing an authorisation (dangerous, or a secret re-added)",
+                    "not_applicable" if not flagged
                     else "pass" if d.get("authorisation_ok") else "fail",
-                    "" if not dangerous else (d.get("authorisation_error")
-                                              or f"{len(dangerous)} authorised")))
+                    "" if not flagged else (d.get("authorisation_error")
+                                            or f"{len(flagged)} authorised, each with a "
+                                               "stated reason")))
     if failed and d.get("deployable"):
         out.insert(0, gate("program built", "fail", failed))
     return out + [busy_gate(d), gate(CAPTURE_GATE, "at_apply", CAPTURE_GATE_DETAIL)]
@@ -378,7 +385,8 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
     for d in devices:
         name = d.get("device", "?")
         blocked = not d.get("deployable")
-        unauthorised = bool(d.get("dangerous")) and d.get("authorisation_ok") is False
+        unauthorised = (bool(d.get("dangerous")) or bool(d.get("secret_readded"))) \
+            and d.get("authorisation_ok") is False
         failed = "" if blocked else (d.get("error") or "")
         state = ("blocked" if blocked else "refused" if failed
                  else "not_authorised" if unauthorised else "deployable")
@@ -436,7 +444,12 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
             "select_data": {"hash": d.get("capture_hash") or "",
                             "command-hash": d.get("command_hash") or ""},
             "program": {"lines": commands, "dangerous": d.get("dangerous") or [],
+                        # A restore's secret-position lines it would ADD
+                        # (C79), authorised by the same box as a dangerous one.
+                        "secret": d.get("secret_readded") or [],
                         "authorised": d.get("authorised") or [],
+                        # How often each was authorised here before (C140).
+                        "prior": d.get("prior_authorised") or {"state": "ok", "lines": {}},
                         "authorisation_error": d.get("authorisation_error") or "",
                         "none": "" if commands else none, "notes": notes},
             "operands": operands, "gates": _restore_gates(d, failed)})
@@ -590,7 +603,12 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
                                      else "DOES NOT MATCH the program you confirmed"
                                      if matches is False
                                      else "no confirmed program to compare with"),
-                     "none": "" if sent else (r.get("reason") or "Nothing was sent.")},
+                     "none": "" if sent else (r.get("reason") or "Nothing was sent."),
+                     # Each authorised line with the person's stated reason
+                     # (C140), read back from the receipt: the deliberate
+                     # exception and why, where it can be read afterwards.
+                     "authorised": list(r.get("authorised") or []),
+                     "actor": r.get("actor", "")},
             "checks": r.get("checks") or {"ran": False, "why": "no check was recorded"},
             "rollback": r.get("rollback") or {},
         })

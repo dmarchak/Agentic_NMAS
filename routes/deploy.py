@@ -272,10 +272,15 @@ def plan():
             # than the CI gate discovering them at stage 3 with no reachable
             # way to authorise them.
             entry["dangerous"] = dangerous_in(commands)
-            authorised = [a.strip() for a in (authorise.get(hostname) or [])]
+            # Each authorisation is {line, reason} (C140): the person's
+            # stated reason travels with the line into the hash and the receipt.
+            from modules.nsot import authorisation as _auth
+            authorised = _auth.normalise(authorise.get(hostname))
             entry["authorised"] = authorised
             entry["command_hash"] = command_fingerprint(commands, authorised)
-            if entry["dangerous"]:
+            entry["prior_authorised"] = _prior_authorised(
+                list_name, hostname, _auth.flagged(commands))
+            if entry["dangerous"] or authorised:
                 try:
                     assert_authorised(commands, authorised)
                     entry["authorisation_ok"] = True
@@ -362,7 +367,7 @@ def apply():
             try:
                 recomputed = merge_commands(
                     prepare_device(artifact)["config"], captured)
-                device_auth = [a.strip() for a in (authorise.get(hostname) or [])]
+                device_auth = authorise.get(hostname) or []
                 assert_authorised(recomputed, device_auth)
                 now = command_fingerprint(recomputed, device_auth)
             except NotAuthorised as exc:
@@ -482,6 +487,17 @@ def receipts_read():
     return jsonify(mask_payload(body)), (200 if body["ok"] else 500)
 
 
+def _prior_authorised(list_name: str, hostname: str, lines) -> dict:
+    """How often each line needing an authorisation in this program was
+    authorised on this device before (C140's aggregate), for the preview."""
+    from modules.nsot.receipts import prior_authorisations
+
+    try:
+        return prior_authorisations(list_name, hostname, lines)
+    except Exception as exc:                  # noqa: BLE001
+        return {"state": "unreadable", "lines": {}, "error": str(exc)}
+
+
 def _write_receipts(list_name: str, report: dict, action: str, confirmations: dict,
                     command_hashes: dict, source_ref: str = "") -> dict:
     """Record what was sent, after the commit it names (C60). A failure is
@@ -566,8 +582,11 @@ def run_targets(list_name: str, targets: list, data: dict,
             try:
                 recomputed = merge_commands(
                     prepare_for_deploy(target)["config"], captured)
-                device_auth = [a.strip() for a in (authorise.get(hostname) or [])]
-                assert_authorised(recomputed, device_auth)
+                device_auth = authorise.get(hostname) or []
+                # A restore's re-added secret lines need an authorisation too
+                # (C79), from the same mechanism as a dangerous line.
+                assert_authorised(recomputed, device_auth,
+                                  extra=getattr(target, "reintroduced_secrets", ()))
                 now = command_fingerprint(recomputed, device_auth)
             except NotAuthorised as exc:
                 refused.append({"device": hostname, "outcome": "refused",
@@ -739,8 +758,13 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         list_name=list_name,
     )
     # Scoped to THIS device. The batch's other devices get their own list.
-    authorised = [a.strip() for a in ((authorise or {}).get(hostname) or [])]
-    ctx.params["allowed_dangerous"] = authorised
+    from modules.nsot import authorisation as _auth
+    # Each {line, reason}, for the receipt. The pipeline's own gate runs on
+    # every path, so it honours only an authorisation whose reason has the
+    # shape of one (C140): where the confirm hash is not compared, a
+    # reason-less authorisation still cannot pass.
+    authorised = _auth.normalise((authorise or {}).get(hostname))
+    ctx.params["allowed_dangerous"] = _auth.valid_keys(authorised)
     # Confirmed, not merely pre-populated: rendered_commands derives from this,
     # so stage 2 cannot overwrite it and an attempt to do so raises.
     ctx.confirmed_commands = {device.get("ip", ""): commands}

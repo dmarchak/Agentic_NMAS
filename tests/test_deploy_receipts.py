@@ -20,7 +20,7 @@ from modules.nsot.deploy import command_fingerprint
 
 PROGRAM = ["interface GigabitEthernet0/2", " shutdown", "exit",
            "snmp-server community Sup3rS3cretCommunity RO"]
-AUTHORISED = ["shutdown"]
+AUTHORISED = [{"line": "shutdown", "reason": "planned maintenance, port unused"}]
 
 
 def _sent(**over):
@@ -141,7 +141,7 @@ class TestTheApplyWritesIt:
         # The fixture's program holds `shutdown`, so the plan the operator
         # confirms carries its authorisation, as the wizard's re-plan does.
         plan = P._client().post("/deploy/plan", json={
-            "devices": ["s4"], "authorise": {"s4": ["shutdown"]}}).get_json()
+            "devices": ["s4"], "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]}}).get_json()
         device = plan["devices"][0]
         assert device["authorisation_ok"] is True
         mp.setattr(rd, "_deploy_one", deploy_one)
@@ -150,7 +150,7 @@ class TestTheApplyWritesIt:
         return plan, P._client().post("/deploy/apply", json={
             "confirmations": {"s4": device["capture_hash"]},
             "command_hashes": {"s4": device["command_hash"]},
-            "authorise": {"s4": ["shutdown"]},
+            "authorise": {"s4": [{"line": "shutdown", "reason": "planned maintenance, port unused"}]},
         }).get_json()
 
     def test_a_row_per_device_after_the_commit_by_the_verified_person(self, monkeypatch):

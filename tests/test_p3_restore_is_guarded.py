@@ -80,8 +80,18 @@ def _preview_for(monkeypatch, targets, skipped=(), body=None):
                             "inventory_size": 0, "partial": False,
                             "denominator": 0, "scope_words": "in this list"})
     monkeypatch.setattr(golden, "_intent_preview", lambda ln, t: {"action": "none"})
-    monkeypatch.setattr("modules.nsot.restore.build_targets",
-                        lambda *a, **k: (list(targets), list(skipped)))
+    # Honours `authorise` as the real one does (C79): each target carries
+    # the keys of its authorisations whose reason has the shape of one.
+    import dataclasses
+
+    from modules.nsot.authorisation import valid_keys
+
+    def _built(*a, authorise=None, **k):
+        return ([dataclasses.replace(t, authorised=tuple(valid_keys(
+                    (authorise or {}).get(t.device) or []))) for t in targets],
+                list(skipped))
+
+    monkeypatch.setattr("modules.nsot.restore.build_targets", _built)
     app = flask.Flask(__name__)
     app.register_blueprint(golden.bp)
     out = app.test_client().post("/golden/restore/preview",
@@ -98,7 +108,8 @@ def _real_payload(monkeypatch):
                         # r1's program shuts a new interface: a dangerous
                         # line, authorised, so the fixture reaches both lists.
                         {"ref": "HEAD", "devices": ["r1", "r2"],
-                         "authorise": {"r1": ["shutdown"]}})
+                         "authorise": {"r1": [{"line": "shutdown",
+                                               "reason": "new interface, left down for now"}]}})
 
 
 def _lift(page: str, name: str) -> str:
@@ -179,8 +190,9 @@ class TestTheRestoresOwnGates:
         assert {n: g["state"] for n, g in gates.items()} == {
             "golden config at this ref": "pass", "printable ASCII": "pass",
             "credential unchanged": "pass",
+            "no secret re-added": "pass",                               # C79
             "this ref's intent usable today": "not_applicable",
-            "dangerous lines": "pass",
+            "lines needing an authorisation (dangerous, or a secret re-added)": "pass",
             "capture unchanged since this preview": "at_apply",
             "no other operation holds this device": "at_apply"}      # C99
 
@@ -189,6 +201,7 @@ class TestTheRestoresOwnGates:
         assert gates["golden config at this ref"]["state"] == "fail"
         assert gates["printable ASCII"]["state"] == "not_reached"
         assert gates["credential unchanged"]["state"] == "not_reached"
+        assert gates["no secret re-added"]["state"] == "not_reached"
 
     def test_no_template_gate_is_drawn(self, monkeypatch):
         names = set(_gates(_real_payload(monkeypatch), "r1"))

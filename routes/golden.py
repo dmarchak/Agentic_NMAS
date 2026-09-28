@@ -442,15 +442,22 @@ def restore_preview():
     authorise = data.get("authorise") or {}
     try:
         targets, skipped = build_targets(list_name, ref, data.get("devices"),
-                                         un_onboard=data.get("un_onboard"))
+                                         un_onboard=data.get("un_onboard"),
+                                         authorise=authorise)
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: restore preview failed")
         return jsonify({"ok": False, "error": str(exc)}), 500
 
     devices = []
     for target in targets:
+        # A device refused ONLY because it would add a secret (C79) is waiting
+        # on an authorisation, like an unauthorised dangerous line, not
+        # blocked: its program must be shown, or the line it needs could be
+        # neither seen nor authorised (found by test_authorised_lines.py).
+        failing = [n for n, st, _d in target.checks if st == "fail"]
+        awaits_authorisation = failing == ["no secret re-added"]
         entry = {"device": target.device, "platform": target.platform,
-                 "deployable": target.deployable,
+                 "deployable": target.deployable or awaits_authorisation,
                  "blocking_reasons": target.blocking_reasons,
                  "capture_hash": _capture_hash(target.captured),
                  # The restore's own gates, by name: the list its refusal is
@@ -459,8 +466,16 @@ def restore_preview():
                             for n, st, dt in target.checks],
                  # The intent half of the same unit, stated before it happens.
                  "intent": _intent_preview(list_name, target)}
+        entry["secret_readded"] = target.reintroduced_secrets
         try:
-            prepared = prepare_restore(target)
+            if awaits_authorisation:
+                # prepare_restore's own refusal is this check; the mask
+                # backstop it would also run still runs.
+                from modules.nsot.deploy import assert_no_mask
+                assert_no_mask(target.target_config, context="restore")
+                prepared = {"config": target.target_config}
+            else:
+                prepared = prepare_restore(target)
             diff = merge_diff(prepared["config"], target.captured)
             commands = merge_commands(prepared["config"], target.captured)
             entry.update({
@@ -481,12 +496,20 @@ def restore_preview():
                 "dangerous": dangerous_in(commands),
                 "unchanged_count": diff["unchanged_count"],
             })
-            authorised = [a.strip() for a in (authorise.get(target.device) or [])]
+            # One mechanism for both classes (C140, C79): a dangerous line
+            # and a secret-position line this re-apply would ADD, each
+            # authorised with the person's stated reason.
+            from modules.nsot import authorisation as _auth
+            from routes.deploy import _prior_authorised
+            secret = entry["secret_readded"]
+            authorised = _auth.normalise(authorise.get(target.device))
             entry["authorised"] = authorised
             entry["command_hash"] = command_fingerprint(commands, authorised)
-            if entry["dangerous"] or authorised:
+            entry["prior_authorised"] = _prior_authorised(
+                list_name, target.device, _auth.flagged(commands, secret))
+            if entry["dangerous"] or secret or authorised:
                 try:
-                    assert_authorised(commands, authorised)
+                    assert_authorised(commands, authorised, extra=secret)
                     entry["authorisation_ok"] = True
                 except NotAuthorised as exc:
                     entry["authorisation_ok"] = False
@@ -623,7 +646,8 @@ def restore_apply():
     invalidated = invalidate_queued_restores()
     try:
         targets, skipped = build_targets(list_name, ref, list(confirmations),
-                                         un_onboard=data.get("un_onboard"))
+                                         un_onboard=data.get("un_onboard"),
+                                         authorise=data.get("authorise") or {})
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: restore apply failed")
         return jsonify({"ok": False, "error": str(exc)}), 500

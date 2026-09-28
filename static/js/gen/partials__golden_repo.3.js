@@ -264,7 +264,11 @@ async function previewBaselineRestore(tag, unOnboard, from) {
     // program is shown (P.3 step 4). The choice goes back to the preview, so
     // the command hashes this confirm carries cover it, and run_targets
     // recomputes both at apply. Asked once per preview chain.
-    const needAuth = (d.devices || []).filter(x => x.deployable && (x.dangerous || []).length);
+    // Both classes that need an authorisation (C140, C79): a dangerous line,
+    // and a secret-position line this re-apply would ADD. A device with an
+    // unauthorised secret line is not deployable, so that is not the filter.
+    const needAuth = (d.devices || []).filter(
+      x => (x.dangerous || []).length || (x.secret_readded || []).length);
     if (needAuth.length && !from.authoriseAsked) {
       const chosen = await _authoriseDangerous(needAuth, from.authorise || {});
       if (chosen === null) return;
@@ -318,8 +322,11 @@ async function previewBaselineRestore(tag, unOnboard, from) {
   } catch (e) { showToast(e.message, 'danger'); }
 }
 
-// Per device, per exact dangerous line: tick to authorise. Resolves the
-// {device: [lines]} map (possibly empty), or null on Cancel.
+// Per device, per exact line that needs one (dangerous, or a secret line
+// this re-apply would ADD): tick to authorise, with your reason (C140). A
+// reason is recorded as your statement and never judged; its minimum is
+// shape. Resolves {device: [{line, reason}]} (possibly empty), or null on
+// Cancel. How often the line was authorised here before is shown with it.
 function _authoriseDangerous(devices, current) {
   return new Promise(resolve => {
     const el = document.createElement('div');
@@ -327,11 +334,14 @@ function _authoriseDangerous(devices, current) {
     el.tabIndex = -1;
     el.innerHTML =
       '<div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">'
-      + '<div class="modal-header"><h5 class="modal-title">Dangerous lines in this restore</h5>'
+      + '<div class="modal-header"><h5 class="modal-title">Lines in this restore that need an authorisation</h5>'
       + '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>'
-      + '<div class="modal-body"><p class="small">Each line below is a dangerous command. It is sent '
-      + 'only if you authorise that exact line for that device. A device with an unauthorised '
-      + 'line is refused and nothing is sent to it. The full program is shown next.</p>'
+      + '<div class="modal-body"><p class="small">Each line below is either a dangerous command or '
+      + 'a secret the device does not hold, which this restore would ADD (after a rotation the '
+      + 'old value lands beside the current one). It is sent only if you authorise that exact '
+      + 'line for that device and say why, in a few words: your reason is recorded as yours and '
+      + 'never judged. A device with an unauthorised line is refused and nothing is sent to it. '
+      + 'The full program is shown next.</p>'
       + '<div data-lines></div></div>'
       + '<div class="modal-footer">'
       + '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>'
@@ -343,7 +353,15 @@ function _authoriseDangerous(devices, current) {
       head.className = 'fw-semibold mt-2';
       head.textContent = dev.device;
       box.appendChild(head);
-      (dev.dangerous || []).forEach(line => {
+      const prior = ((dev.prior_authorised || {}).lines) || {};
+      const had = {};
+      ((current || {})[dev.device] || []).forEach(a => { if (a && a.line) had[a.line] = a.reason || ''; });
+      const flagged = (dev.dangerous || []).map(l => [l, 'dangerous'])
+        .concat((dev.secret_readded || []).map(l => [l, 'adds a secret the device does not hold']));
+      flagged.forEach(([line, kind]) => {
+        const row = document.createElement('div');
+        row.className = 'mb-2';
+        row.dataset.authRow = '';
         const lab = document.createElement('label');
         lab.className = 'd-flex gap-2 align-items-start font-monospace small';
         const cb = document.createElement('input');
@@ -351,20 +369,40 @@ function _authoriseDangerous(devices, current) {
         cb.className = 'form-check-input mt-0';
         cb.dataset.device = dev.device;
         cb.dataset.line = line;
-        cb.checked = ((current || {})[dev.device] || []).includes(line);
+        cb.checked = Object.prototype.hasOwnProperty.call(had, line);
         const span = document.createElement('span');
         span.style.whiteSpace = 'pre';
-        span.textContent = line;
+        span.textContent = line + '    (' + kind + ')';
         lab.appendChild(cb);
         lab.appendChild(span);
-        box.appendChild(lab);
+        const reason = document.createElement('input');
+        reason.type = 'text';
+        reason.className = 'form-control form-control-sm';
+        reason.dataset.authReason = '';
+        reason.placeholder = 'why this line is deliberate (a few words, recorded as yours)';
+        reason.value = had[line] || '';
+        row.appendChild(lab);
+        row.appendChild(reason);
+        const seen = prior[line];
+        if (seen) {
+          const h = document.createElement('div');
+          h.className = 'small text-muted';
+          h.dataset.authPrior = '';
+          h.textContent = 'authorised on this device ' + seen.count + ' time(s) before; last '
+            + seen.last_at + ' by ' + seen.last_actor + ', stated reason: "' + seen.last_reason + '"';
+          row.appendChild(h);
+        }
+        box.appendChild(row);
       });
     });
     let answer = null;
     el.querySelector('[data-continue]').addEventListener('click', () => {
       answer = {};
       el.querySelectorAll('input[type=checkbox]').forEach(cb => {
-        if (cb.checked) (answer[cb.dataset.device] = answer[cb.dataset.device] || []).push(cb.dataset.line);
+        if (!cb.checked) return;
+        const reason = cb.closest('[data-auth-row]').querySelector('input[data-auth-reason]');
+        (answer[cb.dataset.device] = answer[cb.dataset.device] || []).push(
+          {line: cb.dataset.line, reason: reason ? reason.value : ''});
       });
       modal.hide();
     });

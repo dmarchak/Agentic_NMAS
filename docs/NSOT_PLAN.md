@@ -4713,6 +4713,12 @@ then holds *"warned about X; proceeded because Y"*.
   time. The record and every triage report label it *the operator's stated
   reason*, never a cause: the same separation the reports already make
   between what was READ and what was CONCLUDED.
+- **Reuse, do not rebuild (2026-09-28).** C140 needed this mechanism first:
+  every authorised line (a dangerous line, or a secret a restore would add,
+  C79) now carries a stated reason under exactly the three properties below,
+  in `modules/nsot/authorisation.py` (shape rule, testimony, the aggregate
+  from the receipts). The written override is a second use of that module,
+  never a second implementation of what counts as a reason.
 - **Where the minimum is drawn: shape, never quality.** The server refuses
   only what carries no statement at all:
   - an empty or whitespace-only reason;

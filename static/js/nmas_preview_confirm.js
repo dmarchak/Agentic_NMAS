@@ -118,29 +118,62 @@
   function programHtml(p, t, hooks) {
     var prog = t.program || {};
     var lines = prog.lines || [];
-    // `dangerous` and `authorised` are STRIPPED lines while the program keeps
-    // its indentation: compare trimmed, or a line never gets its box (P.3).
+    // `dangerous`, `secret` and each authorisation's `line` are STRIPPED
+    // (and secret positions masked) while the program keeps its indentation:
+    // compare trimmed, or a line never gets its box (P.3).
     var risky = {}, auth = {};
-    (prog.dangerous || []).forEach(function (x) { risky[String(x).trim()] = 1; });
-    (prog.authorised || []).forEach(function (x) { auth[String(x).trim()] = 1; });
+    (prog.dangerous || []).forEach(function (x) { risky[String(x).trim()] = 'dangerous'; });
+    (prog.secret || []).forEach(function (x) { risky[String(x).trim()] = 'secret'; });
+    (prog.authorised || []).forEach(function (a) {
+      if (a && typeof a === 'object') auth[String(a.line).trim()] = a;
+    });
+    var prior = (prog.prior && prog.prior.lines) || {};
     var body;
     if (!lines.length) {
       body = '<div class="small text-muted" data-pc-none>' + esc(prog.none) + '</div>';
     } else {
       var rows = lines.map(function (c) {
         var key = String(c).trim();
-        if (!risky[key]) return '<div style="white-space:pre">' + esc(c) + '</div>';
-        var ok = !!auth[key];
+        var kind = risky[key];
+        if (!kind) return '<div style="white-space:pre">' + esc(c) + '</div>';
+        var a = auth[key];
+        var what = kind === 'secret'
+          ? 'adds a secret line the device does not hold'
+          : 'dangerous';
+        // A reason is TESTIMONY (C140): the person's statement, drawn as that,
+        // never as the cause. Its minimum is shape, never quality.
+        var state = a && a.reason
+          ? what + ': AUTHORISED, stated reason: "' + esc(a.reason) + '"'
+          : what + ': authorise this exact line with your reason';
         var box = hooks.authorise
           ? '<input type="checkbox" class="form-check-input mt-0" data-auth-device="'
-            + esc(t.name) + '" data-line="' + esc(key) + '"' + (ok ? ' checked' : '')
+            + esc(t.name) + '" data-line="' + esc(key) + '"' + (a ? ' checked' : '')
             + ' onchange="' + esc(hooks.authorise) + '(this.dataset.authDevice)">'
           : '';
-        return '<div class="bg-danger-subtle text-danger-emphasis" data-dangerous-line>'
-          + '<label class="d-flex gap-2 align-items-start mb-0">' + box
+        var reason = hooks.authorise
+          ? '<input type="text" class="form-control form-control-sm mt-1" data-auth-reason'
+            + ' data-auth-device="' + esc(t.name) + '" data-line="' + esc(key) + '"'
+            + ' placeholder="why this line is deliberate (a few words, recorded as yours)"'
+            + ' value="' + esc(a ? a.reason : '') + '"'
+            + ' onchange="if (this.parentNode.querySelector(\'input[type=checkbox]\').checked) '
+            + esc(hooks.authorise) + '(this.dataset.authDevice)">'
+          : '';
+        // The AGGREGATE (C140): the same line authorised here again and again
+        // is a pattern worth seeing. An unreadable record is said.
+        var seen = prior[key];
+        var history = (prog.prior && prog.prior.state === 'unreadable')
+          ? '<div class="small" data-auth-prior>whether it was authorised here before is '
+            + 'unknown: the receipt record could not be read</div>'
+          : seen
+            ? '<div class="small" data-auth-prior>authorised on this device ' + seen.count
+              + ' time(s) before; last ' + esc(seen.last_at) + ' by ' + esc(seen.last_actor)
+              + ', stated reason: "' + esc(seen.last_reason) + '"</div>'
+            : '';
+        return '<div class="bg-danger-subtle text-danger-emphasis" data-dangerous-line data-kind="'
+          + kind + '"><label class="d-flex gap-2 align-items-start mb-0">' + box
           + '<span style="white-space:pre">' + esc(c) + '</span>'
-          + '<span class="ms-auto small">' + (ok ? 'dangerous: AUTHORISED'
-            : 'dangerous: tick to authorise this exact line') + '</span></label></div>';
+          + '<span class="ms-auto small">' + state + '</span></label>' + reason + history
+          + '</div>';
       }).join('');
       // What the program IS, when it is not something sent (C127): a
       // capture's diff and an onboarding's startup config are sent nowhere,
@@ -308,6 +341,18 @@
         + 'style="max-height:220px;overflow:auto;white-space:pre" data-pr-program="'
         + esc(t.name) + '">' + esc(s.lines.join('\n')) + '</div>';
     }
+    // The authorised exceptions, each with its STATED reason (C140): the
+    // person's testimony, drawn as that, never as an established cause. A
+    // receipt from before reasons existed says so.
+    (s.authorised || []).forEach(function (a) {
+      var line = (a && typeof a === 'object') ? a.line : a;
+      var why = (a && typeof a === 'object' && a.reason) ? a.reason : '';
+      body += '<div class="small mt-1" data-pr-authorised>authorised'
+        + (s.actor ? ' by ' + esc(s.actor) : '') + ': <code>' + esc(line) + '</code>, '
+        + (why ? 'stated reason: "' + esc(why) + '"'
+               : 'no reason recorded (authorised before reasons were required)')
+        + '</div>';
+    });
     var rb = t.rollback || {};
     if (rb.performed) {
       // What the rollback ACHIEVED, never only that it ran (C112): a rollback

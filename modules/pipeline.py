@@ -605,6 +605,11 @@ def _stage_ci_gate(ctx: PipelineContext) -> None:
     Both were removed with Jenkins. A gate that describes a check it does not
     make is the wrong-and-looks-right state.
     """
+    from modules.nsot.authorisation import key as _auth_key
+
+    # KEYS, named by the one authorisation mechanism (C140): a line's key is
+    # itself unless it holds a secret position, so the gate and the confirm
+    # name a line the same way.
     allowed: set[str] = set(ctx.params.get("allowed_dangerous", []))
 
     for ip, cmds in ctx.rendered_commands.items():
@@ -614,7 +619,7 @@ def _stage_ci_gate(ctx: PipelineContext) -> None:
             raise PipelineStageError(f"CI gate: no rendered commands for {hostname}")
         for cmd in cmds:
             for pat in _DANGEROUS_PATTERNS:
-                if pat.search(cmd) and cmd.strip() not in allowed:
+                if pat.search(cmd) and _auth_key(cmd) not in allowed:
                     raise PipelineStageError(
                         f"CI gate: dangerous command detected for {hostname}: {cmd!r}. "
                         f"Add the exact command string to params['allowed_dangerous'] to override."

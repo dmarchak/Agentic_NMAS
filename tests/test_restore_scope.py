@@ -99,10 +99,12 @@ class TestTheDevicesRestorePoints:
         body = json.dumps(d)
         assert len(old) >= 4 and new not in body and f"password 0 {old}" not in body
 
-    def test_an_account_the_device_no_longer_has_is_silent(self, lab):
+    def test_an_account_the_device_no_longer_has_is_refused(self, lab):
         """The other case, from the same real line: HEAD holds a different
-        account, so re-applying the baseline would ADD the old one back. No
-        guard refuses an addition (C79), so the chooser must say it."""
+        account, so re-applying the baseline would ADD the old one back. Until
+        C79 no guard refused an addition and this read `silent`; now the
+        restore's own check refuses it (unless the line is authorised with a
+        reason), so the chooser reads `refused` like a rewrite."""
         import re
 
         from modules.nsot.repo import GoldenItem, save_golden
@@ -114,7 +116,7 @@ class TestTheDevicesRestorePoints:
         save_golden("Lab", [GoldenItem("r2", renamed, "203.0.113.12")],
                     source="manual", actor="t", baseline=False)
         by_ref = {p["ref"]: p["credential"] for p in _points(lab)["points"]}
-        assert by_ref[lab["baseline"]] == "silent", by_ref
+        assert by_ref[lab["baseline"]] == "refused", by_ref
 
 
 class TestTheChooserDrawsIt:
