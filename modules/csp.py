@@ -21,24 +21,23 @@ LOAD. `connect-src 'self'` keeps fetch, XHR and WebSockets on this origin;
 rewriting and framing. A top-level navigation carrying data off the page is
 NOT blockable by CSP, and the policy does not pretend otherwise.
 
-**The CDN entries are C123's, and leave with it.** Four libraries load from
-public CDNs, two unpinned. They are listed by exact path prefix, never by
-host, so the policy admits those files and not the rest of the CDN.
+**No CDN is admitted** (C123, closed 2026-09-28). While four libraries
+loaded from public CDNs the policy had to admit them, which is a policy
+permitting the thing it should block; they are vendored now, so script and
+style come from this origin only.
 """
 
-#: Script and style sources outside this origin, by exact path prefix (C123).
-CDN_SCRIPTS = (
-    "https://cdn.jsdelivr.net/npm/xterm/",            # device.html, the terminal (7.8)
-    "https://cdn.jsdelivr.net/npm/socket.io-client/",  # device.html, the terminal (7.8)
-    "https://unpkg.com/vis-network@9.1.6/",            # index.html, topology
-    "https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/",  # index.html, device ordering
-)
-CDN_STYLES = ("https://cdn.jsdelivr.net/npm/xterm/",)
+#: Script and style sources outside this origin: NONE (C123). The four
+#: libraries that loaded from public CDNs, two unpinned, are vendored from
+#: registry-verified tarballs (static/js/vendor/MANIFEST.json), so the policy
+#: admits nothing that is not served from here.
+CDN_SCRIPTS = ()
+CDN_STYLES = ()
 
 POLICY = "; ".join((
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' " + " ".join(CDN_SCRIPTS),
-    "style-src 'self' 'unsafe-inline' " + " ".join(CDN_STYLES),
+    " ".join(("script-src 'self' 'unsafe-inline'",) + CDN_SCRIPTS),
+    " ".join(("style-src 'self' 'unsafe-inline'",) + CDN_STYLES),
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     "connect-src 'self'",

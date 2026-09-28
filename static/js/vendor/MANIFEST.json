@@ -1,0 +1,92 @@
+{
+ "socket.io-client/LICENSE": {
+  "bytes": 1116,
+  "from": "LICENSE",
+  "integrity": "sha512-7wjKAvVXYOJsbmUgkWbnhPD4bFpkqrUR0++XOjpGFmqDqsqV1CI93VTraeExLxpjxEqrWgFoSRZu1ihjLWfkAA==",
+  "package": "socket.io-client",
+  "sha256": "73cb68c437d59e066f9386ef97be57298df4db119fdbd7d7150817c6dbd9f189",
+  "tarball": "https://registry.npmjs.org/socket.io-client/-/socket.io-client-4.8.4.tgz",
+  "version": "4.8.4"
+ },
+ "socket.io-client/socket.io.min.js": {
+  "bytes": 47295,
+  "from": "dist/socket.io.min.js",
+  "integrity": "sha512-7wjKAvVXYOJsbmUgkWbnhPD4bFpkqrUR0++XOjpGFmqDqsqV1CI93VTraeExLxpjxEqrWgFoSRZu1ihjLWfkAA==",
+  "package": "socket.io-client",
+  "sha256": "d5d79a35039e860b32bdef4795528b05c2f788d4b2d9dacc913120e2878f7b3f",
+  "tarball": "https://registry.npmjs.org/socket.io-client/-/socket.io-client-4.8.4.tgz",
+  "version": "4.8.4"
+ },
+ "sortablejs/LICENSE": {
+  "bytes": 1106,
+  "from": "LICENSE",
+  "integrity": "sha512-bv9qgVMjUMf89wAvM6AxVvS/4MX3sPeN0+agqShejLU5z5GX4C75ow1O2e5k4L6XItUyAK3gH6AxSbXrOM5e8w==",
+  "package": "sortablejs",
+  "sha256": "e94dfc31e800d169257569db270457c9f028440c9ccae41e7eb78b2db18f1298",
+  "tarball": "https://registry.npmjs.org/sortablejs/-/sortablejs-1.15.0.tgz",
+  "version": "1.15.0"
+ },
+ "sortablejs/Sortable.min.js": {
+  "bytes": 44136,
+  "from": "Sortable.min.js",
+  "integrity": "sha512-bv9qgVMjUMf89wAvM6AxVvS/4MX3sPeN0+agqShejLU5z5GX4C75ow1O2e5k4L6XItUyAK3gH6AxSbXrOM5e8w==",
+  "package": "sortablejs",
+  "sha256": "8a9889aecc2f011e15031fed87eeb35ac75e62655a7b4889ba247ee8ea872474",
+  "tarball": "https://registry.npmjs.org/sortablejs/-/sortablejs-1.15.0.tgz",
+  "version": "1.15.0"
+ },
+ "vis-network/LICENSE-APACHE-2.0": {
+  "bytes": 10171,
+  "from": "LICENSE-APACHE-2.0",
+  "integrity": "sha512-Eiwx1JleAsUqfy4pzcsFngCVlCEdjAtRPB/OwCV7PHBm+o2jtE4IZPcPITAEGUlxvL4Fdw7/lZsfD32dL+IL6g==",
+  "package": "vis-network",
+  "sha256": "1509904280a272780fd69c04b858f512cf216f8e3464a0dd98d8f34416feced9",
+  "tarball": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
+  "version": "9.1.6"
+ },
+ "vis-network/LICENSE-MIT": {
+  "bytes": 1084,
+  "from": "LICENSE-MIT",
+  "integrity": "sha512-Eiwx1JleAsUqfy4pzcsFngCVlCEdjAtRPB/OwCV7PHBm+o2jtE4IZPcPITAEGUlxvL4Fdw7/lZsfD32dL+IL6g==",
+  "package": "vis-network",
+  "sha256": "1f65085e54c036645082257618db2c7b787e68c3b02485e214ecd09e0834ee8f",
+  "tarball": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
+  "version": "9.1.6"
+ },
+ "vis-network/vis-network.min.js": {
+  "bytes": 702611,
+  "from": "standalone/umd/vis-network.min.js",
+  "integrity": "sha512-Eiwx1JleAsUqfy4pzcsFngCVlCEdjAtRPB/OwCV7PHBm+o2jtE4IZPcPITAEGUlxvL4Fdw7/lZsfD32dL+IL6g==",
+  "package": "vis-network",
+  "sha256": "576bb887733eb01bb52ee75b90ef46d818454de5fddb5b616fb8a298d307ca12",
+  "tarball": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
+  "version": "9.1.6"
+ },
+ "xterm/LICENSE": {
+  "bytes": 1261,
+  "from": "LICENSE",
+  "integrity": "sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg==",
+  "package": "xterm",
+  "sha256": "b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd",
+  "tarball": "https://registry.npmjs.org/xterm/-/xterm-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "xterm/xterm.css": {
+  "bytes": 5383,
+  "from": "css/xterm.css",
+  "integrity": "sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg==",
+  "package": "xterm",
+  "sha256": "832f3f2c603b43ad4351ff04970150cc7a873014276db126a6065c6dd81e4872",
+  "tarball": "https://registry.npmjs.org/xterm/-/xterm-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "xterm/xterm.js": {
+  "bytes": 283404,
+  "from": "lib/xterm.js",
+  "integrity": "sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg==",
+  "package": "xterm",
+  "sha256": "f0aea0f75f48559013ae6643c2479dd737d26da42d5524e6d2b70915ae6523c7",
+  "tarball": "https://registry.npmjs.org/xterm/-/xterm-5.3.0.tgz",
+  "version": "5.3.0"
+ }
+}

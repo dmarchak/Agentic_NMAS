@@ -649,9 +649,11 @@
 <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
 
 <!-- xterm.js + socket.io for Terminal tab -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
-<script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/socket.io-client/dist/socket.io.js"></script>
+{# Vendored, pinned, from registry-verified tarballs (C123; static/js/vendor/MANIFEST.json).
+   These loaded UNPINNED from a CDN: whatever was newest that day. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/xterm/xterm.css') }}" />
+<script src="{{ url_for('static', filename='js/vendor/xterm/xterm.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vendor/socket.io-client/socket.io.min.js') }}"></script>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {

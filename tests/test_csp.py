@@ -16,11 +16,11 @@ from modules import csp
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _external_loads():
+def _external_loads(root=ROOT):
     """(kind, url) for every external script src and stylesheet href in the
     templates."""
     out = []
-    for dp, _d, fs in os.walk(os.path.join(ROOT, "templates")):
+    for dp, _d, fs in os.walk(os.path.join(root, "templates")):
         for f in fs:
             if not f.endswith(".html"):
                 continue
@@ -45,22 +45,47 @@ class TestThePolicy:
         doc = csp.__doc__
         assert "cannot" in doc.lower() and "RUNNING" in doc and "not the braces" in doc
 
-    def test_no_cdn_is_admitted_by_host_alone(self):
-        for src in csp.CDN_SCRIPTS + csp.CDN_STYLES:
-            assert src.count("/") >= 4 and src.endswith("/"), f"a path prefix, not a host: {src}"
 
 
-class TestItFitsThePages:
-    def test_every_external_load_is_admitted_and_every_admission_is_used(self):
-        loads = _external_loads()
-        assert len(loads) >= 4, loads            # the scan can see them (C123's four)
-        refused = [(k, u) for k, u in loads
-                   if not any(u.startswith(p) for p in
-                              (csp.CDN_SCRIPTS if k == "script" else csp.CDN_STYLES))]
-        assert refused == [], f"the policy would block these on the live page: {refused}"
-        unused = [p for p in csp.CDN_SCRIPTS + csp.CDN_STYLES
-                  if not any(u.startswith(p) for _k, u in loads)]
-        assert unused == [], f"admitted and loaded by nothing (vendored? remove it): {unused}"
+class TestNothingLoadsFromOffTheHost:
+    """C123 (closed 2026-09-28): four libraries loaded from public CDNs, two
+    UNPINNED, which made the plan's constraint 8 (vendored, so the tool works
+    air-gapped) false and put four external origins' script in a page that
+    manages network devices. They are vendored from registry-verified
+    tarballs; nothing a template loads may come from off the host."""
+
+    def test_no_template_loads_anything_external(self):
+        assert _external_loads() == []
+        assert csp.CDN_SCRIPTS == () and csp.CDN_STYLES == ()
+        assert "http" not in csp.POLICY
+
+    def test_the_scan_sees_one(self, tmp_path):
+        (tmp_path / "templates").mkdir()
+        (tmp_path / "templates" / "x.html").write_text(
+            '<script src="https://cdn.example.invalid/lib.js"></script>'
+            '<link rel="stylesheet" href="https://cdn.example.invalid/a.css">')
+        assert [k for k, _u in _external_loads(str(tmp_path))] == ["script", "style"]
+
+    def test_every_vendored_file_is_what_the_manifest_says(self):
+        import hashlib
+        import json
+
+        vendor = os.path.join(ROOT, "static", "js", "vendor")
+        manifest = json.load(open(os.path.join(vendor, "MANIFEST.json")))
+        assert len(manifest) >= 8, manifest.keys()
+        for rel, entry in manifest.items():
+            data = open(os.path.join(vendor, rel), "rb").read()
+            assert hashlib.sha256(data).hexdigest() == entry["sha256"], rel
+            assert entry["integrity"].startswith("sha512-") and entry["version"], rel
+
+    def test_every_vendored_library_is_loaded_by_a_page(self):
+        import json
+
+        manifest = json.load(open(os.path.join(ROOT, "static", "js", "vendor", "MANIFEST.json")))
+        pages = "".join(open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
+                        for f in ("index.html", "device.html"))
+        code = [rel for rel in manifest if rel.endswith((".js", ".css"))]
+        assert code and not [rel for rel in code if f"js/vendor/{rel}" not in pages], code
 
 
 class TestTheHeader:
