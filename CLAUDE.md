@@ -5699,10 +5699,15 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **55 open at 2026-09-28, triaged and
-re-triaged** (the register's top): functional 30, each placed in a stage on
-the functional path; hardening deferred for the lab 9; minor 16. B8 (the
-backups' only decryption key on one laptop) closed on measurement. **The operator's decision, 2026-09-28: this is a lab, so the work is
+present when each was recorded. **55 open at 2026-09-28, re-sorted: A 3 (all
+deferred for the lab), B 8 (3 on the critical path: C148, C54, C50),
+UNKNOWN 3, C 41.** Every live row opens its status with its bucket, and
+`test_register_hygiene.py` refuses one without it: **a new finding gets its
+bucket the turn it is recorded, with the criterion applied.** The first
+triage was a one-time sort, and the functional/lab/minor split replaced the
+severity axis for every later row, so C148 (blocking the central loop) was
+filed as work for 7.3. B8 (the backups' only decryption key on one laptop)
+closed on measurement. **The operator's decision, 2026-09-28: this is a lab, so the work is
 features, functionality and design, and security is DEFERRED, not
 abandoned.** The plan is the functional path (R1, R2b, 7.2 from C54, 7.3
 with C50, then 7.4 onward). NSOT_PLAN's Stage 9 holds hardening, labelled

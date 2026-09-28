@@ -1,10 +1,12 @@
-"""The register's open sections hold only open rows.
+"""The register's open rows are open, and each carries its bucket.
 
 Measured 2026-09-28: 31 of the 92 rows in the open sections were FIXED, DONE
 or closed in their own status cell and had never moved to Closed, so the open
-count read about twice the work there was, and the register was read as more
-urgent than it was. A row that is fixed moves in the same turn; this refuses
-one that did not.
+count read about twice the work there was. The same night, D8 sat CLOSED in
+"Scheduled", a section this check did not cover, and every row recorded after
+the triage got a home but no BUCKET (C148, blocking the central loop, was filed
+as work for 7.3): the severity axis stopped being applied the night it was
+defined. So both are now the shape of a row, not a habit.
 """
 
 import os
@@ -13,9 +15,14 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REGISTER = os.path.join(ROOT, "docs", "OPEN_FINDINGS.md")
 
-#: A status cell that opens with one of these says the row is finished.
-DONE = re.compile(r"^\**\s*(FIXED|CLOSED|DONE|MERGED|RE-RUN DONE)\b|^closed\b", re.I)
-NOT_OPEN = ("## Closed", "## Scheduled", "## Count", "## Triage")
+#: Every section whose rows are not closed. "Scheduled" included: a row with a
+#: home is still a row (C143 was invisible to the triage for having one).
+LIVE = ("## A.", "## B.", "## C.", "## D.", "## E.", "## Scheduled")
+
+TAG = re.compile(r"^\*\*\[(A|B|UNKNOWN|C)\b([^\]]*)\]\*\*")
+#: A status cell that says the row is finished, after its bucket tag.
+DONE = re.compile(r"^(\*\*\[[^\]]*\]\*\*\s*)?\**\s*(FIXED|CLOSED|DONE|MERGED|RE-RUN DONE)\b"
+                  r"|^(\*\*\[[^\]]*\]\*\*\s*)?closed\b", re.I)
 
 
 def split_cells(row):
@@ -45,29 +52,73 @@ def rows_by_section(text):
     return out
 
 
-def done_rows_in_open_sections(text):
-    return [rid for sec, rid, cells in rows_by_section(text)
-            if not sec.startswith(NOT_OPEN) and len(cells) > 2 and DONE.match(cells[2])]
+def live_rows(text):
+    return [(rid, cells) for sec, rid, cells in rows_by_section(text)
+            if sec.startswith(LIVE)]
 
 
-def test_no_finished_row_sits_in_an_open_section():
-    text = open(REGISTER, encoding="utf-8").read()
+def done_rows_in_live_sections(text):
+    """The status can sit in the third cell or the fourth: in "Scheduled" the
+    third is a date and D8's CLOSED was in its "Where" (the first version of
+    this check read only the third, and passed with D8 in place)."""
+    return [rid for rid, cells in live_rows(text)
+            if any(DONE.match(c) for c in cells[2:4])]
+
+
+def bucket_problems(text):
+    """Every live row opens its status cell with ONE bucket: B names what it
+    blocks, UNKNOWN names the measurement that would settle it."""
+    out = []
+    for rid, cells in live_rows(text):
+        m = TAG.match(cells[2] if len(cells) > 2 else "")
+        if not m:
+            out.append(f"{rid}: no bucket")
+        elif m.group(1) == "B" and "blocks" not in m.group(2):
+            out.append(f"{rid}: B names nothing it blocks")
+        elif m.group(1) == "UNKNOWN" and not m.group(2).startswith(":"):
+            out.append(f"{rid}: UNKNOWN names no measurement")
+        elif "sorted 20" not in m.group(2):
+            out.append(f"{rid}: the bucket carries no date it was sorted")
+    return out
+
+
+def _real():
+    return open(REGISTER, encoding="utf-8").read()
+
+
+def test_no_finished_row_sits_in_a_live_section():
+    text = _real()
     rows = rows_by_section(text)
-    open_rows = [r for r in rows if not r[0].startswith(NOT_OPEN)]
-    closed = [r for r in rows if r[0].startswith("## Closed")]
-    assert len(open_rows) >= 20 and len(closed) >= 100, (len(open_rows), len(closed))
-    assert done_rows_in_open_sections(text) == []
+    assert len(live_rows(text)) >= 40, len(live_rows(text))
+    assert len([r for r in rows if r[0].startswith("## Closed")]) >= 100
+    assert done_rows_in_live_sections(text) == []
 
 
-def test_a_planted_fixed_row_is_found():
-    """The control: the scan sees the shape it forbids, bold or bare, and
-    leaves an open row alone."""
-    planted = "\n".join([
-        "## C. Tooling that reports wrongly", "| # | Finding | Kind | Where |", "|---|---|---|---|",
-        "| C900 | a thing | **FIXED 2026-09-28**: done | here |",
-        "| C901 | a thing | closed | here |",
-        "| C902 | a `x || y` thing | **DECIDED**: build | here |",
-        "## Closed", "| # | Finding | Closed | Reason |", "|---|---|---|---|",
-        "| C903 | a thing | 2026-09-28 | **FIXED** |",
-    ])
-    assert done_rows_in_open_sections(planted) == ["C900", "C901"]
+def test_every_live_row_carries_its_bucket():
+    assert bucket_problems(_real()) == []
+
+
+PLANTED = "\n".join([
+    "## C. Tooling that reports wrongly", "| # | Finding | Kind | Where |", "|---|---|---|---|",
+    "| C900 | a thing | **[C, M; sorted 2026-09-28]** **FIXED 2026-09-28**: done | here |",
+    "| C901 | a thing | closed | here |",
+    "| C902 | a `x || y` thing | **[B, later: blocks 7.4; sorted 2026-09-28]** build | here |",
+    "| C903 | a thing | build | here |",
+    "| C904 | a thing | **[B; sorted 2026-09-28]** build | here |",
+    "| C905 | a thing | **[UNKNOWN; sorted 2026-09-28]** measure | here |",
+    "## Scheduled out of the register", "| # | Finding | Scheduled | Where |", "|---|---|---|---|",
+    "| D900 | a thing | **[C, F; sorted 2026-09-28]** 2026-09-26 | **CLOSED** by X |",
+    "## Closed", "| # | Finding | Closed | Reason |", "|---|---|---|---|",
+    "| C906 | a thing | 2026-09-28 | **FIXED** |",
+])
+
+
+def test_the_planted_rows_are_found():
+    """The control: a finished row after a tag, a bare one, and one in
+    Scheduled are found; a tagged open row is left alone; and a missing
+    bucket, a B that blocks nothing and an UNKNOWN with no measurement are
+    each named. A Closed row is never examined."""
+    assert done_rows_in_live_sections(PLANTED) == ["C900", "C901", "D900"]
+    assert bucket_problems(PLANTED) == [
+        "C901: no bucket", "C903: no bucket", "C904: B names nothing it blocks",
+        "C905: UNKNOWN names no measurement"]
