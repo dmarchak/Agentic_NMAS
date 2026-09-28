@@ -602,16 +602,68 @@ _ROTATION_WHAT = ("a device's credential rotation; until a persist reads SAFE, "
                   "a reboot or redeploy may bring back the previous password (B15)")
 
 
-def rotation_rows(records: list = None) -> list:
+def known_devices() -> tuple:
+    """``(names, reason)``: every device NMAS knows, lower-cased, from each
+    list's INVENTORY and each list's MANIFEST (a device mid-onboarding is in
+    the manifest and not yet the inventory, and has not left). *reason* is
+    non-empty when the set could not be established, and an empty set is such
+    a case: "no device anywhere" is far likelier an unread store than a fleet
+    that has all left, and must never be read as "every device departed"."""
+    import os
+
+    from modules import device as _device
+    from modules.config import LISTS_DIR
+    from modules.nsot import manifest as _m
+
+    names, problems = set(), []
+    try:
+        lists = _device.get_device_lists()
+    except Exception as exc:                   # noqa: BLE001
+        return set(), f"the device lists could not be read ({type(exc).__name__})"
+    for lst in lists:
+        base = os.path.join(LISTS_DIR, lst.get("filename", ""))
+        csv = os.path.join(base, "devices.csv")
+        try:
+            for d in _device.load_saved_devices(csv) if os.path.exists(csv) else []:
+                if d.get("hostname"):
+                    names.add(d["hostname"].lower())
+        except Exception as exc:               # noqa: BLE001
+            problems.append(f"{lst.get('name')}: inventory ({type(exc).__name__})")
+        repo = os.path.join(base, "config_repo")
+        if os.path.isdir(repo):
+            try:
+                for entry in (_m.load(repo).get("devices") or {}).values():
+                    if entry.get("name"):
+                        names.add(entry["name"].lower())
+            except Exception as exc:           # noqa: BLE001
+                problems.append(f"{lst.get('name')}: manifest ({type(exc).__name__})")
+    if problems:
+        return names, "could not read " + "; ".join(problems)
+    if not names:
+        return names, "no device is known in any list, so none can be called departed"
+    return names, ""
+
+
+def rotation_rows(records: list = None, known: tuple = None) -> list:
     """One row per device with a recorded rotation, from its LATEST record.
 
     s1's rotation of an exposed credential left its boot file holding that
     credential, and the only report was a terminal message that is gone. So a
     device stays in front of an operator until a later persist is recorded
-    reaching SAFE (`nmas-persist-credential` records one)."""
+    reaching SAFE (`nmas-persist-credential` records one).
+
+    **Derived from the audit AND from where the device is known** (C54, the
+    operator's, 2026-09-27). The audit is append-only, so a device that left
+    kept its row for ever: `rotation:bp-ztp-a` read `ok` about a device
+    destroyed a day earlier, and one whose last record was NOT safe would
+    have read `not_safe_to_reboot` for ever, uncleared by anything. A device
+    in no list's inventory or manifest is `departed`, its last record named
+    as history. When the known set cannot be established, no row is called
+    departed (the verdict stands, and the reason is said)."""
     from modules.nsot import credential_rotation as cr
 
     records = cr.rotation_records() if records is None else records
+    names, why_not = known_devices() if known is None else known
     latest = {}
     for rec in records:
         if rec.get("device"):
@@ -619,6 +671,17 @@ def rotation_rows(records: list = None) -> list:
     rows = []
     for device, rec in sorted(latest.items()):
         state, stage, at = rec.get("state", ""), rec.get("failed_stage", ""), rec.get("at", "")
+        if not why_not and device.lower() not in names:
+            unsafe = state not in (cr.ROTATED_PERSISTED, cr.REVERTED, cr.NOT_STARTED)
+            rows.append({"unit": f"rotation:{device}", "what": _ROTATION_WHAT,
+                         "state": "departed", "max_age_minutes": 0,
+                         "detail": (f"{device} is in no list's inventory or manifest: it has "
+                                    f"left management. Its last rotation record ({state} at "
+                                    f"{at}) is history, not a claim about a managed device"
+                                    + ("; that record was NOT safe to reboot, so if the device "
+                                       "still exists somewhere, nothing here manages it"
+                                       if unsafe else ""))})
+            continue
         if state == cr.ROTATED_PERSISTED:
             st, detail = "ok", f"persisted and read SAFE at {at}"
         elif state in (cr.REVERTED, cr.NOT_STARTED):
@@ -652,7 +715,9 @@ def rotation_rows(records: list = None) -> list:
         else:
             st, detail = "unknown", f"last recorded state {state or '(none)'} at {at}"
         rows.append({"unit": f"rotation:{device}", "what": _ROTATION_WHAT,
-                     "state": st, "detail": detail, "max_age_minutes": 0})
+                     "state": st, "max_age_minutes": 0,
+                     "detail": detail + (f" (whether it has left management is unknown: "
+                                         f"{why_not})" if why_not and names else "")})
     return rows
 
 
@@ -693,7 +758,7 @@ def sync_owner_rows(run=None, get=None) -> list:
 
 #: A declared not-applicable setting is a recorded decision, not a fault. It
 #: is still counted in the headline, so it cannot vanish from view.
-OK_STATES = ("ok", "not_applicable")
+OK_STATES = ("ok", "not_applicable", "departed")
 
 
 def ztp_responder_rows(run=None, get=None) -> list:
@@ -924,7 +989,9 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += version_rows() if version is None else list(version)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
+    gone = sum(1 for j in jobs if j["state"] == "departed")
     return {"ok": True, "jobs": jobs, "not_ok": bad,
             "headline": (f"{len(jobs) - len(bad)} of {len(jobs)} job(s) ok"
                          + (f" ({na} of them declared not applicable)" if na else "")
+                         + (f" ({gone} about a device that has left management)" if gone else "")
                          + (f"; not ok: {', '.join(bad)}" if bad else ""))}
