@@ -3623,12 +3623,18 @@ than one that never fires**: "it has alerted 9 times" would have satisfied anyon
 - the EXPECTED set from inventory where one exists (the gRPC sources, the syslog devices), so a member that
   vanishes is a firing, never a resolution;
 - a syslog rule's device from the LINE, since the stream's `host` label is the collector (`nmas` on every
-  line), each rule saying which (8.6's constraint);
+  line), each rule saying which (8.6's constraint). **ONE definition of "which device"**: the origin-id
+  after the IOS sequence number (`719: s4: `), the field the heartbeat rules read, shared by every
+  generator; a first regex took the sequence number and gave 11 "devices" that were message counters
+  (C166). And a check that every device label a rule produces names an inventory device;
 - **the check that would have caught all three: each generated rule can cross its own threshold against what
   the fleet actually produces.** In the suite, against real captured lines and series (the fixture rule: pieces
   real); on the host, probe 5 turned into a job: each rule's own query asked of its datasource over a window,
   its extreme against its own threshold, and a job-health row for a rule that cannot cross it;
-- the hand-built folder retired rule by rule as each is replaced, never edited in place again.
+- the hand-built folder retired rule by rule as each is replaced, never edited in place again;
+- the evidence it must reproduce (C168): the two incidents the old rules missed (09-22 23:41, every
+  telemetry source silent for about 20 minutes; 09-28 08:51, r1 and r3), each rule's history read
+  uncapped (a capped read made "never alerted" out of a rule that had).
 
 **Placement:** before 8.6, whose triage reader consumes these rules and is only as good as they are. Where it
 falls against 7.2 and 7.3 is the operator's to decide; nothing in 7.2 depends on it.
