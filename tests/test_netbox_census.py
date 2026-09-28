@@ -355,6 +355,35 @@ class TestATeardownThatCannotBeMeasuredHasNotPassed:
                    taken=_snapshot(sites=(["a"], ["a"])))
         assert "carries no taken_at" in capsys.readouterr().out
 
+    def test_each_modification_is_placed_against_the_baseline(
+            self, census, monkeypatch, tmp_path, capsys):
+        """R2b's question, "did anything a person built move?", measured
+        rather than read (the operator, 2026-09-28): a modification of an
+        object that EXISTED at the baseline is listed first and never cut by
+        the display limit; one created since is the run's own; a type the
+        census does not count cannot be placed and says so."""
+        from modules import netbox_guard
+
+        def row(endpoint, i):
+            return {"at": "2026-09-28T07:00:00Z", "endpoint": endpoint, "id": i,
+                    "name": f"o{i}", "actor": "p", "fields": {"x": {"before": 1, "after": 2}}}
+        entries = ([row("dcim/devices", 99 + n) for n in range(14)]
+                   + [row("extras/tags", 3), row("dcim/devices", 7)])
+        monkeypatch.setattr(netbox_guard, "modified_since", lambda since="", **k: {
+            "ok": True, "exists": True, "scope": "since", "count": len(entries),
+            "total_recorded": 60, "unknown_before": 0, "entries": entries})
+        snap = _snapshot(devices=(["7:r3", "11:r6"], ["11:r6"]))
+        snap["taken_at"] = "2026-09-28T06:45:43Z"
+        p = tmp_path / "before.json"
+        p.write_text(json.dumps(snap), encoding="utf-8")
+        self._main(census, monkeypatch, ["--compare", str(p)], taken=snap)
+
+        out = capsys.readouterr().out
+        assert "1 on objects that EXISTED at it" in out, out
+        assert "14 on objects created since" in out and "1 on types this census does not count" in out
+        listed = [l for l in out.splitlines() if "dcim/devices/" in l or "extras/tags/" in l]
+        assert "EXISTED" in listed[0] and "dcim/devices/7 " in listed[0], listed[:2]
+
     def test_a_modification_in_the_SAME_second_as_the_baseline_is_counted(
             self, monkeypatch):
         """Both sides are whole seconds. `<=` dropped a write made in the

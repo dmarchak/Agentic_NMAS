@@ -204,6 +204,35 @@ class TestAPartialAbandonNeverReportsSuccess:
         finally:
             netbox_guard.forget_created("probe")
 
+    def test_nothing_to_remove_says_WHY(self, repo):
+        """R1's probe-r1b: "0 object(s) removed, 0 left alone" read the same
+        as a NetBox step that had not run. It could not have been that: a
+        refusal and a failed read are `ok: False`, and the step fails. So the
+        remover's sentence rides on the row, and the counts alone never stand
+        for the reason."""
+        from modules.nsot.onboard import abandon_onboarding
+
+        _onboard(repo)
+        out = abandon_onboarding(
+            repo, "bp1", "probe",
+            remove_netbox=lambda lst, host, dry_run=False: {
+                "ok": True, "deleted": [], "skipped": [], "retained": [],
+                "message": "no device named 'bp1' in NetBox — nothing to remove"})
+        row = next(s for s in out["steps"] if s["step"] == "netbox")
+        assert row["ok"] and "no device named 'bp1'" in row["detail"], row
+
+    def test_a_real_removal_keeps_its_counts(self, repo):
+        """The floor: with no message, the counts are the detail as before."""
+        from modules.nsot.onboard import abandon_onboarding
+
+        _onboard(repo)
+        out = abandon_onboarding(
+            repo, "bp1", "probe",
+            remove_netbox=lambda lst, host, dry_run=False: {
+                "ok": True, "deleted": ["dcim/devices:9"], "skipped": []})
+        row = next(s for s in out["steps"] if s["step"] == "netbox")
+        assert row["detail"] == "1 object(s) removed, 0 left alone", row
+
     def test_remaining_says_how_to_finish(self, repo):
         from modules.nsot.onboard import abandon_onboarding
 

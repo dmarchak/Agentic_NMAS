@@ -1794,9 +1794,16 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     try:
         nb = remover(list_name, hostname, dry_run=dry_run) or {}
         if nb.get("ok"):
+            # The remover's own sentence rides along: "0 removed, 0 left
+            # alone" alone could not say WHY there was nothing (R1's
+            # probe-r1b: no device of that name in NetBox, because it never
+            # reached phase 2), and the operator could not tell it from a
+            # step that did not run. It could not have been that (every
+            # refusal and failed read is `ok: False`); now it says so.
             _step("netbox", True,
                   f"{len(nb.get('deleted') or [])} object(s) removed, "
-                  f"{len(nb.get('skipped') or [])} left alone")
+                  f"{len(nb.get('skipped') or [])} left alone"
+                  + (f": {nb['message']}" if nb.get("message") else ""))
             result["netbox"] = nb
         else:
             _step("netbox", False, nb.get("error", "removal refused"),

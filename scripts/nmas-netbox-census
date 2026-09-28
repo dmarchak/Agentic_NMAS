@@ -145,7 +145,35 @@ def _print(census: dict) -> None:
         print(f"  {what:28s} {why}")
 
 
-def _modification_report(since: str = "", taking: str = "") -> list:
+def _baseline_ids(before: dict) -> dict:
+    """``{endpoint: {id, ...}}`` for every type the baseline counted."""
+    types = (before or {}).get("types") or {}
+    out = {}
+    for name, path in ENDPOINTS:
+        if name in types:
+            ids = set()
+            for o in types[name].get("objects") or []:
+                try:
+                    ids.add(int(str(o).split(":", 1)[0]))
+                except ValueError:
+                    pass
+            out[path.strip("/")] = ids
+    return out
+
+
+def _against_baseline(entry: dict, ids: dict) -> str:
+    """WHICH object moved, measured against the baseline rather than read by a
+    person (the operator, before R2b, 2026-09-28): an object that EXISTED at
+    the baseline is somebody's or the fleet's, and one created since is the
+    run's own. A type the census does not count cannot be placed."""
+    endpoint = str(entry.get("endpoint", "")).strip("/")
+    if endpoint not in ids:
+        return "uncounted"
+    return "existed" if entry.get("id") in ids[endpoint] else "created"
+
+
+def _modification_report(since: str = "", taking: str = "",
+                         before: dict = None) -> list:
     """``(status, lines)`` stating what NMAS has MODIFIED.
 
     The census compares objects by identity, and an update changes neither the
@@ -190,17 +218,38 @@ def _modification_report(since: str = "", taking: str = "") -> list:
     if got["unknown_before"]:
         lines.append(f"  {got['unknown_before']} of them could not be read "
                      "before the write, so WHAT changed is unknown")
-    for e in got["entries"][:12]:
+    entries = got["entries"]
+    if before is not None:
+        ids = _baseline_ids(before)
+        kinds = {}
+        for e_ in entries:
+            e_["_vs"] = _against_baseline(e_, ids)
+            kinds[e_["_vs"]] = kinds.get(e_["_vs"], 0) + 1
+        lines.append(
+            f"  against the baseline: {kinds.get('existed', 0)} on objects that "
+            f"EXISTED at it (read each: somebody's or the fleet's object moved), "
+            f"{kinds.get('created', 0)} on objects created since (the run's "
+            f"own), {kinds.get('uncounted', 0)} on types this census does not "
+            f"count (cannot be placed)")
+        # Every pre-existing one is listed, never cut by the limit below: it
+        # is the line the check exists for.
+        entries = (sorted([e_ for e_ in entries if e_["_vs"] == "existed"],
+                          key=lambda e_: e_.get("at") or "")
+                   + [e_ for e_ in entries if e_["_vs"] != "existed"])
+    shown = max(12, sum(1 for e_ in entries if e_.get("_vs") == "existed"))
+    for e in entries[:shown]:
         fields = e.get("fields") or {}
         if e.get("before_unknown"):
             detail = "before-state unreadable"
         else:
             detail = ", ".join(
                 f"{k}: {v['before']} → {v['after']}" for k, v in fields.items())
-        lines.append(f"  {e['at']}  {e['endpoint']}/{e['id']} "
+        mark = {"existed": "EXISTED  ", "created": "created  ",
+                "uncounted": "uncounted "}.get(e.get("_vs"), "")
+        lines.append(f"  {mark}{e['at']}  {e['endpoint']}/{e['id']} "
                      f"{e.get('name') or ''}  [{e.get('actor')}]  {detail}")
-    if got["count"] > 12:
-        lines.append(f"  … and {got['count'] - 12} more")
+    if got["count"] > shown:
+        lines.append(f"  … and {got['count'] - shown} more")
     return (MODS_SOME if got["count"] else MODS_NONE), lines
 
 
@@ -314,7 +363,7 @@ def main() -> int:
         print()
         print(f"baseline taken: {before.get('taken_at') or 'unrecorded'}")
         mod_status, mod_lines = _modification_report(
-            since=before.get("taken_at") or "")
+            since=before.get("taken_at") or "", before=before)
         for line in mod_lines:
             print(line)
         print()

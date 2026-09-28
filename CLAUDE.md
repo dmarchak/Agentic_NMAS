@@ -1236,7 +1236,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_agent_failure_surfaces.py` | failure streak, same-error, ERROR log, red badge; the stale trigger stays fixed |
 | `test_disabled_is_a_state.py` | a disabled read still carries its history; every degraded GET classified |
 | `test_agent_panel_renders.py` | the shipped JS executed in duktape: what RENDERS while disabled, not what the endpoint carries |
-| `test_netbox_census.py` | identity per type, tagged separately, and the comparison can say no; C146: `taken_at` stamped BEFORE the read, a modification in the baseline's own second counted, and a run taking a baseline says so rather than blaming the snapshot |
+| `test_netbox_census.py` | identity per type, tagged separately, and the comparison can say no; C146: `taken_at` stamped BEFORE the read, a modification in the baseline's own second counted, and a run taking a baseline says so rather than blaming the snapshot; each modification placed against the baseline (an object that EXISTED at it, one created since, a type not counted), the pre-existing ones listed first and never cut |
 | `test_onboard_plan.py` | `build_plan` the only constructor; every refusal at once; a check that did not run has not passed |
 | `test_onboard_bootstrap_credential.py` | the crash window survives; one staging mechanism; a failed rotation does not report success |
 | `test_onboard_ordering.py` | no commit CREATED on failure — count, sha, reflog, orphan, hook; the commit last among the fallible |
