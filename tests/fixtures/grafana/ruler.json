@@ -1,0 +1,1620 @@
+{
+ "NMAS": [
+  {
+   "interval": "1m",
+   "name": "nmas-heartbeat",
+   "rules": [
+    {
+     "annotations": {
+      "description": "r1 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 61 heartbeat gaps (299.8-300.3 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from r1 for 750 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr1:\\s` [750s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 750,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "682108e8-40cf-48ad-aed3-84a3a6be4382",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: r1",
+      "uid": "nmas-hb-r1",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "r1",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "750"
+     }
+    },
+    {
+     "annotations": {
+      "description": "r2 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 71 heartbeat gaps (299.6-300.5 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from r2 for 750 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr2:\\s` [750s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 750,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "6679d24a-246f-4014-b9c7-634887a17d03",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: r2",
+      "uid": "nmas-hb-r2",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "r2",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "750"
+     }
+    },
+    {
+     "annotations": {
+      "description": "r3 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 767 s, measured from this device's own 61 heartbeat gaps (299.3-317.0 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from r3 for 767 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr3:\\s` [767s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 767,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "47f64e9c-0283-47c8-ab20-6f2f5122a5b9",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: r3",
+      "uid": "nmas-hb-r3",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "r3",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "767"
+     }
+    },
+    {
+     "annotations": {
+      "description": "r4 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 749 s, measured from this device's own 61 heartbeat gaps (296.8-303.1 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from r4 for 749 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr4:\\s` [749s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 749,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "28a296dc-3914-4d6d-a3a5-0816904a4f92",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: r4",
+      "uid": "nmas-hb-r4",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "r4",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "749"
+     }
+    },
+    {
+     "annotations": {
+      "description": "r6 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 750 s, measured from this device's own 55 heartbeat gaps (299.8-300.3 s; clock rate 1.0). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from r6 for 750 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\sr6:\\s` [750s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 750,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "b6065a41-5a3f-47ed-82fb-5de3de3b6be2",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: r6",
+      "uid": "nmas-hb-r6",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "r6",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "750"
+     }
+    },
+    {
+     "annotations": {
+      "description": "s1 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 818 s, measured from this device's own 59 heartbeat gaps (316.3-342.7 s; clock rate 0.941). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from s1 for 818 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss1:\\s` [818s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 818,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "6ca61399-0f95-4ee8-910c-145c08ae7e0d",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: s1",
+      "uid": "nmas-hb-s1",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "s1",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "818"
+     }
+    },
+    {
+     "annotations": {
+      "description": "s2 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 828 s, measured from this device's own 59 heartbeat gaps (307.8-365.5 s; clock rate 0.941). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from s2 for 828 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss2:\\s` [828s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 828,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "42e8869b-c7f1-4bc7-b25a-2c476a1725e9",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: s2",
+      "uid": "nmas-hb-s2",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "s2",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "828"
+     }
+    },
+    {
+     "annotations": {
+      "description": "s3 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 1337 s, measured from this device's own 32 heartbeat gaps (493.0-597.1 s; clock rate 0.583). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from s3 for 1337 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss3:\\s` [1337s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 1337,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "0b14234d-17fe-4cdf-8f1d-889599a27867",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: s3",
+      "uid": "nmas-hb-s3",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "s3",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "1337"
+     }
+    },
+    {
+     "annotations": {
+      "description": "s4 emits NMAS-HEARTBEAT every 300 s by its own clock. Window 1005 s, measured from this device's own 45 heartbeat gaps (383.4-429.4 s; clock rate 0.752). None arrived in the window: the device, its logging block, the path to rsyslog, rsyslog, Alloy or Loki has stopped. The heartbeat cannot say which; it says that one of them has.",
+      "summary": "No syslog heartbeat from s4 for 1005 s"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "expr": "sum(count_over_time({job=\"network_syslog\"} |= \"NMAS-HEARTBEAT\" |~ `%HA_EM-\\d-LOG: NMAS\\-HEARTBEAT: NMAS\\-HEARTBEAT` |~ `\\ss4:\\s` [1005s]))",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 1005,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "reducer": "last",
+         "refId": "B",
+         "type": "reduce"
+        },
+        "queryType": "",
+        "refId": "B",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           }
+          }
+         ],
+         "expression": "B",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Alerting",
+      "guid": "a6450880-9370-405b-9366-d5ff76df9aa3",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": false,
+        "simplified_query_and_expressions_section": false
+       }
+      },
+      "namespace_uid": "afzcug3ughc74a",
+      "no_data_state": "Alerting",
+      "provenance": "file",
+      "rule_group": "nmas-heartbeat",
+      "title": "NMAS heartbeat missing: s4",
+      "uid": "nmas-hb-s4",
+      "updated": "2026-09-26T00:36:22Z",
+      "updated_by": {
+       "name": "",
+       "uid": "service"
+      },
+      "version": 2
+     },
+     "keep_firing_for": "0s",
+     "labels": {
+      "device": "s4",
+      "nmas": "heartbeat",
+      "window_basis": "measured",
+      "window_seconds": "1005"
+     }
+    }
+   ]
+  }
+ ],
+ "RCN Lab": [
+  {
+   "interval": "1m",
+   "name": "1m",
+   "rules": [
+    {
+     "annotations": {
+      "description": "No data is the healthy state (no admin-up interface is down), so no-data reads OK. It read NoData, and a healthy network looked blind for days (C166, C168).",
+      "summary": "{{ $labels.instance }} {{ $labels.ifDescr }} is down"
+     },
+     "expr": "",
+     "for": "1m",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efwpn8hr7sfeob",
+        "model": {
+         "editorMode": "code",
+         "expr": "ifOperStatus{job=~\"cisco_8000v|cisco_vios_l2\"} > 1\n  and on(instance, ifDescr) ifAdminStatus == 1",
+         "instant": true,
+         "intervalMs": 1000,
+         "legendFormat": "__auto",
+         "maxDataPoints": 43200,
+         "range": false,
+         "refId": "A"
+        },
+        "queryType": "",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 600,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             0
+            ],
+            "type": "gt"
+           },
+           "operator": {
+            "type": "and"
+           },
+           "query": {
+            "params": [
+             "C"
+            ]
+           },
+           "reducer": {
+            "params": [],
+            "type": "last"
+           },
+           "type": "query"
+          }
+         ],
+         "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+         },
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "expression",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Error",
+      "guid": "68267cba-3a04-4d55-81f8-5a2e2c894875",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": true,
+        "simplified_query_and_expressions_section": true
+       }
+      },
+      "namespace_uid": "efy1xsik6ja4gc",
+      "no_data_state": "OK",
+      "notification_settings": {
+       "receiver": "lab-noop"
+      },
+      "rule_group": "1m",
+      "title": "Interface down",
+      "uid": "bfy1zttkzn8xsa",
+      "updated": "2026-09-28T19:44:35Z",
+      "updated_by": {
+       "name": "nmas-automation",
+       "uid": "afzctyu9xtds0b"
+      },
+      "version": 11
+     },
+     "keep_firing_for": "0s"
+    },
+    {
+     "annotations": {
+      "description": "Fires for each telemetry source present at any time in the last day and absent now. It was count by (source) (...) < 1, which could never fire: a lost source's series vanishes rather than reading 0, so the rule resolved at the moment it should have fired (C168). Limit: a source gone longer than a day stops firing; P.7 replaces this with the expected set from inventory.",
+      "summary": "{{ $labels.source }} has stopped streaming gRPC telemetry"
+     },
+     "expr": "",
+     "for": "2m",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efwpn8hr7sfeob",
+        "model": {
+         "editorMode": "code",
+         "expr": "count by (source) (last_over_time({subscription=\"101\"}[1d])) unless count by (source) ({subscription=\"101\"})",
+         "instant": true,
+         "intervalMs": 1000,
+         "legendFormat": "__auto",
+         "maxDataPoints": 43200,
+         "range": false,
+         "refId": "A"
+        },
+        "queryType": "",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 600,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             0
+            ],
+            "type": "gt"
+           },
+           "operator": {
+            "type": "and"
+           },
+           "query": {
+            "params": [
+             "C"
+            ]
+           },
+           "reducer": {
+            "params": [],
+            "type": "last"
+           },
+           "type": "query"
+          }
+         ],
+         "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+         },
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "expression",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Error",
+      "guid": "742dd0f6-56ac-4dd5-b62a-018b7d0202a6",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": true,
+        "simplified_query_and_expressions_section": true
+       }
+      },
+      "namespace_uid": "efy1xsik6ja4gc",
+      "no_data_state": "OK",
+      "notification_settings": {
+       "receiver": "lab-noop"
+      },
+      "rule_group": "1m",
+      "title": "gRPC telemetry stream lost",
+      "uid": "ffy1zziovhts0c",
+      "updated": "2026-09-28T19:44:35Z",
+      "updated_by": {
+       "name": "nmas-automation",
+       "uid": "afzctyu9xtds0b"
+      },
+      "version": 10
+     },
+     "keep_firing_for": "0s"
+    },
+    {
+     "annotations": {
+      "description": "Fires per DEVICE on a syslog message of severity 0-2 (emergencies, alerts, critical): IOS writes severity as the digit in the mnemonic. Severity 3 is not alerted: SMART_LIC-3-COMM_FAILED recurs by design (D4 gives the lab no route to Cisco). The device is the origin-id after the sequence number, as the heartbeat rules read it; the stream's host label is the collector. No data is the healthy state (C166, C168).",
+      "summary": "Critical syslog received from a network device in the last 5 minutes"
+     },
+     "expr": "",
+     "for": "0s",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efxk88ulvh3pcf",
+        "model": {
+         "datasource": {
+          "type": "loki",
+          "uid": "efxk88ulvh3pcf"
+         },
+         "editorMode": "code",
+         "expr": "sum by (device) (count_over_time({job=~\".*network_syslog\"} |~ \"%[A-Z0-9_]+-[0-2]-[A-Z0-9_]+\" | regexp \"\\\\d+: (?P<device>[A-Za-z][A-Za-z0-9._-]*): \" [5m]))",
+         "instant": true,
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "queryType": "instant",
+         "refId": "A"
+        },
+        "queryType": "instant",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 600,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             0
+            ],
+            "type": "gt"
+           },
+           "operator": {
+            "type": "and"
+           },
+           "query": {
+            "params": [
+             "C"
+            ]
+           },
+           "reducer": {
+            "params": [],
+            "type": "last"
+           },
+           "type": "query"
+          }
+         ],
+         "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+         },
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "expression",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Error",
+      "guid": "96cfd3ce-b661-4b4e-ab0b-01e26e1fc552",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": true,
+        "simplified_query_and_expressions_section": true
+       }
+      },
+      "namespace_uid": "efy1xsik6ja4gc",
+      "no_data_state": "OK",
+      "notification_settings": {
+       "receiver": "lab-noop"
+      },
+      "rule_group": "1m",
+      "title": "Critical syslog received",
+      "uid": "cfy204mmubdogd",
+      "updated": "2026-09-28T19:51:56Z",
+      "updated_by": {
+       "name": "nmas-automation",
+       "uid": "afzctyu9xtds0b"
+      },
+      "version": 9
+     },
+     "keep_firing_for": "0s"
+    },
+    {
+     "annotations": {
+      "summary": "{{ $labels.instance }} is not responding to SNMP polls"
+     },
+     "expr": "",
+     "for": "2m",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efwpn8hr7sfeob",
+        "model": {
+         "editorMode": "code",
+         "expr": "up{job=~\"cisco_8000v|cisco_vios_l2\"}",
+         "instant": true,
+         "intervalMs": 1000,
+         "legendFormat": "__auto",
+         "maxDataPoints": 43200,
+         "range": false,
+         "refId": "A"
+        },
+        "queryType": "",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 600,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             1
+            ],
+            "type": "lt"
+           },
+           "operator": {
+            "type": "and"
+           },
+           "query": {
+            "params": [
+             "C"
+            ]
+           },
+           "reducer": {
+            "params": [],
+            "type": "last"
+           },
+           "type": "query"
+          }
+         ],
+         "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+         },
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "expression",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Error",
+      "guid": "79a8adeb-7b63-4079-9e3b-011bc0eb14fd",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": true,
+        "simplified_query_and_expressions_section": true
+       }
+      },
+      "namespace_uid": "efy1xsik6ja4gc",
+      "no_data_state": "NoData",
+      "notification_settings": {
+       "receiver": "lab-noop"
+      },
+      "rule_group": "1m",
+      "title": "Device unreachable (SNMP)",
+      "uid": "afy1y3yecuyv4d",
+      "updated": "2026-09-28T19:38:21Z",
+      "updated_by": {
+       "name": "admin",
+       "uid": "afwpkish4ej28d"
+      },
+      "version": 11
+     },
+     "keep_firing_for": "0s"
+    },
+    {
+     "expr": "",
+     "for": "5m",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efwpn8hr7sfeob",
+        "model": {
+         "editorMode": "code",
+         "expr": "max by (instance, ifDescr) (rate(ifInErrors{job=~\"cisco_8000v|cisco_vios_l2\"}[5m]))",
+         "instant": true,
+         "intervalMs": 1000,
+         "legendFormat": "__auto",
+         "maxDataPoints": 43200,
+         "range": false,
+         "refId": "A"
+        },
+        "queryType": "",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 600,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             0
+            ],
+            "type": "gt"
+           },
+           "operator": {
+            "type": "and"
+           },
+           "query": {
+            "params": [
+             "C"
+            ]
+           },
+           "reducer": {
+            "params": [],
+            "type": "last"
+           },
+           "type": "query"
+          }
+         ],
+         "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+         },
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "expression",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Error",
+      "guid": "bd4762d1-b21f-4292-aadb-492f5053e6c7",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": true,
+        "simplified_query_and_expressions_section": true
+       }
+      },
+      "namespace_uid": "efy1xsik6ja4gc",
+      "no_data_state": "NoData",
+      "notification_settings": {
+       "receiver": "lab-noop"
+      },
+      "rule_group": "1m",
+      "title": "Interface error rate elevated",
+      "uid": "efy219zm7dclcb",
+      "updated": "2026-09-28T19:38:21Z",
+      "updated_by": {
+       "name": "admin",
+       "uid": "afwpkish4ej28d"
+      },
+      "version": 7
+     },
+     "keep_firing_for": "0s"
+    },
+    {
+     "expr": "",
+     "for": "5m",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efwpn8hr7sfeob",
+        "model": {
+         "editorMode": "code",
+         "expr": "max by (instance, ifDescr) (rate(ifOutDiscards{job=~\"cisco_8000v|cisco_vios_l2\"}[5m])) > 0.1",
+         "instant": true,
+         "intervalMs": 1000,
+         "legendFormat": "__auto",
+         "maxDataPoints": 43200,
+         "range": false,
+         "refId": "A"
+        },
+        "queryType": "",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 600,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             0.5
+            ],
+            "type": "gt"
+           },
+           "operator": {
+            "type": "and"
+           },
+           "query": {
+            "params": [
+             "C"
+            ]
+           },
+           "reducer": {
+            "params": [],
+            "type": "last"
+           },
+           "type": "query"
+          }
+         ],
+         "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+         },
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "expression",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Error",
+      "guid": "f46ee44a-3615-44d1-b75a-6a12a327c550",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": true,
+        "simplified_query_and_expressions_section": true
+       }
+      },
+      "namespace_uid": "efy1xsik6ja4gc",
+      "no_data_state": "OK",
+      "notification_settings": {
+       "receiver": "lab-noop"
+      },
+      "rule_group": "1m",
+      "title": "Interface output discards",
+      "uid": "efy220zs97xtse",
+      "updated": "2026-09-28T19:38:21Z",
+      "updated_by": {
+       "name": "admin",
+       "uid": "afwpkish4ej28d"
+      },
+      "version": 5
+     },
+     "keep_firing_for": "0s"
+    },
+    {
+     "annotations": {
+      "summary": "{{ $labels.instance }} probe {{ $labels.rttMonCtrlAdminIndex }} is failing"
+     },
+     "expr": "",
+     "for": "2m",
+     "grafana_alert": {
+      "condition": "C",
+      "data": [
+       {
+        "datasourceUid": "efwpn8hr7sfeob",
+        "model": {
+         "editorMode": "code",
+         "expr": "rttMonLatestRttOperSense != 1",
+         "instant": true,
+         "intervalMs": 1000,
+         "legendFormat": "__auto",
+         "maxDataPoints": 43200,
+         "range": false,
+         "refId": "A"
+        },
+        "queryType": "",
+        "refId": "A",
+        "relativeTimeRange": {
+         "from": 600,
+         "to": 0
+        }
+       },
+       {
+        "datasourceUid": "__expr__",
+        "model": {
+         "conditions": [
+          {
+           "evaluator": {
+            "params": [
+             0
+            ],
+            "type": "gt"
+           },
+           "operator": {
+            "type": "and"
+           },
+           "query": {
+            "params": [
+             "C"
+            ]
+           },
+           "reducer": {
+            "params": [],
+            "type": "last"
+           },
+           "type": "query"
+          }
+         ],
+         "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+         },
+         "expression": "A",
+         "intervalMs": 1000,
+         "maxDataPoints": 43200,
+         "refId": "C",
+         "type": "threshold"
+        },
+        "queryType": "expression",
+        "refId": "C",
+        "relativeTimeRange": {
+         "from": 0,
+         "to": 0
+        }
+       }
+      ],
+      "exec_err_state": "Error",
+      "guid": "2bf80b1c-a6ca-42bd-92ea-b160884b14b6",
+      "intervalSeconds": 60,
+      "is_paused": false,
+      "metadata": {
+       "editor_settings": {
+        "simplified_notifications_section": true,
+        "simplified_query_and_expressions_section": true
+       }
+      },
+      "namespace_uid": "efy1xsik6ja4gc",
+      "no_data_state": "OK",
+      "notification_settings": {
+       "receiver": "lab-noop"
+      },
+      "rule_group": "1m",
+      "title": "IP SLA probe failing",
+      "uid": "dfy23aj5fpfy8f",
+      "updated": "2026-09-28T19:38:21Z",
+      "updated_by": {
+       "name": "admin",
+       "uid": "afwpkish4ej28d"
+      },
+      "version": 3
+     },
+     "keep_firing_for": "0s"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""What does Grafana ACTUALLY answer? Capture the three endpoints the alert
+reader reads, read-only, as fixtures.
+
+    nmas-capture-grafana-alerts --out tests/fixtures/grafana
+
+Writes `ruler.json`, `rules_view.json` and `alertmanager.json` into --out
+(never into the store), each exactly as Grafana answered, and prints the time
+of the capture. It only GETs, through the configured Grafana integration.
+
+**Why it exists.** A parser's test is built from a capture, never from a
+shape typed from memory (C64-C67: four readers of device text were wrong on
+the real fleet while their tests passed). The Grafana reader
+(`modules/readers/grafana_alerts.py`) is tested against these captures, and
+a firing case is a minimal edit of a real piece (tests/fixtures/grafana).
+
+Nothing here is a secret (queries, labels, annotations, the names of the
+accounts that last edited each rule); read the files before committing them
+anyway, because a rule's annotation is free text somebody wrote.
+"""
+
+import sys
+
+ROOT = __import__("os").path.dirname(__import__("os").path.dirname(
+    __import__("os").path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import time  # noqa: E402
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--out", required=True, help="the directory to write the three captures")
+    args = ap.parse_args(argv)
+
+    from modules.integrations.grafana import GrafanaIntegration
+    from modules.readers import grafana_alerts as G
+
+    g = GrafanaIntegration()
+    answers = {}
+    for name, path in (("ruler", G.RULER), ("rules_view", G.RULES_VIEW),
+                       ("alertmanager", G.ALERTMANAGER)):
+        got = g._get(path)
+        if not got.get("ok"):
+            print(f"REFUSED: {path} answered {got.get('error') or 'nothing'}; nothing written",
+                  file=sys.stderr)
+            return 2
+        answers[name] = got["response"].json()
+    os.makedirs(args.out, exist_ok=True)
+    for name, body in answers.items():
+        with open(os.path.join(args.out, f"{name}.json"), "w", encoding="utf-8") as fh:
+            json.dump(body, fh, indent=1, sort_keys=True)
+    print(f"captured {', '.join(answers)} at "
+          f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} into {args.out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

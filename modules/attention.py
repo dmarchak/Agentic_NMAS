@@ -713,8 +713,212 @@ def authorisation_source(counts=None) -> dict:
 #: Every source, in the order a person reads them. Section 1a's other
 #: sources (freshness, Grafana alerts) join HERE through `source_result`,
 #: both through the reader-job pattern.
+# ---------------------------------------------------------------------------
+# Source: Grafana's alerts, from the grafana-alerts READER's cache (7.2; the
+# reader-job pattern's second instance, and 8.6's constraints on 7.2)
+# ---------------------------------------------------------------------------
+
+GRAFANA_READER = "grafana-alerts"
+
+#: Instances whose ONSETS fall within this of the previous one form one
+#: incident (8.6: grouping is on the onset, never on startsAt, because
+#: per-device windows fire one Loki outage up to 536 s apart). 360 s is a
+#: heartbeat onset's own uncertainty: the silence began somewhere in the
+#: device's last heartbeat period (300 s), and the rule notices it on its
+#: next evaluation (60 s). Two onsets closer than that cannot be told apart.
+INCIDENT_GAP_SECONDS = 360
+
+_KIND_WORDS = {"condition": "is alerting", "no_data": "reads no data",
+               "error": "cannot evaluate", "unknown_state": "is in a state this page does not know"}
+
+
+def _onset(inst: dict):
+    """(epoch or None, basis). A windowed rule fires one window after the
+    silence began, so its onset is the alert's start minus the window."""
+    starts, active = _ts(inst.get("starts_at")), _ts(inst.get("active_at"))
+    window = inst.get("window_seconds")
+    if window and (starts or active):
+        return (starts or active) - window, f"the alert's start minus the rule's {window} s window"
+    if active:
+        return active, "when the condition first held"
+    if starts:
+        return starts - (inst.get("for_seconds") or 0), "the alert's start minus the rule's pending time"
+    return None, "not recorded"
+
+
+def _incidents(instances: list) -> list:
+    """Groups of instances, each group one incident, by onset; an instance
+    with no onset is an incident of its own (never merged on a guess)."""
+    timed = sorted((i for i in instances if i["onset"] is not None), key=lambda i: i["onset"])
+    groups, current = [], []
+    for inst in timed:
+        if current and inst["onset"] - current[-1]["onset"] > INCIDENT_GAP_SECONDS:
+            groups.append(current)
+            current = []
+        current.append(inst)
+    if current:
+        groups.append(current)
+    return groups + [[i] for i in instances if i["onset"] is None]
+
+
+def _inventory():
+    """(hostnames, address -> hostname), or (None, reason) when unreadable."""
+    try:
+        from modules.device import load_saved_devices
+        devices = load_saved_devices()
+    except Exception as exc:                       # noqa: BLE001
+        return None, f"the inventory could not be read ({type(exc).__name__})"
+    return ({d.get("hostname") for d in devices if d.get("hostname")},
+            {d.get("ip"): d.get("hostname") for d in devices if d.get("ip")}), ""
+
+
+def _member(inst: dict, inv) -> dict:
+    """One instance as an incident member, naming where its device came from."""
+    names, by_ip = inv if inv else (None, None)
+    source = inst.get("device_from")
+    device, note = inst.get("device"), ""
+    if source == "address":
+        addr = inst.get("address")
+        device = (by_ip or {}).get(addr)
+        note = (f"from the polled address {addr}" if device else
+                f"the polled address {addr} matches no device's address in the inventory")
+    elif source in ("label", "line"):
+        note = ("from the rule's device label" if source == "label" else
+                "from the syslog line's origin-id")
+        if names is not None and device not in names:
+            note += ", and it is NOT in the inventory (a rule left behind by a device that left)"
+    else:
+        note = "the rule names no device"
+    if inv is None:
+        note += " (the inventory could not be read, so the name is unchecked)"
+    return {"rule": inst.get("rule"), "kind": inst.get("kind"), "device": device,
+            "device_from": source, "device_note": note, "state": inst.get("state"),
+            "fingerprint": inst.get("fingerprint"), "starts_at": inst.get("starts_at"),
+            "onset": _iso(inst["onset"]), "onset_basis": inst["onset_basis"],
+            "silenced_by": inst.get("silenced_by") or []}
+
+
+def grafana_source(cached=None) -> dict:
+    """Grafana's alert state, read from the reader's cache, NEVER from
+    Grafana (rule 1 of modules/reader_job.py). The reader's own liveness is
+    job health's row (`reader:grafana-alerts`), judged at request time."""
+    from modules import reader_job
+
+    started = time.time()
+    got = reader_job.read_cached(GRAFANA_READER) if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("grafana", "Grafana alerts", read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    inv, inv_why = _inventory()
+    rows = []
+
+    def add(key, what, cause, action, level, **kw):
+        rows.append(row(source="grafana", key=key, what=what, cause=cause, action=action,
+                        level=level, **kw))
+
+    # Grafana answering and not evaluating reads exactly like a healthy
+    # fleet (8.6: the Proxmox listing's 200 with 0 items).
+    for g in v.get("stalled_groups") or []:
+        add(f"stalled:{g.get('group')}", f"Grafana has stopped evaluating {g.get('group')}",
+            f"its last evaluation was {g.get('last_evaluation') or 'never'}, more than three "
+            f"of its {g.get('interval_seconds')} s intervals before the read; every rule in it "
+            "reads as quiet whether or not its condition holds",
+            {"label": "Check Grafana's alert scheduler: its log, then a restart"}, "danger")
+
+    alerting = [dict(i) for i in v.get("instances") or [] if i.get("kind") != "pending"]
+    for inst in alerting:
+        inst["onset"], inst["onset_basis"] = _onset(inst)
+    heartbeat_rules = {r.get("uid") for r in v.get("rules") or []
+                       if (r.get("labels") or {}).get("nmas") == "heartbeat"}
+    for group in _incidents(alerting):
+        members = [_member(i, inv) for i in group]
+        devices = sorted({m["device"] for m in members if m["device"]})
+        first = group[0]
+        heartbeats = {i.get("rule_uid") for i in group} & heartbeat_rules
+        whole_pipeline = bool(heartbeat_rules) and heartbeats == heartbeat_rules
+        if whole_pipeline:
+            what = "Every device's syslog heartbeat stopped at once"
+            cause = ("all " + str(len(heartbeat_rules)) + " heartbeat rules are alerting with "
+                     "onsets together, so no heartbeat is arriving from any device: the "
+                     "subject is the path they share (rsyslog, Alloy, Loki or the route to "
+                     "them), not each device")
+            action = {"label": "Check the syslog pipeline first: rsyslog, Alloy and Loki on the "
+                               "monitoring host"}
+        elif len(members) == 1:
+            m = members[0]
+            what = (f"{m['rule']} {_KIND_WORDS.get(m['kind'], m['kind'])}"
+                    + (f" on {m['device']}" if m["device"] else ""))
+            cause = f"{m['state']}; the device is {m['device_note']}"
+            action = ({"label": "Check the device's syslog path: the heartbeat cannot say which "
+                                "of the device, its logging block, rsyslog, Alloy or Loki stopped"}
+                      if first.get("rule_uid") in heartbeat_rules else
+                      {"label": f"Read the rule \"{m['rule']}\" in Grafana: this page records that "
+                                "it fired and where its device came from, not why",
+                       "known": False})
+        else:
+            what = f"{len(members)} alerts began together"
+            cause = ("; ".join(f"{m['rule']}" + (f" on {m['device']}" if m["device"] else "")
+                               + f" ({m['kind']})" for m in members)
+                     + f". Grouped because their onsets fall within {INCIDENT_GAP_SECONDS} s "
+                       "of each other; whether they share a cause is not decided here")
+            action = {"label": "Read the members together: one cause may explain them, "
+                               "or none", "known": False}
+        level = "danger" if any(m["kind"] == "condition" for m in members) else "unknown"
+        add(f"incident:{first.get('rule_uid') or first.get('rule')}:{_iso(first['onset']) or 'untimed'}",
+            what, cause, action, level, devices=devices, since=first["onset"],
+            operands={"members": members, "grouped_within_seconds": INCIDENT_GAP_SECONDS,
+                      "onset_basis": first["onset_basis"]})
+
+    # A rule that cannot see its data, or cannot evaluate, with no alerting
+    # instance saying so (C166, C168: rules sat in no-data for days).
+    covered = {i.get("rule_uid") for i in alerting}
+    for r in v.get("rules") or []:
+        health = r.get("health")
+        if health in ("nodata", "error") and r.get("uid") not in covered:
+            add(f"rule:{r.get('uid')}",
+                f"{r.get('title')} {'reads no data' if health == 'nodata' else 'cannot evaluate'}",
+                (f"its query returns nothing, so whether its condition holds is unknown "
+                 f"(its no-data state is {r.get('no_data_state') or 'unrecorded'})"
+                 if health == "nodata" else
+                 f"its last evaluation failed: {r.get('last_error') or 'no error recorded'}"),
+                {"label": f"Read the rule \"{r.get('title')}\"'s query in Grafana", "known": False},
+                "warning" if health == "nodata" else "unknown")
+
+    # The floor (8.6): every device should have a heartbeat rule the reader
+    # SEES. Fewer is a permission or provisioning gap, and a monitor's
+    # permissions can hide what it monitors behind a 200.
+    if inv is not None:
+        seen = {(r.get("labels") or {}).get("device") for r in v.get("rules") or []
+                if (r.get("labels") or {}).get("nmas") == "heartbeat"}
+        missing = sorted(inv[0] - seen)
+        if missing:
+            add("heartbeat-floor", f"{len(missing)} device(s) have no heartbeat rule Grafana shows",
+                "no heartbeat rule the reader can see names " + ", ".join(missing)
+                + ": the rule is missing, or the reader's account cannot see it",
+                {"label": "Regenerate the heartbeat rules (NSOT_PLAN P.1 step 5), then check "
+                          "the reader's Grafana role can read them"}, "warning", devices=missing)
+
+    c = v.get("counts") or {}
+    return source_result(
+        "grafana", "Grafana alerts", read_at=started, took_ms=took, rows=rows,
+        value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
+        checked=(f"{c.get('rules', 0)} rule(s) from {', '.join(doc.get('endpoints') or [])}; "
+                 f"{c.get('condition', 0)} alerting, {c.get('no_data', 0)} no data, "
+                 f"{c.get('error', 0)} error, {c.get('pending', 0)} pending, "
+                 f"{c.get('normal_no_data', 0)} reading no data as healthy by decision"
+                 + (f"; {inv_why}" if inv is None else "")))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
-           rollback_source, deploy_source, baseline_source, authorisation_source)
+           rollback_source, deploy_source, baseline_source, authorisation_source,
+           grafana_source)
 
 
 def _attach(rows: list) -> list:

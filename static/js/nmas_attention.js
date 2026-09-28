@@ -71,10 +71,30 @@
     return html;
   }
 
+  /* One incident member (a Grafana alert instance): the rule, its kind,
+     WHERE its device came from (8.6: from a label, the line or an
+     address, and the reader says which), and its onset with the basis. */
+  function memberHtml(m) {
+    return '<li>' + esc(m.rule) + ' (' + esc(m.kind) + ')'
+      + (m.device ? ' on <strong>' + esc(m.device) + '</strong>' : '')
+      + ': device ' + esc(m.device_note) + '; onset ' + when(m.onset)
+      + ' (' + esc(m.onset_basis) + ')'
+      + ((m.silenced_by || []).length ? '; silenced by ' + m.silenced_by.map(esc).join(', ') : '')
+      + '</li>';
+  }
+
+  function operandValue(v) {
+    if (v && typeof v === 'object' && v.length !== undefined) {
+      return v.map(function (x) { return typeof x === 'object' ? JSON.stringify(x) : x; })
+        .map(esc).join(', ');
+    }
+    return esc(typeof v === 'object' && v !== null ? JSON.stringify(v) : v);
+  }
+
   function rowHtml(r) {
-    var ops = Object.keys(r.operands || {}).map(function (k) {
-      return esc(k) + ': ' + esc(r.operands[k]);
-    }).join(', ');
+    var members = (r.operands || {}).members || [];
+    var ops = Object.keys(r.operands || {}).filter(function (k) { return k !== 'members'; })
+      .map(function (k) { return esc(k) + ': ' + operandValue(r.operands[k]); }).join(', ');
     return '<li class="list-group-item small" data-attention-row="' + esc(r.id)
       + '" data-attention-source="' + esc(r.source) + '">'
       + '<span class="badge ' + (BADGE[r.level] || 'bg-danger') + ' me-2">'
@@ -84,6 +104,7 @@
       + '<div class="text-muted">since ' + when(r.since) + '</div>'
       + '<div>' + esc(r.cause) + '</div>'
       + (ops ? '<div class="text-muted">' + ops + '</div>' : '')
+      + (members.length ? '<ul class="small mb-0">' + members.map(memberHtml).join('') + '</ul>' : '')
       // A row about ANOTHER row is folded into it (one event, one row); one
       // that still stands alone says why, because its target is not here.
       + ((r.attached || []).map(function (a) {
@@ -205,6 +226,7 @@
         NMAS.subscribe('goldens', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('baselines', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('job_health', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('alerts', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
       }
     });
   }

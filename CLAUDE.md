@@ -172,7 +172,12 @@ tracked in git.
   measured); Grafana is the second; the rest reuse it, so its ten rules
   are written in its docstring, each naming its finding. Readers live in
   **[modules/readers/](modules/readers/)**, listed in
-  `reader_job.DECLARED_MODULES`
+  `reader_job.DECLARED_MODULES`. `readers/grafana_alerts.py` reads the
+  ruler, the rules view and the Alertmanager every 60 s: three kinds
+  (condition, no data, error), which device and from where (label, the
+  line's origin-id by `ORIGIN_ID_PATTERN`, or an address), incidents grouped
+  on the onset, a stalled evaluator, and completeness from Grafana's own
+  counts
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
@@ -1252,6 +1257,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_write_authority.py` | C155: a real NetBox write with no declared authority is refused at the chokepoint (the switch still refuses first, and a dry run needs none); both records store the authority beside the actor; every `for_list()` in the program and its scripts declares one (AST, floor) |
 | `test_credential_store_integrity.py` | C157: the credential store gets the settings file's C20 fixes: two PROCESSES writing at once lose nothing (without the flock, 37-47% of writes were lost, measured), an unreadable store refuses every write and keeps the file byte-identical with a `0600` `.corrupt-` copy while a read survives on empty, every write is logged with its process and the key names it changes (never a value), and a save outside the lock is refused |
 | `test_store_integrity_c158_c160.py` | C158, C160: the NetBox created-object record, `rolled_back.json` and devices.csv lose nothing to two PROCESSES writing at once; an unreadable created record refuses every write and keeps the file; an unreadable rolled-back record BLOCKS every plan naming the record (it lifted every block); a devices.csv write replaces the file (a new inode), never truncates it; Reorder keeps a device the order does not name; Refresh Hostnames keeps a rotation made while it ran; `csv.DictWriter` lives in one module; two lock instances for one path nest without blocking (bounded, so a regression fails rather than hangs) |
+| `test_grafana_reader.py` | 7.2 step 14, against a REAL read-only capture (`tests/fixtures/grafana/`, every firing case a minimal edit of a real instance): sixteen rules read, the quiet fleet no row; which device from where per rule, and a line rule with another pattern named as not the definition; a rule counting more instances than it lists, and a next-page token, refused; the same capture read four minutes later is a stalled evaluator; an alerting address instance joined to its Alertmanager fingerprint and stored as an address; Grafana's own DatasourceNoData is no data, never a condition; the three endpoints named and a refusal naming its endpoint; the source: nothing stored is unknown, an address resolved or said to match nothing, one silence across the fleet ONE incident whose subject is the pipeline, two silences 420 s apart two, a no-data rule a row, the floor naming a device with no rule the reader sees, a device that left named; members drawn with their device's origin and onset basis |
 | `test_live_contract.py` | 7.2 step 13, the live-data contract: the server's heartbeat beats on its interval (half the fastest reader's), survives a failed beat, reaches a connected page through the app's emitter and is started with the app's services; a source read for the request makes no freshness promise and a reader's value carries its own; the SHIPPED client on a controlled clock names a silent channel after 2.5 beats and recovers on the next, marks EVERY subscribed panel on its data (never only a status area), catches each panel up once on reconnect and never on the first connect, draws fresh, stale, no-promise and unknown ages, redraws a stamped panel on the tick with no request; Needs attention draws a source past its promise stale and opens the full list |
 | `test_announce.py` | C58: a reader finishing reaches a CONNECTED Socket.IO test client through the app's own emitter (a failed read too); keys outside the vocabulary refused, no emitter raises, the message carries names never data; the SHIPPED client executed in duktape re-fetches only the subscribed panel, draws a dropped or failed connection in `#nmasLiveNote` and nothing before the first connect, and the header path works with no socket |
 | `test_reader_job.py` | 7.2's reader-job pattern: a reader omitting a claim (endpoint, interval basis, announced key) is refused at registration; the value is dated by the read and a failed read keeps it (streak start kept, a success ends it); exactly-full pages refused; the error redacted; an unreadable cache replaced and preserved; announced after a failure too, a failed announcement counted; liveness `not_run`, `ok`, `failing` since the streak, `never_succeeded`, `stale` from the window's end, `unknown` |
@@ -5158,7 +5164,9 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   nested acquire therefore took a second `flock` on a new descriptor, which
   blocks on the process's own lock: the first test run hung. `flock` is per
   open file description, so depth is per (thread, path) now.
-- **A gate that reads a result file must first REMOVE it** (2026-09-28, mine: `e986e66`). A
+- **A CHECK THAT READS A FILE SOME EARLIER RUN WROTE MUST PROVE THE FILE IS THIS RUN'S** (the
+  operator's general form; `value_at`'s rule one layer down). The instance, a gate that reads a
+  result file must first REMOVE it (2026-09-28, mine: `e986e66`). A
   docs script failed, which correctly skipped the suite; the chain then read the result file
   after a `;`, found the PREVIOUS commit's `5330 passed`, and committed with it. The suite had
   not run (measured afterwards on the same tree: 5344 passed). The commit-message-file rule

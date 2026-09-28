@@ -87,6 +87,7 @@ VOCABULARY = {
     "variables": "the CSV-era variable store and compliance policy",
     "bulk_ops": "bulk operation records",
     "job_health": "job-health rows, as the job-health reader last stored them",
+    "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state

@@ -174,7 +174,8 @@ def readers() -> list:
 
 #: The modules that register a reader when imported. A reader module is
 #: listed here, or it is not in the population job health watches.
-DECLARED_MODULES: tuple = ("modules.readers.job_health_reader",)
+DECLARED_MODULES: tuple = ("modules.readers.job_health_reader",
+                           "modules.readers.grafana_alerts")
 
 
 # ---------------------------------------------------------------------------

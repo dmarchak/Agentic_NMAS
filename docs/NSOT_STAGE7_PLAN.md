@@ -1345,6 +1345,38 @@ history, so the line can name the newest baseline tag as the last decision
 known to be earned, while a denial before 2026-09-28 stays unrecoverable.
 Scheduled with the rest of the baseline source's work, not built now.
 
+**7.2 step 14 BUILT (2026-09-28): Grafana's alerts, the reader pattern's second
+instance** (`modules/readers/grafana_alerts.py`, every 60 s: both rule groups
+evaluate every 60 s, measured). It reads three endpoints and names them on
+every value: the ruler (configuration), the rules view (evaluated state and
+health) and the Alertmanager (fingerprint and `startsAt`). Tested against a
+real read-only capture (`scripts/nmas-capture-grafana-alerts`), every firing
+case a minimal edit of a real instance. What it keeps, each from a finding:
+- **condition, no data and error are three kinds** (C165: Grafana's own
+  DatasourceNoData alerts made "0 against 2" read as a disagreement);
+- **a rule in no data is a row**, with no alerting instance needed (C166,
+  C168: rules sat in no data for days);
+- **which device, and from where**: the rule's generated label, the line's
+  origin-id by the ONE pattern (`ORIGIN_ID_PATTERN`, and a rule using another
+  is named as not the definition), or the polled address, stored as an
+  address and resolved against the inventory by the page, which says when no
+  device holds it or the device has left;
+- **an instance is rule, fingerprint and `startsAt`**, and incidents group on
+  the ONSET (the start minus the rule's window), within 360 s: a heartbeat
+  onset's own uncertainty (its 300 s period plus the 60 s evaluation). Every
+  heartbeat alerting at once is ONE incident whose subject is the pipeline;
+- **Grafana answering and not evaluating** is its own row (a group more than
+  three intervals past its last evaluation), since 200 with nothing firing
+  reads exactly like a healthy fleet;
+- **completeness from Grafana's own counts**: a group or rule counting more
+  than it lists, or a next-page token, refuses the read;
+- **the floor**: an inventory device with no heartbeat rule the reader SEES is
+  a row (a permission or provisioning gap);
+- history is NOT read (capped at 100 rows; 8.6 reads it uncapped).
+Needs attention draws each incident's members with where each device came
+from and the onset's basis, subscribes to `alerts`, and judges the value
+against the reader's promise (180 s) under the live-data contract.
+
 
 ## 9. Deferred, recorded rather than scoped
 

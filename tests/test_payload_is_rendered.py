@@ -94,7 +94,8 @@ RENDERS = {
     "GET /attention": Render(
         lambda mp, tmp: P.needs_attention(mp, tmp),
         {"nmas_attention.js": ("attentionPanelHtml", "loadAttention", "sourcesLine",
-                               "rowHtml", "actionHtml", "unreadableNote")},
+                               "rowHtml", "actionHtml", "unreadableNote",
+                               "memberHtml", "operandValue")},
         (("nmas_attention.js", "attentionPanelHtml", "d"),),
         maps=("operands",),
         adapters={"modules/attention.py": ("needs_attention", "source_result", "row",
@@ -102,7 +103,9 @@ RENDERS = {
                                            "drift_source", "approvals_source",
                                            "pending_onboarding_source", "_attach",
                                            "rollback_source", "deploy_source",
-                                           "baseline_source", "authorisation_source")}),
+                                           "baseline_source", "authorisation_source",
+                                           "grafana_source", "_member", "_onset",
+                                           "_incidents")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,
