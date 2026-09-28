@@ -34,7 +34,74 @@ from modules.secrets_store import decrypt_value, encrypt_value
 log = logging.getLogger(__name__)
 
 _FILE = os.path.join(DATA_DIR, "credential_profiles.json")
-_lock = threading.Lock()
+class CredentialStoreUnreadable(RuntimeError):
+    """The credential store exists and could not be read, on a WRITE path.
+
+    Distinct from absent, and the distinction is the whole point (C157): an
+    unreadable store read as EMPTY and then saved replaces every profile,
+    override and template secret with nothing, the 2026-09-23 settings
+    erasure verbatim. The settings file survived that only because settings
+    are reconstructible; credentials are not (the recovery would be the
+    break-glass record and a visit to every device)."""
+
+
+class _StoreLock:
+    """Hold across every READ-MODIFY-WRITE of the store (C157, C20's fix).
+
+    In-process an RLock; across processes an exclusive ``flock`` on
+    ``credential_profiles.json.lock``, taken only at the outermost level (a
+    second flock from this process would block on itself). The host's CLIs
+    (rotation, retire, persist, an operator's snippet) write this file while
+    the app runs, and a `threading.Lock` let one process's save put back a
+    stale copy over another's change: a lost update, with no trace (C156's
+    leading candidate). `fcntl` is absent on Windows; there it is in-process.
+    """
+
+    def __init__(self):
+        self._rlock = threading.RLock()
+        self._local = threading.local()
+
+    def depth(self) -> int:
+        return getattr(self._local, "depth", 0)
+
+    def __enter__(self):
+        self._rlock.acquire()
+        d = self.depth()
+        self._local.depth = d + 1
+        if d == 0:
+            self._local.fd = None
+            try:
+                import fcntl
+                path = _FILE + ".lock"
+                os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+                fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                self._local.fd = fd
+            except ImportError:
+                pass
+            except Exception:
+                self._local.depth = d
+                self._rlock.release()
+                raise
+        return self
+
+    def __exit__(self, *exc):
+        d = self.depth() - 1
+        self._local.depth = d
+        try:
+            if d == 0 and getattr(self._local, "fd", None) is not None:
+                import fcntl
+                try:
+                    fcntl.flock(self._local.fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(self._local.fd)
+                    self._local.fd = None
+        finally:
+            self._rlock.release()
+        return False
+
+
+_lock = _StoreLock()
 
 DEFAULT_PROFILE = "default"
 
@@ -43,6 +110,23 @@ DEFAULT_PROFILE = "default"
 # Profile storage
 # ---------------------------------------------------------------------------
 
+def _preserve_corrupt(reason: str) -> None:
+    """Copy the damaged store aside, owner-only, before anything can
+    overwrite it (the settings file's `_preserve_corrupt`)."""
+    import time
+
+    target = f"{_FILE}.corrupt-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+    try:
+        if not os.path.exists(target):
+            from modules.config import open_secure
+            with open(_FILE, "rb") as src, open_secure(target, "wb") as dst:
+                dst.write(src.read())
+        log.error("credentials: %s; preserved the damaged store as %s",
+                  reason, os.path.basename(target))
+    except OSError as exc:
+        log.error("credentials: %s; and it could not be preserved: %s", reason, exc)
+
+
 def _load() -> dict:
     if not os.path.exists(_FILE):
         return {"profiles": {}, "device_overrides": {}}
@@ -50,25 +134,82 @@ def _load() -> dict:
         with open(_FILE, encoding="utf-8") as fh:
             data = json.load(fh)
     except (json.JSONDecodeError, OSError) as exc:
-        log.error("credentials: unreadable store (%s) — treating as empty", exc)
+        reason = f"unreadable store ({type(exc).__name__}: {exc})"
+        if _lock.depth():
+            # A WRITE path: saving what an unreadable read returned would
+            # erase every credential (C157). Refuse, and keep the file.
+            _preserve_corrupt(reason)
+            raise CredentialStoreUnreadable(
+                f"the credential store could not be read ({type(exc).__name__}), so "
+                "nothing was written: saving would have replaced every stored "
+                "credential. The damaged file is preserved beside it.")
+        # A READ path survives on empty, as the settings reader does, and
+        # says so; nothing is written from here.
+        log.error("credentials: %s; reading as empty, and every write is refused "
+                  "until it is repaired", reason)
         return {"profiles": {}, "device_overrides": {}}
     data.setdefault("profiles", {})
     data.setdefault("device_overrides", {})
     return data
 
 
+def _key_changes(before: dict, after: dict) -> str:
+    """``+added -removed ~changed`` per section, NAMES only, never a value."""
+    parts = []
+    for section in ("profiles", "device_overrides", "template_secrets"):
+        b, a = before.get(section) or {}, after.get(section) or {}
+        add = sorted(set(a) - set(b))
+        rem = sorted(set(b) - set(a))
+        chg = sorted(k for k in set(a) & set(b) if a[k] != b[k])
+        if add or rem or chg:
+            parts.append(f"{section}: " + " ".join(
+                [f"+{k}" for k in add] + [f"-{k}" for k in rem] + [f"~{k}" for k in chg]))
+    return "; ".join(parts) or "no key changed"
+
+
+def _writer_label() -> str:
+    import sys
+
+    frame = sys._getframe(1)
+    while frame and frame.f_globals.get("__name__") == __name__:
+        frame = frame.f_back
+    return f"{frame.f_globals.get('__name__', '?')}:{frame.f_code.co_name}" if frame else "?"
+
+
 def _save(data: dict) -> None:
+    import tempfile
+
+    if not _lock.depth():
+        # A save outside the lock is a read-modify-write that nothing
+        # serialised (C157): refuse, never race.
+        raise RuntimeError("credentials: _save() outside the store lock")
     os.makedirs(os.path.dirname(_FILE), exist_ok=True)
-    tmp = _FILE + ".tmp"
-    # OWNER-ONLY, through open_secure. Measured 2026-09-25: the live store was
-    # 0664 -- the main credential store, holding every profile, override and
-    # template secret -- written by a plain open() under the process umask,
-    # and the secret-storage checker did not know the file existed. os.replace
-    # swaps in the temp file's inode, so the next write heals an old file.
-    from modules.config import open_secure
-    with open_secure(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-    os.replace(tmp, _FILE)
+    # EVERY WRITE LOGGED, with what it changed and who made it, names only
+    # (C156: a clear left no trace, so a vanished override had no cause).
+    try:
+        before = json.load(open(_FILE, encoding="utf-8")) if os.path.exists(_FILE) else {}
+    except (json.JSONDecodeError, OSError):
+        before = {}
+    log.info("credentials: write by pid %d (%s): %s", os.getpid(), _writer_label(),
+             _key_changes(before, data))
+    # OWNER-ONLY, and a temp file PER WRITE (C157, C20): a shared `.tmp` let
+    # two writers share one inode and install a mixture. `mkstemp` creates it
+    # 0600, in the same directory so `os.replace` stays a rename; the name
+    # matches the checker's `credential_profiles.json.*` pattern.
+    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(_FILE) + ".tmp-",
+                               dir=os.path.dirname(_FILE))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, _FILE)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
     # EVERY write to the credential store, not just template secrets. Profiles,
     # device overrides, deletions and the scope migration all change what

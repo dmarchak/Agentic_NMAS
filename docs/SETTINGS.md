@@ -31,6 +31,7 @@ So each setting is in one of three states, visible in the posture panel:
 | **defaulted** | absent from the file; nobody has considered it |
 | **ratified** | present, equal to the default; somebody agreed |
 | **chosen** | present, different from the default; somebody decided otherwise |
+| **retired** | declared in the schema, defaulted, and read by NOTHING (the operator's name for the fourth state, 2026-09-28). Kept only because `write_settings()` refuses a key the schema does not declare, and an install's file may hold it; listed below with why it was retired. Not "not applicable", which is for a guard-gating setting whose default is empty |
 
 ---
 

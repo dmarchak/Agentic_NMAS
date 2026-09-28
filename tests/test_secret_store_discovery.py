@@ -90,7 +90,8 @@ def test_the_credential_store_is_written_owner_only(tmp_path, monkeypatch):
     monkeypatch.setattr(credentials, "_FILE", str(target))
     old = os.umask(0o002)
     try:
-        credentials._save({"profiles": {}, "device_overrides": {}})
+        with credentials._lock:            # every save holds it (C157)
+            credentials._save({"profiles": {}, "device_overrides": {}})
     finally:
         os.umask(old)
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
