@@ -4988,6 +4988,12 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   used hand-written output shapes, all in config syntax, so it could not
   exhibit the case. Its first control passed wrongly, served by the
   process-wide tool-result cache, which each drive now clears.
+- **A finding is recorded the turn it is raised, AFTER searching the register for it** (the
+  operator, 2026-09-27 and 2026-09-28). C108 lived only in conversation until the
+  re-run found it again, and C123 was registered as new two days after D8 had
+  recorded the same four CDN libraries: with ~60 open rows nobody recalls them all,
+  so a new row needs a search first, the way a new store needs declaring. Extend a
+  matching row rather than adding a second.
 - **A CLASS CLOSED AGAINST A LIST IS CLOSED AGAINST THE SURVEY, NOT THE
   CODE** (the operator, 2026-09-27, C121). When `FALSE_GREEN` emptied, "the
   false-green class is zero" was said and repeated back. It was true of the
