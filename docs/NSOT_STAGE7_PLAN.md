@@ -1193,6 +1193,19 @@ liveness row and a Needs attention row are 7.2's LAST step; moving its six
 consumers and drawing the dot are 7.3's, where the device list and Device
 page are rebuilt. The reader is the only part of 7.2 that 7.3 needs.
 
+**7.2 step 5 BUILT (2026-09-28): deploys and restores.** Each device's LATEST
+receipt, judged by the one decision the result screen uses
+(`preview_confirm.result_level`): a row unless it finished clean, so a later
+clean run supersedes a failure and a device leaves the page by being deployed,
+not by aging. Danger when a program was sent, warning when nothing was. Tested
+on the receipts a real apply writes. **For the unearned-baseline source
+(next): the denial's reason has no durable record.** `save_golden()` decides
+the baseline AFTER the commit, and the reasons live only in its return value;
+the `Intent-Match:` trailer is durable, the coverage reason is not. So the
+source derives from git (the newest golden commit against the newest baseline
+tag, with its Intent-Match trailer) and states the coverage reason as not
+recorded, or the reason is made durable first; a decision for that step.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's

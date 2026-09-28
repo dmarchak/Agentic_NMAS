@@ -390,6 +390,15 @@ def needs_attention(mp, tmp):
                                                      "intent_commit": "abc1234def",
                                                      "applicability": "blocking"}},
                                   "stale": {}, "unreadable": ""}),
+                              lambda: A.deploy_source(lambda: {"state": "ok", "rows": [
+                                  {"device": "r6", "outcome": "failed", "sent": True,
+                                   "at": "2026-09-28T11:00:00Z", "action": "deploy",
+                                   "stage": "verify", "reason": "verify failed",
+                                   "program_lines": 3, "matches_confirmed": True,
+                                   "actor": "ops@example.com",
+                                   "checks": {"ran": True, "ok": False,
+                                              "issues": ["ospf: 1 -> 0 neighbours"]},
+                                   "rollback": {"performed": True, "state": "restored"}}]}),
                               unreadable))
     return _ok(_client().get("/attention"))
 

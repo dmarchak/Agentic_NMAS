@@ -101,7 +101,7 @@ RENDERS = {
                                            "job_health_source", "_job_action",
                                            "drift_source", "approvals_source",
                                            "pending_onboarding_source", "_attach",
-                                           "rollback_source")}),
+                                           "rollback_source", "deploy_source")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,
@@ -513,14 +513,8 @@ EMPTY_IN_FIXTURE = {
                                                      "sentence); a real residue plan is "
                                                      "drawn in test_preview_confirm "
                                                      "(deploy_plan_with_residue)"),
-    "POST /golden/restore/preview devices[].blocking_reasons": (S_, _STRINGS),
     "POST /golden/capture/apply result.did_not.items[].lines": (S_, "the first did-not item is r2's departure from intent, whose lines are drawn under its checks; the baseline item carries no lines"),
-    "GET /netbox/status status.lists.Default.result.did_not.items[].lines": (S_, "the first did-not item is the device that was not imported (s9), which has no write lines; r2's partial item carries them"),
     "GET /deploy/receipts changes[].result.record.tags": (S_, "a receipt names the golden commit and not its tags, and the history's record statement says so"),
-    "GET /deploy/receipts changes[].result.targets[].checks.issues": (S_, "the fixture's verify is clean; a failing check is drawn in test_preview_confirm (TestTheResultHalf)"),
-    "GET /deploy/receipts changes[].result.targets[].checks.pending_convergence": (S_, "the fixture's verify converged; the renderer draws a pending line when one exists"),
-    "GET /deploy/receipts changes[].result.targets[].checks.from_intent": (S_, "the fixture's device ran every protocol its intent declares before the change; drawn from r1's real captures in test_pipeline_reads_real_output (TestVerifyChecksWhatIntentDeclares)"),
-    "GET /deploy/receipts changes[].result.targets[].checks.intent_unmet": (S_, "the fixture's declared protocols are up; an unmet one is drawn from r1's real captures in test_pipeline_reads_real_output (TestVerifyChecksWhatIntentDeclares)"),
     "GET /deploy/receipts changes[].result.targets[].rollback.commands": (S_, "no device in the fixture was rolled back"),
     "GET /deploy/receipts changes[].result.targets[].rollback.not_undone": (S_, "no device in the fixture was rolled back"),
     "GET /deploy/receipts changes[].result.did_not.items[].lines": (S_, "the did-not items here are a refusal, which carries no lines"),
@@ -529,7 +523,6 @@ EMPTY_IN_FIXTURE = {
     "POST /deploy/apply result.targets[].rollback.remaining": (S_, "no rollback in the fixture; an incomplete rollback's remaining lines are drawn in test_pipeline (TestARollbackSaysWhatItAchieved)"),
     "GET /deploy/receipts changes[].result.targets[].rollback.remaining": (S_, "no rollback in the fixture; an incomplete rollback's remaining lines are drawn in test_pipeline (TestARollbackSaysWhatItAchieved)"),
     "POST /deploy/apply result.targets[].rollback.not_undone": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
-    "POST /deploy/apply result.targets[].sent.lines": (S_, "the fixture's FIRST target is the refusal (s3), and a refused device sent nothing, so its program, rollback and not-undone lines are empty by definition; the deployed s4 carries sent lines (test_deploy_receipts asserts them on screen)"),
     "POST /golden/restore/preview devices[].excluded_unrenderable": (S_, _STRINGS),
     "POST /golden/restore/preview intent_restored": (S_, _STRINGS),
     "POST /golden/restore/preview un_onboarding": (S_, _STRINGS),
@@ -585,9 +578,6 @@ EMPTY_IN_FIXTURE = {
     "POST /onboard/plan preview.what_not.items[].lines": (S_, "onboarding's what-not items "
                                                "are sentences, never config lines"),
     # C140 / C79 (2026-09-28): the authorisation's reason and its aggregate.
-    "POST /deploy/apply result.targets[].sent.authorised": (R_, "the fixture's refused "
-        "device authorised nothing; the deployed row's {line, reason} is drawn "
-        "(data-pr-authorised)"),
     "POST /deploy/plan devices[].prior_authorised.lines": (R_, "no receipt precedes the "
         "plan in the fixture; each {count, last_at, last_actor, last_reason} is reached "
         "through real receipts in test_authorised_lines.py"),
@@ -596,8 +586,6 @@ EMPTY_IN_FIXTURE = {
     "POST /deploy/plan preview.targets[].program.secret": (S_, "a deploy never flags a "
         "secret line: an account added from intent is additive (C75); only a restore "
         "does (C79), and the restore provider reaches it"),
-    "POST /golden/restore/preview devices[].prior_authorised.lines": (R_, "no receipt "
-        "precedes the preview; reached in test_authorised_lines.py"),
     "POST /golden/restore/preview preview.targets[].program.prior.lines": (R_, "the "
         "preview's copy of the aggregate; reached in test_authorised_lines.py"),
 }
@@ -615,12 +603,16 @@ EMPTY_IN_FIXTURE = {
 # plan and the restore preview, each twice) needs a receipt BEFORE the plan,
 # which no provider writes; reached through real receipts in
 # test_authorised_lines.py. And the apply's refused row authorises nothing.
-EMPTY_RECORDS_CEILING = 27
+EMPTY_RECORDS_CEILING = 25
 
 
 def _empty_paths(obj, path=""):
-    """Every empty list or object in a payload, as a dotted path; a list's
-    items are walked through its first item, written `name[]`."""
+    """Every empty list or object in a payload, as a dotted path, a list's
+    items written `name[]`. A path under a list is empty only if it is empty
+    in EVERY item: the walker read the first item alone, so a field the
+    fixture reached in the second row (Needs attention's folded `attached`,
+    once a danger row sorted ahead of it) read as never reached. The first
+    item stood in for all of them: the proxy shape, inside the check."""
     out = []
     if isinstance(obj, dict):
         if not obj and path:
@@ -630,8 +622,9 @@ def _empty_paths(obj, path=""):
     elif isinstance(obj, list):
         if not obj:
             out.append(path)
-        for v in obj[:1]:
-            out += _empty_paths(v, path + "[]")
+        per_item = [set(_empty_paths(v, path + "[]")) for v in obj]
+        if per_item:
+            out += sorted(set.intersection(*per_item))
     return out
 
 

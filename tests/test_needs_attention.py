@@ -503,3 +503,52 @@ class TestRollbackBlocksAsASource:
         assert [r["id"] for r in res["rows"]] == ["rollback:Lab:record"]
         assert res["rows"][0]["level"] == "danger"
         assert "could not be read" in res["rows"][0]["cause"]
+
+
+# ---------------------------------------------------------------------------
+# Source: deploys and restores, from the REAL receipts a real apply writes
+# ---------------------------------------------------------------------------
+
+class TestDeploysAsASource:
+    def test_a_real_apply_s4_clean_s3_refused(self, monkeypatch):
+        """payload_providers.deploy_apply: s4 deploys and verifies, s3 is
+        refused (its program moved since it was confirmed). The receipts it
+        writes are the input: s4 is clean and absent, s3 is a warning, since
+        nothing was sent to it."""
+        P.deploy_apply(monkeypatch)
+        res = A.deploy_source()
+        assert res["state"] == "read", res
+        by_dev = {r["devices"][0]: r for r in res["rows"]}
+        assert sorted(by_dev) == ["s3"], [r["id"] for r in res["rows"]]
+        r = by_dev["s3"]
+        assert r["level"] == "warning" and r["operands"]["sent_lines"] == 0
+        assert r["what"].startswith("The last deploy to s3: refused")
+        assert "Changes tab" in r["action"]["label"]
+        assert "1 clean" in res["checked"] and "2 device(s)" in res["checked"]
+
+    def _row(self, host, outcome, sent, at, **kw):
+        return {"device": host, "outcome": outcome, "sent": sent, "at": at,
+                "action": "deploy", "program_lines": 3 if sent else 0,
+                "matches_confirmed": True if sent else None, "actor": "ops@example.com",
+                "checks": {"ran": bool(sent), "ok": True if outcome == "deployed" else False,
+                           "issues": kw.pop("issues", [])}, **kw}
+
+    def test_a_later_clean_run_supersedes_a_failure(self):
+        rows = [self._row("r2", "deployed", True, "2026-09-28T12:00:00Z"),       # newest
+                self._row("r2", "failed", True, "2026-09-28T11:00:00Z")]
+        res = A.deploy_source(lambda: {"state": "ok", "rows": rows})
+        assert res["rows"] == []
+
+    def test_a_failure_that_sent_is_danger_with_its_findings(self):
+        rows = [self._row("r2", "failed", True, "2026-09-28T11:00:00Z", stage="verify",
+                          reason="verify failed", issues=["ospf: 5 -> 3 neighbours"],
+                          rollback={"performed": True, "state": "restored"})]
+        r = A.deploy_source(lambda: {"state": "ok", "rows": rows})["rows"][0]
+        assert r["level"] == "danger" and r["since"] == "2026-09-28T11:00:00Z"
+        assert "ospf: 5 -> 3 neighbours" in r["cause"] and "rollback: restored" in r["cause"]
+
+    def test_unreadable_receipts_are_the_unreadable_row_and_absent_is_none(self):
+        bad = A.deploy_source(lambda: {"state": "unreadable", "error": "line 3 is not JSON"})
+        assert bad["state"] == "unreadable" and "line 3 is not JSON" in bad["rows"][0]["cause"]
+        none = A.deploy_source(lambda: {"state": "absent", "rows": []})
+        assert none["rows"] == [] and "no deploy or restore recorded" in none["checked"]

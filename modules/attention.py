@@ -466,11 +466,77 @@ def rollback_source(notes=None) -> dict:
                                   f"{n_stale} no longer blocking"))
 
 
+# ---------------------------------------------------------------------------
+# Source: a deploy or restore that did not finish clean
+# ---------------------------------------------------------------------------
+
+def deploy_source(read=None) -> dict:
+    """Each device's LATEST deploy or restore receipt, judged by the ONE
+    decision the result screen uses (`preview_confirm.result_level`): a row
+    unless it finished clean. A later clean run supersedes an earlier
+    failure, so a device leaves the page by being deployed, not by aging.
+    Danger when a program was SENT (the device may be part-changed), warning
+    when nothing was (a refusal changed nothing, and the change it was for
+    still has not landed)."""
+    from modules.config import get_current_list_name
+    from modules.nsot import receipts
+    from modules.preview_confirm import OUTCOME_WORDS, result_level
+
+    started = time.time()
+    try:
+        lst = get_current_list_name()
+        got = (read or (lambda: receipts.read(lst, limit=10 ** 6)))()
+    except Exception as exc:                       # noqa: BLE001
+        got = {"state": "unreadable", "error": f"it raised {type(exc).__name__}: {exc}"}
+    took = int((time.time() - started) * 1000)
+    if got.get("state") == "unreadable":
+        return source_result("deploys", "Deploys and restores", read_at=started, took_ms=took,
+                             error=f"the deploy receipts could not be read ({got.get('error')})")
+    latest = {}
+    for r in got.get("rows") or []:                # newest first
+        latest.setdefault(r.get("device") or "?", r)
+    rows = []
+    for host, r in sorted(latest.items()):
+        if result_level([r], receipt_ok=True) == "success":
+            continue
+        outcome = r.get("outcome", "")
+        rb = r.get("rollback") or {}
+        checks = r.get("checks") or {}
+        issues = [str(i) for i in checks.get("issues") or []]
+        unmet = [str(p) for p in checks.get("intent_unmet") or []]
+        cause = "; ".join(x for x in (
+            r.get("reason"),
+            f"stopped at {r['stage']}" if r.get("stage") else "",
+            f"verify found: {'; '.join(issues)}" if issues else "",
+            f"declared by intent and not up after: {', '.join(unmet)}" if unmet else "",
+            f"rollback: {rb.get('state')}" if rb.get("performed") else "",
+            "the program sent does NOT match the one confirmed"
+            if r.get("matches_confirmed") is False else "") if x) or \
+            f"its receipt records {outcome or 'no outcome'} with no reason"
+        rows.append(row(
+            source="deploys", key=f"{lst}:{host}",
+            level="danger" if r.get("sent") else "warning",
+            what=f"The last {r.get('action') or 'deploy'} to {host}: "
+                 f"{OUTCOME_WORDS.get(outcome, outcome.replace('_', ' ') or 'no outcome')}",
+            cause=cause,
+            action={"label": "Read its receipt on the device's Changes tab, then plan again"},
+            devices=[host], since=_ts(r.get("at")),
+            operands={"list": lst, "action": r.get("action"), "outcome": outcome,
+                      "sent_lines": r.get("program_lines") if r.get("sent") else 0,
+                      "by": r.get("actor")}))
+    return source_result("deploys", "Deploys and restores", read_at=started, took_ms=took,
+                         rows=rows,
+                         checked=(f"list {lst}: no deploy or restore recorded"
+                                  if got.get("state") == "absent" else
+                                  f"list {lst}: the latest receipt of {len(latest)} device(s), "
+                                  f"{len(latest) - len(rows)} clean"))
+
+
 #: Every source, in the order a person reads them. Section 1a's other
-#: sources (freshness, Grafana alerts, failed deploys, unearned baselines)
-#: join HERE, each through `source_result`.
+#: sources (freshness, Grafana alerts, unearned baselines) join HERE, each
+#: through `source_result`.
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
-           rollback_source)
+           rollback_source, deploy_source)
 
 
 def _attach(rows: list) -> list:
