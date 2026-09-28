@@ -46,7 +46,10 @@ class TestWriteGate:
             netbox_guard.assert_writes_allowed("POST dcim/devices/")
 
     def test_assert_passes_when_writes_enabled(self, writes_on):
-        netbox_guard.assert_writes_allowed("POST dcim/devices/")
+        # With the switch on AND a declared authority (C155); without one it
+        # is refused (test_netbox_write_authority.py).
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
+            netbox_guard.assert_writes_allowed("POST dcim/devices/")
 
     def test_post_blocked_without_touching_network(self, writes_off):
         from modules.netbox_client import _nb_post

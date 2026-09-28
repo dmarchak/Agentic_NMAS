@@ -94,6 +94,10 @@ class NetBoxWriteBlocked(RuntimeError):
     """Raised when a write is attempted with ``netbox_allow_writes`` off."""
 
 
+class NetBoxWriteUnauthorised(NetBoxWriteBlocked):
+    """A real write with no declared authority (C155)."""
+
+
 # ---------------------------------------------------------------------------
 # The gate
 # ---------------------------------------------------------------------------
@@ -117,6 +121,19 @@ def assert_writes_allowed(operation: str = "write") -> None:
             "Enable 'Allow writes to NetBox' in Settings → Integrations, or use "
             "the import preview, which asks for confirmation before writing."
         )
+    # THE CONFIRMATION IS CHECKED WHERE THE WRITE HAPPENS (C155, the operator's
+    # decision). The one-shot token was consumed by the NetBox tab's routes
+    # before they called the writer, and this checked only the switch, so any
+    # other path wrote on the switch alone. Every path now declares the
+    # confirmation it stands on (`for_list(..., authority=...)`): the tab's
+    # token, a person's Verify or Abandon, a host script's --apply. A path that
+    # declares none is refused here, on first use.
+    if not get_current_authority():
+        raise NetBoxWriteUnauthorised(
+            f"NetBox {operation} refused: this write declares no authority. Every "
+            "NetBox write names the confirmation it stands on (the NetBox tab's "
+            "one-time confirmation, a person's Verify or Abandon, or a host "
+            "script's --apply); a path that names none is refused here (C155).")
 
 
 # ---------------------------------------------------------------------------
@@ -495,6 +512,8 @@ def record_modified(list_name: str, endpoint: str, obj_id: int, fields,
         # reads as "nobody", and the truth is "this write carried no
         # identity" -- the same distinction as inconclusive against failed.
         "actor": actor or get_current_actor() or "unattributed",
+        # ON WHAT BASIS (C155): the confirmation the write stood on.
+        "authority": get_current_authority() or "undeclared",
     }
     if fields is None:
         entry["before_unknown"] = True
@@ -699,7 +718,10 @@ def record_created(list_name: str, endpoint: str, obj_id: int, name: str = "") -
         slug = list_slug(list_name)
         bucket = data.setdefault(slug, {}).setdefault(endpoint, [])
         if not any(e.get("id") == obj_id for e in bucket):
-            bucket.append({"id": obj_id, "name": name})
+            # WHO and ON WHAT BASIS, beside the id (C149, C155).
+            bucket.append({"id": obj_id, "name": name,
+                           "actor": get_current_actor() or "unattributed",
+                           "authority": get_current_authority() or "undeclared"})
             _save_created(data)
 
 
@@ -785,22 +807,34 @@ class for_list:
     applies to an argument whose absence *weakens a check*.
     """
 
-    def __init__(self, list_name: str, actor: str = ""):
+    def __init__(self, list_name: str, actor: str = "", authority: str = ""):
         self.list_name = list_name
         self.actor = actor
+        #: The confirmation the writes in this block stand on (C155). The
+        #: write gate refuses a real write without one, so its absence
+        #: TIGHTENS, never loosens.
+        self.authority = authority
 
     def __enter__(self):
         self._previous = getattr(_local, "list_name", None)
         self._previous_actor = getattr(_local, "actor", None)
+        self._previous_authority = getattr(_local, "authority", None)
         _local.list_name = self.list_name
         if self.actor:
             _local.actor = self.actor
+        if self.authority:
+            _local.authority = self.authority
         return self
 
     def __exit__(self, *exc):
         _local.list_name = self._previous
         _local.actor = self._previous_actor
+        _local.authority = self._previous_authority
         return False
+
+
+def get_current_authority() -> str:
+    return getattr(_local, "authority", None) or ""
 
 
 def get_current_list() -> str:

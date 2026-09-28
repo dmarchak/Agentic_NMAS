@@ -1255,7 +1255,7 @@ def bind_credentials_step(plan, *, repo: str) -> str:
 
 
 def create_netbox_record(repo: str, hostname: str, list_name: str, *,
-                         sync=None, actor: str = "") -> dict:
+                         sync=None, actor: str = "", authority: str = "") -> dict:
     """Create this device's NetBox objects. **Phase 2, after a capture.**
 
     It was step 2 of phase 1 and could not work there. `sync_list_to_netbox`
@@ -1316,7 +1316,7 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
               # resort, which is honest about not knowing.
               "prefix_len": (entry or {}).get("mgmt_prefix_len") or 0,
               "platform": (entry or {}).get("platform", ""), "role": "router"}
-    result = sync(list_name, [device], actor=actor) or {}
+    result = sync(list_name, [device], actor=actor, authority=authority) or {}
 
     if result.get("blocked"):
         out["reason"] = result.get("error") or "NetBox writes are disabled"
@@ -1792,7 +1792,8 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     if remover is None:
         from modules.netbox_client import remove_device_from_netbox as remover
     try:
-        nb = remover(list_name, hostname, dry_run=dry_run, actor=actor) or {}
+        nb = remover(list_name, hostname, dry_run=dry_run, actor=actor,
+                     authority=f"Abandon by {actor or 'unknown'}") or {}
         if nb.get("ok"):
             # The remover's own sentence rides along: "0 removed, 0 left
             # alone" alone could not say WHY there was nothing (R1's
@@ -2391,7 +2392,8 @@ def verify_and_promote(repo: str, hostname: str, list_name: str, *,
     # Deferred rather than skipped when there is no capture yet, and the
     # distinction is reported: `deferred` says the import has not run and
     # why, where a bare skip would read as "nothing to do".
-    out["netbox"] = create_netbox_record(repo, hostname, list_name, actor=actor)
+    out["netbox"] = create_netbox_record(repo, hostname, list_name, actor=actor,
+                                         authority=f"Verify by {actor or 'unknown'}")
     if out["netbox"].get("device_id") is not None:
         from modules.nsot import manifest as _m
 
@@ -2992,7 +2994,8 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
         return _stop("golden", saved.get("error") or "the golden was not saved")
 
     # ---- 6. NetBox, now that there is something to import ----------------
-    nb = (netbox or create_netbox_record)(repo, hostname, list_name, actor=actor)
+    nb = (netbox or create_netbox_record)(repo, hostname, list_name, actor=actor,
+                                          authority=f"Verify by {actor or 'unknown'}")
     result["netbox"] = nb
     if not _step("netbox", nb.get("ok"),
                  nb.get("reason") or f"{len(nb.get('created') or [])} object(s)"):

@@ -58,7 +58,7 @@ def writes_on(monkeypatch):
 def _upsert(nb, **extra):
     site = nb.seed("dcim/sites", {"name": "Lab", "slug": "lab"})
     role = nb.seed("dcim/device-roles", {"name": "Router", "slug": "router"})
-    with netbox_guard.for_list("Lab"), nc._attributed_to("r1"):
+    with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"), nc._attributed_to("r1"):
         return nc._upsert_device(
             nb, "http://nb.invalid", hostname="r1", ip="203.0.113.1",
             facts={"manufacturer": "Cisco", "model": "C8000v", "platform": "IOS-XE",
@@ -183,7 +183,7 @@ class TestAFailedDeleteIsNotASkip:
     def test_a_refused_delete_says_why(self, monkeypatch):
         nb = RefusingNetBox(refuse_deletes=True)
         obj = nb.seed("ipam/vlans", {"vid": 10})
-        with netbox_guard.for_list("Lab"):
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
             assert nc._nb_delete(nb, "http://nb.invalid", "ipam/vlans/", obj["id"]) is False
         assert "HTTP 409" in nc.last_delete_failure()
 

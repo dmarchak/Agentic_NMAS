@@ -228,7 +228,9 @@ def apply_import():
         try:
             set_sync_running(name, True)
             op_progress.update(pid, phase="importing", devices_done=0)
-            sync_list_to_netbox(name, devs, progress_id=pid, actor=actor)
+            sync_list_to_netbox(name, devs, progress_id=pid, actor=actor,
+                                authority=f"the NetBox tab's one-time confirmation "
+                                          f"of this import, by {actor}")
         except Exception as exc:              # noqa: BLE001
             outcome = "failed"
             log.error("netbox_safety: import thread failed: %s", exc, exc_info=True)
@@ -333,7 +335,9 @@ def apply_import_all():
             for n in names:
                 set_sync_running(n, True)
             op_progress.update(pid, phase="importing", devices_done=0)
-            sync_all_lists_to_netbox(items, progress_id=pid, actor=actor)
+            sync_all_lists_to_netbox(items, progress_id=pid, actor=actor,
+                                     authority=f"the NetBox tab's one-time confirmation "
+                                               f"of this import-all, by {actor}")
         except Exception as exc:              # noqa: BLE001
             outcome = "failed"
             log.error("netbox_safety: import-all thread failed: %s", exc, exc_info=True)
@@ -401,7 +405,9 @@ def apply_removal():
         return jsonify(err), status
 
     try:
-        result = remove_list_from_netbox(list_name, actor=_actor())
+        result = remove_list_from_netbox(
+            list_name, actor=_actor(),
+            authority=f"the NetBox tab's one-time confirmation of this Remove, by {_actor()}")
     except Exception as exc:                  # noqa: BLE001
         log.exception("netbox_safety: removal failed for '%s'", list_name)
         result = {"ok": False, "error": str(exc)}

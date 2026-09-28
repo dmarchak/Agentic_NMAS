@@ -75,11 +75,11 @@ def _import(hosts, dry):
                            role_id=role_id, ipam_stats=stats)
 
     if dry:
-        with netbox_guard.dry_run() as plan, netbox_guard.for_list("Lab"):
+        with netbox_guard.dry_run() as plan, netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
             go()
         counts = {k.strip("/"): v for k, v in plan.summary()["creates_by_type"].items()}
         return counts, nb
-    with netbox_guard.for_list("Lab"):
+    with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
         go()
     counts = {k: v for k, v in nb.created_counts().items()
               if k not in PLAN_EXCLUDED_ENDPOINTS}
@@ -129,9 +129,9 @@ class TestPreviewMatchesExecution:
                            facts=FACTS, interfaces=_interfaces(1), site_id=site_id,
                            role_id=role_id, ipam_stats=stats)
 
-        with netbox_guard.for_list("Lab"):
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
             go()
-        with netbox_guard.dry_run() as plan, netbox_guard.for_list("Lab"):
+        with netbox_guard.dry_run() as plan, netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
             go()
         assert plan.summary()["create_count"] == 0
 
@@ -153,7 +153,7 @@ class TestTagScope:
         })
         assert self._tag_slugs(existing) == set()
 
-        with netbox_guard.for_list("Lab"):
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
             _upsert_device(nb, "http://nb.invalid", hostname="R1", ip="203.0.113.1",
                            facts=FACTS, interfaces=_interfaces(1), site_id=site_id,
                            role_id=role_id, ipam_stats={})
@@ -170,7 +170,7 @@ class TestTagScope:
         nb.seed("dcim/devices", {"name": "R1", "site": site_id, "role": role_id})
         nb.seed("dcim/sites", {"name": "Other", "slug": "other"})
 
-        with netbox_guard.for_list("Lab"):
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
             _upsert_device(nb, "http://nb.invalid", hostname="R1", ip="203.0.113.1",
                            facts=FACTS, interfaces=_interfaces(1), site_id=site_id,
                            role_id=role_id, ipam_stats={})

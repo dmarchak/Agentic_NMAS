@@ -52,7 +52,7 @@ class TestAPreviewRecordsNoImport:
         from modules.netbox_client import sync_list_to_netbox
 
         box, status = nb
-        sync_list_to_netbox("probe-c134", [])
+        sync_list_to_netbox("probe-c134", [], authority="test: declared by the test (C155)")
         assert "probe-c134" in json.loads(status.read_text())["lists"]
 
     def test_a_preview_leaves_an_existing_record_alone(self, nb):

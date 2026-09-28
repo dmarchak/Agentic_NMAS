@@ -244,7 +244,8 @@ def main() -> int:
 
     changed = failed = 0
     actor = f"{os.environ.get('USER') or 'unknown'} (nmas-netbox-status-reset)"
-    with for_list(args.list_name, actor=actor):
+    with for_list(args.list_name, actor=actor,
+                  authority=f"nmas-netbox-status-reset --apply, by {actor}"):
         for r in todo:
             try:
                 _nb_patch(session, base, f"{ENDPOINT}/{r['id']}/",

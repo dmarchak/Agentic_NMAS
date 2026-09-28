@@ -401,7 +401,8 @@ def main() -> int:
     cfg = get_netbox_config()
     session = _session_from_config(cfg)
     made, failed = 0, []
-    with guard.for_list(args.list_name, actor=_host_actor()):
+    with guard.for_list(args.list_name, actor=_host_actor(),
+                        authority="nmas-netbox-repair-addresses --apply, by " + _host_actor()):
         for r in p["creates"]:
             try:
                 _ensure_ip_address(session, cfg["url"], r["address"],
@@ -476,7 +477,8 @@ def _remove_excluded(args) -> int:
     cfg = get_netbox_config()
     session = _session_from_config(cfg)
     gone, failed = 0, []
-    with guard.for_list(r["list"], actor=_host_actor()):
+    with guard.for_list(r["list"], actor=_host_actor(),
+                        authority="nmas-netbox-repair-addresses --remove-excluded --apply, by " + _host_actor()):
         for row in r["eligible"]:
             if _nb_delete(session, cfg["url"], "ipam/ip-addresses/", row["id"]):
                 gone += 1

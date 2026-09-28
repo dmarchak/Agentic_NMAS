@@ -57,7 +57,7 @@ def writes_on(monkeypatch):
 class TestACreateThatCannotBeTaggedIsRefused:
     def test_it_is_refused_and_recorded(self):
         nb = TagRefusing()
-        with netbox_guard.for_list("Lab"):
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
             with pytest.raises(RuntimeError, match="untagged"):
                 nc._nb_post(nb, "http://nb.invalid", "ipam/vlans/", {"vid": 10, "name": "x"})
         assert not [p for p in nb.posts if p[0] == "ipam/vlans"], "nothing was created"
@@ -65,7 +65,7 @@ class TestACreateThatCannotBeTaggedIsRefused:
     def test_inside_an_upsert_it_is_a_counted_write_failure(self):
         nb = TagRefusing()
         site = nb.seed("dcim/sites", {"name": "Lab", "slug": "lab"})
-        with netbox_guard.for_list("Lab"), nc._attributed_to("r1"):
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"), nc._attributed_to("r1"):
             with pytest.raises(RuntimeError):
                 nc._upsert_device(nb, "http://nb.invalid", hostname="r1", ip="203.0.113.1",
                                   facts={"manufacturer": "Cisco", "model": "C8000v",
@@ -79,7 +79,7 @@ class TestACreateThatCannotBeTaggedIsRefused:
         """One refusal, then the tag can be made: the next create is tagged.
         A cached failure left every later create untagged until a restart."""
         nb = TagRefusing(refusals=1)
-        with netbox_guard.for_list("Lab"):
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
             with pytest.raises(RuntimeError):
                 nc._nb_post(nb, "http://nb.invalid", "ipam/vlans/", {"vid": 10, "name": "a"})
             obj = nc._nb_post(nb, "http://nb.invalid", "ipam/vlans/", {"vid": 20, "name": "b"})

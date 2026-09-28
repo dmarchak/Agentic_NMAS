@@ -178,7 +178,8 @@ def main() -> int:
 
     actor = f"{os.environ.get('USER') or 'unknown'} (nmas-netbox-mask-context)"
     failed = 0
-    with for_list("", actor=actor):
+    with for_list("", actor=actor,
+                  authority=f"nmas-netbox-mask-context --apply, by {actor}"):
         for t in todo:
             d = t["device"]
             try:

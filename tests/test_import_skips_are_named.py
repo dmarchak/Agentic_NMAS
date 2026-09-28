@@ -48,7 +48,7 @@ def _upsert(config):
     site = nb.seed("dcim/sites", {"name": "Lab", "slug": "lab"})
     role = nb.seed("dcim/device-roles", {"name": "Router", "slug": "router"})
     stats = {"skipped": []}
-    with netbox_guard.for_list("Lab"), nc._attributed_to("r3"):
+    with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"), nc._attributed_to("r3"):
         nc._upsert_device(
             nb, "http://nb.invalid", hostname="r3", ip="203.0.113.3",
             facts={"manufacturer": "Cisco", "model": "C8000v", "platform": "IOS-XE",

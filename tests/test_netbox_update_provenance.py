@@ -517,7 +517,7 @@ class TestTheWriteSurfaceIsStillThree:
                 return _Resp({"id": 41, "display": "10.0.0.15/24",
                               **(json or {})})
 
-        with netbox_guard.for_list("default", actor="dustin@example.com"):
+        with netbox_guard.for_list("default", actor="dustin@example.com", authority="test: declared by the test (C155)"):
             netbox_client._nb_patch(Sess(), "http://nb",
                                     "ipam/ip-addresses/41/",
                                     {"assigned_object_id": 60})
@@ -626,7 +626,7 @@ class TestEnsureSiteDoesNotEditWhatItDoesNotOwn:
         monkeypatch.setattr(netbox_client, "_nb_get_by_id",
                             lambda *a, **k: dict(site))
         notes = []
-        with netbox_guard.for_list("default"):
+        with netbox_guard.for_list("default", authority="test: declared by the test (C155)"):
             netbox_client._ensure_site(sess, "http://nb", "default", 99,
                                        notes=notes)
         return sess, notes

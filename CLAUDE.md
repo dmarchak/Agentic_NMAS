@@ -308,7 +308,13 @@ path that reaches a writer passes on the switch: onboarding's phase 2 and
 Abandon, the host scripts, and list deletion's opt-in NetBox removal (which
 deletes with no preview and no token when `netbox_remove_on_list_delete` is
 on or a request carries `remove_from_netbox`). The sentence said "before
-any write" until then:
+any write" until then. **Since the same day the check IS where the write
+happens** (the operator's decision, the C101 move): `assert_writes_allowed()`
+refuses a real write that declares no AUTHORITY (`for_list(..., authority=)`),
+and each path names the confirmation it stands on: the NetBox tab's one-time
+token, a person's Verify (onboarding phase 2) or Abandon, or a host script's
+`--apply`. The created-object and modification records store it beside the
+actor, so a NetBox write says WHO and ON WHAT BASIS, as a commit does:
 
 1. `netbox_allow_writes` — the **master switch**, meaning "this instance may
    write to NetBox at all". Defaults off. A persistent operator decision; it is
@@ -1216,6 +1222,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_bootstrap_intent_is_not_planned.py` | C154: a committed intent that is only onboarding's bootstrap is refused by the plan with its reason, never rendered (the real `_artifact_for` through the real template; the old rule reproduces the host's `UndefinedError`); the shared exception handler says what was attempted and what failed, redacted, never empty and never "check the logs" |
 | `test_device_reload.py` | C153: reload is send, read, decide: `[confirm]` then the session dropping is success, `Save? [yes/no]` and any other prompt refused and abandoned, a session that never drops is unknown; what reached the device asserted line by line |
 | `test_list_delete_never_touches_netbox.py` | C155: a list that still owns recorded NetBox objects is refused naming them and keeps its record; one with nothing recorded is deleted and no NetBox writer is called; an unreadable record is refused, never read as owning nothing; nothing but the schema names the retired setting |
+| `test_netbox_write_authority.py` | C155: a real NetBox write with no declared authority is refused at the chokepoint (the switch still refuses first, and a dry run needs none); both records store the authority beside the actor; every `for_list()` in the program and its scripts declares one (AST, floor) |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_pipeline_reads_real_output.py` | C108: verify checks what the TARGET intent declares (from r1's real captures, OSPFv3 absent before: checked and passes once up; still absent is not a pass and not a rollback; no intent known checks the before-state and says so; the receipt and the shipped renderer draw it; `_deploy_one` carries the ref's intent for a restore and the committed intent for a deploy). C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |

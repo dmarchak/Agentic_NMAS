@@ -2904,7 +2904,7 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
                         status_cache: Optional[dict] = None,
                         max_workers: int = 6,
                         dry_run: bool = False, progress_id: str = "",
-                        actor: str = "") -> dict:
+                        actor: str = "", authority: str = "") -> dict:
     """Import a device list into NetBox. Returns a summary dict.
 
     *progress_id*, when the page supplied one, is where this reports what it
@@ -2922,7 +2922,7 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
     from modules import netbox_guard as _guard
 
     if dry_run:
-        with _guard.dry_run() as plan, _guard.for_list(list_name, actor=actor):
+        with _guard.dry_run() as plan, _guard.for_list(list_name, actor=actor, authority=authority):
             result = _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers,
                                                progress_id)
         result["dry_run"] = True
@@ -2934,7 +2934,7 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
                 "error": "NetBox writes are disabled. Review the import preview and "
                          "confirm, or enable writes in Settings → Integrations."}
 
-    with _guard.for_list(list_name, actor=actor):
+    with _guard.for_list(list_name, actor=actor, authority=authority):
         return _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers,
                                          progress_id)
 
@@ -3326,7 +3326,8 @@ def _cascade_preview(session, base: str, planned: list,
 
 
 def remove_device_from_netbox(list_name: str, hostname: str,
-                              dry_run: bool = False, actor: str = "") -> dict:
+                              dry_run: bool = False, actor: str = "",
+                              authority: str = "") -> dict:
     """Remove ONE device's NetBox objects, provenance-gated.
 
     `remove_list_from_netbox` walks everything in the created-id record for a
@@ -3412,10 +3413,10 @@ def remove_device_from_netbox(list_name: str, hostname: str,
 
     try:
         if dry_run:
-            with _guard.dry_run(), _guard.for_list(list_name, actor=actor):
+            with _guard.dry_run(), _guard.for_list(list_name, actor=actor, authority=authority):
                 _run()
         else:
-            with _guard.for_list(list_name, actor=actor):
+            with _guard.for_list(list_name, actor=actor, authority=authority):
                 _run()
     except Exception as exc:                    # noqa: BLE001
         log.exception("netbox: remove_device_from_netbox failed for %r", hostname)
@@ -3445,7 +3446,8 @@ def remove_device_from_netbox(list_name: str, hostname: str,
 
 
 def remove_list_from_netbox(list_name: str, dry_run: bool = False,
-                            forget_only: bool = False, actor: str = "") -> dict:
+                            forget_only: bool = False, actor: str = "",
+                            authority: str = "") -> dict:
     """Remove a device list's objects from NetBox — NMAS-created objects only.
 
     An object is deleted only when **both** are true:
@@ -3545,10 +3547,10 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
 
     try:
         if dry_run:
-            with _guard.dry_run(), _guard.for_list(list_name, actor=actor):
+            with _guard.dry_run(), _guard.for_list(list_name, actor=actor, authority=authority):
                 _run()
         else:
-            with _guard.for_list(list_name, actor=actor):
+            with _guard.for_list(list_name, actor=actor, authority=authority):
                 _run()
                 _clear_sync_status(list_name)
     except Exception as exc:
@@ -3603,7 +3605,7 @@ def _clear_sync_status(list_name: str) -> None:
 def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
                              status_cache: Optional[dict] = None,
                              dry_run: bool = False, progress_id: str = "",
-                             actor: str = "") -> dict:
+                             actor: str = "", authority: str = "") -> dict:
     """Import multiple device lists sequentially. Each list becomes its own region.
 
     Inherits the write gate and dry-run behaviour of :func:`sync_list_to_netbox`.
@@ -3612,7 +3614,8 @@ def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
     overall_ok = True
     for name, devs in lists_with_devices:
         res = sync_list_to_netbox(name, devs, status_cache=status_cache, dry_run=dry_run,
-                                  progress_id=progress_id, actor=actor)
+                                  progress_id=progress_id, actor=actor,
+                                  authority=authority)
         results.append(res)
         if not res.get("ok"):
             overall_ok = False
