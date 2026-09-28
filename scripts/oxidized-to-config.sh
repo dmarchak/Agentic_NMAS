@@ -639,9 +639,32 @@ total_dests=$(destinations | wc -l)
 COPIED_DIRS=()
 FAILED_DIRS=()
 
+# WHETHER EACH LAB CAN COMMIT, asked BEFORE anything is copied (C106 (2), the
+# operator: "ask whether it will work before doing the irreversible part").
+# The commit's preconditions were found after the overwrite: a lab whose
+# repository could not take a commit had its startup configs replaced and
+# then reported "COMMIT FAILED", configs changed and history not. A lab with
+# no repository is copied as before and reported NOT VERSIONED below: that
+# state is declared and named every run.
+declare -A CANNOT_COMMIT=()
+while read -r dir; do
+  [ -n "$dir" ] || continue
+  pre="$(ssh -n "$CLAB" "cd \$(dirname '$dir') 2>/dev/null || { echo ok; exit 0; }; \
+    git rev-parse --git-dir >/dev/null 2>&1 || { echo ok; exit 0; }; \
+    gd=\$(git rev-parse --absolute-git-dir); \
+    [ -w \"\$gd\" ] || { echo \"its git directory \$gd is not writable\"; exit 0; }; \
+    [ -e \"\$gd/index.lock\" ] && { echo \"\$gd/index.lock exists (another git process, or one that died)\"; exit 0; }; \
+    echo ok" 2>&1)"
+  [ "$pre" = "ok" ] || CANNOT_COMMIT["$dir"]="${pre:-the check could not run}"
+done < <(destinations)
+
 while read -r dir; do
   [ -n "$dir" ] || continue
   tried_dests=$((tried_dests+1))
+  if [ -n "${CANNOT_COMMIT[$dir]:-}" ]; then
+    FAILED_DIRS+=("$dir: CANNOT COMMIT (${CANNOT_COMMIT[$dir]}); NOTHING was copied, its configs are untouched")
+    continue
+  fi
   list=""
   for n in "${DEVICES[@]}"; do
     [ "${CFGDIR[$n]}" = "$dir" ] && list="${list}${n}.cfg"$'\n'

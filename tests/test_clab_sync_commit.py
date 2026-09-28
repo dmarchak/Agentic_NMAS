@@ -315,11 +315,11 @@ class TestAFailedBackupStopsItsCopy:
         labs = {}
         for name in ("a", "b"):
             d = tmp_path / f"lab-{name}" / "configs"
-            d.mkdir(parents=True)
+            d.mkdir(parents=True, exist_ok=True)
             (d / f"{name}.cfg").write_text("OLD\n")
             (stage / f"{name}.cfg").write_text("NEW\n")
             labs[name] = d
-        refuse = str(labs[fail_backup_of])
+        refuse = str(labs[fail_backup_of]) if fail_backup_of in labs else "/nonexistent"
         script = f"""
 set -uo pipefail
 CLAB=clab; STAGE={str(stage)!r}
@@ -356,3 +356,22 @@ printf 'FAILED=%s\\n' "${{FAILED_DIRS[@]}}"
         assert "NOT what was staged" not in out.stdout
         assert "Verified: all 1 file(s) in the 1 copied lab(s)" in out.stdout
         assert out.stdout.count("COPIED=") == 1 and "lab-a" in out.stdout.split("COPIED=")[1]
+
+
+class TestALabThatCannotCommitIsNotCopied:
+    """C106 (2), the second half: whether the commit can succeed was found
+    AFTER the overwrite. The same shipped region, with lab b a repository
+    holding a stale index.lock: refused before its copy, named."""
+
+    def test_a_locked_repository_is_refused_before_its_copy(self, tmp_path):
+        run = TestAFailedBackupStopsItsCopy()
+        env = _env(tmp_path)
+        repo = tmp_path / "lab-b"
+        repo.mkdir()
+        _git(env, "init", "-q", str(repo))
+        (repo / ".git" / "index.lock").write_text("")
+        out, labs = run._run(tmp_path, fail_backup_of="none-refused")
+        assert (labs["b"] / "b.cfg").read_text() == "OLD\n", out.stdout + out.stderr
+        assert (labs["a"] / "a.cfg").read_text() == "NEW\n"
+        assert "CANNOT COMMIT" in out.stdout and "index.lock exists" in out.stdout
+        assert "NOTHING was copied" in out.stdout
