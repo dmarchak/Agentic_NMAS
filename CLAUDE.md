@@ -5453,6 +5453,16 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   mirror case: it swallowed `gh: command not found` into `2>/dev/null` and
   would have looped for 30 minutes on a question it could never ask. A poll
   reports "could not ask" at once, never retries silently.
+- **A rule over a set needs its EMPTY case decided deliberately, never
+  inherited** (the operator, C142, 2026-09-28). `nmas-deploy` refused an empty
+  commit on a green one ("changes more than ignored paths: []") because
+  `bool(paths) and all(...)` was written for the non-empty case, and the
+  message printed the empty list that contradicted its verdict: had it not
+  named the operand, it would have been believed. Second that day after C72's
+  empty-record declarations. Decide the empty case from a POSITIVE fact (here
+  tree identity with a commit CI passed), never from an empty list, which is
+  also what a failed read can look like; and check the inverse, where an empty
+  set wrongly PASSES (an empty commit on a commit CI never saw still refuses).
 - **A concurrency test that HANGS rather than fails reports nothing; the
   hard timeout is what turns it back into a measurement** (the operator,
   2026-09-27). C98's lock first deadlocked on a device another process held,

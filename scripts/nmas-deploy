@@ -269,7 +269,28 @@ def ci_verdict(repo, target, get=github_get):
     passed = {r["head_sha"] for r in body.get("workflow_runs", []) if r.get("path") == WORKFLOW_PATH}
     for ancestor in git(repo, "rev-list", "--max-count=100", target).split():
         if ancestor in passed:
+            # NOTHING CHANGED is decided on its own, by tree IDENTITY (the
+            # operator's finding, 2026-09-28). An empty commit carrying a
+            # corrected message (41a4149) changes no file, GitHub starts no
+            # run for it, and the ignore rule, written for a NON-empty change
+            # set, answered "changes more than ignored paths: []": the empty
+            # case inherited, and the message printing the evidence against
+            # its own verdict. The same tree as a commit CI passed is exactly
+            # the code CI verified. Decided on the two tree hashes, which
+            # `git()` reads or raises, never on an empty list, which is also
+            # what a failed read could look like.
+            tree = git(repo, "rev-parse", f"{target}^{{tree}}")
+            if tree == git(repo, "rev-parse", f"{ancestor}^{{tree}}"):
+                return OK, (f"no CI run for {short}, which is expected: its tree is IDENTICAL "
+                            f"to {ancestor[:10]}'s, which CI passed (tree {tree[:10]}), so what "
+                            "is deployed is exactly what CI verified")
             changed = git(repo, "diff", "--name-only", ancestor, target).split()
+            if not changed:
+                # The trees differ and git names no changed file: the two facts
+                # disagree, so nothing can be concluded. Never a pass.
+                return COULD_NOT_ASK, (f"no CI run for {short}: its tree differs from "
+                                       f"{ancestor[:10]}'s (CI passed) and git named no changed "
+                                       "file. The two disagree, so what changed is unknown. Refused.")
             patterns = ignored_patterns(repo, ancestor)   # the GREEN commit's rule
             if only_ignored(changed, patterns):
                 return OK, (f"no CI run for {short}, which is expected: every file changed "

@@ -264,6 +264,49 @@ class TestNoRunFound:
         assert "paths-ignore" in capsys.readouterr().out
 
 
+class TestNothingChanged:
+    """The operator's finding, 2026-09-28: an empty commit (41a4149, the
+    corrected message for 17e9c7d) changes no file, so GitHub starts no run,
+    and the gate refused it saying it "changes more than ignored paths: []".
+    The empty case had fallen out of a rule written for the non-empty one."""
+
+    def _empty_commit(self, world, message="corrected message"):
+        _git(world.dev, "commit", "-q", "--allow-empty", "-m", message)
+        _git(world.dev, "push", "-q", "origin", "main")
+        return _git(world.dev, "rev-parse", "HEAD")
+
+    def test_an_empty_commit_on_a_green_one_deploys_by_tree_identity(self, world, capsys):
+        green = world.advance({"app.py": "v = 2\n"}, "green")
+        sha = self._empty_commit(world)
+        code, _, _ = _run(world, {}, passed=[green])
+        out = capsys.readouterr().out
+        assert code == 0 and _head(world) == sha, out
+        assert "tree is IDENTICAL" in out and green[:10] in out
+
+    def test_an_empty_commit_on_a_commit_ci_never_saw_is_refused(self, world, capsys):
+        """The dangerous direction: an unchanged tree proves nothing unless
+        the tree it matches is one CI PASSED."""
+        world.advance({"app.py": "v = 2\n"}, "never verified")
+        self._empty_commit(world)
+        code, _, _ = _run(world, {}, passed=[world.base])
+        assert code == 2 and _head(world) == world.base
+        assert "app.py" in capsys.readouterr().err
+
+    def test_a_revert_to_a_green_tree_is_the_same_code_and_deploys(self, world):
+        """Tree identity, not an empty diff of one commit: a change and its
+        revert leave the green tree, which is what CI verified."""
+        green = world.advance({"app.py": "v = 2\n"}, "green")
+        world.advance({"app.py": "v = 3\n"}, "change")
+        sha = world.advance({"app.py": "v = 2\n"}, "revert")
+        code, _, _ = _run(world, {}, passed=[green])
+        assert code == 0 and _head(world) == sha
+
+    def test_the_gate_decides_the_empty_case_before_the_ignore_rule(self):
+        src = open(os.path.join(ROOT, "scripts", "nmas-deploy")).read()
+        gate = src[src.index("# No run for the target."):]
+        assert gate.index("^{{tree}}") < gate.index("only_ignored(changed")
+
+
 class TestTheIgnoreRuleComesFromAGreenCommit:
     """The operator's question, 2026-09-26: whose paths-ignore decides a
     no-run push? Read at the target, a commit that widens it to '**' produces
