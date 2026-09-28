@@ -136,7 +136,12 @@ has five sections:
    - edit intent, or author it from a form (decision 2): the form is an
      input MODE of the one intent editor, committing through its route
      (section 6a);
-   - **seed intent from a capture** (curl-only today);
+   - **seed intent from a capture** (no usable path today: the commit route
+     needs a verified person, so a curl from the host is refused. **R1
+     measured, 2026-09-28, that EVERY onboarding lands here**: phase 1
+     commits a bootstrap-shaped intent (`bootstrap`, `hostname`, `logging`,
+     `secret_refs`), so an onboarded device cannot be deployed to from the
+     interface until this exists, and C117's rollback run waits on it);
    - deploy;
    - restore to a golden or a ref (guarded, P.3);
    - **revert one intent commit** and **re-send a blocked change** (C118; was "retry after a rollback"; curl-only
