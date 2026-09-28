@@ -1045,6 +1045,16 @@ screens (C119, C120, C123, C124, C125, C126). At 763649e about 47 were
 closed, 8 decided and about 14 open (a text classification, so approximate).
 The rate did not fall as the stage went on.
 
+**The rate is a property of the WORK, not of a stage** (the operator,
+2026-09-28). After 7.1 closed, R2a's run and the community branch that grew
+out of it took 21 commits over 2 h 34 min (763649e to 995498a) and added 14
+register rows (C129 to C142): about one finding per commit, 7.1's rate
+exactly. So a stage's forecast carries its findings whether they come from
+its own screens or from a run beside it. What changes the total is what the
+findings are ALLOWED to claim: since 2026-09-28 a finding is triaged, and
+only live exposure that matters here and real blockers interrupt the
+functional path (NSOT_PLAN Stage 9).
+
 **7.2, predicted from the finished 7.1, to be checked when it closes:** 40 to
 70 commits over about a day, and 30 to 50 findings, most of them in the
 SOURCES rather than the screen. 7.2 changes no device, so the confirm-hash and

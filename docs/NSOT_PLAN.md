@@ -1617,7 +1617,7 @@ not an order**; the ordering constraints are named below it.
 | **6** — security | **5** (6.1–6.5) | 4 | 1 | infrastructure and device-side; touches no GUI. 6.5 added 2026-09-25 (C5) |
 | **7** — the interface | **11** (7.0–7.9, incl. 7.2b) | 8 | 2 | **7.2b is DONE** — §0b's script extraction and §6c's cache headers both landed |
 | **8** — AI and agent | **6** (8.0–8.5) | 4 | 2 | plus three named sub-findings inside 8.2/8.3 |
-| **9** — loose ends and the remaining register | **19 candidates** (2026-09-28 triage), each entering by decision | — | 19 | **ADDED 2026-09-28 (the operator).** Improvement on a program already shaped and functional; never finishing it is an acceptable end state. Precondition: register buckets A and B empty |
+| **9** — hardening and cleanup | **9 (L) + 15 (M) register rows**, plus Stage 6's items (2026-09-28 re-triage), each entering by decision | — | — | **ADDED 2026-09-28 (the operator).** (L) is SAFE HERE BECAUSE IT IS A LAB and would come FIRST on a real network; (M) is minor anywhere. The functional path (R1, R2b, 7.2, 7.3, then 7.4 onward) is the plan; Stage 9 comes after it unless a trigger makes (L) urgent |
 
 **⚠ Stage 5's seven was a different kind of number from the others**, and
 the fold resolves it: the paragraph is now enumerated as 7.3's acceptance,
@@ -1786,8 +1786,10 @@ configured by hand.
 **6.1 Docker publishes past ufw. STILL LIVE, re-measured 2026-09-28 from
 the laptop (C143):** TCP 8888, 8000, 3100 and 9116 answer from another LAN
 host, and oxidized-web's `/nodes.json` answers 200 with no credential. "On
-its own schedule" had no date, so it is register bucket A and precedes the
-community rotation (a new value would be served on the LAN the day it lands).
+its own schedule" had no date. **DEFERRED to Stage 9's (L) half the same
+night (the operator: a lab, no hostile LAN)**, and COUPLED with the community
+rotation: a rotation made first would serve the new value on the LAN the day
+it lands.
 Measured on the deployment host: NetBox
 `:8000`, Loki `:3100` and oxidized-web `:8888` are reachable from the whole
 LAN despite ufw's default deny, because Docker's rules in `DOCKER`/`DOCKER-USER`
@@ -4806,59 +4808,98 @@ had to clear; and triage is triggered as 8.6 decides (a read, never an inbound p
 
 ---
 
-### STAGE 9 — loose ends and the remaining register (ADDED 2026-09-28, the operator)
+### STAGE 9 — hardening and cleanup (ADDED 2026-09-28, the operator; reshaped the same night)
 
-**What it is for.** The register's C bucket needs a HOME, so that a real
-finding can be recorded, deferred, and not compete for attention with the
-stage in progress. Until now every row argued for itself whenever it was
-looked at, and that is how 7.1's close became a dozen findings and no 7.2.
+**Why it exists.** The register needs a place where a real finding can be
+recorded, deferred and kept from competing with the stage in progress. Until
+now every row argued for itself whenever it was looked at, and that is how
+7.1's close became a dozen findings and no 7.2.
 
-**What it is NOT: "finish the program".** The program is **shaped and
-functional** when three things hold:
+**The decision that shapes it (the operator, 2026-09-28): this is a lab, so
+the work is features, functionality and design. Security is DEFERRED, not
+abandoned.** The functional path is now the whole plan:
+1. R1 and R2b (7.1's stated limit);
+2. 7.2, from C54;
+3. 7.3, with C50, where rotate and retire finally get an interface;
+4. 7.4 onward.
+
+The program is **shaped and functional** when three things hold:
 - the operations work from the interface;
 - the record is honest;
-- nothing leaks.
+- nothing leaks that matters in this environment.
 
-Stage 9 is improvement on top of that. **If it never finishes, that is an
-acceptable end state, not a failure.**
+**Stage 9 is not "finish the program".** It is hardening and cleanup on top
+of a working program. Never finishing its cleanup half is an acceptable end
+state.
 
-**Precondition: register buckets A (live exposure) and B (blocking) are
-empty.** If anything in Stage 9 turns out to be exposure or a blocker, the
-triage was wrong about it, and it moves earlier. The triage's rule applies
-here too: a finding's severity is a claim about the world, so an UNKNOWN is
-measured before it is placed, never placed on a feeling
-([OPEN_FINDINGS.md](OPEN_FINDINGS.md), "Triage, 2026-09-28").
+**TWO KINDS OF DEFERRAL, labelled separately.** A reader of "deferred to 9"
+must be able to tell which kind it is, because only the first changes when
+the environment does.
+- **(L) SAFE HERE BECAUSE IT IS A LAB.** The exposure is real, and this
+  environment makes it acceptable: a lab, no hostile party on the LAN,
+  emulated and disposable devices. **On a real network these would come
+  FIRST, not last.** They are:
+  - the published community (C39, with C141 merged);
+  - oxidized-web serving every config to the LAN (C143, which is 6.1);
+  - the community rotation and its consumer work (C139);
+  - 6.2's per-consumer accounts;
+  - `transport input all` (E3).
 
-**An item enters by DECISION, not by deferral.** Its row records who decided,
-when, and why it can wait, with the same discipline as a withdrawn decision
-that stays visible. "Deferred to 9" with no reason is only a longer register.
+  Added by the triage for the operator to confirm: C44 (a manual pull
+  bypasses the deploy gate), C100 (NMAS's NetBox token is the operator's
+  account), B9 (the backup key can hide what it writes), E5 (roles and
+  separation of duties) and E6 (the device as witness of its own changes).
+  **Stage 6 (6.1 to 6.5) is this half's list**, so Stage 6's items are
+  scheduled here rather than as a separate stage.
+- **(M) MINOR.** Genuinely small, whatever the environment: C6, C7, C9, C13,
+  C40, C45, C47, C71, C72, C93, C94, C113, B10 and E2, plus C41 (the
+  device-boundary harness), the one large item in this half.
 
-**Stage 9 is not the only exit.** A C row also leaves the register:
-- **CLOSED as won't-fix**, with the reasoning recorded;
-- **MERGED into the stage that rebuilds its code**: a row whose code 7.3
-  deletes is not fixed twice;
-- **HOMED in a stage that already owns it** (6, 8, Mode B).
+**COUPLED, recorded so that it is not forgotten: 6.1 (C143) and the
+community rotation (C139).** Whichever happens first constrains the other.
+Rotating while oxidized-web still serves configs to the LAN publishes the
+new value there the day it lands. Closing 6.1 changes what reads Oxidized
+and NetBox (NMAS reads NetBox at the LAN address `10.0.0.211:8000`, measured
+2026-09-28), and the rotation's consumer work must match. Measured for 6.1
+before it was deferred:
+- oxidized and loki are `docker run` containers (restart `unless-stopped`),
+  so a 127.0.0.1 bind recreates them;
+- NetBox's port is in `~/netbox-docker/docker-compose.override.yml`;
+- the SNMP exporter runs with host networking, so its bind is
+  `--web.listen-address`;
+- clab-sync reads Oxidized's git repository on disk, not port 8888;
+- NetBox answers on 127.0.0.1;
+- the only live peers seen were local (a snapshot, which cannot see an
+  occasional consumer).
 
-The register should shrink by decision rather than grow by politeness.
+**WHAT MAKES STAGE 9 URGENT AGAIN, stated once.** If any of these becomes
+true, the (L) half moves ahead of whatever stage is running:
+- the tool manages anything real;
+- the lab becomes reachable from beyond the operator's LAN;
+- a device holds a credential that also works somewhere else.
 
-**Its candidates, from the 2026-09-28 triage** (19 of the 50 C rows; the
-other 31 have one of the exits above). Each is a candidate until its
-decision is recorded:
-- NetBox's record: A2, A3, A4;
-- seeding and settings: C6, C40;
-- the fleet's clock and hostnames: C9, C13;
-- latent tooling: C25, C33, C47, C48, C58, C113;
-- the suite: C45, C71, C72;
-- the lab host: C94;
-- the devices: E2, E3.
+**Rules, so it does not become a graveyard.**
+- **An item enters by DECISION, not by deferral.** Its row records who
+  decided, when, why it can wait, and which kind, (L) or (M). "Deferred to 9"
+  with no reason is only a longer register.
+- **Stage 9 is not the only exit.** A row is also CLOSED as won't-fix with
+  its reasoning, MERGED into the stage that rebuilds its code (a row whose
+  code 7.3 deletes is not fixed twice), or HOMED where a stage already owns
+  it. The register shrinks by decision rather than growing by politeness.
+- **Precondition: nothing in it is live exposure that matters here, and
+  nothing in it blocks the functional path.** A row found to be either
+  leaves for an earlier stage the day it is found. A finding's severity is a
+  claim about the world, so an UNKNOWN is measured before it is placed
+  ([OPEN_FINDINGS.md](OPEN_FINDINGS.md), the triage).
+- **Data loss is never Stage 9.** B8 (the backups' only decryption key was on
+  one laptop) is fixed by a copy the night it was measured, because a safe
+  backup nobody can read is lost data, not a hardening gap.
 
-**One candidate moves out, because doing it later means doing it twice:** C71's
-sanitiser half goes into C39's placeholder work. The sanitiser is the producer
-of the fixture files, and it must emit placeholders. Fixing eleven files by
-hand now, then regenerating them later through a sanitiser that still leaks,
-is the same repair made twice. The refresh itself stays a candidate, and once
-the sanitiser is fixed it is a re-run.
+**One item moves OUT, because doing it later means doing it twice:** C71's
+sanitiser half goes with the (L) placeholder work, when that work is done.
+The sanitiser produces the fixtures, so it is what must emit the
+placeholders. Scrubbing eleven files by hand, then regenerating them
+through a sanitiser that still leaks, would be the same repair made twice.
 
-*Acceptance:* none, by design. Each item carries its own. The stage's only
-standing check is that its precondition still holds: a row found to be A or
-B leaves for an earlier stage the day it is found.
+*Acceptance:* none for the stage. Each item carries its own. The standing
+check is the precondition.
