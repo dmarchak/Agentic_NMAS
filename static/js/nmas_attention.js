@@ -119,6 +119,18 @@
     document.addEventListener('DOMContentLoaded', function () {
       loadAttention();
       timer = setInterval(loadAttention, 60000);
+      // An action, or a background job's announcement (C58), that changes
+      // what a source reads redraws the panel at once; the minute's poll
+      // remains for the sources nothing announces (job health's systemd
+      // units, the receipts written by another process).
+      if (root.NMAS && root.NMAS.subscribe) {
+        NMAS.subscribe('drift', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('approvals', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('pending', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('rolled_back', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('goldens', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('baselines', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+      }
     });
   }
 })(typeof window !== 'undefined' ? window : this);

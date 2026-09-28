@@ -5,8 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Network Device Manager</title>
   <link href="/static/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Panels re-fetch when a response names their data (Stage 7.0).
-       Before any page script, which subscribes at load. -->
+  <!-- The page's one socket: background jobs announce what they changed over
+       it (C58), and nmas_invalidation.js opens it. Vendored (C123). -->
+  <script src="{{ url_for('static', filename='js/vendor/socket.io-client/socket.io.min.js') }}"></script>
+  <!-- Panels re-fetch when a response names their data (Stage 7.0), or when
+       a background job announces it (C58). Before any page script, which
+       subscribes at load. -->
   <script src="{{ url_for('static', filename='js/nmas_invalidation.js') }}"></script>
   <!-- The one preview-then-confirm renderer (Stage 7.1). -->
   <script src="{{ url_for('static', filename='js/nmas_preview_confirm.js') }}"></script>
@@ -638,6 +642,9 @@
   </style>
 </head>
 <body>
+  <!-- Filled by nmas_invalidation.js only while background announcements
+       cannot reach this page (C58). Empty otherwise. -->
+  <div id="nmasLiveNote" class="px-3"></div>
 
   <!-- Theme Toggle -->
   <button class="btn btn-outline-secondary btn-sm theme-toggle" id="themeToggle" title="Toggle Dark Mode">

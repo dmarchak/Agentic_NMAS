@@ -1258,6 +1258,18 @@ inherit them by reuse. Measured for Grafana before building: both rule
 groups evaluate every 60 s, and the three endpoints answer in 35 to 150 ms.
 C58's premise was false: the index page holds no Socket.IO connection.
 
+**7.2 step 10 BUILT (2026-09-28): the announcement (C58's mechanism).**
+`invalidation.announce(keys, by)` sends a background change's data keys over
+the app's socket; the Socket.IO client loads once, in base.html, and the
+registry dispatches an announcement exactly as it dispatches a response
+header, so a panel subscribes once and hears both. A reader announces after
+every run, a failed one too. A page whose socket dropped or never connected
+says so in one element every page has, drawn only after a first attempt, so
+a fresh page carries no warning. Needs attention subscribes to the keys its
+sources read; its minute's poll stays for the sources nothing announces
+(systemd units, receipts written by another process). The drift run, the
+post-commit push and the NetBox refresh are C58's remaining members.
+
 
 ## 9. Deferred, recorded rather than scoped
 

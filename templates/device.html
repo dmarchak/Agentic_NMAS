@@ -648,12 +648,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
 <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
 
-<!-- xterm.js + socket.io for Terminal tab -->
+<!-- xterm.js for the Terminal tab -->
 {# Vendored, pinned, from registry-verified tarballs (C123; static/js/vendor/MANIFEST.json).
    These loaded UNPINNED from a CDN: whatever was newest that day. #}
 <link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/xterm/xterm.css') }}" />
 <script src="{{ url_for('static', filename='js/vendor/xterm/xterm.js') }}"></script>
-<script src="{{ url_for('static', filename='js/vendor/socket.io-client/socket.io.min.js') }}"></script>
+{# socket.io's client loads once, in base.html (C58). #}
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {

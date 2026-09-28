@@ -154,6 +154,63 @@
     return resp;
   }
 
+  /* C58: a change the server makes AFTER a response, or on its own schedule
+     (a reader job finishing), is ANNOUNCED over the socket with the same
+     keys, and dispatched by the same registry: a panel subscribes once and
+     hears both. Never a timer. */
+  var live = {state: 'not_connected', since: null};
+
+  function onAnnounce(msg) {
+    var keys = (msg && msg.keys && msg.keys.length !== undefined) ? msg.keys : [];
+    var names = keys.length ? invalidate(keys) : [];
+    record({event: 'announced', by: (msg && msg.by) || '?', ok: !!(msg && msg.ok),
+            keys: keys, panels: names});
+    return names;
+  }
+
+  function setLive(state) {
+    if (live.state !== state) { live.state = state; live.since = now(); }
+    record({event: 'socket', state: state});
+    // Drawn in ONE place every page has (base.html), so no panel has to
+    // remember it. Nothing is drawn before the first connect: a page that
+    // has just loaded holds fresh values, and a warning at every load would
+    // teach the reader to skip it.
+    var doc = root.document;
+    var el = (doc && doc.getElementById) ? doc.getElementById('nmasLiveNote') : null;
+    if (el) el.innerHTML = liveNoteHtml();
+  }
+
+  /* PURE: what a page says while announcements cannot reach it. A panel that
+     stopped hearing looks exactly like one with nothing new, so the dropped
+     connection is drawn, with the time it dropped. Empty while connected. */
+  function liveNoteHtml(state) {
+    state = state || live;
+    if (state.state === 'connected') return '';
+    var what = state.state === 'disconnected'
+      ? 'Live updates stopped at ' + clockTime(state.since)
+      : state.state === 'failed'
+        ? 'Live updates could not connect (since ' + clockTime(state.since) + ')'
+        : 'Live updates are not connected';
+    return '<div class="small text-warning" data-nmas-live="' + state.state + '">'
+      + what + ': a background read that finishes now is not shown until the '
+      + 'panel is next loaded.</div>';
+  }
+
+  if (root.io && !root.__nmasSocket) {
+    try {
+      var sock = root.io();
+      root.__nmasSocket = sock;
+      sock.on('connect', function () { setLive('connected'); });
+      sock.on('disconnect', function () { setLive('disconnected'); });
+      sock.on('connect_error', function () {
+        if (live.state !== 'disconnected') setLive('failed');
+      });
+      sock.on('nmas_invalidate', onAnnounce);
+    } catch (e) {
+      record({event: 'socket', state: 'failed', error: String(e)});
+    }
+  }
+
   if (root.fetch && !root.fetch.__nmas) {
     var original = root.fetch;
     var wrapped = function () {
@@ -165,6 +222,8 @@
 
   root.NMAS = {
     subscribe: subscribe, invalidate: invalidate, onResponse: onResponse,
+    onAnnounce: onAnnounce, liveNoteHtml: liveNoteHtml,
+    live: function () { return {state: live.state, since: live.since}; },
     keysFrom: keysFrom, staleMarkerHtml: staleMarkerHtml, _subs: subs,
     log: function () { return log.slice(); },
   };

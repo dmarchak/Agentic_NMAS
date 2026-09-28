@@ -236,6 +236,12 @@ def announce_health() -> dict:
     return dict(_ANNOUNCE)
 
 
+def announce_via_page(keys, name: str, ok: bool) -> None:
+    """The app's announcer: the keys to every open page, by this reader."""
+    from modules import invalidation
+    invalidation.announce(keys, f"reader:{name}", ok)
+
+
 def run_once(reader: Reader, announce=None, clock=time.time) -> dict:
     """Read, store, announce. Returns the stored document.
 

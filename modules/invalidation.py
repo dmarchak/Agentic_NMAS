@@ -22,6 +22,15 @@ what went stale was the device list). And **declaring too much costs one
 spare re-fetch, while declaring too little is the defect**, so an uncertain
 route declares the data it plausibly touches.
 
+**A change the server makes AFTER a response, or on its own schedule, is
+ANNOUNCED** (C58): a response header cannot carry it, because no response
+is in flight when a background job finishes. `announce()` sends the same
+keys over the page's Socket.IO connection, and the client dispatches them
+through the same registry, so a panel subscribes once and hears both. The
+keys come from the same vocabulary, checked at the call. The first caller is
+the reader-job pattern (`modules/reader_job.py`, rule 9); an announcement is
+never a timer's.
+
 The population is `app.url_map`, not a list kept here: every rule with a
 mutating method. `test_invalidation_map.py` fails on an undeclared one, on
 a declaration for a route that no longer exists, and on a key outside the
@@ -30,6 +39,7 @@ vocabulary.
 
 import json
 import logging
+import time
 from typing import NamedTuple
 
 log = logging.getLogger(__name__)
@@ -233,7 +243,11 @@ def ghost_declarations(app) -> list:
 
 
 def keys_in_use() -> set:
-    return {k for v in DECLARED.values() if not isinstance(v, Nothing) for k in v}
+    """Keys a route declares or a reader job announces (C58): both are
+    senders, and a panel subscribed to either hears it."""
+    from modules import reader_job
+    return ({k for v in DECLARED.values() if not isinstance(v, Nothing) for k in v}
+            | {k for r in reader_job.readers() for k in r.invalidates})
 
 
 def keys_for(endpoint: str) -> tuple:
@@ -241,6 +255,38 @@ def keys_for(endpoint: str) -> tuple:
     if declared is None or isinstance(declared, Nothing):
         return ()
     return tuple(declared)
+
+
+#: The event name the page listens for. One name, read by the client
+#: (static/js/nmas_invalidation.js) and pinned by a test against it.
+ANNOUNCE_EVENT = "nmas_invalidate"
+
+_emitter = None
+
+
+def set_emitter(emit) -> None:
+    """The app hands over its socket's emit once, at import (no thread)."""
+    global _emitter
+    _emitter = emit
+
+
+def announce(keys, by: str, ok: bool = True) -> dict:
+    """Tell every open page that the data under *keys* changed, and who
+    changed it. Raises when it cannot: the caller counts it (a reader counts
+    a failed announcement and keeps its value), and nothing pretends it was
+    heard. The message carries key NAMES only, never data, because it goes
+    to every connection."""
+    keys = list(keys)
+    unknown = [k for k in keys if k not in VOCABULARY]
+    if not keys or unknown:
+        raise ValueError(f"announce({by!r}): keys outside the vocabulary: {unknown or 'none given'}")
+    if _emitter is None:
+        raise RuntimeError("no emitter: announcements need the app's socket, and this process "
+                           "has none")
+    msg = {"keys": keys, "by": by, "ok": bool(ok),
+           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    _emitter(ANNOUNCE_EVENT, msg)
+    return msg
 
 
 def install(app) -> None:

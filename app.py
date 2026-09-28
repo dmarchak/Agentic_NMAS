@@ -143,6 +143,11 @@ socketio = SocketIO(
     app, async_mode="threading", cors_allowed_origins="*", manage_session=False
 )
 
+# Background jobs announce what they changed over this socket (C58,
+# modules/invalidation.announce). Handing over the emit starts nothing.
+from modules import invalidation as _invalidation  # noqa: E402
+_invalidation.set_emitter(lambda event, msg: socketio.emit(event, msg))
+
 # ---------------------------------------------------------------------------
 # Cache policy. Stage 7 6c, measured 2026-09-24.
 # ---------------------------------------------------------------------------
@@ -4283,7 +4288,7 @@ def _start_background_daemons():
     # that did not start is a `not_run` or `stale` job-health row as well.
     try:
         from modules import reader_job as _reader_job
-        _reader_job.start()
+        _reader_job.start(announce=_reader_job.announce_via_page)
     except Exception as _e:
         app.logger.error("Reader jobs did not start: %s", _e)
 
