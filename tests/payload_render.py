@@ -100,7 +100,7 @@ def lift(src: str, name: str) -> str:
 #: The shared components live beside gen/, not in it: named by their path
 #: under static/js/.
 COMPONENTS = ("nmas_preview_confirm.js", "nmas_capture.js", "nmas_restore_scope.js",
-              "nmas_in_flight.js")
+              "nmas_in_flight.js", "nmas_attention.js")
 
 
 def shipped(file: str) -> str:

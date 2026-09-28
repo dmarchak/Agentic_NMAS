@@ -91,6 +91,14 @@ DW, GR1, GR2, GR3 = ("partials__deploy_wizard.1.js", "partials__golden_repo.1.js
 I1, I4 = "index.1.js", "index.4.js"
 
 RENDERS = {
+    "GET /attention": Render(
+        lambda mp, tmp: P.needs_attention(mp, tmp),
+        {"nmas_attention.js": ("attentionPanelHtml", "loadAttention", "sourcesLine",
+                               "rowHtml", "actionHtml", "unreadableNote")},
+        (("nmas_attention.js", "attentionPanelHtml", "d"),),
+        maps=("operands",),
+        adapters={"modules/attention.py": ("needs_attention", "source_result", "row",
+                                           "job_health_source", "_job_action")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,
@@ -462,6 +470,9 @@ _STRINGS = "items are strings: an empty list hides no field"
 #: "strings" hides nothing. "records" is a state the fixture does not reach,
 #: a finding, and that list only shrinks. Measured 2026-09-27.
 EMPTY_IN_FIXTURE = {
+    # A job has no device; the fixture's rotation row does carry one (r2),
+    # and this collection holds names, never records.
+    "GET /attention rows[].devices": (S_, _STRINGS),
     "GET /ai/agent_log entries": (R_, "no agent run in the fixture; the entry "
                                      "fields the panel draws were never examined"),
     "GET /ai/approvals entries": (R_, "no queued item in the fixture; the approval "

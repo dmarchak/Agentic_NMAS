@@ -141,6 +141,12 @@ tracked in git.
   hash against the confirmed one, the actor, the checks that RAN (or why
   none did), rollback, and the commit. The follow-up window is not built,
   and each row says so
+- **[modules/attention.py](modules/attention.py)** — Stage 7.2: Needs
+  attention. One row constructor (what, devices, since, cause, operands,
+  the one action, a level, an empty triage slot for Stage 8) that refuses a
+  row with no cause or action; one source contract (read time, read cost,
+  what was looked at; an unreadable source is a row). `GET /attention`,
+  drawn by **[static/js/nmas_attention.js](static/js/nmas_attention.js)**
 - **[modules/filestore.py](modules/filestore.py)** — C158: the ONE fix for a
   store the program read-modify-writes: `PathLock` (an RLock plus a
   cross-process `flock`, re-entrant per thread and PATH), `write_atomic` (a
@@ -1231,6 +1237,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_write_authority.py` | C155: a real NetBox write with no declared authority is refused at the chokepoint (the switch still refuses first, and a dry run needs none); both records store the authority beside the actor; every `for_list()` in the program and its scripts declares one (AST, floor) |
 | `test_credential_store_integrity.py` | C157: the credential store gets the settings file's C20 fixes: two PROCESSES writing at once lose nothing (without the flock, 37-47% of writes were lost, measured), an unreadable store refuses every write and keeps the file byte-identical with a `0600` `.corrupt-` copy while a read survives on empty, every write is logged with its process and the key names it changes (never a value), and a save outside the lock is refused |
 | `test_store_integrity_c158_c160.py` | C158, C160: the NetBox created-object record, `rolled_back.json` and devices.csv lose nothing to two PROCESSES writing at once; an unreadable created record refuses every write and keeps the file; an unreadable rolled-back record BLOCKS every plan naming the record (it lifted every block); a devices.csv write replaces the file (a new inode), never truncates it; Reorder keeps a device the order does not name; Refresh Hostnames keeps a rotation made while it ran; `csv.DictWriter` lives in one module; two lock instances for one path nest without blocking (bounded, so a regression fails rather than hangs) |
+| `test_needs_attention.py` | 7.2: a row with no what, cause or action is refused, and since stays None when not recorded; an unreadable source and a raising adapter are rows; job health over the measured systemd shapes (a failing job with its cause, since its streak's FIRST failure, and its journal command; a stale one since it aged out; a rotation row naming its device as a field; ok, departed and not-applicable are not rows; an unmapped state drawn loud); the families with no recorded action pinned to shrink; the shipped panel executed (nothing names every source and its time, rows worst first with every part, a failed read never drawn as nothing, every value escaped) through the real route |
 | `test_readonly_commands.py` | C61: `show running-config \| redirect tftp://…` refused, and every spelling of a writing modifier (`redirect`, `tee`, `append`, `format`, abbreviated, unspaced, chained, hidden in a regex); an unknown modifier refused; the filters still pass (the control); a URL, a target-less ping, `?` and control characters refused; `clear` and `debug` are not reads; one verb list in the program (AST, floor); the agent delegates; the ambiguity guard shown with a constructed filter |
 | `test_pipeline_reads_real_output.py` | C108: verify checks what the TARGET intent declares (from r1's real captures, OSPFv3 absent before: checked and passes once up; still absent is not a pass and not a rollback; no intent known checks the before-state and says so; the receipt and the shipped renderer draw it; `_deploy_one` carries the ref's intent for a restore and the committed intent for a deploy). C62, C64-C67: the pipeline's readers against REAL captures (`tests/fixtures/operational/`, read-only from the live fleet, with a README): the error pattern, the interface up-count and the OSPF row count pinned as correct; each finding a STRICT expected failure from a real capture, read with `--runxfail` to confirm it fails on its own assertion and not a crash; every command the pipeline reads with passes the shared allowlist |
 | `test_other_readers_real_output.py` | The sweep's second half: topology (OSPF detail, BGP, CDP, LLDP, interfaces) and NetBox's cable readers against real captures, each expectation counted from the capture independently of the parser; ONE BGP summary reader (AST, no third); the rotation reads exactly its account, never a prefix |
@@ -5104,6 +5111,19 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   used hand-written output shapes, all in config syntax, so it could not
   exhibit the case. Its first control passed wrongly, served by the
   process-wide tool-result cache, which each drive now clears.
+- **A SURVEY SCOPED BY FORMAT FINDS WHAT SHARES THE FORMAT** (the operator,
+  2026-09-28, on C158 and C160). The first sweep for C157's shape listed
+  the JSON loaders and missed `devices.csv`, which holds the only copy of
+  every device's credential. The second listed every place the program
+  writes a file (85), the population the BEHAVIOUR defines, and found it.
+  The proxy-population rule applied to a survey's own scope, and the
+  difference between a family CLOSED and a family probably closed.
+- **An instrument that keeps a summary loses the evidence** (the operator,
+  2026-09-28, three instances): the shared error handler dropped the
+  exception's detail (C154), a register dump cut every cell at 420
+  characters and hid C106's answers, and the commit gate kept the suite's
+  last line, so `1 error` arrived without the test that raised it (C163).
+  Keep the whole record, then summarise from it.
 - **A SWEEP MAY REGISTER WHATEVER IT FINDS; ONLY THE A ITEMS IT FINDS ARE FIXED
   IN THE SAME PASS** (the operator's stopping rule, 2026-09-28, applied by
   default). Everything else waits, however cheap and however near the code

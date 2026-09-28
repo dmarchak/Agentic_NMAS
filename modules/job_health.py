@@ -115,6 +115,7 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
     # failure -- here `nmas-clab-targets: command not found` -- falling back
     # to the run's first line.
     last_ok, last_fail, streak, last_error = None, None, 0, ""
+    streak_start = None
     run_lines: list = []
     for ts, text in rows:
         if "systemd[" in text:
@@ -123,8 +124,10 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
         elif text.strip():
             run_lines.append(text.split(": ", 1)[-1].strip())
         if "Deactivated successfully" in text:
-            last_ok, streak = ts, 0
+            last_ok, streak, streak_start = ts, 0, None
         elif "Failed with result" in text:
+            if streak == 0:
+                streak_start = ts
             last_fail, streak = ts, streak + 1
             named = [l for l in run_lines if _NAMES_A_FAILURE.search(l)]
             last_error = (named or run_lines or [""])[0]
@@ -152,7 +155,16 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
               + (f"; {streak} consecutive failure(s), last {ago(last_fail)}"
                  if failed_last else "")
               + (f"; last error: {last_error}" if failed_last and last_error else ""))
-    return {**out, "state": state, "detail": detail,
+    # SINCE WHEN the state has held (7.2: a Needs attention row says since
+    # when). Failing: the streak's first failure in the journal window. Stale:
+    # the moment the last success aged past the window. Otherwise not known,
+    # and None says so rather than a time that answers a different question.
+    since = None
+    if state in ("failing", "never_succeeded"):
+        since = streak_start
+    elif state == "stale" and last_ok is not None:
+        since = last_ok + max_age
+    return {**out, "state": state, "detail": detail, "since": since,
             "last_success": last_ok, "last_failure": last_fail,
             "consecutive_failures": streak if failed_last else 0,
             "last_error": last_error if failed_last else "",
@@ -674,7 +686,7 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
         if not why_not and device.lower() not in names:
             unsafe = state not in (cr.ROTATED_PERSISTED, cr.REVERTED, cr.NOT_STARTED)
             rows.append({"unit": f"rotation:{device}", "what": _ROTATION_WHAT,
-                         "state": "departed", "max_age_minutes": 0,
+                         "device": device, "state": "departed", "max_age_minutes": 0,
                          "detail": (f"{device} is in no list's inventory or manifest: it has "
                                     f"left management. Its last rotation record ({state} at "
                                     f"{at}) is history, not a claim about a managed device"
@@ -715,7 +727,7 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
         else:
             st, detail = "unknown", f"last recorded state {state or '(none)'} at {at}"
         rows.append({"unit": f"rotation:{device}", "what": _ROTATION_WHAT,
-                     "state": st, "max_age_minutes": 0,
+                     "device": device, "state": st, "max_age_minutes": 0,
                      "detail": detail + (f" (whether it has left management is unknown: "
                                          f"{why_not})" if why_not and names else "")})
     return rows
@@ -851,7 +863,7 @@ def startup_rows(read=None, now: float = None) -> list:
             continue
         state = "not_safe_to_reboot" if d.get("state") == "not_persisted" else "unknown"
         rows.append({"unit": f"startup:{d.get('list')}/{d.get('device')}", "what": what,
-                     "state": state, "max_age_minutes": 0,
+                     "device": d.get("device"), "list": d.get("list"), "state": state, "max_age_minutes": 0,
                      "detail": f"{d.get('detail', '')} (checked {when})"
                                + ("; a reload would boot a credential NMAS does not hold: "
                                   f"run nmas-persist-native {d.get('device')} --list {d.get('list')}"
@@ -894,7 +906,8 @@ def ssh_session_rows(held: dict = None) -> list:
         owners = ", ".join(f"{s['owner']} ({s['age_s']}s, idle {s['idle_s']}s)"
                            for s in h["sessions"])
         if h["held"] >= h["budget"]:
-            rows.append({"unit": f"ssh:{ip}", "what": what, "state": "at_budget",
+            rows.append({"unit": f"ssh:{ip}", "what": what, "address": ip,
+                         "state": "at_budget",
                          "max_age_minutes": 0,
                          "detail": f"holds {h['held']} of {h['budget']} allowed "
                                    f"({h['lines']} vty lines, one kept for a person): "
@@ -902,7 +915,8 @@ def ssh_session_rows(held: dict = None) -> list:
         leaked = [s for s in h["sessions"]
                   if not s["pooled"] and s["age_s"] > LEAK_AFTER_SECONDS]
         if leaked:
-            rows.append({"unit": f"ssh-leak:{ip}", "what": what, "state": "leaked",
+            rows.append({"unit": f"ssh-leak:{ip}", "what": what, "address": ip,
+                         "state": "leaked",
                          "max_age_minutes": 0,
                          "detail": "an operation's session held past ten minutes: "
                                    + ", ".join(f"{s['owner']} ({s['age_s']}s)"

@@ -1096,6 +1096,23 @@ source, which is where the absent-versus-unreadable and wrong-thing-looks-right
 families live, and four of those were found this week in stores 7.2 draws
 from. R1 and R2 above are extra, and precede it.
 
+**7.2 step 1 BUILT (2026-09-28): the row shape and the source contract, job
+health first.** `modules/attention.py`: `row()` is the only constructor and
+refuses a row with no cause or no action; every row carries what, devices,
+since, cause, operands, the one action, a server-decided level and an empty
+`triage` slot (NSOT_PLAN 8.6). `source_result()` records when each source
+was read, how long the read took and what it looked at, and makes an
+unreadable source a row. `GET /attention`, drawn by `static/js/nmas_attention.js`
+at the top of the landing view. job_health's rows now carry `device` (or
+`address`) as a field and `since` (a failing streak's first failure, or when
+a success aged past its window), never parsed from the unit string. Job health
+is read live, because its cost is per job and not per device; the read time is
+on the page, so the host's measurement decides whether it moves to a cache.
+Nine of ten job-health row families write their remedy into the detail and
+have no separate action: the row says so (`known: false`) rather than
+inventing one, and that set is pinned to shrink. Next: the other section 1a
+sources, each through `source_result`.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's

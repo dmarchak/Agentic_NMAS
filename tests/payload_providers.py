@@ -339,3 +339,30 @@ def netbox_remove_preview(mp, tmp):
                                   json={"list_name": "Default"}))
     finally:
         netbox_guard.forget_created("Default")
+
+
+def needs_attention(mp, tmp):
+    """7.2: the landing list through the REAL route, from job health over
+    the systemd and journal shapes measured on the host: a failing job, a
+    rotation row naming its device, and a source that could not be read."""
+    from modules import attention as A
+    from modules import job_health as J
+    from modules.nsot import credential_rotation as cr
+    from tests.test_job_health import LOADED, NOW, _fail, _runner
+    from tests.test_job_health import _ok as _succeeded
+
+    journal = "\n".join([_succeeded(NOW - 3600), _fail(NOW - 60)])
+    rot = J.rotation_rows([{"device": "r2", "state": cr.ROTATED_UNVERIFIED,
+                            "failed_stage": "device_startup_config",
+                            "at": "2026-09-28T10:00:00Z"}], known=({"r2"}, ""))
+
+    def health():
+        return J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
+                        rotations=rot, owner=[], ztp=[], responder=[], startup=[],
+                        sessions=[], version=[])
+
+    def unreadable():
+        raise OSError("the store could not be opened")
+
+    mp.setattr(A, "SOURCES", (lambda: A.job_health_source(health), unreadable))
+    return _ok(_client().get("/attention"))
