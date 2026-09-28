@@ -107,11 +107,46 @@
       + (ciStale ? ' (stale)' : '') + '</span>';
   }
 
-  var lastVersion = null;
+  /* PURE: who you are (the plan's third item). Read live for THIS request
+     from the identity diagnostic, the same verified answer the gates act on
+     (never a header): a person by email, a service by the name the audit
+     trail will use, or "not identified" with its reason one level down. */
+  function identityHtml(i) {
+    if (!i || i.ok !== true) {
+      return '<span class="badge bg-warning text-dark ms-2" data-status-bar="identity-unknown">'
+        + 'Who you are could not be read: ' + esc((i && i.error) || 'no answer') + '</span>';
+    }
+    if (i.is_identified && i.kind === 'person') {
+      return '<span class="text-muted ms-2" data-status-bar="identity" title="verified by '
+        + 'Cloudflare Access; ' + esc(i.outcome || '') + '">you: <strong>' + esc(i.email)
+        + '</strong></span>';
+    }
+    if (i.is_identified) {
+      return '<span class="text-muted ms-2" data-status-bar="identity" title="a verified service '
+        + 'token: it can plan and queue, never confirm or reveal">service: <strong>'
+        + esc(i.audit_name || i.actor) + '</strong></span>';
+    }
+    return '<span class="badge bg-secondary ms-2" data-status-bar="identity-none" title="'
+      + esc(i.reason || i.outcome || 'no verified identity') + '">not identified: you can look, '
+      + 'not change</span>';
+  }
+
+  var lastVersion = null, lastIdentity = null;
 
   function draw(nowMs) {
     var el = root.document && root.document.getElementById('nmasStatusBar');
-    if (el && last) el.innerHTML = statusBarHtml(last, nowMs) + versionHtml(lastVersion, nowMs);
+    if (el && last) el.innerHTML = statusBarHtml(last, nowMs) + versionHtml(lastVersion, nowMs)
+      + (lastIdentity ? identityHtml(lastIdentity) : '');
+  }
+
+  async function loadIdentity() {
+    try {
+      var r = await fetch('/identity/status', {cache: 'no-store'});
+      lastIdentity = await r.json();
+    } catch (e) {
+      lastIdentity = {ok: false, error: e.message};
+    }
+    draw(Date.now());
   }
 
   async function loadVersion() {
@@ -143,11 +178,13 @@
 
   root.statusBarHtml = statusBarHtml;
   root.versionHtml = versionHtml;
+  root.identityHtml = identityHtml;
   root.loadStatusBar = loadStatusBar;
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('DOMContentLoaded', function () {
       loadStatusBar();
       loadVersion();
+      loadIdentity();
       if (root.NMAS && root.NMAS.subscribe) {
         NMAS.subscribe('integration_health', 'statusBar', loadStatusBar, {panel: 'nmasStatusBar'});
         NMAS.subscribe('ci_verdict', 'statusBarVersion', loadVersion, {panel: 'nmasStatusBar'});

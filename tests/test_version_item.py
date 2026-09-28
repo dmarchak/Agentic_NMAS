@@ -163,3 +163,44 @@ class TestTheShippedItem:
 
     def test_a_failed_read_says_so(self):
         assert "could not be read" in version_html({"ok": False, "error": "x"})
+
+
+def identity_html(i):
+    src = open(BAR, encoding="utf-8").read()
+    js = ("var window = {}; var document = undefined;\n" + src.replace(
+        "})(typeof window !== 'undefined' ? window : this);", "})(window);")
+        + "\nwindow.identityHtml(dukpy['i']);")
+    return dukpy.evaljs(js, i=i)
+
+
+class TestWhoYouAre:
+    """The bar's third item: who you are, for THIS request, from the same
+    verified answer the gates act on (never a header)."""
+
+    def test_a_verified_person_is_named(self):
+        html = identity_html({"ok": True, "is_identified": True, "kind": "person",
+                              "email": "op@example.com", "outcome": "verified"})
+        assert "you: <strong>op@example.com</strong>" in html
+
+    def test_a_service_is_named_as_the_audit_trail_will_name_it(self):
+        html = identity_html({"ok": True, "is_identified": True, "kind": "service",
+                              "audit_name": "ci-runner", "actor": "service:abc"})
+        assert "service: <strong>ci-runner</strong>" in html and "never confirm" in html
+
+    def test_not_identified_says_what_that_means_and_why_one_level_down(self):
+        html = identity_html({"ok": True, "is_identified": False,
+                              "reason": "no Cf-Access-Jwt-Assertion header"})
+        assert "not identified: you can look, not change" in html
+        assert 'title="no Cf-Access-Jwt-Assertion header"' in html
+
+    def test_the_bar_draws_what_the_real_route_answers(self):
+        """The seam: the item drawn from the real diagnostic's payload. The
+        suite identifies its requests as a test person, so this drives the
+        identified branch; the unidentified one is driven above."""
+        import app as Ap
+        body = Ap.app.test_client().get("/identity/status").get_json()
+        html = identity_html(body)
+        if body["is_identified"] and body["kind"] == "person":
+            assert f"you: <strong>{body['email']}</strong>" in html
+        else:
+            assert "not identified" in html

@@ -1437,7 +1437,17 @@ hour per address, shared with `nmas-deploy`, and a verdict costs one (up to
 eleven walking back). A stored verdict for another commit is never this
 commit's ("not judged yet"). Needs attention makes a row when the running
 commit's CI failed (danger), was cancelled or is still going (warning), or
-could not be asked (unknown). The bar's last item, who you are, is next.
+could not be asked (unknown).
+
+**7.2 step 18 BUILT (2026-09-28): the status bar's third item, who you are.**
+Read live for THIS request from `/identity/status`, the same verified answer
+the gates act on (never a header): a person by email, a service by the name the
+audit trail will use ("it can plan and queue, never confirm or reveal"), or
+"not identified: you can look, not change" with the reason on hover. No reader:
+it is about this request, in-process, a check rather than a report (rule 11).
+The identity diagnostic stays reachable directly as well; a page now draws it.
+The bar is complete: integration health, the deployed version and its CI
+verdict, and who you are. C92's reader is 7.2's last step.
 
 **THE PRESENTATION RULE FOR STAGE 7, decided 2026-09-28 (the operator): THE
 SCREEN ANSWERS THE QUESTION THE PERSON CAME WITH, AND THE EVIDENCE FOR THE

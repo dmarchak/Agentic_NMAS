@@ -39,10 +39,6 @@ NON_GUI = {
     "GET /health": ("scripts/nmas-deploy",
                     "the deploy gate: waits for the RESTARTED process to "
                     "answer with the target commit"),
-    "GET /identity/status": ("docs/NSOT_AUTHORIZATION.md",
-                             "the end-to-end identity diagnostic, reached "
-                             "directly: one that hides behind the page is "
-                             "useless when identity breaks"),
     "GET /clab/sync_targets": ("scripts/nmas-clab-targets",
                                "the clab host's sync asks for its map; it "
                                "refuses rather than guessing when it cannot"),
