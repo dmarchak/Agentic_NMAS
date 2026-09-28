@@ -272,7 +272,7 @@ class TestDriftAsASource:
         assert drifted["level"] == "danger" and drifted["devices"] == ["r2"]
         assert drifted["operands"]["diff_lines"] > 0
         assert drifted["operands"]["coverage"] == "checked 2 of 4"
-        assert "Approvals" in drifted["action"]["label"]
+        assert drifted["action"]["label"].startswith("From its Device page")
         # The check saw drift at a time; since when it has differed is not
         # recorded, so since stays empty rather than claiming the run time.
         assert drifted["since"] is None and "not recorded" in drifted["cause"]
@@ -329,3 +329,127 @@ class TestDriftAsASource:
         html = dukpy.evaljs(js + f"\ndriftDetailHtml({json.dumps(status)});")
         assert "Drifted: r2" in html and "diff line(s)" in html
         assert "triggered by manual" in html and status["last_run"]["timestamp"] in html
+
+
+# ---------------------------------------------------------------------------
+# Source: the approval queue, and the attach rule
+# ---------------------------------------------------------------------------
+
+def _drift_status_with(host):
+    last = {"ok": True, "inventory": 2, "checked": 2, "clean": 1,
+            "drifted_devices": [{"hostname": host, "diff_lines": 6}],
+            "skipped": [], "errors": [], "triggered_by": "scheduled"}
+    return _status(list="lab", last_run=last, last_ts=NOW - 60)
+
+
+def _item(host, kind="update_golden_config", **kw):
+    return {"id": f"q-{host}-{kind}", "status": "pending", "action_type": kind,
+            "device_hostname": host, "description": f"Config drift detected on {host}",
+            "context": "Detected by scheduled drift check", "created_ts": NOW - 50, **kw}
+
+
+class TestApprovalsAsASource:
+    @pytest.fixture
+    def queue(self, tmp_path, monkeypatch):
+        from modules import approval_queue as Q
+        path = tmp_path / "approval_queue.json"
+        monkeypatch.setattr(Q, "_queue_path", lambda: str(path))
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
+        return Q, path
+
+    def test_the_read_writes_nothing_and_applies_expiry_in_memory(self, queue):
+        import time as _time
+        Q, path = queue
+        # The reader expires against the WALL clock, so these are real times.
+        fresh = _item("r2", created_ts=_time.time() - 60)
+        old = _item("r9", created_ts=_time.time() - (Q.EXPIRY_HOURS + 1) * 3600)
+        path.write_text(json.dumps([fresh, old]))
+        before = path.read_bytes()
+        pending, reason = Q.read_pending()
+        assert reason is None and [e["device_hostname"] for e in pending] == ["r2"]
+        assert path.read_bytes() == before, "a read changed the queue"
+
+    def test_an_unreadable_queue_is_its_own_answer_not_empty(self, queue):
+        Q, path = queue
+        path.write_text('[{"id": "q1", "status": "pen')                 # torn
+        res = A.approvals_source()
+        assert res["state"] == "unreadable" and "could not be read" in res["rows"][0]["cause"]
+
+    def test_absent_is_nothing_waiting(self, queue):
+        res = A.approvals_source()
+        assert res["state"] == "read" and res["rows"] == []
+        assert res["checked"] == "list lab: 0 pending approval(s)"
+
+    def test_a_drift_item_folds_into_its_drift_row(self, queue):
+        page = A.needs_attention([lambda: A.drift_source(_drift_status_with("r2"), now=NOW),
+                                  lambda: A.approvals_source(lambda: ([_item("r2")], None))])
+        assert len(page["rows"]) == 1, [r["id"] for r in page["rows"]]
+        r = page["rows"][0]
+        assert r["id"] == "drift:lab:drifted:r2" and len(r["attached"]) == 1
+        assert r["attached"][0]["source"] == "approvals"
+        assert r["action"]["label"].startswith("Review it in Approvals")
+        assert "1 thing(s)" in page["headline"]
+        html = _panel(page)
+        assert "Also: An approval is waiting" in html
+
+    def test_a_drift_item_whose_drift_is_gone_stands_alone_and_says_so(self, queue):
+        page = A.needs_attention([lambda: A.drift_source(_drift_status_with("r3"), now=NOW),
+                                  lambda: A.approvals_source(lambda: ([_item("r2")], None))])
+        ids = sorted(r["id"] for r in page["rows"])
+        assert ids == ["approvals:q-r2-update_golden_config", "drift:lab:drifted:r3"]
+        assert "which is not on this page" in _panel(page)
+
+    def test_any_other_approval_is_its_own_row(self, queue):
+        res = A.approvals_source(lambda: ([_item("r2", kind="revert_to_golden")], None))
+        r = res["rows"][0]
+        assert r["attach_to"] is None and r["devices"] == ["r2"]
+        assert r["since"] == A._iso(NOW - 50)
+
+    def test_the_route_masks_what_a_row_quotes(self, queue, monkeypatch):
+        import app as nmas
+        secret = _item("r2", kind="revert_to_golden",
+                       description="snmp-server community Pl4ntedC0mmunity RO")
+        monkeypatch.setattr(A, "SOURCES", (lambda: A.approvals_source(
+            lambda: ([secret], None)),))
+        body = nmas.app.test_client().get("/attention").get_data(as_text=True)
+        assert "Pl4ntedC0mmunity" not in body and "redacted" in body
+
+
+# ---------------------------------------------------------------------------
+# Source: pending onboardings
+# ---------------------------------------------------------------------------
+
+def _pending(name, state, **kw):
+    return {"identity": f"uid:{name}", "name": name, "state": state,
+            "onboarded_at": "2026-09-27T10:00:00Z", "age_seconds": 30 * 3600,
+            "address_source": "static", "credential_findable": True, **kw}
+
+
+class TestPendingOnboardingsAsASource:
+    def test_in_flight_is_counted_not_listed(self, monkeypatch):
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
+        res = A.pending_onboarding_source(lambda: [_pending("bp-a", "in_flight")])
+        assert res["rows"] == [] and res["checked"] == "list lab: 1 pending, 1 within their first day"
+
+    def test_overdue_is_a_row_with_its_action(self, monkeypatch):
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
+        res = A.pending_onboarding_source(lambda: [_pending("bp-a", "overdue")])
+        r = res["rows"][0]
+        assert r["what"] == "bp-a was onboarded 30 h ago and has never been reached"
+        assert r["since"] == "2026-09-27T10:00:00Z" and "Verify" in r["action"]["label"]
+
+    def test_a_credential_nothing_can_find_is_danger_even_in_flight(self, monkeypatch):
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
+        res = A.pending_onboarding_source(
+            lambda: [_pending("bp-b", "in_flight", credential_findable=False)])
+        r = res["rows"][0]
+        assert r["level"] == "danger" and "Abandon" in r["action"]["label"]
+        assert "0 within their first day" in res["checked"]
+
+    def test_a_manifest_that_raises_is_the_unreadable_row(self, monkeypatch):
+        monkeypatch.setattr("modules.config.get_current_list_name", lambda: "lab")
+
+        def boom():
+            raise ValueError("manifest damaged")
+        res = A.pending_onboarding_source(boom)
+        assert res["state"] == "unreadable" and "manifest damaged" in res["rows"][0]["cause"]

@@ -365,8 +365,24 @@ def needs_attention(mp, tmp):
         raise OSError("the store could not be opened")
 
     _drift_run(mp, tmp)
+    from modules.config import get_current_list_name
+    lst = get_current_list_name()
+
+    def item(host):
+        return {"id": f"q-{host}", "status": "pending", "action_type": "update_golden_config",
+                "device_hostname": host, "description": f"Config drift detected on {host}",
+                "context": "Detected by scheduled drift check", "created_ts": NOW - 50}
+
+    # r2's drift item FOLDS into its drift row; r9's has no drift row and
+    # stands alone saying so.
+    queue = lambda: ([item("r2"), item("r9")], None)                 # noqa: E731
+    pending = lambda: [{"identity": "uid:bp-a", "name": "bp-a", "state": "overdue",  # noqa: E731
+                        "onboarded_at": "2026-09-27T10:00:00Z", "age_seconds": 30 * 3600,
+                        "address_source": "static", "credential_findable": True}]
+    assert lst                                   # the rows are keyed on the active list
     mp.setattr(A, "SOURCES", (lambda: A.job_health_source(health), A.drift_source,
-                              unreadable))
+                              lambda: A.approvals_source(queue),
+                              lambda: A.pending_onboarding_source(pending), unreadable))
     return _ok(_client().get("/attention"))
 
 

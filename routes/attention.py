@@ -16,4 +16,9 @@ bp = Blueprint("attention", __name__, url_prefix="/attention")
 @bp.route("", methods=["GET"])
 def needs_attention():
     from modules.attention import needs_attention as build
-    return jsonify(build())
+    from modules.outbound import mask_payload
+
+    # Rows quote their sources' own words (a job's error line, an approval's
+    # description): masked on the way out, like every read that draws text
+    # a store holds.
+    return jsonify(mask_payload(build()))

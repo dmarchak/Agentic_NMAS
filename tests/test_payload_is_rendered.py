@@ -99,7 +99,8 @@ RENDERS = {
         maps=("operands",),
         adapters={"modules/attention.py": ("needs_attention", "source_result", "row",
                                            "job_health_source", "_job_action",
-                                           "drift_source")}),
+                                           "drift_source", "approvals_source",
+                                           "pending_onboarding_source", "_attach")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,

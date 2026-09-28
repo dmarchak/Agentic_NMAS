@@ -57,6 +57,14 @@
       + '<div class="text-muted">since ' + when(r.since) + '</div>'
       + '<div>' + esc(r.cause) + '</div>'
       + (ops ? '<div class="text-muted">' + ops + '</div>' : '')
+      // A row about ANOTHER row is folded into it (one event, one row); one
+      // that still stands alone says why, because its target is not here.
+      + ((r.attached || []).map(function (a) {
+          return '<div class="text-muted">Also: ' + esc(a.what) + ' (' + esc(a.source)
+            + ', since ' + when(a.since) + ')</div>';
+        }).join(''))
+      + (r.attach_to ? '<div class="text-muted">It is about ' + esc(r.attach_to)
+         + ', which is not on this page: the last run no longer reports it</div>' : '')
       + '<div>Action: ' + actionHtml(r.action) + '</div>'
       // Stage 8's triage attaches HERE, on the row it answers (NSOT_PLAN 8.6).
       + (r.triage ? '<div class="border-start ps-2 mt-1">Triage: ' + esc(r.triage.summary)

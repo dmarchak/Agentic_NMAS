@@ -132,6 +132,31 @@ def add_approval(
     return entry_id
 
 
+def read_pending() -> tuple:
+    """``(pending, None)`` or ``(None, reason)``, and it WRITES NOTHING.
+
+    For a reader that polls (Needs attention, 7.2). `get_pending()` saves the
+    queue on every call to persist expiry, and `_load_queue()` reads an
+    unreadable file as empty, so a poll of it is a write, and a torn read
+    followed by that write empties the queue (register C159). Here expiry is
+    applied in memory only, and unreadable is its own answer, because "no
+    approval is waiting" and "the queue could not be read" must not share
+    one."""
+    path = _queue_path()
+    if not os.path.exists(path):
+        return [], None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            entries = json.load(fh)
+        if not isinstance(entries, list):
+            raise ValueError("not a list")
+    except (OSError, ValueError) as exc:
+        return None, f"the approval queue could not be read ({type(exc).__name__})"
+    cutoff = time.time() - EXPIRY_HOURS * 3600
+    return [e for e in entries if e.get("status") == "pending"
+            and not (e.get("created_ts") and e["created_ts"] < cutoff)], None
+
+
 def get_pending() -> list:
     """Return all pending (not yet resolved, not expired) approval requests."""
     entries = _expire_old(_load_queue())

@@ -50,8 +50,14 @@ def _iso(ts) -> str:
 
 
 def row(*, source: str, key: str, what: str, cause: str, action: dict,
-        level: str, devices=(), since=None, operands: dict = None) -> dict:
-    """The only constructor for a Needs attention row."""
+        level: str, devices=(), since=None, operands: dict = None,
+        attach_to: str = None) -> dict:
+    """The only constructor for a Needs attention row.
+
+    *attach_to* names another row's id this one is ABOUT (a queued drift
+    item is about its device's drift row). The page merges it into that row
+    instead of drawing a second row about one event; it stands alone only
+    when that row is absent."""
     missing = [n for n, v in (("source", source), ("key", key), ("what", what),
                               ("cause", cause)) if not str(v or "").strip()]
     if not isinstance(action, dict) or not str(action.get("label") or "").strip():
@@ -65,6 +71,7 @@ def row(*, source: str, key: str, what: str, cause: str, action: dict,
             "devices": [d for d in devices if d], "since": _iso(since),
             "cause": cause, "operands": dict(operands or {}),
             "action": {"known": True, **action}, "level": level,
+            "attach_to": attach_to, "attached": [],
             # Stage 8 attaches its triage HERE, on the row, never as a row of
             # its own (NSOT_PLAN 8.6): two rows about one event is the
             # three-reports problem restated on the page.
@@ -191,8 +198,11 @@ def job_health_source(health=None, now=None) -> dict:
 #: the page is from a run that should have been superseded.
 DRIFT_STALE_INTERVALS = 2
 
-_REACH_APPROVALS = {"label": "Review the queued drift item in Approvals: capture the "
-                             "running config as the golden, or re-apply the golden"}
+#: A drifted device's action when nothing is queued for it: both remedies
+#: are on its Device page (7.1 steps 4 and 5). A queued drift item, when
+#: there is one, attaches and its action replaces this.
+_DRIFT_ACTION = {"label": "From its Device page: Capture the running config as the "
+                          "golden, or Restore from the golden"}
 
 
 def drift_source(status=None, now=None) -> dict:
@@ -255,7 +265,7 @@ def drift_source(status=None, now=None) -> dict:
             f"the running config differs from the committed golden by "
             f"{d.get('diff_lines', '?')} diff line(s), seen by the drift check at "
             f"{_iso(last_ts) or 'an unrecorded time'}; since when it has differed "
-            "is not recorded", _REACH_APPROVALS, "danger", devices=[d["hostname"]],
+            "is not recorded", _DRIFT_ACTION, "danger", devices=[d["hostname"]],
             operands={"diff_lines": d.get("diff_lines"), "coverage": coverage})
     for d in last.get("skipped") or []:
         no_golden = d.get("reason") == "no golden config saved"
@@ -289,11 +299,130 @@ def _ts(value):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Source: the approval queue
+# ---------------------------------------------------------------------------
+
+#: The action types drift queues, one item per drifted device. Each is ABOUT
+#: that device's drift row and attaches to it.
+_DRIFT_ITEM_TYPES = ("update_golden_config",)
+
+
+def approvals_source(read=None) -> dict:
+    """Every pending approval, through a read that writes nothing. A queued
+    drift item attaches to its device's drift row (the page must not count
+    one event twice); anything else is a row of its own."""
+    from modules import approval_queue as Q
+    from modules.config import get_current_list_name
+
+    started = time.time()
+    try:
+        lst = get_current_list_name()
+        pending, reason = (read or Q.read_pending)()
+    except Exception as exc:                       # noqa: BLE001
+        pending, reason = None, f"it raised {type(exc).__name__}: {exc}"
+    took = int((time.time() - started) * 1000)
+    if reason:
+        return source_result("approvals", "Approvals", read_at=started, took_ms=took,
+                             error=reason)
+    rows = []
+    for e in pending:
+        host = e.get("device_hostname") or e.get("device_ip") or ""
+        drift_item = e.get("action_type") in _DRIFT_ITEM_TYPES and host
+        rows.append(row(
+            source="approvals", key=e.get("id") or "?",
+            what=f"An approval is waiting: {e.get('description') or e.get('action_type')}",
+            cause=(e.get("context") or "queued with no context recorded")
+                  + "; nothing is done until a person approves it",
+            action={"label": "Review it in Approvals"
+                             + (": approving opens the capture preview"
+                                if e.get("action_type") in Q.CONFIRM_ENDING_ACTIONS else "")},
+            level="warning", devices=[host] if host else [], since=e.get("created_ts"),
+            operands={"kind": e.get("action_type", ""), "list": lst},
+            attach_to=f"drift:{lst}:drifted:{host}" if drift_item else None))
+    return source_result("approvals", "Approvals", read_at=started, took_ms=took,
+                         rows=rows, checked=f"list {lst}: {len(rows)} pending approval(s)")
+
+
+# ---------------------------------------------------------------------------
+# Source: pending onboardings
+# ---------------------------------------------------------------------------
+
+def pending_onboarding_source(pending=None, now=None) -> dict:
+    """Devices onboarded and never reached. `in_flight` (under a day) is the
+    normal state of an onboarding and is counted, not listed; overdue, stale
+    and a staged credential nothing can find are rows. ZTP progress is not
+    asked here: it asks Kea per device (section 0a); the pending banner
+    carries it."""
+    import os
+
+    from modules.config import get_current_list_name, get_list_data_dir
+    from modules.nsot.manifest import pending_devices
+
+    started = time.time()
+    try:
+        lst = get_current_list_name()
+        devices = (pending or (lambda: pending_devices(
+            os.path.join(get_list_data_dir(lst), "config_repo"))))()
+    except Exception as exc:                       # noqa: BLE001
+        return source_result("onboarding", "Pending onboardings", read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             error=f"it raised {type(exc).__name__}: {exc}")
+    took = int((time.time() - started) * 1000)
+    rows = []
+    for d in devices:
+        name, state = d.get("name") or d.get("identity") or "?", d.get("state")
+        since = _ts(d.get("onboarded_at"))
+        if d.get("credential_findable") is False:
+            rows.append(row(
+                source="onboarding", key=f"{lst}:{name}:credential", level="danger",
+                what=f"{name} cannot be verified: its staged credential cannot be found",
+                cause=("the credential staged for it is not where verification looks, so "
+                       "Verify would try a profile the device refuses; nothing has reached "
+                       "the device, so there is nothing to undo"),
+                action={"label": "Abandon it and onboard it again, from the pending banner"},
+                devices=[name], since=since, operands={"list": lst, "state": state}))
+        elif state in ("overdue", "stale"):
+            hours = int((d.get("age_seconds") or 0) // 3600)
+            rows.append(row(
+                source="onboarding", key=f"{lst}:{name}", level="warning",
+                what=f"{name} was onboarded {hours} h ago and has never been reached",
+                cause=("it is in the manifest and git and not in the inventory: nothing "
+                       "polls, backs up or drift-checks it until Verify reaches it"),
+                action={"label": "Verify it, or Abandon it, from the pending banner"},
+                devices=[name], since=since, operands={"list": lst, "state": state,
+                                                       "address_source": d.get("address_source")}))
+    quiet = sum(1 for d in devices if d.get("state") == "in_flight"
+                and d.get("credential_findable") is not False)
+    return source_result("onboarding", "Pending onboardings", read_at=started, took_ms=took,
+                         rows=rows,
+                         checked=f"list {lst}: {len(devices)} pending, {quiet} within their "
+                                 "first day")
+
+
 #: Every source, in the order a person reads them. Section 1a's other
-#: sources (freshness, Grafana alerts, approvals, pending onboardings,
-#: rollback blocks, failed deploys, unearned baselines) join HERE, each
-#: through `source_result`.
-SOURCES = (job_health_source, drift_source)
+#: sources (freshness, Grafana alerts, rollback blocks, failed deploys,
+#: unearned baselines) join HERE, each through `source_result`.
+SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source)
+
+
+def _attach(rows: list) -> list:
+    """Fold each row that is ABOUT another row into it (NSOT_PLAN 8.6: two
+    rows about one event is the three-reports problem). The target keeps its
+    own cause and takes the attached row's action, since a queued item is the
+    prepared path to the fix; an attached row whose target is absent stands
+    alone."""
+    by_id = {r["id"]: r for r in rows}
+    kept = []
+    for r in rows:
+        target = by_id.get(r.get("attach_to") or "")
+        if target is None or target is r:
+            kept.append(r)
+            continue
+        target["attached"].append({"source": r["source"], "what": r["what"],
+                                   "since": r["since"]})
+        target["action"] = r["action"]
+    return kept
 
 
 def needs_attention(sources=None) -> dict:
@@ -309,7 +438,7 @@ def needs_attention(sources=None) -> dict:
             log.error("attention: source %s raised: %s", name, exc)
             results.append(source_result(name, name, read_at=time.time(), took_ms=0,
                                          error=f"its adapter raised {type(exc).__name__}: {exc}"))
-    rows = [r for res in results for r in res["rows"]]
+    rows = _attach([r for res in results for r in res["rows"]])
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
     unreadable = [res["label"] for res in results if res["state"] != "read"]
     if rows:
