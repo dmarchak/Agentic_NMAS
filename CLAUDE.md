@@ -1120,7 +1120,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_no_second_commit_path.py` | C104: a save whose commit fails puts each golden back (or removes a new one) and stages nothing; a failed rename stays pending with its file and manifest back; the manual commit's route and request are gone; the Git tab's status names an uncommitted golden with its remedy, and the SHIPPED bar (with its own escaper) never says clean over one; `Source:` recorded as given (rotation), a malformed one refused before writing, every literal source a slug (AST, floor); abandon stages only its path |
 | `test_readers_use_what_is_committed.py` | C104's consumers (two passes): an uncommitted hand edit to a golden is ignored and named by the resolver, drift, the NetBox import, the agent's tool (through the real `run_chat()` loop) and the freshness gate; a file nothing committed is refused by path and not enumerated; a golden committed without `Source:` is refused naming path and commit; committed intent is read from HEAD by `read_committed()` and the editor; every direct use of the intent path outside `hostvars.py` is named; no function across the program AND its scripts resolves a golden's or intent's path and opens a file itself (each exception named: the legacy store, the migration verifier, one repair script); the deploy plan names a refused golden. Expected values come from git directly, never from the reader under test |
 | `test_page_requests_resolve.py` | The reverse of reachability: every literal request the rendered pages and their scripts make (143) reaches a route with its method; a `${}` placeholder is one segment and a concatenated string a prefix; the resolver shown saying no to two removed routes. A `fetch('/git/commit')` left behind was caught before only by a pin naming that route |
-| `test_record_exceptions.py` | C104: the eleven rotation commits recorded `Source: manual`, by full hash; C110: the two restores recorded `Source: pipeline`, and a restore now records `restore`; a prefix is not a commit; golden history keeps the recorded source and draws the exception beside it |
+| `test_record_exceptions.py` | C104: the eleven rotation commits recorded `Source: manual`, by full hash; C110: the two restores recorded `Source: pipeline`, and a restore now records `restore` (a never-run claim is evidence only if the path writes its marker, and writes it alone); a prefix is not a commit; golden history keeps the recorded source and draws the exception beside it |
 | `test_refresh_hostnames_renames.py` | C102: Refresh Hostnames records a PENDING rename and commits nothing (HEAD unmoved, the golden still under its old name); its message leads with what is left to do; syncing moves the golden alone (`R100` plus the manifest) and `git log --follow` keeps its history; nothing is recorded as `ai-agent`. Through the real route against a real repository |
 | `test_in_flight.py` | C99: the lock lists who holds each device, since when and the step it waits on in words (a stall named; nothing held creates nothing); the route returns running and the last 30 minutes' receipts, and a failed read is a 500, not an empty list; the SHIPPED panel executed in duktape (running, nothing, a finished one naming its receipt and hideable, escaped, and a failed read never drawn as nothing running); every long apply marked busy and unmarked in a `finally`; the panel above Bootstrap's modals; a held device fails the preview's gate naming the holder and cannot be confirmed; C109: an unselectable target says why beside its box (the holder, for a busy device), and the builder refuses one that says nothing |
 | `test_credential_rotation.py` (C106) | a failed record keeps the only copy of the new password (`ROTATED_NOT_RECORDED`, danger first, job-health row); sudo is asked BEFORE the device changes (`sudo -n -l` on the helper, refused naming the exact sudoers line), a refused helper run is named, and an answer without `ok` is not success |
@@ -1183,7 +1183,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_onboard_abandon.py` | release refuses while named; abandon reverses creation; a partial abandon never reclaims |
 | `test_onboard_pending.py` | pending has an exit; 24h/7d; promotion refuses the bootstrap credential |
 | `test_onboard_phase2.py` | reaching is the verification; silence is not a cause; the banner tells error from empty |
-| `test_onboard_phase_two.py` | the full phase: every step reported, promotion last, the first golden a true record; P.6 M4: `persist` saves on the device and reads the startup config back (the running line verbatim, the form never the value), no startup config or an old line is not persisted, an unpersisted device is never promoted, the outcome is a rotation record job health reads, and its advice is `nmas-persist-native`, never the containerlab chain |
+| `test_onboard_phase_two.py` | the full phase: every step reported, promotion last, the first golden a true record; C111: a rotation record names the path that wrote it (`via`, required of the persist recorder, every caller scanned); P.6 M4: `persist` saves on the device and reads the startup config back (the running line verbatim, the form never the value), no startup config or an old line is not persisted, an unpersisted device is never promoted, the outcome is a rotation record job health reads, and its advice is `nmas-persist-native`, never the containerlab chain |
 | `test_settings_file_integrity.py` | absent vs unreadable; a write on defaults refused; the save is atomic |
 | `tests/fixtures/fleet_scale.py` | a fleet of any size with a realistic state mix (not a test module) |
 
@@ -5350,6 +5350,22 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   C91**: coverage was checked only when nothing changed, so a Save All that
   committed took a baseline with a device skipped. Six tests had pinned
   that, by seeding Save All baselines with no inventory size.
+- **Absence of a marker proves a path never ran only if the path WRITES
+  that marker, and writes it ALONE** (C110, C111; the operator's framing,
+  2026-09-27). C70 was scheduled on "no commit carries `Source: restore`",
+  and the restore path wrote `Source: pipeline`: the evidence could not have
+  come out any other way. Asking the same of C57 found the second half: its
+  acceptance ("the step's row reads persisted") was already met by two rows
+  `nmas-persist-native` wrote, because both paths wrote identical records.
+  Before a never-run claim schedules work, name the marker, show from the
+  code that the path writes it, and show that nothing else does. A record's
+  `via` (which path wrote it) is what makes the second possible.
+- **A finding the operator raises goes into the register before the
+  conversation moves on**, even as one line (the operator, 2026-09-27).
+  C108 was raised after C70's first run and existed only in conversation
+  until the re-run found it again: B2's shape ("a rotation leaves no
+  durable record") pointed at the process. The register is what survives
+  the session.
 - **A check of an operation takes its expectation from the operation's
   TARGET, never only from the state the operation is changing** (C108, the
   operator, C70 re-run, 2026-09-27). Verify read its protocol list from the

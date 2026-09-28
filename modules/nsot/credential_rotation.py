@@ -2580,7 +2580,13 @@ def record_outcome(phase: str, result: dict) -> None:
                "phase": phase, "device": result.get("device", ""),
                "state": result.get("state", ""),
                "failed_stage": next((st["name"] for st in stages if not st["ok"]), ""),
-               "actor": result.get("actor", ""), "stages": stages}
+               "actor": result.get("actor", ""), "stages": stages,
+               # WHICH PATH wrote this row. An onboarding's persist step and
+               # `nmas-persist-native` wrote identical rows, so "the step's
+               # row reads persisted" (C57's acceptance) was already met by
+               # two CLI rows the step never wrote: C110's shape, a marker
+               # the path under watch is not the only writer of (C111).
+               "via": result.get("via") or "not named"}
         with open_secure(_rotation_record_path(), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, sort_keys=True) + "\n")
     except Exception as exc:                          # noqa: BLE001
@@ -2952,6 +2958,7 @@ def rotate(list_name: str, hostname: str, **kw) -> dict:
     from modules.nsot import device_ops
 
     actor = kw.get("actor") or f"{getpass.getuser()} (host shell)"
+    via = kw.pop("via", "") or "rotate(), caller not named"
     try:
         with device_ops.hold(list_name, hostname, "rotate", actor):
             result = _rotate(list_name, hostname, **kw)
@@ -2961,6 +2968,7 @@ def rotate(list_name: str, hostname: str, **kw) -> dict:
                   "steps": [{"name": "device free", "ok": False, "detail": str(exc)}],
                   "preflight_checks": [], "reason": str(exc)}
     result.setdefault("device", hostname)
+    result.setdefault("via", via)
     record_outcome("rotate", result)
     return result
 
@@ -2970,7 +2978,9 @@ def persist(result: dict, **kw) -> dict:
     """The persistence chain (see :func:`_persist`), and RECORD it (B2, B15).
     The record is what job_health reads to keep a device that did not persist
     in front of an operator until a later persist reaches SAFE."""
+    via = kw.pop("via", "") or "persist(), caller not named"
     out = _persist(result, **kw)
     out.setdefault("device", kw.get("hostname", ""))
+    out["via"] = via
     record_outcome("persist", out)
     return out

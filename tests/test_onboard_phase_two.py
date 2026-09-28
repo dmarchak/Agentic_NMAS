@@ -685,11 +685,68 @@ class TestTheNativePersistCommand:
         from modules import job_health
         from modules.nsot.onboard import _record_native_persist
 
-        _record_native_persist("bp9", {"ok": False, "detail": "no startup config"}, "op")
+        _record_native_persist("bp9", {"ok": False, "detail": "no startup config"}, "op",
+                               via="nmas-persist-native")
         row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp9"][0]
         assert row["state"] == "not_safe_to_reboot"
         assert "nmas-persist-native bp9" in row["detail"]
         assert "nmas-persist-credential" not in row["detail"]
-        _record_native_persist("bp9", {"ok": True, "detail": "carries it"}, "op")
+        _record_native_persist("bp9", {"ok": True, "detail": "carries it"}, "op",
+                               via="nmas-persist-native")
         row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp9"][0]
         assert row["state"] == "ok"
+
+
+class TestARotationRecordNamesThePathThatWroteIt:
+    """C111: an onboarding's persist step and `nmas-persist-native` wrote
+    IDENTICAL rows, and the host already held two `persisted` rows for
+    bp-ztp-a from the CLI. So C57's acceptance ("the step's row reads
+    persisted") was met before the step had ever run: C110's shape, a
+    marker the watched path is not the only writer of."""
+
+    def test_the_onboarding_step_and_the_cli_write_different_rows(self, world):
+        from modules.nsot import credential_rotation as cr
+        from modules.nsot.onboard import _record_native_persist
+
+        _record_native_persist("bp8", {"ok": True, "detail": "d"}, "op",
+                               via="onboarding phase 2")
+        _record_native_persist("bp8", {"ok": True, "detail": "d"}, "op",
+                               via="nmas-persist-native")
+        rows = [r for r in cr.rotation_records() if r["device"] == "bp8"]
+        assert [r["via"] for r in rows] == ["onboarding phase 2", "nmas-persist-native"]
+
+    def test_the_via_is_required_of_the_persist_recorder(self):
+        import inspect
+
+        from modules.nsot.onboard import _record_native_persist
+
+        param = inspect.signature(_record_native_persist).parameters["via"]
+        assert param.default is inspect.Parameter.empty
+
+    def test_every_caller_names_itself(self):
+        """Each path that records a rotation or a persist passes `via`, so a
+        row can never be ambiguous about its writer again (a floor on the
+        call sites found, so the scan cannot pass by finding none)."""
+        import ast
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        files = ["modules/nsot/onboard.py", "scripts/nmas-persist-native",
+                 "scripts/nmas-persist-credential", "scripts/nmas-rotate-credential"]
+        found, missing = 0, []
+        for rel in files:
+            tree = ast.parse(open(os.path.join(root, rel), encoding="utf-8").read())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                f = node.func
+                name = getattr(f, "attr", None) or getattr(f, "id", None)
+                if isinstance(f, ast.BoolOp):
+                    # `(injected or default)(...)`: the default is the callee.
+                    last = f.values[-1]
+                    name = getattr(last, "attr", None) or getattr(last, "id", None)
+                if name in ("rotate", "persist", "_record_native_persist") and node.args:
+                    found += 1
+                    if not any(k.arg == "via" for k in node.keywords):
+                        missing.append(f"{rel}:{node.lineno}")
+        assert found >= 5, found
+        assert missing == [], missing

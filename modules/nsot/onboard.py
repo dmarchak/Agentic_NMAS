@@ -954,7 +954,8 @@ def finish_bootstrap(repo: str, hostname: str, list_name: str, *,
         result = rotate(list_name, hostname,
                         confirmed_fingerprint=confirmed_fingerprint,
                         actor=actor, actor_kind=actor_kind,
-                        device=device, capture=capture, record=record) or {}
+                        device=device, capture=capture, record=record,
+                        via="onboarding phase 2") or {}
     except Exception as exc:                   # noqa: BLE001
         log.error("onboard: rotation raised for %s: %s", hostname, exc)
         result = {"state": NOT_STARTED, "error": f"rotation raised: {exc}"}
@@ -2564,13 +2565,13 @@ def check_startup(mgmt_ip: str, username: str, password: str, secret: str,
     return startup_carries(startup, running)
 
 
-def _record_native_persist(hostname: str, pers: dict, actor: str) -> None:
+def _record_native_persist(hostname: str, pers: dict, actor: str, *, via: str) -> None:
     """A rotation record, so job health's rotation row reads what happened on
     the DEVICE: SAFE only when the startup read-back matched."""
     from modules.nsot import credential_rotation as cr
 
     cr.record_outcome("persist", {
-        "device": hostname, "actor": actor,
+        "device": hostname, "actor": actor, "via": via,
         "state": cr.ROTATED_PERSISTED if pers.get("ok") else cr.ROTATED_UNVERIFIED,
         "persistence": [{"name": "device_startup_config", "ok": bool(pers.get("ok")),
                          "detail": pers.get("detail", "")}]})
@@ -2861,7 +2862,7 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
     # CARRIES THE ROTATED CREDENTIAL (the operator's acceptance, P.6 M4).
     pers = (persist or persist_on_device)(mgmt_ip, user, pw, sec, device_type)
     result["persist"] = pers
-    _record_native_persist(hostname, pers, actor)
+    _record_native_persist(hostname, pers, actor, via="onboarding phase 2")
     if not _step("persist", pers.get("ok"), pers.get("detail", "")):
         return _stop("persist", (
             f"{pers.get('detail') or 'the save could not be confirmed'}. The "

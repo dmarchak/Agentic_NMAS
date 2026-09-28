@@ -53,7 +53,8 @@ def run(list_name: str, hostname: str, *, persist=None, record=None) -> dict:
                 cr.enable_secret(row), device_type)
     except device_ops.DeviceBusy as exc:
         return {"state": "unknown", "detail": str(exc)}
-    (record or onboard._record_native_persist)(hostname, out, getpass.getuser())
+    (record or onboard._record_native_persist)(hostname, out, getpass.getuser(),
+                                                via="nmas-persist-native")
     return out
 
 
