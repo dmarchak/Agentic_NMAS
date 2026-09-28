@@ -338,7 +338,7 @@ class TestAbandonRefusesAPromotedDevice:
 
         out = abandon_onboarding(
             world["repo"], "bp1", "probe",
-            remove_netbox=lambda l, h, dry_run=False: {"ok": True,
+            remove_netbox=lambda l, h, dry_run=False, **k: {"ok": True,
                                                        "deleted": [],
                                                        "skipped": []})
         assert out["ok"] is True, out

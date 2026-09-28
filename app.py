@@ -1195,13 +1195,15 @@ def delete_device_list_route(list_name):
             cleanup_log.append("NetBox: not configured — skipped")
         elif not opt_in:
             # Stop claiming ownership, but leave every NetBox object in place.
-            remove_list_from_netbox(list_name, forget_only=True)
+            remove_list_from_netbox(list_name, forget_only=True,
+                                    actor=request_actor() or "")
             cleanup_log.append(
                 "NetBox: objects left in place (enable 'Remove from NetBox when a "
                 "device list is deleted' in Settings, or use Remove on the NetBox tab)"
             )
         else:
-            nb_result = remove_list_from_netbox(list_name)
+            nb_result = remove_list_from_netbox(list_name,
+                                                actor=request_actor() or "")
             if nb_result.get("ok"):
                 cleanup_log.append(
                     f"NetBox: deleted {len(nb_result.get('deleted', []))} NMAS-created "

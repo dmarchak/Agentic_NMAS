@@ -1019,6 +1019,17 @@ recorded the turn it is raised, after searching the register.
     `local_context_data` changes are C95's field: the import's whole remaining
     device-level work was writing unmasked credentials, so no import is
     confirmed until C95 (a) is deployed.
+  - **R1 and R2b DONE 2026-09-28 (the operator): 7.1's stated limit is CLOSED.** R1 ran all seven steps
+    (onboarding's review, Create, Verify before and after the boot, and Abandon, each drawn by the
+    component and read back) and found C147 and C148 and closed C57. R2b: the Remove preview for
+    `probe-r1` listed exactly the 8 predicted objects, in dependency order, nothing left alone; the
+    result, "NetBox accepted 8 delete(s) and refused 0", read back from the record; and the census
+    compare was PASS at 235 objects and 9 tagged, identical to the baseline, with 0 modifications on
+    objects that existed at it. The first real provenance-based removal deleted only what NMAS
+    created, on a shared system, a person confirming. Restore (C70), onboarding (R1) and the NetBox
+    window (R2a, R2b) have each been run by a person. Its one stated limit, the cascade not
+    re-read after the removal, is C150. **Three real runs, three sets of findings no test could
+    reach** (C70, R2a, R1): the rate has not dropped.
   - **R2b, the real removal, after R1**: Remove `probe-r1` (the list R1
     onboarded into). Every delete named, what NetBox takes with them asked,
     then confirm, read the result, re-read it on the NetBox tab's Removals

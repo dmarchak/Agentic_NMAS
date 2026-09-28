@@ -25,6 +25,14 @@ import os
 
 from flask import Blueprint, jsonify, request
 
+
+def _actor() -> str:
+    """The VERIFIED person behind this request (the gate table requires one),
+    carried into every NetBox write so its modification record names who
+    (C149: 56 of 58 recorded writes read `unattributed`)."""
+    from modules.identity import request_actor
+    return request_actor() or ""
+
 log = logging.getLogger(__name__)
 
 bp = Blueprint("netbox_safety", __name__, url_prefix="/netbox/safety")
@@ -154,7 +162,8 @@ def preview_import():
 
     pid = _progress_start(data, "previewed for import", list_name)
     try:
-        result = sync_list_to_netbox(list_name, devices, dry_run=True, progress_id=pid)
+        result = sync_list_to_netbox(list_name, devices, dry_run=True, progress_id=pid,
+                                     actor=_actor())
     except Exception as exc:                  # noqa: BLE001
         log.exception("netbox_safety: import preview failed for '%s'", list_name)
         op_progress.finish(pid, "failed")
@@ -199,10 +208,14 @@ def apply_import():
     from modules import op_progress
 
     pid = _progress_start(data, "re-checked, then imported", list_name)
+    # Captured HERE: the import runs on a thread after the response, where
+    # there is no request to ask (C149).
+    actor = _actor()
     authorized, err, status = _authorize(
         data, "import", list_name,
         recompute=lambda: sync_list_to_netbox(list_name, devices, dry_run=True,
-                                              progress_id=pid).get("plan", {}),
+                                              progress_id=pid,
+                                              actor=actor).get("plan", {}),
     )
     if not authorized:
         op_progress.finish(pid, "refused")
@@ -215,7 +228,7 @@ def apply_import():
         try:
             set_sync_running(name, True)
             op_progress.update(pid, phase="importing", devices_done=0)
-            sync_list_to_netbox(name, devs, progress_id=pid)
+            sync_list_to_netbox(name, devs, progress_id=pid, actor=actor)
         except Exception as exc:              # noqa: BLE001
             outcome = "failed"
             log.error("netbox_safety: import thread failed: %s", exc, exc_info=True)
@@ -263,7 +276,8 @@ def preview_import_all():
     data = request.get_json(silent=True) or {}
     pid = _progress_start(data, "previewed for import", "every list")
     try:
-        result = sync_all_lists_to_netbox(payload, dry_run=True, progress_id=pid)
+        result = sync_all_lists_to_netbox(payload, dry_run=True, progress_id=pid,
+                                          actor=_actor())
     except Exception as exc:                  # noqa: BLE001
         log.exception("netbox_safety: import-all preview failed")
         op_progress.finish(pid, "failed")
@@ -301,10 +315,12 @@ def apply_import_all():
     from modules import op_progress
 
     pid = _progress_start(data, "re-checked, then imported", "every list")
+    actor = _actor()   # the import runs on a thread after the response (C149)
     authorized, err, status = _authorize(
         data, "import_all", _ALL_LISTS,
         recompute=lambda: sync_all_lists_to_netbox(payload, dry_run=True,
-                                                   progress_id=pid).get("plan", {}),
+                                                   progress_id=pid,
+                                                   actor=actor).get("plan", {}),
     )
     if not authorized:
         op_progress.finish(pid, "refused")
@@ -317,7 +333,7 @@ def apply_import_all():
             for n in names:
                 set_sync_running(n, True)
             op_progress.update(pid, phase="importing", devices_done=0)
-            sync_all_lists_to_netbox(items, progress_id=pid)
+            sync_all_lists_to_netbox(items, progress_id=pid, actor=actor)
         except Exception as exc:              # noqa: BLE001
             outcome = "failed"
             log.error("netbox_safety: import-all thread failed: %s", exc, exc_info=True)
@@ -347,7 +363,7 @@ def preview_removal():
         return jsonify({"ok": False, "error": "list_name is required"}), 400
 
     try:
-        result = remove_list_from_netbox(list_name, dry_run=True)
+        result = remove_list_from_netbox(list_name, dry_run=True, actor=_actor())
     except Exception as exc:                  # noqa: BLE001
         log.exception("netbox_safety: removal preview failed for '%s'", list_name)
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -371,12 +387,12 @@ def apply_removal():
     # "Forget" needs neither the switch nor a token — it deletes nothing.
     if data.get("forget_only"):
         return jsonify(_recorded_removal(list_name, remove_list_from_netbox(
-            list_name, forget_only=True), forget_only=True))
+            list_name, forget_only=True, actor=_actor()), forget_only=True))
 
     _maybe_permit_writes(data)
 
     def _recompute():
-        preview = remove_list_from_netbox(list_name, dry_run=True)
+        preview = remove_list_from_netbox(list_name, dry_run=True, actor=_actor())
         return {"deletes": [{"endpoint": o["endpoint"], "name": o.get("name", ""),
                              "id": o.get("id")} for o in preview.get("deleted", [])]}
 
@@ -385,7 +401,7 @@ def apply_removal():
         return jsonify(err), status
 
     try:
-        result = remove_list_from_netbox(list_name)
+        result = remove_list_from_netbox(list_name, actor=_actor())
     except Exception as exc:                  # noqa: BLE001
         log.exception("netbox_safety: removal failed for '%s'", list_name)
         result = {"ok": False, "error": str(exc)}

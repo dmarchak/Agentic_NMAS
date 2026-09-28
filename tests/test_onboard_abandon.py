@@ -115,7 +115,7 @@ class TestAbandonRunsTheSequenceInReverse:
         from modules.nsot.onboard import abandon_onboarding
 
         kw.setdefault("remove_netbox",
-                      lambda lst, host, dry_run=False: {"ok": True,
+                      lambda lst, host, dry_run=False, **k: {"ok": True,
                                                         "deleted": [{"id": 9}],
                                                         "skipped": []})
         return abandon_onboarding(repo, "bp1", "probe", actor="t", **kw)
@@ -169,7 +169,7 @@ class TestAPartialAbandonNeverReportsSuccess:
         _onboard(repo)
         out = abandon_onboarding(
             repo, "bp1", "probe",
-            remove_netbox=lambda lst, host, dry_run=False: {
+            remove_netbox=lambda lst, host, dry_run=False, **k: {
                 "ok": False, "error": "NetBox writes are disabled"})
         assert out["ok"] is False
         assert any("disabled" in r["detail"] for r in out["remaining"])
@@ -193,7 +193,7 @@ class TestAPartialAbandonNeverReportsSuccess:
         try:
             out = abandon_onboarding(
                 repo, "bp1", "probe",
-                remove_netbox=lambda lst, host, dry_run=False: {
+                remove_netbox=lambda lst, host, dry_run=False, **k: {
                     "ok": False, "error": "refused"})
             assert out["ok"] is False
             assert out["released"] == ""
@@ -215,7 +215,7 @@ class TestAPartialAbandonNeverReportsSuccess:
         _onboard(repo)
         out = abandon_onboarding(
             repo, "bp1", "probe",
-            remove_netbox=lambda lst, host, dry_run=False: {
+            remove_netbox=lambda lst, host, dry_run=False, **k: {
                 "ok": True, "deleted": [], "skipped": [], "retained": [],
                 "message": "no device named 'bp1' in NetBox — nothing to remove"})
         row = next(s for s in out["steps"] if s["step"] == "netbox")
@@ -228,7 +228,7 @@ class TestAPartialAbandonNeverReportsSuccess:
         _onboard(repo)
         out = abandon_onboarding(
             repo, "bp1", "probe",
-            remove_netbox=lambda lst, host, dry_run=False: {
+            remove_netbox=lambda lst, host, dry_run=False, **k: {
                 "ok": True, "deleted": ["dcim/devices:9"], "skipped": []})
         row = next(s for s in out["steps"] if s["step"] == "netbox")
         assert row["detail"] == "1 object(s) removed, 0 left alone", row
@@ -239,7 +239,7 @@ class TestAPartialAbandonNeverReportsSuccess:
         _onboard(repo)
         out = abandon_onboarding(
             repo, "bp1", "probe",
-            remove_netbox=lambda lst, host, dry_run=False: {
+            remove_netbox=lambda lst, host, dry_run=False, **k: {
                 "ok": False, "error": "NetBox unreachable"})
         assert out["remaining"]
         for item in out["remaining"]:
@@ -286,7 +286,7 @@ class TestDiscardedReturnValues:
         monkeypatch.setattr(_repo, "git", _fail)
         out = onboard.abandon_onboarding(
             repo, "bp1", "probe",
-            remove_netbox=lambda l, h, dry_run=False: {"ok": True,
+            remove_netbox=lambda l, h, dry_run=False, **k: {"ok": True,
                                                        "deleted": [],
                                                        "skipped": []})
         intent = next(s for s in out["steps"] if s["step"] == "intent")
@@ -305,7 +305,7 @@ class TestDiscardedReturnValues:
             (1, "", "fatal") if "commit" in a else real(r, *a)))
         onboard.abandon_onboarding(
             repo, "bp1", "probe",
-            remove_netbox=lambda l, h, dry_run=False: {"ok": True,
+            remove_netbox=lambda l, h, dry_run=False, **k: {"ok": True,
                                                        "deleted": [],
                                                        "skipped": []})
         assert _m.find_by_name(repo, "bp1")[0] == identity

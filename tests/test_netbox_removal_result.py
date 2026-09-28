@@ -42,7 +42,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr("modules.identity.request_actor", lambda: "ops@example.com")
     state = {}
 
-    def remove(list_name, dry_run=False, forget_only=False):
+    def remove(list_name, dry_run=False, forget_only=False, **k):
         return state["result"]
     monkeypatch.setattr("modules.netbox_client.remove_list_from_netbox", remove)
     return A.app.test_client(), state
