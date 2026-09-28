@@ -181,10 +181,8 @@ class TestConvergenceOutcomes:
                 C.get_persistent_connection = original_conn
 
     def test_recovery_within_the_window_converges(self):
-        """Convergence is "within tolerance", not "fully restored".
-
-        With a baseline of 2 and _NEIGHBOR_DROP_TOLERANCE of 1, a count of 1 is
-        already acceptable — so polling stops there rather than waiting for 2.
+        """Convergence is "back within tolerance". The tolerance is 0 since
+        C114, so a baseline of 2 converges only when the count is back to 2.
         """
         result = self._await([0, 1, 2])
         assert result["state"] == convergence.CONVERGED

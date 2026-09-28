@@ -1117,3 +1117,82 @@ class TestAnUncomparedCountIsNotDrawnAsACheck:
         ctx.post_snapshots = {"10.0.0.1": snap}
         _stage_verify(ctx)
         assert ctx.verify_result["10.0.0.1"]["routes_compared"] is True
+
+
+class TestVerifyFailsWhatItUsedToPass:
+    """C114 and C115 (the operator's decisions, 2026-09-27). Demonstrated
+    before the fix through `_stage_verify` with the deploy path's params: a
+    device losing its ONLY RIP neighbour and 86% of its routes passed."""
+
+    def _run(self, monkeypatch, neighbours_after, routes_after, *, settle_n=None,
+             settle_routes=None):
+        import modules.connection as C
+        import modules.pipeline as P
+
+        snap = lambda n, r: {"routing_neighbors": {"protocols": {
+            "rip": {"count": n, "sources": [{"last_update": "00:01:00"}] * n}}},
+            "routes": {"total_count": r}, "interfaces": {"up_count": 4}}
+        ctx = _ctx(params={})
+        ctx.pre_snapshots = {"10.0.0.1": snap(1, 22)}
+        ctx.post_snapshots = {"10.0.0.1": snap(neighbours_after, routes_after)}
+        monkeypatch.setattr(C, "get_persistent_connection", lambda *a, **k: None)
+        n_seq = list(settle_n if settle_n is not None else [neighbours_after])
+        r_seq = list(settle_routes if settle_routes is not None else [routes_after])
+        monkeypatch.setattr(P, "_detect_routing_neighbors",
+                            lambda c: snap(n_seq.pop(0) if len(n_seq) > 1 else n_seq[0],
+                                           0)["routing_neighbors"])
+        monkeypatch.setattr(P, "_read_route_total",
+                            lambda c: r_seq.pop(0) if len(r_seq) > 1 else r_seq[0])
+        return ctx
+
+    def test_losing_the_only_neighbour_fails(self, monkeypatch):
+        from modules.pipeline import PipelineStageError, _stage_verify
+
+        ctx = self._run(monkeypatch, 0, 22)
+        with pytest.raises(PipelineStageError, match="rip neighbors dropped: 1"):
+            _stage_verify(ctx)
+
+    def test_a_transient_loss_that_returns_in_the_window_passes(self, monkeypatch):
+        from modules.pipeline import _stage_verify
+
+        ctx = self._run(monkeypatch, 0, 22, settle_n=[0, 1])
+        _stage_verify(ctx)
+        assert ctx.verify_result["10.0.0.1"]["ok"] is True
+
+    def test_a_route_table_that_stays_shrunk_fails(self, monkeypatch):
+        from modules.pipeline import PipelineStageError, _stage_verify
+
+        ctx = self._run(monkeypatch, 1, 3, settle_n=[1], settle_routes=[3])
+        with pytest.raises(PipelineStageError, match="Route table shrank: 22 → 3"):
+            _stage_verify(ctx)
+
+    def test_a_route_table_that_recovers_in_the_window_passes(self, monkeypatch):
+        from modules.pipeline import _stage_verify
+
+        ctx = self._run(monkeypatch, 1, 3, settle_n=[1], settle_routes=[3, 22])
+        _stage_verify(ctx)
+        v = ctx.verify_result["10.0.0.1"]
+        assert v["ok"] is True and v["routes_compared"] is True
+
+    def test_the_deploy_path_no_longer_skips_the_route_check(self, monkeypatch):
+        import routes.deploy as rd
+        from modules import pipeline
+
+        seen = {}
+        monkeypatch.setattr("modules.nsot.deploy.prepare_for_deploy",
+                            lambda a: {"config": "hostname r1\n"})
+        monkeypatch.setattr("modules.nsot.deploy.merge_commands", lambda i, c: ["hostname r1"])
+        monkeypatch.setattr("modules.nsot.deploy.assert_merge_only", lambda c, i: None)
+
+        def run(self):
+            seen["params"] = dict(self.ctx.params)
+            self.ctx.final_status = "success"
+            return self.ctx
+        monkeypatch.setattr(pipeline.PipelineRunner, "run", run)
+
+        class Deploy:
+            device = "r1"
+            host_vars = {}
+        rd._deploy_one({"artifact": Deploy(), "fresh": "hostname x\n"}, "Lab",
+                       {"r1": {"ip": "203.0.113.11", "hostname": "r1"}})
+        assert not seen["params"].get("skip_route_check"), seen["params"]

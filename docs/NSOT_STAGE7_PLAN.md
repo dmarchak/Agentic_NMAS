@@ -139,7 +139,7 @@ has five sections:
    - **seed intent from a capture** (curl-only today);
    - deploy;
    - restore to a golden or a ref (guarded, P.3);
-   - **revert one intent commit** and **retry after a rollback** (curl-only
+   - **revert one intent commit** and **re-send a blocked change** (C118; was "retry after a rollback"; curl-only
      today);
    - rotate the credential (CLI-only today);
    - move files to or from flash, through the selection's implementation
@@ -218,7 +218,7 @@ has five sections:
    4. **The operands:** capture time and hash, plan hash, intent commit,
       authorised lines.
    5. **The gates, each by name, with its state:** approval, deployability,
-      credential unchanged, dangerous lines, rollback block. This is CI
+      credential unchanged, dangerous lines, blocked change. This is CI
       beside its trigger (NSOT_CI.md §5).
    6. **A person to confirm:** "You are confirming as <identity>". If there
       is no verified person, the button states the refusal instead of being
@@ -334,7 +334,7 @@ into a state that only curl can take it out of, so each gets an entry point:
 | Seed intent from a capture (extract, review, commit) | Device, Actions |
 | Deploy several devices as one batch | Fleet, selection |
 | Authorise a dangerous line | the preview-confirm component (P.3 adds it to the current wizard) |
-| Retry after a rollback | Device, Actions, and a Needs attention row |
+| Re-send a blocked change (was "retry after a rollback", C118) | Device, Actions, and a Needs attention row |
 | Revert one intent commit | Device, History |
 | Restore one device to its golden, guarded | Device, Actions (P.3) |
 | Revoke an approval with a reason; edit bindings | Source of truth, Templates |
@@ -625,7 +625,7 @@ upstream. So the payload-to-render check reads the adapter as well
 UNDRAWN ("7.1's component draws each gate by name") is kept. Gates now
 cover committed intent, template fidelity (its gap counts, since a rounded
 100.0% can hide a missing line), acknowledgement, printable ASCII,
-dangerous lines, the rollback block and the two apply-time checks. As a
+dangerous lines, the blocked change and the two apply-time checks. As a
 result, 18 keys left UNDRAWN (117 to 99).
 
 **Controls, each restored from a copy:**

@@ -56,7 +56,7 @@ NOT_YET_SUBSCRIBED = {
     "playbooks": "the chat panel's playbooks; 8.2",
     "posture": "the posture panel; 7.7 (Settings)",
     "quick_actions": "the device page's quick actions; 7.3 (Device)",
-    "rolled_back": "rollback blocks; 7.2 (Needs attention)",
+    "rolled_back": "blocked changes; 7.2 (Needs attention)",
     "settings": "the Settings panels; 7.7 (Settings)",
     "staging": "extraction's staged review; 7.3 (Device, Actions)",
     "templates": "the template library; 7.6 (Source of truth, Templates)",

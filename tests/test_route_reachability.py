@@ -67,7 +67,7 @@ KNOWN_UNREACHABLE = {
     "POST /templatize/report": (A, "the same coverage report with a body; Source of truth, Templates (7.6)"),
     "GET /templatize/rolled-back": (A, "rollback-blocked devices; a Needs attention row (7.2)"),
     "GET /templatize/rolled-back/retries": (A, "the retry record; Device, History (7.3)"),
-    "POST /templatize/rolled-back/<path:hostname>/retry": (A, "the ONLY way out of a rollback block; Device, Actions (7.3)"),
+    "POST /templatize/rolled-back/<path:hostname>/retry": (A, "the ONLY way to re-send a blocked change; Device, Actions (7.3)"),
     "POST /templatize/committed/<path:hostname>/revert": (A, "revert one intent commit (the documented way out of a rollback's intent); Device, Actions (7.3). Counted reachable until 2026-09-27 because the editor's own fetch shared its prefix"),
     "POST /templatize/bulk/preview": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),
     "POST /templatize/bulk/apply": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),

@@ -58,7 +58,7 @@ VOCABULARY = {
     "drift": "the drift checker's state and last run",
     "approvals": "the approval queue",
     "pending": "pending onboardings",
-    "rolled_back": "rollback blocks and retry authorisations",
+    "rolled_back": "blocked changes (what a rollback undid) and retry authorisations",
     "credentials": "credential profiles and device overrides",
     "netbox": "the NetBox objects NMAS shows or counts",
     "settings": "settings and integrations",

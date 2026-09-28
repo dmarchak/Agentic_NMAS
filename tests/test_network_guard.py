@@ -253,3 +253,18 @@ class TestAnAttemptFailsTheTestThatMadeIt:
         network_guard.spawn_guard().take()
         assert done.returncode == 1, done.stdout[-1500:]
         assert "did something no test may do" in done.stdout and "10.0.0.211" in done.stdout, done.stdout[-1500:]
+
+
+def test_a_run_through_the_runner_writes_no_bytecode():
+    """C120: a same-size mutation restored within the same second left a
+    cached .pyc matching the restored file, so the next run executed the
+    MUTATED code while the source read correct. The runner exports
+    PYTHONDONTWRITEBYTECODE=1. Checked in THIS process, the one the runner
+    started, and skipped under plain pytest, which is not the runner."""
+    import os
+    import sys
+
+    if os.environ.get("NMAS_REQUIRE_NETWORK_CONFINEMENT") != "1":
+        pytest.skip("not started by scripts/nmas-test")
+    assert sys.dont_write_bytecode is True
+    assert os.environ.get("PYTHONDONTWRITEBYTECODE") == "1"

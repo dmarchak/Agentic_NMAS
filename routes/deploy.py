@@ -724,7 +724,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     ctx = PipelineContext(
         config_type="template",
         device_ips=[device.get("ip", "")],
-        params={"skip_route_check": True},
+        # The route check RUNS (C115, the operator's decision 2026-09-27). It
+        # was skipped here for every deploy and restore while the result drew
+        # "routes 22 -> 22" as though compared.
+        params={},
         ip_params_map={},
         selected_devices=[device],
         connections_pool={},

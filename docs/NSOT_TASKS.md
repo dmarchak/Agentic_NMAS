@@ -90,7 +90,7 @@ the task.
 | Deploy confirmed intent | GUI | ungated (B12) |
 | **Deploy several devices in one batch** | **curl** | |
 | **Authorise a dangerous line** | **curl** | undeployable from the GUI (D4) |
-| **Retry after a rollback** | **curl** | |
+| **Re-send a blocked change** (was "retry after a rollback": it lifts a CHANGE block, never a device block, C118) | **curl** | |
 | **Revert one intent commit** | **curl** | |
 | Remove configuration through intent | **none** | Mode B. Today the terminal is its only in-tool home, and the console after the split (NSOT_FEATURE_AUDIT 3a) |
 | **Clear a protocol process, counters or ARP; debug** | GUI (the terminal, `/run_command`) | no row until 2026-09-27; state-changing exec actions, decided NOT in the lens: each gets a named, gated action when a task needs it (3a) |

@@ -812,6 +812,12 @@ The only part of the NSoT work that reaches a device.
   attempted device back and diffs against the pre-change snapshot before any
   rollback. "The push failed" and "the device is unchanged" are different
   claims; a device that cannot be read reports `device_changed: None`.
+- **Every neighbour loss and every route shrink waits out a settle window,
+  and fails only if it persists** (C114, C115, the operator's decisions,
+  2026-09-27). The neighbour tolerance is 0 (it was 1, and `drop <= 1` let a
+  device lose its ONLY neighbour and pass without waiting), and the route
+  check runs on deploys and restores (it was skipped while the result drew
+  "routes 22 -> 22" as compared), re-read in a 90 s `routes` window.
 - **Verification uses settle windows** (OSPF 45s, BGP 60s, RIP 90s) and reports
   *not yet converged* distinctly from *failed*. **Until 2026-09-27 the
   routing check was real on 4 of 9 devices, measured against real output,
@@ -1888,6 +1894,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   a control is valid only when the failures are the tests aimed at the
   property, and a count far above that is the tell. Redo it as the smallest
   change that removes the property and leaves the code running.
+- **A control's mutation can survive its restore in BYTECODE** (C120,
+  2026-09-27). A same-size edit restored within the same second leaves a
+  `.pyc` that matches the restored file (mtime at 1 s, and size), so the
+  next run executes the mutation while the source reads correct. The
+  runner now writes no bytecode (`PYTHONDONTWRITEBYTECODE=1` in
+  `scripts/nmas-test`). The tell was a control failing a test it did not
+  target: read WHICH tests failed.
 - **Restore a control's mutation from a COPY of the file, never from
   git.** A control harness ran `git checkout -- <file>` after each mutation,
   and the files held the step's own uncommitted work: all five reverted to

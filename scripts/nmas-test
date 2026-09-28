@@ -27,6 +27,14 @@
 
 set -u
 
+# No bytecode is written by a test run (C120). A negative control mutates a
+# file and restores it from a copy; when the mutation keeps the file's size
+# and the restore lands in the same second, the cached .pyc still matches
+# (Python compares mtime at 1 s resolution, and size) and the NEXT run
+# executes the mutated code while the file on disk reads correct. Measured
+# 2026-09-27: `_NEIGHBOR_DROP_TOLERANCE = 1` ran after the file said 0.
+export PYTHONDONTWRITEBYTECODE=1
+
 allow=0
 args=()
 for a in "$@"; do

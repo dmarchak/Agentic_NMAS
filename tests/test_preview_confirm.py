@@ -153,7 +153,7 @@ class TestTheDeployScreen:
         names = {g["name"] for g in plan["preview"]["targets"][0]["gates"]}
         assert {"template approved", "committed intent", "template reproduces the device",
                 "every line modelled or acknowledged", "printable ASCII",
-                "dangerous lines", "rollback block"} <= names
+                "dangerous lines", "blocked change"} <= names
 
     def test_a_device_that_could_not_be_built_reached_no_gate(self):
         """A check that did not run is `not_reached`: neither a pass nor

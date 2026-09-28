@@ -148,6 +148,10 @@ CAPTURE_GATE_DETAIL = ("the stored capture is re-read at apply, and a change to 
 
 BUSY_GATE = "no other operation holds this device"
 
+#: C118: what a rollback leaves behind blocks the CHANGE that failed (its
+#: lines, while a program would re-send them), never the device.
+BLOCKED_CHANGE = "blocked change"
+
 
 def busy_gate(d: dict) -> dict:
     """C99: another operation holding the device is said at the PREVIEW,
@@ -170,7 +174,7 @@ def _deploy_gates(d: dict, failed: str) -> list:
             gate(n, "not_reached", "nothing was built to check")
             for n in ("template approved", "committed intent", "template reproduces the device",
                       "every line modelled or acknowledged", "printable ASCII",
-                      "dangerous lines", "rollback block")]
+                      "dangerous lines", BLOCKED_CHANGE)]
         # No busy gate: a device that cannot be built reaches no apply, so
         # "the apply takes the device" would be a claim about nothing.
     gaps = d.get("template_gaps") or {}
@@ -211,10 +215,15 @@ def _deploy_gates(d: dict, failed: str) -> list:
              else "pass" if d.get("authorisation_ok") else "fail",
              "" if not dangerous else (d.get("authorisation_error")
                                        or f"{len(dangerous)} authorised")),
-        gate("rollback block", "fail" if rolled else "pass",
-             f"rolled back at {(rolled or {}).get('at', 'an earlier time')}"
-             + (f" ({rolled['reason']})" if (rolled or {}).get("reason") else "")
-             if rolled else ""),
+        # Named for what it blocks (C118): a CHANGE, never a device. It was
+        # "rollback block", and the operator read it as a device block.
+        gate(BLOCKED_CHANGE, "fail" if rolled else "pass",
+             ("this program re-sends the change that was rolled back at "
+              f"{(rolled or {}).get('at', 'an earlier time')}"
+              + (f" ({rolled['reason']})" if (rolled or {}).get("reason") else "")
+              + ": it is not sent again until that change is gone from intent, or a "
+                "retry is authorised. Other changes to this device are not blocked.")
+             if rolled else "nothing this program sends is a change that was rolled back"),
     ]
     if failed:
         built.insert(0, gate("program built", "fail", failed))

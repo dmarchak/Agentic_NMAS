@@ -106,7 +106,7 @@ GATES = {
     "templatize.edit_committed": _g(A, "commits an edit to intent"),
     "templatize.revert_committed": _g(A, "commits the inverse of an intent commit"),
     "templatize.bulk_apply": _g(A, "commits one change to many devices' intent"),
-    "templatize.retry_rolled_back": _g(A, "lifts a rollback block so the change may be planned again"),
+    "templatize.retry_rolled_back": _g(A, "lifts a blocked change (the lines a rollback undid) so it may be sent again"),
     "freshness.authorise": _g(A, "authorises one divergence past the freshness gate"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and
     # the old one-click route is gone, because nothing in it asked whether the

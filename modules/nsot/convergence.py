@@ -41,6 +41,9 @@ DEFAULT_WINDOWS = {
     "eigrp":      {"initial_wait": 5,  "timeout": 45,  "interval": 5},
     "isis":       {"initial_wait": 5,  "timeout": 45,  "interval": 5},
     "interfaces": {"initial_wait": 2,  "timeout": 20,  "interval": 4},
+    # The route table settles AFTER its protocols, so it gets the longest
+    # protocol window (RIP's). C115: the route check now runs on deploys.
+    "routes":     {"initial_wait": 5,  "timeout": 90,  "interval": 15},
     "default":    {"initial_wait": 5,  "timeout": 45,  "interval": 5},
 }
 

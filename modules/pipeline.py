@@ -44,7 +44,12 @@ DIFF_LINE_THRESHOLD = 200
 
 # Routing neighbors: post-deploy neighbor count may not drop by more than this.
 # Applies to whichever IGP/EGP is detected (BGP, OSPF, EIGRP, IS-IS).
-_NEIGHBOR_DROP_TOLERANCE = 1
+#: 0 (C114, the operator's decision 2026-09-27). It was 1, checked as
+#: `drop <= 1`, so any single loss passed WITHOUT opening the settle window,
+#: including 1 -> 0: a device losing its only neighbour passed verify. The
+#: settle window is the one mechanism for a transient drop: every loss is
+#: re-polled for its protocol's window and fails only if it persists.
+_NEIGHBOR_DROP_TOLERANCE = 0
 
 # Routes: post-deploy route count must be >= (pre-deploy count × this fraction).
 _ROUTE_RETENTION_MIN = 0.90
@@ -1040,6 +1045,42 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
             "snapshot": latest["snapshot"]}
 
 
+def _read_route_total(conn) -> int:
+    """The route count verify compares (C66: networks plus subnets)."""
+    from modules.commands import run_device_command
+    return _parse_route_total(run_device_command(conn, "show ip route summary"))
+
+
+def _await_route_retention(ctx, ip: str, pre_count: int) -> dict:
+    """Re-read the route count within the route window until it is back to
+    the retention floor. ``converged``, ``not_yet_converged`` (it ROSE in the
+    window and is still short) or ``failed``."""
+    from modules.connection import get_persistent_connection
+
+    dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
+    window = _window_for("routes")
+    if dev is None:
+        return {"state": _FAILED, "count": -1, "elapsed": 0.0, "window": window}
+    seen: list = []
+
+    def _probe():
+        conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+        seen.append(_read_route_total(conn))
+        return seen[-1]
+
+    result = _wait_for("routes", _probe,
+                       lambda n: n >= 0 and n >= pre_count * _ROUTE_RETENTION_MIN,
+                       sleep=ctx.settle_sleep or time.sleep)
+    count = seen[-1] if seen else -1
+    if result["state"] == _CONVERGED:
+        state = _CONVERGED
+    elif len(seen) > 1 and max(seen[1:]) > seen[0]:
+        state = _NOT_YET
+    else:
+        state = _FAILED
+    return {"state": state, "count": count, "elapsed": result["elapsed"], "window": window}
+
+
 def _protocol_shows_progress(snapshot: dict, count: int, rose: bool = False) -> bool:
     """Is the protocol still recovering, or has it settled short?
 
@@ -1198,10 +1239,24 @@ def _stage_verify(ctx: PipelineContext) -> None:
         if not _skip_route and pre_routes > 0 and post_routes >= 0:
             retention = post_routes / pre_routes
             if retention < _ROUTE_RETENTION_MIN:
-                issues.append(
-                    f"Route table shrank: {pre_routes} → {post_routes} "
-                    f"({retention:.0%} < required {_ROUTE_RETENTION_MIN:.0%})"
-                )
+                # Re-read within the route window before calling it (C115):
+                # the table settles after its protocols, and a count read the
+                # instant after a push can be mid-reconvergence.
+                settled = _await_route_retention(ctx, ip, pre_routes)
+                post_routes = settled["count"] if settled["count"] >= 0 else post_routes
+                retention = post_routes / pre_routes
+                if settled["state"] == _CONVERGED:
+                    log.info("pipeline[8/verify]: %s routes recovered to %d after %.0fs",
+                             hostname, post_routes, settled["elapsed"])
+                elif settled["state"] == _NOT_YET:
+                    ctx.pending_convergence.append(
+                        f"{hostname}: routes {pre_routes} → {post_routes} (still rising "
+                        f"after {settled['elapsed']:.0f}s)")
+                else:
+                    issues.append(
+                        f"Route table shrank: {pre_routes} → {post_routes} "
+                        f"({retention:.0%} < required {_ROUTE_RETENTION_MIN:.0%}) and did "
+                        f"not recover within {settled['window']['timeout']}s")
 
         # ── Interface up-count ────────────────────────────────────────────
         pre_up  = pre.get("interfaces",  {}).get("up_count",  -1)

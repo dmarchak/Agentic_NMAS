@@ -71,6 +71,8 @@ class TestTheBlockIsReadAndEnforced:
         body = client.post("/deploy/plan", json={"devices": ["r2"]}).get_json()
         text = str(body)
         assert "rolled back" in text, text[:600]
+        # Named for what it blocks (C118): a change, never the device.
+        assert "blocked change" in text and "Other changes to this device are not blocked" in text
 
     def test_b_a_modified_program_still_containing_it_is_refused(self, lab):
         """Rules out (b): not a replay guard. An unrelated edit that adds its
