@@ -49,6 +49,31 @@ data. Losing the laptop together with the Proxmox host leaves B2's copies
 as the only ones, and nothing can read them. A second copy off this laptop
 closes it. A password-manager entry counts only if it syncs somewhere else.
 
+**Custody as of 2026-09-28 (register B8, CLOSED on measurement):** a second
+copy exists and is PROVEN. gpg-agent's own key files
+(`private-keys-v1.d/<keygrip>.key` for both keygrips, already
+passphrase-protected) and the public key are in `/root/nmas-backup-key/` on
+the Proxmox host, `0700`/`0600`. A keyring built ONLY from those files decrypted
+`20260928T000028Z.tar.gpg` fetched from B2, and listed `netbox.pgdump`,
+`manifest.json`, `media.tar` and the config tree. `gpg -K` showed `sec` and
+`ssb` with no `#` or `>`.
+- **It departs from section 1's heading ("NOT Proxmox")**, which gave no
+  reason. The reasoning: a root on Proxmox already reads the VM's disk and its
+  plain local backups, so the key there exposes nothing new, and the laptop and
+  Proxmox fail independently.
+- **What it does not cover:** losing the laptop AND the Proxmox host together
+  (the site) leaves B2's copies readable by nothing.
+- **The passphrase is now the remaining single point of failure**, and is the
+  operator's to keep off-machine.
+- **The OpenPGP export route FAILED** (2026-09-28). `--export-secret-keys`
+  gave real, protected material (849 bytes, iter+salt S2K, not a stub). Its
+  sha256 matched on both sides, the key id was right, the modes were right,
+  and importing it into an empty keyring refused the cv25519 subkey with `Bad
+  secret key`, then `No SmartCard daemon`. The failure is unexplained, and it
+  was routed around rather than diagnosed. **The `paperkey` file restores
+  through that same import, so it is UNPROVEN as a copy** until it passes the
+  empty-keyring decrypt below (6g).
+
 ## 2. On the Proxmox host (10.0.0.80), as root
 
 **Keep a second root session open until step 2d's test passes.** Step 2c
@@ -530,6 +555,32 @@ A `Deleted` line means the "read-only" key can hide, and it must not be kept.
   Lock retention is unknown until the check is built against the real
   response.
 
+### 6g. Prove the encrypted copies can be read: a keyring built from the second copy alone
+
+The procedure that closed B8 (2026-09-28), and the one that asserts what the
+restore test does not. It needs the passphrase, so a person runs it. Run it
+when the key or its custody changes, and on a schedule the operator sets
+(register C144). A check that the copy ARRIVED (a matching hash, the right key
+id, the right modes) cannot see whether it WORKS there: the export route
+passed all three and could not be imported.
+
+```bash
+PVE=root@10.0.0.80
+T=$(mktemp -d); V=$(mktemp -d); chmod 700 "$T" "$V"; mkdir -m 700 "$V"/private-keys-v1.d
+NAME=$(rclone lsf b2:nmas-netbox-dmarchak/daily | sort | tail -1)
+rclone copy b2:nmas-netbox-dmarchak/daily "$T" --include "$NAME"
+scp "$PVE":/root/nmas-backup-key/pub.gpg "$V"/
+scp "$PVE":/root/nmas-backup-key/private-keys-v1.d/*.key "$V"/private-keys-v1.d/
+GNUPGHOME="$V" gpg --import "$V"/pub.gpg
+GNUPGHOME="$V" gpg -K                            # sec and ssb, with no '#' or '>'
+GNUPGHOME="$V" gpg -d "$T/$NAME" | tar -tf -     # netbox.pgdump, manifest.json, media.tar, config/...
+GNUPGHOME="$V" gpgconf --kill gpg-agent; rm -rf "$T" "$V"
+```
+
+The paperkey test is the same, with the keyring built by `paperkey --pubring
+<public key> --secrets ~/nmas-backup-paperkey.txt | GNUPGHOME="$V" gpg
+--import` in place of the two copies.
+
 ### The probe files in the bucket are MEASUREMENTS, not litter
 
 No key held here can remove them (that is the property being tested), and
@@ -551,6 +602,12 @@ what this runbook assumes, and B9's lock design rests on that assumption.
 - **Point-in-time recovery.** Up to an hour of hand edits to NetBox between
   dumps is lost. NMAS's own writes are also in the modification record and
   the goldens.
+- **Any assurance that the ENCRYPTED copies can be read.** The restore test
+  restores the newest LOCAL hourly backup, which is plain, and the VM holds
+  only the public key, so it can decrypt nothing. Its green light is evidence
+  about the dump and never about Proxmox or B2 (read that way by the
+  operator until 2026-09-28). The assertion about the encrypted copies is
+  6g's decrypt, which only a person holding the passphrase can run.
 - **An application-level restore.** The restore test proves the database, not
   that NetBox boots on it with the backed-up pepper. Booting a scratch
   NetBox on the restored data is the next step if that assurance is wanted.

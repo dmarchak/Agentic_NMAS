@@ -5477,6 +5477,16 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   tree identity with a commit CI passed), never from an empty list, which is
   also what a failed read can look like; and check the inverse, where an empty
   set wrongly PASSES (an empty commit on a commit CI never saw still refuses).
+- **A CHECK THAT THE ARTEFACT ARRIVED CANNOT SEE WHETHER IT WORKS THERE**
+  (the operator, B8, 2026-09-28, and on the operator's own data rather than the
+  tool's). The backup key's export was copied to a second host with a
+  matching sha256 on both sides, the right key id and the right modes, and it
+  could not be imported. Every check short of a DECRYPT from an empty keyring
+  passed. The same rule as the persist chain's startup read-back and C112's
+  rollback outcome: prove a copy by USING it where it landed, with nothing
+  from the source in reach. Its sibling the same night: the daily restore
+  test read as proof the encrypted copies were readable, and it restores the
+  plain local copy (C144). A test's name is a claim its code may not make.
 - **A concurrency test that HANGS rather than fails reports nothing; the
   hard timeout is what turns it back into a measurement** (the operator,
   2026-09-27). C98's lock first deadlocked on a device another process held,
@@ -5685,10 +5695,10 @@ measured, recorded and not fixed, with no line item in any stage.** Each was
 written into prose beside the thing it was found next to — the right place to
 explain *why* it is true and the wrong place to keep a list, because prose
 accumulates invisibly and knowing what is outstanding required having been
-present when each was recorded. **54 open at 2026-09-28, triaged and
-re-triaged** (the register's top): functional 29, each placed in a stage on
-the functional path; hardening deferred for the lab 9; minor 15; data loss
-1 (B8). **The operator's decision, 2026-09-28: this is a lab, so the work is
+present when each was recorded. **55 open at 2026-09-28, triaged and
+re-triaged** (the register's top): functional 30, each placed in a stage on
+the functional path; hardening deferred for the lab 9; minor 16. B8 (the
+backups' only decryption key on one laptop) closed on measurement. **The operator's decision, 2026-09-28: this is a lab, so the work is
 features, functionality and design, and security is DEFERRED, not
 abandoned.** The plan is the functional path (R1, R2b, 7.2 from C54, 7.3
 with C50, then 7.4 onward). NSOT_PLAN's Stage 9 holds hardening, labelled
