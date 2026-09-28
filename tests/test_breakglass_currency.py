@@ -137,7 +137,7 @@ class TestJobHealthTracksIt:
         assert "breakglass:default/r1" not in by, "a current device is not a row"
         assert "breakglass:default/bp-ztp-a" not in by, "a device that left is history"
         assert by["breakglass:default/s1"]["action"]["command"].startswith(
-            "python3 scripts/nmas-breakglass export --list default")
+            "python3 scripts/nmas-breakglass export --list default --out /dev/shm/")
 
     def test_all_current_is_one_ok_row_naming_the_count(self):
         (r,) = self._rows(self._export(_now_digests()), {"default": _now_digests()})
@@ -146,7 +146,9 @@ class TestJobHealthTracksIt:
     def test_no_export_logged_is_unknown_and_says_how_to_settle_it(self):
         (r,) = self._rows({"state": "absent", "by_list": {}}, {"default": _now_digests()})
         assert r["state"] == "unknown" and "--against" in r["detail"]
-        assert r["action"]["label"].startswith("Export the record again")
+        assert r["action"]["label"].startswith("Export the break-glass record on this host "
+                                               "to establish the baseline")
+        assert "/dev/shm/" in r["action"]["command"], "never beside data/key.key"
 
     def test_an_unreadable_log_is_unknown_never_current(self):
         (r,) = self._rows({"state": "unreadable", "by_list": {}, "error": "bad"},

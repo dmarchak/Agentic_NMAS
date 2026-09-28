@@ -5718,6 +5718,9 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   from the source in reach. Its sibling the same night: the daily restore
   test read as proof the encrypted copies were readable, and it restores the
   plain local copy (C144). A test's name is a claim its code may not make.
+  **Again the same day (C182):** `nmas-breakglass verify` proved the record OPENS, and the
+  register claimed it would settle whether the record was current; nothing had ever compared
+  the record with the credentials in use. Measured clean, 9 of 9, by luck of habit.
 - **A concurrency test that HANGS rather than fails reports nothing; the
   hard timeout is what turns it back into a measurement** (the operator,
   2026-09-27). C98's lock first deadlocked on a device another process held,

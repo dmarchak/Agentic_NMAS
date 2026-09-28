@@ -948,7 +948,10 @@ def breakglass_rows(exports=None, current=None) -> list:
     from modules.config import DATA_DIR
 
     what = "the break-glass record holds each device's current credential (C182)"
-    export_cmd = "python3 scripts/nmas-breakglass export --list <list> --out <path off this host>"
+    # Written to RAM (/dev/shm, tmpfs on the host), never beside data/key.key:
+    # the person copies it off the host and removes it, so one record exists.
+    export_cmd = ("python3 scripts/nmas-breakglass export --list <list> "
+                  "--out /dev/shm/rcn-breakglass.bg")
     try:
         current = _current_credential_digests() if current is None else current
         exports = bg.last_exports(DATA_DIR) if exports is None else exports
@@ -968,8 +971,9 @@ def breakglass_rows(exports=None, current=None) -> list:
         if not last:
             rows.append({"unit": f"breakglass:{list_name}", "what": what, "state": "unknown",
                          "max_age_minutes": 0,
-                         "action": {"label": "Export the record again on this host, so its "
-                                             "currency is tracked from now on",
+                         "action": {"label": "Export the break-glass record on this host to "
+                                             "establish the baseline its currency is tracked "
+                                             "against; copy it off the host and remove it",
                                     "command": export_cmd.replace("<list>", list_name)},
                          "detail": (f"no break-glass export of {list_name} is logged on this "
                                     f"host ({bg.EXPORT_LOG} began 2026-09-28), so nothing says "
