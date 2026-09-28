@@ -1,8 +1,10 @@
-"""Templatize blueprint — Phase 3a, read-only.
+"""Templatize blueprint: the coverage report, SEED INTENT, and committed intent.
 
-Extraction, round-trip validation, and the coverage report. No editor, no
-deploy, and **no commits**: extractions go to a gitignored staging area, and
-Phase 3b adds the reviewed commit step.
+Phase 3a made it read-only (extractions to a gitignored staging area) and 3b
+added a reviewed commit. Both halves had no screen, and the commit refused
+anything without a verified person, so seeding a device's first intent had no
+working path (C148). Seed intent replaces them as one previewed, confirmed
+operation; the intent editor, revert, retry and bulk intent commit here too.
 """
 
 import logging
@@ -83,105 +85,70 @@ def report():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
-def _captured_config(repo: str, hostname: str):
-    """``(config_text, mgmt_ip)`` for a device, resolved through the manifest.
+# ---------------------------------------------------------------------------
+# Seed intent (C148): a device's first full intent, from its committed golden
+# ---------------------------------------------------------------------------
+#
+# It replaces extract, staged, rendered and the reviewed commit: four routes
+# with no screen, the last refusing anything without a verified person, so no
+# onboarded device could be made deployable from the interface. One operation
+# now, previewed and confirmed by hash (modules/nsot/seed.py).
 
-    Same correction as on the deploy path: discovering the device by scanning
-    ``golden_configs/`` took identity from the deprecated store while content
-    came from the repo, so emptying that directory — which the migration
-    permits — would report "no golden config" for a device that has one.
-    """
-    from modules.nsot import manifest as _m
-
-    from modules.nsot.repo import committed_golden_for
-
-    entry = _m.find_by_name(repo, hostname)[1]
-    record = committed_golden_for(repo, entry)   # as COMMITTED (C104)
-    if record["text"] is not None:
-        return record["text"], entry.get("mgmt_ip", "")
-    if record["refused"]:
-        return "", entry.get("mgmt_ip", "")
-
-    from modules.ai_assistant import _list_golden_configs, _load_golden_config_file
-    legacy = next((e for e in _list_golden_configs()
-                   if e.get("hostname") == hostname), None)
-    if legacy is None:
-        return "", ""
-    return _load_golden_config_file(legacy["device_ip"]) or "", legacy["device_ip"]
-
-
-def _extract(repo: str, hostname: str):
-    """Parse a device's captured config. ``(result, error, status)``.
-
-    Shared by extract and commit. The commit route **re-runs** this rather than
-    reading the staged YAML back, because secret *values* exist only here: the
-    staged file carries ``secret_refs`` by design, so promoting from it can
-    never move a value into the credential store.
-    """
-    from modules.device import get_current_device_list, load_saved_devices
-    from modules.nsot.roundtrip import validate_device
-
-    config, device_ip = _captured_config(repo, hostname)
-    if not config:
-        return None, f"No golden config for '{hostname}'", 404
-
-    _name, csv_path = get_current_device_list()
-    device = next((d for d in load_saved_devices(csv_path)
-                   if d.get("ip") == device_ip or d.get("hostname") == hostname), {})
-
-    result = validate_device(config, _platform_for(device))
-    if result.get("error"):
-        return None, result["error"], 500
-    return result, "", 200
-
-
-@bp.route("/extract/<path:hostname>", methods=["POST"])
-def extract(hostname):
-    """Extract one device's host_vars to the staging area. Commits nothing."""
-    from modules.nsot import hostvars
+@bp.route("/seed/preview", methods=["POST"])
+def seed_preview():
+    """What seeding each device would commit. Reads git only: no session, no
+    write. No `devices` is every device in the list whose intent is absent or
+    only the bootstrap."""
+    from modules.nsot import seed
+    from modules.nsot.restore import _devices_of
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import seed_preview as _parts
 
     data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-
-    repo = _repo_for(list_name)
-    result, error, _status = _extract(repo, hostname)
-    if error:
-        return jsonify({"ok": False, "error": error}), _status
-
-    path = hostvars.write_staged(repo, result["host_vars"])
-    secrets = hostvars.store_secrets(result["host_vars"], hostname,
-                                     dry_run=not data.get("store_secrets"),
-                                     list_name=list_name)
-
-    return jsonify({"ok": True, "hostname": hostname,
-                    "staged_path": os.path.relpath(path, repo),
-                    "committed": False,
-                    "secrets": secrets, **_public(result)})
-
-
-@bp.route("/staged", methods=["GET"])
-def staged():
-    """Extractions waiting in the staging area."""
-    from modules.nsot import hostvars
-    repo = _repo_for(_active_list())
-    return jsonify({"ok": True, "staged": hostvars.list_staged(repo)})
+    list_name = _active_list(data)        # a read may derive its list
+    inventory = _devices_of(list_name)
+    wanted = [d for d in (data.get("devices") or []) if d]
+    unknown = sorted(set(wanted) - {d.get("hostname") for d in inventory})
+    if unknown:
+        return jsonify({"ok": False, "error": f"not in {list_name}: {', '.join(unknown)}"}), 404
+    devices = [d for d in inventory if not wanted or d.get("hostname") in set(wanted)]
+    entries = [seed.public(seed.entry_for(list_name, d)) for d in devices]
+    if not wanted:
+        entries = [e for e in entries if e["intent_state"] != seed.FULL]
+        if not entries:
+            return jsonify({"ok": True, "list": list_name, "preview": None,
+                            "nothing": (f"Every device in {list_name} has full committed "
+                                        f"intent ({len(devices)} device(s)): nothing to seed.")})
+    for e in entries:
+        e["list"] = list_name
+    return jsonify(mask_payload({"ok": True, "list": list_name,
+                                 "preview": _parts(entries, request=request), "nothing": ""}))
 
 
-@bp.route("/rendered/<path:hostname>", methods=["GET"])
-def rendered(hostname):
-    """The rendered config for a staged extraction, for eyeballing."""
-    from modules.nsot import hostvars, roundtrip
+@bp.route("/seed/apply", methods=["POST"])
+def seed_apply():
+    """Seed the confirmed devices: each golden parsed AGAIN, one whose seed
+    moved refused, ONE commit of exactly the seeded files as the verified
+    person. The list is CARRIED from the preview, never derived: this ends
+    in a commit, and a write may not infer its list."""
+    from modules.nsot import seed
+    from modules.nsot.restore import _devices_of
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import seed_result
 
-    repo = _repo_for(_active_list())
-    host_vars = hostvars.read_staged(repo, hostname)
-    if host_vars is None:
-        return jsonify({"ok": False, "error": "Not extracted yet"}), 404
-    try:
-        return jsonify({"ok": True, "hostname": hostname,
-                        "rendered": roundtrip.render(host_vars,
-                                                     host_vars.get("platform", "cisco_ios"))})
-    except Exception as exc:                  # noqa: BLE001
-        return jsonify({"ok": False, "error": str(exc)}), 500
+    data = request.get_json(silent=True) or {}
+    list_name = (data.get("list_name") or "").strip()
+    if not list_name:
+        return jsonify({"ok": False, "error": (
+            "No list named: a seed commits intent into one list's repository, so the "
+            "list comes from the preview that was confirmed, never from whichever "
+            "list is active. Nothing was committed.")}), 400
+    confirmations = {k: v for k, v in (data.get("confirmations") or {}).items() if k}
+    if not confirmations:
+        return jsonify({"ok": False, "error": "Nothing confirmed: nothing committed"}), 400
+    done = seed.apply(list_name, _devices_of(list_name), confirmations, request_actor())
+    return jsonify(mask_payload({"ok": True, "list": list_name,
+                                 "result": seed_result(done["outcomes"], done["save"])}))
 
 
 # ---------------------------------------------------------------------------
@@ -213,67 +180,6 @@ def read_committed(hostname):
             "diff, and commit before it can be deployed.")}), 404
     return jsonify({"ok": True, "hostname": hostname, "committed": True,
                     "yaml": text})
-
-
-@bp.route("/commit/<path:hostname>", methods=["POST"])
-def commit_extraction(hostname):
-    """Promote a staged extraction to committed intent.
-
-    The review-and-commit step Phase 3a deliberately stopped short of: staging
-    is a proposal, this is the decision. ``save_host_vars()`` has existed and
-    been tested since Phase 2 with no caller; this is its caller.
-
-    Secrets move into the credential store **for real** here, not as a dry run.
-    Committed intent references them by name, and the deploy path resolves
-    those names in memory — so a reference with nothing behind it renders as a
-    missing-secret marker rather than the value it should have had.
-    """
-    from modules.nsot import hostvars, repo as repo_service
-
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    repo = _repo_for(list_name)
-
-    staged_path = hostvars.staging_path(repo, hostname)
-    if not os.path.exists(staged_path):
-        return jsonify({"ok": False, "error": (
-            f"Nothing staged for '{hostname}'. Extract it first.")}), 404
-
-    # Re-derive from the capture: the staged YAML has refs, never values, so
-    # promoting from it would commit an intent whose secrets resolve to
-    # nothing — a render full of <missing-secret:…> that only the deploy
-    # backstop would catch.
-    fresh, error, status = _extract(repo, hostname)
-    if error:
-        return jsonify({"ok": False, "error": error}), status
-
-    with open(staged_path, encoding="utf-8") as fh:
-        reviewed = fh.read()
-    if hostvars.to_yaml(fresh["host_vars"]) != reviewed:
-        return jsonify({"ok": False, "error": (
-            f"The captured config for '{hostname}' has changed since it was "
-            "staged, so committing now would commit something nobody "
-            "reviewed. Extract again and review the new diff.")}), 409
-
-    secrets = hostvars.store_secrets(fresh["host_vars"], hostname,
-                                     dry_run=False, list_name=list_name)
-    try:
-        path = hostvars.write_committed(repo, fresh["host_vars"])
-    except hostvars.SecretLeak as exc:
-        log.error("templatize: refused to commit host_vars for %s: %s",
-                  hostname, exc)
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    result = repo_service.save_host_vars(
-        list_name, [hostname], actor=request_actor(),
-        message=f"host_vars: {hostname} commit reviewed extraction")
-    return jsonify({"ok": result.get("ok", False),
-                    "hostname": hostname,
-                    "committed_path": os.path.relpath(path, repo),
-                    "commit": result.get("commit", ""),
-                    "message": result.get("message", ""),
-                    "secrets": secrets,
-                    "error": result.get("error", "")})
 
 
 @bp.route("/committed/<path:hostname>/preview", methods=["POST"])

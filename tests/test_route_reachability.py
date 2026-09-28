@@ -54,10 +54,6 @@ A, B, C, D = "(a) no entry point", "(b) credentials", \
 #: (group, reason). Each must leave when it becomes reachable.
 KNOWN_UNREACHABLE = {
     # (a) Phase 3 and later features with no entry point.
-    "POST /templatize/extract/<path:hostname>": (A, "seed intent: extract, review, commit; Device, Actions (7.3)"),
-    "GET /templatize/staged": (A, "seed intent: what extraction staged; Device, Actions (7.3)"),
-    "POST /templatize/commit/<path:hostname>": (A, "seed intent: the reviewed commit; Device, Actions (7.3)"),
-    "GET /templatize/rendered/<path:hostname>": (A, "the render, for reading; Device, Overview (7.3)"),
     "GET /templatize/committed": (A, "the list of devices with committed intent; Fleet (7.4)"),
     "GET /templatize/report": (A, "round-trip coverage for the fleet; Source of truth, Templates (7.6)"),
     "POST /templatize/report": (A, "the same coverage report with a body; Source of truth, Templates (7.6)"),
@@ -126,7 +122,7 @@ KNOWN_UNREACHABLE = {
 # revert never had an entry point, and was counted as reached because the
 # editor's `'/templatize/committed/' + host` matched its stem. A route's
 # words after its converter must now appear near the reference.
-CEILING = 55
+CEILING = 51
 
 
 @pytest.fixture(scope="module")

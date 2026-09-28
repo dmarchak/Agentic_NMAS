@@ -252,6 +252,17 @@ def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "",
         text = _git("show", f"{rev}:{path}") if rev else \
             io.open(os.path.join(ROOT, path), encoding="utf-8",
                     errors="replace").read()
+    except Exception:                          # noqa: BLE001
+        return True
+    # A TEMPLATE names a view only through `url_for('<name>')` or
+    # `url_for('<blueprint>.<name>')` (C148, 2026-09-28): removing the views
+    # `extract` and `staged` was flagged by the prose "Re-extract" and "files
+    # are staged" in two templates, which do not parse as Python and so
+    # counted as references wholesale.
+    if view and path.endswith(".html"):
+        return bool(re.search(r"url_for\(\s*['\"](?:\w+\.)?" + re.escape(name)
+                              + r"['\"]", text))
+    try:
         tree = ast.parse(text)
     except Exception:                          # noqa: BLE001
         return True
@@ -297,8 +308,11 @@ def _code_mentions(name: str, path: str, rev: str = "", defined_in: str = "",
     # was first run against.
     word = re.compile(r"\b" + re.escape(name) + r"\b")
 
+    # A bare NAME in another file reaches a view only if that file imports it
+    # (the `ast.alias` branch below finds the import). `staged = []` in
+    # migrate.py is a local variable, never the removed view `staged` (C148).
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id == name:
+        if isinstance(node, ast.Name) and node.id == name and not view:
             return True
         if isinstance(node, ast.Attribute) and node.attr == name:
             # A MODULE-LEVEL definition is reached as an attribute only through

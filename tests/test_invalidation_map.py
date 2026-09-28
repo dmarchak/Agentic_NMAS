@@ -53,12 +53,11 @@ NOT_YET_SUBSCRIBED = {
     "posture": "the posture panel; 7.7 (Settings)",
     "quick_actions": "the device page's quick actions; 7.3 (Device)",
     "settings": "the Settings panels; 7.7 (Settings)",
-    "staging": "extraction's staged review; 7.3 (Device, Actions)",
     "templates": "the template library; 7.6 (Source of truth, Templates)",
     "topology": "the topology layout is drawn by its own editor",
     "variables": "the CSV-era variable store; cut in 7.8",
 }
-NOT_YET_CEILING = 21  # the freshness panel and Needs attention subscribe to `freshness` (7.2 step 15); Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
+NOT_YET_CEILING = 20  # C148 retired "staging" with extraction's routes (seed intent replaced them); the freshness panel and Needs attention subscribe to `freshness` (7.2 step 15); Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
 
 _SUB = re.compile(r"^\s*NMAS\.subscribe\(\s*'([a-z_]+)'\s*,\s*'(\w+)'\s*,\s*(\w+)", re.M)
 

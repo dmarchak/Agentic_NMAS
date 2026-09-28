@@ -1477,6 +1477,30 @@ fewer misses than the threshold; one miss is "missed a probe".
   ("answering, checked 40 s ago"; "not answering for 3 probes, since
   18:04"; "not checked") is 7.3's, with the Device page. **7.2 is built.**
 
+**7.3 step 1 BUILT (2026-09-28): seed intent (C148), the path from onboarded to
+deployable.** One operation where there were four routes with no screen:
+`POST /templatize/seed/preview` parses each device's COMMITTED golden into the
+intent document and draws it against what is committed now; the confirm is
+bound to a hash of the document and the golden; the apply parses again,
+refuses a device that moved, and makes ONE commit of exactly the seeded files
+as the verified person (`Source: seed`, `Seeded-From:` per device). The Device
+page's Seed intent opens it.
+- **Only absent or bootstrap-only intent is seeded.** Over full intent a seed
+  would replace what the device should be with what it is; that device is
+  drawn, not selectable, and the apply checks again, because the hash cannot
+  see intent committed between preview and apply.
+- **What the template does not model is said, not blocked.** An unmodelled
+  line round-trips verbatim and still blocks a deploy until acknowledged, so
+  the preview names each one and the result is partial; the deploy's own
+  per-device gate is where the block belongs.
+- **The extract, staged, rendered and reviewed-commit routes are gone.**
+  Reading them found that extraction took its device from the ACTIVE list.
+- **Found building it: C175**, every other intent commit stages the whole
+  `host_vars/` tree, so another device's uncommitted edit rides along. The
+  seed stages its own files; the rest move with 7.3's intent operations.
+- **Not done here: the acceptance**, C117's loop on a fresh throwaway
+  (onboard, seed, deploy, break, roll back), which is the operator's run.
+
 **THE PRESENTATION RULE FOR STAGE 7, decided 2026-09-28 (the operator): THE
 SCREEN ANSWERS THE QUESTION THE PERSON CAME WITH, AND THE EVIDENCE FOR THE
 ANSWER IS ONE LEVEL DOWN.** People want to know what needs their attention.
@@ -1526,9 +1550,10 @@ something forces an item earlier.
   and who you are (1f49efb) are done.
 - **P.8**, per-list settings (C173): decided, not built.
 - **7.3 and its uninterfaced actions.**
-  - **Seed intent (C148)** has NO path at all, not even a host command. The
+  - **Seed intent (C148)** had NO path at all, not even a host command. The
     extract-and-commit route needs a verified person and has no GUI, so no
     onboarded device can be deployed to. It is the product's central loop.
+    (BUILT 2026-09-28 as 7.3 step 1; its acceptance run remains.)
   - **Rotate, retire and persist** exist only as host commands:
     `nmas-rotate-credential`, `nmas-retire` and `nmas-persist-native`.
   - The Device page itself does not exist: Overview with the reachability

@@ -109,8 +109,9 @@ def _bodies(v):
                                                               "before": "r1",
                                                               "after": "r1x"}]}),
                                     "a bulk intent change's render delta"),
-        "templatize.extract": (200, ("json", {"list_name": LIST}),
-                               "extraction from HEAD's golden"),
+        "templatize.seed_preview": (200, ("json", {"list_name": LIST, "devices": ["r1"]}),
+                                    "r1's committed golden parsed into the intent a seed "
+                                    "would commit (r1 already seeded: shown, not selectable)"),
         "templatize.preview_committed_edit": (200, ("json", {"list_name": LIST,
                                                              "yaml": v["_intent_text"]}),
                                               "committed intent, previewed against the device"),
@@ -168,9 +169,14 @@ def _setup(v, mp, client):
 
     # A list that has what a real list has.
     templates_repo.seed_templates(repo)
-    for url in ("/templatize/extract/r1", "/templatize/commit/r1",
-                "/templates/approve/cisco_ios/base.j2"):
-        r = client.post(url, json={"list_name": LIST})
+    # r1's intent is SEEDED from its golden (C148), the one path to full intent.
+    pv = client.post("/templatize/seed/preview", json={"list_name": LIST, "devices": ["r1"]})
+    assert pv.status_code == 200, pv.get_data(as_text=True)[:300]
+    seed_hash = pv.get_json()["preview"]["what"]["targets"][0]["select_data"]["hash"]
+    for url, body in (("/templatize/seed/apply", {"list_name": LIST,
+                                                  "confirmations": {"r1": seed_hash}}),
+                      ("/templates/approve/cisco_ios/base.j2", {"list_name": LIST})):
+        r = client.post(url, json=body)
         assert r.status_code == 200, (url, r.get_data(as_text=True)[:300])
     v["_intent_text"] = open(os.path.join(repo, "host_vars", "r1.yml"), encoding="utf-8").read()
     key = credentials.template_secret_key(LIST, "r1", "snmp_community_ro")

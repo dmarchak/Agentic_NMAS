@@ -1102,7 +1102,8 @@ ACTOR_CONVENTION = ("person | ai-agent | service:<client-id>; a script names "
 
 def save_host_vars(list_name: str, devices: list, actor: str = "user",
                    message: str = "", source: str = "extraction",
-                   tool: str = "", extra_trailers: list = None) -> dict:
+                   tool: str = "", extra_trailers: list = None,
+                   paths: list = None) -> dict:
     """Commit ``host_vars`` after human review.
 
     Phase 3a writes extractions to a gitignored staging area precisely so that
@@ -1125,7 +1126,11 @@ def save_host_vars(list_name: str, devices: list, actor: str = "user",
         trailers.append(f"Tool: {tool}")
     trailers.append(f"Devices: {','.join(devices)}")
     trailers.extend(extra_trailers or [])
-    return _commit_paths(list_name, ["host_vars"], subject, trailers, source)
+    # *paths* stages exactly those files. The default stages the whole
+    # ``host_vars`` tree, so ANOTHER device's uncommitted edit rides along
+    # under this commit's subject and `Devices:` trailer (register C175);
+    # the seed passes its own files.
+    return _commit_paths(list_name, paths or ["host_vars"], subject, trailers, source)
 
 
 def _prune_device_tags(repo: str, hostnames: list) -> None:

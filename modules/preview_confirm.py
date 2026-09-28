@@ -1600,3 +1600,165 @@ def capture_result(outcomes: list, save: dict, *, fleet: bool) -> dict:
                     "The drift check compares the device with this golden from now on, and the "
                     "Intent-Match trailer is what says whether this golden is what was intended.",
         titles=CAPTURE_RESULT_TITLES)
+
+
+# ---------------------------------------------------------------------------
+# Seed intent (C148, 7.3's first item): a device's first full intent, from
+# its committed golden. Built here so the ONE renderer draws it.
+# ---------------------------------------------------------------------------
+
+SEED_TITLES = {"program": "What will be committed as its intent",
+               "what": "What will be seeded"}
+SEED_RESULT_TITLES = {"sent": "What was committed as intent",
+                      "checks": "Can the template reproduce it",
+                      "happened": "What was seeded"}
+
+SEED_WORDS = {
+    "seeded": "seeded: its intent is committed",
+    "refused": "refused: nothing was committed",
+    "moved": "refused: its golden moved since the preview, nothing was committed",
+    "busy": "refused: another operation holds this device (C98), nothing was committed",
+    "failed": "failed: the commit did not happen, and each file is back as it was",
+    "unknown_device": "refused: not in this list, nothing was committed",
+}
+
+_INTENT_NOW = {"never_committed": "none committed",
+               "bootstrap_only": "only the bootstrap onboarding wrote",
+               "full": "full intent (a seed would replace it)"}
+
+
+def _fidelity_words(e: dict) -> str:
+    if e.get("fidelity") is None:
+        return "not measured"
+    return (f"{e['fidelity']}% round-trip, {e.get('coverage')}% modelled, "
+            f"{len(e.get('unmodeled') or [])} unmodelled line(s)")
+
+
+def seed_preview(entries: list, *, request) -> dict:
+    """*entries*: `seed.public()` of each device's `entry_for()`."""
+    targets, what_not = [], []
+    for e in entries:
+        name = e["device"]
+        state = e.get("intent_state", "")
+        ok = not e.get("error")
+        if ok and not e.get("reproduced"):
+            lines = ([f"not reproduced: {l}" for l in e.get("missing") or []]
+                     + [f"rendered, not on the device: {l}" for l in e.get("extra") or []]
+                     + [f"unmodelled: {l}" for l in e.get("unmodeled") or []])
+            what_not.append({
+                "target": name, "kind": "not_reproduced",
+                "text": ("The template does not fully model this device ("
+                         + _fidelity_words(e) + "). The seed still commits the intent, "
+                         "unmodelled lines recorded as such, and a deploy to it stays "
+                         "blocked until they are modelled or acknowledged in its intent "
+                         "(`unmodeled_ack`)."),
+                "lines": lines})
+        if ok and state == "full":
+            what_not.append({"target": name, "kind": "has_intent",
+                             "text": ("Not seeded: it already has full committed intent, and a "
+                                      "seed would replace what it SHOULD be with what it IS, "
+                                      "erasing any intended change not yet deployed. Change it "
+                                      "by editing its intent."),
+                             "lines": []})
+        targets.append({
+            "name": name,
+            "state": ("unseedable" if not ok else "has_intent" if state == "full" else "seedable"),
+            "selectable": ok and bool(e.get("seedable")) and not e.get("busy"),
+            "select_data": {"hash": e.get("hash") or "", "list": e.get("list") or ""},
+            "program": {
+                "lines": list(e.get("diff") or []) if ok else [],
+                "caption": ("The intent document to commit, against what is committed now. "
+                            "Nothing is sent to the device: seeding records what it should be"),
+                "none": ("Nothing to commit: " + (e.get("error") or "")) if not ok
+                        else "Its committed intent already equals the seed."},
+            "operands": [
+                {"name": "seed hash", "value": e.get("hash") or "none"},
+                {"name": "from golden", "value": e.get("golden") or "none"},
+                {"name": "platform", "value": e.get("platform") or "unknown"},
+                {"name": "committed intent now", "value": _INTENT_NOW.get(state, state or "?")},
+                {"name": "template", "value": _fidelity_words(e) if ok else "not parsed"},
+                {"name": "secrets into the credential store",
+                 "value": ", ".join(e.get("secret_refs") or []) or "none"}],
+            "gates": ([gate("committed golden", "pass" if ok else "fail",
+                            e.get("golden") and f"commit {e['golden']}" or (e.get("error") or ""))]
+                      + ([gate("no full intent to replace",
+                               "fail" if state == "full" else "pass",
+                               "it has full committed intent: edit it instead"
+                               if state == "full" else _INTENT_NOW.get(state, state))]
+                         if ok else [])
+                      + [busy_gate(e)]
+                      + ([gate("golden unchanged since this preview", "at_apply",
+                               "the golden is parsed again at apply, and a different seed hash "
+                               "refuses this device")] if ok else [])),
+        })
+    what_not.append({"target": "the devices", "kind": "scope",
+                     "text": "Nothing is sent to any device, and no golden changes: a seed "
+                             "commits intent read from the golden.", "lines": []})
+    seedable = sum(1 for t in targets if t["selectable"])
+    return build(
+        action="seed",
+        summary=(f"Commit full intent for {seedable} of {len(entries)} device(s), parsed from "
+                 f"each one's committed golden, in one commit. A seeded device's template "
+                 f"plan then deploys toward this intent."),
+        targets=targets, what_not=what_not,
+        nothing_left_out="Nothing: every device can be seeded and its template reproduces it.",
+        confirm=confirm_part(request, "approve"), titles=SEED_TITLES,
+        explain={"confirm": [{"concept": "confirm-by-hash",
+                              "text": "You are confirming this intent. Each golden is parsed "
+                                      "again at apply, and a device whose seed moved is refused."}],
+                 "program": [{"concept": "intent",
+                              "text": "Intent is what the device SHOULD be. Seeding takes it "
+                                      "from what the device IS, once; from then on a change is "
+                                      "an edit to intent, deployed from a plan."}]})
+
+
+def seed_result(outcomes: list, save: dict) -> dict:
+    """*outcomes*: `seed.apply()`'s; *save*: `save_host_vars()`'s, or ``{}``."""
+    targets, did_not = [], []
+    for o in outcomes:
+        name, outcome = o["device"], o["outcome"]
+        e = o.get("entry") or {}
+        words = SEED_WORDS.get(outcome, outcome)
+        done = outcome == "seeded"
+        targets.append({
+            "name": name, "outcome": outcome, "words": words, "reason": o.get("reason", ""),
+            "sent": {"lines": list(e.get("diff") or []) if done else [],
+                     "caption": "Committed as its intent. Nothing was sent to the device",
+                     "none": "Nothing was committed."},
+            "checks": ({"ran": True, "ok": bool(e.get("reproduced")),
+                        "statements": ["template: " + _fidelity_words(e),
+                                       "secrets stored: " + (", ".join(o.get("secrets") or [])
+                                                             or "none")],
+                        "issues": list(e.get("unmodeled") or []) + list(e.get("missing") or [])}
+                       if done else
+                       {"ran": False, "why": o.get("reason") or "nothing was committed"}),
+        })
+        if not done:
+            did_not.append({"target": name, "kind": outcome,
+                            "text": words + (f": {o['reason']}" if o.get("reason") else ""),
+                            "lines": []})
+        elif not e.get("reproduced"):
+            did_not.append({"target": name, "kind": "not_reproduced",
+                            "text": "Seeded, and the template does not fully model it ("
+                                    + _fidelity_words(e) + "): a deploy stays blocked until "
+                                    "those lines are modelled or acknowledged.",
+                            "lines": list(e.get("unmodeled") or [])})
+    commit = (save or {}).get("commit", "")
+    seeded = [o for o in outcomes if o["outcome"] == "seeded"]
+    statement = (f"Intent commit {commit[:12]} (`Source: seed`, one `Seeded-From:` trailer per "
+                 f"device naming its golden) records {', '.join(o['device'] for o in seeded)}."
+                 if commit else "No intent commit: nothing was seeded.")
+    clean = (seeded and len(seeded) == len(outcomes)
+             and all((o.get("entry") or {}).get("reproduced") for o in seeded))
+    level = ("nothing" if not outcomes else "success" if clean
+             else "failed" if not seeded else "partial")
+    return build_result(
+        action="seed", level=level,
+        summary=f"{len(seeded)} of {len(outcomes)} device(s) seeded.",
+        targets=targets, did_not=did_not,
+        nothing_left_out="Nothing: every device was seeded and its template reproduces it.",
+        record={"commit": commit, "tags": [], "baseline": "", "statement": statement},
+        not_watched="A seed records intent once. Nothing was sent, so nothing on the device "
+                    "changed; its next deploy plans from this intent, and should propose "
+                    "nothing until the intent is edited.",
+        titles=SEED_RESULT_TITLES)

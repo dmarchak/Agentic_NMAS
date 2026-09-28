@@ -52,7 +52,6 @@ KEYING = {
     "modules/nsot/manifest.py":             "dialect",
     "modules/ai_assistant.py":              "driver",
     "modules/connection.py":                "driver",
-    "routes/templatize.py":                 "dialect",
     "scripts/netmiko_timing_probe.py":      "driver",
     "scripts/nsot_metric_diff.py":          "dialect",
 }

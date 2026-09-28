@@ -61,7 +61,6 @@ VOCABULARY = {
     "active_list": "which list the page shows; everything on it",
     "goldens": "golden configs and their history",
     "intent": "committed intent (host_vars)",
-    "staging": "extraction's staged host_vars",
     "templates": "the template library, bindings and template approvals",
     "baselines": "baseline tags",
     "remote": "the remote: its push state and verification",
@@ -124,8 +123,7 @@ DECLARED = {
     "remote.verify": ("remote",),
     "remote.verify_write": ("remote",),
     # Intent, templates and deploys.
-    "templatize.extract": ("staging",),
-    "templatize.commit_extraction": ("intent", "staging", "remote"),
+    "templatize.seed_apply": ("intent", "remote"),
     "templatize.edit_committed": ("intent", "remote"),
     "templatize.revert_committed": ("intent", "remote"),
     "templatize.bulk_apply": ("intent", "remote"),
@@ -218,6 +216,8 @@ DECLARED = {
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
+    "templatize.seed_preview": Nothing("parses committed goldens from git and computes the "
+                                       "intent a seed would commit; writes nothing"),
     "templatize.bulk_preview": Nothing("previews a bulk intent change; the apply commits"),
     "templatize.report": Nothing("round-trip coverage computed from goldens; writes nothing"),
     "netbox_safety.preview_import": Nothing("a NetBox dry run: reads, and issues a one-shot token"),

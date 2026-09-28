@@ -74,6 +74,13 @@
             title="Read this device now and record its running config as its golden: see what changes and how it compares with its committed intent, then confirm">
       Capture as golden
     </button>
+    <!-- Seed intent (C148): its first full intent, from its committed golden -->
+    <button type="button" class="btn btn-outline-success"
+            data-hostname="{{ device['hostname'] }}"
+            onclick="previewSeed([this.dataset.hostname])"
+            title="Commit this device's first full intent, parsed from its committed golden: see the document and what the template cannot reproduce, then confirm. Nothing is sent to the device">
+      Seed intent
+    </button>
     <!-- Ask AI about this device -->
     <button type="button" class="btn btn-outline-primary"
             onclick="document.getElementById('aiOpenBtn').click();"

@@ -279,6 +279,36 @@ class TestAViewIsNamedByItsEndpoint:
         p = source("from app import git_commit\n")
         assert CHECK._code_mentions("git_commit", p, view=True) is True
 
+    def test_a_local_variable_of_the_same_name_is_not_a_use_of_a_view(self, source):
+        """C148: `staged = []` in migrate.py flagged the removed view `staged`."""
+        p = source("def f():\n    staged = []\n    return staged\n")
+        assert CHECK._code_mentions("staged", p, view=True) is False
+
+    def test_the_control_a_bare_name_still_counts_for_a_function(self, source):
+        p = source("def f():\n    staged = []\n    return staged\n")
+        assert CHECK._code_mentions("staged", p) is True
+
+    def test_template_prose_is_not_a_use_of_a_view(self, tmp_path, monkeypatch):
+        """C148: "Re-extract network facts" flagged the removed view `extract`."""
+        monkeypatch.setattr(CHECK, "ROOT", "")
+        page = tmp_path / "page.html"
+        page.write_text("<div>Re-extract network facts after saving.</div>\n", encoding="utf-8")
+        assert CHECK._code_mentions("extract", str(page), view=True) is False
+
+    def test_url_for_in_a_template_is_still_a_use_of_a_view(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(CHECK, "ROOT", "")
+        page = tmp_path / "page.html"
+        for text in ("<a href=\"{{ url_for('extract') }}\">",
+                     "<a href=\"{{ url_for( 'templatize.extract', h=1) }}\">"):
+            page.write_text(text, encoding="utf-8")
+            assert CHECK._code_mentions("extract", str(page), view=True) is True, text
+
+    def test_the_control_template_prose_still_counts_for_a_function(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(CHECK, "ROOT", "")
+        page = tmp_path / "page.html"
+        page.write_text("<div>Re-extract network facts.</div>\n", encoding="utf-8")
+        assert CHECK._code_mentions("extract", str(page)) is True
+
     def test_the_control_a_non_view_string_still_counts(self, source):
         p = source('TTL = {"git_commit": None}\n')
         assert CHECK._code_mentions("git_commit", p) is True

@@ -10587,7 +10587,9 @@ sentence each.
 **Seed intent has no path at all, not even a host command.** Nine devices are
 deployable because their intent was extracted on 09-20 and 09-21 through a
 route P.3 correctly closed, and nothing replaced it. So the one step that makes
-a device deployable is a step the tool can no longer take (C148).
+a device deployable is a step the tool can no longer take (C148). Built the same
+day as 7.3's first step: seed intent, previewed and confirmed, from the Device
+page. Its acceptance, the loop on a throwaway, is the next real run.
 
 **Stage 8's agent: 27 recorded runs, zero tool calls.** The agent has a tool
 library, an authority model and a triage design, and has never called a tool.

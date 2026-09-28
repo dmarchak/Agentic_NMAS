@@ -63,6 +63,10 @@ RESULT_COMPONENT = {
     # Capture (7.1 step 4): Save All is its whole-fleet form, and the one-click
     # route it replaced is gone. The record read back is the golden history.
     "golden.capture_apply": ("static/js/nmas_capture.js", "previewCapture", "golden.history"),
+    # Seed intent (C148): its record is the committed intent it wrote, which
+    # the intent editor reads back from HEAD.
+    "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed",
+                              "templatize.read_committed"),
     # Onboarding's Create (C86): phase 1, drawn as pending; the record read
     # back is the device's pending row.
     "onboard.create": ("static/js/gen/partials__onboard_wizard.1.js", "onboardCreate",
@@ -117,7 +121,7 @@ PENDING = {
 #: No page sends these (test_route_reachability.KNOWN_UNREACHABLE).
 NO_GUI = {
     "freshness.authorise", "templates.revoke_approval", "templates.save_bindings",
-    "templatize.bulk_apply", "templatize.commit_extraction",
+    "templatize.bulk_apply",
     "templatize.retry_rolled_back", "templatize.revert_committed", "remote.adopt",
 }
 

@@ -58,7 +58,7 @@ def test_a_bootstrap_only_intent_is_refused_with_its_reason_not_rendered(planned
     assert err == ""
     assert artifact.bootstrap and not artifact.deployable
     assert BOOTSTRAP_ONLY_REASON in artifact.blocking_reasons, artifact.blocking_reasons
-    assert "7.3" in BOOTSTRAP_ONLY_REASON and "C148" in BOOTSTRAP_ONLY_REASON
+    assert "Seed intent" in BOOTSTRAP_ONLY_REASON and "Device page" in BOOTSTRAP_ONLY_REASON
 
 
 def test_the_shared_handler_names_what_was_attempted_and_what_failed():

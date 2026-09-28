@@ -220,6 +220,29 @@ def capture_preview(mp, tmp):
     return _ok(lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}))
 
 
+def seed_preview(mp, tmp):
+    """C148: r2's real golden with only onboarding's bootstrap committed as
+    its intent, so the preview carries a whole document against it, and one
+    line the parser does not model, so what the template misses is carried."""
+    from tests.test_seed_intent import LIST, UNMODELLED, build_seed_lab
+
+    lab = build_seed_lab(mp, tmp, unmodelled=UNMODELLED)
+    return _ok(lab["client"].post("/templatize/seed/preview",
+                                  json={"list_name": LIST, "devices": ["r2"]}))
+
+
+def seed_apply(mp, tmp):
+    """The same, confirmed and committed: a seed's result, partial."""
+    from tests.test_seed_intent import LIST, UNMODELLED, build_seed_lab
+
+    lab = build_seed_lab(mp, tmp, unmodelled=UNMODELLED)
+    d = _ok(lab["client"].post("/templatize/seed/preview",
+                               json={"list_name": LIST, "devices": ["r2"]}))
+    h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
+    return _ok(lab["client"].post("/templatize/seed/apply",
+                                  json={"list_name": LIST, "confirmations": {"r2": h}}))
+
+
 def restore_points(mp, tmp):
     """7.1 step 5 (C80): r2's restore points, from a real repository holding
     its onboarding golden, its own golden tag and a baseline earned by a

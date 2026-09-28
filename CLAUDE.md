@@ -157,6 +157,14 @@ tracked in git.
   commits whose record is known to be wrong, by full hash (the eleven
   rotation commits recorded `Source: manual`, C104). History is not
   rewritten; a reader draws the exception beside the record
+- **[modules/nsot/seed.py](modules/nsot/seed.py)** — C148 (7.3 step 1):
+  SEED INTENT, a device's first full intent parsed from its COMMITTED golden,
+  previewed against the intent committed now, confirmed by a hash of the
+  document and the golden, parsed again at apply, one commit of exactly the
+  seeded files (`Source: seed`). Only absent or bootstrap-only intent is
+  seeded; what the template does not model is named, never blocked here.
+  Client: **[static/js/nmas_seed.js](static/js/nmas_seed.js)**, the Device
+  page's Seed intent
 - **[modules/nsot/golden_state.py](modules/nsot/golden_state.py)** — E7:
   a baseline that is CONFIGURED AND WORKING. Every routing protocol a
   device's committed intent declares is judged up from real output (OSPF and
@@ -730,7 +738,9 @@ The only part of the NSoT work that reaches a device.
   **not deployable** — deriving intent from the device's own capture makes the
   diff empty by construction. A change is made by editing committed intent and
   committing it (`host_vars: <device> <summary>`), not by configuring the
-  device and re-extracting.
+  device and re-extracting. A device's FIRST full intent is
+  seeded from its committed golden (`modules/nsot/seed.py`, C148), once: only
+  absent or bootstrap-only intent is ever seeded.
 - **Design rule — gate on template fidelity, never on intent drift.**
   `template_report` (render of the capture's own parse vs the capture) answers
   "can this template reproduce this device as it is"; if not, a render from
@@ -1274,6 +1284,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_store_integrity_c158_c160.py` | C158, C160: the NetBox created-object record, `rolled_back.json` and devices.csv lose nothing to two PROCESSES writing at once; an unreadable created record refuses every write and keeps the file; an unreadable rolled-back record BLOCKS every plan naming the record (it lifted every block); a devices.csv write replaces the file (a new inode), never truncates it; Reorder keeps a device the order does not name; Refresh Hostnames keeps a rotation made while it ran; `csv.DictWriter` lives in one module; two lock instances for one path nest without blocking (bounded, so a regression fails rather than hangs) |
 | `test_version_item.py` | 7.2 step 18: who you are, from the real identity diagnostic's payload (a person by email, a service by its audit name, not identified with the reason on hover). 7.2 step 17: the verdict is `scripts/nmas-deploy`'s own, and no module or route defines a second (AST); the exit codes named by the script's constants; an unknown loaded commit a failed read; `/health/version` composes the stored running-version row and verdict and CALLS NEITHER (counted); a stored verdict for another commit is "not judged yet", never this commit's; the source rows a failed verdict and never reads another commit's; the SHIPPED item draws the commit, a MIXED VERSION in red, each verdict's words and a stale verdict |
 | `test_reachability_reader.py` | C92 (7.2 step 19): one miss is a missed probe and the threshold-th is not answering, since then; an answer resets the count and keeps an unbroken state's since; the threshold comes from the one function; the claim names the probe; `STATUS` is the app's dict, updated in place, a departed device leaving; every list probed, an address once; an announce-on-change reader with no keepalive refused; it announces on a change, skips an unchanged cycle and keeps alive; the source is ONE row naming every device not answering; the session reaper never probes |
+| `test_seed_intent.py` | C148 (7.3 step 1), on r2's REAL config with onboarding's bootstrap intent: the preview draws the document against the bootstrap with every gate and writes nothing, and no secret value leaves; full intent is drawn and not selectable, and intent committed AFTER the preview is never replaced (the hash cannot see it); no golden says capture it first; the apply commits exactly `host_vars/r2.yml` as the person, `Source: seed`, `Seeded-From:` naming the golden, the committed text line for line what the preview drew, the secrets in the store, and the deploy plan's bootstrap refusal gone; a moved golden, a held device (from another thread) and no list named commit nothing; a failed commit puts the file back; an unmodelled line (planted) is named and the result partial; another device's uncommitted edit stays uncommitted, with the control that the default staging carries it (C175); the four replaced routes answer 404 |
 | `test_integration_health.py` | 7.2 step 16: each integration recorded with its state and probe time, probed in PARALLEL (five 0.4 s probes well under 2 s), a raising probe down with its reason, messages redacted, none registered a failed read; the route serves the stored value and PROBES NOTHING (counted, since the old path swallowed a raising probe: the first control passed), 503 with nothing stored; the Test button stays a live check; the source makes a danger row per configured integration down and none for unconfigured; the SHIPPED bar draws states, its age and STALE past the promise, and a failed read never as all up; every page carries it; a compact stamp adds no second age line; the Settings strip says a failed read |
 | `test_freshness_reader.py` | 7.2 step 15, reports built by the REAL `freshness.reconcile()`: every registered list compared and one that raises stored WITH its reason (never absent), no lists a failed read; the route serves the stored list with its time and promise and never asks Oxidized, 503 with nothing stored ("not the same as nothing having diverged"), 404 naming what the value holds, lines masked; the source makes UNAPPROVED and INCONCLUSIVE rows and counts the rest, a list not compared is one unknown row; the shipped panel stamps the value's age and hears the reader |
 | `test_grafana_reader.py` | 7.2 step 14, against a REAL read-only capture (`tests/fixtures/grafana/`, every firing case a minimal edit of a real instance): sixteen rules read, the quiet fleet no row; which device from where per rule, and a line rule with another pattern named as not the definition; a rule counting more instances than it lists, and a next-page token, refused; the same capture read four minutes later is a stalled evaluator; an alerting address instance joined to its Alertmanager fingerprint and stored as an address; Grafana's own DatasourceNoData is no data, never a condition; the three endpoints named and a refusal naming its endpoint; the source: nothing stored is unknown, an address resolved or said to match nothing, one silence across the fleet ONE incident whose subject is the pipeline, two silences 420 s apart two, a no-data rule a row, the floor naming a device with no rule the reader sees, a device that left named; members drawn with their device's origin and onset basis |
@@ -1403,7 +1414,12 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   a `url_for(...)` argument or an `endpoint=` value. That is safe because
   every endpoint-keyed table (the gate table, the invalidation map) refuses
   a key naming no endpoint in its own test, measured by putting the removed
-  key back into each.
+  key back into each. **The same holds for a bare name and a template**
+  (C148): removing the views `extract` and `staged` was flagged by a local
+  `staged = []` in `migrate.py` and by the prose "Re-extract" in a template,
+  which does not parse as Python and so counted wholesale. A bare name in
+  another file reaches a view only through an import, and a template names
+  one only by `url_for('<name>')` or `url_for('<bp>.<name>')`.
 - **A filename is a mention** (`check_removed_definitions.py`, P.4 step 1).
   `"jenkins_results.json"` has the dotted shape of `mod.attr`, so removing the
   view `jenkins_results` was flagged by a module writing a file of that name.

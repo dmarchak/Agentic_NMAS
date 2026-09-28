@@ -85,6 +85,7 @@ PC_FNS = ("title", "previewConfirmHtml", "whatHtml", "whatNotHtml", "programHtml
           "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
 DC = "partials__device_changes.1.js"
 CAP = "nmas_capture.js"
+SEED = "nmas_seed.js"
 RS = "nmas_restore_scope.js"
 DW, GR1, GR2, GR3 = ("partials__deploy_wizard.1.js", "partials__golden_repo.1.js",
                      "partials__golden_repo.2.js", "partials__golden_repo.3.js")
@@ -144,6 +145,17 @@ RENDERS = {
         {CAP: ("previewCapture",), PC: PC_RESULT_FNS},
         ((CAP, "previewCapture", "ad"),),
         adapters={"modules/preview_confirm.py": ("capture_result", "_intent_words",
+                                                 "build_result")}),
+    "POST /templatize/seed/preview": Render(
+        lambda mp, tmp: P.seed_preview(mp, tmp),
+        {SEED: ("previewSeed", "seedSelection", "refreshButton"), PC: PC_FNS},
+        ((SEED, "previewSeed", "d"),), maps=("select_data",),
+        adapters={"modules/preview_confirm.py": ("seed_preview", "_fidelity_words", "build")}),
+    "POST /templatize/seed/apply": Render(
+        lambda mp, tmp: P.seed_apply(mp, tmp),
+        {SEED: ("previewSeed",), PC: PC_RESULT_FNS},
+        ((SEED, "previewSeed", "ad"),),
+        adapters={"modules/preview_confirm.py": ("seed_result", "_fidelity_words",
                                                  "build_result")}),
     "GET /golden/restore_points/<host>": Render(
         lambda mp, tmp: P.restore_points(mp, tmp),
@@ -523,6 +535,7 @@ EMPTY_IN_FIXTURE = {
                                                      "sentence); a real residue plan is "
                                                      "drawn in test_preview_confirm "
                                                      "(deploy_plan_with_residue)"),
+    "POST /templatize/seed/apply result.record.tags": (S_, "a seed takes no tag: tags mark a network snapshot, and an intent commit is not one"),
     "POST /golden/capture/apply result.did_not.items[].lines": (S_, "the first did-not item is r2's departure from intent, whose lines are drawn under its checks; the baseline item carries no lines"),
     "GET /deploy/receipts changes[].result.record.tags": (S_, "a receipt names the golden commit and not its tags, and the history's record statement says so"),
     "GET /deploy/receipts changes[].result.targets[].rollback.commands": (S_, "no device in the fixture was rolled back"),

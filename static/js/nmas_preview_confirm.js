@@ -50,7 +50,10 @@
     capturable: ['bg-success', 'will be recorded'],
     ready: ['bg-success', 'ready'],
     unchanged: ['bg-secondary', 'unchanged'],
-    unread: ['bg-warning text-dark', 'could not be read']
+    unread: ['bg-warning text-dark', 'could not be read'],
+    seedable: ['bg-success', 'will be seeded'],
+    has_intent: ['bg-secondary', 'already has intent'],
+    unseedable: ['bg-warning text-dark', 'cannot be seeded']
   };
 
   /* A part's heading: the operation's own words where the server gives them

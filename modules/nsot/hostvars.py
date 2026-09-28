@@ -1060,9 +1060,8 @@ def _looks_hashed(value: str) -> bool:
 #: planned (C148, C154): said by the plan in place of rendering it.
 BOOTSTRAP_ONLY_REASON = (
     "its committed intent is only the bootstrap onboarding wrote (no interfaces, "
-    "routing or users), so there is nothing to render toward. Seeding full intent "
-    "from its golden (extract, review, commit) has no screen yet: it is 7.3's "
-    "first item (register C148)")
+    "routing or users), so there is nothing to render toward. Seed its intent "
+    "from its golden first: Seed intent, on its Device page")
 
 
 def is_bootstrap_only(doc) -> bool:
