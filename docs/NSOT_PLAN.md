@@ -3652,8 +3652,34 @@ falls against 7.2 and 7.3 is the operator's to decide; nothing in 7.2 depends on
 
 ### P.8 — Per-list settings: two lists are two networks (SCOPED and DECIDED 2026-09-28, not built; after 7.2, before P.7's generators and 7.3)
 
-**DECIDED 2026-09-28 (the operator), closing every ambiguity below: 78 keys per
-network, 40 global, 11 read by nothing, none ambiguous.**
+**DECIDED 2026-09-28 (the operator), closing every ambiguity below: 71 keys per
+network, 47 global, 11 read by nothing, none ambiguous; and one per-list key
+to add, the NetBox scope.**
+
+**CORRECTED the same day (the operator): the NetBox CONNECTION is global, the
+SCOPE is per list.** "One NetBox per network" answered the instance question,
+while every list lives in ONE NetBox separated by region, which is how the
+sync already behaves (`_ensure_region` and `_ensure_site`, one pair per list).
+- **Global: the connection.** `netbox_url`, `netbox_token`, `netbox_verify_tls`
+  and `netbox_auth_scheme`, beside `netbox_allow_writes`.
+- **Per list: the scope,** which region (or, later, tenant) a list's objects
+  belong to. It is DERIVED from the list's name today, and becomes a per-list
+  key (`netbox_scope`, default the derived value), so a later tenant move
+  changes a value rather than every writer.
+- **The platform and role maps are GLOBAL, measured.** Both are keyed on
+  NetBox's own platform and role slugs, instance-level objects every region
+  shares, and map them to NMAS's vocabulary (driver, template directory,
+  transport, device kind): a fixed vocabulary for the instance, and
+  `platform_default_netmiko_type` with them. **One field inside
+  `platform_map` is not**: `prometheus_cpu_query` belongs to a monitoring
+  stack, and duplicates the per-network `promql_cpu`, two owners of one fact.
+  P.8 moves it to the per-list store.
+- **`netbox_excluded_vrfs` stays per network**: it names a lab's emulator
+  VRF, and another lab names it differently.
+- The per-instance question (a NetBox per network) is deferred with the
+  tenant question (C174).
+
+The first form of this decision, kept as the record of what changed:
 - **One NetBox per network.** Sites, devices, interfaces, addresses, VLANs and
   prefixes are facts about a network, not about NMAS. A shared NetBox would put
   list B's devices in list A's source of truth, while the provenance record of

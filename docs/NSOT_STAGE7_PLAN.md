@@ -1485,6 +1485,81 @@ checked?":
   accounting and the run.
 
 
+### What does not exist yet (2026-09-28, the operator's request)
+
+**MISSING** means the capability does not exist; that list is the plan.
+**INCOMPLETE** means it works and could be better; that list is Stage 9, unless
+something forces an item earlier.
+
+**MISSING**
+- **7.2**, which has one item left: C92's reachability reader. Per device, it
+  keeps the last probe, its time and the consecutive-miss count, with the
+  threshold taken from the host's measured misses. The version item (af10109)
+  and who you are (1f49efb) are done.
+- **P.8**, per-list settings (C173): decided, not built.
+- **7.3 and its uninterfaced actions.**
+  - **Seed intent (C148)** has NO path at all, not even a host command. The
+    extract-and-commit route needs a verified person and has no GUI, so no
+    onboarded device can be deployed to. It is the product's central loop.
+  - **Rotate, retire and persist** exist only as host commands:
+    `nmas-rotate-credential`, `nmas-retire` and `nmas-persist-native`.
+  - The Device page itself does not exist: Overview with the reachability
+    claim, Monitoring (7.3-a to e), Neighbours absorbing topology discovery,
+    History, and the Actions (revert, retry and the four above).
+- **P.7**: the generated alert rules and scrape targets. Only the heartbeat
+  rules are generated today, and the scrape list is hand-kept (C168).
+- **7.4 Fleet**:
+  - the bounded list with selection;
+  - batch deploy and bulk intent as screens;
+  - onboarding as a list of address sources, with progress;
+  - adopt, networks, and the inventory source.
+- **7.5 Versions**: history by actor and source, drawn beside its known
+  misstatements.
+- **7.6 Source of truth**: templates with the approval badge, NetBox,
+  credentials, freshness authorisations.
+- **7.7 Settings**: the split, the file-only list, diagnostics, and C171's dead
+  fields retired.
+- **7.8 Removals**: the terminal, the Topology tab, and the backup store after
+  its prerequisite.
+- **7.9 Configure forms**, batch 1 (a parallel track).
+- **Stage 8**: the agent has never executed a tool (27 recorded runs, zero
+  calls). Every step is still to do: 8.1 models, 8.2 the tool library against
+  today's program, 8.3 a real authority allowlist, 8.4 re-enabling it, 8.6 the
+  triage (the Grafana reader it reads is built), 8.7 propose-only drift, 8.8 the
+  second reading.
+
+**INCOMPLETE (Stage 9 unless forced)**
+- NetBox scoping, tenants against regions, and per-list NetBox containers (C174).
+- Needs attention's 60 s poll, until C58's other senders announce: the
+  post-commit push, the drift run, the NetBox refresh, another browser's
+  action.
+- The baseline source naming the newest baseline tag as the last decision
+  known to be earned.
+- C172 (`remote.json` read so that unreadable counts as absent) and the rest of
+  the open register's C rows.
+- The Stage 9 hardening rows, (L) and (M).
+
+**7.3 is the most valuable remaining work, by a distance** (the operator's
+instinct, agreed). The interface is the premise, and the loop the tool exists
+for (onboard, seed, deploy) is broken at its middle step with no path at all.
+One refinement of the order is recommended below.
+
+**Recommended order:**
+1. C92's reader, finishing 7.2.
+2. Seed intent (C148), the first item of 7.3.
+3. P.8.
+4. The rest of 7.3.
+5. P.7.
+6. 7.4 onward.
+
+**Why seed intent can go before P.8, without weakening P.8's placement.**
+Seed intent reads no per-network setting: it extracts from the golden, reviews
+and commits intent, in the list's own repository. What must wait for P.8 is the
+Device page's monitoring (per-network Grafana, Loki and Prometheus), which is
+exactly the screen that would otherwise show list A's Grafana beside list B's
+device. C92's threshold is per network (the operator's own example), so it is
+read through one function, and P.8 moves it without the reader changing.
+
 ## 9. Deferred, recorded rather than scoped
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's
