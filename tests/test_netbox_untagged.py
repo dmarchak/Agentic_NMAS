@@ -149,6 +149,41 @@ class TestTheReconciliation:
         assert not r["changelog"].startswith("read")
         assert mod.verdict(r) == 2
 
+    def test_both_names_and_a_mismatch_is_its_own_finding(self, capsys, monkeypatch):
+        """C131: the record said "R1" at dcim/devices/7 and NetBox held r3. A
+        report printing only the record's name could not show it, and a
+        decision to tag r3 was made from that list."""
+        mod = _script()
+        nb, created, lost, _stray = _world()
+        wrong = nb.seed("dcim/devices", {"name": "r3", "tags": []})
+        created["lab"]["dcim/devices"].append({"id": wrong["id"], "name": "R1"})
+        r = mod.reconcile(nb, "http://nb.invalid", created)
+        assert [(m["record"], m["netbox"]) for m in r["mismatched"]] == [("R1", "r3")]
+        assert mod.verdict(r) == 1
+        # The floor: an entry whose object IS the one it names is no mismatch.
+        assert not any(m["id"] == lost["id"] for m in r["mismatched"])
+        monkeypatch.setattr(mod, "reconcile", lambda *a: r)
+        monkeypatch.setattr("modules.netbox_client._nb_ready", lambda: (True, "", nb, "http://nb"))
+        mod.main(["--list", "lab"])
+        out = capsys.readouterr().out
+        assert f"MISMATCH: lab dcim/devices/{wrong['id']} -- the record says 'R1', NetBox holds 'r3'" in out
+        assert "do not tag it" in out
+        assert f"the record says 'lost', NetBox holds 'lost'" in out
+
+    def test_a_mismatched_entry_never_identifies_the_account(self):
+        """A record entry pointing at someone else's object would name THEIR
+        account as NMAS's."""
+        mod = _script()
+        nb, created, lost, stray = _world()
+        other = nb.seed("dcim/devices", {"name": "r3", "tags": []})
+        nb.seed("core/object-changes", {"action": "create", "changed_object_type": "dcim.device",
+                                        "changed_object_id": other["id"],
+                                        "user": {"id": 42, "username": "a-person"}})
+        # First in the record, so it would be sampled first.
+        created = {"aaa": {"dcim/devices": [{"id": other["id"], "name": "R1"}]}, **created}
+        r = mod.reconcile(nb, "http://nb.invalid", created)
+        assert r["account"]["id"] == 7, "identified from a mismatched entry's creator"
+
     def test_clean_is_zero(self):
         mod = _script()
         nb, created, lost, stray = _world()

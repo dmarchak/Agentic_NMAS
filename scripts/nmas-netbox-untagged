@@ -89,12 +89,35 @@ def _get_all(session, base, path, **params):
     return out
 
 
+def _netbox_name(obj: dict) -> str:
+    """The name NetBox gives the object at that id, never the record's."""
+    for key in ("name", "address", "prefix", "model", "display"):
+        if obj.get(key):
+            return str(obj[key])
+    return ""
+
+
+def names_disagree(record_name: str, netbox_name: str) -> bool:
+    """True when the record names one thing and NetBox holds another at that
+    id (C131: the record said "R1", NetBox held r3). Case aside, and only when
+    both are named: an unnamed record entry cannot be checked this way."""
+    return bool(record_name and netbox_name) and record_name.casefold() != netbox_name.casefold()
+
+
 def reconcile(session, base, created: dict) -> dict:
-    """*created* is the record: ``{list slug: {endpoint: [{id, name}]}}``."""
+    """*created* is the record: ``{list slug: {endpoint: [{id, name}]}}``.
+
+    A PROVENANCE REPORT THAT TRUSTS THE RECORD IT IS AUDITING CANNOT FIND A
+    WRONG RECORD (the operator, C131, 2026-09-28). This printed the record's
+    own names, so "lab dcim/devices/7 R1" could not show that NetBox held r3
+    at that id, and the decision to tag it was made from this list. Every
+    entry is now reported with BOTH names, and a disagreement is its own
+    finding (`mismatched`): the record is not evidence for that object, and
+    it is never used to identify NMAS's account."""
     from modules.netbox_guard import has_managed_tag, is_taggable
 
     out = {"recorded": 0, "tagged": 0, "gone": 0, "not_taggable": 0,
-           "untagged": [], "unreadable": [], "unrecorded": [],
+           "untagged": [], "unreadable": [], "unrecorded": [], "mismatched": [],
            "changelog": "not run", "account": None}
     recorded_keys = set()
     sample = []
@@ -112,13 +135,23 @@ def reconcile(session, base, created: dict) -> dict:
                 elif state == "unreadable":
                     out["unreadable"].append({"list": slug, "endpoint": endpoint,
                                               "id": entry["id"], "reason": obj})
-                elif has_managed_tag(obj):
-                    out["tagged"] += 1
-                    sample.append((endpoint, entry["id"]))
                 else:
-                    out["untagged"].append({"list": slug, "endpoint": endpoint,
-                                            "id": entry["id"], "name": entry.get("name", "")})
-                    sample.append((endpoint, entry["id"]))
+                    record_name, netbox_name = entry.get("name", ""), _netbox_name(obj)
+                    tagged = has_managed_tag(obj)
+                    if names_disagree(record_name, netbox_name):
+                        out["mismatched"].append({"list": slug, "endpoint": endpoint,
+                                                  "id": entry["id"], "record": record_name,
+                                                  "netbox": netbox_name, "tagged": tagged})
+                    else:
+                        # Only an entry whose object is the one it names is
+                        # evidence enough to identify NMAS's account from.
+                        sample.append((endpoint, entry["id"]))
+                    if tagged:
+                        out["tagged"] += 1
+                    else:
+                        out["untagged"].append({"list": slug, "endpoint": endpoint,
+                                                "id": entry["id"], "name": record_name,
+                                                "netbox": netbox_name})
 
     # The changelog half. NMAS's account is read from a recorded object's own
     # create entry, never assumed.
@@ -172,7 +205,7 @@ def reconcile(session, base, created: dict) -> dict:
 def verdict(result: dict) -> int:
     if result["unreadable"] or not result["changelog"].startswith("read"):
         return 2
-    if result["untagged"] or result["unrecorded"]:
+    if result["untagged"] or result["unrecorded"] or result.get("mismatched"):
         return 1
     return 0
 
@@ -196,9 +229,17 @@ def main(argv=None) -> int:
     result = reconcile(session, base, created)
     print(f"recorded (taggable): {result['recorded']}  tagged: {result['tagged']}  "
           f"gone: {result['gone']}  not taggable: {result['not_taggable']}")
+    for m in result["mismatched"]:
+        print(f"MISMATCH: {m['list']} {m['endpoint']}/{m['id']} -- the record says "
+              f"'{m['record']}', NetBox holds '{m['netbox']}' at that id"
+              f"{' (TAGGED nmas-managed)' if m['tagged'] else ''}. The record is NOT "
+              "evidence NMAS created it: do not tag it; read the object's own changelog")
     for u in result["untagged"]:
-        print(f"UNTAGGED, recorded: {u['list']} {u['endpoint']}/{u['id']} {u['name']}"
-              " -- NMAS made it and Remove cannot act on it")
+        print(f"UNTAGGED, recorded: {u['list']} {u['endpoint']}/{u['id']} -- the record says "
+              f"'{u['name']}', NetBox holds '{u['netbox']}'"
+              + (" (NAMES DISAGREE: see MISMATCH above)"
+                 if names_disagree(u["name"], u["netbox"]) else
+                 " -- NMAS made it and Remove cannot act on it"))
     for u in result["unreadable"]:
         print(f"UNREADABLE: {u['list']} {u['endpoint']}/{u['id']}: {u['reason']}")
     print(f"changelog: {result['changelog']}")

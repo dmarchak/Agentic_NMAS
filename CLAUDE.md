@@ -5531,6 +5531,39 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   driven into the apply is accepted, and a wrong hash is refused. The sweep
   that would find the next one (every `not_device` POST) is open in the
   register.
+- **A PREVIEW RUNS THE REAL CODE, SO EVERY WRITE THAT CODE MAKES IS A WRITE
+  THE PREVIEW MAKES** (the operator's naming, 2026-09-28). The dry-run flag
+  stops writes to NETBOX and not writes to our own stores, and nobody had
+  enumerated the second kind. Two found hours apart in the NetBox path:
+  C130, a removal preview that FORGOT provenance for any object it could not
+  read (a 500 treated as an absence), and C134, an import preview that
+  overwrote the record of the last real import, so the sync card claimed a
+  complete import at the second of the preview. Now a population check:
+  every `not_device` POST is driven with the store hashed before and after,
+  and only declared writers may change it
+  (`test_no_post_returns_a_stored_secret.py::TestNoPreviewWritesTheStore`,
+  shown catching C134 with its fix removed). Its limit: it sees the path each
+  body reaches, so a write on a failure branch (C130's) needs its own test.
+  **A false success is worse than an absence** (the operator, choosing to
+  delete the false record): "no import recorded" invites a question;
+  "synced 9, updated 9, complete" closes one, and is what someone would cite
+  later as evidence.
+- **A PROVENANCE REPORT THAT TRUSTS THE RECORD IT IS AUDITING CANNOT FIND A
+  WRONG RECORD** (the operator, C131, 2026-09-28). `nmas-netbox-untagged`
+  printed the record's own names, so "lab dcim/devices/7 R1" could not show
+  that NetBox held r3 at that id, and a decision to tag r3 (making a router
+  NMAS never created deletable) was approved from that list. The record was
+  the evidence, and the record was wrong: it held the suite's fixture, left
+  in the live store before C32. The report now prints both names and a
+  disagreement is its own finding, never used to identify NMAS's account.
+- **The preview's program was wrong and the panel was right** (C135, the
+  operator's correction of their own reading, recorded at their request): "sets
+  tags" on r3 beside "an update is never tagged" read as the panel being
+  false. Measured, the tags set were the ones r3 already held: a dry-run
+  PATCH returned only its payload, so the next step planned a write the real
+  import skips. "The preview count is the executed count" had been checked
+  for creates only. C76's shape (a preview listing what the program never
+  does) in another subsystem: test a preview's promise in both directions.
 - **"Configured" and "configured and working" are different claims, and a
   baseline states which it makes** (E7, 2026-09-27). A baseline records
   configuration, so a broken moment and a good one read the same. A golden

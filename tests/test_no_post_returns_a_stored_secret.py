@@ -226,7 +226,31 @@ def _setup(v, mp, client):
             config.set_user_setting(cls().url_key, "http://127.0.0.1:9")
 
 
-def _drive(v, person):
+def _store_state():
+    """Every file under the store with its hash, `.git/objects` aside (a
+    commit also moves refs and logs, which are hashed). What a request WROTE
+    is the difference between two of these (C134's sweep)."""
+    import hashlib
+
+    from modules import config
+
+    state = {}
+    for dirpath, dirnames, filenames in os.walk(config.DATA_DIR):
+        if os.sep + os.path.join(".git", "objects") in dirpath + os.sep:
+            dirnames[:] = []
+            continue
+        for fn in filenames:
+            path = os.path.join(dirpath, fn)
+            try:
+                with open(path, "rb") as fh:
+                    state[os.path.relpath(path, config.DATA_DIR)] = hashlib.sha256(
+                        fh.read()).hexdigest()
+            except OSError:
+                state[os.path.relpath(path, config.DATA_DIR)] = "unreadable"
+    return state
+
+
+def _drive(v, person, writes=None):
     import app as A
     from modules import identity
     from modules.integrations import REGISTRY
@@ -252,8 +276,13 @@ def _drive(v, person):
                 url = _fill(rule, dict(v, **({"_integration": name} if name else {})))
                 if name:
                     url = url.replace("/planted-profile/", f"/{name}/")
+                before = _store_state() if writes is not None else None
                 r = (client.post(url, data=body) if kind == "form"
                      else client.post(url, json=body))
+                if writes is not None:
+                    after = _store_state()
+                    writes[endpoint if not name else f"{endpoint}:{name}"] = sorted(
+                        k for k in set(before) | set(after) if before.get(k) != after.get(k))
                 out[endpoint if not name else f"{endpoint}:{name}"] = (
                     r.status_code, r.get_data(as_text=True))
     finally:
@@ -285,9 +314,10 @@ def swept():
                 _setup(values, mp, A.app.test_client())
             planted = {x: store for store, xs in values.items() if not store.startswith("_")
                        for x in xs}
-            yield {"values": values, "planted": planted,
+            writes = {}
+            yield {"writes": writes, "values": values, "planted": planted,
                    "anon": _drive(values, person=False),
-                   "person": _drive(values, person=True)}
+                   "person": _drive(values, person=True, writes=writes)}
     finally:
         mp.undo()
 
@@ -345,3 +375,47 @@ class TestNoPostReturnsAStoredSecret:
         assert all(values.get(s) for s in STORES), [s for s in STORES if not values.get(s)]
         for extra in ("device_read", "caller_supplied"):
             assert values[extra]
+
+
+#: `not_device` POSTs that may WRITE our own stores, each with its reason.
+#: Everything else in the population is a preview, a plan, a check or a read,
+#: and must leave the store byte-identical (C134's sweep, below).
+MAY_WRITE = {
+    "drift_check_sync": "runs the drift check NOW and records its run in drift_state.json; "
+                        "a check run, not a preview",
+    "topology_save_hidden": "layout: saves which topology nodes are hidden",
+    "topology_save_positions": "layout: saves node positions",
+    "topology_save_proto_hidden": "layout: saves hidden nodes per protocol view",
+    "topology_save_proto_positions": "layout: saves positions per protocol view",
+}
+
+
+class TestNoPreviewWritesTheStore:
+    """C134, and the class the operator named (2026-09-28): A PREVIEW RUNS THE
+    REAL CODE, SO EVERY WRITE THAT CODE MAKES IS A WRITE THE PREVIEW MAKES. The
+    dry-run flag stops writes to NetBox, not writes to our own stores, and
+    nobody had enumerated the second kind. C130 (a removal preview forgetting
+    provenance) and C134 (an import preview overwriting the last import's
+    record) were found hours apart, each by accident.
+
+    So every `not_device` POST (the gate table's population, each driven with a
+    body that reaches its state) is driven with the store hashed before and
+    after, as a person. A route not in MAY_WRITE that changes any file fails.
+    Measured the first time: every preview clean, and `drift_check_sync`, a
+    check run, the only writer. Positive control, run by hand: with C134's fix
+    removed, this names `netbox_safety.preview_import` writing
+    `netbox_sync_status.json`."""
+
+    def test_no_undeclared_route_writes_the_store(self, swept):
+        writers = {k.split(":")[0]: v for k, v in swept["writes"].items() if v}
+        undeclared = {k: v for k, v in writers.items() if k not in MAY_WRITE}
+        assert undeclared == {}, (
+            f"these wrote our own stores and are not declared writers: {undeclared}. "
+            "A preview must change nothing; declare a genuine writer with its reason.")
+
+    def test_the_instrument_sees_a_write(self, swept):
+        """The floor: a store hash that saw nothing would pass the test above."""
+        assert swept["writes"].get("drift_check_sync"), "the drift run's record was not seen"
+
+    def test_every_declared_writer_is_in_the_population(self):
+        assert set(MAY_WRITE) <= set(_population()), set(MAY_WRITE) - set(_population())
