@@ -242,6 +242,10 @@ def plan():
     # Per device, always. Authorising a line for one device must never
     # authorise it for another in the same batch.
     authorise = data.get("authorise") or {}
+    # Mode B (7.3 step 2): the lines a person SELECTED for removal, per device,
+    # as `{device: [{chain, line}]}`. Never inferred from the residue: each is a
+    # decision, and each needs a stated reason (through `authorise`).
+    remove = data.get("remove") or {}
     if not hostnames:
         return jsonify({"ok": False, "error": "No devices selected"}), 400
 
@@ -257,6 +261,7 @@ def plan():
         artifact, captured, _device = built
         entry = {**artifact.summary(),
                  "capture_hash": _capture_hash(captured)}
+        selected = remove.get(hostname) or []
 
         try:
             prepared = prepare_device(artifact)
@@ -270,8 +275,20 @@ def plan():
             entry["unchanged_count"] = diff["unchanged_count"]
             # The exact program, not a description of it. What the operator
             # confirms is this list, byte for byte.
-            commands = merge_commands(prepared["config"], captured)
+            full = _program(prepared["config"], captured, selected, _device,
+                            entry.get("platform", ""))
+            commands = full["commands"]
             entry["commands"] = commands
+            entry["removals"] = {k: full[k] for k in
+                                 ("removed", "refused", "secret_position",
+                                  "removal_commands", "keys")}
+            if full["refused"]:
+                # A removal the person asked for and will not get: the device is
+                # not confirmable with it, and the reason says which and why.
+                entry["deployable"] = False
+                entry["blocking_reasons"] = list(entry.get("blocking_reasons") or []) + [
+                    f"a removal you selected is refused: {' > '.join(r['chain'] + [r['line'].strip()])}"
+                    f": {r['reason']}" for r in full["refused"]]
             # Flagged HERE, so the operator sees them while deciding, rather
             # than the CI gate discovering them at stage 3 with no reachable
             # way to authorise them.
@@ -284,9 +301,9 @@ def plan():
             entry["command_hash"] = command_fingerprint(commands, authorised)
             entry["prior_authorised"] = _prior_authorised(
                 list_name, hostname, _auth.flagged(commands))
-            if entry["dangerous"] or authorised:
+            if entry["dangerous"] or authorised or full["keys"]:
                 try:
-                    assert_authorised(commands, authorised)
+                    assert_authorised(commands, authorised, full["keys"])
                     entry["authorisation_ok"] = True
                 except NotAuthorised as exc:
                     entry["authorisation_ok"] = False
@@ -349,6 +366,7 @@ def apply():
     # request — a hash the client supplies proves only what the client saw.
     command_hashes = data.get("command_hashes") or {}
     authorise = data.get("authorise") or {}
+    remove = data.get("remove") or {}                      # Mode B, as at plan
 
     artifacts, fresh_captures, device_rows = [], {}, {}
     refused = []
@@ -369,10 +387,15 @@ def apply():
         expected = command_hashes.get(hostname)
         if expected is not None:
             try:
-                recomputed = merge_commands(
-                    prepare_device(artifact)["config"], captured)
+                full = _program(prepare_device(artifact)["config"], captured,
+                                remove.get(hostname) or [], device,
+                                getattr(artifact, "platform", ""))
+                if full["refused"]:
+                    raise NotAuthorised("a selected removal is refused: " + "; ".join(
+                        f"{r['line'].strip()}: {r['reason']}" for r in full["refused"]))
+                recomputed = full["commands"]
                 device_auth = authorise.get(hostname) or []
-                assert_authorised(recomputed, device_auth)
+                assert_authorised(recomputed, device_auth, full["keys"])
                 now = command_fingerprint(recomputed, device_auth)
             except NotAuthorised as exc:
                 refused.append({"device": hostname, "outcome": "refused",
@@ -449,7 +472,8 @@ def apply():
 
         report = run_batch(batch,
                            lambda entry: _deploy_one(entry, list_name, device_rows,
-                                                     authorise),
+                                                     authorise,
+                                                     **({"remove": remove} if remove else {})),
                            CircuitBreaker())
         if refused:
             _merge_refusals(report, refused)
@@ -698,8 +722,19 @@ def _measure_unchanged(list_name: str, device: dict, hostname: str,
              "target_config": target_config, "sent_nothing": True}]
 
 
+def _program(intended: str, captured: str, selected: list, device: dict,
+             platform: str) -> dict:
+    """The deploy program for one device, merge additions then the SELECTED
+    removals: ONE computation for plan, apply and the pipeline's run."""
+    from modules.nsot.deploy import merge_commands
+    from modules.nsot.removal import with_removals
+
+    return with_removals(merge_commands(intended, captured), captured, selected,
+                         mgmt_ip=(device or {}).get("ip", ""), dialect=platform)
+
+
 def _deploy_one(entry, list_name: str, device_rows: dict,
-                authorise: dict = None, source_ref: str = "") -> dict:
+                authorise: dict = None, source_ref: str = "", remove: dict = None) -> dict:
     """Run the pipeline for a single device. The only path that connects."""
     import threading
 
@@ -722,7 +757,22 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     # intended config, so it could not fail) and meant the operator confirmed
     # one line while 83 were sent.
     captured = entry.get("fresh") or ""
-    commands = merge_commands(prepared["config"], captured)
+    from modules.nsot import authorisation as _auth
+    full = _program(prepared["config"], captured, (remove or {}).get(hostname) or [],
+                    device, getattr(artifact, "platform", ""))
+    if full["refused"]:
+        return {"device": hostname, "outcome": FAILED, "stage": "removal",
+                "reason": "a selected removal is refused: " + "; ".join(
+                    f"{r['line'].strip()}: {r['reason']}" for r in full["refused"])}
+    # Every removal carries a stated reason, checked HERE too: this is the path
+    # that connects, and it runs whether or not the confirm hash was compared.
+    authorised_now = _auth.normalise((authorise or {}).get(hostname))
+    unreasoned = [k for k in full["keys"] if k not in _auth.valid_keys(authorised_now)]
+    if unreasoned:
+        return {"device": hostname, "outcome": FAILED, "stage": "authorisation",
+                "reason": ("every removal needs a stated reason; none of the right shape for: "
+                           + "; ".join(unreasoned))}
+    commands = full["commands"]
     if not commands:
         # Nothing to send — but "nothing to send" was decided against a STORED
         # capture, which is a record of the device at some earlier moment. A
@@ -739,7 +789,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
                 "golden_pending": _measure_unchanged(
                     list_name, device, hostname, prepared["config"])}
     try:
-        assert_merge_only(commands, prepared["config"])
+        # The ADDITIONS are merge-only against intent; the removals are held to
+        # their own provenance (each is a selected unit on the capture, measured
+        # for its platform, with a reason), never to intent, which lacks them.
+        assert_merge_only(full["merge"], prepared["config"])
     except Exception as exc:                    # noqa: BLE001
         return {"device": hostname, "outcome": FAILED, "stage": "merge-only",
                 "reason": str(exc)}
@@ -772,6 +825,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     # Confirmed, not merely pre-populated: rendered_commands derives from this,
     # so stage 2 cannot overwrite it and an attempt to do so raises.
     ctx.confirmed_commands = {device.get("ip", ""): commands}
+    # The removal half, so rollback undoes it by re-adding the device's own
+    # lines and verify reads back that each is gone.
+    ctx.removals = {device.get("ip", ""): {"units": full["removed"],
+                                           "commands": full["removal_commands"]}}
     # The batch commits; this device hands its capture back.
     ctx.defer_golden = True
     # What the TARGET intent declares, so verify checks the protocol this

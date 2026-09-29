@@ -237,6 +237,24 @@ def _deploy_gates(d: dict, failed: str) -> list:
              "compared with the capture at apply, before anything connects")]
 
 
+def _removal_words(rm: dict) -> str:
+    """Mode B's selection for one device, in words: what will be removed (the
+    program's last lines), what was refused and why, and how many sit in a
+    secret position (each still needs its stated reason)."""
+    removed, refused = rm.get("removed") or [], rm.get("refused") or []
+    if not removed and not refused:
+        return "none"
+    parts = [f"{len(removed)} removed by the last {len(rm.get('removal_commands') or [])} "
+             "line(s) of the program: " + "; ".join(
+                 " > ".join(list(u.get("chain") or []) + [u["line"].strip()]) for u in removed)]
+    if rm.get("secret_position"):
+        parts.append(f"{len(rm['secret_position'])} in a secret position")
+    if refused:
+        parts.append(f"{len(refused)} refused: " + "; ".join(
+            f"{r['line'].strip()} ({r['reason']})" for r in refused))
+    return ", ".join(parts)
+
+
 def deploy_preview(devices: list, request) -> dict:
     """The deploy plan's per-device entries, as the six parts."""
     targets, what_not = [], []
@@ -266,13 +284,16 @@ def deploy_preview(devices: list, request) -> dict:
                           "note": a.get("note", ""),
                           "from_this_edit": a.get("from_this_edit") or [],
                           "pre_existing": a.get("pre_existing") or []})
+        removing = {u["line"].strip() for u in ((d.get("removals") or {}).get("removed") or [])}
         if d.get("removal_warnings"):
-            what_not.append({"target": name, "kind": "residue",
-                             "text": "On the device but not in intent: will NOT be "
-                                     "removed (merge-only). Remove them by hand, or "
-                                     "adopt them into the template.",
-                             "lines": list(d.get("residue_in_context")
-                                           or d["removal_warnings"])})
+            left = [l for l in (d.get("residue_in_context") or d["removal_warnings"])
+                    if l.strip() not in removing]
+            if [l for l in d["removal_warnings"] if l.strip() not in removing]:
+                what_not.append({"target": name, "kind": "residue",
+                                 "text": "On the device but not in intent: will NOT be "
+                                         "removed. Remove them by hand, or adopt them into "
+                                         "the template.",
+                                 "lines": left})
         if blocked:
             reasons = "; ".join(d.get("blocking_reasons") or []) or "not deployable"
             what_not.append({"target": name, "kind": "blocked",
@@ -293,6 +314,7 @@ def deploy_preview(devices: list, request) -> dict:
                        f"from intent, {drift.get('reordered', 0)} reordered")
              if drift.get("differs") else "no difference"},
             {"name": "lines already on the device", "value": str(d.get("unchanged_count", 0))},
+            {"name": "removals selected", "value": _removal_words(d.get("removals") or {})},
             {"name": "secrets masked in this preview",
              "value": ", ".join(d.get("masked_refs") or []) or "none"},
         ]
@@ -305,6 +327,8 @@ def deploy_preview(devices: list, request) -> dict:
                         # A restore's secret-position lines it would ADD
                         # (C79), authorised by the same box as a dangerous one.
                         "secret": d.get("secret_readded") or [],
+                        # Mode B: each selected removal, keyed as authorised.
+                        "removal": list((d.get("removals") or {}).get("keys") or []),
                         "authorised": d.get("authorised") or [],
                         # How often each was authorised here before (C140).
                         "prior": d.get("prior_authorised") or {"state": "ok", "lines": {}},
@@ -313,9 +337,15 @@ def deploy_preview(devices: list, request) -> dict:
             "operands": operands, "gates": _deploy_gates(d, failed)})
     n = len(targets)
     ready = sum(1 for t in targets if t["selectable"])
+    # Mode B: "merge-only, never removed" is false the moment a removal is
+    # selected, so both sentences say what this program does.
+    removing_any = any(((d.get("removals") or {}).get("removed")) for d in devices)
     return build(
         action="deploy",
-        summary=(f"Deploy to the devices you tick, merge-only: {ready} of {n} can be "
+        summary=(f"Deploy to the devices you tick, "
+                 + ("merge-only plus the removals you selected" if removing_any
+                    else "merge-only")
+                 + f": {ready} of {n} can be "
                  "deployed now, and for each, exactly the program shown is sent, in order."),
         targets=targets, what_not=what_not,
         nothing_left_out=("Nothing: every planned device can be sent, and no line on "
@@ -323,9 +353,14 @@ def deploy_preview(devices: list, request) -> dict:
         confirm=confirm_part(request),
         explain={
             "what_not": [{"concept": "merge-only",
-                          "text": "Merge-only: lines are added or replaced. A line on the "
-                                  "device that intent does not mention is never removed; "
-                                  "it is listed here as not removed."}],
+                          "text": ("Lines are added or replaced. A line on the device that "
+                                   "intent does not mention is removed ONLY where you "
+                                   "selected it, each with your stated reason; every other "
+                                   "one is listed here as not removed."
+                                   if removing_any else
+                                   "Merge-only: lines are added or replaced. A line on the "
+                                   "device that intent does not mention is never removed; "
+                                   "it is listed here as not removed.")}],
             "confirm": [{"concept": "confirm-by-hash",
                          "text": "You are confirming this exact program. If the device's "
                                  "stored capture or its intent moves before you apply, the "

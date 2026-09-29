@@ -128,6 +128,9 @@
     var risky = {}, auth = {};
     (prog.dangerous || []).forEach(function (x) { risky[String(x).trim()] = 'dangerous'; });
     (prog.secret || []).forEach(function (x) { risky[String(x).trim()] = 'secret'; });
+    // Mode B (7.3 step 2): a line the device has and intent does not, removed
+    // because a person SELECTED it; every one needs a stated reason.
+    (prog.removal || []).forEach(function (x) { risky[String(x).trim()] = 'removal'; });
     (prog.authorised || []).forEach(function (a) {
       if (a && typeof a === 'object') auth[String(a.line).trim()] = a;
     });
@@ -143,7 +146,9 @@
         var a = auth[key];
         var what = kind === 'secret'
           ? 'adds a secret line the device does not hold'
-          : 'dangerous';
+          : kind === 'removal'
+            ? 'removes a line the device has and intent does not'
+            : 'dangerous';
         // A reason is TESTIMONY (C140): the person's statement, drawn as that,
         // never as the cause. Its minimum is shape, never quality.
         var state = a && a.reason

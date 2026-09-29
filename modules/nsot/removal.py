@@ -490,6 +490,46 @@ def restore_program(units: list, pre_config: str, now_config: str) -> list:
     return program
 
 
+def removal_keys(units: list) -> list:
+    """Each removal's line as the authorisation mechanism keys it: every
+    removed line needs a STATED REASON (the operator, 2026-09-28: a removal
+    is always deliberate, and the reason makes it read afterwards as a
+    decision, as C140 did for dangerous lines)."""
+    from modules.nsot import authorisation
+    return [authorisation.key(_negate(u["line"])) for u in units]
+
+
+NO_REMOVALS = {"commands": [], "removed": [], "refused": [], "secret_position": []}
+
+
+def with_removals(merge: list, captured: str, selected: list, *, mgmt_ip: str,
+                  dialect: str) -> dict:
+    """THE ONE place a deploy's program gets its removals: the merge program,
+    then the removal program for the SELECTED units, computed from *captured*.
+
+    Plan, apply and the pipeline's own run each call this, so the three
+    computations cannot disagree (the deploy path computed its program three
+    times, and a removal appended at one of them would never reach the wire).
+    Removals come AFTER the additions, so the pipeline can tell them apart by
+    position: its rollback undoes the two halves differently."""
+    rm = (removal_program(captured, selected, mgmt_ip=mgmt_ip, dialect=dialect)
+          if selected else dict(NO_REMOVALS))
+    return {**rm, "merge": list(merge), "commands": list(merge) + rm["commands"],
+            "removal_commands": list(rm["commands"]), "keys": removal_keys(rm["removed"])}
+
+
+def split_pushed(pushed: list, removal_commands: list) -> list:
+    """The ADDITIONS half of a pushed program, the removal half checked to be
+    exactly its tail. Refuses rather than guessing which lines are which."""
+    if not removal_commands:
+        return list(pushed)
+    tail = list(pushed[-len(removal_commands):])
+    if tail != list(removal_commands):
+        raise RuntimeError("the pushed program does not end with its removals, so the "
+                           "two halves cannot be told apart and no undo is built")
+    return list(pushed[:-len(removal_commands)])
+
+
 def still_present(units: list, config: str) -> list:
     """The units a read-back still shows: a removal that did not take. A
     stanza counts by its header."""

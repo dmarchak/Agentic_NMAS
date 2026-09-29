@@ -1740,6 +1740,31 @@ read through one function, and P.8 moves it without the reader changing.
   the whole list, IOS-XE's list form removed one entry, and Mode B sends the displayed
   form, so the IOS refusal rests on one form's measurement. Left refused, since nothing
   needs it and the other form breaks verbatim.
+  **Step 2b BUILT (2026-09-29): removals through the deploy path.** A plan takes
+  `remove: {device: [{chain, line}]}`; ONE function (`removal.with_removals`, called as
+  `_program` by plan, apply and `_deploy_one`) appends the selected removals after the
+  additions, so the three computations cannot disagree. Every removal needs a stated
+  reason, through the dangerous-line mechanism (`extra`), checked at plan and apply AND
+  on the path that connects; the reason is in the confirm hash, and an apply that drops
+  the selection computes another hash and is refused. A refused selection blocks the
+  device, naming it. Merge-only applies to the additions only; the removal tail is held
+  to its own provenance. The pipeline carries `ctx.removals`: verify reads back that
+  each removed line is GONE (still there, or an unreadable read-back, fails verify and
+  rolls back); rollback splits the pushed program (refusing when its tail is not its
+  removals), undoes the additions as before and the removals by re-adding the device's
+  own lines from the snapshot (`restore_program`), never by `rollback_commands`, which
+  read `no X` as never applied and reported restored with X gone; the read-back after
+  the undo counts a still-missing line as `incomplete`; the rolled-back block records
+  the additions only. The preview draws each removal line with its own authorise box
+  and reason, excludes selected lines from "will NOT be removed", and stops saying
+  "merge-only, never removed" when a removal is selected.
+  **Found building it, for 2c:** the plan comes back MASKED, so the browser can never
+  echo a secret-position line's real text to select it (C139's old community could not
+  be selected from a screen). 2c selects removals by a server-computed ID of stanza and
+  line, never by the line's text. **Not yet:** the restore path's residue (the fourth
+  case) is not wired; a removal that failed and rolled back is not blocked from being
+  selected again (each selection is a fresh decision with a reason, which is the
+  argument for leaving it); 2c the screen; 2d r2 on the host.
   **The gap Mode B has to get right** (the operator): every destructive or surprising
   result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
   default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and

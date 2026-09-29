@@ -44,6 +44,38 @@ def deploy_plan(mp):
     return _ok(_client().post("/deploy/plan", json={"devices": ["s4"]}))
 
 
+
+#: Mode B's selection in the base plan (7.3 step 2): the residue fixture's
+#: extra line, a measured shape on cisco_ios, removed with a stated reason.
+REMOVAL = {"chain": ["interface GigabitEthernet0/3"], "line": " description retired uplink"}
+REMOVAL_REASON = {"line": "no description retired uplink",
+                  "reason": "the uplink was retired last week"}
+
+
+def deploy_plan_with_removal(mp):
+    """The residue fixture with its one residue line SELECTED for removal, so
+    the plan carries Mode B's fields (removed, keys, the program's tail) and
+    no residue remains in what will not happen."""
+    import routes.deploy as rd
+    from modules.nsot.render_artifact import build_artifact
+    from tests import test_p3_wizard_draws_the_program as w
+
+    capture = w.CAPTURE.replace("end\n", "interface GigabitEthernet0/3\n"
+                                          " description retired uplink\nend\n")
+    assert capture != w.CAPTURE
+
+    def _fake(list_name, hostname, cache=None):
+        artifact = build_artifact(hostname, capture, "cisco_ios", template_approved=True)
+        return (artifact, capture, {"hostname": hostname, "ip": "203.0.113.24"}), ""
+
+    mp.setattr(rd, "_artifact_for", _fake)
+    mp.setattr("modules.nsot.deploy.prepare_device", lambda a: {"config": w.INTENT})
+    mp.setattr(rd, "_attribute_additions", lambda *a, **k: dict(w.ATTRIBUTION))
+    return _ok(_client().post("/deploy/plan", json={
+        "devices": ["s4"], "remove": {"s4": [REMOVAL]},
+        "authorise": {"s4": [REMOVAL_REASON]}}))
+
+
 def deploy_plan_with_residue(mp):
     """The same device, carrying a stanza its intent does not have: merge-only
     will NOT remove it, so the plan's `what_not` holds a real residue item.

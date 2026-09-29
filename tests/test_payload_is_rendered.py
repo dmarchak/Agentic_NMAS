@@ -121,12 +121,16 @@ RENDERS = {
                                                  "onboard_abandon_result",
                                                  "_run_record_statement", "build_result")}),
     "POST /deploy/plan": Render(
-        lambda mp, tmp: P.deploy_plan(mp),
+        # With one removal SELECTED (Mode B, 7.3 step 2), so the plan carries
+        # its removal fields; the base plan's residue is exactly that line, so
+        # nothing is left out and `what_not` stays empty, as before.
+        lambda mp, tmp: P.deploy_plan_with_removal(mp),
         {DW: ("openDeployPlan", "_renderDeployPlan", "_reauthoriseDevice",
               "_updateDeploySummary", "applyDeploy"), PC: PC_FNS},
         ((DW, "openDeployPlan", "d"), (DW, "_renderDeployPlan", "plan")),
         maps=("select_data",),
-        adapters={"modules/preview_confirm.py": ("deploy_preview", "_deploy_gates")}),
+        adapters={"modules/preview_confirm.py": ("deploy_preview", "_deploy_gates",
+                                                 "_removal_words")}),
     "POST /deploy/apply": Render(
         lambda mp, tmp: P.deploy_apply(mp),
         {DW: ("applyDeploy", "_renderDeployResult"), PC: PC_RESULT_FNS},
@@ -525,17 +529,21 @@ EMPTY_IN_FIXTURE = {
     "GET /templates bindings.overrides": (R_, "no binding override in the fixture"),
     "GET /templates templates[].bound_devices": (S_, _STRINGS),
     "GET /templates/approval/<path> changes": (S_, _STRINGS),
-    "POST /deploy/plan devices[].authorised": (S_, _STRINGS),
     "POST /deploy/plan devices[].blocking_reasons": (S_, _STRINGS),
     "POST /deploy/plan devices[].excluded_unrenderable": (S_, _STRINGS),
     "POST /deploy/plan devices[].masked_refs": (S_, _STRINGS),
-    "POST /deploy/plan devices[].removal_warnings": (S_, _STRINGS),
-    "POST /deploy/plan devices[].residue_in_context": (S_, _STRINGS),
     "POST /deploy/plan devices[].stale_acknowledgements": (S_, _STRINGS),
     "POST /deploy/plan devices[].unacknowledged": (S_, _STRINGS),
     "POST /deploy/plan devices[].unmodeled": (S_, _STRINGS),
     "POST /deploy/plan devices[].unsendable": (S_, _STRINGS),
-    "POST /deploy/plan preview.targets[].program.authorised": (S_, _STRINGS),
+    "POST /deploy/plan devices[].removals.refused": (R_, "the base plan's one selection is a "
+                                                      "measured shape and is removed; a "
+                                                      "REFUSED selection is reached in "
+                                                      "test_removal_pipeline.py"),
+    "POST /deploy/plan devices[].removals.secret_position": (R_, "the base plan removes a "
+                                                              "description; a secret-position "
+                                                              "removal is reached in "
+                                                              "test_removal_pipeline.py"),
     "POST /deploy/plan preview.what_not.items": (R_, "the base plan has no residue, by "
                                                      "design (the 'nothing left out' "
                                                      "sentence); a real residue plan is "
@@ -634,7 +642,10 @@ EMPTY_IN_FIXTURE = {
 # test_authorised_lines.py. And the apply's refused row authorises nothing.
 # 25 -> 23: the golden panel's own fixture reaches baselines and legacy-only
 # files (2026-09-28), which found four baseline fields nobody had examined.
-EMPTY_RECORDS_CEILING = 23
+# 23 -> 25: Mode B (7.3 step 2): a removal the plan REFUSES and one in a
+# secret position; the base plan removes one measured description, and
+# both are reached in test_removal_pipeline.py.
+EMPTY_RECORDS_CEILING = 25
 
 
 def _empty_paths(obj, path=""):

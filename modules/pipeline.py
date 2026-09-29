@@ -233,6 +233,11 @@ class PipelineContext:
     #: protocol an operation exists to bring back was the one it could not
     #: check (C107's sibling, the operator's, C70 re-run 2026-09-27).
     declared_protocols:  dict = None
+    #: ip -> ``{"units", "commands"}``: the removals a person selected (Mode B),
+    #: the TAIL of the confirmed program. Verify reads back that each is gone;
+    #: rollback undoes them by re-adding the device's own lines, never by
+    #: `rollback_commands`, which would read a `no X` as never applied.
+    removals:            dict = None
 
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
@@ -1274,8 +1279,26 @@ def _stage_verify(ctx: PipelineContext) -> None:
                     f"({down_delta} interface(s) lost, tolerance={_INTERFACE_DOWN_TOLERANCE})"
                 )
 
+        # ── Removals (Mode B): each selected line must be GONE ────────────
+        removed = ((ctx.removals or {}).get(ip) or {}).get("units") or []
+        removals_left = []
+        if removed:
+            from modules.nsot.removal import still_present
+            post_cfg = post.get("running_config") or ""
+            if not post_cfg:
+                issues.append("Removal not verified: the post-change config could not be read")
+            else:
+                removals_left = still_present(removed, post_cfg)
+                if removals_left:
+                    issues.append("Removal did not take, still on the device: " + "; ".join(
+                        " > ".join(list(u["chain"]) + [u["line"].strip()])
+                        for u in removals_left))
+
         ctx.verify_result[ip] = {
             "ok":     not issues and not unmet,
+            # The removals read back, by name (Mode B).
+            "removals_checked": len(removed),
+            "removals_left": [u["line"].strip() for u in removals_left],
             "issues": issues,
             # Declared by intent and not up: verify did not pass, and nothing
             # was rolled back (see above).
@@ -1414,7 +1437,7 @@ ROLLBACK_STATES = {
 ROLLBACK_OK = ("restored", "nothing_to_undo")
 
 
-def _rollback_readback(ctx, dev, pushed, pre_cfg) -> dict:
+def _rollback_readback(ctx, dev, pushed, pre_cfg, units=()) -> dict:
     """Read the device back after its undo (fresh connection, as the failure
     capture does) and compute the undo AGAIN against what landed now: an
     empty program means the push is gone."""
@@ -1433,6 +1456,10 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg) -> dict:
     landed = [l.rstrip() for l in (post or "").splitlines()
               if l.strip() and l.rstrip() not in pre_set]
     remaining = rollback_commands(pushed, pre_cfg, landed=landed)
+    if units:
+        # A removed line that is still missing is an undo still needed.
+        from modules.nsot.removal import restore_program
+        remaining = remaining + restore_program(list(units), pre_cfg, post or "")
     if remaining:
         return {"state": "incomplete", "remaining": remaining,
                 "detail": f"{len(remaining)} line(s) of undo still needed after the rollback"}
@@ -1483,6 +1510,15 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             # shutdown has no line to re-apply — the replay would leave the
             # interface down, save the config, and report success.
             pushed = ctx.rendered_commands.get(ip, [])
+            # Mode B: the tail is the removals, undone by re-adding the device's
+            # own lines. Treated as additions, `no X` would read as never
+            # applied (it is not in `landed`), be left undone, and the read-back
+            # would still say "restored".
+            removal = (ctx.removals or {}).get(ip) or {}
+            from modules.nsot.removal import restore_program, split_pushed
+            pushed = split_pushed(pushed, removal.get("commands") or [])
+            re_add = (restore_program(removal.get("units") or [], pre_cfg, "")
+                      if removal.get("units") else [])
             # What actually reached the device, from the capture that ran
             # moments ago. On a partial push this is not the same as what was
             # pushed, and undoing a line the device rejected would send a
@@ -1502,6 +1538,7 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             # guard stricter, which is why it is optional there and required
             # here -- this is the caller that knows.
             assert_rollback_provenance(undo, pushed, pre_cfg)
+            undo = undo + re_add
             ctx.rollback_commands[ip] = undo
 
             if not undo:
@@ -1530,7 +1567,8 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             log.info("pipeline[rollback]: %s undo sent, %d command(s): %s",
                      hostname, len(undo), undo)
             # Sent is not restored: read it back.
-            ctx.rollback_outcome[ip] = _rollback_readback(ctx, dev, pushed, pre_cfg)
+            ctx.rollback_outcome[ip] = _rollback_readback(
+                ctx, dev, pushed, pre_cfg, removal.get("units") or [])
             if ctx.rollback_outcome[ip]["state"] != "restored":
                 log.error("pipeline[rollback]: %s NOT confirmed restored: %s", hostname,
                           ctx.rollback_outcome[ip]["detail"])
@@ -1570,12 +1608,18 @@ def _note_rolled_back_intent(ctx: PipelineContext) -> None:
         hostname = dev.get("hostname", ip)
         try:
             commits = _hv.intent_commits(repo, hostname, limit=1)
+            # The ADDITIONS only. The block stands while its lines are still
+            # among what a plan would send, and a plan's additions never hold
+            # a removal line, so recording the removal tail would make a
+            # combined program's block lift at once (Mode B, 7.3 step 2).
+            from modules.nsot.removal import split_pushed
+            removal = ((ctx.removals or {}).get(ip) or {}).get("commands") or []
             _hv.record_rolled_back(
                 repo, hostname,
                 commits[0]["sha"] if commits else "",
                 reason=ctx.error or "deploy rolled back",
                 pipeline_id=ctx.config_id,
-                commands=ctx.rendered_commands.get(ip, []))
+                commands=split_pushed(ctx.rendered_commands.get(ip, []), removal))
         except Exception as exc:              # noqa: BLE001
             log.error("pipeline[rollback]: could not note rolled-back intent "
                       "for %s: %s", hostname, exc)
