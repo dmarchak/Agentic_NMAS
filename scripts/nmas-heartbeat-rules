@@ -405,9 +405,18 @@ def main() -> int:
     heartbeat = int(get_setting("syslog_heartbeat_seconds") or 0)
     try:
         expected, not_expected = expected_devices()
-        fresh = windows({h: gaps_from(loki_arrivals(loki, h),
-                                      loki_arrivals(loki, h, query=config_query_for(h)))
-                         for h in sorted(expected)}, heartbeat)
+        # Every device's two Loki queries AT ONCE (the concurrency rule, C199).
+        # Any one failing is still UNPROVEN for the whole run: a window
+        # computed from the devices that answered is a guess about the rest.
+        from modules.fanout import Failed, read_each
+        hosts = sorted(expected)
+        got = read_each(lambda h: gaps_from(loki_arrivals(loki, h),
+                                            loki_arrivals(loki, h, query=config_query_for(h))),
+                        hosts, name="heartbeat-measure")
+        failed = next((g for g in got if isinstance(g, Failed)), None)
+        if failed is not None:
+            raise failed.error
+        fresh = windows(dict(zip(hosts, got)), heartbeat)
     except Exception as exc:                   # noqa: BLE001
         print(f"UNPROVEN: {type(exc).__name__}: {exc}")
         return EXIT_UNPROVEN

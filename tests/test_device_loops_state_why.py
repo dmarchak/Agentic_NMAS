@@ -57,20 +57,15 @@ SCANNED = {
     ("modules/pipeline.py", "_stage_rollback"): ("sequential", _ONE_RUN),
     ("modules/nsot/credential_rotation.py", "push_rotation"): (
         "one_device", "the rotation's commands on the one session it verifies on"),
-    ("app.py", "refresh_hostnames"): (
-        "unstated", "C199: a READ per device (a session each, then `find_prompt`), "
-                    "should be concurrent"),
     ("app.py", "ai_device_context._warm"): (
-        "unstated", "C199: opens a pooled session per device in a background thread; "
-                    "should be concurrent, or retired with the pool warm-up"),
+        "sequential", "C202: every open goes through the persistent pool, which holds ONE "
+                      "lock across open_ssh, so concurrent opens would queue on it"),
     ("app.py", "configure_interfaces"): (
-        "unstated", "C199: a READ per device for the Configure tab; should be concurrent "
-                    "(the Configure forms are decision 2's track)"),
+        "sequential", "C202: persistent-pool sessions, opened under the pool's one lock, so "
+                      "concurrency would queue on it"),
     ("app.py", "configure_networks"): (
-        "unstated", "C199: a READ per device for the Configure tab, as "
-                    "configure_interfaces"),
-    ("scripts/nmas-golden-state", "read_fleet"): (
-        "unstated", "C199: a READ per device (one session each); should be concurrent"),
+        "sequential", "C202: persistent-pool sessions, opened under the pool's one lock, as "
+                      "configure_interfaces"),
     ("scripts/netmiko_timing_probe.py", "main"): (
         "one_device", "a timing probe comparing two modes on one device: overlapping "
                       "them would measure each against the other"),
@@ -89,33 +84,32 @@ SURVEYED = {
     ("modules/netbox_client.py", "remove_list_from_netbox._run"): (
         "sequential", "`_REMOVAL_ORDER`: terminations before tunnels, contained objects "
                       "before containers, so referential integrity holds"),
-    ("modules/nsot/freshness.py", "check"): (
-        "unstated", "C199: a READ, one Oxidized GET per device (measured 4 ms each)"),
-    ("modules/nsot/startup_check.py", "run_check"): (
-        "unstated", "C199: a READ, an SSH session and two shows per device, hourly"),
     ("modules/netbox_client.py", "_sync_list_to_netbox_impl"): (
         "unstated", "C199: WRITES to NetBox per device; the cable pass follows the "
                     "upserts so both ends exist, and shared objects (site, VRF, prefix) "
                     "are created on first use, so order may matter: to be decided"),
     ("modules/netbox_client.py", "sync_all_lists_to_netbox"): (
         "unstated", "C199: one list after another, \"sequentially\" with no reason given"),
-    ("routes/onboard.py", "pending"): (
-        "unstated", "C199: a READ, two Kea calls per pending ZTP device"),
-    ("scripts/nmas-heartbeat-rules", "main"): (
-        "unstated", "C199: a READ, two Loki queries per device, hourly"),
     ("scripts/nmas-check-startup-applies", "main"): (
-        "unstated", "C199: a READ, ssh to the lab host per device"),
+        "sequential", "every read is an ssh to ONE host, the lab VM, not to the devices: a "
+                      "burst of them meets sshd's MaxStartups (10 unauthenticated by "
+                      "default), so serial is the safe default for a single target"),
     ("scripts/oxidized-to-config.sh", "reconcile and diff loops"): (
-        "unstated", "C199: reads per device over ssh to the lab host; the commit after "
-                    "them is one"),
+        "sequential", "reads over ssh to ONE host, the lab VM (MaxStartups, as "
+                      "nmas-check-startup-applies), before a single commit; a person reads "
+                      "the diff in the order it prints"),
     ("scripts/nmas-netbox-repair-addresses", "walk / plan / apply"): (
-        "unstated", "C199: NetBox reads, then writes, one device after another"),
+        "sequential", "not a loop over network devices: one NetBox's records, a one-off "
+                      "repair run by hand whose writes read back one by one"),
     ("scripts/nmas-netbox-status-reset", "_plan / apply"): (
-        "unstated", "C199: NetBox reads, then writes"),
+        "sequential", "not a loop over network devices: one NetBox's records, a one-off "
+                      "correction run by hand"),
     ("scripts/nmas-netbox-mask-context", "main"): (
-        "unstated", "C199: a NetBox write and read-back per device"),
+        "sequential", "not a loop over network devices: one NetBox's records, each write "
+                      "read back before the next"),
     ("scripts/nmas-netbox-untagged", "main"): (
-        "unstated", "C199: a NetBox read per recorded object"),
+        "sequential", "not a loop over network devices: one NetBox's recorded objects, a "
+                      "one-off audit run by hand"),
 }
 
 
@@ -187,7 +181,7 @@ class TestEverySerialDeviceLoopStatesWhy:
 
     def test_the_scan_finds_something(self):
         found, _ = scan()
-        assert ("app.py", "refresh_hostnames") in found
+        assert ("app.py", "configure_interfaces") in found
         assert ("modules/pipeline.py", "_stage_rollback") in found
         assert len(found) >= 12
 
@@ -207,6 +201,8 @@ class TestEverySerialDeviceLoopStatesWhy:
                 assert len(why.split()) >= 5, key
                 if kind == "unstated":
                     assert why.startswith("C199"), key
+                if kind == "sequential" and "C202" in why:
+                    assert "lock" in why, key
 
     def test_the_surveyed_files_exist(self):
         """A survey entry naming a file that is gone is a ghost."""
@@ -219,3 +215,53 @@ class TestEverySerialDeviceLoopStatesWhy:
         from modules.settings_schema import DEFAULTS
 
         assert DEFAULTS.get("deploy_max_workers", 1) == 1
+
+
+class TestTheConvertedReadsRunAtOnce:
+    """The READ loops the rule converted (2026-09-29): each through the one
+    helper, `modules.fanout.read_each`, and gone from the declared serial set."""
+
+    CONVERTED = [("modules/nsot/freshness.py", "read_each(lambda h: client.fetch_config"),
+                 ("modules/nsot/startup_check.py", "read_each(lambda lr: check(lr[1])"),
+                 ("app.py", "read_each(lambda d: with_temp_connection(d, get_hostname)"),
+                 ("scripts/nmas-golden-state", "read_each(one, devices"),
+                 ("routes/onboard.py", "read_each(_ztp.progress, ztp_rows"),
+                 ("scripts/nmas-heartbeat-rules", "read_each(lambda h: gaps_from(")]
+
+    def test_each_uses_the_helper(self):
+        for path, call in self.CONVERTED:
+            src = open(os.path.join(ROOT, path), encoding="utf-8").read()
+            assert call in src, (path, call)
+
+    def test_none_is_still_declared_serial(self):
+        declared = {p for p, _f in set(SCANNED) | set(SURVEYED)}
+        assert not declared & {"modules/nsot/freshness.py", "modules/nsot/startup_check.py",
+                               "scripts/nmas-golden-state", "routes/onboard.py",
+                               "scripts/nmas-heartbeat-rules"}
+
+    def test_the_helper_runs_at_once_keeps_order_and_isolates_a_failure(self):
+        import threading
+        import time
+
+        from modules.fanout import Failed, read_each
+
+        state, mu = {"now": 0, "peak": 0}, threading.Lock()
+
+        def slow(i):
+            with mu:
+                state["now"] += 1
+                state["peak"] = max(state["peak"], state["now"])
+            try:
+                time.sleep(0.05 * (5 - i))            # the first finishes last
+                if i == 2:
+                    raise TimeoutError("unreachable")
+                return i * 10
+            finally:
+                with mu:
+                    state["now"] -= 1
+
+        got = read_each(slow, range(5))
+        assert state["peak"] == 5, "every read in flight at once"
+        assert [g if not isinstance(g, Failed) else "F" for g in got] == [0, 10, "F", 30, 40]
+        assert "TimeoutError: unreachable" == str(got[2])
+        assert read_each(slow, []) == []

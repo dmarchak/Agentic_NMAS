@@ -62,12 +62,16 @@ def run_check(*, inventory=None, check=None, write=True, clock=time.time) -> dic
     rows = inventory() if callable(inventory) else (inventory if inventory is not None
                                                      else _inventory())
     check = check or _check_row
+    # Every device read AT ONCE (the concurrency rule, C199): each check is an
+    # SSH session and two shows, and they were one after another for no
+    # stated reason. The results keep the inventory's order.
+    from modules.fanout import Failed, read_each
+
+    results = read_each(lambda lr: check(lr[1]), rows, name="startup-check")
     devices = []
-    for list_name, row in rows:
-        try:
-            got = check(row)
-        except Exception as exc:                  # noqa: BLE001
-            got = {"state": "unknown", "detail": f"the check raised {type(exc).__name__}: {exc}"}
+    for (list_name, row), got in zip(rows, results):
+        if isinstance(got, Failed):
+            got = {"state": "unknown", "detail": f"the check raised {got}"}
         devices.append({"list": list_name, "device": row.get("hostname", "?"),
                         "state": got.get("state", "unknown"), "detail": got.get("detail", "")})
     counts = {}

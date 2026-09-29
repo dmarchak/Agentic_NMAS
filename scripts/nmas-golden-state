@@ -55,17 +55,25 @@ def read_fleet(devices: list, connect=None) -> tuple:
 
     if connect is None:
         from modules.connection import with_temp_connection as connect
-    captures, snapshots, failures = {}, {}, []
-    for dev in devices:
+    from modules.fanout import Failed, read_each
+
+    def one(dev):
         host = dev.get("hostname", dev.get("ip", ""))
 
-        def work(conn, dev=dev, host=host):
+        def work(conn):
             return (run_device_command(conn, "show running-config"),
                     _capture_operational_snapshot(conn, dev.get("ip", ""), host))
-        try:
-            captures[host], snapshots[host] = connect(dev, work)
-        except Exception as exc:              # noqa: BLE001
-            failures.append({"hostname": host, "reason": f"{type(exc).__name__}: {exc}"})
+        return connect(dev, work)
+
+    # Every device read AT ONCE (the concurrency rule, C199), each in its own
+    # session; the results keep the list's order.
+    captures, snapshots, failures = {}, {}, []
+    for dev, got in zip(devices, read_each(one, devices, name="golden-state-read")):
+        host = dev.get("hostname", dev.get("ip", ""))
+        if isinstance(got, Failed):
+            failures.append({"hostname": host, "reason": str(got)})
+        else:
+            captures[host], snapshots[host] = got
     return captures, snapshots, failures
 
 

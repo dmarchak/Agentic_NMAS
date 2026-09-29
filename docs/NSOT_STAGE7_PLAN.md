@@ -274,6 +274,10 @@ has five sections:
      that calls the device layer directly, each with its reason, and the loops the
      scan cannot see (the work behind a call) from the 2026-09-29 survey; the rest
      are C199;
+   - **the read loops the sweep found are converted** (2026-09-29, through the one
+     helper, `modules/fanout.py`), the rest carry their reasons, and the NetBox
+     import's writes wait on a decision (C199). The persistent pool's single lock
+     (C202) is why three loops over pooled sessions stay sequential;
    - **a long read is a job, not a request**: it answers at once, shows in the
      in-flight panel and announces its result (the capture preview, C188 step 2).
 

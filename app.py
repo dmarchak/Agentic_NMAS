@@ -1513,6 +1513,19 @@ def refresh_hostnames():
         results = []
         pending_renames, rename_failures = [], []
 
+        def get_hostname(conn):
+            prompt = conn.find_prompt()
+            return prompt.rstrip("#>").strip()
+
+        # Every online device read AT ONCE (the concurrency rule, C199): a
+        # session each, one after another, for no stated reason. The loop
+        # below keeps the list's order and its per-device results.
+        from modules.fanout import Failed, read_each
+        online = [d for d in devices if device_status_cache.get(d.get("ip"), False)]
+        prompts = dict(zip((d.get("ip") for d in online),
+                           read_each(lambda d: with_temp_connection(d, get_hostname),
+                                     online, name="refresh-hostnames")))
+
         for dev in devices:
             ip = dev.get("ip")
             old_hostname = dev.get("hostname", "")
@@ -1529,12 +1542,10 @@ def refresh_hostnames():
                 continue
 
             try:
-                # Get current hostname from device
-                def get_hostname(conn):
-                    prompt = conn.find_prompt()
-                    return prompt.rstrip("#>").strip()
-
-                new_hostname = with_temp_connection(dev, get_hostname)
+                # The current hostname, read above with the others.
+                new_hostname = prompts.get(ip)
+                if isinstance(new_hostname, Failed):
+                    raise new_hostname.error
 
                 if new_hostname and new_hostname != old_hostname:
                     dev["hostname"] = new_hostname

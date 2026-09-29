@@ -519,6 +519,20 @@ def check(list_name: str, supplied: dict = None, timeout: float = 15.0) -> dict:
                 "every differing device is therefore inconclusive")
         oxidized_times = times.get("times", {})
 
+    # Every Oxidized copy fetched AT ONCE, before the comparisons (the
+    # concurrency rule, C199): one GET per device, each 4 ms on the host
+    # (measured), serial for no stated reason. The comparisons below keep the
+    # population's order, so the report reads as before.
+    fetched_by_host = {}
+    if supplied is None:
+        from modules.fanout import Failed, read_each
+
+        wanted = [h for h in population if h in nodes]
+        got = read_each(lambda h: client.fetch_config(nodes[h]), wanted,
+                        name="freshness-fetch")
+        fetched_by_host = {h: ({"ok": False, "error": str(g)} if isinstance(g, Failed) else g)
+                           for h, g in zip(wanted, got)}
+
     for hostname in population:
         golden_text, golden_at = _read_golden(goldens.get(hostname.lower()))
 
@@ -535,7 +549,7 @@ def check(list_name: str, supplied: dict = None, timeout: float = 15.0) -> dict:
                 report["errors"].append(
                     f"{hostname}: no Oxidized node name in the device map")
             else:
-                fetched = client.fetch_config(node)
+                fetched = fetched_by_host[hostname]
                 oxidized_text = fetched.get("config") if fetched.get("ok") else None
                 if not fetched.get("ok"):
                     report["errors"].append(f"{hostname}: {fetched.get('error')}")

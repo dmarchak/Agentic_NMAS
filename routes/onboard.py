@@ -227,14 +227,15 @@ def pending():
         # a missing field that would render as "nothing to report".
         ztp_rows = [r for r in rows if r.get("address_source") == "ztp"]
         if ztp_rows:
+            from modules.fanout import Failed, read_each
             from modules.nsot import ztp as _ztp
 
-            for r in ztp_rows:
-                try:
-                    r["ztp"] = _ztp.progress(r)
-                except Exception as exc:       # noqa: BLE001
-                    r["ztp"] = {"stage": "unknown",
-                                "summary": f"its progress could not be read: {exc}"}
+            # Each row's Kea reads AT ONCE (the concurrency rule, C199).
+            for r, got in zip(ztp_rows, read_each(_ztp.progress, ztp_rows,
+                                                  name="onboard-pending")):
+                r["ztp"] = got if not isinstance(got, Failed) else {
+                    "stage": "unknown",
+                    "summary": f"its progress could not be read: {got.error}"}
         runs = _run_history(_repo_for(list_name), {r["name"] for r in rows})
         for r in rows:
             r["last_run"] = runs["last"].get(r["name"])

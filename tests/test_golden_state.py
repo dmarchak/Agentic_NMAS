@@ -236,17 +236,17 @@ class TestTheCli:
         monkeypatch.setattr("modules.device.load_saved_devices", lambda _p: devices)
 
         # The script binds `run_device_command` when it starts reading, so the
-        # reader is patched ONCE, before main, and answers for whichever
-        # device is connected.
-        current = {"host": None}
+        # reader is patched ONCE, before main. Each connection answers for ITS
+        # device, as a real session does: the devices are read at once (the
+        # concurrency rule), and a fake holding one "current device" handed
+        # each device another's captures.
         monkeypatch.setattr("modules.commands.run_device_command",
-                            lambda conn, cmd, **kw: read_from_captures(current["host"])(conn, cmd))
+                            lambda conn, cmd, **kw: read_from_captures(conn)(conn, cmd))
 
         def connect(dev, work):
             if dev["hostname"] in unreachable:
                 raise OSError("timed out")
-            current["host"] = dev["hostname"]
-            return work(None)
+            return work(dev["hostname"])
         monkeypatch.setattr("modules.connection.with_temp_connection", connect)
         import yaml
         monkeypatch.setattr("modules.nsot.hostvars.committed_at_head",
