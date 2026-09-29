@@ -1855,6 +1855,13 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   - *An absence after an action proves the action only if the action was
     shown to happen.* This is the vacuous-pass rule, applied to a live test
     rather than a unit test.
+  - *A clean result cannot prove a mechanism that was not exercised* (the
+    operator's naming of their own pattern, 2026-09-29, three instances in a
+    week): the persist step's read-back, the verify counts, and the removal
+    probe's repair, read as working from a run that ended equivalent when each
+    shape's own teardown may have restored the device alone (C194). Before
+    crediting a mechanism with an outcome, show the outcome needed it: record
+    that the mechanism FIRED, not only that the end state was right.
 
   **Its inverse: a gate that always REFUSES is the same defect as one that
   always passes** (P.4 step 4, 2026-09-26; the operator's framing). `nmas-deploy
