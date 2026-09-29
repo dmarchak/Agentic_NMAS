@@ -283,6 +283,29 @@ HELD_BY_CALLER = {
     "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
     "modules/commands.py:run_device_command": "its callers: /run_command holds a non-read",
     "modules/device_reload.py:reload_device": "app.bulk_reload's per-device thread (C153)",
+    # Found when the scan was widened to config mode and the scripts (C191,
+    # 2026-09-29); each caller verified in the code.
+    "modules/bulk_ops.py:_execute_remove_static_routes": "the bulk worker, per device",
+    "modules/pipeline.py:_push_via_netmiko": "the deploy and restore applies, which hold "
+                                             "every target for the run (acquire_many)",
+    "modules/pipeline.py:_restore_config": "the deploy and restore applies (acquire_many)",
+    "modules/nsot/onboard.py:remove_rw_communities": "run_phase_two (@_holds_the_device)",
+}
+
+#: Writers a caller reaches WITHOUT holding the device: the runtime guard
+#: (C101) refuses them there. Named, registered, and this list only SHRINKS.
+KNOWN_UNHELD = {
+    "modules/nsot/onboard.py:persist_on_device": (
+        "C203: held by run_phase_two and by nmas-persist-native, and NOT by "
+        "nmas-rotate-credential or nmas-persist-credential, which reach it through "
+        "credential_rotation.persist() after rotate() has released its hold, so C101's "
+        "guard refuses their save"),
+}
+
+#: A name the scan matches that is not a device write, each with why.
+NOT_A_DEVICE = {
+    "routes/settings_integrations.py:save_integration": (
+        "IntegrationClient.save_config() writes an integration's settings, not a device"),
 }
 
 
@@ -295,24 +318,38 @@ def _writer_sites():
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sends = {"send_command", "send_command_timing", "send_command_expect"}
+    # Config mode and saves are writes whatever they carry (C191: the scan
+    # counted `send_command*` only, so a `send_config_set` was invisible).
+    config_writes = {"send_config_set", "send_config_from_file", "save_config"}
     out = []
     files = ["app.py"] + [os.path.join(dp, f) for base in ("modules", "routes")
                           for dp, _d, fs in os.walk(os.path.join(root, base))
                           for f in fs if f.endswith(".py")]
+    # The host scripts too (C191): a new script that changed a device passed
+    # the whole suite unnamed. A script that is not Python is not scanned.
+    scripts = os.path.join(root, "scripts")
+    files += [os.path.join(scripts, f) for f in sorted(os.listdir(scripts))
+              if os.path.isfile(os.path.join(scripts, f))]
     for path in files:
         full = path if os.path.isabs(path) else os.path.join(root, path)
         rel = os.path.relpath(full, root)
-        tree = ast.parse(open(full, encoding="utf-8").read())
+        try:
+            tree = ast.parse(open(full, encoding="utf-8").read())
+        except (SyntaxError, UnicodeDecodeError):
+            continue                          # a shell script
         parents = {}
         for node in ast.walk(tree):
             for child in ast.iter_child_nodes(node):
                 parents[child] = node
         for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call)
-                    and getattr(node.func, "attr", getattr(node.func, "id", "")) in sends):
+            called = (getattr(node.func, "attr", getattr(node.func, "id", ""))
+                      if isinstance(node, ast.Call) else "")
+            if called not in sends and called not in config_writes:
                 continue
             arg = node.args[0] if node.args else None
-            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+            if called in config_writes:
+                text = f"<{called}>"          # a write, whatever it carries
+            elif isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                 text = arg.value
             elif isinstance(arg, ast.JoinedStr):
                 text = "".join(v.value if isinstance(v, ast.Constant) else "X"
@@ -326,6 +363,8 @@ def _writer_sites():
                 n = parents[n]
                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     chain.append(n)
+            if any(f"{rel}:{f.name}" in NOT_A_DEVICE for f in chain):
+                continue
             out.append((rel, chain, text, node.lineno))
     return out
 
@@ -356,11 +395,27 @@ def test_every_writer_takes_the_hold_or_names_the_caller_that_does():
             continue
         if any(f"{rel}:{f.name}" in HELD_BY_CALLER for f in chain):
             continue
+        if any(f"{rel}:{f.name}" in KNOWN_UNHELD for f in chain):
+            continue
         if any(_takes_the_hold(f) for f in chain):
             continue
         unheld.append(f"{rel}:{line} {text!r}")
     assert unheld == [], unheld
     names = {f"{rel}:{f.name}" for rel, chain, _t, _l in sites for f in chain}
     assert "app.py:delete_file" in names and "app.py:upload_file" in names
-    ghosts = sorted(set(HELD_BY_CALLER) - names)
+    ghosts = sorted((set(HELD_BY_CALLER) | set(KNOWN_UNHELD)) - names)
     assert ghosts == [], f"named but sending nothing now: {ghosts}"
+
+
+def test_the_scan_reads_config_mode_and_the_scripts():
+    """C191: the population is every device write, not the `send_command*`
+    calls in the app. Config-mode sends and saves are found, and so is a host
+    script's write (the removal probe's, which holds its device); a name that
+    only looks like a device write is declared, never silently skipped."""
+    sites = _writer_sites()
+    found = {(rel, text) for rel, _c, text, _l in sites}
+    assert ("modules/pipeline.py", "<send_config_set>") in found
+    assert ("modules/nsot/onboard.py", "<save_config>") in found
+    assert any(rel.startswith("scripts/") for rel, _t in found), "the scripts are read"
+    assert not any(rel == "routes/settings_integrations.py" for rel, _t in found)
+    assert len(KNOWN_UNHELD) <= 1, "only shrinks"

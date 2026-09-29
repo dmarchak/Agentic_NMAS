@@ -36,11 +36,28 @@ DECLARED_DYNAMIC = {
     ("modules/nsot/credential_rotation.py", "push_rotation"): ("rotation",),
 }
 
+#: Config-mode sends, by the task each serves: config mode is a CHANNEL, not an
+#: effect, so a send is keyed by what it is for (C191, 2026-09-29, when the
+#: population widened to config mode and the scripts).
+CONFIG_TASKS = {
+    ("modules/bulk_ops.py", "_execute_remove_static_routes"): ("config", "static route removal"),
+    ("modules/bulk_ops.py", "_execute_worker"): ("config", "bulk config"),
+    ("modules/pipeline.py", "_push_via_netmiko"): ("config", "deploy push"),
+    ("modules/pipeline.py", "_restore_config"): ("config", "rollback"),
+    ("modules/nsot/onboard.py", "remove_rw_communities"): ("config", "RW community removal"),
+    ("scripts/nmas-removal-probe", "main"): ("config", "removal probe"),
+}
+
 #: Measured 2026-09-27 (section 6a's retroactive pass). Each effect with more
 #: than one implementation, and exactly which. This list only SHRINKS: 7.3
 #: merges each into one.
 KNOWN_DUPLICATES = {
-    ("save_startup",): {"app.py:save_config", "modules/backups.py:save_running_to_startup"},
+    # Widened 2026-09-29 (C191): the scan now counts Netmiko's save_config, and
+    # found three more saves (after a push, after a rollback, onboarding's).
+    ("save_startup",): {"app.py:save_config", "modules/backups.py:save_running_to_startup",
+                        "modules/pipeline.py:_push_via_netmiko",
+                        "modules/pipeline.py:_restore_config",
+                        "modules/nsot/onboard.py:persist_on_device"},
     ("delete", "file"): {"app.py:delete_file", "modules/bulk_ops.py:_execute_delete_file"},
     ("copy", "file", "tftp"): {"app.py:download_device_file",
                                "modules/bulk_ops.py:_execute_tftp_download"},
@@ -124,8 +141,9 @@ def effect(text: str) -> tuple:
 
 def implementations() -> dict:
     """{effect: {"file:outermost function"}} over every device-writing send."""
-    by_func = {}
+    by_func, _raw = {}, {}
     for rel, chain, text, line in _writer_sites():
+        _raw.setdefault((rel, chain[-1].name if chain else "<module>"), []).append((line, text))
         inner = chain[0] if chain else None
         call = next((n for n in ast.walk(inner) if isinstance(n, ast.Call)
                      and n.lineno == line), None) if inner is not None else None
@@ -136,6 +154,16 @@ def implementations() -> dict:
     for (rel, outer), sends in by_func.items():
         seen_command = False
         for line, resolved in sorted(sends, key=lambda s: s[0]):
+            text = next((t for l, t in _raw.get((rel, outer), []) if l == line), None)
+            if text == "<save_config>":
+                out.setdefault(("save_startup",), set()).add(f"{rel}:{outer}")
+                continue
+            if text and text.startswith("<"):
+                task = CONFIG_TASKS.get((rel, outer))
+                assert task, (f"{rel}:{line} ({outer}) sends in config mode: declare the "
+                              "task it serves in CONFIG_TASKS")
+                out.setdefault(task, set()).add(f"{rel}:{outer}")
+                continue
             if resolved is not None and _COMMAND.match(resolved.strip()):
                 seen_command = True
                 out.setdefault(effect(resolved.strip()), set()).add(f"{rel}:{outer}")
