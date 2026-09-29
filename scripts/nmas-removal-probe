@@ -26,6 +26,23 @@ For each shape, on the named device:
 It changes the RUNNING config only and never saves, so a reload also returns
 the device to what it was. It holds the device (C98) for the whole run.
 
+**A shape that needs the device's LIVE routing process is not run unless it
+is asked for by name** (`--allow-live-bgp`; the operator, 2026-09-28). IOS
+allows one `router bgp`, so the BGP shape cannot use a scratch process: it
+adds `neighbor 192.0.2.99` (a documentation address, never reachable) to the
+device's OWN process, in the device's own AS. Adding a neighbour resets no
+other session, and the probe removes it. If that teardown fails, the repair
+that follows negates what is left; if the device is still not back, the
+probe stops with NOT RESTORED as its first line, naming the neighbour lines.
+They are in the running config only, so a reload removes them, as does
+`router bgp <AS>` / `no neighbor 192.0.2.99` on the console. Mode B cannot
+remove them for you: that shape is exactly what is unmeasured.
+
+A shape that cannot be measured on a device (no BGP there, or the live
+process not allowed) is recorded as NOT MEASURED, with the reason, and is
+never written into the platform record: "this probe could not ask" is a fact
+about the run, not about IOS.
+
     nmas-removal-probe                                       # dry run: every shape's plan
     nmas-removal-probe --list Default --device r2 --apply --actor you@example.com
     nmas-removal-probe ... --shape interface.load-interval --out /dev/shm/removal.json
@@ -105,7 +122,7 @@ EXEMPLARS = {
                  "line": " permit ip host 192.0.2.1 any", "match_in_readback": True},
         "teardown": ["no ip access-list extended NMASPROBE"]}],
     "bgp.neighbor-remote-as": [{
-        "needs": "router bgp",
+        "needs": "router bgp", "live": True,
         "setup": ["{bgp}", " neighbor 192.0.2.99 remote-as 64999",
                   " neighbor 192.0.2.99 description NMASPROBE"],
         "unit": {"chain": ["{bgp}"], "line": " neighbor 192.0.2.99 remote-as 64999"},
@@ -113,7 +130,21 @@ EXEMPLARS = {
 }
 
 #: When exemplars disagree, the shape reads as the worst of them.
-WORST = ("failed", "refused", "broader", "different", "incomplete", "exact")
+#: `exact` only if EVERY example was exact: an unmeasured example cannot let
+#: an exact one speak for the shape.
+WORST = ("failed", "refused", "broader", "different", "incomplete", "unmeasured", "exact")
+
+#: What the platform record may hold: what `no` DID. `failed` (the scratch did
+#: not land) and `unmeasured` are facts about the run, kept in `full` only.
+RECORDED = ("exact", "broader", "different", "incomplete", "refused")
+
+
+def fold(rows: list) -> str:
+    return next(r for r in WORST if r in {x["result"] for x in rows})
+
+#: What the dry run prints for the device's own BGP process: the AS is read
+#: from the device at --apply, and a literal here was read as the plan.
+LIVE_BGP = "router bgp <this device's own AS: its LIVE process>"
 
 
 def _lines(config: str) -> set:
@@ -145,7 +176,27 @@ def _locate(unit: dict, config: str) -> dict:
     return {"chain": unit["chain"], "line": unit["line"]}
 
 
-def plan_for(key: str, bgp: str = "router bgp 65000") -> list:
+def skip_reason(ex: dict, bgp: str, allow_live_bgp: bool) -> str:
+    """Why this exemplar is NOT MEASURED on this device, or "". Never a
+    result about the platform."""
+    if ex.get("needs") == "router bgp" and not bgp:
+        return "not measured: this device runs no BGP, and IOS allows only one process"
+    if ex.get("live") and not allow_live_bgp:
+        return ("not measured: it adds a neighbour to this device's LIVE BGP process "
+                f"({bgp}), which this run was not allowed to do (--allow-live-bgp)")
+    return ""
+
+
+def report(results: dict, dialect: str) -> dict:
+    """The platform record holds MEASURED shapes only; ``full`` keeps every
+    row, the unmeasured ones with their reasons."""
+    return {"by_dialect": {dialect: {k: {x: v[x] for x in ("result", "detail", "device", "at")}
+                                     for k, v in results.items()
+                                     if v["result"] in RECORDED}},
+            "full": results}
+
+
+def plan_for(key: str, bgp: str = LIVE_BGP) -> list:
     """What the probe would do for *key*: each exemplar's setup, the program,
     and the teardown. Pure: the dry run prints it."""
     from modules.nsot.removal import negation_program
@@ -154,7 +205,8 @@ def plan_for(key: str, bgp: str = "router bgp 65000") -> list:
         unit = {"chain": _fill(ex["unit"]["chain"], bgp), "line": ex["unit"]["line"]}
         out.append({"setup": _fill(ex["setup"], bgp), "unit": unit,
                     "program": negation_program([unit]),
-                    "teardown": _fill(ex["teardown"], bgp), "needs": ex.get("needs", "")})
+                    "teardown": _fill(ex["teardown"], bgp), "needs": ex.get("needs", ""),
+                    "live": bool(ex.get("live"))})
     return out
 
 
@@ -186,6 +238,8 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--actor", default="")
     ap.add_argument("--out", default="")
+    ap.add_argument("--allow-live-bgp", action="store_true",
+                    help="measure the BGP shape in the device's own live process")
     args = ap.parse_args()
 
     from modules.nsot.removal import SHAPES
@@ -200,7 +254,8 @@ def main() -> int:
               "would send, and the teardown:\n")
         for key in keys:
             for ex in plan_for(key):
-                print(f"{key}" + (f"  (needs {ex['needs']})" if ex["needs"] else ""))
+                print(f"{key}" + ("  (LIVE: runs only with --allow-live-bgp)" if ex["live"]
+                                  else f"  (needs {ex['needs']})" if ex["needs"] else ""))
                 print("  add:      " + " / ".join(ex["setup"]))
                 print("  remove:   " + " / ".join(ex["program"]))
                 print("  teardown: " + (" / ".join(ex["teardown"]) or "(none: the removal is it)"))
@@ -250,10 +305,10 @@ def main() -> int:
             for key in keys:
                 device_ops.note(f"probe {key}")
                 rows = []
-                for ex in plan_for(key, bgp or "router bgp 65000"):
-                    if ex["needs"] == "router bgp" and not bgp:
-                        rows.append({"result": "failed",
-                                     "detail": "not applicable here: no router bgp"})
+                for ex in plan_for(key, bgp or LIVE_BGP):
+                    why = skip_reason(ex, bgp, args.allow_live_bgp)
+                    if why:
+                        rows.append({"result": "unmeasured", "detail": why})
                         continue
                     before = read()
                     err = send(ex["setup"])
@@ -284,7 +339,7 @@ def main() -> int:
                                    "only_now": final["only_right"]}
                         break
                 results[key] = {
-                    "result": next(r for r in WORST if r in {x["result"] for x in rows}),
+                    "result": fold(rows),
                     "detail": "; ".join(x["detail"] for x in rows if x["detail"]),
                     "device": args.device, "at": at, "dialect": dialect,
                     "exemplars": rows}
@@ -293,9 +348,7 @@ def main() -> int:
         finally:
             conn.disconnect()
 
-    report = {"by_dialect": {dialect: {k: {x: v[x] for x in ("result", "detail", "device", "at")}
-                                       for k, v in results.items()}},
-              "full": results}
+    record = report(results, dialect)
     if damaged:
         print(f"NOT RESTORED: {args.device} differs from its state before the probe, after "
               f"shape {damaged['shape']}. It changed the RUNNING config only and saved nothing, "
@@ -306,7 +359,7 @@ def main() -> int:
             print(f"  added now:   {line}")
     for key, row in results.items():
         print(f"{key}: {row['result']}" + (f"  ({row['detail']})" if row["detail"] else ""))
-    text = json.dumps(report, indent=2, sort_keys=True)
+    text = json.dumps(record, indent=2, sort_keys=True)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(text + "\n")

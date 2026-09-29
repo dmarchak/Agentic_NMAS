@@ -108,3 +108,42 @@ class TestTheScriptItself:
         src = open(SCRIPT, encoding="utf-8").read()
         body = src[src.index("def main"):]
         assert "save_config" not in body and "write memory" not in body
+
+
+class TestALiveProcessIsNotAScratch:
+    """The operator (2026-09-28): IOS allows one `router bgp`, so the BGP
+    shape either adds a neighbour to the device's LIVE process or cannot be
+    measured, and each must be stated rather than discovered."""
+
+    (EX,) = P.plan_for("bgp.neighbor-remote-as", "router bgp 65001")
+
+    def test_it_runs_in_the_devices_own_process_and_only_when_asked(self):
+        assert self.EX["setup"][0] == "router bgp 65001" and self.EX["live"]
+        why = P.skip_reason(self.EX, "router bgp 65001", allow_live_bgp=False)
+        assert "LIVE BGP process (router bgp 65001)" in why and "--allow-live-bgp" in why
+        assert P.skip_reason(self.EX, "router bgp 65001", allow_live_bgp=True) == ""
+
+    def test_no_bgp_is_not_measured_never_refused(self):
+        why = P.skip_reason(self.EX, "", allow_live_bgp=True)
+        assert why.startswith("not measured: this device runs no BGP")
+
+    def test_the_dry_run_names_the_live_process_not_a_made_up_as(self):
+        out = subprocess.run([sys.executable, SCRIPT, "--shape", "bgp.neighbor-remote-as"],
+                             capture_output=True, text=True, timeout=60, cwd=ROOT)
+        assert "LIVE: runs only with --allow-live-bgp" in out.stdout
+        assert "its LIVE process" in out.stdout and "65000" not in out.stdout
+
+    def test_what_the_run_could_not_ask_never_enters_the_platform_record(self):
+        rows = {"a": {"result": "exact", "detail": "", "device": "r3", "at": "t"},
+                "b": {"result": "unmeasured", "detail": "not measured: x", "device": "r3", "at": "t"},
+                "c": {"result": "failed", "detail": "the scratch did not land", "device": "r3",
+                      "at": "t"},
+                "d": {"result": "broader", "detail": "also removed: y", "device": "r3", "at": "t"}}
+        rec = P.report(rows, "cisco_iosxe")
+        assert set(rec["by_dialect"]["cisco_iosxe"]) == {"a", "d"}
+        assert set(rec["full"]) == {"a", "b", "c", "d"}
+
+    def test_exact_only_if_every_example_was(self):
+        assert P.fold([{"result": "exact"}, {"result": "unmeasured"}]) == "unmeasured"
+        assert P.fold([{"result": "exact"}, {"result": "broader"}]) == "broader"
+        assert P.fold([{"result": "exact"}, {"result": "exact"}]) == "exact"

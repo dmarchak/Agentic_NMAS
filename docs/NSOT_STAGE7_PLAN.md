@@ -1697,7 +1697,10 @@ read through one function, and P.8 moves it without the reader changing.
   (`exact`, `broader`, `different`, `incomplete`, `refused`), takes the scratch away,
   puts back anything removed, and requires the device EQUIVALENT to its state before,
   or stops with that as its first line. RUNNING config only, never saved. **Its run is
-  the operator's**: one device per platform (cisco_iosxe, cisco_ios).
+  the operator's**: one device per platform (cisco_iosxe, cisco_ios). The BGP shape
+  has no scratch (IOS allows one process), so it adds a neighbour to the device's LIVE
+  process and runs only with `--allow-live-bgp` (C192). A shape the run could not ask
+  about is `unmeasured` and never enters the platform record.
   Next: 2b the pipeline (confirm hash over removals, per-line reasons, rollback
   that re-adds verbatim, read-back that each line is gone), 2c the preview, 2d r2 on the
   host.
