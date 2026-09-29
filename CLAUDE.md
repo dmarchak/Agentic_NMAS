@@ -6074,8 +6074,10 @@ finished stage of the SAME KIND: 7.1's multiplier on Mode B was about seven time
 high. **The file is published once, at the end, as the deliverable**, never before: a
 published copy is a second owner of every fact in it, stale from the next entry on.
 [docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md) stays the raw notebook the
-writeup draws on. P.1 to P.6 and 7.0 to 7.2 were backfilled on 2026-09-29 from the plan,
-the register and git, and each says where its sources ran out. **The backfill was a
+writeup draws on. Everything before 7.3 was backfilled on 2026-09-29 from the plan,
+the register and git (Phases 0 to 3.3, 4C, the branch site, Phase 2 (DHCP), P.1 to P.6,
+7.0 to 7.2, and four side campaigns: store hardening, the Grafana audit, the verify
+family, Mode B's probe), and each says where its sources ran out. **The backfill was a
 survey of its own**: reading the scheduled rows against the code found D6 done and still
 scheduled, and C38 scheduled into 7.2 and never built.
 

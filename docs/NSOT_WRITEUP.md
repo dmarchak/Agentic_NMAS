@@ -44,7 +44,7 @@ high.
 2026-09-29). Until then it lives only here: a published copy would be a second
 owner of every fact in it, stale from the next entry on.
 
-**Backfilled entries** (P.1 to P.6, 7.0 to 7.2) were drafted on 2026-09-29
+**Backfilled entries** (Phases 0 to 3.3, 4C, the branch site, Phase 2 (DHCP), P.1 to P.6, 7.0 to 7.2, and the side campaigns) were drafted on 2026-09-29
 from the plan, the register and the git history, after the fact, and each says
 where its sources ran out. They are marked *backfilled*. Entries written at
 close are marked *written at close*.
@@ -63,7 +63,9 @@ close are marked *written at close*.
   `5055fe5`, `c7711d6`, `e1e8e49` and `be60f59`. These are commits in a
   list's `config_repo` on the deployment host (the golden and intent record),
   not in the code. They are cited from the documents that recorded them, and
-  not verified here.
+  not verified here. Five more are named as unverifiable where they appear:
+  `758d1f56`, `092501f` and `2443892` (the same config_repo), and `e014843`
+  and `32dbab73` (the lab's own config repository, Phase 2's migration).
 - **Commit counts depend on a selection rule**, because several threads often
   shared one window. Each entry states its rule.
 
@@ -71,14 +73,1120 @@ close are marked *written at close*.
 
 | Part | Item | State |
 |---|---|---|
-| Before the P-items | Phases 0, 1, 2, 3a, 3b, 3c; Stage 2; 3.3; 4C; the branch site; Phase 2 (DHCP) | Not yet written in this form. The narrative is in NSOT_WRITEUP_NOTES.md, and the product state at each point is in "Where the product stood" below |
+| Before the P-items | Phases 0, 1, 2, 3a, 3b, 3c; Stage 2; 3.3; 4C; the branch site; Phase 2 (DHCP) | Backfilled below (Part 0). Not written: r6's phase 1 (`40fcb8e` to `53a1bef`, between 4C and the branch site), which no draft was given |
 | P-items | P.1 to P.6 | Backfilled below |
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
 | | 7.3 | Open. Closed sub-tasks written below (seed intent, retire, Mode B, C188) |
 | | 7.4 to 7.10 | Not started |
 | Stage 8, Stage 9 | | Not started |
-| Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C166 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe measurements | Mode B's measurements are in the 7.3 entry. The others' instances are in "Patterns" below; their own entries are not yet written |
+| Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
+
+## Part 0. Before the P-items: the phases
+
+These phases predate the register (it began 2026-09-25 at `da4d479`), so their in-phase findings have no IDs; later rows against their mechanisms are named. Each of Phases 0, 1 and 2 landed as one squashed commit, so git records when a phase finished, not when it started. A naming hazard: the register's "Phase 2 ledger, 15 defects" is onboarding's DHCP phase 2 (below, and [PHASE2_DHCP.md](PHASE2_DHCP.md)), not the golden-repository Phase 2.
+
+### Phase 0 — Foundation, portability, and safety
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Make the codebase safe to build the NSoT work on, with no user-facing
+features. NetBox writes had to become fail-closed, secrets encrypted, the app
+deployable headless on Linux, settings schema-validated, and the test suite
+runnable [PLAN §6 "Phase 0"; CHANGELOG at git eac9c5e]. Its acceptance: all
+existing tests pass, the app starts on Windows and headless Linux, settings
+round-trip, and with allow-writes off no code path can write to NetBox
+[PLAN §6].
+
+**2. How it was implemented**
+
+- **Write gate.** All NetBox writes go through three chokepoints
+  (`_nb_post`, `_nb_patch`, `_nb_delete`), each checking
+  `netbox_guard`. `netbox_allow_writes` defaults off [CHANGELOG at
+  git eac9c5e].
+- **Dry run.** `netbox_guard.dry_run()` is a thread-local context. Inside it
+  the chokepoints record the write they would make and return a synthetic
+  object with a negative id, so the unmodified sync code produces the
+  preview. A dry run is read-only, so the Import button stays clickable with
+  the gate closed [NOTES "Key design decision"].
+- **Provenance.** Every object NMAS creates is tagged `nmas-managed` (in
+  `_nb_post` only) and its id recorded in `data/netbox_created_ids.json`.
+  Remove deletes only objects that are tagged AND recorded [NOTES "Other
+  decisions"].
+- **One-shot authorization** (follow-up). A preview issues a single-use,
+  5-minute token bound to a SHA-256 of the plan. Execute consumes it,
+  recomputes the plan, and aborts if the hash differs. The master switch is
+  checked before the token is consumed [git e7c3e66].
+- **Settings.** `settings_schema.py`: defaults, JSON Schema validation
+  (`jsonschema`, not pydantic), versioned forward migration. Each of the 70
+  new settings defaults to prior behaviour, `netbox_allow_writes` excepted
+  [NOTES "Other decisions"].
+- **Secrets.** `secrets_store.py` encrypts settings secrets with the existing
+  Fernet key, as `enc:v1:<token>`. Unprefixed legacy values are upgraded in
+  place; an undecryptable value returns `""` and logs [NOTES "Other
+  decisions"].
+- **Integrations.** `modules/integrations/`: a base client plus nine clients
+  with `test_connection()` only, drawn as cards from a JS spec [git eac9c5e;
+  NOTES "Trade-offs accepted"].
+- **Portability.** Bind host, port, browser auto-open, TFTP root and the
+  Jenkins step shell come from settings or environment; `routes/` blueprint
+  scaffolding; `pytest.ini` [CHANGELOG at git eac9c5e].
+
+**3. Issues encountered**
+
+The register did not exist yet (it began 2026-09-25 [git da4d479]), so
+in-phase findings have no IDs.
+
+- Plan audit: of the plan's 11 current-state findings, 9 accurate and 2 partly
+  wrong. The plan's `bat`-step attribution was also wrong [NOTES
+  "Verification"].
+- Missed by the plan: Remove deleted by site membership, not provenance; list
+  deletion silently cascaded into NetBox; `requests` missing from
+  requirements; `pytest tests/` could not collect; the NetBox token stored in
+  plaintext; `config.py` created a literal `C:` directory at import; an
+  IPv4-only golden-header regex [NOTES "Verification"].
+- Post-review: confirming an import set `netbox_allow_writes` persistently,
+  so the second import needed no confirmation; the dry run over-counted
+  shared objects (three manufacturers previewed, one created); `_nb_patch`
+  returned a synthetic id for existing objects, planning spurious child
+  creates [NOTES "Phase 0 follow-up"].
+
+Later findings against this phase's mechanisms:
+
+- A3: the nine reference devices predate provenance, so Remove is blind to
+  them [OPEN_FINDINGS A3].
+- C155: the token was checked in the NetBox tab's routes, not at the
+  chokepoint, so list deletion's opt-in removal deleted with no token
+  [OPEN_FINDINGS C155].
+- C59 and C131: an untagged create; the host's created record held the
+  suite's fixture ids [OPEN_FINDINGS].
+- C130, C134, C135, C136: removal forgot unreadable objects; a preview
+  overwrote the last import's record; the preview listed tag writes the import
+  never makes ("preview count is the executed count" had been checked for
+  creates only); the preview masked its own token [OPEN_FINDINGS].
+- C8, C149: write failures logged at DEBUG with `failed=0`; 56 of 58
+  modifications carried no actor [OPEN_FINDINGS].
+- C171: five Phase 0 NSoT-git settings read by nothing [OPEN_FINDINGS C171].
+- Settings: a version bump seeded 98 keys on a v1 install; the settings file
+  erased itself on 2026-09-23 [CLAUDE.md "Settings"]. No register ID located.
+
+**4. How they were resolved**
+
+- In-phase: fixed in the phase commits: provenance-based removal, cascade
+  made opt-in, token encrypted and upgraded, `requests` added, `pytest.ini`
+  added, TFTP root no longer created at import [CHANGELOG at git eac9c5e].
+  The persistent confirmation became the one-shot token; the over-count got a
+  virtual overlay (preview equals execution at 1, 3 and 5 devices); PATCH
+  returns the real id [NOTES "Phase 0 follow-up"].
+- Later: C155 closed 2026-09-28 (the check moved to the write, and list
+  deletion never deletes NetBox objects). C130, C134, C135, C136, C8 and C149
+  fixed. C59 closed by decision, and its remedy withdrawn after C131. A3 is
+  scheduled to 7.10, waiting on C100. C171's probe half is fixed, the rest
+  sent to 7.7 [OPEN_FINDINGS].
+
+**5. Numbers**
+
+- Commits: 2. eac9c5e, 2026-09-20 01:59:13 -0600 (41 files, +5197/-325);
+  e7c3e66, 2026-09-20 02:09:35 -0600 (11 files, +1097/-69) [git].
+- Elapsed: 10 min 22 s between the two commits [git]. Start time: not
+  recoverable (see the list at the end).
+- Tests at close: 209 (120 pre-existing + 89 new) [NOTES "Phase 0" Status];
+  243 after the follow-up (+34) [git e7c3e66].
+- Findings in phase: 2 partly wrong plan claims, 7 missed defects, 3
+  post-review defects [NOTES]. Later rows: listed above.
+- Estimate: none recorded.
+
+**6. Where it left the product**
+
+NetBox writes were gated, previewed and provenance-bound, secrets encrypted,
+and the app runnable headless with a collectable test suite.
+
+
+### Phase 1 — NetBox as the source of truth for inventory
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Let a device list take its inventory from NetBox instead of a CSV, while every
+existing consumer kept working. Add a credential store, fix device lookup,
+and give templates a render context with interfaces and addresses
+[PLAN §6 "Phase 1"].
+
+**2. How it was implemented**
+
+- **One dispatch point.** `load_saved_devices()` had 79 call sites across 11
+  modules. It now checks the list's source (`source.json`; absent means local)
+  and returns CSV rows or adapted NetBox devices. The other 78 call sites did
+  not change [NOTES "The design decision"].
+- **Shape fidelity.** The adapter returns credentials still
+  Fernet-encrypted, as a CSV row does, because callers decrypt at use
+  [NOTES "The design decision"].
+- **No network I/O in dispatch.** A background refresh queries NetBox and
+  resolves and encrypts credentials once per refresh. Dispatch returns a deep
+  copy from memory. The persisted cache holds identity only, never
+  credentials [NOTES "Amendment"].
+- **Credentials** (`modules/credentials.py`): device override, then the
+  list's designated credential list, then role, site and default profile.
+  Each device carries `_cred_source` [git d9e868d].
+- **Partial success.** A missing `primary_ip4`, unmapped platform or
+  unresolvable credential skips the device with a reason; an unmapped role is
+  a warning [NOTES "Partial success"].
+- **Stale devices** are inert, not deleted [NOTES "Stale devices"].
+- **Lookup** is exact name, then IPAM, then "not found" [NOTES "The lookup
+  fix"]. `build_render_context()` is the one way templates get data [NOTES
+  "Render context"].
+
+**3. Issues encountered**
+
+No register IDs for in-phase findings; the register began later
+[git da4d479].
+
+- The stale-device comparison read the file it had just overwritten, so a
+  departed device could never be detected. Caught by a test [NOTES "Getting
+  the stale-device comparison wrong first"].
+- `netbox_get_device` fell back to a fuzzy `q=` search and took the first
+  hit: "R1" could return "R10" [NOTES "The lookup fix"].
+- Pipeline stage 2 discarded the interfaces stage 1 fetched, and the merged
+  `config_context` was never exposed [NOTES "Render context"].
+- The fake NetBox was stricter than real NetBox (`address=` matching,
+  `device_id=` on addresses), producing false failures [NOTES "The lookup
+  fix"].
+
+Later findings against this phase's mechanisms:
+
+- D7: the commit said drag-and-drop reorder "still works, stored in
+  source.json" [git d9e868d]; it fails on a NetBox list and the source.json
+  route has no caller [OPEN_FINDINGS D7].
+- C157, C160: the credential store and devices.csv had the settings file's
+  erasure shape [OPEN_FINDINGS].
+- B3: orphaned credential overrides [OPEN_FINDINGS B3].
+- The default source filter `{"status": "active"}` combined with a
+  ping-derived NetBox status could remove a device permanently from a NetBox
+  list [CLAUDE.md "The status write is a SELF-SEALING loop"]. No register ID
+  located.
+- A bare `load_saved_devices()` read a pre-lists file and returned zero rows
+  [CLAUDE.md "`load_saved_devices()`'s no-argument default"]. No register ID
+  located.
+
+**4. How they were resolved**
+
+- In-phase: all four fixed in the phase commit (capture previous addresses
+  before persisting; exact lookup, tested with R1, R10, R100 and bare "R";
+  the render context; the fake corrected) [NOTES; git d9e868d].
+- Later: C157 and C160 fixed 2026-09-28; B3 closed by decision (report
+  only); D7 scheduled to 7.4 [OPEN_FINDINGS]. The status filter default was
+  removed and status dropped from updates [CLAUDE.md]. The no-argument form
+  now resolves the active list, and a bare name raises `UnknownDeviceList`
+  [CLAUDE.md].
+
+**5. Numbers**
+
+- Commits: 1. d9e868d, 2026-09-20 02:28:12 -0600 (25 files, +2765/-46)
+  [git].
+- Elapsed: 18 min 37 s after the Phase 0 follow-up commit [git]. Work time:
+  not recoverable.
+- Tests at close: 307 (243 + 64 new) [NOTES "Phase 1" Status; git d9e868d].
+- Findings in phase: 4 [NOTES]. Later rows: listed above.
+- Estimate: none recorded.
+
+**6. Where it left the product**
+
+A list could be sourced from NetBox, and every existing feature ran on it
+through one dispatch function.
+
+
+### Phase 2 — Golden config repository and version control
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Turn golden configs into a version-controlled store: one write path, one
+commit per save, timestamps in git as tags and trailers, identity through a
+manifest, renames that keep history, and a one-time migration (lab objectives
+1.1 and 1.4) [PLAN §6 "Phase 2"].
+
+**2. How it was implemented**
+
+- **One write path.** `nsot.repo.save_golden()` replaced six golden-write
+  sites. One call is one commit, even for a nine-device Save All; an
+  unchanged device makes no commit but is reported [git 4875e67].
+- **Metadata in git.** The file keeps one stable header line. Commits carry
+  `Source`, `Actor`, `Devices`, `Device-Id`, `Device-Name` trailers, and
+  annotated tags `golden/<device>/<UTC>` and `baseline/<UTC>`. CI evidence is
+  a git note [git 4875e67].
+- **Manifest.** Devices key on `nb:<id>` or `uid:<uuid4>`. A rename is a
+  `git mv` committed alone, so `git log --follow` survives it. Refresh
+  records `pending_rename` and never commits; both names resolve while
+  pending [NOTES "Renames"].
+- **Normalisation.** The "duplicated" prefix lists were four different
+  jobs, so `normalize.py` holds each, pinned to prior behaviour [NOTES "The
+  plan was wrong"].
+- **Migration** is dry-run by default, merges duplicates keeping the newest
+  content, reports every merge and backs losers up [NOTES "Migration"].
+- **Restore** queued per-device approvals and skipped stale devices by name
+  [NOTES "Restore"].
+- **Robustness.** Per-repo lock, stale `index.lock` detection, background
+  post-commit hooks, tag retention [git 4875e67].
+
+**3. Issues encountered**
+
+No register IDs for in-phase or same-day findings.
+
+In the phase commit [git 4875e67; NOTES "Three bugs"]: tag names collided
+within one second; `git tag --format` does not expand `%x1f`, so the baseline
+list was always empty; the migration was not idempotent (`last_seen` in the
+manifest); Save All's validation trigger `has_staged_changes()` became
+permanently false; the IPv4-only header regex (first found in the Phase 0 audit).
+
+Same-day first runs against the live lab:
+
+- Migration dry run: 18 devices and 0 merges for nine, because the two stores
+  held one device in different formats [git 9f52b56].
+- `already_migrated` was computed and read by no writer, and was true
+  whenever `golden/` existed. A second run committed nine files and 18
+  whitespace insertions in the lab repo [git 9cf3bad; NOTES "The unconsumed
+  check"].
+- Platform `""` for all nine manifest entries [git 9cf3bad].
+- A `.gitignore` rule never reached an existing repo; the rename commit
+  lacked the manifest [git 12e3c17].
+- `save_golden` minted identity, giving s4 a second manifest entry
+  [git b008b95]; six of nine CSV `device_uid`s named nothing [git 576cf89].
+- Verification check 12 passed vacuously having compared nothing
+  [git 2542170].
+
+Later: C104 (readers took the working tree), C175 (writers staged whole
+trees), C91 (a committing Save All took a baseline with a device skipped),
+C83 (every subject said "baseline"), C23 (restore preview population), C25,
+C161, C18 [OPEN_FINDINGS]. The golden enumerator still listed the legacy
+directory [CLAUDE.md "One enumerator"].
+
+**4. How they were resolved**
+
+- In-phase: unique tags with a short-sha suffix; freshness moved to the
+  gitignored cache; the trigger became "did this save commit" [NOTES "Three
+  bugs"].
+- Same day: union-find identity [git 9f52b56]; `.nsot/migrated.json` plus
+  empty commits made impossible [git 9cf3bad]; platform from inventory via
+  `sync_platforms()` [git 9cf3bad]; hygiene on every `git()` call and the
+  manifest staged with renames [git 12e3c17]; minting unreachable from the
+  resolver and a uid reconciler [git 576cf89].
+- Restore was rerouted through the confirmed deploy path that evening
+  [git c1aab4b].
+- Later: C104, C175, C91, C83, C23 and C18 fixed; C25 scheduled to 7.4; C161
+  deferred to Stage 9 [OPEN_FINDINGS].
+
+**5. Numbers**
+
+- Commits: 1 phase commit, 4875e67, 2026-09-20 12:50:32 -0600 (25 files,
+  +3282/-87) [git]. Same-day fixes selected by touching Phase 2's
+  migration, manifest or repo code: 9f52b56 (15:07:30) to 576cf89 (19:47:03)
+  [git].
+- Elapsed: 10 h 22 min 20 s after the Phase 1 commit [git]; this is a gap
+  between commits, not work time.
+- Tests at close: 385 (307 + 78 new) [NOTES "Phase 2" Status].
+- Findings: 5 fixes named in the phase commit plus the plan's prefix-list
+  claim [git 4875e67; NOTES]; 8 same-day, as listed [git]. Later rows:
+  listed above.
+- Estimate: none recorded.
+
+**6. Where it left the product**
+
+Golden configs lived in a per-list git repository with one write path,
+identity-keyed history and tagged baselines.
+
+
+#### Sources read (Phases 0, 1, 2)
+- docs/NSOT_WRITEUP_NOTES.md: "Phase 0", "Phase 1", "Phase 2" and the
+  sections after them to "The one that was caught".
+- docs/NSOT_PLAN.md: header and §6 Phases 0 to 2; headings list.
+- CLAUDE.md: "NetBox write safety", "Inventory sources", "Golden config
+  repository", "Settings".
+- docs/OPEN_FINDINGS.md: intro, section list, rows A3, B3, C8, C18, C23,
+  C25, C59, C83, C91, C100, C104, C130, C131, C134, C135, C136, C149, C155,
+  C157, C158, C160, C161, C171, C175, D7.
+- docs/CHANGELOG.md as of git eac9c5e.
+- git: log of the first 120 commits; commit messages and stats of eac9c5e,
+  e7c3e66, d9e868d, 4875e67, 83b6fd3, 9f52b56, 9cf3bad, 6bf9bf0, 12e3c17,
+  2542170, b008b95, 576cf89.
+
+#### Could not recover (Phases 0, 1, 2)
+- Start time of each phase: each landed as one commit, and the plan itself
+  was first committed inside the Phase 0 commit (git eac9c5e), so git records
+  only completion.
+- Work time for Phases 1 and 2: the gaps between commits include
+  non-working time, and nothing records hours.
+- Estimates: NSOT_PLAN §6 records none for Phases 0 to 2.
+- Lab-repo commits e014843 and 32dbab73: named in the notes and in
+  git 2542170, but they are in the lab's config repository, not this one,
+  so they cannot be checked here.
+- Register IDs for in-phase findings: the register began 2026-09-25
+  (git da4d479), five days after these phases.
+- Test counts at the same-day fix commits (764 to 1099, git 9f52b56 to
+  576cf89) include Phase 3 tests, so they are not Phase 2 counts.
+
+**A note that applies to all five entries.** The open-findings register was
+created on 2026-09-25 [git da4d479, 2026-09-25 00:31]. Every finding made
+during Phase 3a, 3b, 3c, Stage 2 and Stage 3.3 predates it, so none of them has
+a register ID. They are named below by the incident title in
+NSOT_WRITEUP_NOTES.md (NOTES) or by the commit that fixed them. Register IDs
+appear only for findings made later against the same code. Git times are local
+(UTC−6), as git prints them; the documents' times appear to be UTC.
+
+Phases 3a, 3b and 3c were built on one day. The three phase-named build
+commits run from 13:23 to 14:52 on 2026-09-20, and the first-run corrections
+run on to 21:37 the same evening [git 6f58123, 3be6550, 1704b49]. The
+follow-up commits were sorted into the three phases by their subjects. That is
+a judgement, so each entry lists them for a reader to recount.
+
+### Phase 3a — Parsers, host_vars, and round-trip validation
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Turn each device's running config into structured, per-device intent
+(`host_vars` YAML), render it back through per-platform Jinja templates, and
+prove the render reproduces the device [PLAN "Phase 3: Templatize existing
+config"; lab objective 1.3]. It was read-only. Extractions went to a gitignored
+staging area; 3b added the reviewed commit [git 6f58123].
+
+**2. How it was implemented**
+
+- One parser module per platform (`cisco_ios`, `cisco_iosxe`) on a shared
+  base, and one interface-name table [git 6f58123].
+- Secrets become `secret_refs`. A type-9 hash cannot be regenerated, so the
+  store keeps the hash string, templates emit it verbatim, and `secret_kind:
+  hash` stops rotation from touching it [NOTES "Phase 3a"].
+- `roundtrip.py` compares hierarchically. Order matters by default; a
+  five-entry unordered allowlist covers what the device treats as a set, plus
+  interface bodies. Coverage (`modeled_coverage`) and fidelity are reported
+  separately, and `unmodeled` counts against coverage [NOTES "Design decisions
+  worth defending"].
+- Unmodelled lines are kept whole in an `unmodeled` block and re-emitted.
+  `strip_for_roundtrip()` removes only what a template cannot render
+  [git 6f58123].
+- A fixed-point test: extract, render, extract gives byte-identical YAML
+  [NOTES "The fixed-point test"].
+- The decision rule (model any construct on two or more devices, or any
+  routing or redundancy protocol) is enforced by a test, not restated
+  [git 0a1dcc5].
+- Later the same day, the comparison became depth-aware (`sections.py`), and
+  BGP address-families became their own model [git d7c8391, 4771a4c].
+
+**3. Issues encountered** (none has a register ID; see the note above)
+
+- **RIPv2's `version 2` stripped from both sides.** The volatile filter ate the
+  nested line. The round trip still passed, and `strip_for_diff` had the same
+  bug, so drift could never see RIPv2 become RIPv1. A pre-existing defect,
+  found by an extraction-side test [NOTES "drift was blind to RIPv2 → RIPv1"].
+- **Real configs changed the parser**: VRRPv3 nested three levels,
+  `exit-address-family` was dropped, and the SNMP community leaked into YAML
+  from `snmp-server host` [NOTES "Real configs changed the work"].
+- **Two asymmetries the fixed-point test found**: a redundant `raw` list and a
+  `lineno` in unmodelled entries [NOTES "The fixed-point test"].
+- **The two-fixture figure was not the fleet's.** Two devices gave a 93.7% mean;
+  the nine-device run found parser gaps (`snmp ifmib`, `ip sla`, and nine
+  constructs to model) [git 0a1dcc5].
+- **Three fixtures were derived, not transcribed**, and were wrong (r4, s2, s4)
+  [git 071a130].
+- **The template invented `control-plane`.** An empty-but-truthy default made
+  an optional block mandatory; every fleet device had it, so only a minimal
+  config showed it [NOTES "empty-but-truthy"].
+- **The unmodelled path was exercised by nothing**, because the fleet was fully
+  modelled [git 071a130].
+- **Five unreproducible lines on all nine devices**: NMAS's own golden header
+  and the IOS preamble [git ed42178; NOTES "the tool's own artifacts were never
+  in the test corpus"].
+- **The serialiser was not a fixed point over its own output**, so committed
+  intent lost its `secret_refs` [git 606f89e, bbae24a]. Caught downstream in 3c
+  (see 3c).
+- **Coverage read 100% while certificate chains were counted nowhere**
+  [git 0a7991d].
+- **The metric could not see nesting.** r3, r4 and r5 rendered BGP networks and
+  activations outside their address-families and scored 100%. A named test
+  asserted the flattening. Found by asking what the extraction modelled
+  (`address_families=0` beside 100%) [NOTES "The corpus had the right shape"].
+  The fix introduced two regressions of its own (the global scope ordered, and
+  an unknown config scoring 16.7%) [git d7c8391].
+- **Later, 2026-09-22**: interface names were expanded inside `description`
+  text (Stage 1.4) [git 447a72c; PLAN 1.4].
+
+**4. How they were resolved**
+
+All fixed. Volatile patterns anchor to column 0 unless allowlisted, with a test
+over every tuple [git 0a1dcc5]. Optional blocks default to `None`, with a
+parametrised test [git 071a130]. Fixtures were rewritten verbatim
+[git 071a130]. The header and preamble are stripped [git ed42178], and fixtures now carry
+NMAS's own artifacts [NOTES "the tool's own artifacts"]. The serialiser fixed point is asserted at
+its own boundary [git bbae24a]. Coverage names what it did not examine
+[git 0a7991d]. The depth-aware comparison and the address-family model fixed
+the nesting, and the test was rewritten to assert membership [git d7c8391,
+4771a4c]. Stage 1.4 fixed the parser and corrected committed intent in a
+reviewed commit [PLAN 1.4; the commit, `2443892`, is in the list's config_repo
+and not in this repository].
+
+**5. Numbers**
+
+- **Commits**: 3 by the rule "subject names Phase 3a or the pre-3b
+  verification" [git 6f58123, 2026-09-20 13:23; 0a1dcc5, 13:36; 071a130,
+  13:51]. Follow-ups the same day, sorted by subject: 8 [ed42178, 3169d68,
+  606f89e, bbae24a, 0a7991d, d7c8391, 4771a4c, 1704b49, the last at 21:37].
+- **Elapsed**: 28 minutes between the first and last phase-named commits; the
+  previous phase's commit was at 12:50 [git 4875e67]. Not recoverable: working
+  time, since git records only commit times.
+- **Findings**: 12 items listed above (some hold more than one defect); 1 of
+  them was found two days later.
+- **Tests**: 507 [git 6f58123], 567 [0a1dcc5], 600 [071a130].
+- **Acceptance**: s1 100.0% modelled, r1 92.2%, both 100.0% fidelity
+  [git 6f58123]. Then all nine devices 100.0% and 100.0%, zero unmodelled
+  [git 0a1dcc5]. Compared depth-aware, the figure for r3 and r4 fell from
+  100.0 to 96.2 and r5's to 90.5 [git d7c8391, `nsot_metric_diff.py`], then all nine returned to 100.0%, with
+  `merge_commands()` against each device's own golden empty [git 4771a4c].
+- **Estimate versus actual**: none found in the sources read.
+- **A discrepancy**: NOTES says "three weeks" at 100% before the nesting
+  fix; git puts them eight hours apart [git 0a1dcc5, d7c8391].
+
+**6. Where it left the product**
+
+Every device's config could be parsed to intent and rendered back
+byte-faithfully, with coverage stated honestly, but nothing yet committed or
+deployed it.
+
+### Phase 3b — The template library and the deploy gate
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Give each network its own template library, let a person edit and preview a
+template against captured config, and put a gate in front of any deploy: a
+template must be approved, and a render must be provably deployable
+[git 6735f97; CLAUDE.md "Template library and the deploy gate"]. Nothing in 3b
+opened a socket [git 6735f97].
+
+**2. How it was implemented**
+
+- Templates are seeded by copy into `config_repo/templates/`, per platform,
+  with per-device overrides in `bindings.yml`. The bound device list is
+  computed from the manifest every time, never stored [git 6735f97].
+- `RenderArtifact` is a frozen dataclass. `deployable` is a computed property
+  with no backing field, and `build_artifact()` is the only constructor
+  [git 6735f97].
+- Unmodelled lines can be acknowledged (`unmodeled_ack`), but only by listing
+  the exact lines, committed to git [git 6735f97].
+- Previews and `intended/` are masked. Validation runs on the truthful render,
+  held only as a local. `assert_no_mask()` guards the deploy path
+  [git 6735f97].
+- Approval is keyed on a fingerprint. Scheme 1 was template hash, bound
+  devices and each device's host_vars [git 6735f97]. Scheme 2 dropped the
+  host_vars [git 8a8613a]. The hash later covered the whole import closure
+  [git a979220]. Revocation writes a tombstone with a reason [git 83a2335].
+- Template commits use their own namespace and create no tags [git 6735f97].
+  CodeMirror is vendored, not loaded from a CDN [git a386b5c].
+
+**3. Issues encountered** (none has a register ID; see the note above)
+
+- **Masked validation**: comparing a masked render with the real config would
+  report every secret line as missing and invented [NOTES "masking applied to
+  one side only"].
+- **CodeMirror's mode path was wrong**, so the editor fell back to plain text
+  silently [git a386b5c].
+- **The seeded library was never committed**, so the first approval committed
+  forty files under a one-file subject [git 12e3c17; NOTES "A commit subject
+  that described one file while adding forty"]. The first fix keyed on this
+  run's activity, not the repository's state, and did nothing on the live box;
+  corrected in [git dbd0b07]. A status parser lost a character to `strip()` [git caff5bb].
+- **The deploy gate asked about one device at a time**, so every template
+  bound to more than one device could never be approved on the deploy path
+  [git 5b2addb].
+- **Approval validated one template tree and deploy rendered another**
+  [git 866c817; NOTES "real checks positioned where they cannot fail", #2].
+- **Scheme 1 revoked itself**: a deploy to s4 revoked the template for s1, s2
+  and s3 [NOTES "The rule broken by its own author"].
+- **The hash covered `base.j2` only**, not the shared `_common.j2`
+  [git a979220].
+- **Revocation deleted the record**, so a withdrawal looked like "never
+  approved" [git 83a2335].
+- **Later**: the preview diff was order- and whitespace-sensitive (Stage 1.3),
+  masked lines showed as differences for ever (1.3b) [PLAN 1.3, 1.3b]; the
+  preview read the legacy golden store [git 2751e62]; and `build_artifact()`
+  defaulted `template_approved` to `False`, so a caller that never asked the
+  store reported "not approved" [NOTES "A verdict about a store"; git
+  063e337]. Scheme 2 was itself replaced: D11 and D2 [OPEN_FINDINGS D11, D2].
+
+**4. How they were resolved**
+
+All fixed. Validate the truthful render, display the masked one
+[git 6735f97]. The asset test asserts every path resolves [git a386b5c].
+Seeding commits itself, keyed on `git status --porcelain -uall` [git dbd0b07].
+The gate hashes the whole bound set [git 5b2addb]. `template_root` travels on
+the artifact [git 866c817]. Scheme 2 [git 8a8613a], the closure hash
+[git a979220] and the tombstone [git 83a2335]. Stage 1.3 and 1.3b fixed the
+preview [git 7ab6ac1, 61b72fc]. Scheme 3 replaced scheme 2 in P.5
+[git 61b98a2, 2026-09-26 17:16].
+
+**5. Numbers**
+
+- **Commits**: 2 by the rule "subject names Phase 3b, or vendors its editor"
+  [git 6735f97, 2026-09-20 14:08; a386b5c, 14:13]. Follow-ups the same day,
+  sorted by subject: 11 [12e3c17 (item 3 of 3), d993bea, dbd0b07, be79b74,
+  caff5bb, 5b2addb, 866c817, 8a8613a, 83a2335, a979220, 2159067, the last at
+  21:32].
+- **Elapsed**: 5 minutes between the phase-named commits; the last 3a commit
+  was at 13:51 [git 071a130]. Not recoverable: working time.
+- **Findings**: 8 on the day, plus 4 later and the two scheme-2 rows (D11, D2).
+- **Tests**: 663 [git 6735f97], 672 [git a386b5c], 876 [git 866c817], 1175
+  [git 83a2335], 1185 [git a979220].
+- **Acceptance**: none recorded as such for 3b. The nearest measurement:
+  after the evening's work, all nine devices had an approved template and
+  100% coverage [git 1704b49].
+- **Estimate versus actual**: none found in the sources read.
+
+**6. Where it left the product**
+
+A per-network template library existed, and no render could be deployable
+unless the template reproduced the device and a person had approved it.
+
+### Phase 3c — Deploy from template
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Wire `PipelineRunner` to the interface so that committed intent, rendered
+through an approved template, reaches a device: merge-only, confirmed by hash,
+verified, rolled back on failure, and recorded as a golden. "The only part of
+the NSoT work that reaches a device" [CLAUDE.md "Deploy from template";
+git 3be6550].
+
+**2. How it was implemented**
+
+- The 3b contract, in order: refuse a non-deployable artifact, re-render with
+  real secrets in memory, `assert_no_mask()`, then connect [git eac33c9].
+- Merge-only, checked by provenance: every pushed line must appear in the
+  intended config [git eac33c9; NOTES "assert_no_negation"].
+- Transport per platform; settle windows per protocol (OSPF 45 s, BGP 60 s,
+  RIP 90 s) with a "not yet converged" state; stage 7 captures the
+  post-deploy config and stage 8.5 saves it [git eac33c9].
+- Batches run sequentially, with a circuit breaker on verify failures. Every
+  device ends in exactly one outcome [git 3be6550].
+- Built through the first runs: intent is committed, never inferred
+  [git 081124c]; `merge_commands()` builds the exact program, and the
+  confirmed list cannot be overwritten [git 839217c, 838b672];
+  `assert_sendable()` [git c430bf7]; `error_pattern`, and a computed
+  rollback [git e5423f9]; a rolled-back block with an explicit retry and
+  Revert intent [git ddd0e2d to 0e7315b]; dangerous lines authorised at plan
+  time [git 8d027fa]; one commit and a measured baseline per batch
+  [git 067e28c, b3695a1]; re-apply of a baseline through the same path
+  [git c1aab4b, 3357f19].
+
+**3. Issues encountered** (none from the day has a register ID)
+
+- **Stage 7 captured metrics, not config**: stage 8.5 would have committed the
+  pre-deploy config as the new golden [NOTES "Stage 7 captured metrics"].
+- **`assert_no_negation` returned `None`** [NOTES].
+- **RIP was never verified** [git 3be6550].
+- **Intent derived from the capture**, so every diff was empty by construction
+  [git 081124c].
+- **The pipeline would have sent 83 lines for a 1-line preview**, and stage 2
+  re-rendered over the confirmed list [git 839217c, 11d6a5a].
+- **Missing secret refs** (the 3a serialiser defect) reached a plan as
+  `<missing-secret:…>`; caught by `assert_no_mask()` four layers down, on a
+  read-only plan [NOTES "defence in depth, measured"].
+- **An em dash reached s4** as `description NSoT-managed b`, and rollback could
+  not fire [git c430bf7; NOTES "checks positioned where they cannot fail" #4].
+- **Identity minted** a second manifest entry for s4 [git b008b95].
+- **Rejected lines read as success** [git e5423f9].
+- **The rolled-back block took four wrong shapes** [NOTES "Method, not
+  code"].
+- **Dangerous lines were unrunnable** [git 8d027fa].
+- **Rollback "restored" `interface Loopback0`** on s4 [git 178306d]; the
+  broad key matched `ip mtu` to `ip address` [git c96fe77].
+- **Failure capture over a desynced pooled session**, then a timeout after
+  `write memory` [NOTES "Reading the evidence over the connection that just
+  broke"; "Measuring before raising the number"].
+- **A baseline tag claimed a whole network after 3 of 9 devices**
+  [NOTES "A tag that claimed more than it measured"].
+- **`_deploy_one()` deleted by a scripted edit** while 1133 tests passed
+  [NOTES "A whole function deleted"].
+- **Later, against this code**: the duplicated stanza header and a
+  self-cancelling rollback, and a wizard that never sent `command_hashes`
+  [git c9a9d90, e1eb453, 53b8112, 2026-09-24]; D4 [OPEN_FINDINGS D4]; the verify
+  family C62, C64–C68, C108, C114, C115, C178; C63, C76, C78, C112, C118.
+
+**4. How they were resolved**
+
+The day's findings were all fixed the same day, by the commits cited. Two
+structural changes carry the lessons: `Leaf` makes a header-as-setting
+comparison a `TypeError` [git 756fc2b], and an AST test asserts every private
+name a route calls is defined [git 3357f19], followed by a route-to-wire seam
+test and a diff scan for removed definitions [git a060bd7]. The failure-read timeout
+became a setting after measurement [git 0ec7579]. The later findings: fixed
+(C62, C64–C68, C76, C108, C112, C114, C115, D4, and the 2026-09-24 three);
+C118 closed by decision; C63 moved to Stage 8.8; C78's comparison deferred
+pending measurement; C178 built and awaiting a real-device measurement
+[OPEN_FINDINGS].
+
+**5. Numbers**
+
+- **Commits**: 2 by the rule "subject names Phase 3c" [git eac33c9,
+  2026-09-20 14:29; 3be6550, 14:52]. Follow-ups the same day, sorted by
+  subject: 33, from 7f53a50 (14:56) to 3402f1a (21:08); 6 of them build the
+  re-apply (c1aab4b, 5ad2bc6, da8d7d4, 061158c, 7814ae0, 3357f19).
+- **Elapsed**: 23 minutes between the phase-named commits; 6 h 16 min to the
+  live smoke [git 3402f1a]. Not recoverable: working time.
+- **Findings on the day**: 15 items listed above, some holding two related
+  defects.
+- **Tests**: 718 [git eac33c9], 756 [git 3be6550], 1133 when `_deploy_one`
+  was found missing [git 3357f19].
+- **Acceptance**: the live smoke on s3 through the route seam: 3 commands
+  planned, 0 removal warnings, deployed, no rollback; the golden commit held
+  `golden/s3.cfg` alone, and the baseline was correctly denied
+  [git 3402f1a]. Its golden commit `092501f` is in the list's config_repo, not
+  in this repository.
+- **Estimate versus actual**: none found.
+
+**6. Where it left the product**
+
+A change to committed intent could be previewed as an exact program,
+confirmed by hash, and sent merge-only to a device with a computed rollback.
+
+### Stage 2 — Lifting the rcn-lab1 redeploy ban
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+On 2026-09-21 a reading of vrnetlab's launch script suggested that r1–r5
+would not boot their own credential. The script applies its own `username
+admin privilege 15 password admin` before the startup config, and IOS-XE
+refuses a `secret` for a user that already has a password. A redeploy of the
+production lab (rcn-lab1) was banned until that was measured and fixed
+[git da5cb2f]. Stage 2 was to lift the ban by a successful redeploy, "not by
+the four items being built" [PLAN "STAGE 2"].
+
+**2. How it was implemented**
+
+- **Measure on throwaway nodes, one question each.** Stage B: does r1's
+  current startup file apply? Stage C: does a user-skip in the launch patch
+  fix it? D2: has a vIOS ever booted a `secret 9` line? [NOTES "The redeploy:
+  what four days of measurement bought"].
+- **Stage C's fixes, built and tested before anything was adopted**
+  [git 1764926]:
+  - `verify_startup_applies()` asks whether the startup file will apply,
+    where `verify_startup_file()` only asked whether the hash was in it. It
+    reads the launch script, so it passes only while the patch is in place.
+  - The generator learned per-platform syntax: `DOMAIN_KEYWORD` and
+    `GENERATES_SSH_KEY`.
+  - `modules/breakglass.py`: a credential record that does not depend on
+    `data/key.key` and can be verified without printing a value.
+- **A patcher, not a hand-written diff**, which refuses a file that is not
+  what stage B measured [git df312dd]. The operator applied it, since the lab
+  host is shared [PLAN 2.1].
+- **The runbook and a 27-box checklist were written before the redeploy**,
+  and the checklist is kept for every future redeploy [git d03628d, e67647e;
+  PLAN "STAGE 2"].
+
+**3. Issues encountered** (none has a register ID; see the note above)
+
+- **The hazard, confirmed on hardware**: `%CVAC-4-CLI_FAILURE`, the node
+  healthy on `admin` [git df312dd; NOTES "Headline finding"].
+- **`ip domain-name` was rejected on IOS-XE 17.6**, which spells it `ip domain
+  name`. The node still booted healthy [NOTES "Stage C"].
+- **An em dash in a comment hung a vIOS boot** [git 8b248d8].
+- **The patcher refused a correct file** that used the combined import form
+  [git fda8136].
+- **Four controls that could not fail** [NOTES "Four controls that could not
+  fail, in one stage"]:
+  - a `--dry-run` that returned before the stage it was meant to test;
+  - an `sshpass … || echo PASS` that passed when key exchange failed;
+  - a count of `save_golden(` in source that matched a comment;
+  - the applicability check itself, which searched for the helper's name and
+    reported APPLIES for all five routers with the marker renamed
+    [git 92efdc8].
+- **A runbook step was a live rotation** on two devices, minutes before the
+  redeploy it was meant to check [git fc9f3e7].
+- **`nmas-check-credential` printed "failed at" on a success, and REFUSED for a
+  login that had succeeded** [git 2f53e9e].
+- **Item 0 was false**: switches losing SSH, reasoned from the probe configs
+  rather than the real files [NOTES "Correct reasoning about the wrong
+  object"].
+- **A vIOS silently reloaded** during D2's first boot, after `Startup
+  complete`, while its container stayed healthy [NOTES "The check that passed
+  because it never asked"].
+- **Queued from the session**: Q1 (a timeout read as REFUSED), Q2 (Baselines
+  badge labels), Q3 (empty-command rejections on r3–r5 at boot)
+  [PLAN "Queued from the Stage 2 session"].
+
+**4. How they were resolved**
+
+- The hazard: the user-skip. In stage C one changed input inverted the
+  outcome: the file's credential accepted, `admin` refused [NOTES "Stage C"].
+- Fixed: the generator [git 1764926], the ASCII rule over the whole bootstrap
+  text [git 8b248d8], the patcher [git fda8136], the credential check (three
+  verdicts, never a shell `ssh`) [git 8328e69, 2f53e9e], the applicability
+  check (the call site, not the name; reports host, path and sha256)
+  [git 92efdc8], and the runbook step [git fc9f3e7].
+- Item 0 withdrawn as false [git 7eba257]. Uptime is read per device in the
+  checklist (item 4.2) [PLAN "STAGE 2"].
+- Q1 fixed [git 2a0eaf6]. Q2 became register row E1, scheduled in 7.5; Q3
+  became E2, open [OPEN_FINDINGS E1, E2].
+- What keeps the ban lifted is `verify_startup_applies()`, refusing such a
+  line when a rotation would write it [git d358686].
+
+**5. Numbers**
+
+- **Commits**: 13 by the rule "between the ban and the lift, subject names a
+  probe stage (B, C, D2), Stage 2, the ban, the patcher, the applicability
+  check, or the checklist's credential check" [git da5cb2f, 2026-09-21 14:54,
+  to d358686, 2026-09-22 18:14]: da5cb2f, df312dd, 1764926, a4c5c02, fda8136,
+  d03628d, c7dfb29, 8328e69, e67647e, 2f53e9e, fc9f3e7, 92efdc8, d358686.
+  Not counted: 8b248d8, 7eba257 (mixed), 2a0eaf6 (after the lift). Stage 1
+  work shared the window.
+- **Elapsed**: 27 h 20 min from the ban to the lift [git da5cb2f, d358686].
+  NOTES says "four days"; not reconciled (see below).
+- **Probe timings**: stage B 7m26s, stage C 7m15s, D2 2m03s to `Startup
+  complete` [git df312dd; NOTES "Stage C"; git 8328e69].
+- **Tests**: 1715 [git 8b248d8], 1775 [git 1764926], 2103 at the lift
+  [git d358686].
+- **Acceptance**: every checklist item passed. All nine `Startup complete`; no
+  username line rejected; the skip fired exactly once per router; `secret 9`
+  on all nine and `password 0` on none; NMAS's credential accepted on all
+  nine; `admin/admin` refused on all five routers; Oxidized nine successes;
+  drift 9/9 clean; the post-redeploy Save All (`758d1f56`, a config_repo
+  commit) changed certificate bodies on r1–r5 and nothing else
+  [git d358686].
+- **Estimate versus actual**: none found.
+
+**6. Where it left the product**
+
+A redeploy of the production lab became a normal, checklisted operation, and
+the next rotation cannot write a startup file that will not apply.
+
+### Stage 3.3 — One enumerator, the drift checker's population, and re-enabling it
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Retire the readers of the legacy `golden_configs/` store [PLAN 3.3, first
+written in git 693a8cd, 2026-09-22 11:12]. On 2026-09-22 it grew: the drift
+checker listed devices from that legacy directory, so a device onboarded after
+the migration would never be checked, and the scheduler had been off since
+2026-08-30. The finding was folded into 3.3 as a prerequisite for onboarding
+r6 [git 7f79b87].
+
+**2. How it was implemented**
+
+- **3.3a, one enumerator.** `repo.list_goldens()` reads the manifest.
+  `_list_golden_configs()` became a thin adapter with the same return shape,
+  so fifteen call sites were fixed without being edited. `saved_at` is the
+  commit time, and one `git log` serves the whole store [git 117fce1].
+- **3.3b, the population is the inventory.** Every device lands in exactly one
+  bucket (checked, no golden, stale, unreachable). Totals are checked against
+  the inventory size, and the panel says "checked 7 of 9" with the others
+  named [git 117fce1].
+- **3.3c, scheduling.** State is per list. `_save_state()` merges.
+  `set_disabled()` records who and when. `status()` reports disabled, idle or
+  running [git 117fce1].
+- **3.3d, the live-scan question answered "no".** `_scan_device` was deleted
+  [git 117fce1].
+- **3.3e, a retirement condition.** `legacy_only_goldens()`, `GET
+  /golden/legacy_store` and a Golden-tab card [git 117fce1].
+- **Re-enabling came last**, after 3.3a and 3.3b, at the operator's
+  instruction [NOTES "What a silenced check looks like"].
+
+**3. Issues encountered** (none has a register ID; see the note above)
+
+- **Enumeration and content came from different stores.** 17 executable call
+  sites across 9 modules asked the legacy directory which devices had a
+  golden [git 117fce1]. The nine devices were covered only because their old
+  files remained: "inherited, not designed" [NOTES "Coverage that was never
+  designed"].
+- **`event_monitor` fell back to another list's devices** for a NetBox list;
+  `_check_empty_variables` had the same bug [PLAN 3.3b].
+- **A device with no golden was a bare `return`** in drift [git 117fce1].
+- **The silenced check recorded nothing**: switched off 2026-08-30 02:41,
+  three minutes after a run that flagged all nine devices; no who or why; the
+  panel blanked "Last run" [NOTES "What a silenced check looks like"].
+- **Drift state was installation-wide**, and the scheduler's `finally`
+  replaced the whole state, dropping `disabled` [NOTES, same section].
+- **The removal checker could not be satisfied** by a correct deletion, and
+  its fix had two bugs of its own (substring match, imports as `ast.alias`)
+  [NOTES "The checker that could not be satisfied"].
+- **One negative control could not fail** [git 117fce1].
+- **Toggling the scheduler raised `TypeError`**, and the app's error handler
+  turned every exception into a `302`, so the toggle silently reverted
+  [NOTES "A crash delivered as a successful redirect"]. `/drift/settings`
+  echoed its input, and the all-clean sentence omitted coverage [git 456897f].
+- **A second, dead drift checker**, 172 lines in `agent_runner`
+  [git 456897f].
+- **`next_ts` was written after every run and read by nothing**, so the
+  operator's test of editing it was invalid [NOTES "One file, three keys"].
+  The test for its removal could not fail either [git f9dcd21].
+- **Carried, not done**: `config_git.write_and_stage` [PLAN 3.3], and
+  `detect_config_drift`, a third drift implementation in the AI tool layer
+  [PLAN, Stage 8 notes]. Later register rows on this surface: C96 (the drift
+  panel draws none of its last run), C176 and C183 (the legacy store's
+  notice) [OPEN_FINDINGS].
+
+**4. How they were resolved**
+
+- Fixed: everything under 3.3a to 3.3e above [git 117fce1]; the handlers now
+  redirect only a browser navigation and answer anything else with JSON and a
+  real status [git 456897f]; the route reports what was stored
+  [git 456897f]; the dead checker was removed [git 456897f]; `next_ts` is no
+  longer written, and `status()` says the schedule is held in memory
+  [git f9dcd21]. The removal checker parses instead of grepping
+  [git 117fce1].
+- Deferred: `write_and_stage` to the Git-tab retirement [PLAN 3.3]; it is still
+  in `modules/config_git.py` today. `detect_config_drift` to Stage 8.2
+  [CLAUDE.md "Known defects deferred"].
+- Negative controls, each shown failing against reverted code: 7 of 14 on the
+  enumerator, 10 of 11 on the population, 10 of 17 on scheduling
+  [git 117fce1]; 13 of 15 on the routes [git 456897f].
+
+**5. Numbers**
+
+- **Commits**: 6 by the rule "subject names 3.3, the drift checker or its
+  state, or a defect found in 3.3c" [git bf44a79, 2026-09-22 13:19, to 86ab370,
+  2026-09-22 22:08]: bf44a79, 7f79b87, 117fce1, 456897f, f9dcd21, 86ab370.
+  Not counted: the plan item [git 693a8cd] and a precursor that fixed one
+  legacy reader on 2026-09-21 [git 2751e62].
+- **Elapsed**: 8 h 49 min from the first 3.3 commit to the close, with the
+  Stage 2 session in between; 2 h 21 min from the build commit to the close
+  [git bf44a79, 117fce1, 86ab370]. Not recoverable: working time.
+- **Scale of the main change**: 20 files, 1791 insertions, 310 deletions
+  [git 117fce1].
+- **Tests**: 2169 before [git 1de8ea5], 2231 [git 117fce1], 2246
+  [git 456897f], 2253 [git f9dcd21].
+- **Acceptance**: `scheduled 9 of 9` at 2026-09-23 04:03:14, fired from the
+  in-memory schedule, 9/9 clean against committed goldens: the first scheduled
+  drift check since 2026-08-30 02:38:48 [PLAN "STAGE 3.3 COMPLETE"; git
+  86ab370]. The documents date the close 2026-09-23; git dates the commit
+  2026-09-22 22:08 local.
+- **Estimate versus actual**: none found.
+
+**6. Where it left the product**
+
+Drift detection ran on a schedule again, over the whole inventory, and said
+how many devices it checked out of how many exist.
+
+
+#### Sources read (Phases 3a to 3c, Stage 2, 3.3)
+
+- docs/NSOT_WRITEUP_NOTES.md: "Phase 3a" and the defect sections after it,
+  through "A whole function deleted, and 1133 tests passed", "Restoring the
+  device without restoring the intent", "A baseline tag earned by
+  measurement", "The corpus had the right shape"; "The same character,
+  twice", "Headline finding", "Stage C", "Coverage that was never designed",
+  "The check that passed because it never asked", "Correct reasoning about the
+  wrong object", "Four controls that could not fail", "The redeploy";
+  "Enumeration and content came from different stores" through "The run that
+  closed the loop"; "A verdict about a store".
+- docs/NSOT_PLAN.md: "Phase 3" and its 3c amendments; section 9, Stage 1, STAGE
+  2, "Queued from the Stage 2 session", 3.3 and "STAGE 3.3 COMPLETE"; the
+  Stage 8 note on `detect_config_drift`.
+- CLAUDE.md: "Templatization (Phase 3a)", "Template library and the deploy gate
+  (Phase 3b)", "Deploy from template (Phase 3c)", the rcn-lab1 paragraph, the
+  drift entries.
+- docs/OPEN_FINDINGS.md: rows C62–C68, C63, C76, C78, C96, C107, C108, C112,
+  C114, C115, C118, C176, C178, C183, D2, D4, D11, E1, E2.
+- docs/NSOT_WRITEUP.md: conventions, P.5, the verify-family pattern and "Where
+  the product stood".
+- docs/STAGE2_SESSION_CHECKLIST.md (header), docs/MERGE_COMMANDS_DUPLICATE_HEADER.md
+  (header).
+- Git: commit messages and stats from 4875e67 to 1704b49 (2026-09-20), from
+  346702b to 86ab370 (2026-09-21 and 22), and 61b98a2, da4d479, c9a9d90,
+  e1eb453, 53b8112.
+
+#### Could not recover (Phases 3a to 3c, Stage 2, 3.3)
+
+- Working time for any of the five items: git records commit times only.
+- Estimates: none found for any of the five in the sources read.
+- When Phase 3a work began, before its first commit at 2026-09-20 13:23.
+- The "three weeks" NOTES gives for the nesting-blind 100% figure: git dates
+  the fleet figure and its correction eight hours apart on 2026-09-20. Not
+  reconciled.
+- The "four days of measurement" NOTES gives for Stage 2: git shows 27 h 20
+  min from the ban to the lift. Not reconciled.
+- The times of the redeploy itself within the Stage 2 session: not recorded
+  in the sources read.
+- Three hashes cited from the documents are in a list's `config_repo` on the
+  host, not in this repository, and were not verified: `758d1f56`,
+  `092501f`, `2443892`.
+- A per-phase acceptance statement for 3b: none was recorded.
+- Commit counts for the follow-ups of 3a, 3b and 3c depend on sorting by
+  subject, which is a judgement; the lists are given for recounting.
+
+### Stage 4C — The onboarding wizard, proven on a throwaway probe
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Stage 4 step C: build the onboarding wizard and prove it end to end on a throwaway C8000v (`bp-onboard-c`) with a management interface only and nothing existing touched, then prove the teardown: that the provenance-based NetBox Remove deletes exactly what NMAS created [NSOT_STAGE4C_PLAN.md header; NSOT_PLAN.md Stage 4]. The teardown was "the part that has never run" [STAGE4C_PROBE.md header].
+
+**2. How it was implemented**
+
+- A frozen `OnboardPlan` built only by `build_plan()`, with `onboardable` computed and every refusal listed at once (4C.1); a NetBox census by identity, `scripts/nmas-netbox-census` (4C.0); a random one-time bootstrap credential staged to survive a crash (4C.2); ordering in which "nothing committed" means no commit was created (4C.3); the wizard route and partial (4C.4); removal of vrnetlab's RW community with the nine RO communities kept (4C.5); immediate drift enrolment (4C.6); assembly of the real steps (4C.7) [NSOT_STAGE4C_PLAN.md §7].
+- 4C.8 taught the bootstrap generator a management address on `10.255.0.0/24`, the segment the NMAS is L2-adjacent to via s3 `Vlan99`, with no routing protocol, loopback or route [NSOT_STAGE4C_PLAN.md §8.4].
+- Onboarding became two phases. Phase 1 (credentials, commit, render) touches nothing external and leaves the device **pending** (manifest and git, not inventory). Phase 2 is seven steps, promotion last: verify, capture, rotate and record, remove RW, save golden, NetBox record, promote [CLAUDE.md; 0b9ba52]. NetBox creation moved from phase 1 to phase 2 [6f46272]. A pending banner with Verify and Abandon, and a bootstrap artefact re-derived from committed intent plus the staged credential [a5b28f2, 7e7c9d3].
+- The probe ran every action through the GUI, with the shell only measuring [STAGE4C_PROBE.md, Method; 9d65904].
+
+**3. Issues encountered** (no register IDs: the register was created afterwards, at da4d479, 2026-09-25 00:31; named incidents below)
+
+- Build and wiring: `run_onboarding()` had no caller and `/onboard/create` returned 501 [a0b8ca8]; the bootstrap config could not reach the device it bootstraps (it pointed at the unreachable `clab-mgmt` VRF) [bb21bd0; NSOT_STAGE4C_PLAN.md §8.1-8.2]; `/onboard/create` sent `body: '{}'`, so Create had never succeeded; a render failure reported as `unsendable` [§8.9]; the probe topology bound no launch patch, the third time that line mattered [5075c88; CLAUDE.md]; a hand-rolled test driver that could not tell passed from never ran, and a node-vs-dukpy JavaScript check disagreement [f4a8489]; three copies of the field list [eccb333]; the target list inherited rather than chosen [98cbb41]; a template-approval gate that no first device of a network could satisfy [f57b83f]; the reserved Gi1 interface [d0ed3ac].
+- Found by the probe, which the writeup counts as seven defects "live in code the suite passed" [NSOT_WRITEUP_NOTES.md, "What the Stage 4C probe found"]: phase 2 connecting with an empty password; the importer creating region, site and VRF and no device while reporting "Device onboarded"; a banner with no caller; banner actions dropping the list; the discarded bootstrap artefact; the settings file erasing itself; an empty peer allowlist trusting everyone [90a757b, 6f46272, ee8f99a, f3b3135, 7e7c9d3, 4f8a0f1, cd0696e].
+- More in phase 2: the credential override written where nothing reads it [dfe71c2]; three discarded return values [483836d]; `rotate()`'s preflight keyed on proxies (a CSV row, a golden file) [5c31196]; a "promoted and unfinished" state reachable because promotion ran second [1eeeb61]; a device dict with no credentials [82fb977]; `failed_checks: []` beside a failure state, three causes (the `SELF_CONFIRMED` fingerprint, a discarded `reason`, one-field reporting) plus two from the controls [a3a42f6].
+- Teardown: the census baseline was never taken, and `--compare` exited 1 for a missing baseline [80b75e5]. Remove then deleted two addresses NMAS did not create, `10.0.0.15/24` and `2001:db8::2/64` (ip-addresses 82 -> 80, total 229 -> 227) [1ff741c]. Diagnosis: the import's `_ensure_ip_address()` matched by address value and re-pointed r3's address to the probe's interface, so deleting that interface cascaded; "one NetBox object has been passed between six devices" [cd3e319; NSOT_WRITEUP_NOTES.md]. The repair then examined zero devices [caf001a]; NetBox could not hold five identical emulator addresses [b34bfdc]; a definition stranded below `__main__` [fddf79b]; the clean-up matched on a null VRF [3fe8f42].
+- Sources conflict on the baseline: 80b75e5 says step 2's baseline was never taken; 1ff741c says the loss was "caught by the census by identity" against a baseline. Not recoverable: which baseline file the 82 -> 80 comparison used.
+
+**4. How they were resolved**
+
+- Fixed: nearly all of the above, each in the commit cited. The baseline became step 0a, and `--compare` gained exit 2 `UNPROVEN` [80b75e5]. Address lookup is keyed on the interface and refuses without one. A measured cascade map (`modules/netbox_cascade.py`) lists unmeasured types as unknown, never "takes nothing" [71a6df4]. `clab-mgmt` addresses are excluded from import by setting [b34bfdc]. `SELF_CONFIRMED` is recorded as a step [a3a42f6].
+- Resolved later: onboarding revoking its platform's template approval (confirmed at b3c40cf, 2026-09-23 23:36, just after this range; register D2) was resolved by approval scheme 3 in P.5 [OPEN_FINDINGS.md D2].
+- Deferred to later stages: the census compares identity, not assignment (A2, to 7.6), and nine of ten devices are outside Remove's provenance (A3, to 7.10) [OPEN_FINDINGS.md].
+- Found false later: the "first golden is a true record" claim was false in effect until 2026-09-28, because the rotation committed its own golden before the RW removal (C147) [CLAUDE.md].
+
+**5. Numbers**
+
+- Commits: 51 [rule: `51bbe2c^..3fe8f42` is 56 commits; minus five Stage 7 commits by subject: f9a93c4, 2335119, e3b6a1c, 1068c94, 93c9260]. First 51bbe2c, 2026-09-23 13:00 (plan). Last 3fe8f42, 2026-09-23 23:06. The rule is ambiguous at the start: fe010cc (12:06, "Stage 4 decided") could also count.
+- Elapsed: about 10 h 6 min [51bbe2c to 3fe8f42].
+- Tests: 2443 passed at 8c5ac44 to 2,963 at 3fe8f42 [commit bodies]. Caveat: every "N passed" in 4C.8 before f4a8489 was harness-only [f4a8489], and the first real run was 2,638 passed / 6 failed [CLAUDE.md]. Per step: 4C.0 15, 4C.1 27, 4C.2 23, 4C.3 23, 4C.4 26, 4C.5 44, 4C.6 19, 4C.8 13 [NSOT_STAGE4C_PLAN.md §7].
+- Acceptance: phase 2 ran clean on `bp-onboard-c`. Manifest `netbox_id 10`; a committed 6,907-byte golden with a device-generated `secret 9` and no `snmp-server` lines; `nmas-check-credential --expect` ACCEPTED, exit 0 [NSOT_WRITEUP_NOTES.md, "Step C proven"]. The teardown was not proven clean (above).
+- Estimate versus actual: not recoverable; no estimate recorded in the 4C docs.
+
+**6. Where it left the product**
+
+NMAS could onboard a device in two phases (plan without touching anything, then reach, rotate, clean, record, promote), and NetBox removal previews had begun to report cascades.
+
+
+### The branch site: r6 and s3, the first configuration the tool authored
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+The first configuration NMAS **authored** rather than extracted: intent written by hand into git, rendered by an approved template, previewed, confirmed by hash, sent merge-only, verified and captured back [R6_BRANCH_SITE.md]. The planned form was an eBGP branch to r5, kept separate from onboarding [NSOT_PLAN.md Stage 4]. The acceptance was a device the tool did not touch: r1 learning r6's loopback.
+
+**2. How it was implemented**
+
+- Options A (move r6 into rcn-lab1), B (a shared bridge off s4) and C (OSPF over the management segment) were priced. C died because s3's half was a removal of `passive-interface Vlan99`, and the deploy path is merge-only [0ec41ee; R6_BRANCH_SITE.md §1].
+- C′ copied what s3 already does for the NMAS's own /32: s3 gets `+ ip route 10.255.1.16 255.255.255.255 10.255.0.32` (redistributed into area 0); r6 gets `Loopback0 10.255.1.16/32` and a /16 static, with no OSPF [R6_BRANCH_SITE.md §1 C′].
+- Two devices, two intent commits, two plans, deployed r6 first. s3-first would let r1 learn a route to an address nothing answers, making the acceptance vacuous [445eb4b; CLAUDE.md].
+- The acceptance comparator was measured before deploying: the existing `10.255.1.10/32` external route on r1 [R6_BRANCH_SITE.md].
+
+**3. Issues encountered** (no register IDs except where named; the table is R6_BRANCH_SITE.md's)
+
+1. A duplicated stanza header for every new container (latent since the merge path was built).
+2. A self-cancelling rollback for a created container (same age).
+3. The provenance guard refused the correct rollback, and the pipeline dropped the device.
+4. A created container was negated even if it never landed.
+5. An empty pre-change snapshot made every section look created.
+6. The capture-hash refusal named neither operand. Two wrong hypotheses were chased first [ddd387e, b40b4c9].
+7. The deploy wizard never sent `command_hashes`.
+8. `vs_intent` read the working tree.
+9. `StrictUndefined` made a hand-authored interface dict unrenderable and never caught a misspelling.
+10. `load_saved_devices()` with no argument returned an empty fleet, found in passing.
+
+Two more, not in the table:
+- A refusal folded in after the batch rendered "0 device(s) accounted for" beside its own row [73798ff].
+- The `skipped_drifted` entry carried a whole device config, secrets included, later registered as B1 [OPEN_FINDINGS.md B1].
+
+**4. How they were resolved**
+
+- Fixed, all ten [R6_BRANCH_SITE.md]. At landing, six were fixed and three were queued [8c948bd]. The three were then fixed [c08e683, 53b8112, c7e4a9d].
+- Key fixes: a creation is undone by one negation, children implied [e1eb453]; the refusal reports both hashes and which side moved [c7139f3, 53b8112]; absent interface keys are filled and misspelled ones refused [c08e683]; `vs_intent` reads HEAD, with "never committed" as a third state [c7e4a9d]; `_merge_refusals()` [73798ff].
+- B1 was fixed 2026-09-27 [OPEN_FINDINGS.md].
+- Deferred by decision: tightening `transport input` on r1-r5 (E3) [NSOT_PLAN.md]. The eBGP/B topology waits for the next redeploy [R6_BRANCH_SITE.md Recommendation].
+
+**5. Numbers**
+
+- Commits: 15 [rule: `60bcc63^..c7e4a9d`, all branch-site work]. First 60bcc63, 2026-09-24 14:31. Landed at 8c948bd, 2026-09-24 16:14. Last c7e4a9d, 2026-09-24 16:50.
+- Elapsed: about 2 h 19 min [60bcc63 to c7e4a9d]; 1 h 43 min to landing.
+- Findings: 10 in the table, plus the two above [R6_BRANCH_SITE.md; 73798ff; B1].
+- Tests: 3,164 passed at 0ec41ee to 3,244 at c7e4a9d, 0 failed [commit bodies].
+- Acceptance: r1 learned `10.255.1.16/32` as metric 20, type extern 2, from 10.255.1.23. This was identical in form to the baseline `10.255.1.10/32` and differed only in age (two minutes against 1d22h). s3 `Vl99` showed DR with 0/0 neighbours, and NMAS got an ICMP redirect from s3 pointing at `10.255.0.32` [R6_BRANCH_SITE.md].
+- Estimate: none recorded.
+
+**6. Where it left the product**
+
+NMAS had configured a device from intent a person wrote, end to end, additive only.
+
+
+### Phase 2 (DHCP): onboarding from a Kea reservation
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Prove a device can be onboarded when the tool never writes its address: the device takes it from a Kea reservation, and the tool finds it. It was run on a throwaway (`bp-dhcp-a`), not r6, because on r6 it would have been re-addressing a managed device, and with no relay, which is phase 3 [PHASE2_DHCP.md §1, §9].
+
+**2. How it was implemented**
+
+- `address_source` is a stated source (`static` or `dhcp`), not an "address optional" flag. The plan requires a MAC and a reservation, whose check is three-state: `reserved`, `not_reserved`, and `unknown`, which also refuses [7f73ec4; PHASE2_DHCP.md §3a].
+- Kea got a pool-less, reservations-only subnet on `10.255.0.0/24` [e90cfa5; §5]. The MAC was pinned in the containerlab topology so the reservation exists before first boot [§6].
+- Phase 2 discovers the address from Kea's **lease**, never the reservation, and refuses naming both if they disagree [d17ad54; §9]. The lease's subnet id carries the prefix length to NetBox [421b8a7; §8].
+- `test_server_reads_nothing_the_form_cannot_send.py` makes the form and server read one list [c4d0913; CLAUDE.md].
+
+**3. Issues encountered**
+
+- The ledger's 15 defects [PHASE2_DHCP.md §10]: Kea `ok` over `result: 1`; the Gi1 check blind to the extended link format; a probe subnet colliding with r6's lab; no address-source or MAC field in the wizard; completeness judged by the static shape; the pending row rendering `at —`; `verify_device()` reading an empty `mgmt_ip`; `run_phase_two()`'s local `""`; the override keyed on `""`, which fell back to `profile:default`; the failure omitting `credential_source`; the reveal running on `change` only; a torn-down device's address pre-filled; abandon missing the `reserved_address` key; a script unable to reach its imports; NetBox recording the lease as /32, a five-month-old defect.
+- Also:
+  - Kea served no subnet for the segment (a blocker) [§5].
+  - Kea could be reloaded only by a restart: `config-reload` answered HTTP 403 for want of a credential [§7].
+  - `domain` is read with no form field (register D1).
+  - The `''` override key was left behind (register B3).
+  - `_nb_patch` sits outside provenance, so NetBox updates were recorded nowhere [§11].
+
+**4. How they were resolved**
+
+- All 15 fixed [§10]. The ones not in the ledger:
+  - The blocker was resolved by a reservations-only subnet [§5].
+  - The reload gap was left as a missing credential, not built [§7].
+  - D1 was deferred to 7.4 [OPEN_FINDINGS.md D1].
+  - B3 was closed by the operator on 2026-09-28, report-only, with the `''` key cleared [OPEN_FINDINGS.md B3].
+  - The §11 gap was closed by the modification record (§12) [4a89c94].
+  - `netbox_allow_writes` stays on, by decision [37830dc; §11].
+- Out of scope: reboot-safety and a relay path [§9].
+
+**5. Numbers**
+
+- Commits: 16 [rule: `8c7db67^..436b1af`], from 8c7db67 (2026-09-24 17:35) to 436b1af (2026-09-24 22:33). §11's decision adds 37830dc (23:00).
+- Ledger: "9 commits fixed things found by running the tool (11 in the stage; two are probe authoring)", carrying 15 defects, "None of the 15 was caught by the suite" [§10]. The 11 match `b0521b2^..421b8a7` by count and by the test span; which two are "probe authoring" is not stated.
+- Defect ages: 9 of 15 were written that day, 4 the day before, 1 four days earlier, and 1 five months earlier [§10].
+- Tests: 3,276 to 3,360 [§10], matching b0521b2 and 421b8a7. Before that, 3,268 at 7f73ec4 [commit body]. `test_onboard_dhcp_source.py` has 23 tests [§3a].
+- Elapsed: about 4 h 58 min [8c7db67 to 436b1af].
+- Acceptance: `GigabitEthernet2 10.255.0.40 YES DHCP up/up`, bia `aabb.cc00.0240`. Kea leased 10.255.0.40 on subnet 255, and NMAS pinged it in 0.58 ms. The manifest, CSV, NetBox and Kea all agree on 10.255.0.40. The teardown census `--compare` exited 0 [§8, §9].
+- Estimate: none recorded.
+
+**6. Where it left the product**
+
+The wizard could onboard a device whose address comes from a Kea reservation, and it records the address the device actually leased.
+
+
+#### Sources read (4C, the branch site, Phase 2 (DHCP))
+- docs/NSOT_STAGE4C_PLAN.md (§0, §1, §7, §8.1-8.9)
+- docs/STAGE4C_PROBE.md (header, status 2026-09-24, step −1, 0a, closing)
+- docs/NSOT_WRITEUP_NOTES.md (4C probe findings, phase 2 second failure, step C proven, Remove/cascade/import/repair/exclusion sections)
+- docs/R6_BRANCH_SITE.md (status, defects, §0, §1 C′, recommendation)
+- docs/PHASE2_DHCP.md (§1, §3a, §4, §7-§11)
+- docs/NSOT_PLAN.md (Stage 4)
+- docs/OPEN_FINDINGS.md (A2, A3, B1, B3, C41, D1, D2, E3, C147 via CLAUDE.md)
+- CLAUDE.md (onboarding, branch site and DHCP paragraphs)
+- git log 2026-09-22 to 2026-09-25, and bodies of the cited commits
+
+#### Could not recover (4C, the branch site, Phase 2 (DHCP))
+- Which census baseline the 4C teardown's 82 -> 80 comparison used: 80b75e5 says the baseline was never taken, and 1ff741c says the census caught the loss against one.
+- Which two of Phase 2's 11 stage commits the ledger calls "probe authoring": the doc does not name them.
+- Estimates for any of the three: none recorded in the docs read.
+- 4C test counts before f4a8489 as real pytest results: 4C.8's counts were declared harness-only.
+- r6 phase 1 (40fcb8e to 53a1bef), between 4C and the branch site, was not assigned and is not covered here.
 
 ## Part I. Before Stage 7: the P-items
 
@@ -1276,6 +2384,7 @@ The landing page drew every section 1a source from stored or cached values, each
    - C188 closed on the host's measurement.
    - C198 is UNKNOWN: the split is built, and the next Save All reads it. The operator's warm-pool guess was ruled out from the code: every capture opens a fresh temporary session (C97).
    - C199 registered: none converted under the stopping rule, and every direct device-layer loop is declared with its reason by a test.
+   - Overnight 2026-09-29 (the operator's queue item 5), the read loops were converted through one helper, `modules/fanout.read_each` (`79f5e2b`): the freshness reader's fetches, the hourly startup check, Refresh Hostnames, `nmas-golden-state`, the pending ZTP rows and the heartbeat measurement. The rest carry stated reasons. Converting them found C202: the persistent pool opens every session under one lock, which is why three loops over pooled sessions stay sequential.
    - s3's resources stay in Stage 9 (C93, C94).
    - The operator's standing rule came out of it: reads across devices run concurrently, writes only where order does not matter, and a serial multi-device operation states why.
 5. **Numbers.**
@@ -1291,7 +2400,352 @@ The landing page drew every section 1a source from stored or cached values, each
    - Suite: 5,685, then 5,694, then 5,704.
 6. **Where it left the product.** Save All is 2.5 times faster to preview and 7.4 times faster to apply, and no request waits on a device. Why identical reads vary threefold is being measured, not guessed.
 
-## Part III. Across the stages
+## Part III. Side campaigns
+
+Threads that ran across stages rather than inside one: each started from one finding and followed its class. Their commits interleave with the stages', so each entry states the rule that selected them.
+
+### Side campaign — Store hardening: from the settings erasure to one file-store module
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+It started on 2026-09-23. The onboarding wizard refused to create a device, the Cloudflare Access values were empty, and the cause turned out to be that `user_settings.json` had erased itself [4f8a0f1]. The same problem came back twice from other directions: a flaky settings test on 2026-09-25 (C20), and a credential override that disappeared on 2026-09-28 (C156, which led to C157). The campaign set out to find every store the program reads, modifies and writes back, and to establish whether a torn read or a concurrent writer could empty it. It gave most attention to stores whose loss cannot be rebuilt.
+
+**2. How it was done**
+
+- **The erasure.** It was a six-step chain [4f8a0f1]:
+  - the save truncated the file in place;
+  - a read landed in that window;
+  - the unreadable file was read as `{}`;
+  - the next write saved that `{}`;
+  - the file then read as v0, and 107 defaults were seeded;
+  - the blank peer allowlist trusted every peer.
+
+  The fix separates *absent* from *unreadable*. An unreadable file raises `SettingsUnreadable` and is kept as `.corrupt-<ts>`; saves go through a temp file and `os.replace`; the posture panel draws the failure. `nmas-settings-diff` was added to recover which values somebody had chosen [a25bdba].
+- **C20** added a temp file per write and `settings_lock()` (an RLock plus a cross-process `flock`) around all four read-modify-write sites. An AST scan requires the lock wherever a function both loads and saves [2a121ef].
+- **C157** applied the same fix to the credential store [3a946bb]:
+  - an unreadable store refuses on the write path and is preserved;
+  - every write is logged with the key names it changes, never the values;
+  - a save made outside the lock is refused.
+- **`modules/filestore.py`** made that fix generic once [2449206]. It provides `PathLock`, `write_atomic` and `read_json_for_write`. The credential store, the NetBox created-object record, `rolled_back.json` and `devices.csv` all moved onto it.
+- **The sweep.**
+  - The first survey was static: 27 loaders that read an unreadable file as empty [3a946bb]. It was scoped by format (JSON), so it missed `devices.csv`.
+  - The second survey listed every place the program writes a file, 85 of them. That is the population the property itself defines, and it found C160 [2449206; CLAUDE.md "A SURVEY SCOPED BY FORMAT…"].
+- **Controls.** Every fix has a control that removes the property and fails only its own test; 2449206 has eight [commit message]. The lost-update tests run the writers as separate processes.
+
+**3. Issues encountered**
+
+- **The erasure itself.** It has no register row; it is recorded in CLAUDE.md and NSOT_WRITEUP_NOTES. Its chain also exposed the fail-open peer allowlist [cd0696e].
+- **Consequences recorded separately.** C7: the reseed froze every non-empty default. C28: settings that gate a guard were erased, and each was found only by the failure it caused [OPEN_FINDINGS].
+- **C20.** The flaky test was caused by import-time binding. The real defect was a shared temp name plus unlocked writes, which corrupted the file. The shared temp name had arrived with the 09-23 fix itself [ca52ac1].
+- **C156 (UNKNOWN).** An override left the credential store, and nothing records why.
+- **C157.** The credential store had all three erasure ingredients: it read an unreadable file as empty, its lock worked within one process only, and it used one shared temp name. The 09-23 notes had said `credentials._save()` already had "the correct shape" [NSOT_WRITEUP_NOTES "The long fuse"].
+- **C158.**
+  - The created-object record could erase NetBox provenance for every list.
+  - `rolled_back.json` was truncated in place with no lock, and a torn read lifted every rollback block.
+- **C159.** The remaining stores in the sweep, where the loss is reconstructible or derived.
+- **C160.** `devices.csv` had four problems:
+  - it was truncated in place;
+  - five read-modify-write paths held no lock;
+  - Reorder dropped any device the order did not name;
+  - Refresh Hostnames wrote back a copy that was minutes old.
+- **Found while fixing the rest [2449206].**
+  - C161: the migration backfill drops the `platform` column.
+  - C162: a relative-path fixture put a lock file in the checkout root, and no guard noticed.
+  - C163: one test error whose report was lost.
+  - The new module's first test run hung, because lock depth was tracked per instance.
+
+**4. How they were resolved**
+
+- **Fixed:**
+  - the erasure [4f8a0f1];
+  - C20 [2a121ef];
+  - C28, as a job-health row [b1fa4b0];
+  - C157 [3a946bb];
+  - C158 and C160, together, on filestore [2449206]. An unreadable rolled-back record now *blocks* every plan. Reorder keeps the devices it does not name, and Refresh applies only its renames.
+  - The hang: lock depth is now tracked per (thread, path).
+- **Deferred by the operator's stopping rule.** A sweep registers everything and fixes only its A items [2449206].
+  - C159, C161 and C162 go to Stage 9.
+  - C163 stays UNKNOWN until it recurs; the commit gate now keeps the whole run.
+  - C7 is B and blocks 7.7.
+  - C156 stays UNKNOWN; C157's write log answers it from now on.
+
+**5. Numbers**
+
+- **Commits.** Selection rule: a subject naming the erasure, C20, C157, C158 or C160. That gives 7 commits, 4f8a0f1 (2026-09-23 18:26 -0600) to 2449206 (2026-09-28 12:20 -0600): 4f8a0f1, a25bdba, 2a121ef, ca52ac1, f7a237f, 3a946bb and 2449206. The edge is ambiguous. With cd0696e (the peer allowlist), b1fa4b0 (C28) and 71ed99e (which recorded the survey lesson), the count is 10.
+- **Elapsed time.** 4 d 17 h 54 min, in three bursts [commit dates]. The C157–C160 burst took 58 min.
+- **Findings.** 4 fixed as primary (C20, C157, C158, C160). C28 fixed and C7 open as consequences. 5 registered and left (C156, C159, C161, C162, C163).
+- **Measurements.**
+
+  | Measurement | Value | Source |
+  |---|---|---|
+  | Defaults reseeded after the erasure | 107 | 4f8a0f1 |
+  | C20 before the fix: two threads × 150 writes | file unreadable in 2 of 2 runs | 2a121ef |
+  | C20 after the fix | 300 of 300 keys | 2a121ef |
+  | C157 without the `flock`: two processes × 60 overrides | 76, 67 and 63 of 120 kept; **37–47% of writes lost** | 3a946bb |
+  | Credential store at the time | 23 template secrets, 1 profile, 1 override | C157 row |
+  | Surveys | 27 loaders, then 85 write sites | 3a946bb, 2449206 |
+  | New tests | 4 + 12 (store integrity), 7 (settings concurrency) | counted |
+  | Suite | 5197, then 5209 passed; 37 consecutive clean runs after the one error | 3a946bb, 2449206 |
+
+**6. Where it left the product**
+
+Every store whose loss is unrecoverable, or would lift a guard, now goes through one module. That module locks across processes, writes atomically and refuses to save over a file it could not read. The rest are named in C159.
+
+
+### Side campaign — The Grafana rule audit: hand-built alert rules measured, and P.7 decided
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+On 2026-09-28 the operator was measuring a precondition for 8.6, the agent's triage reader. Grafana's rules view showed 16 rules, all inactive, while its Alertmanager held 2 active instances (C165) [05a0ccf]. Following that up exposed two rules that had been in no-data for days (C166). That led to the wider question of whether any hand-built rule had ever been verified (C168). The campaign set out to establish, rule by rule, whether each rule *could* fire on what the fleet produces, and whether it *had*.
+
+**2. How it was done**
+
+- **Read-only probes (3 to 6).** The operator ran them on the NMAS host, through NMAS's Grafana client and Grafana's datasource proxy [22cf328]. They collected:
+  - each rule's expression, no-data setting and datasource;
+  - the rule's own query over 24 h, then 7 days;
+  - the syslog stream's labels, and its lines counted per IOS severity digit;
+  - 30 days of state history.
+- **The test for a rule.** A rule was judged by whether its query's extreme crosses its own threshold, not by whether it evaluates without error [796f2f7; NSOT_PLAN P.7].
+- **Uncapped history.** After a capped read produced wrong verdicts, every history verdict was re-read one day per request. Any window that came back as a full page was split and read again [d99a260].
+- **Rule fixes.** These are the operator's edits to rules NMAS does not own. They were specified in the register and dry-run first. The syslog fix refused to write unless every label named an inventory device [6ef9d8c].
+
+**3. Issues encountered**
+
+- **C165.** The two endpoints were not disagreeing. My control compared unlike counts (condition-firing instances against all active instances) [99ff600].
+- **C166.**
+  - `Interface down` had been in no-data since 2026-09-25T21:23:50Z, and `Critical syslog received` since 2026-09-27T08:40:50Z.
+  - The syslog rule was not blind; it was miscoded. `|= "CRIT"` never matches IOS's severity digit.
+  - My "never fired" was wrong. It had fired 9 times in 30 days, on mnemonic *names* containing CRIT.
+  - My first attribution regex took IOS sequence numbers as devices, giving 11 "devices" [22cf328; 6ef9d8c; NSOT_PLAN P.7].
+- **C167.** `prometheus_url` was empty while Grafana read Prometheus [5bb1cd7].
+- **C168.** Of the seven hand-built rules [22cf328; OPEN_FINDINGS C168]:
+  - gRPC is miscoded: a lost source's series vanishes, so its count never drops below 1;
+  - `Interface down` reads a healthy network as no-data;
+  - the syslog rule works by accident;
+  - `IP SLA probe failing`, first read as never alerting, WORKS;
+  - `Device unreachable` "never alerted" was false;
+  - `Interface output discards` is noisy;
+  - the syslog `host` label is the collector, so a syslog alert names no device.
+- **Found outside the scope.**
+  - The scrape targets are a hand-kept list: retired r5 is still polled, and r6 is polled by none [4ec7ffb].
+  - A malformed register row passed every hygiene test [796f2f7].
+  - C169: the ZTP responder sent a refusal before recording it. It was found by d99a260's own gate [d99a260].
+
+**4. How they were resolved**
+
+- **C165.** Closed as a measurement defect. A reader now names the endpoint it read and when [99ff600].
+- **C166.** Closed after the operator's fix was read back. It alerts on severity 0–2 by the mnemonic's digit, takes the device from the origin-id, and treats no-data as OK; over 7 days it names r1, r3 and r4 [d99a260]. Severity 3 was deliberately left out (`SMART_LIC-3-COMM_FAILED` is expected under D4) [796f2f7].
+- **C167.** Closed on measurement. `http://localhost:9090` is set, and NMAS's client counts 9 devices. The class goes to the 7.2 status bar [6ef9d8c].
+- **gRPC and Interface down.** The operator's fixes read Normal [6ef9d8c].
+- **C168.** Scheduled into **P.7**, decided 2026-09-28 and placed before 8.6 [4997141]. P.7 requires:
+  - a generator per rule kind;
+  - the expected set of members taken from the inventory;
+  - one definition of "which device";
+  - each rule shown able to cross its threshold on real data;
+  - history read uncapped;
+  - an expected alert rate per rule.
+
+  Retire now names the scrape targets still polling a device it releases [6ff6fd0].
+- **Also fixed.** The register-hygiene gap [796f2f7] and C169 [d99a260]. CLAUDE.md gained "A claim about ALL TIME needs a window that covers all time" [4997141; d99a260].
+
+**5. Numbers**
+
+- **Commits.** Selection rule: a subject naming C165–C168 or the P.7 decision. That gives 9 commits on 2026-09-28 (-0600), 05a0ccf (13:04) to 4ec7ffb (15:07): 05a0ccf, 99ff600, 5bb1cd7, 796f2f7, 22cf328, 4997141, 6ef9d8c, d99a260 and 4ec7ffb. The edge is ambiguous: 6991b32 (7.2 step 14) applies these rules in the reader, and 6ff6fd0 is 7.3 work; both are excluded.
+- **Elapsed time.** 2 h 2 min 42 s in total. C166 was closed at 55 min [commit dates].
+- **Findings.** C165–C168, plus C169 and the hygiene gap outside the scope.
+- **Measurements.**
+  - Syslog, 24 h: 3,155 lines, of which 1 was severity 2, 10 severity 3, 304 severity 4 and 2,828 severity 5; 0 contained "CRIT" in any case. 126 lines arrived in the last hour [OPEN_FINDINGS C166].
+  - `host=nmas` on 3,151 of 3,151 lines [22cf328].
+  - **Entered Alerting in 30 days, from the uncapped read** [d99a260]:
+
+    | Rule | Alerts |
+    |---|---|
+    | `Device unreachable (SNMP)` | 38 |
+    | `Interface output discards` | 229 in 2,305 transitions (the capped read showed 10) |
+    | `Critical syslog received` | 9 |
+    | `Interface down` | 6 |
+    | `IP SLA probe failing` | 3 |
+    | `gRPC telemetry stream lost` | 0 |
+    | `Interface error rate elevated` | 0 |
+
+  - gRPC: telemetry sources fell from 4 to 2 in 7 days, with 5 `Normal (MissingSeries)` recorded. It missed two incidents: 09-22 23:41 (about 20 minutes with every source silent) and 09-28 08:51–09:01 (r1 and r3) [OPEN_FINDINGS C168].
+  - IP SLA: 73 failing runs in 7 days, across six probes [C168].
+  - Nine polled addresses, of which eight resolve to devices [4ec7ffb].
+
+**6. Where it left the product**
+
+Three rules are fixed by the operator's hand. The requirement that a rule is verified by showing it can fire, not by showing it evaluates, is written into P.7, which is decided and not yet built.
+
+
+#### Sources read (store hardening, the Grafana audit)
+- `docs/OPEN_FINDINGS.md`: the preamble (the stopping rule); rows C7, C20, C21, C28, C156–C163, C165–C169.
+- `CLAUDE.md`: the settings and store sections, filestore, "A SURVEY SCOPED BY FORMAT", "A lock's re-entrancy", "A claim about ALL TIME", and the test-table entries.
+- `docs/NSOT_PLAN.md`: P.7.
+- `docs/NSOT_WRITEUP_NOTES.md`: "The Access values were never set…", "An empty allowlist trusted everyone", "The long fuse".
+- `git show` for these commits: cd0696e, 4f8a0f1, a25bdba, 2a121ef, ca52ac1, b1fa4b0, f7a237f, 3a946bb, 2449206, 71ed99e, 05a0ccf, 99ff600, 5bb1cd7, 796f2f7, 22cf328, 4997141, 6ef9d8c, d99a260, 4ec7ffb, 6991b32, 6ff6fd0.
+- `git log --grep` for each ID, and `git log` of `modules/filestore.py` and the store-integrity test files. Test counts from `grep -c "def test_"`.
+
+#### Could not recover (store hardening, the Grafana audit)
+- **The date and time zone of the erasure's last settings write ("20:25:37").** The sources give the time only; CLAUDE.md calls it "the 2026-09-23 erasure".
+- **Which writer truncated the settings file.** The chain was reconstructed from code and mtimes; no log of that write exists.
+- **When and by what the hand-built Grafana rules were created.** They came from "earlier lab work", outside this repository.
+- **The exact gRPC and Interface down expressions the operator applied.** They were edited in Grafana, and the commits record only that both read Normal.
+- **Transition totals for rules other than `Interface output discards`.** They were not recorded.
+
+### Side campaign — The verify family: the deploy's safety check, wrong in ten ways
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Verify is the pipeline stage that decides whether a deploy or restore is rolled back. Over about two days it was found to pass, or to report a check it never made, in ten independent ways: C62, C64, C65, C66, C67, C68, C108, C114, C115 and C178 [OPEN_FINDINGS C178 row; NSOT_WRITEUP_NOTES "ten independent ways"]. None was found by reading the code for correctness. Each came from asking the same code a new question [f1277c5]. The rollback outcomes (C112) were fixed in the same campaign.
+
+**2. How it was done**
+
+- **Real captures.** A read-only probe on the NMAS host captured `show` output from r3, r1, s1 and s3. It ran from a `git archive` copy at `eecc900`, with bytecode off, through the pipeline's own reader, and redacted everything before it left the host [tests/fixtures/operational/README.md; fe61c33]. Each defect first got a strict expected-failure test built from a capture, checked with `--runxfail` to confirm it failed on its own assertion [fe61c33]. The fix commit removed the markers [a8019b4].
+- **The rule.** "A parser's test is built from files in this directory, never from a sample typed into the test" [README]. A second sweep covered the other parsers (topology, NetBox cables) with 28 more captures, and the probe became a tool, `scripts/nmas-capture-output` [b2924e3].
+- **Other questions.** A real restore (C70's re-run) found C108. The operator's questions "what counts as failure" and "what if the rollback fails" found C114, C115 and C112, and C114 was demonstrated through `_stage_verify` with the deploy path's own parameters [OPEN_FINDINGS C114]. Designing the rollback acceptance run (C117) found C178 [bc67b4f].
+- **Controls.** Every fix carried mutation controls, each restored from a copy [a8019b4, d214f24, 224bb8f, 2abf4b7].
+
+**3. Issues encountered**
+
+- **C62**: verify read only the first routing protocol it found. Real coverage was 4 of 9 devices, vacuous on r3, r4, s1 and s2, and not applicable on r6 [fe61c33].
+- **C64**: the BGP pattern expected eight fields, but IOS prints ten, so it counted nothing in either state. r3, r4 and r5 read bgp 0->0 in every recorded deploy [fe61c33].
+- **C65**: RIP read the empty table of the `"application"` pseudo-protocol that both platforms print first [C65 row].
+- **C66**: route retention read the Networks column (4 where r3 has 30) [C66 row].
+- **C67**: the canary passed on any "up", and Loopback0 is always up [C67 row].
+- **C68**: any count above zero counted as "progress", so a permanent partial loss read "not yet converged" and never failed. The C62 fix's own test found it [C68 row].
+- **C69** (related): there were two `show ip bgp summary` readers; topology's was right and the deploy's was wrong [b2924e3].
+- **C108**: the protocol list came from the BEFORE state. A restore of ` ipv6 ospf 1 area 0` on r2 reported "checked ospf, rip, ripng", without OSPFv3 [C108 row].
+- **C112**: a failed rollback was drawn as "rolled back". A device with no pre-change file was recorded nowhere, and a sent undo was never read back [C112 row].
+- **C113** (context): no failure in about 20 real verify runs on the host; mostly it could not fail [d214f24].
+- **C114**: the neighbour tolerance was 1 (`drop <= 1`). In the demonstration, RIP 1->0 with routes 22->3 passed [C114 row].
+- **C115**: `_deploy_one` passed `skip_route_check` on every deploy and restore, while the screen printed "routes 22 -> 22" as if it had compared them [C115 row].
+- **C116**: verify checks only for loss, never for the change itself [C116 row].
+- **C120**: found while fixing C114. A control's same-size edit survived its restore in bytecode [224bb8f].
+- **C178**: `convergence.wait_for` returns at its first passing read, 10 s in, while IOS holds a BGP session for up to its 180 s hold time [C178 row]. The fix commit found it was worse than that: when the first post-push count matched, verify did not wait at all [2abf4b7].
+
+**4. How they were resolved**
+
+- **Fixed 2026-09-27 [a8019b4]:**
+  - C62: every protocol is compared, with `checked_protocols` recorded per device.
+  - C64: the ten-field row is read, and established sessions are counted apart from configured ones.
+  - C65: the RIP section is read.
+  - C66: the route count is networks plus subnets.
+  - C67: the canary needs a non-loopback interface up/up.
+  - C68: progress now means the count ROSE.
+- **Fixed 2026-09-27, the rest:**
+  - C69: one BGP reader [b2924e3].
+  - C108: verify carries the target intent's protocols. A declared protocol still down is not passed and not rolled back [9b39b3a].
+  - C112: six named rollback states, with a read-back over a fresh connection [d214f24].
+  - C114: tolerance 0, the operator's decision.
+  - C115: the route check runs, with a 90 s `routes` settle window (the operator's decision) [224bb8f].
+- **Registered and left by decision:** C116 [224bb8f].
+- **C178: BUILT 2026-09-29 overnight [2abf4b7].** Verify stamps each device's push time and reads BGP once more no earlier than the configured hold time after the push. A session gone by then, or an unreadable table, fails verify. The stated cost: up to 180 s longer for BGP devices (r3, r4). It is not closed. Two things remain: the operator's `show bgp all neighbors` capture, so the negotiated hold time can replace the configured bound, and C117's real-device loop [C178 row; 2abf4b7 Not-Done].
+
+**5. Numbers**
+
+- **Commits.** Rule: commits whose subject or body registers or fixes C62, C64–C68, C108, C112, C114, C115 or C178. That gives 10: d11955d, fe61c33, a8019b4, 9b39b3a, d214f24, 232d001, 224bb8f, bc67b4f, f1277c5, 2abf4b7 [git log --grep]. b2924e3 (C69, the one BGP reader) would make 11. Not counted: three commits that only added captures during other work (9f49a33, dc14f3b, 2083313), and commits that merely mention an ID (e.g. 5039740).
+- **Elapsed.** From d11955d (2026-09-27 07:17:17) to 2abf4b7 (2026-09-29 01:34:55): about 42 h 18 min [git].
+- **Findings.** 10 verify defects (above), plus C112, C69, C113, C116 and C120 found along the way.
+- **Captures.** 81 capture files plus a README at HEAD [ls], added by five commits (24, 28, 24, 4, 2 added files; the first 24 may include the README).
+- **Suite.** 4509 passed with 6 expected failures at fe61c33, then 4521 at a8019b4, and 5757 at 2abf4b7 [commit messages].
+- **Controls fired.** Six at a8019b4 [a8019b4], and three at 2abf4b7 [2abf4b7].
+
+**6. Where it left the product**
+
+Verify now reads every declared protocol from real-shaped output. It waits out neighbour losses and route shrinks, and it says what each rollback achieved. Its last known gap, the BGP hold time, is built and still awaits confirmation on a real device.
+
+### Side campaign — Mode B's probe: measuring which removals are safe
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Mode B (removing a line the device has and intent lacks) was gated so that a line is removed only where `scripts/nmas-removal-probe` MEASURED, on the device's platform, that `no <line>` removes exactly that line. The operator's words: "ask the platform rather than reason about it" [cbeccc9]. The campaign built the probe, ran it on s4 (cisco_ios) and r3 (cisco_iosxe), and wrote `modules/nsot/removal_measured.json`.
+
+**2. How it was done**
+
+- For each shape in `removal.SHAPES`, the probe:
+  - adds a scratch instance (`NMASPROBE` names, RFC 5737 addresses, Loopback199);
+  - sends exactly what Mode B would send;
+  - classifies the read-backs as exact, broader, different, incomplete or refused;
+  - removes the scratch and puts back anything lost;
+  - requires the device to be EQUIVALENT to its state before, or stops with NOT RESTORED as its first line.
+- It changes only the running config, never saves, holds the device, and runs dry by default [cbeccc9].
+- The operator ran it and shared the output files (`/dev/shm/removal-*.json` on the host). Records were merged from the probe's own output [6abe7e9, 5bd8230, 6ebc3e9, d9659d4].
+- The gate is an allowlist. Until the first run, nothing was removable [cbeccc9].
+
+**3. Issues encountered**
+
+- **Dry run, C192.** The dry run printed `router bgp 65000`. At `--apply` the probe would have added a neighbour to r3's LIVE AS 65001 process, the one peering with r5. A device with no BGP recorded `failed`, a fact about the run posing as a fact about IOS [C192 row].
+- **s4, first run.** The probe stopped with NOT RESTORED after `global.logging-buffered`. Removing `logging buffered 16001` left `no logging buffered`, so buffered logging was OFF, not at its default [6abe7e9].
+- **C193.** The probe's repair used the residue calculation, whose setting key reduced `no logging buffered` and s4's own `no logging console` both to `logging`. The same key blinded Mode B's candidate list, the previews' "will NOT be removed" list and rollback's previous-value lookup [C193 row].
+- **s4, second run.** `access-list 97 permit 192.0.2.1` removal also removed `permit 192.0.2.2` (broader). The route-map sequence, applet, prefix-list and named-ACL shapes were exact [5bd8230].
+- **C194.** The probe did not record whether its repair sent anything. "No repair needed" was read from s4's second run and written in 5bd8230's message; neither was in the output [C194 row; b066324].
+- **r3, first run, C195.** Both ACL shapes "did not land":
+  - `plan_for()` dropped the read-back matching;
+  - IOS-XE displays a numbered ACL as `ip access-list standard 97` / ` 10 permit X`.
+  - The operator's point: in that form a numbered entry would have been classified as `named-acl.entry` and borrowed its safe measurement [C195 row].
+- **C196.** One removal, two forms, two answers. The top-level form on IOS deleted the list, and the list form on IOS-XE removed one entry [C196 row].
+- Found beside them: C200 (a rollback of a pushed `no` line can send `no no <line>`) and C201 (positive keys that share a keyword) [602f962]. C191 (the device-writer scan missed scripts) was registered when the probe passed the suite unnoticed [cbeccc9].
+
+**4. How they were resolved**
+
+- **C192: fixed before the run [ddf7713].** The live BGP shape runs only with `--allow-live-bgp`. A shape the run could not ask about is `unmeasured` and never enters the record, and neither does `failed`. A shape reads `exact` only if every example did. BGP stayed unmeasured by choice on both platforms [6ebc3e9, d9659d4].
+- **logging buffered: classified `overrides_default` and retired from the probe, refused by name [6abe7e9].** s4 was restored without a reload by reading the default from s3, a sibling on the same image: `logging buffered 8192 debugging` [1964f7d].
+- **C193:** the probe's repair was switched to a plain difference of the read-backs the same night [6abe7e9]. The key itself was FIXED 2026-09-29 [602f962]: a `no` form is keyed on its whole remainder and pairs with a unique positive by prefix, across all three consumers.
+- **C194 and C195: fixed together [6ebc3e9].**
+  - Each example records its restore.
+  - The locator finds the displayed form.
+  - `numbered-acl.list-entry` is its own shape.
+  - Results are filed under the shape the device displays (`shown_as`).
+  - A re-run proved no repair was needed [d9659d4].
+- **C196: left refused.** Nothing needs it, and sending an undisplayed form would break the verbatim rule. It is UNKNOWN pending an IOS list-form exemplar [C196 row].
+- **C200 and C201:** registered, not fixed, under the stopping rule [602f962].
+
+**5. Numbers**
+
+- **Commits.** Rule: path history of the probe and the record, plus `--grep` for the probe and C192–C196. That gives 11: cbeccc9, ddf7713, 6abe7e9, 319b593, 1964f7d, 5bd8230, b066324, d4ccd0a, 6ebc3e9, d9659d4, 602f962 [git].
+- **Elapsed.** cbeccc9 (2026-09-28 20:53:57) to d9659d4 (23:13:52) is 2 h 20 min. Including the C193 key fix, 602f962 (2026-09-29 01:28:43), it is 4 h 35 min [git].
+- **Runs.** Four device runs recorded: s4 twice and r3 twice [the four merge commits]. The dry run was also seen before r3 [C192 row].
+- **Measurements** [removal_measured.json]:
+  - **cisco_ios:** 8 exact (load-interval, description, snmp-server community, logging host, route-map sequence, applet, prefix-list entry, named-ACL entry), 1 broader (numbered ACL entry), 1 `overrides_default` (logging buffered).
+  - **cisco_iosxe:** 9 exact: the same seven non-ACL shapes (load-interval, description, snmp-server community, logging host, route-map sequence, applet, prefix-list entry), plus the named-ACL entry and `numbered-acl.list-entry`. The top-level numbered form is recorded unmeasured with its reason (IOS-XE never displays it). BGP is unmeasured on both.
+  - `removal.SHAPES` holds 11 shapes at HEAD [read-only import].
+  - The snmp community was measured exact on IOS from three examples: plain, with an ACL, and with a view [6abe7e9].
+- **Findings.** C191, C192, C193, C194, C195, C196, C200 and C201.
+- **Suite.** 5616 passed at cbeccc9, then 5640 at d9659d4, and 5745 at 602f962 [commit messages].
+- **Rules recorded in CLAUDE.md** [319b593, d4ccd0a]:
+  - "Refusing by resemblance is safe; allowing by resemblance is not."
+  - "A probe that continues past a failed restore measures its own damage."
+  - "A clean result cannot prove a mechanism that was not exercised."
+
+**6. Where it left the product**
+
+Mode B can remove a line only in a shape measured exact on that platform. That unlocked r2's ` no load-interval 30` [6ebc3e9], and the numbered ACL entry that an unmeasured Mode B would have destroyed on IOS is refused by measurement.
+
+#### Sources read (the verify family, Mode B's probe)
+- `docs/OPEN_FINDINGS.md`: rows C62, C64–C68, C108, C112, C113, C114, C115, C116, C117, C178, C192–C196, C200, C201
+- `docs/NSOT_WRITEUP_NOTES.md`: "The deploy's safety check was wrong in ten independent ways", "The line the tool could not remove"
+- `docs/NSOT_STAGE7_PLAN.md`: Mode B's measured-gate and probe paragraphs (around lines 1750–1800 and 1920–1935)
+- `CLAUDE.md` (in context): the verify, probe and resemblance rules
+- `tests/fixtures/operational/README.md` and a listing of the directory
+- `modules/nsot/removal_measured.json`; `removal.SHAPES`, via a read-only import (no bytecode written, checked)
+- `git log` and `git show` for the 21 commits cited
+
+#### Could not recover (the verify family, Mode B's probe)
+- The exact number of verify runs before and after the fixes on the host: only C113's "about 20" is recorded. The run history lived in a rotating log and in per-device audit files that each run overwrites [d214f24].
+- The date and time of the probe's dry run, and whether one was run on s4: the dry-run output is not committed; only C192's row records that the operator read it before r3.
+- Whether s4's second run needed any repair past its teardowns: the probe did not record it then (C194). That is the point of the finding.
+- C178's real-device outcome: it is awaiting the operator's capture and C117's run, so no result exists yet.
+- Whether the first capture commit's 24 added files include the README: this was not separated, so "81 captures plus README" is taken from the directory at HEAD.
+
+## Part IV. Across the stages
 
 Collected from what the project already records, with citations in brackets. "CLAUDE.md" means its "Things to Keep in Mind" unless another section is named; "NOTES" is NSOT_WRITEUP_NOTES.md, "S7" NSOT_STAGE7_PLAN.md, "PLAN" NSOT_PLAN.md; register rows are cited by ID. *Backfilled 2026-09-29; kept current as stages close.*
 
