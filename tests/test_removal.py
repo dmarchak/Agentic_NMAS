@@ -242,16 +242,18 @@ class TestTheCommittedRecord:
 
     @pytest.mark.real_measurements
     def test_a_measured_shape_is_removable_on_its_platform_and_not_elsewhere(self):
-        """A named-ACL entry: exact on cisco_ios (s4), unmeasured on cisco_iosxe (r3's
-        run could not measure it). load-interval was the example until r3 measured it."""
-        acl = "ip access-list extended SCRATCH"
-        running = S4 + f"{acl}\n permit ip host 192.0.2.1 any\n"
-        unit = [_unit([acl], " permit ip host 192.0.2.1 any")]
-        ios = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_ios")
-        assert ios["commands"] == [acl, " no permit ip host 192.0.2.1 any", "exit"], ios
+        """A numbered ACL entry in LIST form: exact on cisco_iosxe (r3), the form it
+        displays; never measured on cisco_ios, which displays numbered ACLs at the top
+        and measured THAT form destructive. (load-interval, then the named-ACL entry,
+        were this test's example until each was measured on both platforms.)"""
+        acl = "ip access-list standard 97"
+        running = S4 + f"{acl}\n 10 permit 192.0.2.1\n 20 permit 192.0.2.2\n"
+        unit = [_unit([acl], " 10 permit 192.0.2.1")]
         xe = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_iosxe")
-        assert xe["commands"] == [] and "not been measured on cisco_iosxe" in \
-            xe["refused"][0]["reason"]
+        assert xe["commands"] == [acl, " no 10 permit 192.0.2.1", "exit"], xe
+        ios = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_ios")
+        assert ios["commands"] == [] and "not been measured on cisco_ios" in \
+            ios["refused"][0]["reason"]
 
     @pytest.mark.real_measurements
     def test_the_community_removal_c139_needs_is_measured_on_ios(self):
@@ -311,12 +313,15 @@ class TestTheCommittedRecord:
 class TestWhyAShapeIsUnmeasured:
     @pytest.mark.real_measurements
     def test_the_refusal_says_why_the_run_could_not_measure_it(self):
-        running = R3 + "ip access-list extended SCRATCH\n 10 permit ip host 192.0.2.1 any\n"
-        out = program(running, [_unit(["ip access-list extended SCRATCH"],
-                                      " 10 permit ip host 192.0.2.1 any")],
+        running = R3 + "access-list 97 permit 192.0.2.1\n"
+        out = program(running, [_unit([], "access-list 97 permit 192.0.2.1")],
                       mgmt_ip="", dialect="cisco_iosxe")
         why = out["refused"][0]["reason"]
-        assert "has not been measured on cisco_iosxe (r3," in why and "PROBE defect" in why
+        # The named refusal (IOS measured it destructive) speaks first; the
+        # record's reason for IOS-XE is checked at the gate itself.
+        assert "WHOLE numbered access-list" in why
+        gate = RM._unmeasured([], "access-list 97 permit 192.0.2.1", "leaf", "cisco_iosxe")
+        assert "(r3," in gate and "never DISPLAYS this form" in gate
 
     @pytest.mark.real_measurements
     def test_r2s_residue_shape_is_measured_exact_on_iosxe(self):

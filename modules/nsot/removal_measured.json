@@ -105,25 +105,27 @@
         "detail": "",
         "device": "r3",
         "result": "exact"
+      },
+      "named-acl.entry": {
+        "at": "2026-09-29T05:08:24Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
+      },
+      "numbered-acl.list-entry": {
+        "at": "2026-09-29T05:08:24Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
       }
     }
   },
   "unmeasured": {
     "cisco_iosxe": {
       "global.numbered-acl-entry": {
-        "at": "2026-09-29T04:48:57Z",
+        "at": "2026-09-29T05:08:24Z",
         "device": "r3",
-        "reason": "IOS-XE displays a numbered ACL in list form (`ip access-list standard 97` / ` 10 permit ...`), a form the probe did not look for. It does now, and files the result under `numbered-acl.list-entry`, the shape Mode B classifies that displayed line as; re-run"
-      },
-      "named-acl.entry": {
-        "at": "2026-09-29T04:48:57Z",
-        "device": "r3",
-        "reason": "a PROBE defect, not a platform fact: the probe rebuilt each example without its read-back matching (`match_in_readback`), so the sequence-numbered line IOS-XE displays (` 10 permit ...`, as r3's own NAT-PRIVATE shows) was never looked for. Fixed; re-run"
-      },
-      "numbered-acl.list-entry": {
-        "at": "2026-09-29T04:48:57Z",
-        "device": "r3",
-        "reason": "added after this run: the displayed form of a numbered ACL entry; re-run"
+        "reason": "IOS-XE never DISPLAYS this form: `access-list 97 permit X` is shown as `ip access-list standard 97` / ` 10 permit X`, measured exact as `numbered-acl.list-entry`. A golden on this platform does not hold this form, so Mode B never builds it here"
       }
     }
   }

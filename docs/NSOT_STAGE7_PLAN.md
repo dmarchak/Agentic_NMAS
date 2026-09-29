@@ -1729,6 +1729,17 @@ read through one function, and P.8 moves it without the reader changing.
   "did not land", and both were the probe's own defects (C195), now fixed and to be
   re-run with the new `numbered-acl.list-entry` shape. r3 afterwards (the operator's
   control): the r5 session unchanged, no scratch anywhere, NAT-PRIVATE intact.
+  **cisco_iosxe after the ACL re-run (r3, 2026-09-29): 9 exact** (load-interval,
+  description, community with three examples, logging host, applet, prefix-list entry,
+  route-map sequence, named-ACL entry, numbered-ACL LIST entry), BGP unmeasured by
+  choice. Both numbered examples were filed under `numbered-acl.list-entry`, one sent as
+  the top-level form and shown as the list, the `sent_as`/`shown_as` pair making the
+  filing checkable. Every restore block reads teardown only, `extras_sent` and `readded`
+  empty: this run PROVES the repair was not needed (C194's claim, now made). **The open
+  question (C196):** one operation, two forms, two answers. IOS's top-level form removed
+  the whole list, IOS-XE's list form removed one entry, and Mode B sends the displayed
+  form, so the IOS refusal rests on one form's measurement. Left refused, since nothing
+  needs it and the other form breaks verbatim.
   **The gap Mode B has to get right** (the operator): every destructive or surprising
   result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
   default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and
