@@ -1202,7 +1202,7 @@ The landing page drew every section 1a source from stored or cached values, each
 
 #### 7.3 — Retire from the Device page
 
-*Written at close, 2026-09-29 (retire: its screen closed 2026-09-28; no host run yet).*
+*Open: built 2026-09-28 and 2026-09-29, AWAITING a real retirement on the host. This entry is not closed, so its numbers are partial.*
 
 1. **What it was.** Retiring a device (C11) existed only as `nmas-retire` on the host. The Device page needed the same operation, previewed and confirmed, with one implementation behind both entry points.
 2. **How it was implemented.** `modules/nsot/retire.py` holds the whole exit. `routes/retire.py` serves `/retire/preview` (gated `not_device`) and `/retire/apply` (gated `approve`), and `static/js/nmas_retire.js` is the client. The browser cannot reach the break-glass record, which lives on a laptop. So the screen trusts the EXPORT LOG (`breakglass_logged`) and states that basis and its limit. The log records what was written and cannot show the file still exists, and the CLI's stronger check is to OPEN the record. Each refusal is keyed (`refused_by`), and every key the plan can produce is a gate by name. The apply refuses a rotation made after the preview, and a reason changed after it [`tests/test_retire_screen.py` row; the operator's decision, 2026-09-28].
@@ -1214,7 +1214,8 @@ The landing page drew every section 1a source from stored or cached values, each
    - C187 fixed in the same work: the step was replaced by a Not-Done line.
    - C185 scheduled into 7.3.
    - C186 registered, not fixed, under the sweep's stopping rule.
-5. **Numbers.** One commit, `47f8ecf`, 2026-09-28 18:30 [git]. Not recoverable: an estimate (none was written). Not yet run on the host: the retire screen has no real-run entry.
+5. **Numbers.** So far: the screen in one commit, `47f8ecf`, 2026-09-28 18:30 [git]; the gaps overnight 2026-09-29 (commit named in the next entry update). Not recoverable: an estimate (none was written). Not yet run on the host.
+7. **Overnight, 2026-09-29: r5's gaps.** Modelled on r5's retire commit (`3592113`). NetBox's stored credentials (C139) are now masked FIRST, with the same implementation as `nmas-netbox-mask-context` (moved to `modules/netbox_context_mask.py`), and read back; the legacy file (C176) is deleted only when its content survives in the repository; the heartbeat rule and the scrape targets, which NMAS does not own, are read and named. One decision waits on the operator: whether writes-off should refuse the retirement (recommended: no). 19 tests; three controls fired.
 6. **Where it left the product.** A device can leave management from the interface, and the screen says what its break-glass check did and did not establish.
 
 #### 7.3 step 2 — Mode B: removing a line the device has and intent lacks

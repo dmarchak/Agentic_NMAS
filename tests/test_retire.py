@@ -21,7 +21,9 @@ def world(tmp_path, monkeypatch):
                         lambda: [{"name": "Lab", "filename": "lab"}])
     monkeypatch.setattr("modules.nsot.retire._netbox_facts", lambda l, h: {
         "checked": True, "exists": True, "id": 9, "tags": ["bgp"],
-        "created_by_nmas": False})
+        "created_by_nmas": False, "writes": False,
+        # A device NetBox holds with an EMPTY stored context: nothing to mask.
+        "device": {"id": 9, "name": h, "local_context_data": {}}})
     monkeypatch.setattr("modules.credentials.has_device_override", lambda ip: False)
     # One approved template, so the withdrawal branch RUNS: the bound set is
     # still computed for real from the manifest.

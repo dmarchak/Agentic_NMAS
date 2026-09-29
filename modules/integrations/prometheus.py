@@ -56,3 +56,32 @@ class PrometheusIntegration(IntegrationClient):
             # number the operator has to go elsewhere to act on.
             "detail": [{"text": name, "state": "down"} for name in down[:10]],
         }
+
+    def targets_for(self, address: str) -> dict:
+        """``{"ok", "jobs", "count", "error"}``: which ACTIVE targets scrape
+        *address*, read-only. Retire uses it to say which scrape targets still
+        poll a device NMAS is releasing: they are hand-kept on the host
+        (C168), and NMAS does not write them. A target matches by its
+        `instance` label's host, the SNMP exporter's `__param_target`, or its
+        `__address__` host."""
+        r = self._get("api/v1/targets", state="active")
+        if not r["ok"]:
+            return {"ok": False, "jobs": [], "count": 0, "error": r.get("error", "")}
+        try:
+            targets = r["response"].json().get("data", {}).get("activeTargets", [])
+        except Exception as exc:              # noqa: BLE001
+            return {"ok": False, "jobs": [], "count": 0,
+                    "error": f"unreadable response: {exc}"}
+
+        def host(value):
+            value = str(value or "")
+            if value.startswith("["):
+                return value[1:value.find("]")]
+            return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
+
+        hits = [t for t in targets
+                if address and address in (host((t.get("labels") or {}).get("instance")),
+                                           (t.get("discoveredLabels") or {}).get("__param_target"),
+                                           host((t.get("discoveredLabels") or {}).get("__address__")))]
+        jobs = sorted({(t.get("labels") or {}).get("job", "?") for t in hits})
+        return {"ok": True, "jobs": jobs, "count": len(hits), "error": ""}

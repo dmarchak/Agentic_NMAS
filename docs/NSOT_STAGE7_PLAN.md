@@ -1533,6 +1533,43 @@ still exists or that its passphrase is known. Building it found C187 (a re-appro
 scheme 3 does not need, fixed), C186 (retire's failure paths) and C185 (no page reaches
 a retired device's record).
 
+**7.3's retire: r5's gaps closed or named (BUILT 2026-09-29, overnight; AWAITING A REAL
+RETIREMENT ON THE HOST).** Modelled on r5's retire commit, whose `Not-Done:` list the
+screen already drew. What that retirement left, and what retire does now:
+- **C139, NetBox's stored credentials: masked, FIRST.** When NetBox writes are on and
+  NMAS recorded writing the device's stored context, the first step masks it with the
+  same implementation as `nmas-netbox-mask-context` (now `modules/netbox_context_mask.py`,
+  both entry points), under the retire's own authority, and READS NetBox back. A failed
+  mask stops the retirement with nothing else done. With writes off, or a context NMAS
+  never wrote, or one it could not check, the preview and the result say why it stays,
+  with the command.
+- **C176, the legacy file: deleted only when its content survives.** After the commit,
+  the device's `golden_configs/` file is deleted when the golden panel's own survival
+  check finds it in the repository (the migration's verbatim backup, or an equivalent
+  committed golden), and the step says where. A file whose lines exist nowhere else is
+  KEPT and named, with "keep a copy".
+- **The heartbeat rule and the scrape targets: named, not written** (NMAS owns neither).
+  The preview READS the generated rules file and says whether a rule names the device
+  (it stays until the rules are regenerated on the host; the hourly check names it
+  EXTRA meanwhile), and asks Prometheus which active targets still scrape its address,
+  by job (hand-kept on the host, C168; P.7 generates them).
+- **The result words every step**, and a test holds every step key the plan can make to
+  its words.
+**DECISION WAITING (the operator): should a context NMAS could mask but may not (NetBox
+writes off) REFUSE the retirement?** (a) Refuse until writes are on: nothing leaves with
+a credential in NetBox, and retiring then depends on the NetBox write switch (C155's
+gate). (b) Proceed and name it, with the command (BUILT, the default until decided).
+**Recommendation: (b).** The credential was there before the retirement, retiring does
+not add it, and the repair path survives it: `nmas-netbox-mask-context`'s population is
+what NetBox HOLDS, not a list, and the secret-storage checker's scan still flags it.
+Refusing would couple an unrelated operation to a switch the operator deliberately
+turns on and off.
+**Acceptance, awaiting the operator: a real retirement on the host.** Recommended on a
+throwaway onboarded for the purpose (R1's shape), since which fleet device to retire is
+itself a decision. r5's own leftovers are host actions, not code: its legacy file (the
+golden panel names the `rm`), its NetBox context (`nmas-netbox-mask-context --device r5
+--apply`), its heartbeat rule (regenerate) and its scrape targets (edit them).
+
 **7.3 step 1 BUILT (2026-09-28): seed intent (C148), the path from onboarded to
 deployable.** One operation where there were four routes with no screen:
 `POST /templatize/seed/preview` parses each device's COMMITTED golden into the

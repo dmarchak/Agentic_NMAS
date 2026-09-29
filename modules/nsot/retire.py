@@ -20,8 +20,25 @@ that stops part way is finished by running it again:
    Template approvals are NOT withdrawn: scheme 3 approves the template,
    never its devices (P.5), so the plan says so rather than asking for a
    re-approval nobody needs (it did until 2026-09-28, true only before P.5);
-4. deletes the CSV row, LAST, and only against a break-glass record that
+0. FIRST, masks the credentials NetBox still holds in the device's stored config
+   context, when NetBox writes are on and NMAS recorded writing that context
+   (C139: after retire no import reaches the device again, so a credential
+   left there stays for good). One implementation with
+   `scripts/nmas-netbox-mask-context` (`modules/netbox_context_mask.py`),
+   read back after the write. It is the first step, so a failed mask stops
+   the retirement with nothing else done;
+4. after the commit, deletes the device's file from the deprecated `golden_configs/` store
+   (C176), but only when its content survives in the repository (the
+   migration's verbatim backup or an equivalent committed golden), and says
+   where; a file whose lines exist nowhere else is kept and named;
+5. deletes the CSV row, LAST, and only against a break-glass record that
    holds this device's CURRENT credential.
+
+The steps were modelled on r5's retirement (`3592113`, 2026-09-25, the
+operator's model for 7.3): its six `Not-Done:` trailers are the list the
+screen draws before the confirm and again in the result, and the gaps that
+retirement left (the legacy file, the heartbeat rule, the scrape targets,
+NetBox's stored credentials) are closed here or named with who closes them.
 
 **The credential is a refusal, not a step.** A sequence whose first step can
 be skipped will be skipped, and the CSV row is the only copy NMAS holds of a
@@ -44,7 +61,11 @@ each looks like an omission unless it is named: the NetBox device stays
 (NMAS does not write ``router.db``) so config history continues; the
 startup config freezes at its last sync; the device's running configuration
 is not changed; backups are kept; and a session the app has pooled is not
-closed by a command that runs outside it.
+closed by a command that runs outside it. And two things NMAS does not
+own, each named with what is still live: the device's Grafana heartbeat
+rule stays until the rules are regenerated on the host (the hourly check
+names it EXTRA meanwhile), and Prometheus's scrape targets, hand-kept on the
+host (C168), keep polling its address until they are edited there.
 """
 
 import hashlib
@@ -96,7 +117,8 @@ def _netbox_facts(list_name: str, hostname: str) -> dict:
         dev = _nb_first(session, base, "dcim/devices/", name=hostname)
         if not dev:
             return {"checked": True, "exists": False}
-        return {"checked": True, "exists": True, "id": dev["id"],
+        return {"checked": True, "exists": True, "id": dev["id"], "device": dev,
+                "writes": netbox_guard.writes_allowed(),
                 "tags": sorted(t.get("slug", "") for t in dev.get("tags") or []),
                 "created_by_nmas": netbox_guard.was_created_by_nmas(
                     list_name, "dcim/devices", dev["id"])}
@@ -180,6 +202,12 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     def step(key, text, done):
         out["steps"].append({"key": key, "what": text, "done": done})
 
+    # The mask goes FIRST: a failed mask then stops the retirement with
+    # nothing else done (C139).
+    nb = _netbox_facts(list_name, hostname)
+    mask = _mask_facts(nb)
+    if mask.get("step"):
+        step("netbox_mask", mask["step"], mask["done"])
     step("override", f"clear the credential override for {ip}"
          if has_override else "no credential override to clear",
          not has_override)
@@ -189,11 +217,13 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
          + (f" and release identity {identity}" if identity else "")
          + " -- history keeps both",
          identity is None and not files)
+    legacy = _legacy_facts(list_name, list_dir, hostname, ip)
+    if legacy.get("step"):
+        step("legacy", legacy["step"], legacy["done"])
     step("row", f"delete the CSV row for {ip} -- the only stored copy of its "
          "credential, so a break-glass record holding it is required",
          row is None)
 
-    nb = _netbox_facts(list_name, hostname)
     if not nb.get("checked"):
         out["not_doing"].append(f"NetBox: not changed, and could not be asked "
                                 f"({nb.get('reason')})")
@@ -204,7 +234,8 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
             + ("NMAS created it, so its provenance record stays and Remove "
                "could still delete it -- a separate decision."
                if nb["created_by_nmas"] else
-               "NMAS did not create it, so Remove cannot touch it."))
+               "NMAS did not create it, so Remove cannot touch it.")
+            + (" " + mask["kept"] if mask.get("kept") else ""))
     else:
         out["not_doing"].append("NetBox: no device of this name, nothing kept")
     for tpl in still_approved:
@@ -212,6 +243,8 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
             f"the approval of {tpl} is not withdrawn: an approval is of the template, "
             f"never of its devices (scheme 3), so it stays approved; its recorded "
             f"evidence still names {hostname}, as history")
+    out["not_doing"] += [n for n in (mask.get("not_doing"), legacy.get("not_doing")) if n]
+    out["not_doing"] += _watchers(hostname, ip)
     out["not_doing"] += [
         "Oxidized keeps polling it: NMAS does not write router.db, so its "
         "config history continues",
@@ -234,7 +267,10 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
                     "it off by hand and save the golden first")
 
     out["ok"] = not out["refusals"]
+    if mask.get("advisory"):
+        out["advisories"].append(mask["advisory"])
     out["identity"], out["ip"], out["files"] = identity, ip, files
+    out["legacy_path"] = legacy.get("path", "")
     out["startup"], out["lab"] = startup, target.get("lab", "")
     out["breakglass_log"] = (breakglass_logged(list_name, row) if row is not None
                              else {"ok": True, "why": "", "export": None,
@@ -243,6 +279,133 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         "steps": out["steps"], "reason": reason, "files": {
             rel: _blob(os.path.join(repo, rel)) for rel in files},
         "row": bool(row), "identity": identity}).encode()).hexdigest()[:16]
+    return out
+
+
+def _mask_facts(nb: dict) -> dict:
+    """What retire does about the credentials NetBox holds in the device's
+    stored context (C139). A step only when NMAS may and can mask them;
+    otherwise a Not-Done line saying exactly why they stay."""
+    if not nb.get("exists"):
+        return {}
+    from modules.netbox_context_mask import assess_device
+
+    a = assess_device(nb["device"])
+    where = f"NetBox device {nb['id']}"
+    if a["holds"] is None:
+        return {"not_doing": f"{where}: whether it still holds a credential in its "
+                             f"stored config context could not be checked ({a['why']})"}
+    if a["holds"] is False:
+        return {"step": f"{where} holds no unmasked credential in its stored context: "
+                        "nothing to mask", "done": True,
+                "kept": "It holds no unmasked credential."}
+    if not a["may"]:
+        return {"not_doing": f"{where}'s stored config context is NOT masked: {a['why']}"}
+    if not nb.get("writes"):
+        text = (f"{where} still holds credentials in its stored config context "
+                f"({a['why'].split(';')[0].replace('NetBox holds ', '')}): NOT masked, because "
+                "NetBox writes are off here (netbox_allow_writes). Once this device leaves, "
+                "no import reaches it again (C139): turn writes on and preview again, or run "
+                f"scripts/nmas-netbox-mask-context --device {nb['device'].get('name')} --apply")
+        return {"not_doing": text, "advisory": text}
+    return {"step": (f"mask the credentials {where} still holds in its stored config "
+                     f"context ({a['why']}); written with the import's own masking and "
+                     "read back"), "done": False}
+
+
+def _legacy_facts(list_name: str, list_dir: str, hostname: str, ip: str) -> dict:
+    """The device's file in the deprecated `golden_configs/` store (C176):
+    deleted only when its content survives in the repository, and the step
+    says where; kept and named otherwise (an action that removes data says
+    whether the data survives)."""
+    from modules.nsot.repo import legacy_only_goldens
+
+    try:
+        entries = legacy_only_goldens(list_dir, set())
+    except Exception as exc:                   # noqa: BLE001
+        return {"not_doing": f"the deprecated golden_configs/ store could not be read ({exc})"}
+    entry = next((e for e in entries
+                  if (e.get("hostname") or "").lower() == hostname.lower()
+                  or (ip and e.get("device_ip") == ip)), None)
+    if entry is None:
+        return {"step": "no file in the deprecated golden_configs/ store", "done": True}
+    path = os.path.join(list_dir, "golden_configs", entry["file"])
+    from routes.golden import _legacy_survives        # one survival check (C176)
+
+    surv = _legacy_survives(list_name, hostname, path)
+    if surv["state"] == "survives":
+        return {"step": f"delete {path} from the deprecated golden_configs/ store: "
+                        + surv["words"], "done": False, "path": path}
+    return {"not_doing": (f"{path} in the deprecated golden_configs/ store is KEPT: "
+                          f"{surv['words']} Keep a copy before deleting it by hand."),
+            "path": ""}
+
+
+def _heartbeat_rules_path(hb) -> str:
+    """Where the generator writes its rules: on the host, never committed.
+    A seam, so a test reads a real rules document instead of the checkout's
+    (which has none)."""
+    return hb.OUT
+
+
+def _watchers(hostname: str, ip: str) -> list:
+    """What still watches the device after it leaves, that NMAS does not own.
+    Each line names what was READ and who removes it."""
+    out = []
+    try:
+        import importlib.machinery
+        import importlib.util
+
+        import yaml
+
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)))), "scripts", "nmas-heartbeat-rules")
+        loader = importlib.machinery.SourceFileLoader("nmas_heartbeat_rules", path)
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        hb = importlib.util.module_from_spec(spec)
+        loader.exec_module(hb)
+        rules_path = _heartbeat_rules_path(hb)
+        if not os.path.exists(rules_path):
+            out.append(f"its Grafana heartbeat rule: the generated rules file ({rules_path}) "
+                       "is not here, so whether one exists is unknown; regenerate the "
+                       "rules on the host after retiring")
+        else:
+            with open(rules_path, encoding="utf-8") as fh:
+                rules = hb.installed(yaml.safe_load(fh) or {})
+            if hostname in rules:
+                out.append(
+                    f"its Grafana heartbeat rule (window {rules[hostname][0]} s) stays until "
+                    "the rules are regenerated on the host (scripts/nmas-heartbeat-rules "
+                    "--datasource-uid <uid> --loki-url <url>): its committed intent leaves "
+                    "with this commit, so the next generation omits it, and the hourly "
+                    "--check names it EXTRA meanwhile")
+            else:
+                out.append("no Grafana heartbeat rule names it (the generated rules file "
+                           "was read)")
+    except Exception as exc:                   # noqa: BLE001
+        out.append(f"its Grafana heartbeat rule: the rules file could not be read ({exc})")
+    try:
+        from modules.integrations import get_integration
+
+        prom = get_integration("prometheus")
+        if prom is None or not prom.is_configured():
+            out.append(f"Prometheus is not configured here, so whether its hand-kept scrape "
+                       f"targets still poll {ip or hostname} is unknown (C168)")
+        else:
+            t = prom.targets_for(ip)
+            if not t["ok"]:
+                out.append(f"Prometheus could not be asked ({t['error']}): its hand-kept "
+                           f"scrape targets may still poll {ip} (C168)")
+            elif t["count"]:
+                out.append(f"Prometheus still scrapes {ip} ({t['count']} target(s), job "
+                           f"{', '.join(t['jobs'])}): its scrape targets are hand-kept on "
+                           "the host and NMAS does not write them (C168); remove them there "
+                           "(P.7 generates them from the inventory)")
+            else:
+                out.append(f"Prometheus scrapes nothing at {ip} (its active targets were "
+                           "read)")
+    except Exception as exc:                   # noqa: BLE001
+        out.append(f"Prometheus's scrape targets could not be checked ({exc})")
     return out
 
 
@@ -422,6 +585,30 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
                 "note": "run retire again: every step already done is skipped"}
 
     commit = ""
+    if "netbox_mask" in pending:
+        from modules.netbox_client import _nb_ready
+        from modules.netbox_context_mask import assess_device, checker_scan, mask_one
+        from modules.netbox_guard import for_list
+
+        try:
+            ok, err, session, base = _nb_ready()
+            if not ok:
+                raise RuntimeError(f"NetBox is not reachable: {err}")
+            nb = _netbox_facts(list_name, hostname)
+            a = assess_device(nb["device"]) if nb.get("exists") else {"holds": False}
+            if a["holds"]:
+                if not a["may"]:
+                    raise RuntimeError(a["why"])
+                with for_list(list_name, actor=actor,
+                              authority=(f"retire of {hostname}, confirmed by {actor} "
+                                         f"(plan {p['hash']})")):
+                    got = mask_one(session, base, a["item"], checker_scan())
+                if not got["ok"]:
+                    raise RuntimeError(got["why"])
+            done.append("netbox_mask")
+        except Exception as exc:               # noqa: BLE001
+            return fail("netbox_mask", exc)
+
     if "override" in pending:
         try:
             credentials.clear_device_override(p["ip"])
@@ -472,6 +659,15 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             R.git(repo, "checkout", "-q", "HEAD", "--", "host_vars", "golden",
                   ".nsot/manifest.json")
             return fail("commit", exc)
+
+    if "legacy" in pending:
+        try:
+            os.remove(p["legacy_path"])
+        except FileNotFoundError:
+            pass                               # already gone: the step's effect holds
+        except Exception as exc:               # noqa: BLE001
+            return fail("legacy", exc)
+        done.append("legacy")
 
     if "row" in pending:
         try:

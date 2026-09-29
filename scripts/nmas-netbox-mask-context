@@ -32,98 +32,26 @@ could not be read (nothing is known, so nothing is claimed).
 """
 
 import argparse
-import importlib.machinery
-import importlib.util
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-ENDPOINT = "dcim/devices"
+# The implementation lives in modules/netbox_context_mask.py, shared with
+# retire (7.3), which masks the device it releases. These names are kept so
+# the command and its tests read as before.
+from modules.netbox_context_mask import (describe as _describe,  # noqa: E402
+                                         plan, read_devices as _read_devices)
 
 
 def _checker():
-    """The secret-storage checker, loaded as a module: its NetBox scan is the
-    one whose pattern does not share a source with the redactor."""
-    path = os.path.join(ROOT, "scripts", "nmas-check-secret-storage")
-    loader = importlib.machinery.SourceFileLoader("nmas_check_secret_storage", path)
-    spec = importlib.util.spec_from_loader(loader.name, loader)
-    mod = importlib.util.module_from_spec(spec)
-    loader.exec_module(mod)
-    return mod
+    """The checker loaded as a module (kept for callers of the script)."""
+    from modules.netbox_context_mask import checker_scan
 
-
-def nmas_wrote_context(modified: dict, obj_id: int) -> str:
-    """When NMAS last recorded writing this device's `local_context_data`, in
-    any list's record, or ``""``. The record is keyed by list, and a retired
-    device's list may no longer claim it: the WRITE is what gives authority."""
-    last = ""
-    for _lst, per in (modified or {}).items():
-        if not isinstance(per, dict):
-            continue
-        for e in per.get(ENDPOINT) or []:
-            if (str(e.get("id")) == str(obj_id)
-                    and "local_context_data" in (e.get("fields") or {})):
-                last = max(last, e.get("at") or "")
-    return last
-
-
-def plan(devices: list, modified: dict, scan) -> tuple:
-    """``(todo, refused)`` from NetBox's devices and the modification record.
-    Pure, so it is tested against real shapes without a NetBox."""
-    todo, refused = [], []
-    flagged = {f["device"]: f for f in scan(devices)["findings"]}
-    for d in devices:
-        f = flagged.get(d.get("name") or d.get("id"))
-        if not f:
-            continue
-        lcd = d.get("local_context_data") or {}
-        wrote = nmas_wrote_context(modified, d["id"])
-        if not wrote:
-            refused.append((d, f, "NMAS has no record of writing this context, so it "
-                               "is somebody's data: named here, not changed"))
-            continue
-        if "<redacted" in (lcd.get("running_config") or ""):
-            refused.append((d, f, "its running config is partly masked already, and "
-                               "masking again would change masked lines too: "
-                               "re-import it through its list instead"))
-            continue
-        after = _masked(lcd)
-        todo.append({"device": d, "finding": f, "after": after, "wrote": wrote,
-                     "lines": _lines_changed(lcd.get("running_config") or "",
-                                             after.get("running_config") or "")})
-    return todo, refused
-
-
-def _masked(lcd: dict) -> dict:
-    from modules.netbox_client import masked_context
-
-    return masked_context(lcd)
-
-
-def _lines_changed(before: str, after: str) -> int:
-    b, a = before.splitlines(), after.splitlines()
-    return sum(1 for x, y in zip(b, a) if x != y) + abs(len(b) - len(a))
-
-
-def _read_devices(session, base, device: str = "") -> list:
-    url = f"{base}/api/{ENDPOINT}/"
-    params = {"limit": 200, **({"name": device} if device else {})}
-    out = []
-    while url:
-        r = session.get(url, params=params, timeout=30)
-        r.raise_for_status()
-        body = r.json()
-        out += body.get("results") or []
-        url, params = body.get("next"), None
-    return out
-
-
-def _describe(f: dict) -> str:
-    return (f"unmasked: {', '.join(f['slots']) or '-'}"
-            f"{' (the positional redactor also finds one)' if f['positional'] else ''}; "
-            f"structured communities with a value: {f['communities']}")
+    class _C:
+        scan_netbox_context = staticmethod(checker_scan())
+    return _C
 
 
 def main() -> int:
@@ -132,7 +60,7 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="write (default: dry run)")
     args = ap.parse_args()
 
-    from modules.netbox_client import _nb_patch, _nb_ready
+    from modules.netbox_client import _nb_ready
     from modules.netbox_guard import for_list, read_modified
 
     ok, err, session, base = _nb_ready()
@@ -178,31 +106,17 @@ def main() -> int:
 
     actor = f"{os.environ.get('USER') or 'unknown'} (nmas-netbox-mask-context)"
     failed = 0
+    from modules.netbox_context_mask import mask_one
+
     with for_list("", actor=actor,
                   authority=f"nmas-netbox-mask-context --apply, by {actor}"):
         for t in todo:
-            d = t["device"]
-            try:
-                _nb_patch(session, base, f"{ENDPOINT}/{d['id']}/",
-                          {"local_context_data": t["after"]})
-            except Exception as exc:          # noqa: BLE001
+            # Written, then read back with the checker's own scan: the PATCH
+            # answering 200 is evidence about the transport.
+            got = mask_one(session, base, t, scan)
+            if not got["ok"]:
                 failed += 1
-                print(f"  FAILED {d['name']}: {exc}")
-                continue
-            # Read what NetBox HOLDS now, with the checker's own scan: the
-            # PATCH answering 200 is evidence about the transport.
-            try:
-                back = _read_devices(session, base, d["name"])
-            except Exception as exc:          # noqa: BLE001
-                failed += 1
-                print(f"  {d['name']}: written, and the read-back failed ({exc}): UNPROVEN")
-                continue
-            left = scan(back)["findings"]
-            if left:
-                failed += 1
-                print(f"  {d['name']}: written, and NetBox STILL holds: {_describe(left[0])}")
-            else:
-                print(f"  {d['name']}: written; read back, NetBox holds no unmasked credential")
+            print(f"  {t['device']['name']}: {got['why']}")
     done = len(todo) - failed
     print(f"\n{done} masked and read back clean, {failed} not, {len(refused)} refused")
     return 1 if (failed or refused) else 0

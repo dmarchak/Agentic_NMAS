@@ -2052,10 +2052,14 @@ def retire_preview(plan: dict, *, busy: str, request) -> dict:
                                       "apply, and a different one refuses with nothing done."}]})
 
 
-RETIRE_STEP_WORDS = {"override": "cleared its credential override",
+RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its stored config "
+                                    "context, read back clean (C139)",
+                     "override": "cleared its credential override",
                      "declare": "declared its startup config deliberately unmapped",
                      "commit": "removed its intent and golden and released its identity, "
                                "in one commit",
+                     "legacy": "deleted its file from the deprecated golden_configs/ store, "
+                               "whose content survives in the repository (C176)",
                      "row": "deleted its CSV row, last"}
 
 
