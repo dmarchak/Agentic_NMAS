@@ -5283,6 +5283,23 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   would be committed and no baseline taken, drew both in sections above, and offered
   "Record 9 device(s)". The same standard as a box that cannot be ticked saying why beside
   it. "Nothing changed" must never be indistinguishable from "it worked".
+- **REFUSING BY RESEMBLANCE IS SAFE; ALLOWING BY RESEMBLANCE IS NOT** (the operator's
+  request to record it, 2026-09-28, as the general form of several decisions this week).
+  A line that merely LOOKS like one measured to be dangerous may be refused on the
+  resemblance; a line that looks like one measured to be safe may not be allowed on it.
+  `logging buffered` was measured to leave the device off its default, and
+  `logging console`, `no ip domain lookup` and `no cdp run` look like it, but some may be
+  the reverse case (the device already carries the non-default `no` form, and removing it
+  restores the default). So they stay unmeasured, and refused, until the platform is
+  asked. The same asymmetry as the read-only allowlist (C61) and "a pattern earns a
+  member by measurement": the cost of a wrong refusal is a question, and the cost of a
+  wrong allowance is configuration destroyed.
+- **A PROBE THAT CONTINUES PAST A FAILED RESTORE MEASURES ITS OWN DAMAGE** (the operator,
+  2026-09-28, on s4). Every later measurement is taken on a device already off its
+  starting state, with each repair building on the last. `nmas-removal-probe` stops at the
+  first shape that does not return the device to equivalence, and says so first. Its
+  first real run used that stop, and the stop is what turned C193 from a silent wrong
+  answer into a halt.
 - **A CONTROL NAMED FOR ITS OUTCOME MUST SAY WHAT WORK IT STILL DOES** (the operator,
   2026-09-28, C190). "Record the denial only" was read as "skip the capture", and nine SSH
   sessions followed, drawn on the in-flight panel as "is being captured": the process
