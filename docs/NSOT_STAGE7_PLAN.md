@@ -1663,6 +1663,39 @@ read through one function, and P.8 moves it without the reader changing.
   restore is additive, so a line added on the device (r2's `load-interval 30`, C70's
   residue) leaves only by a person on the console, or is adopted into intent; until one of
   those, every capture departs from intent and no baseline can be earned (C184).
+  **Costed 2026-09-28, not yet placed** (the operator asked what it costs and whether
+  it belongs in Stage 7: "the interface manages the network" is false while the only
+  way to remove a line is a console). Four places wait on it: r2's `load-interval 30`
+  (a leaf under an interface), C12's heartbeat block (a stanza plus logging leaves), C139's
+  old community (a global leaf in a secret position) and a restore's residue (anything).
+  - **What exists.** Residue is computed per section already (`classify_diff`,
+    `residue_in_context`). The tool already generates bounded `no` commands inside their
+    header chains, with a created stanza removed by one negation (`rollback_commands`,
+    `created_containers`, `assert_rollback_provenance`). The preview component, the
+    confirm hash, the device lock, the pipeline's snapshot, verify and receipts, and the
+    authorisation-with-a-reason mechanism all carry over.
+  - **Onboarding's verbatim removal is the principle, not most of the work.** It is one
+    rule (`no` plus the device's own line, never a rebuilt one) for one construct at the
+    top level, sent on a session outside the pipeline: no snapshot, no confirm hash, no
+    read-back that the line is gone, no rollback.
+  - **What is new.** (1) The negation per line, measured on real devices, not assumed:
+    `no <line>` for most; a `no` line inverts to its positive form; some things cannot be
+    removed at all (a physical interface is `default interface`; `hostname`, a `line`
+    stanza). (2) Refusal classes: the management path (the repair path travels over the
+    thing being changed), the tool's own account, and a named object something else
+    references (an ACL, a route-map, a VRF, whose removal strips its interfaces'
+    addresses). A conservative first version refuses any name used elsewhere in the
+    running config. (3) Rollback of a removal re-adds the verbatim lines from the
+    pre-change snapshot, under its own provenance rule. (4) Verify reads back that each
+    removed line is gone. (5) The preview selects removals line by line, each with a
+    stated reason, never "converge to intent" automatically.
+  - **Estimate.** About three days to build (the computation and its safety classes, a day
+    and a half; the pipeline, rollback and read-back, a day; the preview, half a day),
+    then the first real run's findings. The branch site, the first deploy, found ten
+    defects on one path, and 7.1 tripled its estimate. So plan on about a week, and
+    treat the three days as the part that goes to plan. Its acceptance is r2: the tool
+    removes `load-interval 30`, verify reads it gone, and the next Save All earns the
+    baseline.
 - **The agent's triage-and-propose UI** (Stage 8): its reports attach to
   Needs attention rows, and its proposals arrive as ordinary plans in the
   preview-confirm component. Stage 7 leaves the place for them.
