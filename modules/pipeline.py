@@ -226,6 +226,12 @@ class PipelineContext:
     #: Sleep function used by the verify settle windows. Tests pass a no-op;
     #: a caller could pass one that shortens the wait. Defaults to real sleep.
     settle_sleep:        Any = None
+    #: The clock the BGP hold watch measures with (C178). Tests pass one that
+    #: advances when `settle_sleep` sleeps; defaults to `time.monotonic`.
+    settle_clock:        Any = None
+    #: ip -> when its push FINISHED, on `settle_clock` (C178): a BGP reading
+    #: counts only once the hold time has passed since this moment.
+    pushed_at:           dict = field(default_factory=dict)
     #: ip -> the routing protocols the TARGET intent declares (a deploy's
     #: committed intent, a restore's intent at the ref), or ``None`` when no
     #: intent is known. Carried by the caller, never derived: verify read
@@ -785,6 +791,7 @@ def _stage_deploy(ctx: PipelineContext) -> None:
 
         try:
             output = _push_config(dev, cmds, ctx.connections_pool, ctx.pool_lock)
+            ctx.pushed_at[ip] = (ctx.settle_clock or time.monotonic)()
             ctx.push_results[ip] = {"ok": True, "output": output[:500]}
             log.info("pipeline[6/deploy]: %s%s pushed — %d command(s)",
                      "(canary) " if is_canary else "", hostname, len(cmds))
@@ -1055,6 +1062,60 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
             "snapshot": latest["snapshot"]}
 
 
+def _watch_bgp_hold(ctx, ip: str, baseline: int, config: str) -> dict:
+    """Read BGP once more, no earlier than the hold time after the push
+    (C178). ``{"state", "hold_s", "basis", "watched_s", "before", "after",
+    "issue"?}``: ``converged`` when the established count held, ``failed``
+    (with the issue verify records) when it fell or could not be read,
+    ``skipped`` when the configuration names no BGP neighbor."""
+    from modules.connection import get_persistent_connection
+    from modules.nsot.convergence import bgp_hold_times
+
+    holds = bgp_hold_times(config)
+    if not holds["peers"]:
+        return {"state": _SKIPPED, "why": holds["basis"]}
+    clock = ctx.settle_clock or time.monotonic
+    pushed = ctx.pushed_at.get(ip)
+    since = "the push"
+    if pushed is None:
+        # Nothing records when this device's push ended: count the whole hold
+        # time from now, which can only wait longer, never shorter.
+        pushed, since = clock(), "this check (no push time was recorded)"
+    hold = holds["max"]
+    remaining = pushed + hold - clock()
+    if remaining > 0:
+        (ctx.settle_sleep or time.sleep)(remaining)
+    out = {"hold_s": hold, "basis": holds["basis"], "since": since,
+           "peers": {n: p["hold"] for n, p in holds["peers"].items()},
+           "before": baseline}
+    dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
+    try:
+        if dev is None:
+            raise RuntimeError("the device is not in this run")
+        conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+        after = _protocol_counts(_detect_routing_neighbors(conn)).get("bgp", -1)
+    except Exception as exc:                  # noqa: BLE001
+        after, why = -1, f"{type(exc).__name__}: {exc}"
+    else:
+        why = "BGP was not in the read" if after < 0 else ""
+    out["watched_s"] = round(clock() - pushed)
+    out["after"] = after
+    if after < 0:
+        out["state"] = _FAILED
+        out["issue"] = (f"bgp not re-read after its {hold} s hold time ({why}): whether "
+                        "the sessions survived to hold expiry is unknown")
+    elif after < baseline:
+        out["state"] = _FAILED
+        out["issue"] = (f"bgp established {baseline} -> {after} when read {out['watched_s']} s "
+                        f"after {since}, past the {hold} s hold time ({holds['basis']}): a "
+                        "session did not survive to its hold expiry")
+    else:
+        out["state"] = _CONVERGED
+    log.info("pipeline[8/verify]: %s bgp watched %s s after %s (hold %s s, %s): %s -> %s",
+             ip, out["watched_s"], since, hold, holds["basis"], baseline, after)
+    return out
+
+
 def _read_route_total(conn) -> int:
     """The route count verify compares (C66: networks plus subnets)."""
     from modules.commands import run_device_command
@@ -1227,6 +1288,21 @@ def _stage_verify(ctx: PipelineContext) -> None:
                 unmet.append(f"{proto} is declared by intent and is not up after the "
                              f"change ({why}); it was not up before it either")
 
+        # ── BGP, watched to its hold time (C178) ─────────────────────────
+        # A session a change broke without resetting TCP reads Established
+        # until its hold timer expires, so a reading before then could not
+        # have shown the break. The counts above can pass at the FIRST read,
+        # or at once, so BGP gets one more read no earlier than the hold time
+        # after the push, and a session gone by then fails verify.
+        bgp_failed = any(i.startswith("bgp ") for i in issues) or any(
+            u.startswith("bgp ") for u in unmet)
+        if "bgp" in checked and not bgp_failed:
+            baseline = pre_counts.get("bgp", 0) or (1 if "bgp" in from_intent else 0)
+            watch = _watch_bgp_hold(ctx, ip, baseline, post.get("running_config") or "")
+            record["bgp_watch"] = watch
+            if watch.get("issue"):
+                issues.append(watch["issue"])
+
         if not checked:
             # No routing protocol detected at all. Record it explicitly so a
             # device that checked nothing cannot look the same as one that
@@ -1298,6 +1374,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
             "ok":     not issues and not unmet,
             # The removals read back, by name (Mode B).
             "removals_checked": len(removed),
+            # How long BGP was watched after the push, against which hold
+            # time and on what basis (C178); absent when BGP was not checked.
+            "bgp_watch": record.get("bgp_watch"),
             "removals_left": [u["line"].strip() for u in removals_left],
             "issues": issues,
             # Declared by intent and not up: verify did not pass, and nothing

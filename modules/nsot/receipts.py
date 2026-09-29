@@ -100,6 +100,9 @@ def _checks(result: dict) -> dict:
         # Mode B: how many removed lines verify read back GONE. It was read and
         # not recorded, so r2's first removal receipt could not show it.
         "removals_checked": verify.get("removals_checked") or 0,
+        # C178: BGP read once more no earlier than its hold time after the
+        # push, with the hold time's basis; absent when BGP was not checked.
+        "bgp_watch": verify.get("bgp_watch"),
     }
     if not protocols:
         checks["neighbours_note"] = ("no routing protocol on this device: the "

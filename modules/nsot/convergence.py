@@ -127,6 +127,76 @@ def wait_for(check: str, probe, is_converged, sleep=time.sleep,
             "observation": observation, "window": timing, "error": last_error}
 
 
+#: IOS's BGP hold time when nothing configures one (keepalive 60, hold 180).
+IOS_BGP_DEFAULT_HOLD = 180
+
+
+def bgp_hold_times(config: str) -> dict:
+    """``{"peers": {neighbor: {"hold", "basis"}}, "max", "basis"}`` from a
+    running config: each BGP neighbor's CONFIGURED hold time (C178).
+
+    Why a hold time matters: IOS keeps a session up until its hold timer
+    expires, so a change that breaks BGP without resetting the TCP session at
+    once (a filter on TCP 179, a lost route to a multihop peer) reads
+    Established for up to the hold time. A reading taken before that could
+    not have shown the failure, and is not evidence that there was none.
+
+    Precedence, as IOS applies it: ``neighbor X timers K H``, then the
+    neighbor's peer-group's, then ``timers bgp K H`` for the process, then
+    IOS's default. The NEGOTIATED hold time is the lower of both sides', and
+    this reads only ours, so it is an UPPER BOUND: waiting it out is
+    conservative, never short. Each peer names which basis applied."""
+    import re as _re
+
+    in_bgp, neighbors, groups, member_of = False, set(), {}, {}
+    per_nbr, process = {}, None
+    for raw in (config or "").splitlines():
+        if not raw.strip() or raw.strip() == "!":
+            continue
+        if not raw.startswith(" "):
+            in_bgp = raw.startswith("router bgp ")
+            continue
+        if not in_bgp:
+            continue
+        line = raw.strip()
+        m = _re.match(r"timers bgp \d+ (\d+)", line)
+        if m:
+            process = int(m.group(1))
+            continue
+        m = _re.match(r"neighbor (\S+) (.*)$", line)
+        if not m:
+            continue
+        nbr, rest = m.group(1), m.group(2)
+        if rest == "peer-group":
+            groups.setdefault(nbr, None)
+            continue
+        t = _re.match(r"timers \d+ (\d+)", rest)
+        if t:
+            per_nbr[nbr] = int(t.group(1))
+            continue
+        g = _re.match(r"peer-group (\S+)$", rest)
+        if g:
+            member_of[nbr] = g.group(1)
+        if rest.startswith("remote-as ") or g:
+            neighbors.add(nbr)
+    peers = {}
+    for nbr in sorted(neighbors - set(groups)):
+        group = member_of.get(nbr)
+        if nbr in per_nbr:
+            peers[nbr] = {"hold": per_nbr[nbr], "basis": f"neighbor {nbr} timers"}
+        elif group and group in per_nbr:
+            peers[nbr] = {"hold": per_nbr[group], "basis": f"peer-group {group} timers"}
+        elif process is not None:
+            peers[nbr] = {"hold": process, "basis": "timers bgp"}
+        else:
+            peers[nbr] = {"hold": IOS_BGP_DEFAULT_HOLD,
+                          "basis": f"IOS default {IOS_BGP_DEFAULT_HOLD} s (no timers configured)"}
+    if not peers:
+        return {"peers": {}, "max": 0, "basis": "no BGP neighbor in the configuration"}
+    top = max(peers.values(), key=lambda p: p["hold"])
+    return {"peers": peers, "max": top["hold"], "basis": top["basis"]}
+
+
 def classify(pre_count: int, post_count: int, settled: bool) -> str:
     """Turn a neighbour-count comparison into a verification state.
 

@@ -496,6 +496,13 @@
         // Mode B: each removed line read back GONE by verify.
         + (c.removals_checked ? '<div data-pr-removals>removals read back gone: '
            + esc(String(c.removals_checked)) + '</div>' : '')
+        // C178: BGP read no earlier than its hold time after the push.
+        + (c.bgp_watch && c.bgp_watch.state && c.bgp_watch.state !== 'skipped'
+           ? '<div data-pr-bgp-watch="' + esc(c.bgp_watch.state) + '">bgp read '
+             + esc(String(c.bgp_watch.watched_s)) + ' s after ' + esc(c.bgp_watch.since || 'the push')
+             + ' (hold ' + esc(String(c.bgp_watch.hold_s)) + ' s, ' + esc(c.bgp_watch.basis || '')
+             + '): ' + esc(String(c.bgp_watch.before)) + ' &rarr; ' + esc(String(c.bgp_watch.after))
+             + '</div>' : '')
         + '</div>'
         + (c.issues || []).map(function (i) {
             return '<div class="small text-danger">' + esc(i) + '</div>';
