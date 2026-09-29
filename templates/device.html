@@ -81,6 +81,13 @@
             title="Commit this device's first full intent, parsed from its committed golden: see the document and what the template cannot reproduce, then confirm. Nothing is sent to the device">
       Seed intent
     </button>
+    <!-- Persist (7.3, C164): save to startup and read it back, previewed and confirmed -->
+    <button type="button" class="btn btn-outline-primary"
+            data-hostname="{{ device['hostname'] }}"
+            onclick="openPersist(this.dataset.hostname)"
+            title="Save the running config to startup and read it back: persisted only if the startup config carries the credential the device runs with. See each step and what persist does NOT do, then confirm">
+      Persist…
+    </button>
     <!-- Retire (7.3, C11): the whole exit, previewed and confirmed; never a delete -->
     <button type="button" class="btn btn-outline-danger"
             data-hostname="{{ device['hostname'] }}"

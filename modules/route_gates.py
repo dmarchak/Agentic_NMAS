@@ -91,6 +91,7 @@ GATES = {
     "delete_file": _g(C, "deletes a file from a device's flash"),
     "save_config": _g(C, "runs write memory: changes the device's startup config"),
     "save_to_startup": _g(C, "copies running to startup: changes what the device boots"),
+    "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
     "ai_chat": _g(C, "the assistant holds tools that push config until P.3 step 8 removes them"),
     "ai_agent_run": _g(C, "runs the background agent, which holds device tools until P.3 step 8"),
 
@@ -178,6 +179,7 @@ GATES = {
     "templatize.bulk_preview": _g(N, "computes a preview; writes nothing"),
     "templatize.preview_committed_edit": _g(N, "renders an edit; writes nothing"),
     "retire.preview": _g(N, "computes the retire plan and reads the export log; writes nothing"),
+    "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
     "templatize.seed_preview": _g(N, "parses committed goldens from git; writes nothing"),
     "templatize.report": _g(N, "reads goldens; opens no session and writes nothing"),
     "templates.preview": _g(N, "renders; writes nothing"),

@@ -837,6 +837,19 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
   sessions, NMAS's own pool, and its remedy is an operation that is stuck, which C98
   names and by design never forces; the rest are host or Proxmox state, whose action
   is the host command (C164's restated promise).
+  **BUILT 2026-09-29, awaiting a real run on the host.** The Device page's Persist…
+  opens a preview that contacts no device: each step (save, read back, record), what
+  persist does NOT do (no running change, no rotation, no lab boot file or router.db,
+  no golden), the inventory gates by name, the busy gate, the hourly startup check's
+  last reading with its age, and a confirm whose effect says the save carries the
+  running config AS IT IS, a change not in intent included. The apply recomputes the
+  plan (a different hash refuses with nothing sent), holds the device, saves through
+  `onboard.persist_on_device` (the one save implementation, C53), records as the
+  verified person (`via: device page`), and the result leads with what the read-back
+  found (`tests/test_persist_screen.py`, two controls fired). **Acceptance, awaiting
+  the operator**: one persist on a real device from its page, read back SAFE, and the
+  device's rotation row on Needs attention clearing. The Device page still offers the
+  save two other ways, neither verified; C103 recommends Persist as the one.
 - **The terminal is REMOVED, not split** (the operator, the same day, superseding "the split stays in 7.3"; NSOT_FEATURE_AUDIT 3b): a source of truth has no pane that goes to the device directly, and even read-only the affordance teaches the wrong habit. 7.3 loses the split, the FIRST reduction in scope found on 2026-09-27; 7.8 removes the terminal with its routes, socket events, session code and tab; 7.3's command box absorbs history, rendering, a running state for long reads and completion built from the allowlist. The `break_glass` gate kind retires with it.
 - **7.10 is opened for what defers cleanly** (moved, not cut): Stage 5's in-app monitoring views (Grafana is their home meanwhile, by a link), adopt (A3, which C100 now also blocks), the 900-device list and selection screens (the architecture rule, no per-device work per request, stays in force), switching a network's inventory source, with 7.9's Configure forms already a parallel track and 7.8's removals last as before.
 - **7.5 gains two blocking items** (C70's final step could not be completed in the interface): the commit detail view shows the TRAILERS (Source, Actor, Actor-Verified, Intent-Match), which with D10's attribution are the answer to "who changed it and can I trust that", and it lands with the planned "N of M commits carry a verified identity" line, which cannot be drawn from a screen that reads no trailers; and C83, every golden subject saying what happened (captured, restored, re-applied), with "baseline" only when a tag was taken. Measured in the list itself: `ed6548e golden: baseline 1 device(s) re-apply …` took NO baseline, two rows below `e63b2e6 golden: baseline 1 device(s) via save_all`, which DID, of the deliberately broken r2. Same words, opposite truth, adjacent rows.

@@ -191,6 +191,7 @@ DECLARED = {
     "run_command": ("device_state",),
     "save_config": ("device_state",),
     "save_to_startup": ("device_state",),
+    "persist.apply": ("device_state",),
     "bulk_execute": ("device_state",),
     "bulk_reload": ("device_state", "inventory"),
     "backup_config": ("backups",),
@@ -227,6 +228,8 @@ DECLARED = {
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
+    "persist.preview": Nothing("computes the persist plan from the inventory and the "
+                               "startup check's record; contacts no device and writes nothing"),
     "retire.preview": Nothing("computes the retire plan from the repository, the CSV, the credential store, the settings and the export log; writes nothing"),
     "templatize.seed_preview": Nothing("parses committed goldens from git and computes the "
                                        "intent a seed would commit; writes nothing"),

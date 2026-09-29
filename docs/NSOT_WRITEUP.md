@@ -77,7 +77,7 @@ close are marked *written at close*.
 | P-items | P.1 to P.6 | Backfilled below |
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open. Closed sub-tasks written below (seed intent, retire, Mode B, C188) |
+| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist); retire and persist await their real runs |
 | | 7.4 to 7.10 | Not started |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
@@ -2417,6 +2417,17 @@ The landing page drew every section 1a source from stored or cached values, each
    - **The writes-off decision (the operator, 2026-09-29 morning): neither option as written.** Reads work with writes off, so the preview checks the device's NetBox context; a credential held there REFUSES the retirement, naming it (C139 recurring), and a context with nothing to mask proceeds and says so.
    - **A record of a wrong summary**: the morning's summary told the operator to do four r5 leftovers, and three were already done (the legacy file deleted two days earlier, NetBox masked when C95 closed, no r5 in the heartbeat rules). The retire flow READS each of those before naming it; the summary did not. Only the Prometheus scrape target remained.
 6. **Where it left the product.** A device can leave management from the interface, and the screen says what its break-glass check did and did not establish.
+
+#### 7.3 — Persist from the Device page (C164)
+
+*Open: built 2026-09-29, AWAITING a real run on the host. Its numbers are partial.*
+
+1. **What it was.** The remedy the worst Needs attention rows name (`not_safe_to_reboot`: the running config holds the only working credential) existed only as `nmas-persist-native` on the host. The operator put PERSIST in 7.3's Device actions (2026-09-28), the first action added because a row asked for it [NSOT_STAGE7_PLAN.md "7.3 gains PERSIST"; OPEN_FINDINGS C164].
+2. **How it was implemented.** `modules/nsot/persist_op.py` plans (reading only the registry, the inventory and the hourly startup check's record) and applies: it recomputes the plan against the confirmed hash, holds the device (C98, C101), saves and reads back through `onboard.persist_on_device` (the one save implementation, so no new one), and records as the verified person where job health's rotation row reads it. `routes/persist.py` and `static/js/nmas_persist.js` give it the preview-confirm-result treatment retire has; the rotation and startup rows' actions now name Persist… beside the host command [git: this commit].
+3. **Issues encountered.** The Device page now offers the save three ways: Save Device Config and Save to Startup, neither verified nor recorded, and Persist (C103, which already placed "the one save" in 7.3).
+4. **How they were resolved.** C103 recommends Persist as the one save; removing the other two is the operator's decision, recorded in the row.
+5. **Numbers.** One commit so far [git]; 13 tests, two controls fired (the hold removed, the hash check removed) [tests/test_persist_screen.py]. Not recoverable: an estimate (none was written). Not yet run on the host.
+6. **Where it left the product.** A device whose boot copy lags its running credential can be persisted from its own page, with what was read back said.
 
 #### 7.3 step 2 — Mode B: removing a line the device has and intent lacks
 

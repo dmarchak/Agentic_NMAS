@@ -2144,3 +2144,140 @@ def retire_result(result: dict, plan: dict) -> dict:
         not_watched=(f"Nothing in NMAS watches {name} after this: no drift check, capture or "
                      "deploy. Oxidized still polls it, and NetBox still records it."),
         titles=RETIRE_RESULT_TITLES)
+
+
+# ---------------------------------------------------------------------------
+# Persist (7.3, C164): save the running config on the device and read the
+# startup config back, from the Device page. `modules/nsot/persist_op.py`.
+# ---------------------------------------------------------------------------
+
+PERSIST_TITLES = {"program": "What persist does, in order",
+                  "what_not": "What persist does NOT do",
+                  "what": "What will be persisted"}
+PERSIST_RESULT_TITLES = {"sent": "What was sent to the device",
+                         "checks": "The startup config, read back",
+                         "happened": "What was persisted", "did_not": "What persist did NOT do"}
+
+PERSIST_CHECK_WORDS = {
+    "persisted": "the last hourly check read it persisted",
+    "not_persisted": "the last hourly check read it NOT persisted",
+    "unknown": "the last hourly check could not tell",
+    "never": "not checked",
+    "unreadable": "the check's record could not be read",
+}
+
+
+def _persist_check_words(c: dict) -> str:
+    import time as _time
+
+    words = PERSIST_CHECK_WORDS.get(c.get("state"), c.get("state") or "not checked")
+    at = c.get("at")
+    age = (f", {int((_time.time() - at) // 60)} min ago" if isinstance(at, (int, float))
+           and c.get("state") not in ("never", "unreadable") else "")
+    return words + age + (f": {c['detail']}" if c.get("detail") else "")
+
+
+def persist_preview(plan: dict, *, busy: str, request) -> dict:
+    """*plan*: `persist_op.plan()`'s. One target, the device."""
+    from modules.nsot.persist_op import GATES
+
+    name = plan.get("hostname") or "?"
+    refused = plan.get("refused_by") or {}
+    gates = [gate(title, "fail" if key in refused else "pass", refused.get(key) or ok_detail)
+             for key, title, ok_detail in GATES]
+    gates.append(busy_gate({"busy": busy}))
+    gates.append(gate("the device answers and the save reads back", "at_apply",
+                      "the preview does not contact the device; the apply connects, saves, "
+                      "and reads the startup config back, and says what it found"))
+    gates.append(gate("plan unchanged since this preview", "at_apply",
+                      "the plan is computed again at apply, and a different hash refuses "
+                      "with nothing sent"))
+    selectable = bool(plan.get("ok")) and not busy
+    what_not = [{"target": name, "kind": "not_doing", "text": n, "lines": []}
+                for n in plan.get("not_doing") or []]
+    target = {
+        "name": name,
+        "state": "persistable" if selectable else "refused",
+        "selectable": selectable,
+        "select_data": {"hash": plan.get("hash") or "", "list": plan.get("list_name") or ""},
+        "program": {"lines": [s["what"] for s in plan.get("steps") or []],
+                    "caption": ("Sent to the device: its own save. Read from it: the startup "
+                                "config and the running config's `username` lines"),
+                    "none": "Nothing to do: " + "; ".join(plan.get("refusals") or ["no steps"])},
+        "operands": [
+            {"name": "list", "value": plan.get("list_name") or "?"},
+            {"name": "management address", "value": plan.get("ip") or "none recorded"},
+            {"name": "driver", "value": plan.get("device_type") or "none recorded"},
+            {"name": "account", "value": plan.get("username") or "?"},
+            {"name": "startup config, last checked",
+             "value": _persist_check_words(plan.get("last_check") or {})},
+            {"name": "plan hash", "value": plan.get("hash") or "none"}],
+        "gates": gates,
+    }
+    confirm = confirm_part(request, "confirm")
+    if selectable:
+        confirm["effect"] = (
+            f"Saving copies {name}'s running config to its startup config AS IT IS: what the "
+            "device boots next is whatever it runs now, including any change not in its "
+            "committed intent. It is persisted only if the read-back carries every "
+            "`username` line the running config holds.")
+        confirm["button"] = f"Save and read back {name}"
+    return build(
+        action="persist",
+        summary=(f"Persist {name}: save its running config to startup, then read it back "
+                 "and check it carries the credential the device runs with."),
+        targets=[target], what_not=what_not,
+        nothing_left_out="Nothing: persist states what it does not do on every run.",
+        confirm=confirm, titles=PERSIST_TITLES,
+        explain={"confirm": [{"concept": "confirm-by-hash",
+                              "text": "You are confirming this plan. It is computed again at "
+                                      "apply, and a different one refuses with nothing sent."}]})
+
+
+def persist_result(result: dict, plan: dict, actor: str = "") -> dict:
+    """*result*: `persist_op.apply()`'s; *plan*: the plan it ran."""
+    name = (plan or {}).get("hostname") or "?"
+    state = result.get("state") or "unknown"
+    detail = result.get("detail") or "no reason was recorded"
+    sent = state != "refused"
+    if state == "persisted":
+        level, words = "success", "persisted"
+        summary = (f"{name} is persisted: its startup config carries every `username` line "
+                   "its running config holds, so a reload boots the credential the tool holds.")
+    elif state == "not_persisted":
+        level, words = "failed", "saved, NOT persisted"
+        summary = (f"{name} was saved and the read-back does NOT match: {detail}. A reload "
+                   "would boot a credential the tool may not hold. Preview and run it again; "
+                   f"if it repeats, `nmas-persist-native {name}` on the host shows the "
+                   "device's answer.")
+    elif state == "refused":
+        level, words = "failed", "refused: nothing was sent"
+        summary = f"{name} was not persisted: {detail}"
+    else:
+        level, words = "failed", "could not be established"
+        summary = (f"Whether {name} is persisted could not be established: {detail}. "
+                   "Nothing about its startup config is known from this run.")
+    did_not = [{"target": name, "kind": "not_doing", "text": n, "lines": []}
+               for n in (plan or {}).get("not_doing") or []]
+    return build_result(
+        action="persist", level=level, summary=summary,
+        targets=[{"name": name, "outcome": state, "words": words,
+                  "reason": "" if state == "persisted" else detail,
+                  "sent": {"lines": ["write memory (the device's own save)"] if sent else [],
+                           "caption": "Sent to the device",
+                           "none": "Nothing was sent."},
+                  "checks": ({"ran": True, "ok": state == "persisted",
+                              "statements": [detail], "issues": []}
+                             if state in ("persisted", "not_persisted") else
+                             {"ran": False, "why": detail})}],
+        did_not=did_not,
+        nothing_left_out="Nothing: persist states what it does not do on every run.",
+        record={"commit": "", "tags": [], "baseline": "",
+                "statement": ((f"A persist record (via the Device page, as {actor or 'you'}) "
+                               "is written where job health's rotation row reads it; the row "
+                               "clears only on a read-back that matched.")
+                              if sent else "Nothing was recorded: nothing was sent.")},
+        not_watched=(f"Nothing re-reads {name}'s startup config until the hourly startup "
+                     "check runs; the running config can change again after this, and that "
+                     "check is what notices."),
+        titles=PERSIST_RESULT_TITLES)

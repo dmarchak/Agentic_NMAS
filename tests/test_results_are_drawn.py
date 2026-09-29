@@ -69,6 +69,9 @@ RESULT_COMPONENT = {
     # history still reads back by name after the golden is gone (C185: no
     # page links a RETIRED device's history yet).
     "retire.apply": ("static/js/nmas_retire.js", "runApply", "golden.history"),
+    # Persist (7.3, C164): its record is the rotation record job health's
+    # `rotation:<device>` row reads, served by the job-health route.
+    "persist.apply": ("static/js/nmas_persist.js", "runApply", "jobs.jobs_health"),
     "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed",
                               "templatize.read_committed"),
     # Onboarding's Create (C86): phase 1, drawn as pending; the record read

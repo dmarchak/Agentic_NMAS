@@ -739,7 +739,8 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
                           f"credential: its running config holds the only working one. Do "
                           f"not reload it; run nmas-persist-native {device} --list <list>")
             act = {"label": "Persist the running credential on the device before anything "
-                            "reloads it (the record names no list: use the device's own)",
+                            "reloads it: Persist… on its Device page, or on the host (the "
+                            "record names no list: use the device's own)",
                    "command": f"nmas-persist-native {device} --list <its list>"}
         elif state == cr.ROTATED_UNVERIFIED:
             st, detail = ("not_safe_to_reboot",
@@ -918,7 +919,8 @@ def startup_rows(read=None, now: float = None) -> list:
         rows.append({"unit": f"startup:{d.get('list')}/{d.get('device')}", "what": what,
                      "device": d.get("device"), "list": d.get("list"), "state": state,
                      **({"action": {"label": "Persist the running credential on the device "
-                                             "before anything reloads it",
+                                             "before anything reloads it: Persist… on its "
+                                             "Device page, or on the host",
                                     "command": f"nmas-persist-native {d.get('device')} "
                                                f"--list {d.get('list')}"}}
                         if state == "not_safe_to_reboot" else {}), "max_age_minutes": 0,

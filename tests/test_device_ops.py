@@ -240,7 +240,8 @@ class TestEveryChangingPathHoldsIt:
 HOLDERS = {
     "routes/deploy.py": ("apply", "run_targets"),
     "routes/golden.py": ("capture_apply",),
-    "modules/nsot/credential_rotation.py": ("rotate",),
+    "modules/nsot/credential_rotation.py": ("rotate", "persist"),
+    "modules/nsot/persist_op.py": ("apply",),
     "modules/nsot/onboard.py": ("_holds_the_device",),
     "modules/nsot/retire.py": ("_holds_the_device",),
     "scripts/nmas-persist-native": ("run",),

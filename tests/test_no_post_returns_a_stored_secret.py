@@ -113,6 +113,9 @@ def _bodies(v):
         "retire.preview": (200, ("json", {"list_name": LIST, "device": "r1",
                                           "reason": "leaving management"}),
                            "r1's retire plan: its steps, the credential gate, the export log"),
+        "persist.preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
+                            "r1's persist plan: its steps, the inventory gates and the "
+                            "startup check's last reading; no device contacted"),
         "templatize.seed_preview": (200, ("json", {"list_name": LIST, "devices": ["r1"]}),
                                     "r1's committed golden parsed into the intent a seed "
                                     "would commit (r1 already seeded: shown, not selectable)"),
