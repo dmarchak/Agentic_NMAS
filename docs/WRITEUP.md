@@ -1,7 +1,7 @@
 # Agentic NMAS — Network Source of Truth
 
 **CSCI 5840 — Labs 4 & 5, Part 1**
-Dustin Marchak
+[Author]
 
 A Flask application that manages a nine-device Cisco lab (five IOS-XE routers,
 four vIOS-L2 switches) as a **Network Source of Truth**: intent is committed to
@@ -36,7 +36,7 @@ is a real repository per device list: `golden/<device>.cfg`, `host_vars/`,
 
 [SCREENSHOT: the Remote card on the Golden tab — verified private remote, the history-scan acknowledgement, auto-push enabled]
 
-**What the history contains.** The first push to `dmarchak/rcn-nsot-config` was
+**What the history contains.** The first push to `<repo>` was
 61 commits and 33 tags. The scan found only dead credentials plus nine
 read-only, ACL-restricted SNMP communities, each acknowledged explicitly before
 publishing. Golden configs are stored **verbatim** and masked on the way *out*
@@ -282,7 +282,7 @@ interaction. The other platform booted identical content without complaint,
 because it loads its startup config as a file. **One platform can never reveal
 the property.**
 
-The rule is not "ASCII where we push". It is: **anything that reaches a CLI is
+The rule is not "ASCII where the tool pushes". It is: **anything that reaches a CLI is
 printable ASCII — comments included.**
 
 ---

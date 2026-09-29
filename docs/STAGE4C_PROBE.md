@@ -99,7 +99,7 @@ misattribute the next thing that resembles it.*
 **Ask the origin first. One command, and it partitions the space:**
 
 ```bash
-curl -s http://10.0.0.211:5000/ | grep -c '<helperNameOrMarkup>'
+curl -s http://<nmas-host>:5000/ | grep -c '<helperNameOrMarkup>'
 ```
 
 * **≥1** — the origin is current; the staleness is the edge. Add `?x=1` or
@@ -156,7 +156,7 @@ mistake gets caught.
 * Three NetBox scaffolding objects — region, site, VRF, all named after the
   list — created by the phase-1 import that could never have created the
   device. They are in the created-object record and are **step 12's** job.
-* Census baseline: `/home/dmarchak/nmas-probe-before.json`.
+* Census baseline: `<home>/nmas-probe-before.json`.
 
 ### The state the design did not intend to exist
 
@@ -199,7 +199,7 @@ teaching abandon a case that is about to stop existing.
 the whole teardown's acceptance.**
 
 Not a caution — the claim. The census baseline at
-`/home/dmarchak/nmas-probe-before.json` is what proves Remove cleaned up
+`<home>/nmas-probe-before.json` is what proves Remove cleaned up
 exactly what it created, by identity, and **a deleted list takes the
 created-object record with it** (the record is keyed on the list slug).
 
@@ -257,7 +257,7 @@ were exactly that.
 taken first.**
 
 ```bash
-python scripts/nmas-netbox-census --out /home/dmarchak/nmas-probe-before.json
+python scripts/nmas-netbox-census --out <home>/nmas-probe-before.json
 ```
 
 **Write that path down. Step 12 compares against it and nothing else can.**
@@ -277,7 +277,7 @@ the probe's central claim, unmeasured, on the run that otherwise passed.
 **Do not proceed until the file exists:**
 
 ```bash
-test -s /home/dmarchak/nmas-probe-before.json && echo "baseline present" \
+test -s <home>/nmas-probe-before.json && echo "baseline present" \
   || echo "STOP — no baseline; step 12 cannot be evaluated"
 ```
 
@@ -365,7 +365,7 @@ there.
 Confirm the file is still where you wrote it down:
 
 ```bash
-test -s /home/dmarchak/nmas-probe-before.json && echo "baseline present" \
+test -s <home>/nmas-probe-before.json && echo "baseline present" \
   || echo "STOP — no baseline; step 12 cannot be evaluated"
 ```
 
@@ -745,7 +745,7 @@ grep -i 'snmp-server community' data/lists/nmas_probe/config_repo/golden/*.cfg
 ```
 
 **Proves:** no `RW` community remains. vrnetlab nodes arrive with a
-read-**write** `public`, removed during onboarding rather than after.
+read-**write** `<redacted>`, removed during onboarding rather than after.
 **If an RO community is present:** that is correct and expected — only RW is
 removed, and over-broadening is the version that costs you monitoring.
 
@@ -778,7 +778,7 @@ docker ps -a | grep onboard-c || echo "gone"
 > nobody can evaluate is this probe's central claim going unproven.
 >
 > ```bash
-> test -s /home/dmarchak/nmas-probe-before.json && echo "measurable" \
+> test -s <home>/nmas-probe-before.json && echo "measurable" \
 >   || echo "STOP — no baseline; Remove will be UNMEASURABLE"
 > ```
 >
@@ -813,7 +813,7 @@ its job rather than an error.
 ### Then measure, in the shell
 
 ```bash
-python scripts/nmas-netbox-census --compare /home/dmarchak/nmas-probe-before.json
+python scripts/nmas-netbox-census --compare <home>/nmas-probe-before.json
 ```
 
 **This is the acceptance for the whole teardown:** `--compare` exits **0**,

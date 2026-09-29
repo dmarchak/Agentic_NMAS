@@ -82,7 +82,7 @@ today is the missing config file.
 * **`run_sync()` runs once per distinct lab** among the devices it covers,
   not once.
 
-### The dependency I cannot satisfy from here
+### The dependency this repository cannot satisfy
 
 **The sync script lives outside this repository** and today writes to one
 directory with no argument. Either it accepts a target directory, or it
@@ -212,7 +212,7 @@ The sync writes the right file; the checks still read
 negative** — safe, and it would send somebody chasing a problem that no
 longer exists.
 
-### The partial state I identified is NOT reachable
+### The partial state identified above is NOT reachable
 
 Only because the map moves all three settings **together by construction**.
 Fixing `clab_configs_dir` alone was the dangerous version, and the map makes
@@ -316,7 +316,7 @@ Not written from here — they are a live settings change on your box, and
 ```python
 from modules.settings_schema import write_settings
 write_settings({
-    "clab_host": "dmarchak@10.0.0.210",
+    "clab_host": "<user>@<lab-host>",
     "clab_labs": {
         # Names ONLY the two paths. `host` and `sync_script` inherit, by
         # the resolver's design: one containerlab VM, several labs on it.
@@ -408,7 +408,7 @@ Per the design: no fallback directory, no cache, and the timer unit's
 failure is the signal.
 
 ```sh
-map=$(nmas-clab-targets --url http://10.0.0.211:5000) || exit 2
+map=$(nmas-clab-targets --url http://<nmas-host>:5000) || exit 2
 while IFS=$'\t' read -r host cfgdir lab clabhost platform; do
     [ -n "$cfgdir" ] && [ -n "$platform" ] || {
         echo "REFUSING $host: incomplete map row" >&2; exit 2; }
@@ -429,10 +429,10 @@ rather than raising.
 
 ---
 
-## 11. Grouping, and a correction about what I have read
+## 11. Grouping, and a correction about what has been read
 
-**I have not read `oxidized-to-config.sh`.** It is on the clab host, outside
-this repository, and what I have is the three lines quoted in §10. An
+**`oxidized-to-config.sh` has not been read.** It is on the clab host, outside
+this repository, and what is available here is the three lines quoted in §10. An
 answer to *"which is cleaner in this script"* built on three greps would be
 an inference wearing the clothes of a reading, which is the thing this stage
 has spent itself removing. So: the parts that are about shape, answered; the
@@ -458,7 +458,7 @@ labs/r6/configs    user@clab   r6
 
 ### `--files-from` or a staging directory — what decides it
 
-I can give the criterion, not the verdict:
+This section gives the criterion, not the verdict:
 
 * **`--files-from` keeps one source of truth for what was produced.** A
   staging directory per lab is a *second copy* of `./configs`, and a second

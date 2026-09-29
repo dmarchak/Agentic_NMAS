@@ -37,7 +37,7 @@ with the relay) each change one further variable and are not in scope here.
 
 ```
 r6  SAFE  cisco_iosxe  username admin privilege 15 secret 9 <redacted>
-    dmarchak@10.0.0.210:labs/r6/patches/c8000v-launch-adopted.py@e483dd2475b5
+    <user>@<lab-host>:labs/r6/patches/c8000v-launch-adopted.py@e483dd2475b5
 ```
 
 **Naming r6's own launch patch rather than the default lab's** — the
@@ -202,8 +202,8 @@ Two consequences worth stating now:
      make it so — so the gap is recorded where somebody reaching for r6
      will read it, rather than in a runbook nobody opens twice.
 
-  The second is the fallback and the first is the intent. Neither is "we
-  will get to it". **Scoped in [R6_PERSISTENCE.md](R6_PERSISTENCE.md)**,
+  The second is the fallback and the first is the intent. Neither is "it
+  will be got to". **Scoped in [R6_PERSISTENCE.md](R6_PERSISTENCE.md)**,
   which found that the launch-patch setting is the more dangerous half:
   fixing only the configs directory would make `verify_startup_applies()`
   check rcn-lab1's patch for a device r6's own patch boots, and pass.
@@ -243,7 +243,7 @@ misattribute the next thing that resembles it.*
 **Ask the origin first. One command, and it partitions the space:**
 
 ```bash
-curl -s http://10.0.0.211:5000/ | grep -c '<helperNameOrMarkup>'
+curl -s http://<nmas-host>:5000/ | grep -c '<helperNameOrMarkup>'
 ```
 
 * **≥1** — the origin is current; the staleness is the edge. Add `?x=1` or

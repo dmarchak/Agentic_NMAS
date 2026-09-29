@@ -1,9 +1,30 @@
 # The NSoT conversion: the writeup
 
+[Author]
+
 This is the writeup of NMAS's conversion into a Network Source of Truth, one
 entry per phase and sub-task. [NSOT_WRITEUP_NOTES.md](NSOT_WRITEUP_NOTES.md)
 is the notebook it draws on: raw findings, arguments and lessons, written as
 they happened. This file is the account built from them.
+
+## Development method
+
+The operator directed the work throughout. The operator set the goals and the
+order of the work, made every design decision recorded here (each is
+attributed to "the operator" where it appears), and ran every step that
+touched hardware or the lab: deploys to the host, device runs, lab probes,
+NetBox, Grafana and Proxmox changes, and the acceptance runs that close each
+stage. An AI coding agent implemented the code, the tests and the
+documentation under that direction, including this writeup and its notebook.
+The agent's work reached the host only by being pushed to the repository and
+deployed by the operator; the agent ran read-only measurements on the lab
+hosts where the operator allowed it, and nothing that changes a device, a
+store or a lab service.
+
+Where the text says "the implementation", "the check" or "the tool" was wrong,
+that is the agent's work being described; where it says "the operator", the
+decision or the observation was the operator's. The findings are reported as
+they happened, including the ones the implementation caused.
 
 ## How it is kept
 
@@ -671,8 +692,8 @@ git 3be6550].
 - Merge-only, checked by provenance: every pushed line must appear in the
   intended config [git eac33c9; NOTES "assert_no_negation"].
 - Transport per platform; settle windows per protocol (OSPF 45 s, BGP 60 s,
-  RIP 90 s) with a "not yet converged" state; stage 7 captures the
-  post-deploy config and stage 8.5 saves it [git eac33c9].
+  RIP 90 s) with a "not yet converged" state; the pipeline's post-snapshot stage (its
+  stage 7) captures the post-deploy config and its stage 8.5 saves it [git eac33c9].
 - Batches run sequentially, with a circuit breaker on verify failures. Every
   device ends in exactly one outcome [git 3be6550].
 - Built through the first runs: intent is committed, never inferred
@@ -687,13 +708,14 @@ git 3be6550].
 
 **3. Issues encountered** (none from the day has a register ID)
 
-- **Stage 7 captured metrics, not config**: stage 8.5 would have committed the
-  pre-deploy config as the new golden [NOTES "Stage 7 captured metrics"].
+- **The pipeline's post-snapshot stage captured metrics, not config**: its
+  stage 8.5 would have committed the pre-deploy config as the new golden
+  [NOTES "The pipeline's post-snapshot stage captured metrics"].
 - **`assert_no_negation` returned `None`** [NOTES].
 - **RIP was never verified** [git 3be6550].
 - **Intent derived from the capture**, so every diff was empty by construction
   [git 081124c].
-- **The pipeline would have sent 83 lines for a 1-line preview**, and stage 2
+- **The pipeline would have sent 83 lines for a 1-line preview**, and pipeline stage 2
   re-rendered over the confirmed list [git 839217c, 11d6a5a].
 - **Missing secret refs** (the 3a serialiser defect) reached a plan as
   `<missing-secret:…>`; caught by `assert_no_mask()` four layers down, on a
@@ -2081,11 +2103,11 @@ it requires a console [NSOT_STAGE7_PLAN.md "7.1 reshaped", "7.1 acceptance"].
 **3. Issues encountered.**
 Attribution: the plan counts every register row added across 7.1's commit span,
 "69 C-rows (C60 to C128) and 2 E-rows", and names six as side work (C119, C120,
-C123, C124, C125, C126) [NSOT_STAGE7_PLAN.md "The forecast, corrected"]. I checked
-each ID with `git log -S "| Cnn |"`: every row C60 to C128 first appears in a
+C123, C124, C125, C126) [NSOT_STAGE7_PLAN.md "The forecast, corrected"]. Each ID was
+checked with `git log -S "| Cnn |"`: every row C60 to C128 first appears in a
 commit between `ff6fc24` and `763649e`, and E6 and E7 in `d11955d` and `c776d5c`.
 Many came from threads running beside 7.1's screens (the verify sweep, Stage 8
-design, concurrency); I group them by theme and do not claim all came from 7.1's
+design, concurrency); they are grouped by theme here, with no claim that all came from 7.1's
 own screens.
 
 *The component, the result and the record*
@@ -2256,7 +2278,7 @@ apply wrote, and a place to read that record again, with no console needed.
 - The original 7.1 estimate behind "7.1 tripled"; only the partway "13 hours and
   32 commits" is recorded.
 - Which of the 71 rows in 7.1's span came from 7.1's own screens versus side
-  threads, beyond the six the plan names; the theme grouping above is mine.
+  threads, beyond the six the plan names; the theme grouping above is this writeup's.
 - Fixing commits for rows whose status names no commit and whose fix no commit
   subject names (for example C112's exact commit is inferred from its subject).
 
@@ -2266,7 +2288,7 @@ apply wrote, and a place to read that record again, with no console needed.
 
 **1. What it was**
 
-7.2 built the landing view that answers "what needs my attention", plus a status bar on every page [NSOT_STAGE7_PLAN.md table row 7.2]. Needs attention had to draw every source in the plan's section 1a: job health, drift with coverage, freshness, firing Grafana alerts, the approvals queue, pending onboardings, rollback blocks, a failed deploy, and an unearned baseline. It also leaves an empty slot for Stage 8 triage [NSOT_STAGE7_PLAN.md §1a]. The page could do no per-device work to render (§0a). A source that could not be read had to be a row, never an absence. The stage also carried C92: replace the one-probe "online" dot with a reader that counts consecutive misses [NSOT_STAGE7_PLAN.md table row 7.2; OPEN_FINDINGS C92].
+7.2 built the landing view that answers "what needs attention", plus a status bar on every page [NSOT_STAGE7_PLAN.md table row 7.2]. Needs attention had to draw every source in the plan's section 1a: job health, drift with coverage, freshness, firing Grafana alerts, the approvals queue, pending onboardings, rollback blocks, a failed deploy, and an unearned baseline. It also leaves an empty slot for Stage 8 triage [NSOT_STAGE7_PLAN.md §1a]. The page could do no per-device work to render (§0a). A source that could not be read had to be a row, never an absence. The stage also carried C92: replace the one-probe "online" dot with a reader that counts consecutive misses [NSOT_STAGE7_PLAN.md table row 7.2; OPEN_FINDINGS C92].
 
 **2. How it was implemented**
 
@@ -2299,7 +2321,7 @@ A seventh reader, baseline usability, came after 7.2 was declared built and reus
 
 **3. Issues encountered**
 
-*How I attributed findings.* A row counts if it was first written inside the 7.2 commit selection (C164–C174, by `git log -S` on OPEN_FINDINGS.md), or if a 7.2 step closed or advanced it. Findings with no ID are listed separately.
+*How findings were attributed.* A row counts if it was first written inside the 7.2 commit selection (C164–C174, by `git log -S` on OPEN_FINDINGS.md), or if a 7.2 step closed or advanced it. Findings with no ID are listed separately.
 
 New register rows during 7.2:
 - C164 — nine of ten job-health row families had no action a person could take from the interface.
@@ -2448,7 +2470,7 @@ The landing page drew every section 1a source from stored or cached values, each
    - From the real run (the operator): C217, the job's own in-flight row stayed at "starting" and called the operation "may be stuck" beside the device's true row ("persisting"), in garbled words; C218, about four minutes in the containerlab boot-file chain drawn only as "persisting"; C219, the result's next step drawn under "What did not happen"; C220, the preview's live line masked twice.
    - Around the run: C221, the break-glass row read "current" for the operator's first export of the day, which was deleted on the host before it reached the laptop (the row tracked that an export was WRITTEN).
 4. **How they were resolved.** C210 fixed as step 1 (`nmas-rotation-recover`, a job-health row per staged file nobody holds); the identity carried by `identity.carried()`; C211 registered; C217 to C220 registered, the in-flight pair (C217, C218) to ride with the next change to that component (the operator); C221 fixed the same evening.
-5. **Numbers.** Two commits, `fe951e9` (2026-09-29 11:01, step 1) and `9fd5e06` (11:08, step 2), after `2b1ea78` (10:54, C205, which it depends on) [git; the build's working time is not recoverable from commit times]; 12 and 24 tests; six controls fired. Not recoverable: an estimate (none was written). **Acceptance on the host, r2** (the operator, the afternoon of 2026-09-29): "rotated, committed, saved on the device and read back from its own startup config, present in the startup file, that file applies on boot, and nmas-check-startup-applies reads SAFE"; the fresh login verified on the first try; commit `60d233984c2c` carries `Source: rotation`, `Actor: dustnm@gmail.com`, `Intent-Match: yes (1 of 1)` and `Actor-Verified: access`, the carried identity's first real run; every gate passed, the sudo-helper gate included, which was expected to fail. The baseline-decay row fired 21 s after the rotation, naming r2, as designed. The break-glass record was exported again and read `ok 9 of 9 device(s) current`, the laptop's verify showing r2's digest changed (`fac44d8a9805` -> `d8e9cff850ca`) and the other eight identical.
+5. **Numbers.** Two commits, `fe951e9` (2026-09-29 11:01, step 1) and `9fd5e06` (11:08, step 2), after `2b1ea78` (10:54, C205, which it depends on) [git; the build's working time is not recoverable from commit times]; 12 and 24 tests; six controls fired. Not recoverable: an estimate (none was written). **Acceptance on the host, r2** (the operator, the afternoon of 2026-09-29): "rotated, committed, saved on the device and read back from its own startup config, present in the startup file, that file applies on boot, and nmas-check-startup-applies reads SAFE"; the fresh login verified on the first try; commit `60d233984c2c` carries `Source: rotation`, `Actor: <operator>`, `Intent-Match: yes (1 of 1)` and `Actor-Verified: access`, the carried identity's first real run; every gate passed, the sudo-helper gate included, which was expected to fail. The baseline-decay row fired 21 s after the rotation, naming r2, as designed. The break-glass record was exported again and read `ok 9 of 9 device(s) current`, the laptop's verify showing r2's digest changed (`<redacted-1>` -> `<redacted-2>`) and the other eight identical.
 6. **Where it left the product.** A device's credential is rotated from its page, end to end, recorded as the person who confirmed it, persisted and read back; the operation that broke four ways that week completed from the interface on its first real run, and no state it can reach, a process dying mid-way included, goes unnamed.
 
 #### 7.3 — Revert and retry from the Device page
@@ -2470,7 +2492,7 @@ The landing page drew every section 1a source from stored or cached values, each
 
 *Open: built 2026-09-29, awaiting a real run.*
 
-1. **What it was.** The re-export after r2's rotation took about ten manual steps across two machines, and the first attempt was lost: the laptop half ran on the host and its cleanup deleted the staged file before it was copied, after the export had been logged (C221). The operator asked for a button that does the host side and downloads the file through the browser.
+1. **What it was.** The re-export after r2's rotation took about ten manual steps across two machines, and the first attempt was lost: the laptop half ran on the host and its cleanup deleted the staged file before it was copied, after the export had been logged (C221). The operator asked for a button that does the host side and downloads the file through the browser. The re-export was needed because of C182 (2026-09-28): nothing had compared the record with the credentials in use, so a digest comparison, an export log and a job-health row were built, and that row named r2 as stale after its rotation [OPEN_FINDINGS C182].
 2. **How it was implemented.** `modules/breakglass_export.py`, apart from the record format so that module stays independent of the application's stores: the passphrase twice and 12+ characters, refused before anything is built; the plan recomputed and bound to the preview's hash; the record sealed in memory, then OPENED with the passphrase and checked (every device, every credential by digest, the escrowed key, and the key opening what the live key opens); a reveal row, required before anything is sent; the export log with `via: browser` and the sha256. The route returns the sealed bytes beside the masked result; the page decodes them into a download. One client, three entry points (the rotate result's new next-step slot, Needs attention's break-glass row, the Settings page), opened by a data attribute that names the operation, never a function. The CLI now calls the same device and key readers.
 3. **Issues encountered.** The first placement put the export code in `modules/breakglass.py`, and its test that the record module never reads the app's stores failed: the property it guards (a record opens during an outage without them) was real, so the export moved to its own module. C219 (the result component had no slot for a next step) was built as part of the entry points.
 4. **How they were resolved.** The module split; C219 fixed. Controls: skipping the verify, dropping the passphrase scrub and ignoring the reveal record each fail exactly their tests.
@@ -2670,12 +2692,12 @@ On 2026-09-28 the operator was measuring a precondition for 8.6, the agent's tri
 
 **3. Issues encountered**
 
-- **C165.** The two endpoints were not disagreeing. My control compared unlike counts (condition-firing instances against all active instances) [99ff600].
+- **C165.** The two endpoints were not disagreeing. The control compared unlike counts (condition-firing instances against all active instances) [99ff600].
 - **C166.**
   - `Interface down` had been in no-data since 2026-09-25T21:23:50Z, and `Critical syslog received` since 2026-09-27T08:40:50Z.
   - The syslog rule was not blind; it was miscoded. `|= "CRIT"` never matches IOS's severity digit.
-  - My "never fired" was wrong. It had fired 9 times in 30 days, on mnemonic *names* containing CRIT.
-  - My first attribution regex took IOS sequence numbers as devices, giving 11 "devices" [22cf328; 6ef9d8c; NSOT_PLAN P.7].
+  - The implementation's "never fired" was wrong. It had fired 9 times in 30 days, on mnemonic *names* containing CRIT.
+  - The first attribution regex took IOS sequence numbers as devices, giving 11 "devices" [22cf328; 6ef9d8c; NSOT_PLAN P.7].
 - **C167.** `prometheus_url` was empty while Grafana read Prometheus [5bb1cd7].
 - **C168.** Of the seven hand-built rules [22cf328; OPEN_FINDINGS C168]:
   - gRPC is miscoded: a lost source's series vanishes, so its count never drops below 1;
@@ -2957,25 +2979,15 @@ only enumerate the instances" [CLAUDE.md, the operator's naming, 2026-09-27].
 a check it never made, ten separate ways [NOTES "The deploy's safety check
 was wrong in ten independent ways"].
 
-**Instances:**
-- C62 (2026-09-27): one routing protocol per device, the first found.
-- C64 (2026-09-27): BGP pattern expected eight fields where IOS prints ten.
-- C65: RIP read the empty `"application"` table.
-- C66: route count read the Networks column (4 where r3 has 30).
-- C67: canary passed on any "up"; Loopback0 is always up.
-- C68 (2026-09-27): any count above zero was "progress".
-- C108 (2026-09-27): protocol list taken from the BEFORE state.
-- C114 (2026-09-27): losing a protocol's only neighbour was tolerated.
-- C115 (2026-09-27): route check skipped on every deploy and restore, drawn
-  as compared.
-- C178 (2026-09-28): verify accepts the first healthy read at 10 s; IOS holds
-  BGP to 180 s. Scheduled into 7.3.
-
-Measured effect before the fixes: on eleven recorded deploys the routing check
-was real on four devices and compared 0 with 0 on four [NOTES "The deploy's
-verify, against real output"]. None was found by reading the code; each came
-from asking the same code a new question [NOTES, ten ways]. A sibling: two
-BGP summary readers, topology's right and the deploy's wrong (C69).
+**Instances:** C62, C64, C65, C66, C67, C68, C108, C114, C115 and C178, each
+with its cause and fix in the side campaign's entry ("The verify family:
+the deploy's safety check, wrong in ten ways"), which is where they are
+described; they are not repeated here. Measured effect before the fixes: on
+eleven recorded deploys the routing check was real on four devices and
+compared 0 with 0 on four [NOTES "The deploy's verify, against real
+output"]. None was found by reading the code; each came from asking the same
+code a new question. A sibling: two BGP summary readers, topology's right and
+the deploy's wrong (C69).
 
 **Mechanical answers.** Real captures in `tests/fixtures/operational/`;
 `tests/test_pipeline_reads_real_output.py`, with strict expected failures
@@ -3018,6 +3030,15 @@ passes" [CLAUDE.md, P.4 step 4].
 - C194 (2026-09-28/29): the removal probe did not record whether its repair
   ran [CLAUDE.md "A clean result cannot prove a mechanism that was not
   exercised"].
+- A check whose NAME claims more than its code (2026-09-28): the daily
+  restore test decrypts nothing, and its pass was read as proof the encrypted
+  copies can be read (C144); `nmas-breakglass verify` proved the record opens
+  and was claimed to settle whether it was current (C182); a backup key's
+  export matched by hash on both hosts and could not be imported (B8)
+  [CLAUDE.md "A CHECK THAT THE ARTEFACT ARRIVED CANNOT SEE WHETHER IT WORKS
+  THERE"].
+- C221 (2026-09-29): the break-glass row read "current" because an export
+  was WRITTEN; the file had been deleted before it reached anywhere.
 
 **Mechanical answers.** Floors on every scan (`_the_scan_finds_something`)
 [CLAUDE.md "An assertion over a set difference passes vacuously"]; about 180
@@ -3070,6 +3091,11 @@ lift a guard [CLAUDE.md `modules/filestore.py`].
   found only by listing all 85 write sites.
 - C161: found inside C160's fix and left, the stopping rule's first
   application [OPEN_FINDINGS "The stopping rule for a sweep"].
+- C213 (2026-09-29): the retry log, the audit of every decision to re-send a
+  failed change, read an unreadable file as empty and wrote back by
+  truncating in place; fixed when revert and retry reached the Device page.
+- C159 (open, Stage 9): the approval queue saves on every read, the likely
+  mechanism of a transient Needs attention row whose cause was not logged.
 
 **Mechanical answers.** `PathLock`, `write_atomic`, `read_json_for_write`;
 `test_settings_concurrency.py`, `test_credential_store_integrity.py`,
@@ -3221,8 +3247,8 @@ A document or a status says a thing is done, built or scheduled, and the thing i
   `test_server_reads_nothing_the_form_cannot_send.py`, the entry-point sweep,
   `assert_dialect()`.
 - **A silently wrong record from a transformation.** `version 2` stripped both
-  sides, an invented `control-plane`, masked validation, stage-7 metrics
-  [NOTES "The pattern, now three deep"].
+  sides, an invented `control-plane`, masked validation, the pipeline's
+  post-snapshot stage capturing metrics [NOTES "The pattern, now three deep"].
 - **A method defect: a test written after the implementation encodes it.**
   Four in one week, on the rolled-back block and its revert [NOTES "Method,
   not code"].
@@ -3235,8 +3261,15 @@ A document or a status says a thing is done, built or scheduled, and the thing i
   (C120), a 420-character register dump (C106) [CLAUDE.md "An investigation's
   instrument can be the variable"].
 - **A claim about all time from a short window.** Three instances; the first
-  the operator's (2026-09-28), the third Claude's, the same day [CLAUDE.md "A claim about ALL TIME
+  the operator's (2026-09-28), the third the implementation's, the same day [CLAUDE.md "A claim about ALL TIME
   needs a window that covers all time"].
+- **A bound nobody chose, or chosen "to be safe".** A suite wrapper waiting
+  1500 s on a 121 s run and a 20 min CI job bound on 224 s jobs (2026-09-28);
+  Netmiko's default 10 s connect timeout, set by nothing, below s3's measured
+  13.7 s, so a device that was never failing was reported unreadable (C205,
+  2026-09-29) [CLAUDE.md "A BOUND CHOSEN 'TO BE SAFE'"]. Answer: a bound is a
+  small multiple of a measurement, written beside it, and a bound that fires
+  names what was running.
 - **A message describing a state that did not occur.** The sixth in one
   session was DHCP's `bootstrap_artifact` [CLAUDE.md "COMPLETENESS IS JUDGED
   PER SOURCE"].
@@ -3409,19 +3442,21 @@ A document or a status says a thing is done, built or scheduled, and the thing i
 - **7.2, 2026-09-28.** "7.2 is built": Needs attention, the reader-job pattern
   (job health, Grafana, freshness, integration health, CI verdict,
   reachability) and the live-data contract [S7 "7.2 step 19"].
-- **7.3 so far, 2026-09-28 to 29.** Built so far:
-  - the retire screen;
-  - seed intent (step 1), whose acceptance run remains;
-  - Mode B removal (steps 2a to 2c), accepted on the host;
+- **7.3 so far, 2026-09-28 to 29.** Accepted on the host:
+  - Mode B removal (steps 2a to 2c): the acceptance run removed r2's
+    `load-interval 30` and earned `baseline/20260929T060249Z`
+    [NOTES "The line the tool could not remove"; git `03aeabe`];
   - Save All reading its devices at once, with the preview a job that
-    announces its result (C188, 2026-09-29: preview 101 s to 40.9 s, apply
-    102 s to 13.7 s, and a second earned baseline, `baseline/20260929T063600Z`).
+    announces its result (C188: preview 101 s to 40.9 s, apply 102 s to
+    13.7 s, and a second earned baseline, `baseline/20260929T063600Z`);
+  - Persist and Rotate from the Device page, both on r2 by the operator on
+    2026-09-29, the rotation recorded as the person who confirmed it
+    (`Actor-Verified: access`).
 
-  The acceptance run removed r2's `load-interval 30` and earned
-  `baseline/20260929T060249Z` [S7 "7.3's retire screen BUILT"; "7.3 step 1
-  BUILT"; NOTES "The line the tool could not remove"; git `03aeabe`]. Rotate,
-  persist and the Device page itself do not exist yet [S7 "What does not
-  exist yet"].
+  Built and awaiting a real run: seed intent (step 1), retire, revert and
+  retry, and the break-glass export from the browser. Not yet built: adopt,
+  seed keeping declared blocks (C216), and the rest of 7.3 [the 7.3 entries;
+  S7].
 
 #### Sources read (cross-cutting)
 

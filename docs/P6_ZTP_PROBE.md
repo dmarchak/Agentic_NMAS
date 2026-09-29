@@ -155,9 +155,9 @@ The probe directory and its own copy. Never a production lab's file (the
 patcher refuses `labs/lab/` and `labs/r6/`).
 
 ```bash
-mkdir -p /home/dmarchak/labs/ztp-a/patches
-cp /home/dmarchak/labs/dhcp-a/patches/c8000v-launch-adopted.py /home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py
-sha256sum /home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py
+mkdir -p <home>/labs/ztp-a/patches
+cp <home>/labs/dhcp-a/patches/c8000v-launch-adopted.py <home>/labs/ztp-a/patches/c8000v-launch-configless.py
+sha256sum <home>/labs/ztp-a/patches/c8000v-launch-configless.py
 ```
 
 Expect `e483dd2475b505bd…`. Anything else is a different base, so stop.
@@ -166,16 +166,16 @@ Copy the patcher and the topology over from the repository. Then read the
 diff, which writes nothing:
 
 ```bash
-python3 /home/dmarchak/labs/ztp-a/patches/patch-configless.py /home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py
+python3 <home>/labs/ztp-a/patches/patch-configless.py <home>/labs/ztp-a/patches/c8000v-launch-configless.py
 ```
 
 Six hunks: the base disk, the install overlay, the `-cdrom` guard, the
 console wait, the running branch, and the watchdog. Then apply and confirm:
 
 ```bash
-python3 /home/dmarchak/labs/ztp-a/patches/patch-configless.py /home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py --write
-python3 -m py_compile /home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py && echo COMPILES
-python3 /home/dmarchak/labs/ztp-a/patches/patch-configless.py /home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py
+python3 <home>/labs/ztp-a/patches/patch-configless.py <home>/labs/ztp-a/patches/c8000v-launch-configless.py --write
+python3 -m py_compile <home>/labs/ztp-a/patches/c8000v-launch-configless.py && echo COMPILES
+python3 <home>/labs/ztp-a/patches/patch-configless.py <home>/labs/ztp-a/patches/c8000v-launch-configless.py
 ```
 
 The last line must be `REFUSED: already patched`, and the patched file's
@@ -232,7 +232,7 @@ date -u +%FT%TZ
 ## Step 4 — deploy (lab host)
 
 ```bash
-cd /home/dmarchak/labs/ztp-a && sudo containerlab deploy -t nmas-ztp-a.clab.yml
+cd <home>/labs/ztp-a && sudo containerlab deploy -t nmas-ztp-a.clab.yml
 docker logs -f clab-nmas-ztp-a-bp-ztp-a
 ```
 
@@ -302,13 +302,13 @@ prediction. Then take the branch that the evidence selects:
 ## Step 7 — teardown (lab host)
 
 ```bash
-cd /home/dmarchak/labs/ztp-a && sudo containerlab destroy -t nmas-ztp-a.clab.yml --cleanup
+cd <home>/labs/ztp-a && sudo containerlab destroy -t nmas-ztp-a.clab.yml --cleanup
 ip -br link show master br-mgmt
 docker network ls --format '{{.Name}}' | grep -c ztp-probe
 ```
 
 `br-mgmt` must be back to its three members, and the last line must print
-`0`. Keep `/home/dmarchak/labs/ztp-a/patches/` for M3-M5, and delete
+`0`. Keep `<home>/labs/ztp-a/patches/` for M3-M5, and delete
 `/tmp/ztp-a-m1.pcap` once its result is copied into this document.
 
 ---
@@ -326,9 +326,9 @@ writes by temp-then-rename, and that needs write permission on the directory.
 tool to truncate the file in place, which is the mechanism that erased
 `user_settings.json` on 2026-09-23.
 
-- directory `/etc/kea/nmas/`, owned `dmarchak:_kea`, mode `0755` (first
+- directory `/etc/kea/nmas/`, owned `<user>:_kea`, mode `0755` (first
   specified `0750`; see "As run" below for why it changed);
-- file `/etc/kea/nmas/reservations-255.json`, owned `dmarchak:_kea`, mode
+- file `/etc/kea/nmas/reservations-255.json`, owned `<user>:_kea`, mode
   `0644` (first specified `0640`), holding `[]`;
 - subnet `id: 255` (`10.255.0.0/24`) in `kea-dhcp4.conf` gets
   `"reservations": <?include "/etc/kea/nmas/reservations-255.json"?>`.
@@ -360,7 +360,7 @@ apparmor="DENIED" operation="capable" profile="kea-dhcp4" capability=1 capname="
 
 **Kea's AppArmor profile withholds the two capabilities that let root ignore
 file modes**, so `kea-dhcp4` run as root under `sudo` is held to the mode
-bits. Root is neither `dmarchak` nor in `_kea`, so `0750`/`0640` shut it
+bits. Root is neither `<user>` nor in `_kea`, so `0750`/`0640` shut it
 out. The path was never the problem: the profile does allow `/etc/kea/**`,
 which is why it would have read as a path problem indefinitely. The same log
 holds an older instance, `/tmp/kea-broken.conf`, denied on 2026-09-25 during
@@ -381,17 +381,17 @@ The commands below are the ones that were run, with the measured modes.
 sudo cp -a /etc/kea/kea-dhcp4.conf /etc/kea/kea-dhcp4.conf.bak-pre-d1
 ls -l /etc/kea/kea-dhcp4.conf.bak-pre-d1
 
-sudo install -d -o dmarchak -g _kea -m 0755 /etc/kea/nmas
-sudo install -o dmarchak -g _kea -m 0644 /dev/null /etc/kea/nmas/reservations-255.json
+sudo install -d -o <user> -g _kea -m 0755 /etc/kea/nmas
+sudo install -o <user> -g _kea -m 0644 /dev/null /etc/kea/nmas/reservations-255.json
 printf '[]\n' > /etc/kea/nmas/reservations-255.json
 ls -ld /etc/kea/nmas && ls -l /etc/kea/nmas/reservations-255.json
 sudo -u _kea cat /etc/kea/nmas/reservations-255.json
 ```
 
-Expect `drwxr-xr-x dmarchak _kea`, `-rw-r--r-- dmarchak _kea`, and `[]` read
+Expect `drwxr-xr-x <user> _kea`, `-rw-r--r-- <user> _kea`, and `[]` read
 back AS `_kea`. Reading it as `_kea` covers the daemon; the `kea-dhcp4 -t`
 below, as a confined root, is the reader that decided the mode. The `printf`
-runs as `dmarchak` and writes into an existing file, so owner, group and
+runs as `<user>` and writes into an existing file, so owner, group and
 mode stay as `install` set them.
 
 Then the one-line edit. Line 91 changes from `"reservations": []` to
@@ -441,7 +441,7 @@ Run from the deployed checkout (`H=` is not used; every line names the
 path in full):
 
 ```bash
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
 ```
 
 Step 1. Expect `0 reservation(s); option-data: []`, the baseline.
@@ -456,10 +456,10 @@ printf '[ { "hw-address": "aa:bb:cc:00:02:50", "ip-address": "10.255.0.50" } ]\n
 mv -f /etc/kea/nmas/.reservations-255.json.tmp /etc/kea/nmas/reservations-255.json
 ls -l /etc/kea/nmas/reservations-255.json && cat /etc/kea/nmas/reservations-255.json
 sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf; echo "config-test exit=$?"
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
 ```
 
-The rename leaves the file `dmarchak:dmarchak 0644`, because a rename brings
+The rename leaves the file `<user>:<user> 0644`, because a rename brings
 the new inode's owner. With `0644` the group no longer decides anything, which
 is the D1 mode doing its job. The last `show` is a control of its own:
 **predicted 0 reservations**. The file has changed and the running server has
@@ -469,20 +469,20 @@ claims.
 Step 3, reload, then read:
 
 ```bash
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
 ```
 
 **Predicted: 1 reservation, `aa:bb:cc:00:02:50 -> 10.255.0.50`.** This is the
-line that shows the include is live. Tell me when it is there, and I read it
+line that shows the include is live. Once the operator reports it there, the implementation reads it
 through the tool's `reservation_for()` as well (the Control Agent path, the
 one the build uses).
 
 Step 4, the control, in memory only:
 
 ```bash
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py control-set aa:bb:cc:00:02:51 10.255.0.51
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py control-set aa:bb:cc:00:02:51 10.255.0.51
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
 ```
 
 **Predicted: 2 reservations**, `.50` and `.51`.
@@ -492,7 +492,7 @@ Step 5, the restart that separates them:
 ```bash
 sudo systemctl restart kea-dhcp4-server
 systemctl show -p ActiveState,SubState,MainPID,NRestarts kea-dhcp4-server
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
 ```
 
 **Predicted: 1 reservation, `.50` only.** `.51` gone is C49's failure shown
@@ -542,8 +542,8 @@ printf '[ { "hw-address": "aa:bb:cc:00:02:50", "ip-address": "10.255.0.50", "opt
 mv -f /etc/kea/nmas/.reservations-255.json.tmp /etc/kea/nmas/reservations-255.json
 cat /etc/kea/nmas/reservations-255.json
 sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf; echo "config-test exit=$?"
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
-sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
+sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
 ```
 
 Expect `aa:bb:cc:00:02:50 -> 10.255.0.50  [tftp-server-name=10.255.0.10,
@@ -579,7 +579,7 @@ Deploy (lab host), then at once terminal D on the probe's own docker bridge
 (Gi1 under passthrough):
 
 ```bash
-cd /home/dmarchak/labs/ztp-a && sudo containerlab deploy -t nmas-ztp-a.clab.yml
+cd <home>/labs/ztp-a && sudo containerlab deploy -t nmas-ztp-a.clab.yml
 sudo tcpdump -ni "br-$(docker network inspect -f '{{.Id}}' clab-ztp-probe | cut -c1-12)" -e -l port 67 or port 68
 ```
 
@@ -615,7 +615,7 @@ Then the console, TOUCHING NOTHING for 15 minutes, as in M1 step 5.
 **P-M0 failed, and the cause was the instrument: the container ran the OLD
 launch script.** Measured inside the running container and on the lab host:
 
-- `docker inspect` binds `/home/dmarchak/labs/ztp-a/patches/c8000v-launch-configless.py`
+- `docker inspect` binds `<home>/labs/ztp-a/patches/c8000v-launch-configless.py`
   to `/launch.py`.
 - That file, and `/launch.py` inside the container, hash to `5d0a4b73…`.
   That is exactly the four-edit patcher's output from the base, recomputed
@@ -684,7 +684,7 @@ and on the NMAS host:
 sudo tcpdump -nr /tmp/ztp-a-m3-nmas.pcap | head -60
 ```
 
-Tell me when the node has its lease and I will read it through the tool's
+Once the operator reports the node has its lease, the implementation reads it through the tool's
 `lease_for()`, the call phase 2's discovery uses. **What M3 decides:** D2's
 transport (TFTP by option 66/67 as offered, or something the node reaches
 for instead), and whether M4 needs udp/69 opened in ufw with TFTP's
@@ -699,7 +699,7 @@ intended this time.
 
 | # | Observed |
 |---|---|
-| P-M0 | **Passed on a fresh node, with no hand erase:** `% Failed to initialize nvram`, then `No startup-config, starting autoinstall/pnp/ztp...`. The chassis serial changed too (`9ZPRULBCRA3`, not `9V5EGCL4W1N`), so this is the pristine base, not the install overlay |
+| P-M0 | **Passed on a fresh node, with no hand erase:** `% Failed to initialize nvram`, then `No startup-config, starting autoinstall/pnp/ztp...`. The chassis serial changed too (`<redacted-new>`, not `<redacted-old>`), so this is the pristine base, not the install overlay |
 | P-M2d | **Passed:** three DISCOVERs from Gi1 (`0c:00:03:50:8d:00`) on the probe's docker bridge, unanswered, and `SETUP: new interface GigabitEthernet1 placed in shutdown state` |
 | P-M3a | **Passed:** `Acquired IPv4 address 10.255.0.50 on Interface GigabitEthernet2`, with the full DORA on `br-mgmt` (01:29:48–01:30:18). **The reservation the tool's mechanism wrote answered a device that asked** |
 | P-M3b | **Passed:** `RRQ "bp-ztp-a.cfg" octet` (21 bytes, so no TFTP options) to `10.255.0.10:69`, retried for two minutes with backoff, each answered `ICMP udp port 69 unreachable`. **D2's transport is decided by measurement: TFTP, port 69, the filename from option 67** |
@@ -775,7 +775,7 @@ after it.
    through the one settings write path:
 
    ```bash
-   cd /home/dmarchak/python/Agentic_NMAS && python3 -c 'from modules.settings_schema import write_settings as w; print(w({"kea_ztp_fragment": "/etc/kea/nmas/reservations-255.json"}, actor="dmarchak"))'
+   cd <home>/python/Agentic_NMAS && python3 -c 'from modules.settings_schema import write_settings as w; print(w({"kea_ztp_fragment": "/etc/kea/nmas/reservations-255.json"}, actor="<user>"))'
    ```
 
 2. Install the responder's socket and service and enable the SOCKET, then
@@ -790,8 +790,8 @@ after it.
    install -m 0644 /dev/null /etc/kea/nmas/.reservations-255.json.tmp
    printf '[]\n' > /etc/kea/nmas/.reservations-255.json.tmp
    mv -f /etc/kea/nmas/.reservations-255.json.tmp /etc/kea/nmas/reservations-255.json
-   sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
-   sudo python3 /home/dmarchak/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
+   sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py reload
+   sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
    ```
 
    Expect `0 reservation(s)` and the D4 line.
@@ -842,7 +842,7 @@ after it.
 ### Observed: M4's first run (2026-09-27): the fetch failed, two defects, the second hidden by the first
 
 Up to the fetch every prediction held:
-- **P-M0:** fresh base, new serial `9ZO4MOABRCW`, `% Failed to initialize nvram`,
+- **P-M0:** fresh base, new serial `<redacted>`, `% Failed to initialize nvram`,
   `No startup-config`.
 - **P-M2d:** Gi1's DISCOVERs unanswered on the probe's bridge.
 - **P-M4a:** `Acquired IPv4 address 10.255.0.50 on Interface GigabitEthernet2`
@@ -1085,21 +1085,21 @@ IOS may retry the request.
 1. **P-M4f**, above: it needs the node and the reservation, so it goes first.
 2. The baseline exists BEFORE anything is removed:
    `test -s /tmp/census-ztp-a.json || echo "NO BASELINE -- do not Remove"`.
-3. `cd /home/dmarchak/labs/ztp-a && sudo containerlab destroy -t
+3. `cd <home>/labs/ztp-a && sudo containerlab destroy -t
    nmas-ztp-a.clab.yml --cleanup` (lab host).
 4. **NetBox Remove through the GUI** for list `ztp-a`: provenance governs,
    and the cascade preview names every foreign object.
-5. `python3 /home/dmarchak/python/Agentic_NMAS/scripts/nmas-netbox-census
+5. `python3 <home>/python/Agentic_NMAS/scripts/nmas-netbox-census
    --compare /tmp/census-ztp-a.json` must give **exit 0**. Exit 1 means
    objects were left behind; exit 2 is UNPROVEN, and is not a pass.
 6. **The reservation, removed by the TOOL's writer** (it reads back):
-   `cd /home/dmarchak/python/Agentic_NMAS && python3 -c 'from
+   `cd <home>/python/Agentic_NMAS && python3 -c 'from
    modules.nsot.ztp import write_reservations as w; print(w(removes=["aa:bb:cc:00:02:50"]))'`.
    Expect `removed` and `ok: True`. Then `kea-m5.py show` must read 0
    reservations, the D4 line, and still no pool.
 7. Delete the temporary list `ztp-a` (GUI). Leave `netbox_allow_writes` ON
    (PHASE2_DHCP.md §11).
-8. `python3 /home/dmarchak/python/Agentic_NMAS/scripts/nmas-credential-overrides`:
+8. `python3 <home>/python/Agentic_NMAS/scripts/nmas-credential-overrides`:
    `10.255.0.50` should be flagged ORPHAN, a rotated credential for a device
    that no longer exists. Clear it (Settings → Credentials), because a
    secret with no owner is exactly what the survey exists to find.
@@ -1223,8 +1223,8 @@ through the app's own auditor token (read-only), from the NMAS host.
 
 ### Q1. The image: a bootable disk, or does it need vrnetlab's install step?
 
-**Measured: the base disk boots as it is, and it is the configless disk we
-want.** The vrnetlab image carries the Cisco base
+**Measured: the base disk boots as it is, and it is the configless disk
+wanted.** The vrnetlab image carries the Cisco base
 (`c8000v-universalk9_8G_serial.17.06.01a.qcow2`, 1.49 GiB, 8 GiB virtual, no
 backing file). vrnetlab's install step BOOTED that base, so the base needs no
 install to boot. What the install step added lives in the other overlay (see
@@ -1264,7 +1264,7 @@ holds the VM's disk.
 
 **Measured: no move is needed.** The NMAS VM (102) and the containerlab VM
 (100) both have `net1` on Proxmox bridge **`vmbr10`**, and `net0` on `vmbr0` (the
-`10.0.0.0/24` LAN). The NMAS's `10.255.0.10/24` is on its `vmbr10` NIC, and
+`<LAN>` LAN). The NMAS's `10.255.0.10/24` is on its `vmbr10` NIC, and
 it reaches `s3`'s `Vlan99` (`10.255.0.1`) on that `/24` without a router.
 `s3` runs inside VM 100, whose only other NIC is on `vmbr0`, so `vmbr10` is
 the wire behind `br-mgmt`. That is established from the NIC list and the

@@ -312,7 +312,7 @@ is the only moment anyone will be looking.
 
 ### 6.2 ⚠ Pinning the MAC may not reach the client — verify, do not assume
 
-**I cannot confirm from here that a containerlab-pinned veth MAC becomes the
+**It cannot be confirmed from here that a containerlab-pinned veth MAC becomes the
 MAC the IOS-XE DHCP client presents.** vrnetlab runs a VM behind the
 container, and the address on `GigabitEthernet2` inside the VM may be assigned
 by vrnetlab independently of the container's `eth2`. Treat the pin as
@@ -619,7 +619,7 @@ Isolating those was the point of doing this on a throwaway.
   [P6_ZTP_PROBE.md](P6_ZTP_PROBE.md), teardown step 11.
 
 That last one is the survey's first real case and it is worth naming: the
-r6-era residue we cleaned by hand would now be **reported** rather than
+r6-era residue cleaned by hand would now be **reported** rather than
 accumulate. A secret store with no expiry and no owner check does not need a
 reaper so much as it needs somebody able to answer *"which of these
 corresponds to a device that exists"* — and now something does, every run.
@@ -672,10 +672,10 @@ the **shipped** renderer against the payload the **deployed** endpoint returns.
 
 ### What the suite did do, which is not discovery
 
-It made every one of those 15 fixes **safe to make**. Three regressions I
+It made every one of those 15 fixes **safe to make**. Three regressions
 introduced while fixing them were caught immediately and by name — the
 forward/rollback consistency assertion, the duplicated stanza header, and a
-stub that had stopped matching its subject. One of my own two errors in the
+stub that had stopped matching its subject. One of the implementation's own two errors in the
 final commit was caught by the suite (`test_no_ip_literals`, on a **comment**);
 the other, a `NameError` from an inferred signature, was caught by running.
 
@@ -1647,7 +1647,7 @@ entries recorded: 1   dcim/devices/6  ['comments', 'local_context_data']
 repository's behaviour differ, and the remaining causes are all about *which
 code ran and whether it could write*, not about what it compared.
 
-### The gap in the fix, which is mine
+### The gap in the fix, the implementation's own
 
 `health()` counts **in memory**, and the recorder runs **inside the Flask
 app** — while `nmas-netbox-modified` is a different process. So the health
@@ -1715,7 +1715,7 @@ answers "which code", but it was not the question that settled this.
 **The record had the entry all along.**
 
 ```
--rw------- dmarchak  data/netbox_modified.json   mtime 2026-09-25 06:34:40.147905771Z
+-rw------- <user>  data/netbox_modified.json   mtime 2026-09-25 06:34:40.147905771Z
 NetBox last_updated (r1)                                 2026-09-25 06:34:39.968953Z
 
 default  dcim/devices  id 5 r1  at 2026-09-25T06:34:40Z
@@ -1726,7 +1726,7 @@ default  dcim/devices  id 5 r1  at 2026-09-25T06:34:40Z
 Written 0.18 s after NetBox's own timestamp, both operands exactly as
 patched, and listed by `nmas-netbox-modified` as the **last of 44 entries**.
 The file has not been written since, and the owner and mode are the app's own
-(`dmarchak`, `0600`), so the permissions hypothesis is closed too. **C3 is
+(`<user>`, `0600`), so the permissions hypothesis is closed too. **C3 is
 closed**, and the retraction it made is withdrawn with it. The silent syncs
 after 06:34 are **evidence again**, because this sync is the control showing
 the recorder in that code writes.
@@ -1741,7 +1741,7 @@ taken.
 `journalctl -u nmas` prints `-- No entries --` on the host, because the unit
 is named **`flask-app.service`**. *(Corrected the same day: this section first
 said there was no unit and the app ran as a bare process "with PPID 1". PPID 1
-**is** systemd. I inferred that from a process listing instead of reading
+**is** systemd. That was inferred from a process listing instead of reading
 `systemctl`, and `~/bin/nmas-deploy` restarts `flask-app.service` by name.)*
 The unit is enabled at boot, has `Restart=always`, and sends output to the
 journal. **Even under its real name, the journal is not the channel.** It

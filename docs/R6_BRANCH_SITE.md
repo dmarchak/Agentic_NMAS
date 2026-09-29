@@ -131,8 +131,8 @@ Measured locally, in this checkout:
 | `write_committed()` refuses a resolved secret and any non-ASCII byte | `modules/nsot/hostvars.py` |
 
 **Not measurable from here, and the plan says so rather than guessing.** This
-machine pings `10.0.0.211` but port 5000 times out (the firewall is closed,
-by design), `ssh dmarchak@10.0.0.210` is refused for want of a key, and this
+machine pings `<nmas-host>` but port 5000 times out (the firewall is closed,
+by design), `ssh <user>@<lab-host>` is refused for want of a key, and this
 checkout's `data/lists/default/devices.csv` holds **one line — the header**.
 So every fact about the *live* lab in this document comes from the sanitized
 fleet fixtures or from `R6_PHASE1.md`, and **each step below that depends on
@@ -396,7 +396,7 @@ networks are raw lines. **A branch router is the same construct set as
 r1–r4**, which is what the template round-trips. The template being built
 from extractions does not make it an extraction-only template.
 
-Corroboration from the repo's own record rather than from me: `R6_PHASE1.md`
+Corroboration from the repo's own record rather than from this document: `R6_PHASE1.md`
 states `cisco_iosxe/base.j2` is **approved against six devices**, and
 approval requires a clean round-trip against **every** bound device — so
 r6's capture already round-trips. Seeding intent from it will produce a

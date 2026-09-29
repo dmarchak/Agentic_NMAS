@@ -72,7 +72,7 @@ reservation writer takes a set, and every outcome is per device.
 | Config commands | `config-get`, `config-set`, `config-test`, `config-write`, `config-reload` present | A whole-config route exists |
 | Config file | `/etc/kea/kea-dhcp4.conf`, `root:root 0644`; Kea runs as `_kea` | **`config-write` would fail, so a reservation added by `config-set` would live in memory only and vanish at Kea's next restart**, which is a wrong thing looking right |
 | TFTP | no TFTP daemon active; `/srv/tftp` does not exist | Nothing serves a config today |
-| `tftp_server_ip` | `192.168.0.30`, which is none of the host's addresses (`10.0.0.211`, `10.255.0.10`, and the docker bridges); read only by `config.TFTP_SERVER_IP` for image copies | A stale setting from an older setup. ZTP must not read it (D3); recorded as C48 |
+| `tftp_server_ip` | `192.168.0.30`, which is none of the host's addresses (`<nmas-host>`, `10.255.0.10`, and the docker bridges); read only by `config.TFTP_SERVER_IP` for image copies | A stale setting from an older setup. ZTP must not read it (D3); recorded as C48 |
 
 ---
 
@@ -146,7 +146,7 @@ plain RFC 1350 with no TFTP options (no `blksize`), 512-byte blocks, and a
 bootstrap config of a few blocks.
 
 **What that costs on the host (measured):**
-- the app's unit (`flask-app.service`) runs as `dmarchak` with no ambient
+- the app's unit (`flask-app.service`) runs as `<user>` with no ambient
   capabilities;
 - `ip_unprivileged_port_start` is 1024;
 - no TFTP library is installed.
@@ -156,7 +156,7 @@ Two decisions follow, both the operator's:
 **D5. How port 69 is bound: (a), decided by the operator (2026-09-27).** (b) grants the whole web app a capability to solve one socket ("a capability's name is not its power"); (c) is host state outside the repository that a rebuild must reproduce.
 
 - **(a) A systemd socket unit** (`ListenDatagram=69`, `BindToDevice=enp6s19`)
-  activating a small `nmas-ztp-responder.service` as `dmarchak`. systemd
+  activating a small `nmas-ztp-responder.service` as `<user>`. systemd
   binds the privileged port, so the process holds no capability at all.
   `BindToDevice` names the interface, not an address, so it follows D3
   (derived, never a literal). The responder is its own process, so a fault

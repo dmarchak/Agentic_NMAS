@@ -28,8 +28,8 @@ auditing a spec against the code rather than trusting it.
    already surfaced in the UI.
 2. *"`_compact_interface` has no IP addresses."* True of the helper in
    isolation, but its only caller `netbox_get_interfaces` attaches
-   `ip_addresses` from a separate IPAM query. The IPs already reach stage 1; the
-   real defect is narrower — **stage 2 discards them**, reading only
+   `ip_addresses` from a separate IPAM query. The IPs already reach pipeline stage 1; the
+   real defect is narrower — **pipeline stage 2 discards them**, reading only
    `["device"]` from the context. The Phase 1 fix is smaller than the plan
    implies.
 
@@ -136,7 +136,7 @@ Details that mattered:
   unauthorized instance cannot waste the operator's approval.
 
 **2. Dry-run fidelity was broken for shared objects.** Asked to confirm that the
-preview counts dependent objects, I tested it rather than reasoning about it —
+preview counts dependent objects, the implementation tested it rather than reasoning about it —
 and found a real over-count. Get-or-create helpers issue a real GET, find
 nothing (the dry run created nothing), and plan another create. A three-device
 import previewed **three** manufacturers, three platforms, and three device
@@ -557,7 +557,7 @@ Comfortably past the 80% bar, so 3b proceeds rather than 3a extending.
 ### Real configs changed the work
 
 Building against the two sanitized fixtures rather than synthetic snippets
-caught things I would not have invented:
+caught things no synthetic fixture would have contained:
 
 - **VRRPv3 address-family blocks nest three levels deep.** ``vrrp 10
   address-family ipv4`` has its own indented settings under an interface, which
@@ -567,8 +567,8 @@ caught things I would not have invented:
 - **``exit-address-family``** is not decoration — IOS-XE emits it and a config
   without it does not parse on the device. The first VRF parser dropped it.
 - **A secret appears twice.** The SNMP community is in ``snmp-server community
-  public RO`` *and* inside ``snmp-server host … version 2c public``. Capturing
-  only the first left ``public`` sitting in plaintext YAML — a leak that a
+  <redacted> RO`` *and* inside ``snmp-server host … version 2c <redacted>``. Capturing
+  only the first left ``<redacted>`` sitting in plaintext YAML — a leak that a
   synthetic fixture with one occurrence would never have shown.
 
 ### The bug that would have quietly broken every switch
@@ -891,7 +891,10 @@ before.*
 
 ---
 
-## Stage 7 captured metrics, not config — the silent-wrong-record bug
+## The pipeline's post-snapshot stage captured metrics, not config — the silent-wrong-record bug
+
+("Stage" in this section means a stage of the 9-stage deploy pipeline in
+`modules/pipeline.py`, not a stage of the project plan.)
 
 Same family as the drift blind spot and the invented ``control-plane``, and
 found the same way: by asking what a thing actually does rather than what its
@@ -899,11 +902,11 @@ name suggests.
 
 ### What happened
 
-Phase 3c added stage 8.5, which commits the post-deploy config as the new
+Phase 3c added pipeline stage 8.5, which commits the post-deploy config as the new
 golden baseline. Containerlab nodes are ephemeral, so that commit is the only
 durable record of what was pushed.
 
-Stage 7 is called ``post_snapshot``, and stage 4 is ``pre_snapshot``. Stage 4
+Pipeline stage 7 is called ``post_snapshot``, and stage 4 is ``pre_snapshot``. Stage 4
 captures a running config — stage 5 diffs against
 ``ctx.pre_snapshots[ip]["running_config"]``. The symmetry of the names made it
 natural to assume stage 7 captured one too.
@@ -931,7 +934,7 @@ contain the change you were restoring.
 
 ### The fix
 
-Stage 7 now captures the post-deploy running config on the session it already
+Pipeline stage 7 now captures the post-deploy running config on the session it already
 holds, and stage 8.5 commits that. If the capture fails, the device is listed
 in ``golden_skipped`` with a reason and **no golden is written** — recording
 nothing is better than recording the wrong thing.
@@ -943,7 +946,7 @@ nothing is better than recording the wrong thing.
 | ``version 2`` stripped | both sides agreeing | "no drift" on a real change |
 | invented ``control-plane`` | every fixture having it | "100% fidelity" on a fabricated line |
 | masked validation | plausible counts | "template broken" on a correct one |
-| stage 7 metrics | symmetrical stage names | "golden saved" on the wrong config |
+| pipeline stage 7 metrics | symmetrical stage names | "golden saved" on the wrong config |
 
 Every one is a **silently wrong record** rather than a crash. None would have
 been caught by a test comparing two artifacts, because in each case the two
@@ -1026,9 +1029,10 @@ It would have failed only when it mattered: the day a future change started
 generating negations, at which point the guard would have waved them through
 and the deploy would have removed configuration nobody asked to remove.
 
-I wrote it. The honest account of how is that I knew what the property was,
-wrote the docstring that described it, and then did not implement the check
-because the check was not obvious — and a stub that returns `None` runs green.
+It was written by the same implementation that wrote the property down. The
+account of how is that the property was known, the docstring describing it was
+written, and the check itself was not implemented because it was not obvious —
+and a stub that returns `None` runs green.
 
 ### Why the obvious implementation is also wrong
 
@@ -1131,7 +1135,7 @@ case-insensitive names, IP-level duplicates, newest-content-wins, backup of
 losers, and idempotence. They all passed.
 
 Every one of them wrote **both copies in the same format**. Of course they did:
-I wrote a helper, ``_write(lab, store, filename, hostname, ip, body)``, and
+the tests used a helper, ``_write(lab, store, filename, hostname, ip, body)``, and
 called it twice with different stores. A helper produces consistent output —
 that is the point of a helper — and consistent output is exactly what the real
 system does not have.
@@ -1150,8 +1154,8 @@ is incomplete — which is most interesting bugs.
 
 That is the whole argument for the dry run being the *default* mode, and for
 running it against production shapes before anything else. It is the only step
-in this project where reality gets to disagree with me. It disagreed
-immediately.
+in this project where reality gets to disagree with the author's model. It
+disagreed immediately.
 
 Three habits fall out:
 
@@ -1260,10 +1264,10 @@ Concretely, what this project now has:
 
 ### For the write-up
 
-This is the strongest methodological point the project produced. "We wrote
-tests" is not the claim worth making. The claim worth making is: *we discovered
-that our tests could only falsify what we had already imagined, and we found the
-gap by running against production shapes instead.* Every one of these three bugs
+This is the strongest methodological point the project produced. "The project
+has tests" is not the claim worth making. The claim worth making is: *the tests
+could only falsify what their author had already imagined, and the gap was found
+by running against production shapes instead.* Every one of these three bugs
 would have reached a real deploy, and each would have failed quietly — a
 silently wrong record, not a crash.
 
@@ -1742,7 +1746,8 @@ whitespace. Neither knows about the other. The seam has no owner.
 
 ### What actually caught it
 
-Not review — I wrote both halves and read both. The test:
+Not review — both halves were written and read by the same implementation. The
+test:
 
 ```python
 assert result["uncommitted_edits"] == ["templates/cisco_ios/base.j2"]
@@ -1846,12 +1851,12 @@ MASK_MARKERS = (MASK, "••••", "<masked>", "<missing-secret:")
 ```
 
 `<missing-secret:` is in that tuple almost incidentally — it is the renderer's
-"I could not resolve this" output, included because it is *another* way a
+"could not resolve this" output, included because it is *another* way a
 non-credential can end up where a credential belongs. That inclusion, made for
 tidiness against a hypothetical, is what caught a real bug two phases later
 arising from an unrelated cause.
 
-The lesson is not "we got lucky". It is that the property being guarded was
+The lesson is not "the project got lucky". It is that the property being guarded was
 stated correctly. `assert_no_mask()` does not check "did the preview path leak
 into deploy" — the specific scenario. It checks **"does this text contain
 something that is not a credential, in a position where a credential belongs"**
@@ -1956,17 +1961,17 @@ targets = [ip for ip, r in ctx.push_results.items() if r.get("ok")]
 
 Read either on its own and it is defensible.
 
-The trigger says *only roll back if we actually got as far as deploying* —
+The trigger says *only roll back if the run actually got as far as deploying* —
 sensible, since stages 1–5 never touch the device and rolling back after them
 would be noise. The flaw is that `stages_completed` records **successful**
 stages, so the condition is false precisely when the deploy stage is the thing
 that failed. It fires for a verify failure after a clean push. It cannot fire
 for a push that died mid-stream.
 
-The target list says *restore the devices we pushed to* — also sensible, and
-the obvious reading of "we pushed to it" is `ok: True`. The flaw is that a
+The target list says *restore the devices the run pushed to* — also sensible,
+and the obvious reading of "pushed to it" is `ok: True`. The flaw is that a
 device whose `send_config_set` raised had commands going down the wire when it
-gave up. It is not "a device we didn't push to". It is the **most** likely
+gave up. It is not "a device that was not pushed to". It is the **most** likely
 device to be half-configured, and it was the only one the filter removed.
 
 Neither is wrong about what it says. The defect lives in the **conjunction**:
@@ -2172,8 +2177,8 @@ something about the code, not about your imagination.**
 
 ## Method, not code: a test written after the implementation encodes the implementation
 
-Every other entry here is a defect in the product. This one is a defect in how I
-was working, it happened four times in one week, and it is the most transferable
+Every other entry here is a defect in the product. This one is a defect in how the
+implementation was working, it happened four times in one week, and it is the most transferable
 thing in the document — the product bugs are specific to this codebase; this is
 not.
 
@@ -2182,7 +2187,7 @@ not.
 The rolled-back-intent block went through three wrong keys and the revert went
 through one wrong shape. In each case a test existed, passed, and was useless.
 
-| # | The requirement | What I implemented | What my test asserted |
+| # | The requirement | What was implemented | What its test asserted |
 |---|---|---|---|
 | 1 | a rolled-back change must not be re-proposed | key the block on the intent **commit sha** | that a *new commit* lifts the block |
 | 2 | same | key on a **content hash** of host_vars | that *editing a field* lifts the block |
@@ -2221,7 +2226,7 @@ Each of those sentences is a scenario, not a mechanism. None of them mentions
 shas, hashes, fingerprints, containment, or diffs — and that is exactly why each
 one survived the implementation changing underneath it. The sentence
 "an unrelated edit does not clear the block" was written once and caught three
-different wrong implementations in a row, including one I wrote *as the fix for
+different wrong implementations in a row, including one written *as the fix for
 the previous failure of the same test*.
 
 ### The asymmetry that makes this cheap
@@ -2257,7 +2262,7 @@ Three of these four were second or third attempts.
 
 ### Worth recording honestly
 
-In none of these four cases did I notice on my own. Each was caught by someone
+In none of these four cases did the implementation notice on its own. Each was caught by someone
 reading the behaviour and asking a question from outside the implementation —
 "does this handle the case where…". The value added was not expertise in this
 codebase; it was refusing to reason in the code's frame. That is a role, and it
@@ -2889,7 +2894,7 @@ Three properties conspired, and each is worth naming separately:
    with each other while both disagreed with the device. A round-trip test
    compares a system against itself; two mirrored bugs cancel.
 2. **The corpus was fine.** This is the part worth dwelling on. The instinct
-   after a miss like this is "we need a fixture with BGP address-families" —
+   after a miss like this is "the suite needs a fixture with BGP address-families" —
    but `tests/fixtures/configs/fleet/` had carried them from the day r3–r5 were
    added, and `r5.cfg` is a full dual-stack PE. Adding more fixtures would have
    changed nothing. **Test data cannot compensate for an instrument that cannot
@@ -3079,35 +3084,35 @@ question than the one that mattered.
 
 ---
 
-## "I tested it" and "it is running" are different sentences
+## "It was tested" and "it is running" are different sentences
 
-Twice in one session I reported a verification that was real, against code that
-was not deployed.
+Twice in one session a verification was reported that was real, against code
+that was not deployed.
 
 **First time.** Redaction looked broken against the live fleet — 110 secret
 occurrences before, 106 after. The overlay used to run live checks is built
 with `git archive HEAD`, which takes the last *commit*; the positional
 redaction under test was still uncommitted. The measurement was of the previous
-implementation, and I nearly reported a working fix as a failure.
+implementation, and a working fix was nearly reported as a failure.
 
 **Second time, the opposite direction.** After adding
-`require_person_for_reveal`, I checked the rule against live settings through
-the overlay, saw `reveal: False`, and wrote that this was "already enforced"
+`require_person_for_reveal`, the rule was checked against live settings through
+the overlay, `reveal: False` came back, and the report said this was "already enforced"
 by the running build. It was not. The setting was **unset** in
 `user_settings.json`, so its value came from `DEFAULTS` — which is *code*. The
 overlay was running the new code; the app was running the old. A service could
-still have revealed every secret in the store, and I had just told the operator
-it could not.
+still have revealed every secret in the store, and the operator had just been
+told it could not.
 
 ### Why the second one is worse
 
-The first produced a false negative I would have chased. The second produced a
+The first produced a false negative that would have been chased. The second produced a
 **false assurance about a security control**, which nobody chases, because it
 says everything is fine.
 
 The trap is specific: a setting absent from the settings file takes its value
 from the defaults in the source. So "this comes from settings, not code" —
-which is what I told myself — is only true for settings that have actually been
+which is what the reasoning assumed — is only true for settings that have actually been
 *written*. For everything else, changing the default **is** a code change, and
 it ships when the process restarts, not when the file is edited.
 
@@ -3197,8 +3202,8 @@ plausible.
 The truncation guard in that pipeline is the same lesson again, one level down.
 Every older check — `end` count, `hostname` count, cert/banner/mgmt leakage,
 missing `no shutdown` — passed on a **simulated truncation at the first
-`router` block**, on all nine devices. Each check asked "is what I am looking
-at well-formed?" and none asked "is it all here?". Counting blocks in and
+`router` block**, on all nine devices. Each check asked "is what is being examined
+well-formed?" and none asked "is it all here?". Counting blocks in and
 blocks out refused all nine.
 
 ---
@@ -3211,7 +3216,7 @@ finding about the lab that had nothing to do with credentials.
 The recovery path is the qemu serial console inside each container:
 
 ```
-ssh dmarchak@10.0.0.210
+ssh <user>@<lab-host>
 docker exec -it clab-rcn-lab1-r2 telnet localhost 5000
 ```
 
@@ -3244,7 +3249,7 @@ every device in the lab, before and after any rotation.
 ### What actually guards it
 
 ```
-SSH key to 10.0.0.210  →  membership of the `docker` group  →  serial console
+SSH key to <lab-host>  →  membership of the `docker` group  →  serial console
                                                             →  privilege 15
 ```
 
@@ -3415,7 +3420,7 @@ password always passed explicitly — the normal path decrypts first, the
 rotation passes plaintext. A builder that decides internally which of those it
 was handed is what produced the original defect.
 
-### What the fake device could not have told us
+### What the fake device could not have told the suite
 
 The fake router models the credential exchange: it accepts one password at a
 time, learns a new one from the line the push sends, hashes it in its running
@@ -3449,7 +3454,7 @@ to authenticate against, so any value works.
 And it fails in the worst available direction. netmiko's `enable()` raises
 `ValueError`. `ValueError` is in the local-fault table, because a `ValueError`
 is overwhelmingly a bug in this process. So a device that **accepted the new
-credential and logged us in** would have been classified as a local fault,
+credential and let the verifier log in** would have been classified as a local fault,
 retried three times, and reverted — with the operator told the proof could not
 run.
 
@@ -3469,8 +3474,8 @@ without consulting any table:
 
 - failures **at connect** are classified by exception name, because a name is
   all there is;
-- failures **after login** are device verdicts **by construction** — we are
-  authenticated, so whatever went wrong, the device answered.
+- failures **after login** are device verdicts **by construction** — the session
+  is authenticated, so whatever went wrong, the device answered.
 
 Every result now carries `stage`. The classifier only gets a vote before a
 connection exists.
@@ -3578,7 +3583,7 @@ deploy path, so any command IOS refused in that wording was being recorded as
 applied.
 
 To be precise about the blast radius there, because an earlier draft of this
-note overstated it: stage 8.5 commits the **post-deploy capture**, not the
+note overstated it: pipeline stage 8.5 commits the **post-deploy capture**, not the
 pushed program, so a refused line never reaches a golden config — the golden
 stays truthful about the device. What a missed refusal produces on the deploy
 path is a **false success report** and a silent divergence between committed
@@ -3710,9 +3715,9 @@ call somewhere, or the helper mangling the value in transit.
 Both were wrong. Fingerprints (sha256 prefixes, no values printed):
 
 ```
-devices.csv r2 password          26685bca5acd   32 chars
-router.db   r2 password          26685bca5acd   32 chars
-Oxidized's own Ruby parse of it  26685bca5acd   32 chars
+devices.csv r2 password          <redacted-A>   32 chars
+router.db   r2 password          <redacted-A>   32 chars
+Oxidized's own Ruby parse of it  <redacted-A>   32 chars
 a fresh SSH login with it        ok=True
 ```
 
@@ -3800,7 +3805,7 @@ credential read both called `get_current_device_list()` while holding a
 pipeline had at three points after its push. Same fix: resolve the path from
 the name that was passed in.
 
-## Concluding a mechanism from the one thing I changed
+## Concluding a mechanism from the one thing that was changed
 
 The fix for the stranded r2 was reported as: `GET /reload` cannot refresh a
 live node's credential, only a container restart can. The evidence was a
@@ -3827,7 +3832,7 @@ A  wrong password written into r2's row, then GET /reload
 B  r2's row removed, GET /reload        -> node dropped
 C  correct row restored, GET /reload    -> node back
 D  fetch                                -> success
-   router.db restored byte-identical (sha aafea31f0414139d)
+   router.db restored byte-identical (sha <redacted>)
 ```
 
 Step A alone refutes the claim. `/reload` picks up a changed credential.
@@ -3872,8 +3877,8 @@ that is a check of the outcome.
 
 That division is what makes the residual unknown survivable. If some condition
 exists in which `/reload` is not enough, the chain does not silently continue:
-it fails at `fetch_confirmed`, names the stage, and stops. A mechanism I have
-not identified cannot produce a false success.
+it fails at `fetch_confirmed`, names the stage, and stops. A mechanism nobody
+has identified cannot produce a false success.
 
 > Two theories in one afternoon, both formed by changing one thing and watching
 > it work. The discipline that catches it is not scepticism, it is the control:
@@ -4435,7 +4440,7 @@ a revert re-sends it verbatim, and restoring a hash from a stale golden would
 restore a credential nobody holds. (Measured on s4 today, golden and device
 agree — but that is a fact about today, not a property.)
 
-### What the fake could not have told us, again
+### What the fake could not have told the suite, again
 
 The fake device treated the token after `secret` as the plaintext, so
 re-sending a stored `secret 9 $9$…` set the password to the string `"9"`. Every
@@ -4462,15 +4467,15 @@ for the routers the capture came from a stored golden and was therefore
 stable, and the live read was the thing that had just changed.
 
 It was wrong. Four consecutive preflights on s1 produced the identical
-fingerprint `078fd91dcd2599a4` and identical values for **every** input,
+fingerprint `<redacted-fp-16>` and identical values for **every** input,
 including the capture hash. Nothing was unstable.
 
 ```
 input           run1              run2              run3              run4
 capture_hash    d570293fc8f1869d  d570293fc8f1869d  d570293fc8f1869d  d570293fc8f1869d
 entry_kind      secret            secret            secret            secret
-live_line_h     b80936782cbd      b80936782cbd      b80936782cbd      b80936782cbd
-fingerprint     078fd91dcd2599a4  078fd91dcd2599a4  078fd91dcd2599a4  078fd91dcd2599a4
+live_line_h     <redacted-L>      <redacted-L>      <redacted-L>      <redacted-L>
+fingerprint     <redacted-fp-16>  <redacted-fp-16>  <redacted-fp-16>  <redacted-fp-16>
 ```
 
 The fingerprint was stable and *still* did not match, which leaves exactly one
@@ -4582,8 +4587,8 @@ s3, s4 — recovery is the serial console"*, behind a typed `APPLY`.
 Run against the real repository, the worst entry is not any of the ones that
 prompted this. `baseline/20260920T212325Z-migrated` has no committed intent at
 all, so nothing is refused, and re-applying it would land old credentials on
-**all nine devices**. The old check called that one "no intent" — which I had
-already flagged as not meaning safe, and which still did not say *lockout*.
+**all nine devices**. The old check called that one "no intent" — which had
+already been flagged as not meaning safe, and which still did not say *lockout*.
 
 > A proxy is a claim that two things move together. It is worth checking which
 > of them you actually care about, and whether anything can move one without
@@ -4608,7 +4613,7 @@ And it was wrong immediately, in the very next report. Asked to show SNMP
 access **modes** and no values, a script printed:
 
 ```
-snmp-server host <ip> version 2c public
+snmp-server host <ip> version 2c <redacted>
 ```
 
 Its own regex masked `community|password|auth|priv` followed by a token. The
@@ -4752,7 +4757,7 @@ and not closed on its line. Run against the shipped commit, it flags lines
 
 > A test suite that checks generated code by searching it for substrings has
 > not checked that the result is a program. Every language in the repository
-> needs something that parses it, and "we have 1656 tests" says nothing about
+> needs something that parses it, and "the suite has 1656 tests" says nothing about
 > the one that has no parser pointed at it.
 
 The narrowness of the scanner is deliberate. A general JavaScript parser in
@@ -4833,7 +4838,7 @@ vanished.
 ### The list was its own rival
 
 ```
-[XX] not_another_lists_repo — list 'default' already pushes to dmarchak/rcn-nsot-config
+[XX] not_another_lists_repo — list 'default' already pushes to <repo>
 ```
 
 The cross-list uniqueness check walks the lists directory and skips the list
@@ -4884,7 +4889,7 @@ any render, carry a timestamp, and have a dismiss button; only the
 
 ## What the first push actually published
 
-`dmarchak/rcn-nsot-config`, private, 61 commits, 1 branch, 33 tags, `main`
+`<repo>`, private, 61 commits, 1 branch, 33 tags, `main`
 matching the local HEAD. The SNMP communities were acknowledged through the
 UI by a verified person; auto-push is on.
 
@@ -5031,15 +5036,15 @@ with it.
 ### The rule, restated
 
 **Anything that reaches a CLI is printable ASCII — comments included.** Not
-"commands we push". Not "the deploy path". The boundary is the CLI, and a
+"commands the tool pushes". Not "the deploy path". The boundary is the CLI, and a
 comment crosses it whenever something replays the file through a console.
 
 `modules/nsot/bootstrap_config.py` is where that is now enforced for generated
 configs. It runs `assert_sendable()` over the **entire rendered text**, not
 over a filtered subset — a guard applied to "the commands" would pass exactly
 the file that hung the boot. `test_bootstrap_config.py` asserts the guard runs
-on `text.splitlines()` and not on anything narrower, because "we check the
-output" is a claim that stays true while the thing being checked quietly
+on `text.splitlines()` and not on anything narrower, because "the output is
+checked" is a claim that stays true while the thing being checked quietly
 shrinks.
 
 On console-replayed platforms the generator emits **no prose comments at all**
@@ -5432,15 +5437,15 @@ identical line for item 5, the item the entire stage exists for: it would have
 reported *"the routers refuse the old credential"* while every router sat on
 `admin/admin` and unreachable — the precise hazard, announced as absent.
 
-> **Exit status conflates "the device refused us" with "we never reached the
-> device".** Those have opposite consequences, so they cannot share a verdict.
+> **Exit status conflates "the device refused the login" with "the client never
+> reached the device".** Those have opposite consequences, so they cannot share a verdict.
 > A two-valued check on a remote system is a check that can pass by not
 > asking.
 
 This is the same defect as the rotation verifier reporting a local
 `InvalidToken` as a device verdict, and the fix is the same one, already
 built: `verify_new_credential()`'s `attempted` flag, which exists precisely to
-separate "the device answered and said no" from "we never got far enough to be
+separate "the device answered and said no" from "the attempt never got far enough to be
 told anything". `scripts/nmas-check-credential` returns three verdicts and
 exits 2 on INCONCLUSIVE, so it cannot be mistaken for a refusal.
 
@@ -5844,7 +5849,7 @@ rather than structural only.
 
 ### The other two defects in the same report
 
-Both were mine, both were in the reporting rather than the mechanism:
+Both were the implementation's own, both in the reporting rather than the mechanism:
 
 * **The line-number gutter rendered on top of the text.** CodeMirror measures
   character and gutter widths at initialisation; inside a Bootstrap modal
@@ -5854,7 +5859,7 @@ Both were mine, both were in the reporting rather than the mechanism:
 * **"The document differs from what is committed, but the render does not"**,
   on a document nobody had typed into. The load *is* byte-for-byte — that was
   checked rather than assumed, because if it had not been, that would have
-  been the finding. The route compared renders only, and my else-branch
+  been the finding. The route compared renders only, and its else-branch
   described the result as a document difference. It now returns
   `document_changed`, an actual byte comparison against the committed file,
   and the UI has three branches instead of two.
@@ -6110,8 +6115,8 @@ Thirteen of the fifteen fail against the reverted code, including both
 persistence tests, which reproduce the reported bug exactly. The one that
 must pass under both — a browser navigation still gets its redirect — does.
 
-While writing that guard I called `code_of("modules.drift_check",
-"DriftChecker.set_disabled")`. It takes one argument. Inferring a signature
+While writing that guard, the implementation called
+`code_of("modules.drift_check", "DriftChecker.set_disabled")`. It takes one argument. Inferring a signature
 instead of reading it, in the test written about inferring a signature
 instead of reading it.
 
@@ -6751,7 +6756,7 @@ The monitoring cards were right because somebody asked the question when
 writing them. Everything written before the question was asked is where the
 answers differ, which is exactly what made them worth sweeping for.
 
-### And the grep bit me one more time
+### And the grep misled the check one more time
 
 The first version of the test asserting `loadAgentTimers` no longer blanks
 its panel searched the function body for `panel.innerHTML = ''` — **and the
@@ -7118,7 +7123,7 @@ runbook's apply sent only `list_name` and would have been refused with
 
 That is the third inferred-signature finding in this stage — after
 `template_for_platform` / `get_device_by_name` and `rotate()` — and the first
-found by someone else asking. The pattern across all three: **the shape I
+found by someone else asking. The pattern across all three: **the shape
 assumed was the simpler one**, and the real one had a guard in it.
 
 ---
@@ -7641,9 +7646,9 @@ measured: `manifest.load(repo)["devices"]` was `{}` after a successful
 commit. `_name_in_manifest` never fired, nothing was consumed, and there was
 nothing to release.
 
-Both of us reasoned from a function's **name** and a docstring that was true
+The operator and the implementation both reasoned from a function's **name** and a docstring that was true
 about the call and false about the outcome: *"the identity is minted here
-and only here"*. It was minted into a local and thrown away. Neither of us
+and only here"*. It was minted into a local and thrown away. Neither
 read `adopt_identity` until the abandon tests failed against an empty
 manifest.
 
@@ -7651,7 +7656,7 @@ manifest.
 different things.** The identity *should* be recorded, it now is, and the
 trap becomes real from that commit onward -- so `release()` was built for a
 hazard that its own prerequisite created. Worth recording precisely because
-"we got there anyway" is the kind of outcome that stops a premise ever being
+"it got there anyway" is the kind of outcome that stops a premise ever being
 re-examined.
 
 ## The closest call of the stage
@@ -7843,8 +7848,8 @@ that EXISTS" -- is out in the code as well as empirically.
 
 **So the unexamined premise was "they were set."** The AUD was *given*, in
 conversation, as a value to store. That it was given became that it was
-stored, and neither of us checked. Identical in shape to the manifest
-identity both of us believed was recorded because the function was called
+stored, and neither the operator nor the implementation checked. Identical in shape to the manifest
+identity both believed was recorded because the function was called
 `adopt_identity`. Two in one session, and in both the evidence for the
 belief was a name or a sentence rather than a read.
 
@@ -7984,7 +7989,7 @@ satisfiable by an HTTP header.**
 assertion captured from a browser and replayed from any host on the LAN would
 have been accepted. An attacker needed a real Cloudflare JWT — but the layer
 that exists to stop exactly that was off for the whole window. Fixing
-`peer_trusted` closed it, and neither of us realised at the time that this was
+`peer_trusted` closed it, and neither party realised at the time that this was
 what it closed.
 
 ### The fix, and the split that is the point
@@ -8226,7 +8231,7 @@ more so than the feature, which is still unfinished. A suite proves the
 parts work. A probe proves the thing works, and the difference between those
 two sentences is seven defects.
 
-## Phase 2's second live failure: "something stopped me and nothing failed"
+## Phase 2's second live failure: "something stopped the rotation and nothing failed"
 
 The first phase-2 run on hardware failed at `rotate` with the device dict
 carrying no credentials — fixed, and a real defect. The second run failed at
@@ -8292,8 +8297,8 @@ the refusal was unattributed — which is a defect report rather than a blank.
 The rule the user set for the fix:
 
 > An empty `failed_checks` alongside a failure state must be IMPOSSIBLE, not
-> merely unlikely. A state that says "something stopped me and nothing
-> failed" is worse than the state before, because the first version at least
+> merely unlikely. A state that says "something stopped the rotation and
+> nothing failed" is worse than the state before, because the first version at least
 > didn't claim to know.
 
 ### The controls found two more, and one was in the fix itself
@@ -8326,7 +8331,7 @@ is to say which branch ran said both.
 
 ### Process, recorded because it cost time
 
-Two errors of my own. A `pkill -f "pytest -q"` issued in the same command as
+Two errors in the implementation's own process. A `pkill -f "pytest -q"` issued in the same command as
 a heredoc killed the heredoc, so one edit silently never landed and was
 found by grep rather than by a failure. And three numbers quoted in commit
 messages were stale by the time they were read — a pass count is a
@@ -8346,7 +8351,7 @@ was supposed to leave behind is where it should be:
   **device-generated**, the bootstrap password gone;
 * **no `snmp-server` lines at all** — the RW community was removed *before*
   the capture, so the repository's first record of the device is a state
-  worth restoring rather than one we deliberately do not want;
+  worth restoring rather than one deliberately not wanted;
 * staging empty — the rotation completed and cleared it;
 * `nmas-check-credential bp-onboard-c --expect` → **ACCEPTED, exit 0**:
   resolved through the inventory, connected with what the CSV carries. That
@@ -8525,7 +8530,7 @@ changelog measurement. Two properties it needs regardless:
   absent from it is absent deliberately rather than forgotten;
 * a preview that could not run its dependents query reports **unproven**
   rather than an empty consequence list, since "nothing will cascade" and
-  "I could not ask" must not render the same.
+  "the query could not be asked" must not render the same.
 
 ## The write, not the delete: the import took two of r3's addresses
 
@@ -8898,8 +8903,8 @@ NameError: name '_remove_excluded' is not defined
 
 **The function was in the file** — at line 347, below the
 `if __name__ == "__main__"` guard at line 343. Run as a script, `main()`
-executes and returns before Python reaches the definition. I had appended
-the new mode to the end of the file without noticing the guard was already
+executes and returns before Python reaches the definition. The implementation
+had appended the new mode to the end of the file without noticing the guard was already
 there.
 
 ### What the five controls were run against, plainly
@@ -9050,7 +9055,7 @@ They are **indistinguishable from the browser**, and the discriminator is
 one command that asks the origin directly, bypassing the tunnel:
 
 ```bash
-curl -s http://10.0.0.211:5000/ | grep -c '<helperName>'
+curl -s http://<nmas-host>:5000/ | grep -c '<helperName>'
 ```
 
 * **≥1** — the origin serves the current page. The staleness is between the
@@ -9173,7 +9178,7 @@ purge and nothing to remember. Two files in `base.html` reference
 Measured before deciding: JSON responses carried **no `Cache-Control`, no
 `ETag`, no `Last-Modified`**, and the edge did not cache them — which is
 precisely why the API stayed fresh while the page went stale. **That
-freshness was somebody else's default, not our policy**, and the whole
+freshness was somebody else's default, not the tool's policy**, and the whole
 argument for putting this in the app rather than in a Cache Rule is not to
 depend on one. So it is stated: `no-store`, because these are per-request
 reads of live state, several of them identity-scoped, never reusable — a
@@ -9319,7 +9324,7 @@ asked why a verification had never produced a sha.
 **The erasure's blast radius was assessed as "the Cloudflare Access values"
 and it was wider.** That is the fourth instance tonight of a stated problem
 being narrower than the real one, and the first where the narrow statement
-was mine.
+was the implementation's own.
 
 ### `nmas-settings-diff` cannot find these, by construction
 
@@ -9336,11 +9341,11 @@ property that let this sit for two days.
 ## The live run found the map bypassed by the caller that checks it
 
 **Result 1, good:** r1–r5 verify properly for the first time since the
-erasure — `dmarchak@10.0.0.210:labs/lab/patches/c8000v-launch.py@e483dd2475b5`,
+erasure — `<user>@<lab-host>:labs/lab/patches/c8000v-launch.py@e483dd2475b5`,
 named with a sha. The guard is running.
 
 **Result 2, the defect:** r6 read
-`dmarchak@10.0.0.210:labs/lab/configs/r6.cfg` — the **default** lab's
+`<user>@<lab-host>:labs/lab/configs/r6.cfg` — the **default** lab's
 directory — while `clab_target_for('Default', 'r6')` returned
 `labs/r6/configs`.
 
@@ -9372,7 +9377,7 @@ fourth column), `strays()` is pure with the listing passed in, and a failed
 listing is **`REFUSED … not the same as finding no litter`** rather than an
 empty result.
 
-### And a control caught me deleting the tests
+### And a control caught the implementation deleting the tests
 
 Rewriting the `--stray` tests with a truncating edit removed
 `TestEveryVerifierGoesThroughTheResolver` entirely, along with two others
@@ -9452,7 +9457,7 @@ carries `secret 9`. One test, two purposes, which is what makes it worth
 having: `test_a_bootstrap_file_reads_NOT_SAFE_even_though_it_applies` and
 `test_and_goes_green_once_the_file_carries_secret_9`.
 
-## A running config is not a startup config — and I reasoned past the reason
+## A running config is not a startup config — and the reasoning went past the reason
 
 **Proposed:** build startup files from goldens rather than from Oxidized, so
 a redeploy restores the approved state.
@@ -9480,12 +9485,12 @@ freshness question, not a source question** — which makes the work a
 **comparison rather than a migration**, and leaves the sanitizer's two
 compensations exactly where they belong.
 
-### How I got there, since the shape recurs
+### How the reasoning got there, since the shape recurs
 
-I reasoned from *"the source of truth should be the source"* — a principle
-this project does hold — without reading the thing that would have said it
-does not apply. **And I had said one turn earlier that I had not read the
-script**, then produced a full assessment of it anyway.
+The reasoning started from *"the source of truth should be the source"* — a
+principle this project does hold — without reading the thing that would have
+said it does not apply. **And the implementation had said one turn earlier that
+it had not read the script**, then produced a full assessment of it anyway.
 
 The tell was available and is the Stage 2 one verbatim: **every piece of
 evidence came from one artifact and the conclusion was about another.** An
@@ -9604,7 +9609,7 @@ return was noise of exactly the same kind — many devices, all flagged, for
 something nobody did and nobody can fix by changing a config. The most
 likely outcome of re-enabling it is that somebody switches it off again, and
 the second silencing is harder to undo than the first, because now there is
-a precedent and a memory of "we tried that".
+a precedent and a memory of "that was tried".
 
 ### The argument it makes
 
@@ -9640,7 +9645,7 @@ is flipped rather than after. The test is cheap to apply: *before
 re-enabling something that was switched off, ask what it will say first, and
 whether that is the same thing it said last time.*
 
-## The first time a tool we built reported success for work it did not do
+## The first time a tool built here reported success for work it did not do
 
 r6's startup file was **not copied**. The script printed *"Startup-configs
 updated."* and exited **0**. `~/labs/r6/configs/r6.cfg` is still the
@@ -9678,7 +9683,7 @@ same loop, stdin denied  TOTAL ITERATIONS: 2
 
 And it explains why the *per-device* loops were unaffected: **a `for` loop
 expands its list before the body runs**, so nothing in the body can truncate
-it. The bug is specific to `while read`, which is the construct I reached
+it. The bug is specific to `while read`, which is the construct the fix reached
 for *because* of the subshell rule — a correct fix for one class sitting
 directly on top of another.
 
@@ -9698,7 +9703,7 @@ nothing *correctly*, and the finding is instead that **the only review step
 in a script that overwrites boot configuration is opt-in and one keystroke
 from being skipped.**
 
-Worth stating either way: a confirmation whose default is "don't show me"
+Worth stating either way: a confirmation whose default is "don't show the diff"
 is not much of a confirmation.
 
 ### 3. What makes "copied N of M" checkable rather than reported
@@ -9879,7 +9884,7 @@ the cause.
 Two sub-cases remain, and one command tells them apart:
 
 ```bash
-ssh dmarchak@10.0.0.210 'cd labs/lab && git rev-parse --show-toplevel && \
+ssh <user>@<lab-host> 'cd labs/lab && git rev-parse --show-toplevel && \
   git check-ignore -v configs; git status --short configs | head'
 ```
 
@@ -9903,7 +9908,7 @@ of copies.
 produces the **same message with no status output** — the two sub-cases
 side by side in one run, indistinguishable by the line that reports them.
 
-## Three outcomes, one sentence — and a fourth cause I have not found
+## Three outcomes, one sentence — and a fourth cause not yet found
 
 ### The commit reporting, fixed
 
@@ -9933,7 +9938,7 @@ plus `commit FAILED (<reason>)` and `NOT VERSIONED - git add refused
 run ends by naming those destinations with the exact `git init` line to
 paste.
 
-### The full diff: a fourth cause, and I do not know what it is
+### The full diff: a fourth cause, and it is not known
 
 Ruled out, each by measurement rather than by argument:
 
@@ -9945,8 +9950,8 @@ Ruled out, each by measurement rather than by argument:
 | `less` missing / `$PAGER` / `$LESS=-F` | `/usr/bin/less`, both unset |
 | `less` misbehaving on a terminal | run under a **pty**: paged, showed r6's diff, waited for a key |
 
-That is five, and the section has failed four times. **I do not know the
-fourth cause, and I am not going to name a sixth candidate** — that is
+That is five, and the section has failed four times. **The fourth cause is
+not known, and no sixth candidate is named** — that is
 exactly the pattern-matching failure that cost an hour earlier tonight, when
 a shape that had been right four times was wrong on the fifth.
 
@@ -10119,7 +10124,7 @@ question that could have been expensive is a result** — the alternative was
 not "no problem", it was "no answer". And it settled r6's shape by reading
 rather than by invention: r6's repo now tracks `.gitignore` and
 `configs/r6.cfg`, matching what was already there instead of the `.gitignore`
-I had guessed at.
+the implementation had guessed at.
 
 ## Doubting a correct report
 
@@ -10216,8 +10221,8 @@ status="active" if (status_cache or {}).get(result["ip"], False) else "offline",
 `status_cache` is the in-memory ping cache. That expression takes a liveness
 observation — whether one ICMP or TCP attempt answered within five seconds —
 and writes it into the source of truth as a standing claim. It is the rule's
-own example, in miniature, and nobody looked at it, including me, for as long
-as it has existed.
+own example, in miniature, and nobody looked at it, the implementation included,
+for as long as it has existed.
 
 ### Why it escaped
 
@@ -10267,8 +10272,8 @@ carrying observed state**, two of which turned out to be a separate defect
 (`comments` and `local_context_data.ndm_sync` both embedded the sync's own
 timestamp, so both differed on every sync by construction).
 
-It also corrected the rule while applying it, which is the part I did not
-expect. The obvious discriminator — *observed versus intended* — does not
+It also corrected the rule while applying it, which was not
+expected. The obvious discriminator — *observed versus intended* — does not
 work, because the NetBox import is **designed** to run from golden configs,
 and a golden config is an observation. What separates the acceptable cases
 from the defect is:
@@ -10451,8 +10456,8 @@ noticing another. **Gating a path is not reviewing it.**
 **Item 2 of the acceptance, observed on the host by the operator.** A real
 deploy through the tunnel, and both commits verified through the gate:
 
-    c7711d6 golden: baseline 1 device(s) via pipeline batch-85f32b   Actor: dustnm@gmail.com   Verified: access
-    2fb07db host_vars: r1 TEST ACTOR FIX 8401b88                     Actor: dustnm@gmail.com   Verified: access
+    c7711d6 golden: baseline 1 device(s) via pipeline batch-85f32b   Actor: <operator>   Verified: access
+    2fb07db host_vars: r1 TEST ACTOR FIX 8401b88                     Actor: <operator>   Verified: access
 
 Two different paths, the intent commit and the deploy's golden. With the
 unauthenticated 403s measured at step 9, that is the gate refusing without a
@@ -10686,3 +10691,133 @@ line") was more useful than one it hid, because the sentence on the screen is
 what made it undeniable. And the capability that closed it was built the way
 the rest were: measured on the platform, every seam driven with real output,
 and accepted on the host.
+
+## Rotation and persistence reach the Device page, and the fourth failure mode is found first (2026-09-29)
+
+Three ways in three days for a rotation to leave a device unmanageable (B15,
+C53, C106) were the brief for the rotate screen: the operator asked for it to
+be "built assuming a fourth failure mode exists". The fourth was found at the
+design stage, before anything had ever hit it.
+
+**C210, found before it happened.** The new password is staged, encrypted,
+BEFORE the push, so that a failure after the push still has a copy. That order
+is right, and it leaves a window: a process that dies between the push and the
+record leaves the device on a password the inventory does not hold, with the
+staged file as its only copy. Nothing read that file. No job-health row, no
+Needs attention row, no tool. A rotation run from the web makes the window
+likely, because a deploy restarts the app. The remedy is to ask the device,
+holding it: `nmas-rotation-recover` records the staged password if the device
+accepts it (and clears the file only after the record is written), discards it
+if the device refuses it and accepts the recorded one, and changes nothing if
+the device refuses both or cannot be asked. Every staged file nobody holds is a
+job-health row naming that command. It was built as step 1, ahead of the screen
+it protects.
+
+**C203, the same week's third.** The CLI rotation's save ran after `rotate()`
+had released its hold on the device, so C101's guard (a write on a session
+whose thread does not hold the device is refused) refused the save. Latent,
+never fired. `persist()` now holds the device itself, re-entrantly, so every
+caller is covered, and `KNOWN_UNHELD` is empty.
+
+**C205: the device was never failing; the tool gave up on it.** A Save All
+reported s3 unreadable. s3's measured connect is 13.7 s, and the SSH connect
+timeout was Netmiko's default of 10 s. Nothing in the program set it, so no
+review had ever looked at it. The bound is now 35 s (2.5 times the measured
+connect), set in the one opener with the measurement beside it. The general
+point, recorded in CLAUDE.md: an unchosen library default is still a bound,
+and it is the hardest kind to notice, because nobody wrote it.
+
+**Both operations accepted on r2, by the operator.** Persist: `write memory`
+sent, the startup config read back carrying the account's `secret` line, the
+record written as the operator via the Device page. Rotate: rotated,
+committed, saved on the device and read back, present in the startup file, the
+file applies on boot, `nmas-check-startup-applies` SAFE; the fresh login
+verified on the first try; the commit carries `Actor-Verified: access`, the
+first real run of an identity carried into a background job's thread. The
+sudo-helper gate passed, against the prediction that it would fail. The
+baseline-decay row named r2 21 s after the rotation.
+
+What the real run showed that no test had:
+
+- **One operation, two in-flight rows that disagreed (C217).** The device's
+  hold read "persisting (2 min)", which was true. The job registry's own row
+  read "starting (3 min) … may be stuck", which was false: the registry never
+  updates its step, and "may be stuck" was decided on that stale step. Its
+  words were garbled too (a label and a kind concatenated).
+- **Four minutes that no step explained (C218).** The persist spent about four
+  minutes in the containerlab boot-file chain, and the screen said only
+  "persisting". The app log's one line in that window was a single
+  `GET /clab/sync_targets`. Why it took four minutes is not yet known. A long
+  wait with no named step reads as a hang, so each chain stage is to name
+  itself.
+- C219, the result's next step drawn under "What did not happen", and C220,
+  the preview's live line masked twice.
+
+## The break-glass record: tracked, then lost, then exported from the browser (2026-09-28 and 29)
+
+**C182: nothing had ever compared the record with the credentials in use.**
+The operator raised it from the Baselines panel: a kept record that holds
+credentials decays with every rotation, and twelve baselines had decayed that
+way one rotation at a time. `nmas-breakglass verify` proved the record OPENS,
+and `--live` that it escrows THE key. Neither compared its credentials with
+the ones NMAS holds. The register row itself first claimed `verify` would
+settle the question: a check whose name implies more than its code does,
+which is C144's shape (the restore test that never decrypted an encrypted
+copy). Both sides now compute one salted digest per device (hostname,
+username, password): `digests` on the host, `verify --against` beside the
+record. No credential crosses and none is printed. Measured by the operator:
+all nine current, and the three devices that had left management absent, as
+predicted. It was current by luck of habit (a re-export after s1's rotation,
+by hand, because somebody remembered), so the tracking was built anyway: an
+export log of digests, a job-health row naming every device a rotation has
+made stale, and a rotation message saying to export again. The absence of
+tracking was the finding, not the state.
+
+**C221: the row read "current" for a record that existed nowhere.** After
+r2's rotation the stale row fired as designed, and the operator re-exported.
+The re-export was about ten manual steps across two machines. The first
+attempt ran the laptop's half on the host, and its cleanup deleted the staged
+file before it had been copied anywhere. The export had already been logged,
+so for that window job health read "current" for a record that did not exist.
+The row tracked that an export was WRITTEN; the host cannot see whether it
+survived. It now says exactly that ("exported from this host at T; the host
+logs that it was written, never where it went or whether it survived: verify
+the copy you keep") and gives both commands.
+
+**The export from the browser.** The ten steps became a button. The server
+builds the record in memory, seals it, OPENS it again with the passphrase and
+checks every device's credential by digest and the escrowed key, writes a
+reveal row (required before anything is sent), logs the export with
+`via: browser` and its sha256, and hands the sealed bytes to the browser as a
+download. The host's disk never holds the file. The first placement put the
+code in the record module, and that module's test that it never reads the
+app's stores failed. The property it guards is real (a record must open during
+an outage without the stores), so the export moved to its own module.
+
+## Concurrency, and what the threefold variance was (2026-09-29)
+
+Save All read nine devices one after another, twice, and the preview sat past
+Cloudflare's 100 s edge limit (C188). Reads now run at once in a bounded pool,
+and the preview is a job that answers immediately and announces its result.
+Measured on the host: preview 101 s to 40.9 s, apply 102 s to 13.7 s.
+
+The operator made it a standing rule: reads across devices run concurrently
+by default, and a serial read loop is a defect unless it states why. Writes
+run concurrently only where nothing depends on order. The deploy batch stays
+sequential on purpose, because its circuit breaker must stop a bad change
+after the first device it breaks. A test now declares every loop that calls
+the device layer directly with its reason; the sweep's unstated ones (C199)
+were converted through one helper, and the NetBox import's writes stay
+sequential, with the reason in the code (shared objects created on first
+encounter would race).
+
+**C198: the answer to "identical reads varied threefold".** The preview took
+three times as long as the apply for the same nine reads. The guess on record
+was a warm connection pool, and the code already ruled it out: every capture
+opens a fresh session. Splitting each read into connect, `show
+running-config` and disconnect answered it on the next Save All. Connects
+were stable from run to run; `show running-config` varied 2 to 10 times on the
+same device. The variance is device-side command execution, not SSH and not
+the tool. The lesson recorded with it: a performance number that varies
+threefold between identical operations is saying something unmeasured, and
+the first move is to split it, not to explain it.
