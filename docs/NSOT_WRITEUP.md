@@ -33,6 +33,17 @@ Every entry has the same parts:
 **A detail that cannot be recovered says so ("Not recoverable: …") and is
 never filled in.** Every number carries its source in brackets.
 
+**Closing a stage also checks its forecast against its actuals**, in the
+entry, before the next forecast is made (the operator, 2026-09-29): 7.2's
+forecast was never checked when it closed, so the next one would have been
+built on an unexamined one. And a forecast is made from a finished stage of the
+SAME KIND: the 7.1 multiplier, applied to Mode B, was about seven times too
+high.
+
+**This file is published once, at the end, as the deliverable** (the operator,
+2026-09-29). Until then it lives only here: a published copy would be a second
+owner of every fact in it, stale from the next entry on.
+
 **Backfilled entries** (P.1 to P.6, 7.0 to 7.2) were drafted on 2026-09-29
 from the plan, the register and the git history, after the fact, and each says
 where its sources ran out. They are marked *backfilled*. Entries written at
@@ -1162,6 +1173,8 @@ Findings with no register ID [git bodies]:
 
 The landing page drew every section 1a source from stored or cached values, each dated and judged against its own promise, and the status bar read from the same readers. The reachability reader's claim and the adjacency rows (C38) were left undrawn.
 
+**Reopened 2026-09-29: 7.2 was declared built without one of its scheduled sources.** C38 (nothing alerts on a protocol adjacency) was decided on 2026-09-27 as a Needs attention row and scheduled into 7.2, and `33a8041` declared 7.2 built with no adjacency source in `modules/attention.py`. Nothing recorded the omission; the backfill found it by reading the scheduled rows against the code. It is the same shape as C122 ("retrofitted" meaning half of each retrofit) and D6 (a row left in Scheduled three days after its work was done): a status claim ahead of the thing it describes. **The source moved to 7.3** (the operator, 2026-09-29), to be built with the Device page's Neighbours section: both need the expected adjacency set derived from committed intent, compared against what the device reports, so it is built once with two consumers (the per-device view and a Needs attention row), the reader pattern again. Built for the row alone in 7.2, the expected-set logic would have been built a second time for the page. It sits beside C178, since both ask how many neighbours a device should have against how many it has.
+
 #### Sources read (7.2)
 - docs/NSOT_STAGE7_PLAN.md (row 7.2, §1a, 7.1's limit, the forecast, steps 1–19, the presentation rule, §10); docs/NSOT_PLAN.md (gate notes, Stage 9); docs/OPEN_FINDINGS.md (the rows cited, Count); docs/NSOT_WRITEUP_NOTES.md; CLAUDE.md
 - git: `log --grep='7.2'`, `log 71ed99e^..33a8041`, commit bodies, `log -S` per row, files added under `modules/readers/`
@@ -1572,7 +1585,11 @@ device is to answer HOW it got here", and grep the justifications for
 "vrnetlab". C52 is fixed with the form as a deployment property, pinned both
 ways. No structural check is recorded.
 
-#### 11. Further named families (brief)
+#### 11. A status claim ahead of the thing it describes
+
+A document or a status says a thing is done, built or scheduled, and the thing it describes is not in that state. Instances: C122 ("onboarding and NetBox Remove retrofitted" meant their results, not their previews, 2026-09-27); D6 (a register row left in Scheduled for three days after P.3 step 2 had removed the route it described, found 2026-09-29); C38 (7.2 declared built without one of its scheduled sources, found 2026-09-29). The two later ones were found by the writeup's backfill reading the scheduled rows against the code, which is what a stage close now does: acceptance item 14 requires the entry, and the entry lists the stage's findings and what became of them, so a scheduled source left unbuilt is named when the stage closes, not days later. The general rule it joins: a document asserting a property the code does not have stops the next person looking [CLAUDE.md].
+
+#### 12. Further named families (brief)
 
 - **Coverage inherited, not designed.** Found by adding one member: drift over
   the legacy store, clab-sync and r6, the sanitiser's hardcoded `ROUTERS`
@@ -1636,18 +1653,31 @@ ways. No structural check is recorded.
 - **7.2 prediction.** Made from the finished 7.1: 40 to 70 commits over about
   a day, 30 to 50 findings, "to be checked when it closes" [S7, same]. Nobody
   checked it when 7.2 closed. **Checked at backfill (2026-09-29)**: 37 commits
-  in about 4 h 03 min, 11 new register rows plus six findings with no ID. Only
-  19 of the 37 were 7.2's own step commits; the rest were decisions and
-  measurements made in the same window (see the 7.2 entry). So the commit
-  count was at the prediction's low edge, the hours well under "a day", and
-  the findings under half the predicted range.
+  in about 4 h 03 min, about 17 findings (11 new register rows plus six with
+  no ID). Only 19 of the 37 were 7.2's own step commits; the rest were
+  decisions and measurements made in the same window (see the 7.2 entry).
+  **The operator's reading: the correction asked for after 7.1 overcorrected.**
+  The rate assumption, about one finding per commit, held for 7.1 and not for
+  7.2, because 7.2 read stores that 7.1 and that week's sweeps had already
+  hardened. That is a result about where findings come from, not a forecasting
+  failure. The prediction held the fact and read it the other way: "four of
+  those were found this week in stores 7.2 draws from" was offered as a reason
+  to expect findings in the sources [S7 "The forecast, corrected"].
+  **An unchecked forecast is the base of the next one**, which is why closing a
+  stage now includes checking its forecast against its actuals (acceptance
+  item 14).
 - **Mode B (7.3 step 2), 2026-09-28 to 29.** Estimated when costed at "about
   three days to build … plan on about a week". Actual, from costing to
   acceptance on the host: about 5.5 hours of continuous work, 15 commits and 7
   findings (C191 to C197), with four real runs by the operator (three probe
   runs and the acceptance) [the 7.3 entry]. The estimate was in days of
   ordinary work and the work was one continuous session, so the two are not
-  like for like; the gap is recorded, not explained.
+  like for like. **What it means for the method** (the operator, 2026-09-29):
+  the "triple it" rule came from 7.1, a stage of unbounded screen work and
+  first real runs. Applied to a well-bounded piece of work whose measurement
+  campaign was already scoped, it produced a number about seven times too
+  high. Forecasting from a finished stage is right; forecasting from a
+  DIFFERENT KIND of stage is not.
 - **C188 (7.3), 2026-09-29.** About 45 minutes, 3 commits, 2 new rows (C198,
   C199). The host measurement is the result: preview 101 s to 40.9 s, apply
   102 s to 13.7 s [the 7.3 entry].

@@ -126,6 +126,11 @@ has five sections:
    by the NMAS.
 3. **Neighbours**: CDP, OSPF, BGP, tunnels, and each link's state. Per device
    only, by decision; a fleet topology is deferred (section 9).
+   **It carries C38** (moved from 7.2 by the operator, 2026-09-29): the
+   EXPECTED adjacency set, derived from committed intent, against what the
+   device reports, built once with two consumers, this section and a Needs
+   attention row (the reader pattern). Beside C178: both ask how many
+   neighbours a device should have against how many it has.
 4. **History, one timeline**:
    - intent commits;
    - deploys and their results;
@@ -1126,6 +1131,14 @@ concurrency findings that drove 7.1 should mostly be absent. It reads every
 source, which is where the absent-versus-unreadable and wrong-thing-looks-right
 families live, and four of those were found this week in stores 7.2 draws
 from. R1 and R2 above are extra, and precede it.
+**Checked 2026-09-29, a day late (at the writeup's backfill):** 37 commits in
+about 4 hours (19 of them 7.2's steps) and about 17 findings (11 rows, six with
+no ID). The operator's reading: the correction after 7.1 overcorrected. The
+one-finding-per-commit rate held for 7.1 and not for 7.2, because 7.2 read stores
+7.1 and that week's sweeps had already hardened: a result about where findings
+come from. This paragraph used that same fact to expect MORE findings in the
+sources. Checking a forecast at close is now part of closing (section 10, item
+14).
 
 **7.2 step 1 BUILT (2026-09-28): the row shape and the source contract, job
 health first.** `modules/attention.py`: `row()` is the only constructor and
@@ -1937,3 +1950,8 @@ read through one function, and P.8 moves it without the reader changing.
     was, how it was built, its findings by ID, how each was resolved, its
     numbers and where it left the product), written in the turn it closed.
     A stage is not closed while an entry is missing or says "to be written".
+    **Closing also checks the stage's forecast against its actuals**, in the
+    entry (the operator, 2026-09-29): 7.2's was never checked, and the next
+    forecast would have been built on an unexamined one. Forecast from a
+    finished stage of the same KIND (the 7.1 multiplier was about seven times
+    too high for Mode B).

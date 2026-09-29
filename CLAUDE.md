@@ -6051,6 +6051,11 @@ summarisation before (the tenants-versus-regions exchange had to be re-measured)
 numbers are what cannot be recovered later. A detail that cannot be recovered says
 "Not recoverable" and is never filled in. The cross-cutting sections (patterns, rate
 measurements, where the product stood) are updated when a close adds to them.
+**Closing a stage also checks its forecast against its actuals** (7.2's never was, so
+the next forecast would have stood on an unexamined one), and a forecast is made from a
+finished stage of the SAME KIND: 7.1's multiplier on Mode B was about seven times too
+high. **The file is published once, at the end, as the deliverable**, never before: a
+published copy is a second owner of every fact in it, stale from the next entry on.
 [docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md) stays the raw notebook the
 writeup draws on. P.1 to P.6 and 7.0 to 7.2 were backfilled on 2026-09-29 from the plan,
 the register and git, and each says where its sources ran out. **The backfill was a
