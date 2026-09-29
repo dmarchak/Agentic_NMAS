@@ -1508,7 +1508,7 @@ def _intent_words(i: dict) -> str:
 
 
 def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
-                    not_read: list = None) -> dict:
+                    not_read: list = None, timing: dict = None) -> dict:
     """*entries*: per device ``{device, read, error, capture_hash, diff,
     changed, intent, platform}`` from reading it now. *not_read*: devices a
     scope left out (they already have a committed golden), named so the
@@ -1553,6 +1553,9 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
                                  else "Unchanged: the device matches its current golden. Confirming "
                                       "records that it was measured.")},
             "operands": [{"name": "capture hash", "value": e.get("capture_hash") or "none"},
+                         {"name": "read in", "value": (
+                             f"{(timing or {}).get('per_device_s', {}).get(name)} s"
+                             if name in (timing or {}).get("per_device_s", {}) else "not timed")},
                          {"name": "platform", "value": e.get("platform") or "unknown"},
                          {"name": "committed intent", "value": _intent_sentence(intent),
                           # It decides a fleet capture's outcome: drawn apart,
@@ -1635,7 +1638,8 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
         action="capture",
         summary=(f"Record the running config of {len(read)} of {len(entries)} device(s) as "
                  f"their goldens, in one commit: {changed} differ from their current golden, "
-                 f"{departs} depart from committed intent."),
+                 f"{departs} depart from committed intent."
+                 + (" " + read_timing_words(timing) if timing else "")),
         targets=targets, what_not=what_not,
         nothing_left_out="Nothing: every device was read and matches its intent.",
         confirm=confirm, titles=CAPTURE_TITLES,
@@ -1644,7 +1648,19 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
                                       "at apply, and one whose config moved is refused."}]})
 
 
-def capture_result(outcomes: list, save: dict, *, fleet: bool) -> dict:
+def read_timing_words(timing: dict) -> str:
+    """How long the device reads took, in one sentence (C188): concurrently,
+    against what one after another would have cost, and the slowest device,
+    since a parallel read is only as fast as its slowest member."""
+    if not timing or not timing.get("per_device_s"):
+        return ""
+    n = len(timing["per_device_s"])
+    return (f"Read {n} device(s) {'at once' if timing.get('workers', 1) > 1 else ''} in "
+            f"{timing['wall_s']} s (one after another: {timing['series_s']} s); slowest "
+            f"{timing['slowest']}, {timing['slowest_s']} s.").replace("  ", " ")
+
+
+def capture_result(outcomes: list, save: dict, *, fleet: bool, timing: dict = None) -> dict:
     """*outcomes*: per device ``{device, outcome, diff, intent, reason}``;
     *save*: `save_golden()`'s answer, or ``{}`` when nothing was saved."""
     targets, did_not = [], []
@@ -1710,6 +1726,8 @@ def capture_result(outcomes: list, save: dict, *, fleet: bool) -> dict:
                    "not every device was captured") + ". " + read_part)
     else:
         summary = read_part + (f" Baseline {baseline} taken." if baseline else "")
+    if timing:
+        summary += " " + read_timing_words(timing)
     clean = (recorded and len(recorded) == len(outcomes)
              and all((o.get("intent") or {}).get("state") == "match" for o in recorded)
              and (baseline or not fleet) and (save or {}).get("ok", False))

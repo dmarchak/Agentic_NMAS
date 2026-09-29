@@ -268,6 +268,49 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
             text)
 
 
+#: How many devices a capture reads AT ONCE (C188). One per device at the
+#: fleet size measured: nine, 2026-09-29, 101 s read one after another with
+#: the slowest (s3) at 23-24 s, so concurrency makes the wall time the
+#: slowest device's. The cap stops a large list opening every session at once;
+#: it is NOT a measured optimum, and is re-derived when a list that large is
+#: measured. The per-device limit is open_ssh's own budget (vty lines), which
+#: a capture's one session per device stays inside.
+CAPTURE_READ_WORKERS = 16
+
+
+def _read_all(list_name: str, repo: str, devices: list) -> tuple:
+    """``([(entry, text)] in the devices' order, timing)``: every device read
+    CONCURRENTLY, each timed, the slowest named, because a parallel read is
+    only as fast as its slowest member (the operator, C188). A read that
+    raises is that device's `read: False`, never the whole capture's."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(device):
+        started = time.monotonic()
+        try:
+            entry, text = _capture_entry(list_name, repo, device)
+        except Exception as exc:              # noqa: BLE001
+            entry, text = ({"device": device.get("hostname", ""), "read": False,
+                            "error": f"{type(exc).__name__}: {exc}", "platform": "",
+                            "busy": ""}, None)
+        return entry, text, round(time.monotonic() - started, 1)
+
+    workers = max(1, min(CAPTURE_READ_WORKERS, len(devices)))
+    started = time.monotonic()
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="capture-read") as pool:
+        read = list(pool.map(one, devices))
+    per = {e["device"]: s for e, _t, s in read}
+    slowest = max(per, key=per.get) if per else ""
+    timing = {"wall_s": round(time.monotonic() - started, 1), "workers": workers,
+              "series_s": round(sum(per.values()), 1), "per_device_s": per,
+              "slowest": slowest, "slowest_s": per.get(slowest, 0)}
+    log.info("capture: read %d device(s) with %d worker(s) in %.1f s (one after another: "
+             "%.1f s); slowest %s at %.1f s", len(devices), workers, timing["wall_s"],
+             timing["series_s"], slowest or "-", timing["slowest_s"])
+    return [(e, t) for e, t, _s in read], timing
+
+
 def _close_handed_off(approvals: dict, outcomes: list) -> dict:
     """Close the queue items a capture was handed ({host: [ids]}), ONLY for
     devices it recorded: an item closed for a device that moved, could not be
@@ -338,9 +381,10 @@ def capture_preview():
     else:
         fleet = not wanted
         devices = [d for d in inventory if fleet or d.get("hostname") in set(wanted)]
-    entries = [_capture_entry(list_name, repo, d)[0] for d in devices]
+    read, timing = _read_all(list_name, repo, devices)
+    entries = [e for e, _t in read]
     preview = _parts(entries, fleet=fleet, inventory=inventory, request=request,
-                     not_read=excluded)
+                     not_read=excluded, timing=timing)
     # The preview alone: it draws each device's read, and its `select_data`
     # carries the hash the confirm is bound to. The raw reads are not sent.
     # `nothing` is always carried (empty here): one payload shape whether or
@@ -384,6 +428,12 @@ def capture_apply():
     busy = {r["device"]: r["reason"] for r in refused_busy}
     try:
         outcomes, items, skipped, texts = [], [], [], {}
+        # Every confirmed, held device read AT ONCE (C188), then judged in the
+        # inventory's order, as before.
+        to_read = [d for d in inventory if d.get("hostname", "") in confirmations
+                   and d.get("hostname", "") not in busy]
+        read, timing = _read_all(list_name, repo, to_read)
+        read_by_host = {e["device"]: (e, t) for e, t in read}
         for device in inventory:
             host = device.get("hostname", "")
             if host not in confirmations:
@@ -393,7 +443,7 @@ def capture_apply():
                 outcomes.append({"device": host, "outcome": "busy", "reason": busy[host]})
                 skipped.append({"hostname": host, "reason": "another operation holds it"})
                 continue
-            entry, text = _capture_entry(list_name, repo, device)
+            entry, text = read_by_host[host]
             if not entry["read"]:
                 outcomes.append({"device": host, "outcome": "unread", "reason": entry["error"]})
                 skipped.append({"hostname": host, "reason": "could not be read"})
@@ -430,7 +480,7 @@ def capture_apply():
                     o["outcome"] = ("captured" if o["device"] in (save.get("changed") or [])
                                     else "unchanged")
                     o["intent"] = (save.get("intent") or {}).get(o["device"], o["intent"])
-        result = capture_result(outcomes, save, fleet=fleet)
+        result = capture_result(outcomes, save, fleet=fleet, timing=timing)
         closed = _close_handed_off(data.get("approvals") or {}, outcomes)
         return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
                                      "result": result, "approvals": closed}))
