@@ -208,7 +208,7 @@ def _setup(v, mp, client):
     # The device, as a read returns it NOW (capture preview and drift).
     import routes.golden as rg
     running = _config_body("Run")
-    mp.setattr(rg, "_read_running", lambda d: (running, ""))
+    mp.setattr(rg, "_read_running", lambda d, phases=None: (running, ""))
     mp.setattr("modules.connection.get_persistent_connection", lambda *a, **k: object())
     mp.setattr("modules.commands.run_device_command", lambda conn, cmd, *a, **k: running)
     v["device_read"] = [_p("RunSec"), _p("RunComm")]

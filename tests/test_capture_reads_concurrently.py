@@ -221,3 +221,87 @@ class TestTheModalSaysWhatItWaitsFor:
 
     def test_an_announcement_with_no_job_open_does_nothing(self):
         assert self._js("window.capturePreviewHeard()") is True
+
+
+class TestWhereTheReadTimeWent:
+    """C188's second question (the operator, from the host): the same nine
+    reads took 40.9 s at the preview and 13.7 s at the apply three minutes
+    later, every device faster. Each read is now split into the SSH connect
+    (with `enable`) and `show running-config`, through the REAL
+    `_read_running` over a fake connection whose two halves take known
+    times, so the split cannot be right by accident."""
+
+    @pytest.fixture
+    def slow_link(self, monkeypatch):
+        cfg = {"connect": 0.3, "read": 0.1, "close": 0.1, "fail_connect": False}
+
+        def with_temp_connection(dev, func):
+            time.sleep(cfg["connect"])
+            if cfg["fail_connect"]:
+                raise TimeoutError("TCP connection to device failed")
+            try:
+                return func(object())
+            finally:
+                time.sleep(cfg["close"])
+
+        def run_device_command(conn, command, **kw):
+            assert command == "show running-config"
+            time.sleep(cfg["read"])
+            return "hostname r2\nend\n"
+
+        monkeypatch.setattr("modules.connection.with_temp_connection", with_temp_connection)
+        monkeypatch.setattr("modules.commands.run_device_command", run_device_command)
+        return cfg
+
+    def test_the_connect_and_the_read_are_timed_apart(self, slow_link):
+        phases = {}
+        text, error = G._read_running({"hostname": "r2", "ip": "203.0.113.2"},
+                                       phases=phases)
+        assert error == "" and text.startswith("hostname r2")
+        assert 0.3 <= phases["connect_s"] < 0.45, phases
+        assert 0.1 <= phases["read_s"] < 0.25, phases
+        assert 0.1 <= phases["close_s"] < 0.25, phases
+
+    def test_a_connect_that_fails_is_all_connect_and_no_read(self, slow_link):
+        slow_link["fail_connect"] = True
+        phases = {}
+        text, error = G._read_running({"hostname": "r2", "ip": "203.0.113.2"},
+                                       phases=phases)
+        assert text is None and "TCP connection to device failed" in error
+        assert phases["connect_s"] >= 0.3 and phases["read_s"] is None
+        assert phases["close_s"] is None
+
+    def test_the_preview_draws_and_logs_the_split(self, slow_link, tmp_path, monkeypatch,
+                                                  caplog):
+        import logging
+
+        lab = build_capture_lab(monkeypatch, tmp_path)
+        monkeypatch.setattr(G, "_read_running", _REAL_READ_RUNNING)
+        slow_link["read"] = 0.0
+        text = lab["running"]["r2"]
+        monkeypatch.setattr("modules.commands.run_device_command",
+                            lambda conn, command, **kw: text)
+        with caplog.at_level(logging.INFO, logger="routes.golden"):
+            d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
+        p = d["preview"]
+        op = {o["name"]: o["value"] for o in p["targets"][0]["operands"]}
+        assert "(connect 0.3 s, show running-config 0.0 s)" in op["read in"], op["read in"]
+        assert "of which connecting 0.3 s and reading 0.0 s" in p["what"]["summary"]
+        lines = [r.getMessage() for r in caplog.records]
+        assert any(m.startswith("capture: r2 read in ") and "connect 0.3 s" in m
+                   and "show running-config 0.0 s" in m for m in lines), lines
+
+    def test_the_words_carry_the_split_only_when_it_was_measured(self):
+        from modules.preview_confirm import read_timing_words
+
+        base = {"wall_s": 13.7, "series_s": 71.1, "workers": 9, "slowest": "s3",
+                "slowest_s": 13.7, "per_device_s": {f"x{i}": 1 for i in range(9)}}
+        assert "connecting" not in read_timing_words(base)
+        split = dict(base, phases_s={"x0": {"connect_s": 1, "read_s": 0.5, "close_s": 0}},
+                     connect_series_s=52.0, read_series_s=17.9)
+        assert read_timing_words(split) == (
+            "Read 9 device(s) at once in 13.7 s (one after another: 71.1 s, of which "
+            "connecting 52.0 s and reading 17.9 s); slowest s3, 13.7 s.")
+
+
+_REAL_READ_RUNNING = G._read_running

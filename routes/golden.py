@@ -218,21 +218,48 @@ def restore_points(hostname):
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
-def _read_running(device: dict) -> tuple:
+def _read_running(device: dict, phases: dict = None) -> tuple:
     """``(running_config, error)`` read NOW from *device* (the list's own
-    row, carried, never looked up in the active list)."""
+    row, carried, never looked up in the active list). *phases*, when given,
+    is filled with where the time went (C188's second question, the
+    operator: the same nine reads took 40.9 s and then 13.7 s three minutes
+    apart, so the time is somewhere not yet measured): ``connect_s`` (the SSH
+    session opened and `enable`), ``read_s`` (`show running-config`) and
+    ``close_s`` (the disconnect). A read that failed before `show` ran has
+    ``read_s`` None: the time was all spent connecting."""
+    import time
+
     from modules.commands import run_device_command
     from modules.connection import with_temp_connection
 
+    marks = {}
+
+    def read(conn):
+        marks["read_start"] = time.monotonic()
+        try:
+            return run_device_command(conn, "show running-config")
+        finally:
+            marks["read_end"] = time.monotonic()
+
+    started = time.monotonic()
     # A temporary connection, closed when the read ends. It was a persistent
     # connection in a fresh pool nobody kept, so every preview and apply left
-    # a session open until the device timed it out (C97).
+    # a session open until the device timed it out (C97). So no capture
+    # reuses a session: the preview and the apply each open a fresh one.
     try:
-        text = with_temp_connection(
-            device, lambda conn: run_device_command(conn, "show running-config"))
+        text = with_temp_connection(device, read)
+        error = "" if text else "the device returned an empty running config"
     except Exception as exc:                  # noqa: BLE001
-        return None, f"{type(exc).__name__}: {exc}"
-    return (text, "") if text else (None, "the device returned an empty running config")
+        text, error = None, f"{type(exc).__name__}: {exc}"
+    ended = time.monotonic()
+    if phases is not None:
+        opened = marks.get("read_start", ended)
+        phases.update({
+            "connect_s": round(opened - started, 1),
+            "read_s": (round(marks["read_end"] - marks["read_start"], 1)
+                       if "read_end" in marks else None),
+            "close_s": (round(ended - marks["read_end"], 1) if "read_end" in marks else None)})
+    return (text, "") if text else (None, error)
 
 
 def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
@@ -252,10 +279,11 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
     host, ip = device.get("hostname", ""), device.get("ip", "")
     platform = platform_for_device(device)
     busy = busy_text(list_name, host)                          # C99
-    text, error = _read_running(device)
+    phases = {}
+    text, error = _read_running(device, phases=phases)
     if text is None:
         return {"device": host, "read": False, "error": error, "platform": platform,
-                "busy": busy}, None
+                "busy": busy, "read_phases": phases}, None
     current = _captured_config(repo, host)
     incoming = golden_body(host, ip, text)
     diff = [l for l in difflib.unified_diff(current.splitlines(), incoming.splitlines(),
@@ -264,7 +292,7 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
     return ({"device": host, "read": True, "error": "", "platform": platform,
              "capture_hash": _capture_hash(text), "changed": incoming != current,
              "diff": diff, "intent": intent_match(repo, list_name, host, text, platform),
-             "busy": busy},
+             "busy": busy, "read_phases": phases},
             text)
 
 
@@ -296,7 +324,9 @@ def _read_all(list_name: str, repo: str, devices: list, progress=None) -> tuple:
             entry, text = ({"device": device.get("hostname", ""), "read": False,
                             "error": f"{type(exc).__name__}: {exc}", "platform": "",
                             "busy": ""}, None)
-        return entry, text, round(time.monotonic() - started, 1)
+        # Where this device's time went, kept for the timing and the log and
+        # never in the entry the preview is built from.
+        return entry, text, round(time.monotonic() - started, 1), entry.pop("read_phases", None)
 
     workers = max(1, min(CAPTURE_READ_WORKERS, len(devices)))
     started = time.monotonic()
@@ -308,15 +338,27 @@ def _read_all(list_name: str, repo: str, devices: list, progress=None) -> tuple:
             if progress is not None:
                 progress(n, len(devices), [devices[i].get("hostname", "")
                                            for i in range(len(devices)) if read[i] is None])
-    per = {e["device"]: s for e, _t, s in read}
+    per = {e["device"]: s for e, _t, s, _p in read}
+    phases = {e["device"]: p for e, _t, _s, p in read if p}
     slowest = max(per, key=per.get) if per else ""
     timing = {"wall_s": round(time.monotonic() - started, 1), "workers": workers,
               "series_s": round(sum(per.values()), 1), "per_device_s": per,
-              "slowest": slowest, "slowest_s": per.get(slowest, 0)}
+              "slowest": slowest, "slowest_s": per.get(slowest, 0),
+              "phases_s": phases,
+              "connect_series_s": round(sum((p["connect_s"] for p in phases.values()), 0.0), 1),
+              "read_series_s": round(sum((p["read_s"] for p in phases.values()
+                                          if p["read_s"] is not None), 0.0), 1)}
+    for host, p in phases.items():
+        log.info("capture: %s read in %.1f s: connect %.1f s, show running-config %s, "
+                 "disconnect %s", host, per.get(host, 0), p["connect_s"],
+                 "not reached" if p["read_s"] is None else f"{p['read_s']:.1f} s",
+                 "not reached" if p["close_s"] is None else f"{p['close_s']:.1f} s")
     log.info("capture: read %d device(s) with %d worker(s) in %.1f s (one after another: "
-             "%.1f s); slowest %s at %.1f s", len(devices), workers, timing["wall_s"],
-             timing["series_s"], slowest or "-", timing["slowest_s"])
-    return [(e, t) for e, t, _s in read], timing
+             "%.1f s, of which connecting %.1f s and reading %.1f s); slowest %s at %.1f s",
+             len(devices), workers, timing["wall_s"], timing["series_s"],
+             timing["connect_series_s"], timing["read_series_s"], slowest or "-",
+             timing["slowest_s"])
+    return [(e, t) for e, t, _s, _p in read], timing
 
 
 def _close_handed_off(approvals: dict, outcomes: list) -> dict:

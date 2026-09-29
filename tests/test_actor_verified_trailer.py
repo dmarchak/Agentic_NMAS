@@ -267,7 +267,7 @@ class TestAnApprovalCommitsItsApprover:
         device = {"hostname": "r2", "ip": ip, "device_type": "cisco_xe",
                   "platform": "cisco_iosxe"}
         monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(device)])
-        monkeypatch.setattr(golden, "_read_running", lambda d: (running, ""))
+        monkeypatch.setattr(golden, "_read_running", lambda d, phases=None: (running, ""))
         entry = approval_queue.add_approval(
             "update_golden_config", "drift on r2", ip, "r2", "", {}, "test")
         entry_id = entry["id"] if isinstance(entry, dict) else entry

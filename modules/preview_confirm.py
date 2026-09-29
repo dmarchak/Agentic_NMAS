@@ -1555,9 +1555,7 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request=None
                                  else "Unchanged: the device matches its current golden. Confirming "
                                       "records that it was measured.")},
             "operands": [{"name": "capture hash", "value": e.get("capture_hash") or "none"},
-                         {"name": "read in", "value": (
-                             f"{(timing or {}).get('per_device_s', {}).get(name)} s"
-                             if name in (timing or {}).get("per_device_s", {}) else "not timed")},
+                         {"name": "read in", "value": _read_in_words(timing, name)},
                          {"name": "platform", "value": e.get("platform") or "unknown"},
                          {"name": "committed intent", "value": _intent_sentence(intent),
                           # It decides a fleet capture's outcome: drawn apart,
@@ -1650,6 +1648,19 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request=None
                                       "at apply, and one whose config moved is refused."}]})
 
 
+def _read_in_words(timing: dict, name: str) -> str:
+    """One device's read time, split where it was measured (C188): the SSH
+    connect (with `enable`) against `show running-config`."""
+    per = (timing or {}).get("per_device_s", {})
+    if name not in per:
+        return "not timed"
+    p = (timing or {}).get("phases_s", {}).get(name)
+    if not p:
+        return f"{per[name]} s"
+    read = "not reached" if p.get("read_s") is None else f"{p['read_s']} s"
+    return f"{per[name]} s (connect {p['connect_s']} s, show running-config {read})"
+
+
 def read_timing_words(timing: dict) -> str:
     """How long the device reads took, in one sentence (C188): concurrently,
     against what one after another would have cost, and the slowest device,
@@ -1657,9 +1668,11 @@ def read_timing_words(timing: dict) -> str:
     if not timing or not timing.get("per_device_s"):
         return ""
     n = len(timing["per_device_s"])
+    split = (f", of which connecting {timing['connect_series_s']} s and reading "
+             f"{timing['read_series_s']} s" if timing.get("phases_s") else "")
     return (f"Read {n} device(s) {'at once' if timing.get('workers', 1) > 1 else ''} in "
-            f"{timing['wall_s']} s (one after another: {timing['series_s']} s); slowest "
-            f"{timing['slowest']}, {timing['slowest_s']} s.").replace("  ", " ")
+            f"{timing['wall_s']} s (one after another: {timing['series_s']} s{split}); "
+            f"slowest {timing['slowest']}, {timing['slowest_s']} s.").replace("  ", " ")
 
 
 def capture_result(outcomes: list, save: dict, *, fleet: bool, timing: dict = None) -> dict:

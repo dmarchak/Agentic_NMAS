@@ -253,6 +253,24 @@ has five sections:
 
    Until roles exist, the mode is `any_person`, and the same drawing code
    draws every control enabled for a person.
+7. **Operations across devices run concurrently** (the operator's standing rule,
+   2026-09-29, after C188: Save All read nine devices one after another in 101 s,
+   and at once in 40.9 s):
+   - **reads across devices run concurrently by default**: captures, drift,
+     freshness, reachability, probes, previews. A serial read loop is a defect
+     unless it states why;
+   - **writes across devices run concurrently only where nothing depends on
+     order.** The deploy batch is sequential on purpose: its circuit breaker stops a
+     bad change after the first device it breaks, and a concurrent push would reach
+     the whole fleet before anything could notice. Canary and staged rollouts are
+     the same: the ordering IS the safety;
+   - **a sequential multi-device operation states why**, the way a toast-only result
+     must justify itself. `tests/test_device_loops_state_why.py` holds every loop
+     that calls the device layer directly, each with its reason, and the loops the
+     scan cannot see (the work behind a call) from the 2026-09-29 survey; the rest
+     are C199;
+   - **a long read is a job, not a request**: it answers at once, shows in the
+     in-flight panel and announces its result (the capture preview, C188 step 2).
 
 ## 3. Grafana, embedded and central
 
@@ -1807,6 +1825,11 @@ read through one function, and P.8 moves it without the reader changing.
   when it finishes, so no request waits on a device. The apply stays a request (about
   the slowest device's read after step 1). **Accepted by the after-measurement**: the
   operator's next Save All, read from the same log lines, per device and in total.
+  **Measured on the host, 2026-09-29 (the operator): C188 CLOSED.** Preview 101 s to
+  40.9 s, apply 102 s to 13.7 s, s3 the slowest both times; `baseline/20260929T063600Z`
+  earned 30 minutes after the first. The apply three times faster than the preview for
+  the same reads is not explained (C198): each read is now split into connect and
+  `show running-config`, logged and drawn, and the next Save All says where the time is.
   **The gap Mode B has to get right** (the operator): every destructive or surprising
   result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
   default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and

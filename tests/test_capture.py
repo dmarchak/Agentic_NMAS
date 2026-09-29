@@ -71,7 +71,7 @@ def build_capture_lab(monkeypatch, tmp_path):
     monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(device)])
     running = {"r2": captured}
     monkeypatch.setattr(golden, "_read_running",
-                        lambda d: (running[d["hostname"]], ""))
+                        lambda d, phases=None: (running[d["hostname"]], ""))
     return {"client": A.app.test_client(), "repo": repo, "running": running,
             "captured": captured}
 
@@ -230,7 +230,7 @@ class TestAutoCreateIsAScopeOfCapture:
         read = []
         import routes.golden as golden
         real = golden._read_running
-        golden._read_running = lambda d: (read.append(d["hostname"]), real(d))[1]
+        golden._read_running = lambda d, phases=None: (read.append(d["hostname"]), real(d))[1]
         try:
             d = self._scoped(two)
         finally:
