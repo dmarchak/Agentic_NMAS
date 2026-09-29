@@ -168,6 +168,12 @@ tracked in git.
   seeded; what the template does not model is named, never blocked here.
   Client: **[static/js/nmas_seed.js](static/js/nmas_seed.js)**, the Device
   page's Seed intent
+- **[modules/nsot/retire.py](modules/nsot/retire.py)** — C11 (7.3): the
+  whole exit, one implementation for two entry points. `nmas-retire` OPENS
+  the break-glass record; the Device page's Retire… (`routes/retire.py`,
+  **[static/js/nmas_retire.js](static/js/nmas_retire.js)**) trusts the
+  EXPORT LOG (`breakglass_logged`) and says so, because it cannot reach a
+  file on a laptop
 - **[modules/nsot/golden_state.py](modules/nsot/golden_state.py)** — E7:
   a baseline that is CONFIGURED AND WORKING. Every routing protocol a
   device's committed intent declares is judged up from real output (OSPF and
@@ -236,7 +242,8 @@ tracked in git.
   `netbox_safety.py`, `inventory.py`, `golden.py`, `templatize.py`,
   `templates.py`, `deploy.py`, `freshness.py`, `devices_view.py` (the device
   list's regions, redrawn in place), `list_param.py` (a read of an unknown
-  list refused, C51), `operations.py` (C99: what is running on the list's
+  list refused, C51), `retire.py` (7.3: retire, previewed and confirmed),
+  `operations.py` (C99: what is running on the list's
   devices and what finished recently, drawn by
   **[static/js/nmas_in_flight.js](static/js/nmas_in_flight.js)**, one panel
   above every modal)
@@ -804,6 +811,9 @@ The only part of the NSoT work that reaches a device.
   not mention are **removal warnings**, never negated. `assert_merge_only()`
   checks provenance rather than grepping for `no`, because a template may
   legitimately contain `no ip http server`.
+  **What that costs, since Mode B is not built** (the operator, 2026-09-28): a
+  hand change becomes permanent in the record until someone undoes it by hand.
+  The tool can adopt the line into intent or leave it; it cannot remove it.
 - **What the operator confirms is what is sent, byte for byte** — not a
   superset, not a safe one. `merge_commands()` builds the exact program: each
   added line preceded by its full ancestor chain in order, one `exit` per open
@@ -1225,6 +1235,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_netbox_seeded_specs.py` | code-defined NetBox specs against NetBox with both operands; a failed definition write warns and reaches the sync's notes |
 | `test_template_library_renders.py` | the shared `_common.j2` is listed with what editing it revokes; a withdrawal's reason is drawn; the save message says what happened |
 | `test_bulk_intent.py` | P.1b (and C106: a failed commit puts every written file back as committed and says nothing changed): before-state compare-and-set per device with both operands; every refusal reason at once; the group count is the headline; one-shot hash; one commit; one device reverts alone from it |
+| `test_retire_screen.py` | 7.3's retire screen over the real module: every step, the Not-Done list and the advisories drawn; the basis stated (the export log, what it cannot show, the CLI opens the record); no export, an export from before the last rotation, one without the device and an UNREADABLE log each a failed gate naming its cause; a current export confirmable with the effect saying what survives; the preview writes nothing and returns no credential; every refusal key the plan can make is a gate by name (AST); the apply retires against the log as the verified person, refuses a rotation made after the preview and a changed reason, needs its list; the record read back by name after the golden is gone; the CLI's basis named as the record; the shipped button refuses a reason edited after the preview |
 | `test_retire.py` | the whole exit in one commit, history kept; the break-glass record must hold the CURRENT credential; what it will NOT do is stated; resumable; a failed commit restores the tree |
 | `test_clab_sync_commit.py` | C106 (2): a lab whose backup failed is NOT overwritten, is named as a backup failure (never blamed on the loop or the copy), and only copied labs are verified; executed under bash with one backup refused. The sanitiser's commit block EXECUTED under bash: identity rides on every commit; a failed commit names git's reason and is not "not versioned"; helpers resolve beside the script under a systemd PATH |
 | `test_job_health.py` | a failing timer is visible: the cause line and the streak; not-installed is never ok; could-not-ask is unknown; the Proxmox images: stale when the job STOPPED, failing names the task's own status, a multi-VM failure does not condemn the VM that succeeded, `will_not_fit` asks about the next run (1.2 × the largest image), never a percentage |
@@ -5251,6 +5262,11 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the failure is not evidence that it did not. Verify has now been wrong in ten independent
   ways (C62, C64 to C68, C108, C114, C115, C178), all found by asking the same code a new
   question, none by review (docs/NSOT_WRITEUP_NOTES.md).
+- **TWO ENTRY POINTS INTO ONE OPERATION THAT TRUST DIFFERENT EVIDENCE EACH SAY WHICH** (the
+  operator, 2026-09-28, on retire): the CLI opens the break-glass record; the Device page
+  cannot reach it and trusts the export log, which records what was WRITTEN and cannot show
+  the file still exists. One implementation, two bases, and the screen states its basis
+  and its limit, so a pass here is not read as the CLI's stronger pass.
 - **A PREVIEW THAT KNOWS THE OPERATION HAS NO EFFECT SAYS SO AT THE CONFIRM** (the operator,
   2026-09-28, C184), and the button says it too: Save All's preview had computed that nothing
   would be committed and no baseline taken, drew both in sections above, and offered

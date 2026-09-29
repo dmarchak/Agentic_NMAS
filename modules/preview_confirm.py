@@ -1834,3 +1834,181 @@ def seed_result(outcomes: list, save: dict) -> dict:
                     "changed; its next deploy plans from this intent, and should propose "
                     "nothing until the intent is edited.",
         titles=SEED_RESULT_TITLES)
+
+
+# ---------------------------------------------------------------------------
+# Retire (7.3): the whole exit, previewed and confirmed. The model is r5's
+# retirement commit (3592113): every step, and every thing it deliberately
+# does NOT do, drawn before the confirm and again in the result.
+# ---------------------------------------------------------------------------
+
+RETIRE_TITLES = {"program": "What retire changes in the record, in order",
+                 "what_not": "What retire does NOT do",
+                 "what": "What will be retired"}
+RETIRE_RESULT_TITLES = {"sent": "What was done", "checks": "The break-glass basis",
+                        "happened": "What was retired", "did_not": "What retire did NOT do"}
+
+#: Each refusal the plan can make, as the gate that draws it (plan()'s
+#: `refused_by` keys). A key with no gate here would be a reason drawn
+#: nowhere, and a test holds the two sets equal.
+RETIRE_GATES = (
+    ("list", "a list of that name exists", "the list is in the registry"),
+    ("reason", "a reason is given", "it goes into the commit, the declaration and the history"),
+    ("source", "the list is not NetBox-sourced", "a NetBox list's inventory is NetBox's"),
+    ("present", "the device is in this list", "it has a row, an identity or files"),
+    ("pending", "the device is not pending onboarding", "a pending device is abandoned instead"),
+    ("clean", "no uncommitted changes would ride into the commit",
+     "host_vars/, golden/ and the manifest are clean"),
+    ("credentials", "the credential store can be read", "its override can be cleared"),
+)
+BREAKGLASS_GATE = "a break-glass export holds its current credential"
+
+
+def _retire_step_line(s: dict) -> str:
+    return ("done already: " if s.get("done") else "") + s.get("what", "")
+
+
+def retire_preview(plan: dict, *, busy: str, request) -> dict:
+    """*plan*: `retire.plan()`'s. One target, the device."""
+    name = plan.get("hostname") or "?"
+    refused = plan.get("refused_by") or {}
+    bg = plan.get("breakglass_log") or {}
+    row_pending = any(s["key"] == "row" and not s["done"] for s in plan.get("steps") or [])
+    gates = [gate(title, "fail" if key in refused else "pass",
+                  refused.get(key) or ok_detail)
+             for key, title, ok_detail in RETIRE_GATES]
+    if row_pending:
+        export = bg.get("export") or {}
+        gates.append(gate(BREAKGLASS_GATE, "pass" if bg.get("ok") else "fail",
+                          (f"the export log: the newest export of {plan.get('list_name')} "
+                           f"({export.get('at')}, to {export.get('path')}) recorded its current "
+                           "credential; checked again at apply. " + (bg.get("statement") or ""))
+                          if bg.get("ok") else (bg.get("why") or "not established")))
+    else:
+        gates.append(gate(BREAKGLASS_GATE, "not_applicable",
+                          "no CSV row: there is no stored credential to lose"))
+    gates.append(busy_gate({"busy": busy}))
+    gates.append(gate("plan unchanged since this preview", "at_apply",
+                      "the plan is computed again at apply, and a different hash refuses "
+                      "with nothing done"))
+    selectable = bool(plan.get("ok")) and (bool(bg.get("ok")) or not row_pending) and not busy
+    what_not = [{"target": name, "kind": "not_doing", "text": n, "lines": []}
+                for n in plan.get("not_doing") or []]
+    what_not += [{"target": name, "kind": "advisory", "text": "Advisory: " + a, "lines": []}
+                 for a in plan.get("advisories") or []]
+    if row_pending:
+        what_not.append({"target": name, "kind": "basis", "lines": [], "text": (
+            "This screen does not open the break-glass record: it cannot reach a file on "
+            "your laptop. It trusts the EXPORT LOG on this host, which records what an export "
+            "wrote, and cannot show the file still exists or that its passphrase is known. "
+            "On the command line, `nmas-retire --breakglass <file>` opens the record itself.")})
+    identity = plan.get("identity") or "none"
+    export = bg.get("export") or {}
+    target = {
+        "name": name,
+        "state": "retirable" if selectable else "refused",
+        "selectable": selectable,
+        "select_data": {"hash": plan.get("hash") or "", "list": plan.get("list_name") or "",
+                        "reason": plan.get("reason") or ""},
+        "program": {"lines": [_retire_step_line(s) for s in plan.get("steps") or []],
+                    "caption": ("Each step is skipped if already done, so a retirement that "
+                                "stopped part way is finished by running it again. Nothing is "
+                                "sent to the device"),
+                    "none": "Nothing to do: " + "; ".join(plan.get("refusals") or ["no steps"])},
+        "operands": [
+            {"name": "reason", "value": plan.get("reason") or "none given"},
+            {"name": "list", "value": plan.get("list_name") or "?"},
+            {"name": "identity", "value": identity},
+            {"name": "management address", "value": plan.get("ip") or "none recorded"},
+            {"name": "files removed (kept in history)",
+             "value": ", ".join(plan.get("files") or []) or "none"},
+            {"name": "startup config, frozen",
+             "value": f"{plan.get('startup') or '?'} (lab {plan.get('lab') or '?'})"},
+            {"name": "break-glass basis",
+             "value": ("the export log (not the record): newest export "
+                       f"{export.get('at') or 'none'}"
+                       + (f", key {export.get('key_fingerprint')}"
+                          if export.get("key_fingerprint") else ""))
+                      if row_pending else "not needed: no CSV row"},
+            {"name": "plan hash", "value": plan.get("hash") or "none"}],
+        "gates": gates,
+    }
+    confirm = confirm_part(request, "approve")
+    if selectable:
+        files = ", ".join(plan.get("files") or []) or "no files"
+        confirm["effect"] = (
+            f"Retiring {name} takes it out of management. What SURVIVES: its intent and "
+            f"golden ({files}) stay in history, the parent of the retire commit; "
+            + (f"its credential survives ONLY in the break-glass export of "
+               f"{export.get('at')} (to {export.get('path')}), since the CSV row is its only "
+               "copy here and is deleted last. " if row_pending else "")
+            + "To manage it again is onboarding or adopt, not an undo.")
+        confirm["button"] = f"Retire {name}"
+    return build(
+        action="retire",
+        summary=(f"Retire {name} from {plan.get('list_name')}: "
+                 f"{sum(1 for s in plan.get('steps') or [] if not s['done'])} step(s) to do, "
+                 "each one a change to the record, in one commit and the row last."),
+        targets=[target], what_not=what_not,
+        nothing_left_out="Nothing: retire states what it does not do on every run.",
+        confirm=confirm, titles=RETIRE_TITLES,
+        explain={"confirm": [{"concept": "confirm-by-hash",
+                              "text": "You are confirming this plan. It is computed again at "
+                                      "apply, and a different one refuses with nothing done."}]})
+
+
+RETIRE_STEP_WORDS = {"override": "cleared its credential override",
+                     "declare": "declared its startup config deliberately unmapped",
+                     "commit": "removed its intent and golden and released its identity, "
+                               "in one commit",
+                     "row": "deleted its CSV row, last"}
+
+
+def retire_result(result: dict, plan: dict) -> dict:
+    """*result*: `retire.apply()`'s; *plan*: the plan it ran (carried on a
+    refusal, or recomputed by the route)."""
+    name = (plan or {}).get("hostname") or "?"
+    done = list(result.get("done") or [])
+    ok = bool(result.get("ok"))
+    basis = result.get("breakglass") or {}
+    did_not = [{"target": name, "kind": "not_doing", "text": n, "lines": []}
+               for n in (result.get("not_doing") or (plan or {}).get("not_doing") or [])]
+    if not ok:
+        did_not.insert(0, {"target": name, "kind": "stopped",
+                           "text": ("Stopped" + (f" at {result['failed_at']}"
+                                                 if result.get("failed_at") else "")
+                                    + ": " + (result.get("error") or "no reason recorded")
+                                    + (". " + result["note"] if result.get("note") else "")),
+                           "lines": list(result.get("remaining") or [])})
+    for a in result.get("advisories") or []:
+        did_not.append({"target": name, "kind": "advisory", "text": "Advisory: " + a,
+                        "lines": []})
+    level = "success" if ok else ("partial" if done else "failed")
+    commit = result.get("commit") or ""
+    words = ("retired" if ok else
+             "partly retired: run it again to finish" if done else "refused: nothing was done")
+    return build_result(
+        action="retire", level=level,
+        summary=((f"{name} is retired." if ok else
+                  f"{name} is PARTLY retired: " + ", ".join(done) + " done, the rest not."
+                  if done else f"{name} was not retired: nothing was done.")),
+        targets=[{"name": name, "outcome": "retired" if ok else "failed", "words": words,
+                  "reason": result.get("error", ""),
+                  "sent": {"lines": [RETIRE_STEP_WORDS.get(k, k) for k in done],
+                           "caption": "Changes to the record. Nothing was sent to the device",
+                           "none": "Nothing was done."},
+                  "checks": ({"ran": True, "ok": True,
+                              "statements": [basis.get("statement") or ""], "issues": []}
+                             if basis.get("basis") else
+                             {"ran": False, "why": basis.get("statement")
+                              or "the break-glass check was not reached"})}],
+        did_not=did_not,
+        nothing_left_out="Nothing: every step was done.",
+        record={"commit": commit, "tags": [], "baseline": "",
+                "statement": (f"Retire commit {commit[:12]} (`Source: retire`, `Retired-Device: "
+                              f"{name}`, one `Not-Done:` trailer per thing it did not do) removed "
+                              "its intent and golden; history keeps both."
+                              if commit else "No retire commit was made by this run.")},
+        not_watched=(f"Nothing in NMAS watches {name} after this: no drift check, capture or "
+                     "deploy. Oxidized still polls it, and NetBox still records it."),
+        titles=RETIRE_RESULT_TITLES)

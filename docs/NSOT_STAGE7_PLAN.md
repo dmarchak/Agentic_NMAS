@@ -1486,6 +1486,22 @@ does not design a policy: the screen draws exactly that list before the confirm
 and again in the result, and 7.3 closes the gaps it names (C176's legacy file,
 the heartbeat rules and scrape targets, C139's NetBox masking).
 
+**7.3's retire screen BUILT (2026-09-28).** The Device page's Retire… asks for the
+reason first (it is in the plan's hash), then previews `retire.plan()` through the
+shared component: every step in order, the Not-Done list and the advisories, each
+refusal as a gate by name (`RETIRE_GATES`, held equal to the plan's refusal keys), the
+busy gate, and the confirm's effect saying what SURVIVES (intent and golden in history,
+the credential only in the break-glass export). The result draws the Not-Done list
+again. `POST /retire/preview` (a read, `not_device`) and `POST /retire/apply`
+(`approve`, the list carried). **The break-glass basis differs by entry point, and each
+says which** (the operator: "the screen trusts the export log, the CLI trusts the
+record"): the page cannot open a record on a laptop, so it checks that the NEWEST
+export of the list logged this device's current credential digest (C182), again at
+apply, and states that the log records what was written and cannot show the file
+still exists or that its passphrase is known. Building it found C187 (a re-approval
+scheme 3 does not need, fixed), C186 (retire's failure paths) and C185 (no page reaches
+a retired device's record).
+
 **7.3 step 1 BUILT (2026-09-28): seed intent (C148), the path from onboarded to
 deployable.** One operation where there were four routes with no screen:
 `POST /templatize/seed/preview` parses each device's COMMITTED golden into the
@@ -1570,7 +1586,8 @@ something forces an item earlier.
     onboarded device can be deployed to. It is the product's central loop.
     (BUILT 2026-09-28 as 7.3 step 1; its acceptance run remains.)
   - **Rotate, retire and persist** exist only as host commands:
-    `nmas-rotate-credential`, `nmas-retire` and `nmas-persist-native`.
+    `nmas-rotate-credential`, `nmas-retire` and `nmas-persist-native`. (Retire has its
+    screen since 2026-09-28; rotate and persist do not.)
   - The Device page itself does not exist: Overview with the reachability
     claim, Monitoring (7.3-a to e), Neighbours absorbing topology discovery,
     History, and the Actions (revert, retry and the four above).
@@ -1640,7 +1657,12 @@ read through one function, and P.8 moves it without the reader changing.
   time. A topology of 200 devices is a picture nobody reads; one site's is
   useful.
 - **Configure batches 2 and later**, beyond what the schema models.
-- **Mode B** (removals through intent).
+- **Mode B** (removals through intent). **What its absence costs, stated so it is not
+  read as a missing convenience** (the operator, 2026-09-28): a hand change becomes
+  permanent in the record until someone undoes it by hand. Deploys are merge-only and a
+  restore is additive, so a line added on the device (r2's `load-interval 30`, C70's
+  residue) leaves only by a person on the console, or is adopted into intent; until one of
+  those, every capture departs from intent and no baseline can be earned (C184).
 - **The agent's triage-and-propose UI** (Stage 8): its reports attach to
   Needs attention rows, and its proposals arrive as ordinary plans in the
   preview-confirm component. Stage 7 leaves the place for them.

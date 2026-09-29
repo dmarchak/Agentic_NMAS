@@ -81,6 +81,13 @@
             title="Commit this device's first full intent, parsed from its committed golden: see the document and what the template cannot reproduce, then confirm. Nothing is sent to the device">
       Seed intent
     </button>
+    <!-- Retire (7.3, C11): the whole exit, previewed and confirmed; never a delete -->
+    <button type="button" class="btn btn-outline-danger"
+            data-hostname="{{ device['hostname'] }}"
+            onclick="openRetire(this.dataset.hostname)"
+            title="Take this device out of management: see every step, what retire does NOT do and each gate, then confirm. Its intent and golden stay in history; its credential must be in a break-glass export first">
+      Retire…
+    </button>
     <!-- Ask AI about this device -->
     <button type="button" class="btn btn-outline-primary"
             onclick="document.getElementById('aiOpenBtn').click();"

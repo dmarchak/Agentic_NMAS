@@ -53,7 +53,8 @@
     unread: ['bg-warning text-dark', 'could not be read'],
     seedable: ['bg-success', 'will be seeded'],
     has_intent: ['bg-secondary', 'already has intent'],
-    unseedable: ['bg-warning text-dark', 'cannot be seeded']
+    unseedable: ['bg-warning text-dark', 'cannot be seeded'],
+    retirable: ['bg-danger', 'will be retired']
   };
 
   /* A part's heading: the operation's own words where the server gives them

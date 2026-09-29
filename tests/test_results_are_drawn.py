@@ -65,6 +65,10 @@ RESULT_COMPONENT = {
     "golden.capture_apply": ("static/js/nmas_capture.js", "previewCapture", "golden.history"),
     # Seed intent (C148): its record is the committed intent it wrote, which
     # the intent editor reads back from HEAD.
+    # Retire (7.3): its record is the retire commit, which the device's golden
+    # history still reads back by name after the golden is gone (C185: no
+    # page links a RETIRED device's history yet).
+    "retire.apply": ("static/js/nmas_retire.js", "runApply", "golden.history"),
     "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed",
                               "templatize.read_committed"),
     # Onboarding's Create (C86): phase 1, drawn as pending; the record read

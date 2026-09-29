@@ -78,10 +78,12 @@ def test_the_plan_names_every_step_and_everything_it_will_not_do(world):
     p = RT.plan("Lab", "r5", "ISP PE, outside our boundary")
     assert p["ok"], p["refusals"]
     keys = [s["key"] for s in p["steps"] if not s["done"]]
-    assert keys == ["declare", "commit", "approval", "row"], keys
-    approval = next(s["what"] for s in p["steps"] if s["key"] == "approval")
-    assert "cisco_iosxe/base.j2" in approval and "against r4" in approval
+    assert keys == ["declare", "commit", "row"], keys
     joined = " ".join(p["not_doing"])
+    # Scheme 3 (P.5): releasing a device withdraws no approval, and the plan
+    # says so instead of asking for a re-approval nobody needs.
+    assert ("the approval of cisco_iosxe/base.j2 is not withdrawn" in joined
+            and "names r5, as history" in joined), joined
     for claim in ("NetBox device 9 is KEPT", "Remove cannot touch it",
                   "Oxidized keeps polling", "freezes at its last sync",
                   "running configuration is not changed"):

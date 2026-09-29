@@ -17,17 +17,26 @@ that stops part way is finished by running it again:
    of reporting a gap for ever;
 3. removes ``host_vars/<h>.yml`` and ``golden/<h>.cfg`` and releases the
    identity in ONE commit, so history keeps both and the tree does not.
-   Releasing changes the template's bound set, which withdraws its approval;
-   the plan names each template to re-approve;
+   Template approvals are NOT withdrawn: scheme 3 approves the template,
+   never its devices (P.5), so the plan says so rather than asking for a
+   re-approval nobody needs (it did until 2026-09-28, true only before P.5);
 4. deletes the CSV row, LAST, and only against a break-glass record that
    holds this device's CURRENT credential.
 
 **The credential is a refusal, not a step.** A sequence whose first step can
 be skipped will be skipped, and the CSV row is the only copy NMAS holds of a
-rotated password. ``apply`` opens the break-glass record (the passphrase is
-read by the CLI from the terminal) and refuses unless it has an entry for
-this device in this list whose username and password equal the row's, which
-means an export taken before the last rotation does not count.
+rotated password. Two bases, and each says which it is:
+
+- the CLI (``nmas-retire --breakglass <file>``) OPENS the record (the
+  passphrase read from the terminal) and refuses unless it has an entry for
+  this device in this list whose username and password equal the row's;
+- the Device page cannot open a record on the operator's laptop, so it
+  trusts the EXPORT LOG (C182): the newest export for this list must have
+  recorded this device's current credential digest. The log says what was
+  WRITTEN; it cannot show the file still exists or that its passphrase is
+  known. The screen states that difference (the operator, 2026-09-28).
+
+Either way an export taken before the last rotation does not count.
 
 **What retire does NOT do, stated every time**, because each is correct and
 each looks like an omission unless it is named: the NetBox device stays
@@ -104,39 +113,46 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     from modules.settings_schema import get_setting
 
     out = {"ok": True, "list_name": list_name, "hostname": hostname,
-           "reason": reason, "refusals": [], "steps": [], "not_doing": [],
-           "advisories": []}
+           "reason": reason, "refusals": [], "refused_by": {}, "steps": [],
+           "not_doing": [], "advisories": []}
     try:
         list_dir, csv_path = _list_paths(list_name)
     except RetireRefused as exc:
-        return {**out, "ok": False, "refusals": [str(exc)]}
+        return {**out, "ok": False, "refusals": [str(exc)], "refused_by": {"list": str(exc)}}
     repo = os.path.join(list_dir, "config_repo")
-    refuse = out["refusals"].append
+
+    def refuse(key, text):
+        # Keyed as well as listed: the screen draws each check as a gate by
+        # name (REFUSAL_GATES), and a refusal with no gate would be a
+        # reason drawn nowhere.
+        out["refusals"].append(text)
+        out["refused_by"][key] = text
 
     if not (reason or "").strip():
-        refuse("a reason is required -- it goes into the commit, the "
+        refuse("reason", "a reason is required -- it goes into the commit, the "
                "unmapped declaration and the history, and 'retired' on its "
                "own tells the next reader nothing")
     if _is_netbox_sourced(list_dir):
-        refuse("this list's inventory is NetBox's: retire the device there")
+        refuse("source", "this list's inventory is NetBox's: retire the device there")
 
     row = next((d for d in load_saved_devices(csv_path)
                 if d.get("hostname") == hostname), None)
     identity, entry = manifest.find_by_name(repo, hostname)
-    rel_intent = f"host_vars/{hostname}.yml"
+    from modules.nsot.hostvars import committed_rel
+    rel_intent = committed_rel(hostname)      # the one producer (C175)
     rel_golden = f"golden/{hostname}.cfg"
     files = [rel for rel in (rel_intent, rel_golden)
              if os.path.exists(os.path.join(repo, rel))]
     if row is None and identity is None and not files:
-        refuse(f"{hostname!r} is not in list {list_name!r}: nothing to retire")
+        refuse("present", f"{hostname!r} is not in list {list_name!r}: nothing to retire")
     if hostname in {p.get("name") for p in manifest.pending_devices(repo)}:
-        refuse(f"{hostname} is pending onboarding: use abandon, which also "
+        refuse("pending", f"{hostname} is pending onboarding: use abandon, which also "
                "reverses what onboarding created")
 
     rc, dirty, _e = R.git(repo, "status", "--porcelain", "--",
                           "host_vars", "golden", ".nsot/manifest.json")
     if rc != 0 or dirty.strip():
-        refuse("uncommitted changes under host_vars/, golden/ or the "
+        refuse("clean", "uncommitted changes under host_vars/, golden/ or the "
                "manifest would ride into the retire commit: "
                + (dirty.strip() or "git status failed"))
 
@@ -145,7 +161,7 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     try:
         has_override = bool(ip) and credentials.has_device_override(ip)
     except Exception as exc:                   # noqa: BLE001
-        refuse(f"the credential store could not be checked: {exc}")
+        refuse("credentials", f"the credential store could not be checked: {exc}")
         has_override = False
 
     target = credential_rotation.clab_target_for(list_name, hostname)
@@ -153,13 +169,13 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     declared = ((get_setting("clab_declared_unmapped") or {})
                 .get(list_name) or {}).get(hostname)
 
-    withdrawn = []
-    for tpl in approval.approved_templates(repo):
-        bound = [b["device"] for b in templates_repo.devices_for_template(repo, tpl)]
-        if hostname in bound:
-            withdrawn.append({"template": tpl,
-                              "re_approve_against": sorted(d for d in bound
-                                                           if d != hostname)})
+    # Scheme 3 (P.5) approves the TEMPLATE, never its devices: releasing one
+    # changes no approval. This listed "this withdraws the approval ...
+    # re-approve it" until 2026-09-28, which was true for r5's retirement
+    # (2026-09-25, scheme 2) and false from the next day on.
+    still_approved = [tpl for tpl in approval.approved_templates(repo)
+                      if hostname in {b["device"] for b in
+                                      templates_repo.devices_for_template(repo, tpl)}]
 
     def step(key, text, done):
         out["steps"].append({"key": key, "what": text, "done": done})
@@ -173,12 +189,6 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
          + (f" and release identity {identity}" if identity else "")
          + " -- history keeps both",
          identity is None and not files)
-    for w in withdrawn:
-        out["steps"].append({
-            "key": "approval", "done": False,
-            "what": (f"this withdraws the approval of {w['template']} (its "
-                     "bound set changes); re-approve it against "
-                     + ", ".join(w["re_approve_against"]))})
     step("row", f"delete the CSV row for {ip} -- the only stored copy of its "
          "credential, so a break-glass record holding it is required",
          row is None)
@@ -197,6 +207,11 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
                "NMAS did not create it, so Remove cannot touch it."))
     else:
         out["not_doing"].append("NetBox: no device of this name, nothing kept")
+    for tpl in still_approved:
+        out["not_doing"].append(
+            f"the approval of {tpl} is not withdrawn: an approval is of the template, "
+            f"never of its devices (scheme 3), so it stays approved; its recorded "
+            f"evidence still names {hostname}, as history")
     out["not_doing"] += [
         "Oxidized keeps polling it: NMAS does not write router.db, so its "
         "config history continues",
@@ -221,6 +236,9 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     out["ok"] = not out["refusals"]
     out["identity"], out["ip"], out["files"] = identity, ip, files
     out["startup"], out["lab"] = startup, target.get("lab", "")
+    out["breakglass_log"] = (breakglass_logged(list_name, row) if row is not None
+                             else {"ok": True, "why": "", "export": None,
+                                   "statement": "no CSV row: no credential to protect"})
     out["hash"] = hashlib.sha256(_norm({
         "steps": out["steps"], "reason": reason, "files": {
             rel: _blob(os.path.join(repo, rel)) for rel in files},
@@ -258,6 +276,61 @@ def breakglass_covers(payload: dict, list_name: str, row: dict) -> str:
     return ""
 
 
+def breakglass_logged(list_name: str, row: dict, exports: dict = None) -> dict:
+    """Does the EXPORT LOG say a break-glass record holding this device's
+    current credential was written? ``{"ok", "why", "export", "statement"}``.
+
+    The Device page's basis, never the CLI's (which opens the record): the
+    page cannot reach a file on the operator's laptop. It compares digests
+    only (C182's ``currency_digest``), and the NEWEST export for the list
+    decides, because an export writes the whole list and the newest is the
+    one the operator holds. What it cannot show is said in ``statement``."""
+    import time as _t
+
+    from modules import breakglass as bg
+    from modules.config import DATA_DIR
+    from modules.device import decrypt_field
+
+    limit = ("This trusts the export log on this host: it records what an export WROTE, "
+             "and cannot show the file still exists or that its passphrase is known. "
+             "`nmas-retire --breakglass <file>` opens the record itself.")
+    try:
+        exports = exports if exports is not None else bg.last_exports(DATA_DIR)
+    except Exception as exc:                   # noqa: BLE001
+        exports = {"state": "unreadable", "by_list": {}, "error": str(exc)}
+    if exports.get("state") == "unreadable":
+        return {"ok": False, "export": None, "statement": limit,
+                "why": f"the export log could not be read ({exports.get('error')}): "
+                       "an unreadable log is not an absent export"}
+    newest = (exports.get("by_list") or {}).get(list_name)
+    cmd = (f"python3 scripts/nmas-breakglass export --list {list_name} "
+           "--out /dev/shm/rcn-breakglass.bg")
+    if not newest:
+        return {"ok": False, "export": None, "statement": limit,
+                "why": f"no break-glass export of {list_name} is logged on this host. "
+                       f"Export one ({cmd}), copy it off the host, then preview again"}
+    host = row.get("hostname", "")
+    pw = decrypt_field(row.get("password", "")) if row.get("password") else ""
+    if not pw:
+        return {"ok": False, "export": None, "statement": limit,
+                "why": "the CSV row holds no password to compare"}
+    when = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime(newest.get("at") or 0))
+    export = {"at": when, "path": newest.get("path", ""),
+              "key_fingerprint": newest.get("key_fingerprint", ""),
+              "actor": newest.get("actor", "")}
+    logged = (newest.get("devices") or {}).get(host)
+    if logged is None:
+        return {"ok": False, "export": export, "statement": limit,
+                "why": f"the newest export of {list_name} ({when}) did not include {host}. "
+                       f"Export again ({cmd})"}
+    if logged != bg.currency_digest(host, row.get("username", ""), pw):
+        return {"ok": False, "export": export, "statement": limit,
+                "why": f"the newest export of {list_name} ({when}) recorded an OLDER "
+                       f"credential for {host} than the one it holds now: it was taken "
+                       f"before the last rotation. Export again ({cmd})"}
+    return {"ok": True, "why": "", "export": export, "statement": limit}
+
+
 def _holds_the_device(func):
     """Retirement changes the record of a device (its row, its bindings, its
     map entry), so it holds the device like any other change (C98): a
@@ -279,9 +352,12 @@ def _holds_the_device(func):
 
 @_holds_the_device
 def apply(list_name: str, hostname: str, *, reason: str, actor: str,
-          confirmed_hash: str, breakglass: dict = None) -> dict:
+          confirmed_hash: str, breakglass: dict = None,
+          breakglass_log: bool = False) -> dict:
     """Run the plan's pending steps, in order. Refuses unless the plan is the
-    one confirmed, and deletes the CSV row only against *breakglass*."""
+    one confirmed, and deletes the CSV row only against *breakglass* (the
+    record, opened: the CLI) or, with *breakglass_log*, the export log (the
+    Device page). The result names which basis was trusted."""
     from modules import credentials
     from modules.device import delete_device, load_saved_devices
     from modules.nsot import manifest, repo as R
@@ -302,13 +378,26 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
     row = next((d for d in load_saved_devices(csv_path)
                 if d.get("hostname") == hostname), None)
     pending = {s["key"] for s in p["steps"] if not s["done"]}
+    basis = {"basis": "", "statement": "no CSV row to delete: no credential to protect"}
     if "row" in pending:
-        if breakglass is None:
+        if breakglass is not None:
+            why = breakglass_covers(breakglass, list_name, row)
+            basis = {"basis": "record", "statement": (
+                "The break-glass record was opened and holds this device's current "
+                "credential.")}
+        elif breakglass_log:
+            logged = breakglass_logged(list_name, row)
+            why = logged["why"]
+            basis = {"basis": "export_log", "export": logged["export"],
+                     "statement": ("The export log says the newest export of this list "
+                                   f"({(logged['export'] or {}).get('at', '?')}, to "
+                                   f"{(logged['export'] or {}).get('path', '?')}) recorded this "
+                                   "device's current credential. " + logged["statement"])}
+        else:
             return {"ok": False, "plan": p, "error": (
                 "a break-glass record holding this device's current "
                 "credential is required before its CSV row -- the only "
                 "stored copy -- is deleted: scripts/nmas-breakglass export")}
-        why = breakglass_covers(breakglass, list_name, row)
         if why:
             return {"ok": False, "plan": p, "error": "break-glass: " + why}
 
@@ -328,9 +417,11 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
                      if not s["done"] and s["key"] not in done]
         log.error("retire: %s failed at %s: %s", hostname, step, exc)
         return {"ok": False, "failed_at": step, "error": str(exc),
-                "done": done, "remaining": remaining,
+                "done": list(done), "remaining": remaining, "commit": commit,
+                "breakglass": basis,
                 "note": "run retire again: every step already done is skipped"}
 
+    commit = ""
     if "override" in pending:
         try:
             credentials.clear_device_override(p["ip"])
@@ -350,7 +441,6 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             return fail("declare", result.get("error"))
         done.append("declare")
 
-    commit = ""
     if "commit" in pending:
         try:
             for rel in p["files"]:
@@ -390,6 +480,5 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
         except Exception as exc:               # noqa: BLE001
             return fail("row", exc)
 
-    return {"ok": True, "done": done, "commit": commit,
-            "not_doing": p["not_doing"], "advisories": p["advisories"],
-            "re_approve": [s["what"] for s in p["steps"] if s["key"] == "approval"]}
+    return {"ok": True, "done": list(done), "commit": commit, "breakglass": basis,
+            "not_doing": p["not_doing"], "advisories": p["advisories"]}

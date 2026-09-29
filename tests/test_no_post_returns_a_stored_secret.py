@@ -109,6 +109,9 @@ def _bodies(v):
                                                               "before": "r1",
                                                               "after": "r1x"}]}),
                                     "a bulk intent change's render delta"),
+        "retire.preview": (200, ("json", {"list_name": LIST, "device": "r1",
+                                          "reason": "leaving management"}),
+                           "r1's retire plan: its steps, the credential gate, the export log"),
         "templatize.seed_preview": (200, ("json", {"list_name": LIST, "devices": ["r1"]}),
                                     "r1's committed golden parsed into the intent a seed "
                                     "would commit (r1 already seeded: shown, not selectable)"),

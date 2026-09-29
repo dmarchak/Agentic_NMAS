@@ -123,6 +123,7 @@ DECLARED = {
     "remote.verify": ("remote",),
     "remote.verify_write": ("remote",),
     # Intent, templates and deploys.
+    "retire.apply": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
     "templatize.seed_apply": ("intent", "remote"),
     "templatize.edit_committed": ("intent", "remote"),
     "templatize.revert_committed": ("intent", "remote"),
@@ -216,6 +217,7 @@ DECLARED = {
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
+    "retire.preview": Nothing("computes the retire plan from the repository, the CSV, the credential store, the settings and the export log; writes nothing"),
     "templatize.seed_preview": Nothing("parses committed goldens from git and computes the "
                                        "intent a seed would commit; writes nothing"),
     "templatize.bulk_preview": Nothing("previews a bulk intent change; the apply commits"),

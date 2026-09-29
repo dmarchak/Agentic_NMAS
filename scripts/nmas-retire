@@ -81,8 +81,7 @@ def main() -> int:
         return 1
     print(f"\nRETIRED {args.device}: done {', '.join(result['done']) or 'nothing (already retired)'}"
           + (f"; commit {result['commit'][:8]}" if result.get("commit") else ""))
-    for r in result.get("re_approve", []):
-        print(f"  NEXT: {r}")
+    print(f"  break-glass: {(result.get('breakglass') or {}).get('statement', '')}")
     return 0
 
 
