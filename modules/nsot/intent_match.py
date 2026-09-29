@@ -134,17 +134,22 @@ def resolutions(result: dict) -> list:
     the device into intent is the path that degrades the record if taken by
     reflex (a hand change laundered into what should be).
 
-    A line on the device and not in intent (`-`) CANNOT be removed by the tool:
-    every deploy is merge-only and a restore is additive; removal (Mode B) is
-    not built. Said, so "bring it back to intent" is not read as a button."""
+    A line on the device and not in intent (`-`) is removed through the
+    device's Deploy plan (Mode B, 7.3 step 2): ticked, with a stated reason,
+    and sent only where its platform was measured to remove exactly that line.
+    Where it was not, the plan refuses it with the reason, and the line is
+    removed by hand. Said, so "bring it back to intent" is not read as a
+    button here: it is a decision made in the plan, never one click away."""
     if result.get("state") != "differs":
         return []
     out = []
     if result.get("removes"):
-        out += [{"do": "Remove it from the device, by hand on the console, then capture it",
+        out += [{"do": ("Remove it from the device: tick it in this device's Deploy plan "
+                        "(Mode B) and state why, then capture it"),
                  "asserts": "the device is wrong and intent is right",
-                 "note": "the tool cannot remove a line: every deploy is merge-only and a "
-                         "restore is additive (removal, Mode B, is not built)"},
+                 "note": ("sent only where the platform was measured to remove exactly that "
+                          "line; otherwise the plan refuses it, with the reason, and it is "
+                          "removed by hand")},
                 {"do": "Adopt it into intent: Edit intent and commit the line",
                  "asserts": "the device is right, and intent will deploy it from now on",
                  "note": "a deliberate edit, never automatic: a hand change adopted by reflex "

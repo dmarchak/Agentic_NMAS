@@ -281,7 +281,13 @@ def plan():
             entry["commands"] = commands
             entry["removals"] = {k: full[k] for k in
                                  ("removed", "refused", "secret_position",
-                                  "removal_commands", "keys")}
+                                  "removal_commands", "keys", "ids")}
+            # Every line the device has and intent lacks, each with its ID and
+            # (where it cannot be removed) why: what the screen ticks, by ID.
+            from modules.nsot.removal import removable
+            entry["removable"] = removable(
+                prepared["config"], captured, mgmt_ip=(_device or {}).get("ip", ""),
+                dialect=entry.get("platform", ""))
             if full["refused"]:
                 # A removal the person asked for and will not get: the device is
                 # not confirmable with it, and the reason says which and why.
@@ -298,9 +304,12 @@ def plan():
             from modules.nsot import authorisation as _auth
             authorised = _auth.normalise(authorise.get(hostname))
             entry["authorised"] = authorised
-            entry["command_hash"] = command_fingerprint(commands, authorised)
+            entry["command_hash"] = command_fingerprint(commands, authorised, full["ids"])
+            # The history of each line needing a reason, removals included: a
+            # removal rolled back before shows when and why beside its box (the
+            # operator: unblocked, but the person sees what happened last time).
             entry["prior_authorised"] = _prior_authorised(
-                list_name, hostname, _auth.flagged(commands))
+                list_name, hostname, _auth.flagged(commands, full["keys"]))
             if entry["dangerous"] or authorised or full["keys"]:
                 try:
                     assert_authorised(commands, authorised, full["keys"])
@@ -396,7 +405,7 @@ def apply():
                 recomputed = full["commands"]
                 device_auth = authorise.get(hostname) or []
                 assert_authorised(recomputed, device_auth, full["keys"])
-                now = command_fingerprint(recomputed, device_auth)
+                now = command_fingerprint(recomputed, device_auth, full["ids"])
             except NotAuthorised as exc:
                 refused.append({"device": hostname, "outcome": "refused",
                                 "reason": str(exc)})
@@ -900,7 +909,11 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # pipeline was given, with the authorisation folded in, exactly as the
         # confirm hash is computed).
         "verify": dict((result.verify_result or {}).get(device.get("ip", ""), {})),
-        "program_hash": command_fingerprint(commands, authorised),
+        "program_hash": command_fingerprint(commands, authorised, full["ids"]),
+        # What was selected for removal, by ID, with the line as the capture
+        # held it: the receipt ties the selection to what was sent (Mode B).
+        "removals": [{"id": i, "chain": list(u["chain"]), "line": u["line"]}
+                     for i, u in zip(full["ids"], full["removed"])],
     }
 
 

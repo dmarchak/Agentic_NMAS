@@ -1765,6 +1765,23 @@ read through one function, and P.8 moves it without the reader changing.
   case) is not wired; a removal that failed and rolled back is not blocked from being
   selected again (each selection is a fresh decision with a reason, which is the
   argument for leaving it); 2c the screen; 2d r2 on the host.
+  **Step 2c BUILT (2026-09-29): the screen.** The Deploy plan lists every line the
+  device has and intent lacks with a TICK BOX, selected BY ID (`removal.unit_id`: the
+  stanza and line, hashed), because the plan is masked and a secret-position line's
+  text could never be sent back. The ids are resolved against the capture (an unknown
+  one refused by name, never guessed), folded into the confirm hash (only when there
+  are any, so every other hash is unchanged) and recorded in the receipt. A box that
+  cannot be ticked says why beside it. A ticked line joins the program, where its
+  reason box is, and the wizard's apply sends the ids the RENDERED plan's hash covers
+  (executed in duktape). The history beside a reason box says when that change was
+  last ROLLED BACK and why: unblocked, but visible (the operator). **Found building
+  it:** a stanza intent lacks is offered as one unit, so for a PHYSICAL interface
+  (whose stanza cannot be removed) every line under it was unremovable; its header is
+  now offered refused, saying why, and each line under it on its own. The capture
+  preview's blocker now points the device-side resolution at the Deploy plan's tick,
+  saying it is refused where the platform's removal is not measured. **Next: 2d**, r2
+  on the host: tick ` load-interval 30` in r2's Deploy plan, give the reason, confirm;
+  verify reads it gone; the next Save All earns the baseline.
   **The gap Mode B has to get right** (the operator): every destructive or surprising
   result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
   default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and

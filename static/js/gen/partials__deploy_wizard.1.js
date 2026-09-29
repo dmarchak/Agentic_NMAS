@@ -34,7 +34,8 @@ async function openDeployPlan(hostnames) {
 function _renderDeployPlan(plan) {
   const body = document.getElementById('deployPlanBody');
   body.innerHTML = previewConfirmHtml(plan.preview, {
-    selectable: true, onSelect: '_updateDeploySummary', authorise: '_reauthoriseDevice'});
+    selectable: true, onSelect: '_updateDeploySummary', authorise: '_reauthoriseDevice',
+    remove: '_reauthoriseDevice'});
   _updateDeploySummary();
 }
 
@@ -56,6 +57,12 @@ async function _reauthoriseDevice(device) {
     (authorise[b.dataset.authDevice] = authorise[b.dataset.authDevice] || []).push(
       {line: b.dataset.line, reason: reasonEl ? reasonEl.value : ''});
   });
+  // Mode B: the lines ticked for removal, BY ID, per device.
+  const remove = {};
+  document.querySelectorAll('#deployPlanBody input[type=checkbox][data-remove-id]').forEach(b => {
+    if (b.checked) (remove[b.dataset.removeDevice] = remove[b.dataset.removeDevice] || []).push(
+      b.dataset.removeId);
+  });
   const kept = {};
   document.querySelectorAll('#deployPlanBody input[data-pc-select]:checked').forEach(b => {
     kept[b.dataset.device] = b.dataset.commandHash;
@@ -63,7 +70,8 @@ async function _reauthoriseDevice(device) {
   try {
     const r = await fetch('/deploy/plan', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({devices: (_deployPlan.devices || []).map(x => x.device), authorise}),
+      body: JSON.stringify({devices: (_deployPlan.devices || []).map(x => x.device), authorise,
+                            remove}),
     });
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); return; }
@@ -107,7 +115,7 @@ async function applyDeploy() {
   // shown. Re-fetching the plan at confirm time would recompute against
   // whatever is current and agree with itself — the comparison would pass by
   // construction, which is the failure the confirm hash exists to prevent.
-  const confirmations = {}, commandHashes = {}, authorise = {};
+  const confirmations = {}, commandHashes = {}, authorise = {}, remove = {};
   boxes.forEach(b => {
     confirmations[b.dataset.device] = b.dataset.hash;
     if (b.dataset.commandHash) commandHashes[b.dataset.device] = b.dataset.commandHash;
@@ -116,6 +124,9 @@ async function applyDeploy() {
     // re-plan would send lines the hash does not cover, and apply refuses.
     const entry = ((_deployPlan || {}).devices || []).find(x => x.device === b.dataset.device);
     if (entry && (entry.authorised || []).length) authorise[b.dataset.device] = entry.authorised;
+    // The removals the RENDERED plan's hash covers, by ID, from the payload.
+    const ids = ((entry || {}).removals || {}).ids || [];
+    if (ids.length) remove[b.dataset.device] = ids;
   });
 
   const btn = document.getElementById('deployApplyBtn');
@@ -127,7 +138,7 @@ async function applyDeploy() {
   try {
     const r = await fetch('/deploy/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmations, command_hashes: commandHashes, authorise}),
+      body: JSON.stringify({confirmations, command_hashes: commandHashes, authorise, remove}),
     });
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); btn.disabled = false; return; }

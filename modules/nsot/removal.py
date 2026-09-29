@@ -275,11 +275,48 @@ def candidates(target_config: str, running_config: str) -> list:
         if path in headers and path not in target_present:
             children = [l for l, c in running if c[:len(path)] == path]
             out.append({"chain": list(chain), "line": line, "kind": "stanza",
-                        "children": children})
-            gone.append(path)
+                        "children": children, "id": unit_id(chain, line)})
+            # A PHYSICAL interface's stanza cannot be removed (`default
+            # interface`, not built), so offering it as one unit would leave
+            # its lines unremovable too: its header is offered (and refused,
+            # saying why) and each line under it is offered on its own.
+            if not (not chain and line.startswith("interface ") and _is_physical(line)):
+                gone.append(path)
         elif path not in headers and line in residue and path not in target_present:
-            out.append({"chain": list(chain), "line": line, "kind": "leaf", "children": []})
+            out.append({"chain": list(chain), "line": line, "kind": "leaf", "children": [],
+                        "id": unit_id(chain, line)})
     return out
+
+
+def unit_id(chain, line: str) -> str:
+    """A removable line's ID: its stanza and its text, hashed. The screen
+    selects by ID because the plan comes back MASKED, so a browser can never
+    echo a secret-position line's real text (C139's old community would have
+    been unselectable); what was selected and what was sent are tied by
+    something the browser never had to reproduce (the operator, 2026-09-29).
+    Computed from the canonical form, so the capture and the plan agree."""
+    import hashlib
+
+    from modules.nsot import ifnames
+    parts = [ifnames.canonicalise_line(c) for c in chain] + [ifnames.canonicalise_line(line)]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def resolve(selected: list, captured: str) -> tuple:
+    """(units, unresolved): each selected ID (or ``{chain, line}``) as the
+    capture holds it. An ID no line on the capture carries is unresolved,
+    never guessed: the capture moved, or it was never there."""
+    by_id = {unit_id(chain, line): {"chain": list(chain), "line": line}
+             for line, chain in _chains(captured)}
+    units, missing = [], []
+    for s in selected or []:
+        if isinstance(s, dict):
+            units.append({"chain": list(s.get("chain") or []), "line": s.get("line", "")})
+        elif s in by_id:
+            units.append(by_id[s])
+        else:
+            missing.append(s)
+    return units, missing
 
 
 def _negate(line: str) -> str:
@@ -512,10 +549,28 @@ def with_removals(merge: list, captured: str, selected: list, *, mgmt_ip: str,
     times, and a removal appended at one of them would never reach the wire).
     Removals come AFTER the additions, so the pipeline can tell them apart by
     position: its rollback undoes the two halves differently."""
-    rm = (removal_program(captured, selected, mgmt_ip=mgmt_ip, dialect=dialect)
-          if selected else dict(NO_REMOVALS))
+    units, missing = resolve(selected, captured)
+    rm = (removal_program(captured, units, mgmt_ip=mgmt_ip, dialect=dialect)
+          if units else {**NO_REMOVALS, "refused": []})
+    rm = {**rm, "refused": list(rm["refused"]) + [
+        {"chain": [], "line": f"(id {m})", "id": m,
+         "reason": "no line with this id on the device's capture: it changed since the "
+                   "preview, or was never there"} for m in missing]}
     return {**rm, "merge": list(merge), "commands": list(merge) + rm["commands"],
-            "removal_commands": list(rm["commands"]), "keys": removal_keys(rm["removed"])}
+            "removal_commands": list(rm["commands"]), "keys": removal_keys(rm["removed"]),
+            "ids": [unit_id(u["chain"], u["line"]) for u in rm["removed"]]}
+
+
+def removable(target: str, captured: str, *, mgmt_ip: str, dialect: str) -> list:
+    """Every candidate for removal with its ID and, where it cannot be removed,
+    WHY, beside it (a box that cannot be ticked says why, C109). Each is judged
+    alone, by the same gate the program uses."""
+    out = []
+    for c in candidates(target, captured):
+        judged = removal_program(captured, [c], mgmt_ip=mgmt_ip, dialect=dialect)
+        out.append({**c, "why_not": (judged["refused"][0]["reason"]
+                                     if judged["refused"] else "")})
+    return out
 
 
 def split_pushed(pushed: list, removal_commands: list) -> list:

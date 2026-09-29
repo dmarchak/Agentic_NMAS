@@ -155,6 +155,11 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             # an exception with no stated cause is indistinguishable from an
             # accident. The reason is testimony, masked like the program.
             "authorised": _authorised_record(result.get("authorised")),
+            # Mode B: each line selected for removal, by ID, masked like the
+            # program. Its reason is in `authorised`, keyed by the removal line.
+            "removals": [{"id": r.get("id", ""), "chain": [redact_text(c) for c in r.get("chain") or []],
+                          "line": redact_text(r.get("line", ""))}
+                         for r in (result.get("removals") or [])],
             "checks": _checks(result),
             "rollback": {
                 "performed": bool(result.get("rolled_back")),
@@ -237,6 +242,14 @@ def _authorisation_counts(rows: list, want=None) -> dict:
             e.update({"count": e["count"] + 1, "last_at": row.get("at", ""),
                       "last_actor": row.get("actor", ""),
                       "last_reason": a["reason"] or "(none recorded: before reasons existed)"})
+            # And whether that change was ROLLED BACK, when and why: a line
+            # re-selected after a failure is written knowing the old one
+            # failed (the operator, 2026-09-29: unblocked, but visible).
+            rb = row.get("rollback") or {}
+            if rb.get("performed"):
+                e.update({"rolled_back_at": row.get("at", ""),
+                          "rolled_back_why": row.get("reason") or rb.get("detail")
+                          or "no reason recorded"})
     return out
 
 

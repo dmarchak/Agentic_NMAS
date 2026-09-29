@@ -289,3 +289,165 @@ class TestThePreviewSaysWhatThisProgramDoes:
             with_rm["preview"]["explain"]["what_not"][0]["text"]
         assert "merge-only plus" not in without["preview"]["what"]["summary"]
         assert "is never removed" in without["preview"]["explain"]["what_not"][0]["text"]
+
+
+def _removable(d, text):
+    return next(r for r in d["removable"] if text in " > ".join(r["chain"] + [r["line"]]))
+
+
+class TestSelectionById:
+    """7.3 step 2c: the plan is MASKED, so the screen selects by an ID the
+    server computes; a secret-position line was otherwise unselectable."""
+
+    def test_every_removable_line_carries_an_id_and_why_not(self, client):
+        _, d = _plan(client, [], [SHUT])
+        header = _removable(d, GI03)
+        assert header["kind"] == "stanza" and "physical interface" in header["why_not"]
+        line = _removable(d, "description retired uplink")
+        assert line["kind"] == "leaf" and line["chain"] == [GI03] and line["why_not"] == ""
+        assert len(line["id"]) == 12
+
+    def test_a_physical_interfaces_line_is_offered_alone(self, client):
+        """The whole stanza cannot be removed, so its lines are offered one by
+        one: without that, this description could never be ticked."""
+        _, d = _plan(client, [], [SHUT])
+        assert [r for r in d["removable"] if r["chain"] == [GI03]]
+
+    def test_a_selection_by_id_is_the_same_removal(self, client):
+        _, d0 = _plan(client, [], [SHUT])
+        rid = _removable(d0, "description retired uplink")["id"]
+        _, by_id = _plan(client, [rid], [SHUT, REASON])
+        _, by_text = _plan(client, [UNIT], [SHUT, REASON])
+        assert by_id["commands"] == by_text["commands"]
+        assert by_id["removals"]["ids"] == [rid] and by_id["command_hash"] == by_text["command_hash"]
+
+    def test_an_unknown_id_is_refused_by_name_never_guessed(self, client):
+        _, d = _plan(client, ["0123456789ab"], [SHUT])
+        assert d["deployable"] is False
+        assert any("0123456789ab" in r and "no line with this id" in r
+                   for r in d["blocking_reasons"])
+
+    def test_a_masked_secret_line_is_selectable_by_id(self, client):
+        out0, d0 = _plan(client, [], [SHUT])
+        row = _removable(d0, "snmp-server community")
+        assert "OLDCOMMUNITY" not in str(out0), "the plan never carries the value"
+        out, d = _plan(client, [row["id"]], [SHUT])
+        assert d["removals"]["ids"] == [row["id"]] and d["removals"]["secret_position"]
+        assert d["commands"][-1].startswith("no snmp-server community")
+        assert "OLDCOMMUNITY" not in str(out)
+
+    def test_a_hash_without_removals_is_unchanged(self):
+        from modules.nsot.deploy import command_fingerprint
+        cmds, auth = ["interface X", " shutdown", "exit"], [SHUT]
+        assert command_fingerprint(cmds, auth) == command_fingerprint(cmds, auth, ())
+        assert command_fingerprint(cmds, auth) != command_fingerprint(cmds, auth, ["abc"])
+
+    def test_apply_carries_the_ids_to_the_pipeline(self, client):
+        _, d0 = _plan(client, [], [SHUT])
+        rid = _removable(d0, "description retired uplink")["id"]
+        _, d = _plan(client, [rid], [SHUT, REASON])
+        out = client.post("/deploy/apply", json={
+            "confirmations": {"s4": d["capture_hash"]}, "command_hashes": {"s4": d["command_hash"]},
+            "remove": {"s4": [rid]}, "authorise": {"s4": [SHUT, REASON]}}).get_json()
+        assert "s4" in out.get("deployed", []), out
+        assert client.sent == [{"device": "s4", "remove": {"s4": [rid]}}]
+
+
+class TestTheShippedScreen:
+    def _html(self, client, remove, hooks):
+        from tests.payload_render import render_preview
+        out, _d = _plan(client, remove, [SHUT, REASON] if remove else [SHUT])
+        return render_preview(out["preview"], hooks)
+
+    def test_each_removable_line_has_a_box_and_a_refusal_says_why_beside_it(self, client):
+        html = self._html(client, [], {"remove": "_r", "authorise": "_a"})
+        assert html.count("data-remove-id=") >= 3
+        assert "cannot be removed: a physical interface" in html
+        assert "disabled" in html[html.index("physical interface") - 400:html.index("physical interface")]
+
+    def test_a_ticked_line_says_it_will_be_removed_and_gets_a_reason_box(self, client):
+        _, d0 = _plan(client, [], [SHUT])
+        rid = _removable(d0, "description retired uplink")["id"]
+        html = self._html(client, [rid], {"remove": "_r", "authorise": "_a"})
+        assert "will be removed: it is in the program" in html
+        assert "removes a line the device has and intent does not" in html
+
+    def test_without_the_hook_there_is_no_box(self, client):
+        html = self._html(client, [], {})
+        assert "data-remove-id=" not in html and "not removed" in html
+
+
+class TestTheHistoryShowsARollBack:
+    def test_a_rolled_back_removal_says_when_and_why_beside_its_box(self, tmp_path, monkeypatch):
+        from modules.nsot import receipts
+        rows = [{"device": "s4", "at": "2026-09-29T06:00:00Z", "actor": "op@example.com",
+                 "outcome": "failed", "sent": True, "reason": "verify failed: OSPF down",
+                 "authorised": [REASON], "rollback": {"performed": True, "state": "restored"}}]
+        monkeypatch.setattr(receipts, "read", lambda *a, **k: {"state": "ok", "rows": rows})
+        prior = receipts.prior_authorisations("Lab", "s4", [KEY])
+        e = prior["lines"][KEY]
+        assert e["rolled_back_at"] == "2026-09-29T06:00:00Z"
+        assert e["rolled_back_why"] == "verify failed: OSPF down"
+        from tests.payload_render import render_preview
+        preview = {"parts": ["what", "what_not", "program", "operands", "gates", "confirm"],
+                   "action": "deploy", "explain": {},
+                   "what": {"summary": "x", "targets": [{"name": "s4", "state": "deployable",
+                                                         "selectable": True, "why_not": "",
+                                                         "select_data": {}}]},
+                   "what_not": {"items": [], "none": "nothing"},
+                   "targets": [{"name": "s4", "operands": [], "gates": [],
+                                "program": {"lines": [GI03, " no description retired uplink", "exit"],
+                                            "removal": [KEY], "authorised": [], "dangerous": [],
+                                            "secret": [], "prior": prior, "none": ""}}],
+                   "confirm": {"may": True, "statement": "You are confirming as op."}}
+        html = render_preview(preview, {"authorise": "_a"})
+        assert "Rolled back at 2026-09-29T06:00:00Z: verify failed: OSPF down" in html
+
+
+class TestTheReceiptCarriesTheIds:
+    def test_each_removal_is_recorded_by_id_masked(self):
+        from modules.nsot import receipts
+        rows = receipts.rows_for({"results": [{
+            "device": "s4", "outcome": "deployed", "commands": [], "authorised": [REASON],
+            "removals": [{"id": "abc123abc123", "chain": [],
+                          "line": "snmp-server community OLDCOMMUNITY RO"}]}]},
+            list_name="Lab", action="deploy", actor="op", actor_kind="person")
+        (rm,) = rows[0]["removals"]
+        assert rm["id"] == "abc123abc123" and "OLDCOMMUNITY" not in rm["line"]
+
+
+class TestTheWizardSendsTheIdsItsHashCovers:
+    """The shipped `applyDeploy`, EXECUTED: the request it sends carries the
+    removal IDs from the RENDERED plan's payload. A source check that the
+    code reading them exists passed with the send removed (the control)."""
+
+    def test_the_apply_request_carries_the_rendered_plans_ids(self):
+        import json as _json
+
+        import dukpy
+
+        from tests.js_source import read_shipped
+        src = read_shipped("static/js/gen/partials__deploy_wizard.1.js")
+        start = src.index("async function applyDeploy(")
+        end = src.index("\n}\n", start) + 2
+        fn = (src[start:end].replace("async function", "function")
+              .replace("await fetch(", "fetch(").replace("await r.json()", "r.json()"))
+        assert "await" not in fn, "only the asynchrony is stripped"
+        stubs = """
+        var sent = null;
+        var _deployPlan = {devices: [{device: 's4', authorised: [%s],
+                                      removals: {ids: ['2d7f42a57dbd']}}]};
+        var box = {dataset: {device: 's4', hash: 'h1', commandHash: 'c1'}};
+        var el = {disabled: false, textContent: '', innerHTML: ''};
+        var document = {querySelectorAll: function () { return [box]; },
+                        getElementById: function () { return el; }};
+        function inFlightBusy() {}
+        function showToast() {}
+        function _renderDeployResult() {}
+        function fetch(url, opts) { sent = opts.body; return {json: function () { return {ok: true}; }}; }
+        """ % _json.dumps(REASON)
+        body = dukpy.evaljs(stubs + fn + "\napplyDeploy(); sent")
+        sent = _json.loads(body)
+        assert sent["remove"] == {"s4": ["2d7f42a57dbd"]}
+        assert sent["authorise"] == {"s4": [REASON]}
+        assert sent["command_hashes"] == {"s4": "c1"}

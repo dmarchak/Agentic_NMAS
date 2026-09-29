@@ -224,9 +224,11 @@ class TestTheBlockerNamesBothWaysOut:
         _p, op = self._blocker(cap)
         by = {r["asserts"]: r for r in op["resolutions"]}
         device_wrong = by["the device is wrong and intent is right"]
-        assert "by hand" in device_wrong["do"]
-        assert "the tool cannot remove a line" in device_wrong["note"], \
-            "merge-only: removal is not a tool path, and says so"
+        # Mode B exists (7.3 step 2): the removal is a decision in the Deploy
+        # plan, with a reason, and the note says when it is refused.
+        assert "Deploy plan (Mode B)" in device_wrong["do"]
+        assert "measured to remove exactly that line" in device_wrong["note"]
+        assert "removed by hand" in device_wrong["note"], "the fallback is still said"
         adopt = by["the device is right, and intent will deploy it from now on"]
         assert adopt["do"].startswith("Adopt it into intent: Edit intent")
         assert "never automatic" in adopt["note"]

@@ -149,13 +149,16 @@ def assert_authorised(commands, authorisations, extra=()) -> None:
         raise NotAuthorised("; ".join(found))
 
 
-def fingerprint(commands, authorisations) -> str:
+def fingerprint(commands, authorisations, selected=()) -> str:
     """The program AND what was authorised within it, reasons included: "these
     lines, with these authorised, for these stated reasons" is one decision,
     and changing any part after it was shown makes the confirm describe
-    something else."""
-    payload = json.dumps(
-        {"commands": list(commands),
-         "authorised": sorted((a["line"], a["reason"]) for a in normalise(authorisations))},
-        sort_keys=True)
+    something else. *selected*: the IDs of the lines chosen for removal (Mode
+    B), folded in only when there are any, so every hash without a removal
+    is unchanged."""
+    body = {"commands": list(commands),
+            "authorised": sorted((a["line"], a["reason"]) for a in normalise(authorisations))}
+    if selected:
+        body["removal_ids"] = sorted(selected)
+    payload = json.dumps(body, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]

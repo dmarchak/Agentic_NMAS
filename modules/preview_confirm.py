@@ -285,15 +285,27 @@ def deploy_preview(devices: list, request) -> dict:
                           "from_this_edit": a.get("from_this_edit") or [],
                           "pre_existing": a.get("pre_existing") or []})
         removing = {u["line"].strip() for u in ((d.get("removals") or {}).get("removed") or [])}
-        if d.get("removal_warnings"):
-            left = [l for l in (d.get("residue_in_context") or d["removal_warnings"])
+        chosen = set((d.get("removals") or {}).get("ids") or [])
+        removable = [{"id": c["id"], "text": " > ".join(list(c["chain"]) + [c["line"].strip()]),
+                      "selected": c["id"] in chosen, "why_not": c.get("why_not", ""),
+                      "children": len(c.get("children") or []) if c.get("kind") == "stanza" else 0}
+                     for c in (d.get("removable") or [])]
+        if d.get("removal_warnings") or removable:
+            left = [l for l in (d.get("residue_in_context") or d.get("removal_warnings") or [])
                     if l.strip() not in removing]
-            if [l for l in d["removal_warnings"] if l.strip() not in removing]:
-                what_not.append({"target": name, "kind": "residue",
-                                 "text": "On the device but not in intent: will NOT be "
-                                         "removed. Remove them by hand, or adopt them into "
-                                         "the template.",
-                                 "lines": left})
+            item = {"target": name, "kind": "residue",
+                    "text": ("On the device but not in intent. Tick a line to remove it "
+                             "(Mode B): it joins the program and needs your stated reason "
+                             "there. An unticked line will NOT be removed."
+                             if removable else
+                             "On the device but not in intent: will NOT be removed. Remove "
+                             "them by hand, or adopt them into the template."),
+                    "lines": left}
+            if removable:
+                item["removable"] = removable
+            if removable or [l for l in (d.get("removal_warnings") or [])
+                             if l.strip() not in removing]:
+                what_not.append(item)
         if blocked:
             reasons = "; ".join(d.get("blocking_reasons") or []) or "not deployable"
             what_not.append({"target": name, "kind": "blocked",

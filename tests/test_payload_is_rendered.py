@@ -81,7 +81,8 @@ NBS = "partials__netbox_safety_modal.1.js"
 PC = "nmas_preview_confirm.js"
 PC_RESULT_FNS = ("previewConfirmResultHtml", "sentHtml", "checksHtml", "resultSection",
                  "pair", "previewConfirmResultLevel", "title")
-PC_FNS = ("title", "previewConfirmHtml", "whatHtml", "whatNotHtml", "programHtml", "operandsHtml",
+PC_FNS = ("title", "previewConfirmHtml", "whatHtml", "whatNotHtml", "removableHtml",
+          "programHtml", "operandsHtml",
           "gatesHtml", "confirmHtml", "explain", "previewConfirmButton")
 DC = "partials__device_changes.1.js"
 CAP = "nmas_capture.js"
@@ -544,11 +545,6 @@ EMPTY_IN_FIXTURE = {
                                                               "description; a secret-position "
                                                               "removal is reached in "
                                                               "test_removal_pipeline.py"),
-    "POST /deploy/plan preview.what_not.items": (R_, "the base plan has no residue, by "
-                                                     "design (the 'nothing left out' "
-                                                     "sentence); a real residue plan is "
-                                                     "drawn in test_preview_confirm "
-                                                     "(deploy_plan_with_residue)"),
     "POST /templatize/seed/apply result.record.tags": (S_, "a seed takes no tag: tags mark a network snapshot, and an intent commit is not one"),
     "POST /golden/capture/apply result.did_not.items[].lines": (S_, "the first did-not item is r2's departure from intent, whose lines are drawn under its checks; the baseline item carries no lines"),
     "GET /deploy/receipts changes[].result.record.tags": (S_, "a receipt names the golden commit and not its tags, and the history's record statement says so"),
@@ -645,7 +641,9 @@ EMPTY_IN_FIXTURE = {
 # 23 -> 25: Mode B (7.3 step 2): a removal the plan REFUSES and one in a
 # secret position; the base plan removes one measured description, and
 # both are reached in test_removal_pipeline.py.
-EMPTY_RECORDS_CEILING = 25
+# 25 -> 24: 2c's tick boxes put a residue item in the base plan, so
+# `preview.what_not.items` is reached rather than declared empty.
+EMPTY_RECORDS_CEILING = 24
 
 
 def _empty_paths(obj, path=""):

@@ -211,7 +211,10 @@ class TestTheWizardSendsTheAuthorisationItsHashCovers:
 
     def test_apply_sends_authorise_from_the_rendered_plan(self):
         fn = _lift(self.SRC, "applyDeploy")
-        assert "command_hashes: commandHashes, authorise}" in fn
+        assert "command_hashes: commandHashes, authorise, remove}" in fn
+        # And the removals (Mode B) the rendered plan's hash covers, by ID,
+        # from the payload, never from the boxes.
+        assert "(entry || {}).removals || {}).ids" in fn
         assert "(_deployPlan || {}).devices" in fn
         assert "data-auth-device" not in fn, "read from the plan, never from the boxes"
 
@@ -221,7 +224,9 @@ class TestTheWizardSendsTheAuthorisationItsHashCovers:
         hash moved is left unticked, so it is confirmed as now shown."""
         fn = _lift(self.SRC, "_reauthoriseDevice")
         assert "fetch('/deploy/plan'" in fn
-        assert "input[type=checkbox][data-auth-device]" in fn and "authorise})" in fn
+        assert "input[type=checkbox][data-auth-device]" in fn
+        assert "input[type=checkbox][data-remove-id]" in fn and "authorise,\n" in fn
+        assert "remove})," in fn, "a removal tick re-plans like an authorisation"
         assert "input[data-auth-reason]" in fn and "reason:" in fn, "each line carries its reason"
         assert "_renderDeployPlan(d)" in fn
         assert "kept[b.dataset.device] === b.dataset.commandHash" in fn

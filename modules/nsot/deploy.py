@@ -1170,11 +1170,12 @@ def assert_authorised(commands: list, authorised, extra=()) -> None:
     authorisation.assert_authorised(commands, authorised, extra)
 
 
-def command_fingerprint(commands: list, authorised=None) -> str:
+def command_fingerprint(commands: list, authorised=None, selected=()) -> str:
     """Stable hash of what was confirmed: the exact program **and** what was
-    authorised within it, reasons included (`authorisation.fingerprint`)."""
+    authorised within it, reasons included, **and** the IDs of the lines
+    selected for removal (`authorisation.fingerprint`)."""
     from modules.nsot import authorisation
-    return authorisation.fingerprint(commands, authorised)
+    return authorisation.fingerprint(commands, authorised, selected)
 
 
 class CommandsChanged(RuntimeError):

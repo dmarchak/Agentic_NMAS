@@ -103,16 +103,42 @@
       + '</div>' + rows);
   }
 
-  function whatNotHtml(p) {
+  // Mode B (7.3 step 2): each line the device has and intent lacks, with a box
+  // that selects it for removal BY ID (the plan is masked, so the text could
+  // never be sent back), and why where it cannot be removed, beside the box.
+  function removableHtml(i, hooks) {
+    return (i.removable || []).map(function (r) {
+      var box = hooks.remove
+        ? '<input type="checkbox" class="form-check-input mt-0" data-remove-device="'
+          + esc(i.target) + '" data-remove-id="' + esc(r.id) + '"'
+          + (r.selected ? ' checked' : '') + (r.why_not ? ' disabled' : '')
+          + ' onchange="' + esc(hooks.remove) + '(this.dataset.removeDevice)"> '
+        : '';
+      var state = r.why_not
+        ? '<span class="text-danger" data-pc-why-not>cannot be removed: ' + esc(r.why_not) + '</span>'
+        : r.selected
+          ? '<span data-pc-removing>will be removed: it is in the program, and needs your stated reason there</span>'
+          : '<span>not removed</span>';
+      return '<div class="d-flex gap-2 align-items-start mt-1" data-pc-removable>' + box
+        + '<code style="white-space:pre">' + esc(r.text) + '</code>'
+        + (r.children ? '<span class="small">(the whole stanza, ' + r.children + ' line(s) with it)</span>' : '')
+        + ' <span class="small">' + state + '</span></div>';
+    }).join('');
+  }
+
+  function whatNotHtml(p, hooks) {
+    hooks = hooks || {};
     var wn = p.what_not || {};
     var body = (wn.items || []).length
       ? (wn.items || []).map(function (i) {
           return '<div class="small mt-1" data-pc-not="' + esc(i.kind) + '"><strong>'
             + esc(i.target) + '</strong>: ' + esc(i.text)
-            + ((i.lines || []).length
-                ? '<pre class="small bg-body-tertiary text-body p-2 rounded mb-0" '
-                  + 'style="max-height:180px;overflow:auto">' + esc(i.lines.join('\n')) + '</pre>'
-                : '')
+            + ((i.removable || []).length
+                ? removableHtml(i, hooks)
+                : (i.lines || []).length
+                  ? '<pre class="small bg-body-tertiary text-body p-2 rounded mb-0" '
+                    + 'style="max-height:180px;overflow:auto">' + esc(i.lines.join('\n')) + '</pre>'
+                  : '')
             + '</div>';
         }).join('')
       : '<div class="small" data-pc-none>' + esc(wn.none) + '</div>';
@@ -176,7 +202,14 @@
           : seen
             ? '<div class="small" data-auth-prior>authorised on this device ' + seen.count
               + ' time(s) before; last ' + esc(seen.last_at) + ' by ' + esc(seen.last_actor)
-              + ', stated reason: "' + esc(seen.last_reason) + '"</div>'
+              + ', stated reason: "' + esc(seen.last_reason) + '"'
+              // A change it was part of ROLLED BACK: shown, never blocked, so a
+              // new reason is written knowing the old one failed (Mode B).
+              + (seen.rolled_back_at
+                  ? '. <strong data-auth-rolled-back>Rolled back at ' + esc(seen.rolled_back_at)
+                    + ': ' + esc(seen.rolled_back_why) + '</strong>'
+                  : '')
+              + '</div>'
             : '';
         return '<div class="bg-danger-subtle text-danger-emphasis" data-dangerous-line data-kind="'
           + kind + '"><label class="d-flex gap-2 align-items-start mb-0">' + box
@@ -297,7 +330,7 @@
         + programHtml(p, t, hooks) + operandsHtml(t) + gatesHtml(t) + '</div></div>';
     }).join('');
     return '<div data-preview-confirm="' + esc(p.action) + '">'
-      + whatHtml(p, hooks) + whatNotHtml(p) + cards + confirmHtml(p) + '</div>';
+      + whatHtml(p, hooks) + whatNotHtml(p, hooks) + cards + confirmHtml(p) + '</div>';
   }
 
   /* PURE: the confirm button's state. With no verified person the button
