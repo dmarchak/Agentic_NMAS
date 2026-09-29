@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Settle a credential a rotation staged and never cleared, by asking the
+device. `credential_rotation.recover_staged()` is the implementation.
+
+A rotation stages the new password before the push. If the process dies
+between the push and the record (an app restart, which a deploy causes), the
+device may hold a password the inventory does not, and the staged file is its
+only copy. This asks the device, and removes nothing until the record it
+protects is proven:
+
+    accepts the staged password     -> recorded; the staged file cleared; persist next
+    refuses it, accepts the stored  -> the rotation never landed; the staged file cleared
+    refuses both                    -> nothing changed; recover on the console
+    could not be asked              -> nothing changed
+
+    nmas-rotation-recover r2 --list Default
+
+Exit codes: 0 settled (recorded, never applied, or nothing staged), 1 settled
+into a danger state (not recorded, or neither accepted), 2 could not be
+settled (nothing changed). It prints no credential.
+"""
+
+import argparse
+import getpass
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("device")
+    parser.add_argument("--list", dest="list_name", required=True)
+    args = parser.parse_args(argv)
+
+    from modules.nsot import credential_rotation as cr
+
+    out = cr.recover_staged(args.list_name, args.device,
+                            actor=f"{getpass.getuser()} (host shell)",
+                            via="nmas-rotation-recover")
+    for step in out.get("steps") or []:
+        print(f"  [{'ok' if step['ok'] else 'XX'}] {step['name']:<18} {step.get('detail', '')}")
+    print(f"\nstate: {out['state']}")
+    print(out.get("reason", ""))
+    if out["state"] in (cr.ROTATED_PENDING_PERSIST,):
+        print(f"\nNext: nmas-persist-credential {args.device} --list {args.list_name}, or "
+              "Persist… on its Device page, so a reload boots the recorded credential.")
+    if out["state"] in (cr.ROTATED_PENDING_PERSIST, cr.STAGED_NEVER_APPLIED, cr.NOTHING_STAGED):
+        return 0
+    if out["state"] in (cr.ROTATED_NOT_RECORDED, cr.NEITHER_ACCEPTED):
+        return 1
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

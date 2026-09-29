@@ -3058,3 +3058,152 @@ def persist(result: dict, **kw) -> dict:
     out["via"] = via
     record_outcome("persist", out)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Recovery of a staged credential (7.3's rotate screen, built assuming a fourth
+# failure mode exists; the operator, 2026-09-27 and 2026-09-29).
+# ---------------------------------------------------------------------------
+
+#: Recovery's own outcomes, beside the rotation states it can lead to.
+NOTHING_STAGED = "nothing_staged"
+STAGED_NEVER_APPLIED = "staged_never_applied"
+NEITHER_ACCEPTED = "neither_credential_accepted"
+RECOVERY_INCONCLUSIVE = "recovery_inconclusive"
+
+
+def staged_devices(repo: str) -> list:
+    """``[{"device", "path", "since"}]``: every credential a rotation staged and
+    never cleared. A READ; it creates nothing."""
+    import os
+
+    directory = os.path.join(repo, STAGING_REL)
+    if not os.path.isdir(directory):
+        return []
+    out = []
+    for name in sorted(os.listdir(directory)):
+        if name.endswith(".enc"):
+            path = os.path.join(directory, name)
+            out.append({"device": name[:-4], "path": path, "since": os.path.getmtime(path)})
+    return out
+
+
+def _privilege_of(user_line: str) -> int:
+    import re
+
+    m = re.search(r"\bprivilege\s+(\d+)", user_line or "")
+    return int(m.group(1)) if m else 15
+
+
+def recover_staged(list_name: str, hostname: str, *, actor: str, via: str,
+                   verify=None) -> dict:
+    """Settle a credential a rotation STAGED and never cleared, by asking the
+    device, and remove nothing until the record it protects is proven.
+
+    THE FOURTH FAILURE MODE, named before it happened. The password is staged
+    before the push, so a process that dies between the push and the record
+    (an app restart, which a deploy causes, killing a rotation run from the
+    web) leaves the device on a password the inventory does not hold, the
+    staged file its ONLY copy, and until now nothing that read that file:
+    `ROTATED_NOT_RECORDED`'s remedy was a Python call. So:
+
+    * the device ACCEPTS the staged password: it holds it. Record it (the
+      rotation's own `_commit`), and clear the staged file only once the
+      record is written. State `rotated_persistence_not_attempted`: persist is
+      next;
+    * the device REFUSES it and accepts the recorded one: the rotation never
+      landed. The staged file is cleared, since the record already holds the
+      working credential;
+    * it refuses BOTH: keep the file, and name the console;
+    * the device could not be asked: nothing is changed.
+
+    Holds the device, like every other change (C98). Records its outcome where
+    job health reads it. Never prints or returns a credential."""
+    import os
+
+    from modules.device import decrypt_field, load_saved_devices
+    from modules.config import get_list_data_dir
+    from modules.nsot import device_ops
+
+    verify = verify or verify_new_credential
+    repo = os.path.join(get_list_data_dir(list_name), "config_repo")
+    result = {"device": hostname, "actor": actor, "via": via, "steps": [],
+              "state": NOTHING_STAGED}
+
+    def _step(name, ok, detail=""):
+        result["steps"].append({"name": name, "ok": bool(ok), "detail": detail})
+
+    staged = staged_plaintext(repo, hostname)
+    if not staged:
+        result["reason"] = f"no credential is staged for {hostname}: nothing to recover"
+        return result
+    row = next((d for d in load_saved_devices(_csv_path_for(list_name))
+                if d.get("hostname") == hostname), None)
+    if row is None:
+        result["state"] = RECOVERY_INCONCLUSIVE
+        result["reason"] = (f"{hostname} is not in list {list_name!r}'s inventory, so there is "
+                            "no address to ask and no record to write. The staged file is kept")
+        _step("inventory", False, result["reason"])
+        record_outcome("recover", result)
+        return result
+    username = row.get("username", "admin")
+    try:
+        with device_ops.hold(list_name, hostname, "recover", actor, ip=row.get("ip", "")):
+            device_ops.note("asking the device about the staged credential")
+            staged_check = verify(row, username, staged, secret=enable_secret(row))
+            if staged_check.get("ok"):
+                _step("staged_accepted", True, "the device accepts the staged credential")
+                line = current_user_line(staged_check.get("config", ""), username)
+                new_hash = captured_hash(staged_check.get("config", ""), username)
+                commit = _commit(list_name, repo, hostname, row, username,
+                                 _privilege_of(line), staged, new_hash,
+                                 _current_golden(repo, hostname), actor, record="csv")
+                _step("commit", commit.get("ok"), commit.get("error", commit.get("commit", "")))
+                if commit.get("ok"):
+                    clear_staged(repo, hostname)
+                    _step("clear_staged", True, "cleared, after the record was written")
+                    result.update(state=ROTATED_PENDING_PERSIST, new_hash=new_hash,
+                                  reason="recovered: the device held the staged credential, "
+                                         "and it is now recorded; persist it next")
+                else:
+                    result.update(state=ROTATED_NOT_RECORDED,
+                                  staged_at=os.path.join(repo, STAGING_REL, f"{hostname}.enc"),
+                                  reason="the device holds the staged credential, and "
+                                         "recording it FAILED: "
+                                         + (commit.get("error") or "no reason"))
+            elif not staged_check.get("attempted", True):
+                _step("staged_accepted", False, staged_check.get("error", ""))
+                result.update(state=RECOVERY_INCONCLUSIVE,
+                              reason="the device could not be asked (a local fault: "
+                                     f"{staged_check.get('error', 'no reason')}); nothing "
+                                     "was changed and the staged file is kept")
+            else:
+                _step("staged_accepted", False, staged_check.get("error", ""))
+                stored = verify(row, username, decrypt_field(row.get("password", "")),
+                                secret=enable_secret(row))
+                if stored.get("ok"):
+                    _step("recorded_accepted", True,
+                          "the device accepts the credential the inventory holds")
+                    clear_staged(repo, hostname)
+                    _step("clear_staged", True, "cleared: the rotation never landed")
+                    result.update(state=STAGED_NEVER_APPLIED,
+                                  reason="the device refuses the staged credential and "
+                                         "accepts the recorded one: the rotation never "
+                                         "landed, and nothing is lost")
+                elif not stored.get("attempted", True):
+                    _step("recorded_accepted", False, stored.get("error", ""))
+                    result.update(state=RECOVERY_INCONCLUSIVE,
+                                  reason="the device refused the staged credential, and the "
+                                         "recorded one could not be tried (a local fault); "
+                                         "the staged file is kept")
+                else:
+                    _step("recorded_accepted", False, stored.get("error", ""))
+                    result.update(state=NEITHER_ACCEPTED,
+                                  reason="the device refuses BOTH the staged credential and "
+                                         "the recorded one. The staged file is kept. "
+                                         "Recover on the console, with the break-glass record")
+    except device_ops.DeviceBusy as exc:
+        result.update(state=RECOVERY_INCONCLUSIVE,
+                      reason=f"{exc}; nothing was asked and the staged file is kept")
+    record_outcome("recover", result)
+    return result

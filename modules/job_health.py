@@ -753,8 +753,24 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
                           f"rotated at {at} but NOT RECORDED: the device accepts only the "
                           "new password and the tool may hold the old one. Do not rotate "
                           "again or reboot; record it from the kept staging copy")
-            act = {"label": "Record the new credential from the kept staging copy; do not "
-                            "rotate again or reboot until it is recorded"}
+            act = {"label": "Ask the device which credential it holds and record the kept "
+                            "staging copy if it does; do not rotate again or reboot until then",
+                   "command": f"nmas-rotation-recover {device} --list <its list>"}
+        elif state == cr.STAGED_NEVER_APPLIED:
+            st, detail = "ok", (f"at {at} the device refused the staged credential and "
+                                "accepted the recorded one: the rotation never landed")
+        elif state == cr.NOTHING_STAGED:
+            st, detail = "ok", f"at {at} nothing was staged: nothing to recover"
+        elif state == cr.NEITHER_ACCEPTED:
+            st, detail = ("neither_accepted",
+                          f"at {at} the device refused BOTH the staged credential and the "
+                          "recorded one: it may be locked out; recover on the console")
+            act = {"label": "Recover the device on its console, with the break-glass record"}
+        elif state == cr.RECOVERY_INCONCLUSIVE:
+            st, detail = "unknown", (f"a recovery at {at} could not settle it; the staged "
+                                     "file is kept. Run it again when the device answers")
+            act = {"label": "Run the recovery again when the device answers",
+                   "command": f"nmas-rotation-recover {device} --list <its list>"}
         elif state == cr.ROTATED_PENDING_PERSIST:
             st, detail = ("not_safe_to_reboot",
                           f"rotated at {at}; persistence NOT ATTEMPTED. Run "
@@ -773,6 +789,49 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
                      **({"action": act} if act else {}),
                      "detail": detail + (f" (whether it has left management is unknown: "
                                          f"{why_not})" if why_not and names else "")})
+    return rows
+
+
+def staged_rotation_rows(lists=None, holder=None) -> list:
+    """A credential a rotation STAGED and never cleared (the rotate screen's
+    fourth failure mode, 2026-09-29). The password is staged before the push,
+    so a process that dies between the push and the record leaves the device on
+    a password the inventory does not hold, and the staged file its only copy.
+    Nothing read that file. A device someone holds right now is mid-rotation,
+    and is left to the in-flight panel."""
+    import os
+
+    from modules.config import LISTS_DIR
+    from modules.device import get_device_lists
+    from modules.nsot import credential_rotation as cr
+    from modules.nsot import device_ops
+
+    holder = holder or device_ops.holder
+    rows = []
+    try:
+        entries = get_device_lists() if lists is None else lists
+    except Exception as exc:                          # noqa: BLE001
+        return [{"unit": "rotation-staged", "what": _ROTATION_WHAT, "state": "unknown",
+                 "max_age_minutes": 0,
+                 "detail": f"the device lists could not be read ({exc})"}]
+    for item in entries:
+        repo = os.path.join(LISTS_DIR, item["filename"], "config_repo")
+        for s in cr.staged_devices(repo):
+            if holder(item["name"], s["device"]):
+                continue
+            since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(s["since"]))
+            rows.append({
+                "unit": f"rotation-staged:{item['name']}/{s['device']}", "what": _ROTATION_WHAT,
+                "device": s["device"], "list": item["name"], "state": "not_recorded",
+                "max_age_minutes": 0,
+                "detail": (f"a rotation of {s['device']} staged a new password at {since} and "
+                           "never cleared it: the device may hold it while the tool holds the "
+                           "old one, and the staged file is its only copy. Do not rotate again "
+                           "or reboot until it is settled"),
+                "action": {"label": "Ask the device which credential it holds, and record the "
+                                    "staged one if it does",
+                           "command": f"nmas-rotation-recover {s['device']} "
+                                      f"--list {item['name']}"}})
     return rows
 
 
@@ -1158,6 +1217,8 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += image_jobs(now) if images is None else list(images)
     jobs += settings_rows() if settings is None else list(settings)
     jobs += rotation_rows() if rotations is None else list(rotations)
+    if rotations is None:
+        jobs += staged_rotation_rows()
     jobs += sync_owner_rows(run) if owner is None else list(owner)
     jobs += ztp_rows() if ztp is None else list(ztp)
     jobs += ztp_responder_rows(run) if responder is None else list(responder)

@@ -141,6 +141,7 @@ _JOB_STATES = {
     "not_safe_to_reboot": ("would not survive a reboot", "danger"),
     "not_recorded": ("was rotated and not recorded", "danger"),
     "revert_failed": ("failed a rotation and its revert", "danger"),
+    "neither_accepted": ("accepts neither its staged nor its recorded credential", "danger"),
     "at_budget": ("has no SSH session left for the next operation", "warning"),
     "leaked": ("holds an operation's SSH session past ten minutes", "warning"),
     "mixed_version": ("is running a different commit from its checkout", "danger"),

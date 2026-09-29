@@ -824,6 +824,18 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
 
 **Scope decided 2026-09-27 (the operator), after 7.1 tripled:** the test for the smallest Stage 7 is *every task has a home, every result is drawn, nothing requires a console*. Measured against it (the reachability check's 55 routes with no page: 27 removals, 12 homed in 7.6, 7 in 7.3, 4 in 7.4, 3 in 7.5, 2 in 7.2), and with **rotate and retire having NO ROUTE AT ALL** (host CLIs only, so by the no-console test the interface cannot manage its own credentials):
 - **7.3 gains rotate and retire** as operations, beside the intent operations (seed intent, revert, retry), each with the treatment capture got in 7.1 step 4 (preview, confirm, result, receipt) and a real run on the host afterwards. Rotation is the riskiest operation in the tool. **Build it assuming a fourth failure mode exists** (the operator, 2026-09-27): three ways for a rotation to leave a device unmanageable were found in three days (B15, the boot file; C53, the device never saved; C106 1a, a failed record deleting the only copy of the new password). So every state between "the device changed" and "the tool holds it" is named, kept recoverable and drawn, and nothing the operation writes is removed until the record it protects is proven.
+  **The rotate screen, step 1 BUILT 2026-09-29: the recovery path, before the screen**
+  (C210). Designing the screen found the fourth failure mode before it happened: the
+  password is staged before the push, so a process that dies between the push and the
+  record (an app restart, which a deploy causes, and a web rotation runs inside the app)
+  leaves the device on a password the inventory does not hold, the staged file its only
+  copy, and nothing read that file. `nmas-rotation-recover` settles it by asking the
+  device, removing nothing until the record it protects is written, and job health names
+  every staged file nobody holds. Step 2 is the screen: a preview (the plan, its
+  preflight read, the program masked), a confirm by the plan's fingerprint as a person,
+  and an apply that runs as a BACKGROUND JOB (rotate then persist can pass the 100 s edge
+  limit), announced when it finishes, its result drawn from the state it reached, every
+  state named with its one action.
 - **7.3 gains PERSIST** (C164, the operator's decision, 2026-09-28): save on the device
   and read the startup config back, the operation `nmas-persist-native` runs today,
   with the same treatment (preview, confirm, result, receipt, a real run). It is the
