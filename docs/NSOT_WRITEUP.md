@@ -3261,7 +3261,7 @@ A document or a status says a thing is done, built or scheduled, and the thing i
   (C120), a 420-character register dump (C106) [CLAUDE.md "An investigation's
   instrument can be the variable"].
 - **A claim about all time from a short window.** Three instances; the first
-  the operator's (2026-09-28), the third the implementation's, the same day [CLAUDE.md "A claim about ALL TIME
+  the operator's (2026-09-28), and the third, the same day, the implementation's own [CLAUDE.md "A claim about ALL TIME
   needs a window that covers all time"].
 - **A bound nobody chose, or chosen "to be safe".** A suite wrapper waiting
   1500 s on a 121 s run and a 20 min CI job bound on 224 s jobs (2026-09-28);

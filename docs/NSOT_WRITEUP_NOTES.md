@@ -1029,9 +1029,9 @@ It would have failed only when it mattered: the day a future change started
 generating negations, at which point the guard would have waved them through
 and the deploy would have removed configuration nobody asked to remove.
 
-It was written by the same implementation that wrote the property down. The
-account of how is that the property was known, the docstring describing it was
-written, and the check itself was not implemented because it was not obvious —
+The guard and its docstring came from the same implementation. The property
+was known and the docstring describing it was written; the check itself was
+left unimplemented because it was not obvious —
 and a stub that returns `None` runs green.
 
 ### Why the obvious implementation is also wrong
@@ -8351,7 +8351,7 @@ was supposed to leave behind is where it should be:
   **device-generated**, the bootstrap password gone;
 * **no `snmp-server` lines at all** — the RW community was removed *before*
   the capture, so the repository's first record of the device is a state
-  worth restoring rather than one deliberately not wanted;
+  worth restoring rather than one nobody wanted;
 * staging empty — the rotation completed and cleared it;
 * `nmas-check-credential bp-onboard-c --expect` → **ACCEPTED, exit 0**:
   resolved through the inventory, connected with what the CSV carries. That

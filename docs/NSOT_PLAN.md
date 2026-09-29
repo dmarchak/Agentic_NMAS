@@ -408,7 +408,7 @@ behavior changes) so the Git tab and existing routes keep functioning.
 golden: baseline 3 devices via pipeline cfg-7f3a
 
 Source: pipeline            # manual | save_all | pipeline | approval | ai | onboarding
-Actor: dustin               # or ai-agent
+Actor: <user>               # or ai-agent
 Pipeline-Id: cfg-7f3a
 Devices: R1,R3,S3
 ```
@@ -875,7 +875,7 @@ a hand edit, which is exactly what the editor route makes possible.
 - **Management:**
   - Device loopbacks are `10.255.1.11–.15` (R1–R5) and `10.255.1.21–.24`
     (S1–S4).
-  - The NMAS host (Ubuntu 24.04) is `10.0.0.211` on the LAN, `10.255.0.10` on
+  - The NMAS host (Ubuntu 24.04) is `<nmas-host>` on the LAN, `10.255.0.10` on
     management VLAN 99, and `10.255.1.10` as its loopback identity.
   - NetBox is on the NMAS at `:8000`. The Kea Control Agent is on `:8001`. The
     topology service (Flask) is on `:8088` (`/graph.json`, `/topology.svg`).
@@ -948,7 +948,7 @@ committable.
 
 **1.1 Remote Verify falsely refuses after the first push.**
 *Status: **DONE**, verified on the deployed instance 2026-09-22.* All four
-read-only checks green against `dmarchak/rcn-nsot-config`;
+read-only checks green against `<repo>`;
 `repository_is_empty_or_related` reported *"53 shared commit(s) on this list's
 history"*. The gated write probe passed at 17:21:54Z.
 The reported hypothesis — peeled `refs/tags/x^{}` entries inflating the count —
@@ -957,7 +957,7 @@ commit** with the remote's **ref tips**, which coincide only in a repository
 with exactly one commit, so it passed on an empty remote and refused every
 remote with history. It now tests ancestry over every advertised SHA this
 clone holds.
-*Acceptance:* Verify (read-only) passes against `dmarchak/rcn-nsot-config`
+*Acceptance:* Verify (read-only) passes against `<repo>`
 with all **four** read-only checks green, **on the deployed instance** — the
 write probe is the gated fifth and is not part of a read-only verify, which
 this criterion originally got wrong; a deliberately
@@ -2457,7 +2457,7 @@ does not):
 | Store | Copy today | After P.2 |
 |---|---|---|
 | NetBox (DB, media, env) | none | hourly on the VM, Proxmox, daily off-box (B2) |
-| `config_repo` (goldens, intent, templates) | GitHub `rcn-nsot-config` via the post-commit push, **one commit behind** (r5's retire, C18) | unchanged |
+| `config_repo` (goldens, intent, templates) | GitHub `<repo>` via the post-commit push, **one commit behind** (r5's retire, C18) | unchanged |
 | `data/key.key` | **none: single copy, confirmed** (no vzdump job exists, B5) | **none** |
 | `credential_profiles.json`, `devices.csv` | device credentials only, in the break-glass record on the laptop | unchanged |
 | `user_settings.json` | `.bak-*` copies on the same disk | unchanged |
@@ -2484,7 +2484,7 @@ list, or `all 1` with an `exclude`, or a `pool`), a `storage`, a `mode`
 - **If it is in no job**, key.key, the credential store, `/etc/kea` and
   Grafana are single copies. The whole-VM gap is then larger than A1 ever
   was.
-- The clab host is a separate machine (`10.0.0.210`); the same question
+- The clab host is a separate machine (`<lab-host>`); the same question
   applies to it separately.
 
 **ANSWERED 2026-09-25 (operator): the third case, for both VMs.**
@@ -2794,7 +2794,7 @@ one NMAS uses (register B17).
         - `b0a345e` template approve (`Source: template`);
         - `7a43784` the deploy's golden commit (`Source: pipeline`).
 
-        All three read `Actor: dustnm@gmail.com`. The last said
+        All three read `Actor: <operator>`. The last said
         `Actor: pipeline` before.
      3. **The terminal through the tunnel: NOT REPORTED** (the report's line
         read `[result]`). It is still unmeasured.
@@ -3206,7 +3206,7 @@ examined.**
       terminal scrollback is not a record.
     - **One owner for the sync script.** `clab_sync_script` has been empty since
       the 2026-09-23 erasure, while the timer's unit names
-      `/home/dmarchak/bin/clab-sync`. Until one source is chosen, job health
+      `<home>/bin/clab-sync`. Until one source is chosen, job health
       compares the setting with the unit's `ExecStart` and names a mismatch.
     - **Acceptance:** with the sync stage broken, a rotation exits non-zero,
       names `clab_sync`, writes the durable row, and the device appears in
@@ -3316,7 +3316,7 @@ a control.
   and the one thing P.3 still needs from the host.
   **OBSERVED by the operator, 2026-09-26, after the pull.** A real deploy
   through the tunnel: `c7711d6` (the deploy's golden) and `2fb07db` (an
-  intent commit) both carry `Actor: dustnm@gmail.com` and `Actor-Verified:
+  intent commit) both carry `Actor: <operator>` and `Actor-Verified:
   access`. So there are two paths, both verified through the gate. With step
   9's unauthenticated 403s, the gate refuses without a person and passes with
   one, on the real system.
@@ -4007,7 +4007,7 @@ item at all.
 Shape: two destinations (**Fleet**, **Monitoring**) plus a per-device page at
 `/device/<hostname>`, and a service-status bar on every page.
 **Monitoring becomes a destination rather than a status board**: Grafana
-embedded (`grafana.dmarchak.dev` and `nmas.dmarchak.dev` are both public
+embedded (`grafana.<domain>` and `nmas.<domain>` are both public
 through Cloudflare, so no proxy is needed -- but Grafana needs
 `allow_embedding` plus `frame-ancestors`, and Access, if it fronts Grafana,
 blocks framing and needs a policy for the embed path; **both are named
@@ -5123,7 +5123,7 @@ the environment does.
 community rotation (C139).** Whichever happens first constrains the other.
 Rotating while oxidized-web still serves configs to the LAN publishes the
 new value there the day it lands. Closing 6.1 changes what reads Oxidized
-and NetBox (NMAS reads NetBox at the LAN address `10.0.0.211:8000`, measured
+and NetBox (NMAS reads NetBox at the LAN address `<nmas-host>:8000`, measured
 2026-09-28), and the rotation's consumer work must match. Measured for 6.1
 before it was deferred:
 - oxidized and loki are `docker run` containers (restart `unless-stopped`),

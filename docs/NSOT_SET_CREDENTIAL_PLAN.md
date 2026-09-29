@@ -149,7 +149,7 @@ neighbours. Blast radius of a failure here is "lose management of one router",
 not "lose the lab".
 
 **Out-of-band recovery is the serial console on the containerlab host**, which
-is `10.0.0.210` — **not** the NMAS. `docker exec` reaches the *container*, not
+is `<lab-host>` — **not** the NMAS. `docker exec` reaches the *container*, not
 IOS; the network OS runs inside qemu behind a serial console on `:5000`. The
 verified procedure is in **§GAP 3**, and it is *demonstrated* before it is
 needed, not at the moment of need.
@@ -302,8 +302,8 @@ Rotate login credential — r2 (10.255.1.12)
                     original line is restored on the still-open session and the
                     result is reported either way.
 
-  out-of-band       serial console on the containerlab host (10.0.0.210):
-                      ssh dmarchak@10.0.0.210
+  out-of-band       serial console on the containerlab host (<lab-host>):
+                      ssh <user>@<lab-host>
                       docker exec -it clab-rcn-lab1-r2 telnet localhost 5000
                       exit with  ^]  then  quit  — ONE session only
                     demonstrated on this device before this run ✓
@@ -514,8 +514,8 @@ rotating.
             read the node status from oxidized-web and require a SUCCESSFUL
             fetch timestamped AFTER the rotation
  6b-x.    RUN THE SYNC
-            /home/dmarchak/bin/clab-sync        ← see below
- 6b-xi.   VERIFY ON THE CLAB VM  (10.0.0.210), not the NMAS's local copy
+            <home>/bin/clab-sync        ← see below
+ 6b-xi.   VERIFY ON THE CLAB VM  (<lab-host>), not the NMAS's local copy
             ~/labs/lab/configs/<device>.cfg contains the NEW $9$ hash
 ```
 
@@ -534,7 +534,7 @@ device.
 
 **The verification must read the clab VM.** `~/lab-configs/configs/` on the
 NMAS is the sanitiser's *staging output*; the file that actually boots the node
-lives on `10.0.0.210`. Checking the local copy would confirm that we generated
+lives on `<lab-host>`. Checking the local copy would confirm that we generated
 something, not that it was delivered — a distinction this project has already
 paid for once.
 
@@ -547,13 +547,13 @@ The request was for the narrowest sudoers rule allowing
 `systemctl start clab-sync.service`. Checking first:
 
 ```
-/etc/systemd/system/clab-sync.service   root:root  0644   User=dmarchak
-/home/dmarchak/bin/clab-sync            dmarchak   0700
-NMAS app process                        runs as dmarchak
+/etc/systemd/system/clab-sync.service   root:root  0644   User=<user>
+<home>/bin/clab-sync            <user>   0700
+NMAS app process                        runs as <user>
 ```
 
-**The unit runs as `dmarchak`, and the app already runs as `dmarchak`.** So the
-app can simply execute `/home/dmarchak/bin/clab-sync` directly — same script,
+**The unit runs as `<user>`, and the app already runs as `<user>`.** So the
+app can simply execute `<home>/bin/clab-sync` directly — same script,
 same user, same `flock` (which is inside the wrapper, so a concurrent timer run
 exits cleanly). **No sudoers rule, no polkit rule, no privilege boundary
 crossed at all.**
@@ -563,12 +563,12 @@ crossed at all.**
 If journal integration is wanted instead, the narrowest rule is:
 
 ```
-dmarchak ALL=(root) NOPASSWD: /usr/bin/systemctl start clab-sync.service
+<user> ALL=(root) NOPASSWD: /usr/bin/systemctl start clab-sync.service
 ```
 
 — one verb, one unit, fully qualified. With a **caveat worth stating plainly**:
-that rule is safe *only because* the unit has `User=dmarchak`. `ExecStart`
-points at a script that `dmarchak` owns and can rewrite, so if the unit is ever
+that rule is safe *only because* the unit has `User=<user>`. `ExecStart`
+points at a script that `<user>` owns and can rewrite, so if the unit is ever
 changed to run as root, this rule silently becomes a root escalation. If you
 take the systemd route, that constraint belongs in a comment in the unit file,
 not only here.
@@ -577,7 +577,7 @@ not only here.
 
 ## GAP 3 — Out-of-band recovery, verified
 
-The containerlab host is **`10.0.0.210`**, not the NMAS. `docker exec` on the
+The containerlab host is **`<lab-host>`**, not the NMAS. `docker exec` on the
 NMAS reaches nothing; the containers live there.
 
 And for vrnetlab images, `docker exec` reaches the *container*, not IOS — the
@@ -586,7 +586,7 @@ network OS runs inside qemu behind a serial console.
 ### Verified on r2
 
 ```
-dmarchak@10.0.0.210 is reachable from the NMAS by key; dmarchak is in the
+<user>@<lab-host> is reachable from the NMAS by key; <user> is in the
 docker group, so no sudo is needed.
 
 Listeners inside clab-rcn-lab1-r2:   *:5000  and  *:4000   (qemu serial)
@@ -603,7 +603,7 @@ procedure is identical on both platforms — which was not safe to assume.
 ### The procedure
 
 ```
-ssh dmarchak@10.0.0.210
+ssh <user>@<lab-host>
 docker exec -it clab-rcn-lab1-<node> telnet localhost 5000
    <Enter> for a prompt
    ... recover ...
@@ -676,7 +676,7 @@ Executed and measured. Nothing was rotated; no device credential changed.
 ### 1. OOB recovery demonstrated on r2
 
 ```
-ssh dmarchak@10.0.0.210 → docker exec -i clab-rcn-lab1-r2 → 127.0.0.1:5000
+ssh <user>@<lab-host> → docker exec -i clab-rcn-lab1-r2 → 127.0.0.1:5000
   received 22 bytes,  prompt reached: r2>
   established sessions on :5000 afterwards: 0
 ```
@@ -685,7 +685,7 @@ The console lands in **user EXEC, unauthenticated** (`r2>`). With no
 `enable secret` configured, `enable` then gives privilege 15 without a
 password. That is the recovery path working — and worth stating plainly that
 the serial console is a complete authentication bypass, acceptable only because
-reaching `10.0.0.210` needs an SSH key.
+reaching `<lab-host>` needs an SSH key.
 
 ### 2–3. Oxidized moved to per-device credentials
 
@@ -721,7 +721,7 @@ this work**, and worth its own look.
 
 ### 5. Sync run and verified on the clab VM
 
-Run **directly** as `/home/dmarchak/bin/clab-sync` — no sudoers, no polkit
+Run **directly** as `<home>/bin/clab-sync` — no sudoers, no polkit
 (§GAP 2). Validation passed on all nine, copied, committed.
 
 ```
@@ -755,7 +755,7 @@ and compare), rather than trusting that a pattern matched.
 
 ## GAP 4 — Writing Oxidized's router.db (amendments 1 and 2)
 
-`router.db` is now `0600 oxidized:oxidized`; the NMAS app runs as `dmarchak`.
+`router.db` is now `0600 oxidized:oxidized`; the NMAS app runs as `<user>`.
 So step 6b-vii would fail with a permission error **after the device had
 rotated and committed** — the worst place for it, and precisely the case
 amendment 3 exists to handle.
@@ -779,7 +779,7 @@ sudo install -o root -g root -m 0755 \
 **Sudoers — one fully-qualified entry:**
 
 ```
-dmarchak ALL=(root) NOPASSWD: /usr/local/sbin/nmas-oxidized-cred
+<user> ALL=(root) NOPASSWD: /usr/local/sbin/nmas-oxidized-cred
 ```
 
 Preferred over a shared group because a group would let the app **read every

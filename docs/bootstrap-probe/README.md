@@ -96,7 +96,7 @@ free RAM. Two nodes (one C8000v, one vIOS-L2) fit comfortably.
 
 ## Commands
 
-Run on `10.0.0.210`. Steps 2 and 6 are the only ones that change anything,
+Run on `<lab-host>`. Steps 2 and 6 are the only ones that change anything,
 and step 6 undoes step 2.
 
 ### 1. Stage the files
@@ -184,7 +184,7 @@ no IP path at all:
 
 ```bash
 # from the NMAS
-scp dmarchak@10.0.0.210:~/labs/bootstrap-probe/captures/'*' /tmp/bootstrap/
+scp <user>@<lab-host>:~/labs/bootstrap-probe/captures/'*' /tmp/bootstrap/
 ```
 
 They land in the repository as fixtures, with their provenance, at
@@ -946,9 +946,9 @@ host can reach. Forward through it with **`scripts/nmas-lab-tunnel`**, and
 close with the same tool:
 
 ```bash
-scripts/nmas-lab-tunnel open  eem dmarchak@10.0.0.210 22051:172.30.70.51:22 22011:172.30.70.11:22
+scripts/nmas-lab-tunnel open  eem <user>@<lab-host> 22051:172.30.70.51:22 22011:172.30.70.11:22
 # ... netmiko / ssh to 127.0.0.1:22051 and :22011 ...
-scripts/nmas-lab-tunnel close eem dmarchak@10.0.0.210
+scripts/nmas-lab-tunnel close eem <user>@<lab-host>
 ```
 
 **Never stop a tunnel, or anything else, by pattern.** A `pkill -f "<pattern>"`

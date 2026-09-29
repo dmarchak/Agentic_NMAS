@@ -474,7 +474,7 @@ sudo python3 <home>/python/Agentic_NMAS/docs/bootstrap-probe/kea-m5.py show
 ```
 
 **Predicted: 1 reservation, `aa:bb:cc:00:02:50 -> 10.255.0.50`.** This is the
-line that shows the include is live. Once the operator reports it there, the implementation reads it
+line that shows the include is live. Once the operator reports that it is there, the implementation reads it
 through the tool's `reservation_for()` as well (the Control Agent path, the
 one the build uses).
 
@@ -1224,7 +1224,7 @@ through the app's own auditor token (read-only), from the NMAS host.
 ### Q1. The image: a bootable disk, or does it need vrnetlab's install step?
 
 **Measured: the base disk boots as it is, and it is the configless disk
-wanted.** The vrnetlab image carries the Cisco base
+the probe needs.** The vrnetlab image carries the Cisco base
 (`c8000v-universalk9_8G_serial.17.06.01a.qcow2`, 1.49 GiB, 8 GiB virtual, no
 backing file). vrnetlab's install step BOOTED that base, so the base needs no
 install to boot. What the install step added lives in the other overlay (see

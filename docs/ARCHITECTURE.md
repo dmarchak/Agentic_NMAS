@@ -161,7 +161,7 @@ where it connects.
 
 Containerlab nodes are ephemeral. `write memory` saves to the *container's*
 NVRAM, but `containerlab deploy --cleanup` boots every node from the
-**startup-config files on the containerlab VM** (`10.0.0.210`,
+**startup-config files on the containerlab VM** (`<lab-host>`,
 `~/labs/lab/configs/`). Anything not in those files is lost on redeploy.
 
 So there are two different claims, and only one of them was ever guaranteed:
@@ -173,11 +173,11 @@ So there are two different claims, and only one of them was ever guaranteed:
 
 ### The pieces
 
-| path (on the NMAS, `10.0.0.211`) | what |
+| path (on the NMAS, `<nmas-host>`) | what |
 |---|---|
 | `~/lab-configs/oxidized-to-config.sh` | the sanitiser/sync, 318 lines |
 | `~/bin/clab-sync` | `flock -n` wrapper, runs it with `--yes` |
-| `/etc/systemd/system/clab-sync.service` | `Type=oneshot`, **`User=dmarchak`** |
+| `/etc/systemd/system/clab-sync.service` | `Type=oneshot`, **`User=<user>`** |
 | `/etc/systemd/system/clab-sync.timer` | `OnBootSec=10min`, `OnUnitActiveSec=30min`, `Persistent=true` |
 
 ### What it does
@@ -220,7 +220,7 @@ device ──SSH──> Oxidized ──git──> /opt/oxidized/rcn-lab.git
                                         │
                               oxidized-to-config.sh (sanitise + validate)
                                         │
-                              10.0.0.210:~/labs/lab/configs/*.cfg
+                              <lab-host>:~/labs/lab/configs/*.cfg
                                         │
                               containerlab deploy --cleanup
 ```

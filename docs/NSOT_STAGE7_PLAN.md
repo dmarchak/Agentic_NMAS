@@ -1952,7 +1952,7 @@ read through one function, and P.8 moves it without the reader changing.
 
 - **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's
   panel draws the fleet graph once `topology_service_url` is set (measured
-  2026-09-28, `http://10.0.0.210:8088`). It is removed in 7.8 because the fleet
+  2026-09-28, `http://<lab-host>:8088`). It is removed in 7.8 because the fleet
   view is deferred, not because it failed (C126). If a fleet view returns, it
   reuses that service rather than building something new. If it returns, it caps the devices shown, and
   networks can be organised into groups, with the view showing one group at a

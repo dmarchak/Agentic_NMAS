@@ -521,7 +521,7 @@ destination has to answer questions about the *network*.
 **This is the centrepiece and the only part that needs infrastructure work.**
 
 The earlier reachability problem does not apply: Grafana is publicly reachable
-at `grafana.dmarchak.dev` and NMAS at `nmas.dmarchak.dev`, both through
+at `grafana.<domain>` and NMAS at `nmas.<domain>`, both through
 Cloudflare. **No proxy is needed for the embed.** The iframe points at the
 public hostname; the card's own data fetch stays server-side via
 `127.0.0.1:3000`, so the panel still renders when the tunnel is down and
@@ -539,7 +539,7 @@ assumed away:**
 **(a) Grafana must permit framing.**
 `[security] allow_embedding = true` in `grafana.ini`, plus
 `content_security_policy` / `frame-ancestors` permitting
-`https://nmas.dmarchak.dev`. Grafana defaults to `allow_embedding = false` and
+`https://nmas.<domain>`. Grafana defaults to `allow_embedding = false` and
 sends `X-Frame-Options: deny`; with that in place the iframe renders a blank
 box and the only signal is in the browser console. Anonymous or embedded-token
 access must also be decided: a dashboard that requires a Grafana login inside
@@ -554,8 +554,8 @@ to the dashboard URLs, not to Grafana as a whole.
 > contained the placeholder rather than output. So (a) and (b) are recorded
 > here as *named, expected* blockers on the strength of how Grafana and Access
 > behave by default, **not as measured findings.** Before any embed work
-> starts, the test is: load `https://grafana.dmarchak.dev/d/<uid>` in an
-> `<iframe>` on a page served from `nmas.dmarchak.dev`, off-LAN, and record
+> starts, the test is: load `https://grafana.<domain>/d/<uid>` in an
+> `<iframe>` on a page served from `nmas.<domain>`, off-LAN, and record
 > the response headers and what renders. Two named blockers that turn out to
 > be one, or three, changes the work; assuming them is the habit this project
 > has spent five stages removing.

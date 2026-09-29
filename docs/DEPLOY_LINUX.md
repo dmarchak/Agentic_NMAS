@@ -63,15 +63,15 @@ writes lives only in Kea's memory until the next restart (register C49).
 tool owns one directory, and subnet 255 includes one file from it:
 
 ```bash
-sudo install -d -o dmarchak -g _kea -m 0755 /etc/kea/nmas
-sudo install -o dmarchak -g _kea -m 0644 /dev/null /etc/kea/nmas/reservations-255.json
+sudo install -d -o <user> -g _kea -m 0755 /etc/kea/nmas
+sudo install -o <user> -g _kea -m 0644 /dev/null /etc/kea/nmas/reservations-255.json
 printf '[]\n' > /etc/kea/nmas/reservations-255.json
 ```
 
 In subnet `id: 255`, `"reservations": []` becomes
 `"reservations": <?include "/etc/kea/nmas/reservations-255.json"?>`. Then
 `sudo kea-dhcp4 -t /etc/kea/kea-dhcp4.conf` and a restart. Replace
-`dmarchak` with the service user on a host where NMAS runs as `nmas`.
+`<user>` with the service user on a host where NMAS runs as `nmas`.
 
 Three constraints decide the shape, each measured:
 
@@ -144,7 +144,7 @@ sudo install -m 0644 deploy/systemd/nmas-startup-check.service deploy/systemd/nm
 sudo systemctl daemon-reload
 sudo systemctl enable --now nmas-startup-check.timer
 sudo systemctl start nmas-startup-check.service
-python3 -c 'import json; d=json.load(open("/home/dmarchak/python/Agentic_NMAS/data/startup_check.json")); print(d["counts"])'
+python3 -c 'import json; d=json.load(open("<home>/python/Agentic_NMAS/data/startup_check.json")); print(d["counts"])'
 ```
 
 Until it is installed, job health's `nmas-startup-check` row reads
@@ -230,7 +230,7 @@ sudo journalctl -u nmas -f
 ```
 
 > **What the deployment host actually runs** (measured 2026-09-25). The
-> unit is **`flask-app.service`**, not `nmas`: `User=dmarchak`,
+> unit is **`flask-app.service`**, not `nmas`: `User=<user>`,
 > `WorkingDirectory=` the checkout, `Restart=always`, enabled at boot,
 > journal output. It has **none** of the hardening above and no
 > `NMAS_HEADLESS` / `NMAS_HOST`. `~/bin/nmas-deploy` restarts it by name

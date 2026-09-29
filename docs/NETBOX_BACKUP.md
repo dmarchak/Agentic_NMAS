@@ -74,7 +74,7 @@ the Proxmox host, `0700`/`0600`. A keyring built ONLY from those files decrypted
   through that same import, so it is UNPROVEN as a copy** until it passes the
   empty-keyring decrypt below (6g).
 
-## 2. On the Proxmox host (10.0.0.80), as root
+## 2. On the Proxmox host (<hypervisor>), as root
 
 **Keep a second root session open until step 2d's test passes.** Step 2c
 edits `sshd_config` on the hypervisor.
@@ -121,7 +121,7 @@ DEST=/mnt/vzdump/nmas-netbox          # or /srv/nmas-netbox
   install -d -o nmas-backup -g nmas-backup -m 0700 "$DEST" "$DEST/hourly" "$DEST/daily"
   install -d -o nmas-backup -g nmas-backup -m 0700 /var/lib/nmas-backup/.ssh
 
-  printf '%s\n' "command=\"/usr/bin/rrsync -wo $DEST\",restrict,from=\"10.0.0.211\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKeRwEfwUxS5t3mzWUk4MVP6SP6r/b3cS8FT9zU0zep8 nmas-netbox-backup@nmas" \
+  printf '%s\n' "command=\"/usr/bin/rrsync -wo $DEST\",restrict,from=\"<nmas-host>\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKeRwEfwUxS5t3mzWUk4MVP6SP6r/b3cS8FT9zU0zep8 nmas-netbox-backup@nmas" \
       > /var/lib/nmas-backup/.ssh/authorized_keys
   chown nmas-backup:nmas-backup /var/lib/nmas-backup/.ssh/authorized_keys
   chmod 0600 /var/lib/nmas-backup/.ssh/authorized_keys
@@ -185,8 +185,8 @@ measurement.
   sshd -t                             # an invalid config stops the block HERE, before the reload
   systemctl reload ssh
   # Measure the effective settings rather than trusting the file:
-  sshd -T -C user=nmas-backup,host=nmas,addr=10.0.0.211 | grep -Ei 'forcecommand|permittty|allowtcpforwarding'
-  sshd -T -C user=root,host=x,addr=10.0.0.211 | grep -i forcecommand   # must print "forcecommand none"
+  sshd -T -C user=nmas-backup,host=nmas,addr=<nmas-host> | grep -Ei 'forcecommand|permittty|allowtcpforwarding'
+  sshd -T -C user=root,host=x,addr=<nmas-host> | grep -i forcecommand   # must print "forcecommand none"
 )
 ```
 
@@ -220,10 +220,10 @@ sshd, with the second root session still open.
 From the NMAS VM, once section 3 has put the host key in `known_hosts`:
 
 ```bash
-ssh -i ~/.ssh/nmas_netbox_backup nmas-backup@10.0.0.80 true   # must be REFUSED by rrsync, not run
+ssh -i ~/.ssh/nmas_netbox_backup nmas-backup@<hypervisor> true   # must be REFUSED by rrsync, not run
 echo test > /tmp/probe.txt
-rsync -e "ssh -i ~/.ssh/nmas_netbox_backup" /tmp/probe.txt nmas-backup@10.0.0.80:hourly/   # must succeed
-rsync -e "ssh -i ~/.ssh/nmas_netbox_backup" nmas-backup@10.0.0.80:hourly/probe.txt /tmp/back.txt  # must be REFUSED (write-only)
+rsync -e "ssh -i ~/.ssh/nmas_netbox_backup" /tmp/probe.txt nmas-backup@<hypervisor>:hourly/   # must succeed
+rsync -e "ssh -i ~/.ssh/nmas_netbox_backup" nmas-backup@<hypervisor>:hourly/probe.txt /tmp/back.txt  # must be REFUSED (write-only)
 ```
 
 Then, on Proxmox as root, remove the probe from `$DEST/hourly/`.
@@ -241,25 +241,25 @@ push needs the `--no-check-dest` change (2026-09-25).
 ```bash
 # 3a. The Proxmox host key: VERIFY, then trust. Compare this fingerprint with
 #     `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` run on the Proxmox console.
-ssh-keygen -lf <(ssh-keyscan -t ed25519 10.0.0.80 2>/dev/null)
+ssh-keygen -lf <(ssh-keyscan -t ed25519 <hypervisor> 2>/dev/null)
 # only if they match:
-ssh-keyscan -t ed25519 10.0.0.80 >> ~/.ssh/known_hosts
+ssh-keyscan -t ed25519 <hypervisor> >> ~/.ssh/known_hosts
 ```
 
 ```bash
 # 3b. The recipient's PUBLIC key, copied from the laptop to ~/ on this host
-#     (scp netbox-backup-recipient.asc dmarchak@10.0.0.211:~/). Every path is
+#     (scp netbox-backup-recipient.asc <user>@<nmas-host>:~/). Every path is
 #     absolute, so this does not depend on the directory it is run from.
 ( set -eu
   cd ~/python/Agentic_NMAS
-  sudo install -d -m 0750 -o root -g dmarchak /etc/nmas
-  sudo install -m 0644 -o root -g dmarchak ~/netbox-backup-recipient.asc /etc/nmas/netbox-backup-recipient.asc
+  sudo install -d -m 0750 -o root -g <user> /etc/nmas
+  sudo install -m 0644 -o root -g <user> ~/netbox-backup-recipient.asc /etc/nmas/netbox-backup-recipient.asc
   gpg --show-keys --with-fingerprint /etc/nmas/netbox-backup-recipient.asc   # must equal the laptop's fingerprint
   # The env file is installed ONCE: re-running this must not overwrite an edited one.
   if [ -e /etc/nmas/netbox-backup.env ]; then
     echo "env exists, left as it is"
   else
-    sudo install -m 0640 -o root -g dmarchak deploy/systemd/netbox-backup.env.example /etc/nmas/netbox-backup.env
+    sudo install -m 0640 -o root -g <user> deploy/systemd/netbox-backup.env.example /etc/nmas/netbox-backup.env
   fi
 )
 sudoedit /etc/nmas/netbox-backup.env      # set NMAS_BACKUP_RCLONE_REMOTE (section 4); check RCLONE_CONFIG
@@ -284,7 +284,7 @@ sudo systemctl enable --now nmas-netbox-backup.timer nmas-netbox-restore-test.ti
 The two `start` lines are deliberately NOT chained with `&&`. A failed run
 must still show its journal, because the journal is where its reason is.
 
-These are system units running as `dmarchak` with `docker` as a
+These are system units running as `<user>` with `docker` as a
 supplementary group, so no linger is needed. `StateDirectory=nmas-netbox`
 creates `/var/lib/nmas-netbox` (`0700`, owned by the service user).
 `RCLONE_CONFIG` in the env file points rclone at the B2 key's config
@@ -292,7 +292,7 @@ explicitly, rather than relying on systemd setting `$HOME`.
 
 ## 4. Off-box (dailies only)
 
-**Set up 2026-09-25:** bucket `nmas-netbox-dmarchak`; lifecycle keeps a file
+**Set up 2026-09-25:** bucket `nmas-netbox-<user>`; lifecycle keeps a file
 15 days, then hides it, and deletes a hidden version 1 day later. The
 application key is restricted to that bucket with `listBuckets`,
 `listFiles` and `writeFiles`, and **no `deleteFiles` and no `readFiles`**.
@@ -300,8 +300,8 @@ Only a newly promoted daily is sent.
 
 In `/etc/nmas/netbox-backup.env`:
 ```
-NMAS_BACKUP_RCLONE_REMOTE=<remote-name>:nmas-netbox-dmarchak
-RCLONE_CONFIG=/home/dmarchak/.config/rclone/rclone.conf
+NMAS_BACKUP_RCLONE_REMOTE=<remote-name>:nmas-netbox-<user>
+RCLONE_CONFIG=<home>/.config/rclone/rclone.conf
 NMAS_BACKUP_OFFBOX_PRUNE=0
 ```
 
@@ -340,10 +340,10 @@ The test that decides it points rclone at the bucket, which needs only
 attempted:
 
 ```bash
-rclone lsl <remote>:nmas-netbox-dmarchak --b2-versions            # BEFORE: note b2probe.txt
-rclone delete -vv <remote>:nmas-netbox-dmarchak --include b2probe.txt 2>&1 | tail -20
-rclone lsl <remote>:nmas-netbox-dmarchak                          # the current view
-rclone lsl <remote>:nmas-netbox-dmarchak --b2-versions            # every version, hidden ones included
+rclone lsl <remote>:nmas-netbox-<user> --b2-versions            # BEFORE: note b2probe.txt
+rclone delete -vv <remote>:nmas-netbox-<user> --include b2probe.txt 2>&1 | tail -20
+rclone lsl <remote>:nmas-netbox-<user>                          # the current view
+rclone lsl <remote>:nmas-netbox-<user> --b2-versions            # every version, hidden ones included
 ```
 
 Read the `-vv` output first. It says what rclone attempted and what B2
@@ -434,7 +434,7 @@ B2 key capabilities cannot be edited, only issued anew (register B10).
 
 ```bash
 NMAS_BACKUP_ROOT=/var/lib/nmas-netbox NMAS_BACKUP_GPG_RECIPIENT_FILE=/etc/nmas/netbox-backup-recipient.asc \
-  NMAS_BACKUP_PROXMOX_TARGET=nmas-backup@10.0.0.80 NMAS_BACKUP_RCLONE_REMOTE=b2:nmas-netbox-dmarchak \
+  NMAS_BACKUP_PROXMOX_TARGET=nmas-backup@<hypervisor> NMAS_BACKUP_RCLONE_REMOTE=b2:nmas-netbox-<user> \
   scripts/nmas-netbox-backup --status        # 0 fresh, 1 stale/failed, 2 never ran
 ```
 
@@ -478,7 +478,7 @@ it checks.
 ### 6a. The key (B2 web UI, once)
 
 App Keys, then Add a New Application Key: name `nmas-netbox-read`, bucket
-`nmas-netbox-dmarchak` only, type **Read Only**, no file-name prefix, no
+`nmas-netbox-<user>` only, type **Read Only**, no file-name prefix, no
 expiry. **Record the capability list B2 shows for it.** B10's check needs
 the bucket's lifecycle rules and lock configuration, and whether a UI
 read-only key can read those is a fact to take from that list, not an
@@ -496,15 +496,15 @@ stat -c '%a %n' ~/.config/rclone/rclone.conf     # must be 600
 ### 6c. Retrieve, then verify by the listing
 
 ```bash
-rclone lsjson --files-only b2-read:nmas-netbox-dmarchak/daily    # names, sizes, times
+rclone lsjson --files-only b2-read:nmas-netbox-<user>/daily    # names, sizes, times
 mkdir -p ~/netbox-restore
-rclone copy -v b2-read:nmas-netbox-dmarchak/daily ~/netbox-restore --include '<name>.tar.gpg'
+rclone copy -v b2-read:nmas-netbox-<user>/daily ~/netbox-restore --include '<name>.tar.gpg'
 ls -l ~/netbox-restore/<name>.tar.gpg    # the size MUST equal the listing's: rclone's exit 0 proves nothing
 ```
 
 **After an attack**, if the files are hidden (B9), list and fetch the
 versions:
-`rclone lsjson --files-only --b2-versions b2-read:nmas-netbox-dmarchak/daily`,
+`rclone lsjson --files-only --b2-versions b2-read:nmas-netbox-<user>/daily`,
 then `rclone copy` with `--b2-versions` and `--include` naming the
 `<name>-v<timestamp>.tar.gpg` version.
 
@@ -526,10 +526,10 @@ with a fresh probe written by the write key from the NMAS:
 ```bash
 # on the NMAS:
 printf 'probe\n' > /tmp/readkey-probe.txt
-rclone copyto --no-check-dest /tmp/readkey-probe.txt b2:nmas-netbox-dmarchak/readkey-probe.txt
+rclone copyto --no-check-dest /tmp/readkey-probe.txt b2:nmas-netbox-<user>/readkey-probe.txt
 # on the laptop, with the READ key:
-rclone delete -vv b2-read:nmas-netbox-dmarchak --include readkey-probe.txt 2>&1 | tail -15
-rclone lsjson --files-only b2-read:nmas-netbox-dmarchak | grep readkey-probe   # must still be listed
+rclone delete -vv b2-read:nmas-netbox-<user> --include readkey-probe.txt 2>&1 | tail -15
+rclone lsjson --files-only b2-read:nmas-netbox-<user> | grep readkey-probe   # must still be listed
 ```
 
 Pass: `-vv` shows a refusal, and the probe is still in the normal listing.
@@ -565,10 +565,10 @@ id, the right modes) cannot see whether it WORKS there: the export route
 passed all three and could not be imported.
 
 ```bash
-PVE=root@10.0.0.80
+PVE=root@<hypervisor>
 T=$(mktemp -d); V=$(mktemp -d); chmod 700 "$T" "$V"; mkdir -m 700 "$V"/private-keys-v1.d
-NAME=$(rclone lsf b2:nmas-netbox-dmarchak/daily | sort | tail -1)
-rclone copy b2:nmas-netbox-dmarchak/daily "$T" --include "$NAME"
+NAME=$(rclone lsf b2:nmas-netbox-<user>/daily | sort | tail -1)
+rclone copy b2:nmas-netbox-<user>/daily "$T" --include "$NAME"
 scp "$PVE":/root/nmas-backup-key/pub.gpg "$V"/
 scp "$PVE":/root/nmas-backup-key/private-keys-v1.d/*.key "$V"/private-keys-v1.d/
 GNUPGHOME="$V" gpg --import "$V"/pub.gpg

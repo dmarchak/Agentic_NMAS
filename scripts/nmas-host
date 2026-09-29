@@ -37,18 +37,23 @@ read-only, unless the operator asks for a specific action.
 """
 
 import argparse
+import json
+import os
 import shlex
 import socket
 import subprocess
 import sys
 import threading
 
-# name: (user, LAN address, tunnel hostname)
-HOSTS = {
-    "nmas": ("dmarchak", "10.0.0.211", "ssh-nmas.dmarchak.dev"),
-    "clab": ("dmarchak", "10.0.0.210", "ssh-clab.dmarchak.dev"),
-    "pve": ("root", "10.0.0.80", "ssh-pve.dmarchak.dev"),
-}
+# The hosts' real addresses, tunnel hostnames and users are NOT in this file:
+# the repository is public. They live in a local, gitignored file (data/ is
+# ignored), and CLAUDE.md names only the placeholders. Shape:
+#   {"nmas": {"user": ..., "lan": ..., "tunnel": ...}, "clab": {...}, "pve": {...}}
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HOSTS_FILE = os.path.join(ROOT, "data", "lab_hosts.json")
+HOSTS_FILE_ENV = "NMAS_LAB_HOSTS"
+EXIT_NO_HOSTS = 78  # EX_CONFIG: this machine has not been given the hosts file
+
 SSH_PORT = 22
 LAN_TIMEOUT_S = 3.0
 
@@ -69,9 +74,34 @@ def lan_answers(address: str, port: int = SSH_PORT, timeout: float = LAN_TIMEOUT
         return False
 
 
-def choose(name: str, *, probe=lan_answers) -> dict:
+class HostsUnavailable(Exception):
+    """The local hosts file is missing or unreadable: a refusal, never a guess."""
+
+
+def hosts_path() -> str:
+    return os.environ.get(HOSTS_FILE_ENV) or HOSTS_FILE
+
+
+def load_hosts(path: str = "") -> dict:
+    """`{name: (user, LAN address, tunnel hostname)}` from the local file."""
+    path = path or hosts_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        hosts = {name: (entry["user"], entry["lan"], entry["tunnel"])
+                 for name, entry in doc.items() if not name.startswith("_")}
+    except FileNotFoundError:
+        raise HostsUnavailable(f"{path} does not exist")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise HostsUnavailable(f"{path} could not be read: {exc}")
+    if not hosts:
+        raise HostsUnavailable(f"{path} names no host")
+    return hosts
+
+
+def choose(name: str, *, probe=lan_answers, hosts=None) -> dict:
     """The path to *name*: `{target, path, why}`. The one decision."""
-    user, lan, tunnel = HOSTS[name]
+    user, lan, tunnel = (hosts if hosts is not None else load_hosts())[name]
     if probe(lan):
         return {"target": f"{user}@{lan}", "path": "LAN", "address": lan,
                 "why": f"{lan}:{SSH_PORT} answered"}
@@ -116,10 +146,18 @@ def main(argv=None, *, probe=lan_answers, runner=run_ssh) -> int:
     # option can reach ssh from either side.
     head, command = (argv[:argv.index("--")], argv[argv.index("--") + 1:]) \
         if "--" in argv else (argv, [])
+    try:
+        hosts = load_hosts()
+    except HostsUnavailable as exc:
+        print(f"nmas-host: refused: {exc}. The lab hosts' addresses are kept out of the "
+              f"public repository, in a local file (data/ is gitignored), shaped "
+              f'{{"nmas": {{"user": ..., "lan": ..., "tunnel": ...}}, "clab": ..., "pve": ...}}. '
+              f"Nothing was run.", file=sys.stderr)
+        return EXIT_NO_HOSTS
     ap = argparse.ArgumentParser(
         prog="nmas-host", description="Reach a lab host: LAN if it answers, else the tunnel.",
         epilog="nmas-host <host> -- <command ...>   |   nmas-host <host> --target")
-    ap.add_argument("host", choices=sorted(HOSTS))
+    ap.add_argument("host", choices=sorted(hosts))
     ap.add_argument("--target", action="store_true",
                     help="print user@address for scp/rsync and exit")
     args = ap.parse_args(head)
@@ -129,7 +167,7 @@ def main(argv=None, *, probe=lan_answers, runner=run_ssh) -> int:
     if not args.target and not command:
         ap.error("name a command after --: this helper opens no interactive shell")
 
-    path = choose(args.host, probe=probe)
+    path = choose(args.host, probe=probe, hosts=hosts)
     print(f"{args.host}: via {path['path']} ({path['address']}; {path['why']})",
           file=sys.stderr)
     if args.target:

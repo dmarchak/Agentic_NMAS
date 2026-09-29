@@ -217,4 +217,4 @@ The NetBox sync reads golden configs as the source of truth — no live SSH sess
 
 ## Author
 
-Dustin Marchak
+[Author]

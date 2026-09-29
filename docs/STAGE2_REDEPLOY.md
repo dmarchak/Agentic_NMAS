@@ -9,7 +9,7 @@
 > in the *generator's* output for r6. No harvested config contains that line —
 > `show running-config` never emits it — so the redeploy does not involve it.
 
-**Written for: Dustin, at the machine, running these by hand.** Nothing here
+**Written for: the operator, at the machine, running these by hand.** Nothing here
 is automated and nothing here should be run by an agent. Every step that
 touches shared infrastructure is yours.
 
@@ -204,7 +204,7 @@ Same isolation as stages A–C: own lab name, own network, destroyed after.
 cd ~/labs/bootstrap-probe
 # The generator's own output, for a throwaway switch.
 python3 - <<'EOF'
-import sys; sys.path.insert(0, '/home/dustin/python/Agentic_NMAS')
+import sys; sys.path.insert(0, '<home>/python/Agentic_NMAS')
 from modules.nsot.bootstrap_config import render_bootstrap
 open('configs/bp-vios-d.cfg', 'w').write(render_bootstrap(
     'cisco_ios', hostname='bp-vios-d', username='admin', secret='admin'))

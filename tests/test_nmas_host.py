@@ -6,6 +6,7 @@ closed loopback port. ssh itself is never run (the network guard refuses it):
 a recording runner stands in, so what would be sent is asserted instead.
 """
 
+import json
 import os
 import socket
 from importlib.machinery import SourceFileLoader
@@ -14,6 +15,21 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 H = SourceFileLoader("nmas_host", os.path.join(ROOT, "scripts", "nmas-host")).load_module()
+
+# The real hosts are in a local, gitignored file; the tests use documentation
+# addresses (RFC 5737) and example names in a file of their own.
+FAKE_HOSTS = {"nmas": {"user": "op", "lan": "192.0.2.11", "tunnel": "ssh-nmas.example.net"},
+              "clab": {"user": "op", "lan": "192.0.2.10", "tunnel": "ssh-clab.example.net"},
+              "pve": {"user": "root", "lan": "192.0.2.80", "tunnel": "ssh-pve.example.net"}}
+
+
+@pytest.fixture(autouse=True)
+def _hosts_file(tmp_path, monkeypatch):
+    path = tmp_path / "lab_hosts.json"
+    path.write_text(json.dumps(FAKE_HOSTS))
+    monkeypatch.setenv(H.HOSTS_FILE_ENV, str(path))
+    return path
+
 
 # The tunnel's own words when the Access token has expired (the operator's report).
 EXPIRED = ("websocket: bad handshake\n"
@@ -56,9 +72,9 @@ class TestTheLanCheckIsARealConnect:
 
 class TestTheOneChoice:
     @pytest.mark.parametrize("name,lan,tunnel,user", [
-        ("nmas", "10.0.0.211", "ssh-nmas.dmarchak.dev", "dmarchak"),
-        ("clab", "10.0.0.210", "ssh-clab.dmarchak.dev", "dmarchak"),
-        ("pve", "10.0.0.80", "ssh-pve.dmarchak.dev", "root")])
+        ("nmas", "192.0.2.11", "ssh-nmas.example.net", "op"),
+        ("clab", "192.0.2.10", "ssh-clab.example.net", "op"),
+        ("pve", "192.0.2.80", "ssh-pve.example.net", "root")])
     def test_lan_when_it_answers_and_the_tunnel_when_it_does_not(self, name, lan, tunnel, user):
         seen = []
         up = H.choose(name, probe=lambda a: seen.append(a) or True)
@@ -76,7 +92,7 @@ class TestTheOneChoice:
     def test_target_prints_the_chosen_address_for_scp(self, capsys):
         assert H.main(["pve", "--target"], probe=lambda a: True, runner=Runner()) == 0
         out = capsys.readouterr()
-        assert out.out.strip() == "root@10.0.0.80" and "pve: via LAN" in out.err
+        assert out.out.strip() == "root@192.0.2.80" and "pve: via LAN" in out.err
 
 
 class TestHostsOnlyNeverDevices:
@@ -113,7 +129,7 @@ class TestTheExpiredTokenStops:
         assert rc == H.EXIT_TOKEN_EXPIRED == 75
         assert len(runner.calls) == 1, "one attempt, never a loop"
         err = capsys.readouterr().err
-        assert "STOP" in err and "cloudflared access login https://ssh-pve.dmarchak.dev" in err
+        assert "STOP" in err and "cloudflared access login https://ssh-pve.example.net" in err
 
     def test_another_ssh_failure_is_not_called_an_expired_token(self, capsys):
         runner = Runner(rc=255, err="ssh: connect to host x port 22: Connection refused\n")
@@ -126,3 +142,29 @@ class TestTheExpiredTokenStops:
 
     def test_the_marks_are_the_tunnels_own_words(self):
         assert H.token_expired(EXPIRED) and not H.token_expired("Permission denied (publickey).")
+
+
+class TestTheHostsAreNotPublished:
+    def test_the_script_carries_no_address_user_or_hostname(self):
+        src = open(os.path.join(ROOT, "scripts", "nmas-host"), encoding="utf-8").read()
+        import re
+        assert not re.search(r"\b10\.0\.0\.\d+", src)
+        assert "HOSTS = {" not in src, "the hosts come from the local file, never a literal"
+
+    def test_a_missing_file_refuses_naming_it_and_runs_nothing(self, tmp_path, monkeypatch, capsys):
+        missing = tmp_path / "absent.json"
+        monkeypatch.setenv(H.HOSTS_FILE_ENV, str(missing))
+        runner, asked = Runner(), []
+        rc = H.main(["nmas", "--", "true"], probe=lambda a: asked.append(a) or True, runner=runner)
+        assert rc == H.EXIT_NO_HOSTS == 78 and runner.calls == [] and asked == []
+        err = capsys.readouterr().err
+        assert str(missing) in err and "Nothing was run" in err
+
+    def test_an_unreadable_file_refuses_too(self, tmp_path, monkeypatch):
+        bad = tmp_path / "bad.json"
+        bad.write_text("{not json")
+        monkeypatch.setenv(H.HOSTS_FILE_ENV, str(bad))
+        assert H.main(["nmas", "--", "true"], probe=lambda a: True, runner=Runner()) == 78
+
+    def test_the_default_file_is_under_the_gitignored_data_directory(self):
+        assert H.HOSTS_FILE == os.path.join(ROOT, "data", "lab_hosts.json")

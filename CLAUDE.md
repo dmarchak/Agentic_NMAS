@@ -3,7 +3,7 @@
 ## Project Overview
 
 Flask-based web application for managing, automating, and monitoring Cisco IOS
-network devices. Built by Dustin Marchak as a capstone/school project. The app is
+network devices. Built by [Author] as a capstone/school project. The app is
 a single-host management tool — not a multi-tenant SaaS — so there is no built-in
 auth system.
 
@@ -1241,11 +1241,19 @@ and a hostname behind Cloudflare Zero Trust Access on the operator's `homelab`
 tunnel. The laptop's `~/.ssh/config` routes those hostnames through
 `ProxyCommand cloudflared access ssh --hostname %h`.
 
-| Host | LAN | Tunnel hostname | User |
+| Host | `nmas-host` name | Placeholder in the docs | User |
 |---|---|---|---|
-| the NMAS host | `10.0.0.211` | `ssh-nmas.dmarchak.dev` | `dmarchak` |
-| the containerlab VM | `10.0.0.210` | `ssh-clab.dmarchak.dev` | `dmarchak` |
-| Proxmox | `10.0.0.80` | `ssh-pve.dmarchak.dev` | `root` |
+| the NMAS host | `nmas` | `<nmas-host>`, tunnel `ssh-nmas.<domain>` | `<user>` |
+| the containerlab VM | `clab` | `<lab-host>`, tunnel `ssh-clab.<domain>` | `<user>` |
+| Proxmox | `pve` | `<hypervisor>`, tunnel `ssh-pve.<domain>` | `root` |
+
+**The real addresses, tunnel hostnames and users are in `data/lab_hosts.json`**, a
+local file (`data/` is gitignored), because the repository is public
+(2026-09-29). `scripts/nmas-host` reads it and refuses, naming the file, when it is
+absent (exit 78); read it there when a real value is needed. Other placeholders in
+the docs: `<operator>` (the operator's email), `<home>` (a home directory),
+`<tunnel-host>` (cloudflared's LAN address), `<laptop>`, `<LAN>`, `<repo>` (the
+NSoT config repository), `<account>` (the GitHub account).
 
 - **One helper makes the choice, and every host read goes through it:
   `scripts/nmas-host <nmas|clab|pve> -- <command>`.** For scp and rsync,
@@ -1365,7 +1373,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_breakglass_export.py` | 7.3's browser export through the real route, module and record format: the preview names the devices and the key and reveals no value and writes nothing; a mismatched or short passphrase is refused with nothing built; credentials moved since the preview refuse; the downloaded bytes open with the passphrase, carry every device's credential digest and the application key, and match the sha256 in the reveal row and the export log (`via: browser`, "downloaded by"); the file never touches the host's disk; a record that does not verify (a device's password lost on the way, or an escrowed key opening less) is never sent and nothing is recorded; nothing is sent unrecorded; the passphrase appears in no response, log line, reveal row or export row, even from a failure that quotes it; an unverified caller is refused before anything is built; job health says "downloaded by X" and asks for the copy, and a stale row opens the export; the SHIPPED button refuses a short or mismatched passphrase, the rotate result's next step and the attention row open it and an undeclared operation is never offered, and the Settings page carries the third entry point |
 | `test_intent_ops.py` | 7.3's revert and retry on r2's REAL config with seeded intent and two edits, through the real routes: a revert preview draws the document after it and each setting now and after, commits nothing, and defaults to the commit the rollback names; a later commit on the same setting is refused by path; the apply undoes one commit and keeps the later one, `Source: revert`, `Reverts:`, as the verified person (`access`); C214: a standing block is NOT lifted by a revert and one measured gone is cleared; moved intent, a failed commit (the file put back) and a held device each commit nothing; the list is carried and a device the list does not hold is refused; retry: no block and a block that no longer applies are not offered, a standing block draws its program and retry history, a reason without the shape of one is refused (the block stays), a stated reason lifts it and is recorded, a block re-recorded since the preview is refused; C213: an unreadable retry log refuses and keeps the block and the damaged file; one classifier for the list and the screens; C215: the plan reads the row of the list it was given and refuses a device that list does not hold, never defaulting a template; the SHIPPED client needs a reason for a retry and escapes the commit chooser |
 | `test_persist_screen.py` | C164 (7.3), over the real module, route and recorder: the preview draws every step and what persist does NOT do, contacts no device, says at the confirm that the save carries the running config as it is, draws the hourly check's last reading with its age (never-run and unreadable different), and names each refusal as a gate (AST, both ways); the apply saves on a thread that HOLDS the device and records as the person (`via: device page`), a read-back that does not match leads the result, a moved plan and a held device are refused with nothing sent, and the apply needs its list; the Device page ships the button and client |
-| `test_nmas_host.py` | The one LAN-or-tunnel choice for reaching a lab host: a real TCP connect to a loopback listener answers and a closed port does not (3 s, port 22); each host goes to its LAN address when that answers and to its tunnel hostname when not, and the probe asks only the LAN address; the path is said before the command runs; every session clears forwardings and no ssh option passes through (`-L`, `-J`, a device name, no command and `--target` with a command are each refused before any connection); the expired-token failure, in the tunnel's own words, exits 75 naming the host and the operator's login command, with one attempt and no retry, while another ssh failure and the LAN path are never called an expired token |
+| `test_nothing_personal_is_published.py` | The repository is public: every tracked file under `docs/`, `CLAUDE.md` and `README.md` carries no email (documentation domains aside), no home directory (the `nmas` service home aside), no homelab `10.0.0.x` address except on a line exempted by its content hash with its reason (vrnetlab's internals, fixture traffic, a device route: 24 lines), and no term from the local denylist (skipped, saying so, where the file is absent); floor of 50 files; every exemption names a line that exists (an edited line is read again); both local files gitignored; controls: a planted email, home, address and denylisted word each found, documentation forms not, an exemption scoped to one line in one file and to the address rule only |
+| `test_nmas_host.py` | The one LAN-or-tunnel choice for reaching a lab host (the hosts read from the local, gitignored `data/lab_hosts.json`, never a literal in the script; a missing or unreadable file refuses naming it, exit 78, nothing run): a real TCP connect to a loopback listener answers and a closed port does not (3 s, port 22); each host goes to its LAN address when that answers and to its tunnel hostname when not, and the probe asks only the LAN address; the path is said before the command runs; every session clears forwardings and no ssh option passes through (`-L`, `-J`, a device name, no command and `--target` with a command are each refused before any connection); the expired-token failure, in the tunnel's own words, exits 75 naming the host and the operator's login command, with one attempt and no retry, while another ssh failure and the LAN path are never called an expired token |
 | `test_clab_targets.py` (C50) | an unknown lab resolves to NO paths with its cause named, and `persist()` refuses before the sync (never writing into another lab's directory); known labs and the default unchanged (the control); C207: the refusal returns rather than raising |
 | `test_retire.py` | the whole exit in one commit, history kept; the break-glass record must hold the CURRENT credential; what it will NOT do is stated; resumable; a failed commit restores the tree |
 | `test_clab_sync_commit.py` | C106 (2): a lab whose backup failed is NOT overwritten, is named as a backup failure (never blamed on the loop or the copy), and only copied labs are verified; executed under bash with one backup refused. The sanitiser's commit block EXECUTED under bash: identity rides on every commit; a failed commit names git's reason and is not "not versioned"; helpers resolve beside the script under a systemd PATH |
@@ -1532,6 +1541,22 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   tab / modal / badge patterns. No new CSS framework. Front-end libraries are
   vendored into `static/`, never loaded from a CDN (air-gapped networks).
 - Return dicts shaped `{"ok": bool, "error": str, ...}`
+- **Nothing personal or installation-specific is published** (the operator,
+  2026-09-29: the repository is public). Documentation is written from the first
+  draft in a neutral voice (the operator, the implementation, the tool; never
+  "I" or "we") and with placeholders: `<operator>` for the email, `<user>`,
+  `<home>`, `<nmas-host>`, `<lab-host>`, `<hypervisor>`, `<tunnel-host>`,
+  `<laptop>`, `<LAN>`, `<domain>`, `<repo>`, `<account>`, `[Author]`, and
+  `<redacted>` (distinct, `<redacted-1>`/`<redacted-2>`, where a comparison is
+  the point). The real host values are in `data/lab_hosts.json` and the terms
+  that must never appear in `data/publication_denylist.txt`, both local
+  (`data/` is gitignored). `tests/test_nothing_personal_is_published.py` scans
+  every tracked file under `docs/`, `CLAUDE.md` and `README.md` for an email, a
+  home directory, a homelab `10.0.0.x` address and a denylisted term. A line
+  quoting vrnetlab's internal addresses (they share the homelab's /24) carries a
+  PER-LINE exemption keyed on its content hash, with its reason; the pattern is
+  never narrowed. Where the denylist file is absent (CI), that one rule skips
+  and says so.
 - Module-level `log = logging.getLogger(__name__)`
 - Use `pathlib` / `os.path`, never hardcoded separators or drive letters
 - **No IPv4 literals** in `modules/integrations/`, `modules/nsot/`, or `routes/` —
@@ -5255,7 +5280,7 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   reason D4 is a check and not a default.
 - **A CONFINED ROOT PROCESS IS NOT ROOT FOR FILE PERMISSIONS** (the
   operator, P.6 D1, 2026-09-26). `sudo kea-dhcp4 -t` could not read a
-  `0640 dmarchak:_kea` fragment: Kea's AppArmor profile withholds
+  `0640 <user>:_kea` fragment: Kea's AppArmor profile withholds
   `dac_override` and `dac_read_search`, so the process is held to the mode
   bits, and root is neither the owner nor in the group. The profile DID
   allow the path (`/etc/kea/**`), which is why it would have read as a path

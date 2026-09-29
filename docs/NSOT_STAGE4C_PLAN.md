@@ -476,7 +476,7 @@ On the NMAS:
 
 | interface | address | what it is |
 |---|---|---|
-| `enp6s18` | `10.0.0.211/24` | LAN |
+| `enp6s18` | `<nmas-host>/24` | LAN |
 | `enp6s19` | `10.255.0.10/24` | **the real path into the lab** |
 | `dummy0` | `10.255.1.10/32` | a loopback identity; no segment, nothing can be adjacent to it |
 

@@ -208,16 +208,16 @@ ss -4:  LISTEN 0 128 0.0.0.0:5000   python3
 ss -6:  (empty — no [::]:5000 listener)
 ```
 
-IPv4 only, but on **every** interface: LAN (`10.0.0.211`), both lab networks
+IPv4 only, but on **every** interface: LAN (`<nmas-host>`), both lab networks
 (`10.255.0.10`, `10.255.1.10`) and the docker bridges.
 
 Request sources in `logs/device_manager.log`:
 
 | source | requests | what |
 |---|---|---|
-| `10.0.0.21` | 21,581 | cloudflared — the tunnel |
+| `<tunnel-host>` | 21,581 | cloudflared — the tunnel |
 | `127.0.0.1` | 151 | local |
-| `10.0.0.30` | 2 | the probes below |
+| `<laptop>` | 2 | the probes below |
 
 ### The header can be forged by any LAN host
 
@@ -225,7 +225,7 @@ From a laptop on the LAN, not the tunnel:
 
 ```
 curl -H "Cf-Access-Authenticated-User-Email: forged@example.com" \
-     http://10.0.0.211:5000/          →  HTTP 200
+     http://<nmas-host>:5000/          →  HTTP 200
 ```
 
 `Cf-Access` appears **nowhere** in the codebase, so nothing consumes it yet —
@@ -253,16 +253,16 @@ What does hold regardless: port 5000 is closed over IPv6 **only because no
 any future dual-stack bind, would open it — so the restriction must cover both
 address families, and `NMAS_HOST` should name a specific address rather than
 `0.0.0.0`, giving two independent layers instead of one accidental one.
-Binding to `10.0.0.211` also stops `localhost:5000` working on the host.
+Binding to `<nmas-host>` also stops `localhost:5000` working on the host.
 
 ### Not established
 
 - **Firewall rules** — `sudo` requires a password; `ufw`, `iptables` and `nft`
   are installed but unreadable.
-- **The tunnel's origin URL** — SSH to `10.0.0.21` failed host-key
+- **The tunnel's origin URL** — SSH to `<tunnel-host>` failed host-key
   verification, and accepting an unknown host key is a trust decision. If the
-  origin is a *hostname* rather than `http://10.0.0.211:5000`, whatever
-  resolver `10.0.0.21` uses could return a AAAA record.
+  origin is a *hostname* rather than `http://<nmas-host>:5000`, whatever
+  resolver `<tunnel-host>` uses could return a AAAA record.
 - **Whether the header arrives through the tunnel** — needs root for
   `tcpdump`, or a consumer in the app. The consumer is the better answer: it
   is needed anyway, and makes the confirmation a by-product of the feature.

@@ -48,10 +48,10 @@ design, so they come first.
         IdentitiesOnly yes
 
 ssh -T github-nsot
-    Hi dmarchak/rcn-nsot-config! You've successfully authenticated
+    Hi <repo>! You've successfully authenticated
 ```
 
-So the deploy key is live, scoped to `dmarchak/rcn-nsot-config`, and that repo
+So the deploy key is live, scoped to `<repo>`, and that repo
 is **private and empty** (`ls-remote` succeeds via the key and returns no
 refs). The key is at `~/.ssh/nsot_deploy`, **not** `~/.ssh/nsot_<slug>`.
 
@@ -163,8 +163,8 @@ inventing one.
 {
   "provider": "github",
   "ssh_alias": "github-nsot",
-  "owner": "dmarchak",
-  "repo": "rcn-nsot-config",
+  "owner": "<user>",
+  "repo": "<repo>",
   "branch": "main",
   "key_path": "~/.ssh/nsot_deploy",
   "auto_push": false,
@@ -373,7 +373,7 @@ All five must pass. Each reports the check that failed and the fix.
 Shown before the first push to a given remote, counts only, **never values**:
 
 ```
-This will publish to github.com/dmarchak/rcn-nsot-config (private)
+This will publish to github.com/<repo> (private)
 
   51 commits          10 touching golden/
   18 tags             2 baseline/, 15 golden/<device>/, 1 batch/

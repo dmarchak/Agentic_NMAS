@@ -202,8 +202,8 @@ Two consequences worth stating now:
      make it so — so the gap is recorded where somebody reaching for r6
      will read it, rather than in a runbook nobody opens twice.
 
-  The second is the fallback and the first is the intent. Neither is "it
-  will be got to". **Scoped in [R6_PERSISTENCE.md](R6_PERSISTENCE.md)**,
+  The second is the fallback and the first is the intent. Neither is a promise
+  to get to it later. **Scoped in [R6_PERSISTENCE.md](R6_PERSISTENCE.md)**,
   which found that the launch-patch setting is the more dangerous half:
   fixing only the configs directory would make `verify_startup_applies()`
   check rcn-lab1's patch for a device r6's own patch boots, and pass.

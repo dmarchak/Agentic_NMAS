@@ -161,7 +161,7 @@ a revision and its APPROVER.**
   naming both.
 
 **It depends on D10, and fails closed on unverified history.** A rule of
-"author ≠ approver" checked against `Actor: dustin`, typed by hand, is
+"author ≠ approver" checked against `Actor: <user>`, typed by hand, is
 decoration. So separation of duties reads only `Actor-Verified: access` (P.3
 step 10). A revision whose author is not verified cannot be shown to be
 someone else's, so under the policy its approval REFUSES with that reason.
