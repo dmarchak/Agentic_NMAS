@@ -242,6 +242,7 @@ HOLDERS = {
     "routes/golden.py": ("capture_apply",),
     "modules/nsot/credential_rotation.py": ("rotate", "persist"),
     "modules/nsot/persist_op.py": ("apply",),
+    "modules/nsot/rotate_op.py": ("run",),
     "modules/nsot/onboard.py": ("_holds_the_device",),
     "modules/nsot/retire.py": ("_holds_the_device",),
     "scripts/nmas-persist-native": ("run",),

@@ -72,6 +72,9 @@ RESULT_COMPONENT = {
     # Persist (7.3, C164): its record is the rotation record job health's
     # `rotation:<device>` row reads, served by the job-health route.
     "persist.apply": ("static/js/nmas_persist.js", "runApply", "jobs.jobs_health"),
+    # Rotate (7.3): a job; its result is read by id, and its record is the
+    # rotation record job health's `rotation:<device>` row reads.
+    "rotate.apply": ("static/js/nmas_rotate.js", "runApply", "jobs.jobs_health"),
     "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed",
                               "templatize.read_committed"),
     # Onboarding's Create (C86): phase 1, drawn as pending; the record read

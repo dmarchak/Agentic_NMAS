@@ -91,6 +91,7 @@ VOCABULARY = {
     "integration_health": "whether each integration answers, as the integration-health reader last stored it",
     "ci_verdict": "the running commit's CI verdict, as the ci-verdict reader last stored it",
     "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",
+    "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
 }
 
 #: Announcers that are not reader jobs (C188 step 2): a background job a
@@ -98,6 +99,7 @@ VOCABULARY = {
 #: they send are senders to `keys_in_use`, exactly as a reader's are.
 ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
+    "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state
@@ -190,6 +192,7 @@ DECLARED = {
     # A device, its files and backups.
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),
+    "rotate.apply": Nothing("starts a job and answers at once; the job changes the credential and ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "bulk_execute": ("device_state",),
     "bulk_reload": ("device_state", "inventory"),
     "backup_config": ("backups",),
@@ -226,6 +229,7 @@ DECLARED = {
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
+    "rotate.preview": Nothing("computes the rotation plan and reads the device's account line; writes nothing"),
     "persist.preview": Nothing("computes the persist plan from the inventory and the "
                                "startup check's record; contacts no device and writes nothing"),
     "retire.preview": Nothing("computes the retire plan from the repository, the CSV, the credential store, the settings and the export log; writes nothing"),

@@ -44,10 +44,15 @@ def _purge(now: float) -> None:
         del _jobs[oldest]
 
 
-def start(list_name: str, label: str, actor: str, work) -> str:
+def start(list_name: str, label: str, actor: str, work, *, kind: str = "capture preview",
+          announce_keys: tuple = ANNOUNCE_KEYS, announcer: str = ANNOUNCER) -> str:
     """Run ``work(job_id) -> payload`` on its own thread and return the id at
-    once. *payload* is the preview response as the page reads it (masked by
-    the caller). A raising *work* is the job's `failed` state with its reason."""
+    once. *payload* is the response as the page reads it (masked by the
+    caller). A raising *work* is the job's `failed` state with its reason.
+
+    *kind*, *announce_keys* and *announcer* let another operation run as a job
+    (the rotate screen's apply, 7.3): one registry, each job announcing its
+    own keys, each announcer declared in `invalidation.ANNOUNCERS`."""
     from modules import op_progress
 
     job_id = uuid.uuid4().hex
@@ -55,16 +60,17 @@ def start(list_name: str, label: str, actor: str, work) -> str:
     with _lock:
         _purge(now)
         _jobs[job_id] = {"job": job_id, "list": list_name, "state": "running",
+                         "kind": kind, "keys": tuple(announce_keys), "announcer": announcer,
                          "started_at": now, "finished_at": None, "payload": None,
                          "error": "", "announced": None, "thread": None}
-    op_progress.start(job_id, "capture preview", label, actor=actor, counts="")
+    op_progress.start(job_id, kind, label, actor=actor, counts="")
 
     def run():
         state, payload, error = "done", None, ""
         try:
             payload = work(job_id)
         except Exception as exc:                  # noqa: BLE001
-            log.exception("capture preview %s failed", job_id)
+            log.exception("%s %s failed", kind, job_id)
             state, error = "failed", f"{type(exc).__name__}: {exc}"
         with _lock:
             job = _jobs.get(job_id)
@@ -74,7 +80,7 @@ def start(list_name: str, label: str, actor: str, work) -> str:
         op_progress.finish(job_id, state)
         _announce(job_id, state == "done")
 
-    t = threading.Thread(target=run, name=f"capture-preview-{job_id[:8]}", daemon=True)
+    t = threading.Thread(target=run, name=f"{announcer}-{job_id[:8]}", daemon=True)
     with _lock:
         _jobs[job_id]["thread"] = t
     t.start()
@@ -87,12 +93,15 @@ def _announce(job_id: str, ok: bool) -> None:
     still ask by id (it offers "Check now" while it waits)."""
     from modules import invalidation
 
+    with _lock:
+        job = _jobs.get(job_id) or {}
+        keys, by = job.get("keys", ANNOUNCE_KEYS), job.get("announcer", ANNOUNCER)
     try:
-        invalidation.announce(ANNOUNCE_KEYS, by=ANNOUNCER, ok=ok)
+        invalidation.announce(keys, by=by, ok=ok)
         heard = True
     except Exception as exc:                      # noqa: BLE001
-        log.warning("capture preview %s finished and was not announced: %s; an open page "
-                    "shows it when asked (Check now)", job_id, exc)
+        log.warning("job %s (%s) finished and was not announced: %s; an open page "
+                    "shows it when asked (Check now)", job_id, by, exc)
         heard = False
     with _lock:
         job = _jobs.get(job_id)
@@ -107,7 +116,8 @@ def get(job_id: str):
     with _lock:
         _purge(now)
         job = _jobs.get(job_id)
-        job = {k: v for k, v in job.items() if k != "thread"} if job else None
+        job = ({k: v for k, v in job.items() if k not in ("thread", "keys", "announcer")}
+               if job else None)
     if job is None:
         return None
     job["elapsed_s"] = round((job["finished_at"] or now) - job["started_at"], 1)

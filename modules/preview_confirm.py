@@ -2307,3 +2307,171 @@ def persist_result(result: dict, plan: dict, actor: str = "") -> dict:
                      "check runs; the running config can change again after this, and that "
                      "check is what notices."),
         titles=PERSIST_RESULT_TITLES)
+
+
+# ---------------------------------------------------------------------------
+# Rotate (7.3): a device's login credential rotated, recorded and persisted,
+# previewed and confirmed, run as a job. `modules/nsot/rotate_op.py`.
+# ---------------------------------------------------------------------------
+
+ROTATE_TITLES = {"program": "What rotation sends to the device",
+                 "what_not": "What rotation does NOT do",
+                 "what": "What will be rotated"}
+ROTATE_RESULT_TITLES = {"sent": "What was sent to the device",
+                        "checks": "The new credential, verified on a fresh login",
+                        "happened": "What the rotation reached",
+                        "did_not": "What it did NOT do, or did not finish"}
+
+ROTATE_NOT_DOING = (
+    "the template is not changed, so no approval is revoked",
+    "no other device and no shared credential profile is changed",
+    "the enable secret is not changed: the account's login line only",
+    "the old credential stays in git history: after this it is a DEAD credential, and "
+    "rotation is what makes that true",
+)
+
+
+def rotate_preview(plan: dict, *, busy: str, request) -> dict:
+    """*plan*: `rotate_op.plan()`'s. One target, the device."""
+    name = plan.get("device") or "?"
+    checks = (plan.get("preflight") or {}).get("checks") or []
+    gates = [gate(c["name"].replace("_", " "), "pass" if c["ok"] else "fail",
+                  c.get("detail") or "")
+             for c in checks] or [gate("preflight ran", "fail",
+                                       plan.get("error") or "the preflight did not run")]
+    gates.append(busy_gate({"busy": busy}))
+    gates.append(gate("the device's account line unchanged since this preview", "at_apply",
+                      "the plan's fingerprint binds the account's line and entry kind; the "
+                      "rotation reads the device again and refuses a different one with "
+                      "nothing sent"))
+    selectable = bool(plan.get("ok")) and not busy
+    what_not = [{"target": name, "kind": "not_doing", "text": n, "lines": []}
+                for n in ROTATE_NOT_DOING]
+    if plan.get("discrepancy"):
+        what_not.append({"target": name, "kind": "advisory",
+                         "text": "Advisory: " + plan["discrepancy"], "lines": []})
+    consumers = plan.get("consumers") or []
+    target = {
+        "name": name,
+        "state": "rotatable" if selectable else "refused",
+        "selectable": selectable,
+        "select_data": {"fingerprint": plan.get("fingerprint") or "",
+                        "list": plan.get("list_name") or ""},
+        "program": {"lines": list(plan.get("new_program") or []),
+                    "notes": [{"title": "Then, in this order (the lockout defence)",
+                               "lines": [
+                                   "the original session stays open until the new "
+                                   "credential is proven",
+                                   "verify: a FRESH login with the new credential; only a "
+                                   "failed verify reverts, on the held session",
+                                   "record: the credential store and devices.csv, and the "
+                                   "golden and intent in one commit, as you",
+                                   "persist: save on the device and read the startup config "
+                                   "back, then the boot-file chain"]}],
+                    "none": "Nothing is sent: " + (plan.get("error") or "refused")},
+        "operands": [
+            {"name": "list", "value": plan.get("list_name") or "?"},
+            {"name": "management address", "value": plan.get("mgmt_ip") or "?"},
+            {"name": "account", "value": f"{plan.get('username') or '?'} (privilege "
+                                         f"{plan.get('privilege') or '?'})"},
+            {"name": "its line now (read live, masked)",
+             "value": plan.get("current_form") or "not read"},
+            {"name": "entry kind", "value": plan.get("entry_kind") or "?"},
+            {"name": "new password", "value": f"{plan.get('length') or '?'} characters, "
+                                              "generated at apply, never shown"},
+            {"name": "who else logs in as it",
+             "value": "; ".join(f"{c.get('name')}: {c.get('action')}" for c in consumers)
+                      or "nobody named"},
+            {"name": "plan fingerprint", "value": plan.get("fingerprint") or "none"}],
+        "gates": gates,
+    }
+    confirm = confirm_part(request, "confirm")
+    if selectable:
+        confirm["effect"] = (
+            f"After this {name} accepts ONLY the new password. The tool records it before "
+            "anything else, and the break-glass record then holds the OLD one: export it "
+            "again. It runs as a job, so this window can close; the in-flight panel and "
+            "Needs attention keep it in front of you until it is persisted.")
+        confirm["button"] = f"Rotate {name}"
+    return build(
+        action="rotate",
+        summary=(f"Rotate {name}'s login credential: a new password generated at apply, "
+                 "verified on a fresh login, recorded, and persisted."),
+        targets=[target], what_not=what_not,
+        nothing_left_out="Nothing: rotation states what it does not do on every run.",
+        confirm=confirm, titles=ROTATE_TITLES,
+        explain={"confirm": [{"concept": "confirm-by-hash",
+                              "text": "You are confirming this plan's fingerprint. The "
+                                      "rotation reads the account's line again and refuses "
+                                      "a different one."}]})
+
+
+def _rotate_state_action(state: str, name: str, list_name: str) -> str:
+    """The ONE action for each state a rotation can reach, in words."""
+    from modules.nsot import credential_rotation as cr
+
+    return {
+        cr.ROTATED_PERSISTED: "Export the break-glass record again (nmas-breakglass export).",
+        cr.ROTATED_PENDING_PERSIST: (f"Persist it: Persist… on {name}'s page, then export the "
+                                     "break-glass record again."),
+        cr.ROTATED_UNVERIFIED: (f"Do not reload it. Fix the failed stage, then "
+                                f"nmas-persist-credential {name} --list {list_name}."),
+        cr.ROTATED_NOT_RECORDED: (f"Do not rotate again or reload it. Run "
+                                  f"nmas-rotation-recover {name} --list {list_name}."),
+        cr.REVERTED: "Nothing to do: the device is unchanged. Read why the verify failed.",
+        cr.REVERT_FAILED: "Recover the device on its console, with the break-glass record.",
+        cr.REVERTED_UNPROVEN: f"Check {name} directly before assuming anything.",
+        cr.NOT_STARTED: "Nothing was sent. Read the refusal, fix it, and preview again.",
+    }.get(state, "The state above is what is known.")
+
+
+def rotate_result(result: dict, plan: dict) -> dict:
+    """*result*: `rotate_op.run()`'s; *plan*: the plan it ran from."""
+    from modules.nsot import credential_rotation as cr
+
+    name = result.get("device") or (plan or {}).get("device") or "?"
+    list_name = (plan or {}).get("list_name") or "<its list>"
+    state = result.get("state") or "unknown"
+    steps = result.get("steps") or []
+    pushed = any(s.get("name") == "push" and s.get("ok") for s in steps)
+    verify = next((s for s in steps if s.get("name") == cr.VERIFY), None)
+    level = {cr.ROTATED_PERSISTED: "success",
+             cr.ROTATED_PENDING_PERSIST: "partial"}.get(state, "failed")
+    action = _rotate_state_action(state, name, list_name)
+    did_not = []
+    for stage in result.get("persistence") or []:
+        if not stage.get("ok"):
+            did_not.append({"target": name, "kind": "persistence",
+                            "text": f"persistence stopped at {stage.get('name')}: "
+                                    f"{stage.get('error') or stage.get('detail') or 'no reason'}",
+                            "lines": []})
+    if result.get("persist_skipped"):
+        did_not.append({"target": name, "kind": "persistence",
+                        "text": "persist did not run: " + result["persist_skipped"], "lines": []})
+    did_not.append({"target": name, "kind": "action", "text": "Next: " + action, "lines": []})
+    did_not += [{"target": name, "kind": "not_doing", "text": n, "lines": []}
+                for n in ROTATE_NOT_DOING]
+    commit = ((result.get("commit") or {}).get("commit") or "")
+    return build_result(
+        action="rotate", level=level, summary=cr.summarise(result),
+        targets=[{"name": name, "outcome": state, "words": state.replace("_", " "),
+                  "reason": result.get("reason", ""),
+                  "sent": {"lines": list((plan or {}).get("new_program") or []) if pushed
+                           else [],
+                           "caption": "Sent to the device, the new password masked",
+                           "none": "Nothing was sent."},
+                  "checks": ({"ran": True, "ok": bool(verify.get("ok")),
+                              "statements": [verify.get("detail") or ""], "issues": []}
+                             if verify else
+                             {"ran": False, "why": result.get("reason")
+                              or "the rotation stopped before the verify"})}],
+        did_not=did_not,
+        nothing_left_out="Nothing: every step was done.",
+        record={"commit": commit, "tags": [], "baseline": "",
+                "statement": ((f"Commit {commit[:12]} records the new credential, as you. "
+                               if commit else "No rotation commit was made. ")
+                              + "A rotation record of every step is written where job "
+                                "health reads it.")},
+        not_watched=(f"Job health's rotation row for {name} stays until a persist reads SAFE; "
+                     "the break-glass currency row until you export again."),
+        titles=ROTATE_RESULT_TITLES)

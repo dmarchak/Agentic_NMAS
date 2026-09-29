@@ -836,6 +836,17 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
   and an apply that runs as a BACKGROUND JOB (rotate then persist can pass the 100 s edge
   limit), announced when it finishes, its result drawn from the state it reached, every
   state named with its one action.
+  **Step 2 BUILT 2026-09-29, awaiting a real run on the host.** `rotate_op` runs
+  `credential_rotation` as one operation, holding the device across rotate AND persist.
+  The job carries the confirming person's verified identity into its thread
+  (`identity.carried`), since a commit on a background thread read `Actor-Verified: none`
+  although the gate had verified the person. **Expect the real run to meet the sudo
+  helper**: preflight asks whether the persistence helper runs without a password for the
+  process that rotates (C106), and the app's service user may not have that rule, which
+  the preview will show as a failed gate by name. **Acceptance**: rotate a throwaway, or a
+  fleet device the operator chooses, from its page; the result reaches
+  `rotated_and_persisted`, the commit reads `Actor-Verified: access`, the break-glass row
+  names the device until it is exported again.
 - **7.3 gains PERSIST** (C164, the operator's decision, 2026-09-28): save on the device
   and read the startup config back, the operation `nmas-persist-native` runs today,
   with the same treatment (preview, confirm, result, receipt, a real run). It is the

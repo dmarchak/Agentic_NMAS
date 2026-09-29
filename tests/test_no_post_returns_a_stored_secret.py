@@ -113,6 +113,9 @@ def _bodies(v):
         "retire.preview": (200, ("json", {"list_name": LIST, "device": "r1",
                                           "reason": "leaving management"}),
                            "r1's retire plan: its steps, the credential gate, the export log"),
+        "rotate.preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
+                           "r1's rotation plan: its preflight (the live read refused by the "
+                           "suite's network guard, drawn as a failed gate), the masked program"),
         "persist.preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
                             "r1's persist plan: its steps, the inventory gates and the "
                             "startup check's last reading; no device contacted"),

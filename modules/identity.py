@@ -393,8 +393,51 @@ def actor_verification(actor: str) -> str:
             return "access" if ok else "none"
     except Exception:                                   # noqa: BLE001
         return "none"
+    # A JOB a gated request started (the rotate screen, 7.3): the request's
+    # verified identity, carried into its thread by `carried()`, and only for
+    # that same actor. Without it every commit a job made read "none" although
+    # the gate had verified the person who confirmed it.
+    ident = getattr(_CARRIED, "ident", None)
+    if ident is not None:
+        ok = (ident.is_identified and actor and actor != UNAUTHENTICATED
+              and ident.actor == actor)
+        return "access" if ok else "none"
     from modules import route_gates
     return "none" if route_gates.installed() else "host-shell"
+
+
+import contextlib as _contextlib  # noqa: E402
+import threading as _threading  # noqa: E402
+
+_CARRIED = _threading.local()
+
+
+def verified_identity():
+    """The identity THIS request's gate verified, to hand to a job it starts,
+    or None. Only a request can produce one: outside a request there is
+    nothing verified to carry."""
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            ident = getattr(g, "nmas_identity", None)
+            return ident if ident is not None and ident.is_identified else None
+    except Exception:                                   # noqa: BLE001
+        return None
+    return None
+
+
+@_contextlib.contextmanager
+def carried(ident):
+    """Inside a job's thread: commits naming *ident*'s actor read
+    ``Actor-Verified: access``, as they would have inside the request that
+    verified it. *ident* comes from `verified_identity()`; None carries
+    nothing."""
+    before = getattr(_CARRIED, "ident", None)
+    _CARRIED.ident = ident
+    try:
+        yield
+    finally:
+        _CARRIED.ident = before
 
 
 def request_actor() -> str:

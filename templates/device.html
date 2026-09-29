@@ -76,6 +76,13 @@
             title="Commit this device's first full intent, parsed from its committed golden: see the document and what the template cannot reproduce, then confirm. Nothing is sent to the device">
       Seed intent
     </button>
+    <!-- Rotate (7.3): the login credential, previewed, confirmed and run as a job -->
+    <button type="button" class="btn btn-outline-danger"
+            data-hostname="{{ device['hostname'] }}"
+            onclick="openRotate(this.dataset.hostname)"
+            title="Rotate this device's login credential: see the program with the new password masked, what rotation does NOT do and each check, then confirm. It runs as a job and is persisted after">
+      Rotate credential…
+    </button>
     <!-- Persist (7.3, C164): save to startup and read it back, previewed and confirmed -->
     <button type="button" class="btn btn-outline-primary"
             data-hostname="{{ device['hostname'] }}"
