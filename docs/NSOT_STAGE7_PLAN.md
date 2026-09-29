@@ -1544,9 +1544,10 @@ screen already drew. What that retirement left, and what retire does now:
   NMAS recorded writing the device's stored context, the first step masks it with the
   same implementation as `nmas-netbox-mask-context` (now `modules/netbox_context_mask.py`,
   both entry points), under the retire's own authority, and READS NetBox back. A failed
-  mask stops the retirement with nothing else done. With writes off, or a context NMAS
-  never wrote, or one it could not check, the preview and the result say why it stays,
-  with the command.
+  mask stops the retirement with nothing else done. With writes off and a credential
+  held, the retirement is REFUSED naming it (decided 2026-09-29, below); with a context
+  NMAS never wrote, or one it could not check, the preview and the result say why it
+  stays, with the command.
 - **C176, the legacy file: deleted only when its content survives.** After the commit,
   the device's `golden_configs/` file is deleted when the golden panel's own survival
   check finds it in the repository (the migration's verbatim backup, or an equivalent
@@ -1559,15 +1560,15 @@ screen already drew. What that retirement left, and what retire does now:
   by job (hand-kept on the host, C168; P.7 generates them).
 - **The result words every step**, and a test holds every step key the plan can make to
   its words.
-**DECISION WAITING (the operator): should a context NMAS could mask but may not (NetBox
-writes off) REFUSE the retirement?** (a) Refuse until writes are on: nothing leaves with
-a credential in NetBox, and retiring then depends on the NetBox write switch (C155's
-gate). (b) Proceed and name it, with the command (BUILT, the default until decided).
-**Recommendation: (b).** The credential was there before the retirement, retiring does
-not add it, and the repair path survives it: `nmas-netbox-mask-context`'s population is
-what NetBox HOLDS, not a list, and the secret-storage checker's scan still flags it.
-Refusing would couple an unrelated operation to a switch the operator deliberately
-turns on and off.
+**DECIDED 2026-09-29 (the operator): neither option as written.** Reads work with writes
+off, so the preview checks whether the device's NetBox context holds an unmasked
+credential. If it does, the retirement is REFUSED, naming it (the `netbox_mask` gate):
+retiring past it is C139 recurring, since no import reaches the device afterwards. If
+there is nothing to mask, it proceeds and says so. BUILT (`tests/test_retire_gaps.py`).
+The two other states keep their Not-Done line and proceed: a context NMAS has no record of
+writing (somebody's data, not NMAS's to mask), and one that could not be checked. **Open
+for the operator**: whether the same refusal should apply to those two, since the same
+reasoning (a credential left where no import reaches it) covers the first.
 **Acceptance, awaiting the operator: a real retirement on the host.** Recommended on a
 throwaway onboarded for the purpose (R1's shape), since which fleet device to retire is
 itself a decision. r5's own leftovers are host actions, not code: its legacy file (the
@@ -1913,6 +1914,13 @@ read through one function, and P.8 moves it without the reader changing.
   removal already has one measured, accepted home, and (a) would give it a second client
   flow with a different authorisation step: the minimalism rule's "two ways to do one
   thing means one is wrong". Nothing is built for either until decided.
+  **DECIDED 2026-09-29 (the operator): (b).** Restore stays additive; removal lives in
+  the Deploy plan, one home per action. BUILT: the restore preview's residue item points
+  there ("Removal has ONE home, the Deploy plan (Mode B): <device>'s Deploy plan offers
+  each line the device holds and its committed intent lacks, for removal with a stated
+  reason. After this re-apply, that intent is the ref's wherever the ref carries one"),
+  worded as what each mechanism does, since their equality is still EXPECTED, not
+  measured (`tests/test_p3_restore_is_guarded.py`).
   **The gap Mode B has to get right** (the operator): every destructive or surprising
   result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
   default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and

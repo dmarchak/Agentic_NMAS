@@ -306,6 +306,19 @@ def deploy_preview(devices: list, request) -> dict:
             if removable or [l for l in (d.get("removal_warnings") or [])
                              if l.strip() not in removing]:
                 what_not.append(item)
+        if d.get("shares_key"):
+            # C201, option (b): a line a shared setting key hides from the
+            # residue is NAMED with the line it collides with, and not offered.
+            what_not.append({
+                "target": name, "kind": "shares_key",
+                "text": ("On the device and not in intent, but sharing a setting key with a "
+                         "line intent keeps, which the device already holds: the tool cannot "
+                         "tell the two apart (C201), so this line will NOT be removed and is "
+                         "not offered for removal. Remove it by hand if intent is what the "
+                         "device should be."),
+                "lines": [" > ".join(list(s.get("chain") or []) + [s["line"].strip()])
+                          + f"   (shares a setting key with `{s['with'].strip()}`)"
+                          for s in d["shares_key"]]})
         if blocked:
             reasons = "; ".join(d.get("blocking_reasons") or []) or "not deployable"
             what_not.append({"target": name, "kind": "blocked",
@@ -456,8 +469,12 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
             what_not.append({"target": name, "kind": "residue",
                              "text": "On the device but not in this ref: will NOT be "
                                      "removed (a re-apply adds and replaces; it never "
-                                     "removes). Remove them by hand if the ref is "
-                                     "what the device should be.",
+                                     "removes). Removal has ONE home, the Deploy plan "
+                                     f"(Mode B): {name}'s Deploy plan offers each line "
+                                     "the device holds and its committed intent lacks, "
+                                     "for removal with a stated reason. After this "
+                                     "re-apply, that intent is the ref's wherever the "
+                                     "ref carries one.",
                              "lines": list(d.get("residue_in_context") or d["residue"])})
         excluded = d.get("excluded_unrenderable") or []
         if excluded:
@@ -1741,6 +1758,20 @@ def capture_result(outcomes: list, save: dict, *, fleet: bool, timing: dict = No
                    "not every device was captured") + ". " + read_part)
     else:
         summary = read_part + (f" Baseline {baseline} taken." if baseline else "")
+    # A device that could not be read leads with WHY and what to do (the
+    # operator, 2026-09-29): s3's connect failed on a Save All and the result
+    # said only "s3 skipped", while the reason sat in a lower row and the log.
+    unread = [o for o in outcomes if o["outcome"] == "unread"]
+    if unread:
+        summary = (" ".join(f"{o['device']} could not be read: "
+                            f"{o.get('reason') or 'no reason was recorded'}."
+                            for o in unread)
+                   + (" Nothing was recorded for "
+                      + ", ".join(o["device"] for o in unread)
+                      + ". When it answers (its status dot on the Device page), "
+                      + ("run Save All again: a baseline needs every device read. "
+                         if fleet else "capture it again. "))
+                   + summary)
     if timing:
         summary += " " + read_timing_words(timing)
     clean = (recorded and len(recorded) == len(outcomes)
@@ -1955,6 +1986,8 @@ RETIRE_GATES = (
     ("clean", "no uncommitted changes would ride into the commit",
      "host_vars/, golden/ and the manifest are clean"),
     ("credentials", "the credential store can be read", "its override can be cleared"),
+    ("netbox_mask", "NetBox holds no credential retire cannot mask",
+     "its stored config context is masked, or will be, or holds none"),
 )
 BREAKGLASS_GATE = "a break-glass export holds its current credential"
 

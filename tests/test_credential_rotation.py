@@ -1447,7 +1447,7 @@ class TestTheChainMakesOxidizedRereadRouterDb:
 
     BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
                 hostname="r2", new_hash="9 $9$salt$hash",
-                after_iso="2026-09-21 08:00:00", platform="cisco_ios")
+                after_iso="2026-09-21 08:00:00", platform="cisco_ios", list_name="Default")
 
     def test_the_reload_stage_runs_between_the_write_and_the_fetch(self, monkeypatch):
         order = []
@@ -1568,7 +1568,7 @@ class TestEveryPersistStageIsIdempotent:
     HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "scripts", "nmas-oxidized-cred")
     BASE = dict(mgmt_ip="10.255.1.12", username="admin", password="Fresh9Value",
-                hostname="r2", new_hash="9 $9$salt$hash", platform="cisco_ios")
+                hostname="r2", new_hash="9 $9$salt$hash", platform="cisco_ios", list_name="Default")
 
     @pytest.fixture
     def world(self, tmp_path, monkeypatch):
@@ -1772,7 +1772,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
                          mgmt_ip="203.0.113.12", username="admin",
                          password="pw", hostname="r2",
                          new_hash="9 $9$s$h", after_iso=cr.utc_now(),
-                         platform="cisco_ios")
+                         platform="cisco_ios", list_name="Default")
         assert out["state"] == cr.ROTATED_PERSISTED
         summary = cr.summarise(out)
         for word in FAILURE_WORDING:
@@ -1788,7 +1788,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
                          mgmt_ip="203.0.113.12", username="admin",
                          password="pw", hostname="r2",
                          new_hash="9 $9$s$h", after_iso=cr.utc_now(),
-                         platform="cisco_ios")
+                         platform="cisco_ios", list_name="Default")
 
         assert out["state"] == cr.ROTATED_UNVERIFIED
         summary = cr.summarise(out)
@@ -1811,7 +1811,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
         monkeypatch.setattr(cr, "update_oxidized_row", _first_stage)
         cr.persist(result, mgmt_ip="203.0.113.12", username="admin",
                    password="pw", hostname="r2", new_hash="9 $9$s$h",
-                   after_iso=cr.utc_now(), platform="cisco_ios")
+                   after_iso=cr.utc_now(), platform="cisco_ios", list_name="Default")
         assert seen["state_on_entry"] == cr.ROTATED_UNVERIFIED
         assert result["state"] == cr.ROTATED_UNVERIFIED
 
@@ -2230,10 +2230,75 @@ class TestAConfirmationSurvivesAnUnchangedDevice:
         assert result["state"] == cr.NOT_STARTED
 
 
+class TestPersistHoldsTheDevice:
+    """C203: the chain's first stage saves on the device, and C101's guard
+    refuses a save from a thread holding nothing. rotate() releases its hold
+    when it returns, so the CLI rotation (nmas-rotate-credential,
+    nmas-persist-credential) reached the save unheld. persist() now holds the
+    device itself."""
+
+    BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
+                hostname="r2", new_hash="9 $9$salt$hash",
+                after_iso="2026-09-21 08:00:00", platform="cisco_ios", list_name="Default")
+
+    def _result(self):
+        return {"device": "r2", "state": cr.ROTATED_PENDING_PERSIST, "steps": []}
+
+    def test_the_save_runs_with_the_device_held(self, monkeypatch):
+        from modules.nsot import device_ops
+
+        seen = []
+        monkeypatch.setattr(cr, "save_on_device", lambda *a, **k: seen.append(
+            device_ops.may_write("203.0.113.12")) or {"ok": False, "error": "stop here"})
+        out = cr.persist(self._result(), **self.BASE)
+        assert seen == [True], "the save ran on a thread that did not hold the device"
+        assert out["persistence"][0]["name"] == "device_startup_config"
+        assert device_ops.holder("Default", "r2") is None, "released after"
+
+    def test_a_busy_device_is_named_and_left_in_front_of_a_person(self, monkeypatch):
+        import threading
+
+        from modules.nsot import device_ops
+
+        held, done = threading.Event(), threading.Event()
+
+        def _other():
+            with device_ops.hold("Default", "r2", "deploy", "someone@example.com"):
+                held.set()
+                done.wait(10)
+
+        worker = threading.Thread(target=_other)
+        worker.start()
+        try:
+            assert held.wait(10)
+            called = []
+            monkeypatch.setattr(cr, "save_on_device",
+                                lambda *a, **k: called.append(1) or {"ok": True})
+            out = cr.persist(self._result(), **self.BASE)
+        finally:
+            done.set()
+            worker.join(10)
+        assert called == [], "nothing is saved on a device another operation holds"
+        assert out["state"] == cr.ROTATED_UNVERIFIED, "rotated, boot copy behind"
+        stage = out["persistence"][0]
+        assert stage["name"] == "device_free" and stage["ok"] is False
+        assert "deploy" in stage["error"] and "someone@example.com" in stage["error"]
+        assert cr.persistence_failed(out) is True
+
+    def test_no_list_is_refused_before_anything_runs(self, monkeypatch):
+        called = []
+        monkeypatch.setattr(cr, "save_on_device",
+                            lambda *a, **k: called.append(1) or {"ok": True})
+        base = {k: v for k, v in self.BASE.items() if k != "list_name"}
+        with pytest.raises(TypeError, match="list_name"):
+            cr.persist(self._result(), **base)
+        assert called == []
+
+
 class TestPersistenceNeverReverts:
     BASE = dict(mgmt_ip="203.0.113.12", username="admin", password="pw",
                 hostname="r2", new_hash="9 $9$salt$hash",
-                after_iso="2026-09-21 08:00:00", platform="cisco_ios")
+                after_iso="2026-09-21 08:00:00", platform="cisco_ios", list_name="Default")
 
     def _result(self):
         return {"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []}

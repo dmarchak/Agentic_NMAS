@@ -1168,7 +1168,7 @@ class TestDiffCategoriesDistinguishReplaceFromResidue:
     def test_an_identical_config_classifies_as_nothing(self):
         from modules.nsot.deploy import classify_diff
         result = classify_diff(self.DEVICE, self.DEVICE)
-        assert result == {"add": [], "replace": [], "residue": []}
+        assert result == {"add": [], "replace": [], "residue": [], "shares_key": []}
 
     def test_merge_diff_reports_only_residue_as_a_removal_warning(self):
         from modules.nsot.deploy import merge_diff
@@ -1206,7 +1206,7 @@ class TestDiffCategoriesDistinguishReplaceFromResidue:
         result = classify_diff(
             "interface Loopback0\n description a\n",
             "interface Loopback0\n description a\n")
-        assert result == {"add": [], "replace": [], "residue": []}
+        assert result == {"add": [], "replace": [], "residue": [], "shares_key": []}
 
     def test_a_non_free_form_setting_needs_a_precise_match_to_replace(self):
         """`ip mtu` must not be matched against `ip address`."""

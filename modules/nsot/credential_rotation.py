@@ -3011,9 +3011,35 @@ def rotate(list_name: str, hostname: str, **kw) -> dict:
 def persist(result: dict, **kw) -> dict:
     """The persistence chain (see :func:`_persist`), and RECORD it (B2, B15).
     The record is what job_health reads to keep a device that did not persist
-    in front of an operator until a later persist reaches SAFE."""
+    in front of an operator until a later persist reaches SAFE.
+
+    Holding the device (C203), as :func:`rotate` does: the chain's first stage
+    saves on the device, and C101's guard refuses a save from a thread that
+    holds nothing. ``rotate()`` releases its hold when it returns, so the CLI
+    rotation reached the save unheld and would have left every device it
+    rotated unsaved. ``list_name`` therefore has no default, like
+    ``platform``: the hold cannot be taken without it. The hold is re-entrant,
+    so a caller already holding the device loses nothing."""
+    import getpass
+
+    from modules.nsot import device_ops
+
     via = kw.pop("via", "") or "persist(), caller not named"
-    out = _persist(result, **kw)
+    list_name, hostname = kw.get("list_name") or "", kw.get("hostname") or ""
+    if not list_name or not hostname:
+        raise TypeError("persist() needs list_name and hostname: it holds the device "
+                        "while it saves (C203), and a hold names both")
+    actor = kw.get("actor") or f"{getpass.getuser()} (host shell)"
+    try:
+        with device_ops.hold(list_name, hostname, "persist", actor,
+                             ip=kw.get("mgmt_ip", "")):
+            out = _persist(result, **kw)
+    except device_ops.DeviceBusy as exc:
+        # The device IS rotated and its boot copy is now behind: attempted and
+        # unfinished, so job health keeps it in front of a person.
+        out = result
+        out["state"] = ROTATED_UNVERIFIED
+        out["persistence"] = [{"name": "device_free", "ok": False, "error": str(exc)}]
     out.setdefault("device", kw.get("hostname", ""))
     out["via"] = via
     record_outcome("persist", out)

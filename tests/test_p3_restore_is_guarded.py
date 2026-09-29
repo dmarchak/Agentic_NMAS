@@ -169,6 +169,14 @@ class TestThePreviewDrawsTheProgram:
         assert "logging host 192.0.2.50" in part
         assert 'data-concept="merge-only"' in part
 
+    def test_residue_points_at_the_one_home_for_removal(self, monkeypatch):
+        """Mode B's fourth case, decided 2026-09-29: the restore stays additive
+        and removal lives in the Deploy plan, so the residue says where to go,
+        not only that the lines stay."""
+        part = _part(_html_of(_real_payload(monkeypatch)), "what_not")
+        assert "Removal has ONE home, the Deploy plan (Mode B)" in part, part
+        assert "r1&#39;s Deploy plan" in part or "r1's Deploy plan" in part, part
+
     def test_a_blocked_device_says_nothing_is_sent_and_why(self, monkeypatch):
         payload = _real_payload(monkeypatch)
         html = _html_of(payload)

@@ -60,16 +60,21 @@ def deploy_plan_with_removal(mp):
     from modules.nsot.render_artifact import build_artifact
     from tests import test_p3_wizard_draws_the_program as w
 
-    capture = w.CAPTURE.replace("end\n", "interface GigabitEthernet0/3\n"
+    # And C201's collision, from s1's real pair: the device holds `ipv6 cef`
+    # beside `ipv6 unicast-routing`, and intent keeps only the second, so the
+    # first is named (`shares_key`) rather than hidden.
+    capture = w.CAPTURE.replace("end\n", "ipv6 unicast-routing\nipv6 cef\n"
+                                          "interface GigabitEthernet0/3\n"
                                           " description retired uplink\nend\n")
-    assert capture != w.CAPTURE
+    intent = w.INTENT.replace("end\n", "ipv6 unicast-routing\nend\n")
+    assert capture != w.CAPTURE and intent != w.INTENT
 
     def _fake(list_name, hostname, cache=None):
         artifact = build_artifact(hostname, capture, "cisco_ios", template_approved=True)
         return (artifact, capture, {"hostname": hostname, "ip": "203.0.113.24"}), ""
 
     mp.setattr(rd, "_artifact_for", _fake)
-    mp.setattr("modules.nsot.deploy.prepare_device", lambda a: {"config": w.INTENT})
+    mp.setattr("modules.nsot.deploy.prepare_device", lambda a: {"config": intent})
     mp.setattr(rd, "_attribute_additions", lambda *a, **k: dict(w.ATTRIBUTION))
     return _ok(_client().post("/deploy/plan", json={
         "devices": ["s4"], "remove": {"s4": [REMOVAL]},

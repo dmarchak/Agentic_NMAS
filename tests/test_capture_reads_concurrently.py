@@ -304,4 +304,79 @@ class TestWhereTheReadTimeWent:
             "connecting 52.0 s and reading 17.9 s); slowest s3, 13.7 s.")
 
 
+
+class NetmikoTimeoutException(Exception):
+    """Named as Netmiko names it, so the recorded type is the one the host saw."""
+
+
+HOST_SAW = ("Paramiko: 'No existing session' error: try increasing 'conn_timeout' "
+            "to 15 seconds or larger.")
+
+
+class TestAnUnreadDeviceSaysWhy:
+    """The operator's Save All, 2026-09-29: the preview read s3, the apply's
+    connect failed after 11.2 s, and the result said "s3 skipped" while the log
+    said "show running-config not reached". The reason (a NetmikoTimeoutException
+    under the device's ADDRESS, with its traceback) existed at the moment and
+    was dropped by both. Now the phase and the error are kept where the read
+    fails, the log line says them, and the result leads with them and with
+    what to do."""
+
+    @pytest.fixture
+    def lab(self, tmp_path, monkeypatch):
+        lab = build_capture_lab(monkeypatch, tmp_path)
+        monkeypatch.setattr(G, "_read_running", _REAL_READ_RUNNING)
+        state = {"fail": False}
+
+        def with_temp_connection(dev, func):
+            if state["fail"]:
+                raise NetmikoTimeoutException(HOST_SAW)
+            return func(object())
+
+        monkeypatch.setattr("modules.connection.with_temp_connection", with_temp_connection)
+        monkeypatch.setattr("modules.commands.run_device_command",
+                            lambda conn, command, **kw: lab["running"]["r2"])
+        lab["state"] = state
+        return lab
+
+    def test_the_read_records_where_and_why(self, lab):
+        lab["state"]["fail"] = True
+        phases = {}
+        text, error = G._read_running({"hostname": "r2", "ip": "203.0.113.12"},
+                                       phases=phases)
+        assert text is None
+        assert phases["failed_in"] == "connect"
+        assert phases["error"] == f"NetmikoTimeoutException: {HOST_SAW}" == error
+
+    def test_the_apply_leads_with_the_reason_and_what_to_do(self, lab, caplog):
+        import logging
+
+        d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
+        target = d["preview"]["what"]["targets"][0]
+        lab["state"]["fail"] = True
+        with caplog.at_level(logging.INFO, logger="routes.golden"):
+            r = lab["client"].post("/golden/capture/apply", json={
+                "confirmations": {"r2": target["select_data"]["hash"]}, "fleet": True})
+        result = r.get_json()["result"]
+        summary = result["happened"]["summary"]
+        assert summary.startswith("r2 could not be read: NetmikoTimeoutException: "
+                                  "Paramiko: 'No existing session' error"), summary
+        assert "run Save All again: a baseline needs every device read" in summary
+        assert "Nothing was recorded for r2" in summary
+        lines = [rec.getMessage() for rec in caplog.records]
+        said = [m for m in lines if m.startswith("capture: r2 could not be read after ")]
+        assert said and "connect failed after" in said[0] and HOST_SAW in said[0], lines
+        assert not any("capture: r2 read in" in m and "not reached" in m for m in lines), (
+            "a failed read is not logged as a read with 'not reached' in it")
+
+    def test_a_read_that_worked_still_logs_its_split_the_control(self, lab, caplog):
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="routes.golden"):
+            run_capture_preview(lab["client"], {"devices": ["r2"]})
+        lines = [rec.getMessage() for rec in caplog.records]
+        assert any(m.startswith("capture: r2 read in ") for m in lines), lines
+        assert not any("could not be read" in m for m in lines), lines
+
+
 _REAL_READ_RUNNING = G._read_running

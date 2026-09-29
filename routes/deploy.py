@@ -273,6 +273,9 @@ def plan():
             entry["residue_in_context"] = residue_in_context(
                 diff["removal_warnings"], captured)
             entry["unchanged_count"] = diff["unchanged_count"]
+            # Lines left on the device that a shared setting key hides from the
+            # residue (C201): named, never offered for removal.
+            entry["shares_key"] = diff["shares_key"]
             # The exact program, not a description of it. What the operator
             # confirms is this list, byte for byte.
             full = _program(prepared["config"], captured, selected, _device,

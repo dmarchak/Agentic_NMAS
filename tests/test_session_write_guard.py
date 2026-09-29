@@ -290,16 +290,16 @@ HELD_BY_CALLER = {
                                              "every target for the run (acquire_many)",
     "modules/pipeline.py:_restore_config": "the deploy and restore applies (acquire_many)",
     "modules/nsot/onboard.py:remove_rw_communities": "run_phase_two (@_holds_the_device)",
+    # C203, fixed 2026-09-29: credential_rotation.persist() holds the device
+    # itself now, so the CLI rotation's save is held as well.
+    "modules/nsot/onboard.py:persist_on_device": (
+        "run_phase_two, nmas-persist-native, and credential_rotation.persist() "
+        "(the CLI rotation, C203)"),
 }
 
 #: Writers a caller reaches WITHOUT holding the device: the runtime guard
 #: (C101) refuses them there. Named, registered, and this list only SHRINKS.
 KNOWN_UNHELD = {
-    "modules/nsot/onboard.py:persist_on_device": (
-        "C203: held by run_phase_two and by nmas-persist-native, and NOT by "
-        "nmas-rotate-credential or nmas-persist-credential, which reach it through "
-        "credential_rotation.persist() after rotate() has released its hold, so C101's "
-        "guard refuses their save"),
 }
 
 #: A name the scan matches that is not a device write, each with why.
@@ -418,4 +418,4 @@ def test_the_scan_reads_config_mode_and_the_scripts():
     assert ("modules/nsot/onboard.py", "<save_config>") in found
     assert any(rel.startswith("scripts/") for rel, _t in found), "the scripts are read"
     assert not any(rel == "routes/settings_integrations.py" for rel, _t in found)
-    assert len(KNOWN_UNHELD) <= 1, "only shrinks"
+    assert len(KNOWN_UNHELD) == 0, "only shrinks: C203 was its last member"

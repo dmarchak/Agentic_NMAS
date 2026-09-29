@@ -73,7 +73,7 @@ close are marked *written at close*.
 
 | Part | Item | State |
 |---|---|---|
-| Before the P-items | Phases 0, 1, 2, 3a, 3b, 3c; Stage 2; 3.3; 4C; the branch site; Phase 2 (DHCP) | Backfilled below (Part 0). Not written: r6's phase 1 (`40fcb8e` to `53a1bef`, between 4C and the branch site), which no draft was given |
+| Before the P-items | Phases 0, 1, 2, 3a, 3b, 3c; Stage 2; 3.3; 4C; r6 phase 1; the branch site; Phase 2 (DHCP) | Backfilled below (Part 0) |
 | P-items | P.1 to P.6 | Backfilled below |
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
@@ -547,8 +547,9 @@ and not in this repository].
   100.0 to 96.2 and r5's to 90.5 [git d7c8391, `nsot_metric_diff.py`], then all nine returned to 100.0%, with
   `merge_commands()` against each device's own golden empty [git 4771a4c].
 - **Estimate versus actual**: none found in the sources read.
-- **A discrepancy**: NOTES says "three weeks" at 100% before the nesting
-  fix; git puts them eight hours apart [git 0a1dcc5, d7c8391].
+- **Duration of the wrong figure**: 7 h 49 min, 13:36 to 21:25 on 2026-09-20
+  [git 0a1dcc5, d7c8391]. NOTES said "three weeks"; no calendar reading gives
+  that, so NOTES was wrong and is corrected to git (2026-09-29).
 
 **6. Where it left the product**
 
@@ -774,7 +775,7 @@ the four items being built" [PLAN "STAGE 2"].
 - **Measure on throwaway nodes, one question each.** Stage B: does r1's
   current startup file apply? Stage C: does a user-skip in the launch patch
   fix it? D2: has a vIOS ever booted a `secret 9` line? [NOTES "The redeploy:
-  what four days of measurement bought"].
+  what a day and a half of measurement bought"].
 - **Stage C's fixes, built and tested before anything was adopted**
   [git 1764926]:
   - `verify_startup_applies()` asks whether the startup file will apply,
@@ -848,7 +849,8 @@ the four items being built" [PLAN "STAGE 2"].
   Not counted: 8b248d8, 7eba257 (mixed), 2a0eaf6 (after the lift). Stage 1
   work shared the window.
 - **Elapsed**: 27 h 20 min from the ban to the lift [git da5cb2f, d358686].
-  NOTES says "four days"; not reconciled (see below).
+  NOTES said "four days"; the calendar span is two days (09-21 and 09-22),
+  so NOTES was wrong and is corrected to git (2026-09-29).
 - **Probe timings**: stage B 7m26s, stage C 7m15s, D2 2m03s to `Startup
   complete` [git df312dd; NOTES "Stage C"; git 8328e69].
 - **Tests**: 1715 [git 8b248d8], 1775 [git 1764926], 2103 at the lift
@@ -1009,11 +1011,6 @@ how many devices it checked out of how many exist.
 - Working time for any of the five items: git records commit times only.
 - Estimates: none found for any of the five in the sources read.
 - When Phase 3a work began, before its first commit at 2026-09-20 13:23.
-- The "three weeks" NOTES gives for the nesting-blind 100% figure: git dates
-  the fleet figure and its correction eight hours apart on 2026-09-20. Not
-  reconciled.
-- The "four days of measurement" NOTES gives for Stage 2: git shows 27 h 20
-  min from the ban to the lift. Not reconciled.
 - The times of the redeploy itself within the Stage 2 session: not recorded
   in the sources read.
 - Three hashes cited from the documents are in a list's `config_repo` on the
@@ -1065,6 +1062,98 @@ Stage 4 step C: build the onboarding wizard and prove it end to end on a throwaw
 
 NMAS could onboard a device in two phases (plan without touching anything, then reach, rotate, clean, record, promote), and NetBox removal previews had begun to report cascades.
 
+
+### r6 phase 1 — A permanent tenth device, and making it survive a reboot
+
+*Backfilled 2026-09-29.*
+
+**1. What it was**
+
+Onboard r6 as a permanent tenth device on `br-mgmt`, in its own containerlab lab, by the path the Stage 4C probe had walked. The one changed variable was that the device stays [R6_PHASE1.md header, §0]. The runbook named one gap to close first (restore previews iterating the ref, not the inventory) [git 40fcb8e]. It then set a deadline: r6's lab joins the persistence sync before phase 2, or the record states r6 is not reboot-safe [R6_PHASE1.md §0c]. Most of the work went into meeting that deadline [R6_PERSISTENCE.md header].
+
+**2. How it was implemented**
+
+- First, the restore preview and the Baselines panel took the inventory as their population ("9 of 10 — partial") [git 6c6a66a, ef6cfcc].
+- A device → lab map. `clab_labs` in settings, with the old `clab_*` keys being the lab named `default`. `clab_lab` per device in the manifest, absent meaning `default`. One resolver, `clab_target_for()`, returns host, configs dir, launch patch and sync script together. `persist()` refuses if either path is missing [git 7caeefe, d346b12].
+- The sync asks the NMAS and keeps no copy. `GET /clab/sync_targets` and `scripts/nmas-clab-targets` exit 2 on an unreachable NMAS, with no fallback directory [git 1f99024, d346b12]. The map gained the platform dialect as a column, checked by `assert_dialect()`, and an `oxidized_node` column [git 5ae94f9, 17753cd]. It also gained `--group`, `--reconcile` and `--stray` [git eb68227, 667bc92].
+- Every verifier goes through the resolver. `nmas-check-startup-applies` asks presence (against the device's own golden) before applicability [git 667bc92, 3139da4].
+- The sanitiser `oxidized-to-config.sh` was rewritten as a whole file with six hardcoded device lists removed. It then gained `ssh -n`, an iteration count, a `cmp -s` read-back, the diff on stdout, per-lab commit outcomes and a scoped `git init` recipe. The file was kept at `docs/patches/oxidized-to-config.sh.new` [git cf809fd, e6e1460, fdd0cc2, 7fcbf14, 709759a].
+
+**3. Issues encountered** (no register IDs: the register began 2026-09-25; named by fixing commit)
+
+- The restore preview left out a device the ref predates. So did the Baselines panel's count. A fourth reader, `routes/templatize.py`'s fleet report, drops a device through a bare `continue` [git 6c6a66a].
+- Onboarding revokes its platform's approval at Create, and re-approving is refused until the device has a capture [git b3c40cf].
+- The coverage fields were carried to the browser and drawn nowhere, in the commit that fixed coverage [git ef6cfcc]. This led to a sweep that every render helper is called [git 72c78c1].
+- The Cloudflare edge served stale HTML, and it was misread as a rendering defect [git 4f54394].
+- r6 was not reboot-safe. The worse half: fixing only `clab_configs_dir` would point the launch-patch guard at rcn-lab1's patch, and it would pass [git 7caeefe].
+- An empty `launch_patch` fell back to the setting through the map itself [git d346b12].
+- `clab_host` had been blanked by the 2026-09-23 settings erasure [git 5906b3b].
+- The checker bypassed the map by omission and read `labs/lab/configs/r6.cfg`. `--stray` listed a local path [git 667bc92].
+- "APPLIES" was printed green for a bootstrap credential [git 3139da4].
+- The sanitiser keyed router versus switch on a hardcoded list, and any unknown device became a switch [git 5ae94f9]. There were six hardcoded lists, not four [git 17753cd].
+- A proposal to build startup files from goldens was withdrawn [git 1289c07].
+- Regenerated self-signed certificates read as drift on every C8000v [git 747e506].
+- The hand-written patch was malformed [git cf809fd].
+- `ssh` inside `while read` swallowed the destination list. r6 was not copied, and the script said "Startup-configs updated." and exited 0 [git 44978be].
+- The full diff failed to show several times. The last cause was `less -R` [git 1716b0c, fdd0cc2, 7fcbf14].
+- The sanitiser's commit never worked, and two states shared one message [git 1716b0c, fdd0cc2].
+- The printed `NOT VERSIONED` recipe committed `clab-r6/.tls/ca/ca.key` [git 709759a].
+- A correct "unchanged" line was read as a failure [git 53a1bef].
+- In the tests: a truncating edit deleted tests (22 became 18) [git 667bc92]. Two tests matched their own prose [git d346b12, 3139da4]. `_reconcile` was placed below `__main__` [git eb68227].
+- Registered later from this work:
+  - C14: `clab-sync.service` failed 72 runs because `nmas-clab-targets` was not on systemd's PATH.
+  - C15: a stranded sanitiser write.
+  - C23: 6c6a66a's fix was in a function no route called.
+  - C28: the settings erasure.
+  - C50: an unknown lab resolves to rcn-lab1's paths.
+  - D2: whether a pending device should bind.
+  [OPEN_FINDINGS C14, C15, C23, C28, C50, D2]
+
+**4. How they were resolved**
+
+- Fixed in the commits cited, except the items below.
+- Left open deliberately: whether a never-reached device should bind [git b3c40cf]. Resolved later by scheme 3 in P.5 [OPEN_FINDINGS D2].
+- Recorded, not fixed: the templatize fourth reader [git 6c6a66a].
+- Withdrawn: goldens as the startup source. The finding became a freshness comparison, scheduled next [git 1289c07, 53a1bef].
+- The private key: `.git` removed and redone with an allowlist recipe. The key never left the host. `~/labs/lab`'s history was checked and holds no key [NOTES "A private key in git…"; git 53a1bef].
+- Fixed later: C23 (P.3 step 5), C15 and C14's cause (2026-09-25). C28 was fixed as a job. C50 is open and latent [OPEN_FINDINGS].
+
+**5. Numbers**
+
+- **Commits:** 26. Rule: `40fcb8e^..53a1bef` holds 27, minus `edae32e` (Stage 7 §0b/§6c by subject). Six are onboarding preparation and its fallout (40fcb8e, 6c6a66a, b3c40cf, ef6cfcc, 72c78c1, 4f54394). Twenty are persistence (`7caeefe` through `53a1bef`, all in range after it) [git log].
+- **First and last:** 40fcb8e, 2026-09-23 23:23:27 −0600. 53a1bef, 2026-09-24 13:44:27 −0600.
+- **Elapsed:** 14 h 21 min. That includes 8 h 26 min with no commit, between 44978be (02:27:27) and e6e1460 (10:53:24) [git log].
+- **Findings:** 0 register IDs at the time. 18 named findings plus 4 test-side ones (above). 6 were registered later.
+- **Tests:** 2,963 before the range [git 3fe8f42], 2,972 [git 6c6a66a], 3,004 [git 7caeefe], 3,078 from cf809fd to 53a1bef [commit bodies]. Negative controls "shown failing": 3, 6, 5, 4, 2, 3 and 3 [git ef6cfcc, d346b12, 667bc92, 3139da4, 5ae94f9, eb68227, 747e506].
+- **Estimate vs actual:** Not recoverable. The runbook set a deadline (before phase 2), not a time.
+- **Acceptance:**
+  - `r6.cfg` is the sanitised 74 lines, with `secret 9` present and `password 0` absent.
+  - `nmas-check-startup-applies` reads SAFE, naming `labs/r6/patches/c8000v-launch-adopted.py@e483dd2475b5`.
+  - The count and the read-back both report 10 of 10 [git 1716b0c].
+  - `~/labs/r6` tracks exactly `.gitignore` and `configs/r6.cfg` [git 53a1bef].
+  - The break-glass record holds ten, `complete: True`. `base.j2` is approved against six. There is a fleet baseline of ten [git 895f832; R6_PHASE1.md state].
+
+**6. Where it left the product**
+
+A device in its own containerlab lab is persisted through one lab map, and its reboot-safety is checked against its own startup file and launch patch.
+
+#### Sources read (r6 phase 1)
+- `git log` and `git show` (bodies and stats) for all 27 commits in `40fcb8e^..53a1bef`, and 3fe8f42 for the starting test count
+- docs/R6_PHASE1.md (entire)
+- docs/R6_PERSISTENCE.md (headings, header, §1–§2)
+- docs/NSOT_WRITEUP_NOTES.md, from "The edge caches HTML…" through "Phase 1 closed…" (lines ~9025–10195), and "Step C proven" (~8340)
+- docs/OPEN_FINDINGS.md rows C6, C14, C15, C23, C28, C50, D2
+- CLAUDE.md paragraphs on the lab map, the clab sync map, the loop, per-lab repos and the private key
+- docs/NSOT_PLAN.md: searched; it has no r6 phase-1 section
+- All 27 hashes verified with `git cat-file -e`; all are in this repository
+
+#### Could not recover (r6 phase 1)
+- **r6's own onboarding figures.** R6_PHASE1.md's state block gives `netbox_id 10`, "verified at 03:42:21", a 6,907-byte golden and the tag `golden/bp-onboard-c/20260924T034213Z`. These are the 4C probe device bp-onboard-c's figures [NOTES "Step C proven" ~8340]. 03:42Z is before the runbook commit (23:23 −0600, which is 05:23Z). r6's real NetBox id, verify time and golden size are not recoverable. The onboarding happened before 00:20 −0600 on 09-24, when 4f54394 reports a ten-device baseline.
+- **Contradiction:** R6_PHASE1.md's "What phase 1 does NOT establish" still says r6 does not survive a reboot. The state block, replaced at 53a1bef, says it is reboot-safe as measured.
+- **Contradiction on the diff failures:** 1716b0c says "failed three times for three different reasons". fdd0cc2 says "five ruled out, four failures". The notes' tally has four rows, and row 3 is "(the same run…)", so three distinct causes. CLAUDE.md says "four failures, four causes".
+- **Contradiction:** 6c6a66a says the restore confirm reads "N of M". C23 says that fix sat in a function no route called.
+- When the operator installed the sanitiser on the clab host. C14's start (2026-09-24 08:40) is probably UTC, per the Conventions inference.
+- Active working time inside the 14 h 21 min.
 
 ### The branch site: r6 and s3, the first configuration the tool authored
 
@@ -1186,7 +1275,7 @@ The wizard could onboard a device whose address comes from a Kea reservation, an
 - Which two of Phase 2's 11 stage commits the ledger calls "probe authoring": the doc does not name them.
 - Estimates for any of the three: none recorded in the docs read.
 - 4C test counts before f4a8489 as real pytest results: 4C.8's counts were declared harness-only.
-- r6 phase 1 (40fcb8e to 53a1bef), between 4C and the branch site, was not assigned and is not covered here.
+- r6 phase 1 (40fcb8e to 53a1bef), between 4C and the branch site, has its own entry above.
 
 ## Part I. Before Stage 7: the P-items
 
@@ -2322,8 +2411,11 @@ The landing page drew every section 1a source from stored or cached values, each
    - C187 fixed in the same work: the step was replaced by a Not-Done line.
    - C185 scheduled into 7.3.
    - C186 registered, not fixed, under the sweep's stopping rule.
-5. **Numbers.** So far: the screen in one commit, `47f8ecf`, 2026-09-28 18:30 [git]; the gaps overnight 2026-09-29 (commit named in the next entry update). Not recoverable: an estimate (none was written). Not yet run on the host.
-7. **Overnight, 2026-09-29: r5's gaps.** Modelled on r5's retire commit (`3592113`). NetBox's stored credentials (C139) are now masked FIRST, with the same implementation as `nmas-netbox-mask-context` (moved to `modules/netbox_context_mask.py`), and read back; the legacy file (C176) is deleted only when its content survives in the repository; the heartbeat rule and the scrape targets, which NMAS does not own, are read and named. One decision waits on the operator: whether writes-off should refuse the retirement (recommended: no). 19 tests; three controls fired.
+   - Writes off with a credential held: decided by the operator 2026-09-29 as a refusal, and built.
+5. **Numbers.** So far: the screen in one commit, `47f8ecf`, 2026-09-28 18:30; r5's gaps in `6ff6fd0`, 2026-09-29 01:19; the writes-off decision built the next morning [git]. Not recoverable: an estimate (none was written). Not yet run on the host.
+   - **r5's gaps (overnight 2026-09-29)**, modelled on r5's retire commit (`3592113`). NetBox's stored credentials (C139) are masked FIRST, with the same implementation as `nmas-netbox-mask-context` (moved to `modules/netbox_context_mask.py`), and read back. The legacy file (C176) is deleted only when its content survives in the repository. The heartbeat rule and the scrape targets, which NMAS does not own, are read and named.
+   - **The writes-off decision (the operator, 2026-09-29 morning): neither option as written.** Reads work with writes off, so the preview checks the device's NetBox context; a credential held there REFUSES the retirement, naming it (C139 recurring), and a context with nothing to mask proceeds and says so.
+   - **A record of a wrong summary**: the morning's summary told the operator to do four r5 leftovers, and three were already done (the legacy file deleted two days earlier, NetBox masked when C95 closed, no r5 in the heartbeat rules). The retire flow READS each of those before naming it; the summary did not. Only the Prometheus scrape target remained.
 6. **Where it left the product.** A device can leave management from the interface, and the screen says what its break-glass check did and did not establish.
 
 #### 7.3 step 2 — Mode B: removing a line the device has and intent lacks
@@ -2380,9 +2472,12 @@ The landing page drew every section 1a source from stored or cached values, each
    - C198: the apply took a third of the preview's time for the same nine reads, and every device was faster.
    - C199: the concurrency sweep found 21 serial per-device loops, most with no stated reason.
    - Evidence on C93: s3 was slower under concurrency (23 to 24 s alone, 40.9 s beside eight others). That fits its forwarding every other device's session.
+   - C204 (the operator's next Save All): s3's connect failed on the apply, and the result said only "s3 skipped" and the log "not reached", while the reason sat in a traceback under its address.
+   - C205, C204's cause: nothing sets the SSH connect timeout, so it is Netmiko's 10 s, below s3's measured 13.7 s connect.
 4. **How they were resolved.**
    - C188 closed on the host's measurement.
-   - C198 is UNKNOWN: the split is built, and the next Save All reads it. The operator's warm-pool guess was ruled out from the code: every capture opens a fresh temporary session (C97).
+   - C198 answered by the next Save All and closed: connects were stable run to run, and `show running-config` varied 2 to 10 times on the same device, so the variance is device-side execution; its remaining question moved to C94. The operator's warm-pool guess was ruled out from the code: every capture opens a fresh temporary session (C97).
+   - C204 fixed the same morning: the read keeps where and why it failed, the log line says it, and the result leads with it and with what to do. C205 registered (B), with a timeout from measurement recommended.
    - C199 registered: none converted under the stopping rule, and every direct device-layer loop is declared with its reason by a test.
    - Overnight 2026-09-29 (the operator's queue item 5), the read loops were converted through one helper, `modules/fanout.read_each` (`79f5e2b`): the freshness reader's fetches, the hourly startup check, Refresh Hostnames, `nmas-golden-state`, the pending ZTP rows and the heartbeat measurement. The rest carry stated reasons. Converting them found C202: the persistent pool opens every session under one lock, which is why three loops over pooled sessions stay sequential.
    - s3's resources stay in Stage 9 (C93, C94).
@@ -2398,7 +2493,8 @@ The landing page drew every section 1a source from stored or cached values, each
    - The slowest device was s3 every time.
    - `baseline/20260929T063600Z` was earned, the second earned baseline, 30 minutes after the first.
    - Suite: 5,685, then 5,694, then 5,704.
-6. **Where it left the product.** Save All is 2.5 times faster to preview and 7.4 times faster to apply, and no request waits on a device. Why identical reads vary threefold is being measured, not guessed.
+   - The next Save All (the operator, 2026-09-29 morning): preview nine devices at once in 25.1 s (serial 102.7 s: connecting 50.9 s, reading 42.7 s), slowest s3 at a 13.7 s connect; the apply read 8 of 9 and took no baseline, s3's connect failing at 11.2 s (C204, C205).
+6. **Where it left the product.** Save All is 2.5 times faster to preview and 7.4 times faster to apply, and no request waits on a device. The varying reads are device-side execution (C94's question now), and a device that cannot be read says why and what to do.
 
 ## Part III. Side campaigns
 

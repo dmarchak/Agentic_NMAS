@@ -112,6 +112,93 @@ class TestTheRollback:
                                        ["no logging buffered"], S4)
 
 
+R2 = open(os.path.join(FLEET, "r2.cfg"), encoding="utf-8").read()
+
+
+class TestAPushedNoLineWithNothingToPair:
+    """C200, on r2's REAL config (it holds no `logging console` line in either
+    form): undoing a pushed `no X` the device held nothing for sent `no no X`,
+    which IOS refuses. The undo is X, the setting back at its default, and only
+    when the `no` line is known to have landed."""
+
+    def test_the_fixture_can_exhibit_the_case(self):
+        lines = [line.strip() for line in R2.splitlines()]
+        assert not any(line.endswith("logging console") for line in lines)
+        assert "interface GigabitEthernet2" in lines
+
+    def test_a_landed_no_line_is_undone_by_its_positive(self):
+        pushed = ["no logging console"]
+        rb = rollback_commands(pushed, R2, landed=["no logging console"])
+        assert rb == ["logging console"], rb
+        assert not any(line.strip().startswith("no no") for line in rb)
+        assert_rollback_provenance(rb, pushed, R2)
+
+    def test_with_nothing_read_it_is_left_alone_never_negated(self):
+        """landed None (the capture could not read the device): everything
+        pushed is treated as applied, and a `no` line cannot be decided, since
+        IOS never prints some `no` forms. Neither `no no X` nor X is sent."""
+        rb = rollback_commands(["no logging console"], R2, landed=None)
+        assert rb == [], rb
+
+    def test_no_shutdown_on_an_up_interface_is_never_undone_as_shutdown(self):
+        """The trap in the naive fix: IOS omits `no shutdown` from an up
+        interface, so it never lands, and re-sending `shutdown` would take an
+        interface down that was up before the deploy."""
+        pushed = ["interface GigabitEthernet2", " no shutdown", "exit"]
+        for landed in ([], None):
+            rb = rollback_commands(pushed, R2, landed=landed)
+            assert not any(line.strip() == "shutdown" for line in rb), (landed, rb)
+
+    def test_a_positive_line_is_still_negated_the_control(self):
+        rb = rollback_commands(["logging console critical"], R2,
+                               landed=["logging console critical"])
+        assert rb == ["no logging console critical"], rb
+
+
+S1 = open(os.path.join(FLEET, "s1.cfg"), encoding="utf-8").read()
+
+
+class TestASharedKeyIsNamedNotHidden:
+    """C201, the operator's option (b), on s1's REAL config (it holds both
+    `ipv6 cef` and `ipv6 unicast-routing`, which share the key `ipv6`): with
+    intent lacking `ipv6 cef`, the line was neither residue nor a replacement,
+    because its key-mate is kept. So nothing removed it and nothing said so.
+    It is named now, with the line it collides with, and not offered."""
+
+    def _intent_without_cef(self):
+        return "\n".join(l for l in S1.splitlines() if l.strip() != "ipv6 cef") + "\n"
+
+    def test_the_fixture_can_exhibit_the_case(self):
+        lines = {l.strip() for l in S1.splitlines()}
+        assert {"ipv6 cef", "ipv6 unicast-routing"} <= lines
+
+    def test_the_hidden_line_is_named_with_its_mate(self):
+        out = classify_diff(self._intent_without_cef(), S1)
+        assert "ipv6 cef" not in [l.strip() for l in out["residue"]]
+        assert [(s["line"].strip(), s["with"].strip()) for s in out["shares_key"]] == [
+            ("ipv6 cef", "ipv6 unicast-routing")], out["shares_key"]
+
+    def test_a_real_replacement_is_not_a_collision_the_control(self):
+        """`logging trap critical` against intent's `notifications` is a
+        replacement: the intent line is NOT on the device, so it replaces."""
+        running = _with(S1, "logging trap critical")
+        intent = _with(S1, "logging trap notifications")
+        out = classify_diff(intent, running)
+        assert not any(s["line"].strip().startswith("logging trap")
+                       for s in out["shares_key"]), out["shares_key"]
+        assert any(r["old"].strip() == "logging trap critical" for r in out["replace"])
+
+    def test_the_deploy_preview_draws_it(self):
+        from modules.preview_confirm import deploy_preview
+
+        d = {"hostname": "s1", "deployable": True, "commands": [], "dangerous": [],
+             "shares_key": classify_diff(self._intent_without_cef(), S1)["shares_key"]}
+        p = deploy_preview([d], request=None)
+        item = next(i for i in p["what_not"]["items"] if i["kind"] == "shares_key")
+        assert "C201" in item["text"] and "will NOT be removed" in item["text"]
+        assert item["lines"] == ["ipv6 cef   (shares a setting key with `ipv6 unicast-routing`)"]
+
+
 class TestTheFleet:
     CONFIGS = sorted(glob.glob(os.path.join(FLEET, "*.cfg")))
 
@@ -122,7 +209,8 @@ class TestTheFleet:
                              ids=os.path.basename)
     def test_every_device_is_equal_to_itself(self, path):
         text = open(path, encoding="utf-8").read()
-        assert classify_diff(text, text) == {"add": [], "replace": [], "residue": []}
+        assert classify_diff(text, text) == {"add": [], "replace": [], "residue": [],
+                                             "shares_key": []}
 
     def test_the_settings_the_old_key_merged_are_apart(self):
         """From the measurement over the nine configs: each pair shared a key

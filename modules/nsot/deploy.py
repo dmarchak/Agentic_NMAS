@@ -232,6 +232,7 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         else:
             replace.append({"line": line, "old": current, "new": canonical})
 
+    shares_key = []
     for leaf in config_leaves(running_config):
         line = leaf.line
         canonical = ifnames.canonicalise_line(line)
@@ -239,11 +240,19 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         if (chain_key, canonical) in target_verbatim:
             continue
         # Being replaced is not being left behind.
-        if _counterpart(chain_key, canonical, target_index) is not None:
+        mate = _counterpart(chain_key, canonical, target_index)
+        if mate is not None:
+            if (chain_key, mate) in run_verbatim:
+                # NAMED, not hidden (C201, the operator's option (b)): the
+                # target line this one shares a setting key with is ALREADY on
+                # the device, so nothing replaces this line and it stays; yet
+                # the key made it neither residue nor a replacement.
+                # `ipv6 cef` beside `ipv6 unicast-routing` is the measured case.
+                shares_key.append({"line": line, "with": mate, "chain": list(leaf.chain)})
             continue
         residue.append(line)
 
-    return {"add": add, "replace": replace, "residue": residue}
+    return {"add": add, "replace": replace, "residue": residue, "shares_key": shares_key}
 
 
 @dataclass(frozen=True)
@@ -497,6 +506,7 @@ def merge_diff(intended_config: str, running_config: str) -> dict:
         "replace": classified["replace"],
         "removal_warnings": classified["residue"],
         "residue": classified["residue"],
+        "shares_key": classified["shares_key"],
         "unchanged_count": len([1 for line, _c in intended
                                 if line.strip() not in _NOT_A_COMMAND]) - len(to_add),
     }
@@ -991,6 +1001,17 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
         previous = _previous(chain, canonical)
         if previous is not None and previous != canonical:
             pending.append((chain, previous))
+        elif previous is None and line.strip().startswith("no "):
+            # C200: the undo of a pushed `no X` the device held nothing for is
+            # X, the setting back at its default; negating it sent `no no X`,
+            # which IOS refuses. Only when the `no` line is KNOWN to have
+            # landed: IOS never prints some `no` forms (`no shutdown` on an up
+            # interface), so a landed one proves the push changed the state,
+            # and with nothing read (landed None) re-sending X could shut an
+            # interface that was up. Undecidable is left alone, and C112's
+            # read-back, taken over a fresh capture, names what remains.
+            if landed is not None:
+                pending.append((chain, f"{' ' * indent}{line.strip()[3:].strip()}"))
         elif previous is None:
             pending.append((chain, f"{' ' * indent}no {line.strip()}"))
         # previous == canonical: the pushed line was already there, nothing to do

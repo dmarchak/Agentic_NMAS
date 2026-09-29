@@ -102,15 +102,30 @@ class TestNetBoxStoredCredentials:
         out = _retire(p)
         assert out["ok"] is False and "STILL holds" in out["error"], out
 
-    def test_writes_off_leaves_it_NAMED_not_masked(self, nb):
+    def test_writes_off_with_a_held_credential_REFUSES_naming_it(self, nb):
+        """The operator's decision, 2026-09-29: reads work with writes off, so
+        the credential is KNOWN to be there; retiring past it is C139
+        recurring, because no import reaches the device afterwards."""
         nb["state"]["writes"] = False
         p = RT.plan("Lab", "r5", "left management")
-        assert "netbox_mask" not in _pending(p)
-        joined = " ".join(p["not_doing"])
-        assert "NOT masked, because NetBox writes are off" in joined
-        assert "nmas-netbox-mask-context --device r5 --apply" in joined
-        assert any("NOT masked" in a for a in p["advisories"])
+        assert p["ok"] is False
+        why = p["refused_by"]["netbox_mask"]
+        assert "NetBox writes are off" in why and "C139" in why
+        assert "nmas-netbox-mask-context --device r5 --apply" in why
         assert COMMUNITY not in str(p)
+
+    def test_writes_off_with_nothing_to_mask_proceeds_and_says_so(self, nb):
+        nb["state"]["writes"] = False
+        nb["fake"].store["dcim/devices"][0]["local_context_data"] = {}
+        p = RT.plan("Lab", "r5", "left management")
+        assert p["ok"], p["refusals"]
+        step = next(s for s in p["steps"] if s["key"] == "netbox_mask")
+        assert step["done"] and "nothing to mask" in step["what"]
+
+    def test_the_refusal_is_drawn_as_a_gate_by_name(self, nb):
+        from modules.preview_confirm import RETIRE_GATES
+
+        assert "netbox_mask" in {key for key, _t, _d in RETIRE_GATES}
 
     def test_a_context_nmas_never_wrote_is_somebodys_data(self, nb):
         nb["state"]["record"] = ({}, None)

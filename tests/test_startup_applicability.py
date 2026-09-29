@@ -257,7 +257,7 @@ class TestItIsWiredIntoTheChain:
         cr.persist({"device": "r1", "steps": []}, mgmt_ip="203.0.113.1",
                    username="admin", password="pw", hostname="r1",
                    new_hash="9 $9$s$h", after_iso=cr.utc_now(),
-                   platform="cisco_iosxe")
+                   platform="cisco_iosxe", list_name="Default")
         # Presence, applicability, and then (P.3 step 12, B15) the checker's
         # own verdict: carries-current first, applicability second.
         assert order == ["presence", "applies", "carries", "applies"]
@@ -273,7 +273,7 @@ class TestItIsWiredIntoTheChain:
         out = cr.persist({"device": "r1", "steps": []}, mgmt_ip="203.0.113.1",
                          username="admin", password="pw", hostname="r1",
                          new_hash="9 $9$s$h", after_iso=cr.utc_now(),
-                         platform="cisco_iosxe")
+                         platform="cisco_iosxe", list_name="Default")
         assert out["state"] == cr.ROTATED_UNVERIFIED
         assert out["persistence"][-1]["name"] == "startup_applies"
 
@@ -287,7 +287,7 @@ class TestItIsWiredIntoTheChain:
         out = cr.persist({"device": "r1", "steps": []}, mgmt_ip="203.0.113.1",
                          username="admin", password="pw", hostname="r1",
                          new_hash="9 $9$s$h", after_iso=cr.utc_now(),
-                         platform="cisco_iosxe")
+                         platform="cisco_iosxe", list_name="Default")
         assert out["state"] == cr.ROTATED_PERSISTED
         assert "applies on boot" in out["reason"]
 

@@ -2845,10 +2845,15 @@ a tag it had earned.
 
 ## The corpus had the right shape; the comparison could not see it
 
-The single most instructive defect in the project. For three weeks the fleet
+The single most instructive defect in the project. For eight hours on 2026-09-20
+(13:36 to 21:25 local, `0a1dcc5` to `d7c8391`) the fleet
 reported **100% modeled, 100% round-trip fidelity, zero unmodeled constructs**
 across nine devices. Three of those devices were wrong, and the number was
 produced by the thing that was wrong.
+
+*(Corrected 2026-09-29: this said "for three weeks". Git puts the figure and its
+correction eight hours apart on one day, and no calendar reading makes it three
+weeks. The notebook was wrong; git is the record.)*
 
 ### What was broken
 
@@ -5573,7 +5578,11 @@ run once, by someone who already believes the answer.
 
 ---
 
-## The redeploy: what four days of measurement bought
+## The redeploy: what a day and a half of measurement bought
+
+*(Corrected 2026-09-29: this heading said "four days". Git puts the probe program
+at 2026-09-21 14:15 (`346702b`) and the lift at 2026-09-22 18:14 (`d358686`): 28 hours
+over two calendar days. The notebook was wrong; git is the record.)*
 
 The rcn-lab1 redeploy ban was lifted on 2026-09-22 by a successful redeploy.
 It is worth recording what the alternative looked like, because the whole

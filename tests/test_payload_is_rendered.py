@@ -542,6 +542,7 @@ EMPTY_IN_FIXTURE = {
     "POST /deploy/plan devices[].blocking_reasons": (S_, _STRINGS),
     "POST /deploy/plan devices[].excluded_unrenderable": (S_, _STRINGS),
     "POST /deploy/plan devices[].masked_refs": (S_, _STRINGS),
+    "POST /deploy/plan devices[].shares_key[].chain": (S_, _STRINGS),
     "POST /deploy/plan devices[].stale_acknowledgements": (S_, _STRINGS),
     "POST /deploy/plan devices[].unacknowledged": (S_, _STRINGS),
     "POST /deploy/plan devices[].unmodeled": (S_, _STRINGS),

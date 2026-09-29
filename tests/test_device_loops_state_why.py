@@ -85,11 +85,15 @@ SURVEYED = {
         "sequential", "`_REMOVAL_ORDER`: terminations before tunnels, contained objects "
                       "before containers, so referential integrity holds"),
     ("modules/netbox_client.py", "_sync_list_to_netbox_impl"): (
-        "unstated", "C199: WRITES to NetBox per device; the cable pass follows the "
-                    "upserts so both ends exist, and shared objects (site, VRF, prefix) "
-                    "are created on first use, so order may matter: to be decided"),
+        "sequential", "WRITES whose order matters (the operator's decision on C199, "
+                      "2026-09-29): shared objects (sites, VLANs, prefixes, VRFs) are "
+                      "created on first encounter, so concurrent devices would race to "
+                      "create one and duplicate it (C133), and the cable pass needs every "
+                      "device's interfaces first"),
     ("modules/netbox_client.py", "sync_all_lists_to_netbox"): (
-        "unstated", "C199: one list after another, \"sequentially\" with no reason given"),
+        "sequential", "lists share NetBox objects as devices do, created on first "
+                      "encounter, so concurrent lists would race to create them (C199's "
+                      "decision)"),
     ("scripts/nmas-check-startup-applies", "main"): (
         "sequential", "every read is an ssh to ONE host, the lab VM, not to the devices: a "
                       "burst of them meets sshd's MaxStartups (10 unauthenticated by "

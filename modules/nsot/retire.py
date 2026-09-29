@@ -206,6 +206,8 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     # nothing else done (C139).
     nb = _netbox_facts(list_name, hostname)
     mask = _mask_facts(nb)
+    if mask.get("refuse"):
+        refuse("netbox_mask", mask["refuse"])
     if mask.get("step"):
         step("netbox_mask", mask["step"], mask["done"])
     step("override", f"clear the credential override for {ip}"
@@ -302,12 +304,17 @@ def _mask_facts(nb: dict) -> dict:
     if not a["may"]:
         return {"not_doing": f"{where}'s stored config context is NOT masked: {a['why']}"}
     if not nb.get("writes"):
-        text = (f"{where} still holds credentials in its stored config context "
-                f"({a['why'].split(';')[0].replace('NetBox holds ', '')}): NOT masked, because "
-                "NetBox writes are off here (netbox_allow_writes). Once this device leaves, "
-                "no import reaches it again (C139): turn writes on and preview again, or run "
-                f"scripts/nmas-netbox-mask-context --device {nb['device'].get('name')} --apply")
-        return {"not_doing": text, "advisory": text}
+        # REFUSED, not proceeded past (the operator's decision, 2026-09-29):
+        # reads work with writes off, so the tool knows the credential is
+        # there, and once the device leaves no import reaches it again. That
+        # is C139 recurring, so the retirement waits for the mask.
+        return {"refuse": (
+            f"{where} still holds credentials in its stored config context "
+            f"({a['why'].split(';')[0].replace('NetBox holds ', '')}), and NetBox writes are "
+            "off here (netbox_allow_writes), so retire cannot mask them. Once this device "
+            "leaves, no import reaches it again (C139). Turn writes on and preview again, or "
+            f"run scripts/nmas-netbox-mask-context --device {nb['device'].get('name')} --apply "
+            "and then retire")}
     return {"step": (f"mask the credentials {where} still holds in its stored config "
                      f"context ({a['why']}); written with the import's own masking and "
                      "read back"), "done": False}

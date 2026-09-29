@@ -3047,6 +3047,12 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
     # hostname → {device_id, nb_iface_map} for cable wiring pass
     device_registry: dict = {}
 
+    # SEQUENTIAL ON PURPOSE (the concurrency rule's exception for writes whose
+    # order matters; the operator's decision on C199, 2026-09-29). Devices
+    # share objects (sites, VLANs, prefixes, VRFs) that are CREATED on first
+    # encounter, so two devices written at once would race to create the same
+    # object and duplicate it (C133's duplicates, made worse); and the cable
+    # pass below needs every device's interfaces to exist first.
     for n_done, result in enumerate(scanned):
         op_progress.update(progress_id, phase="reading and planning each device",
                            devices_done=n_done, current=result.get("hostname", ""))
@@ -3607,6 +3613,10 @@ def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
                              dry_run: bool = False, progress_id: str = "",
                              actor: str = "", authority: str = "") -> dict:
     """Import multiple device lists sequentially. Each list becomes its own region.
+
+    Sequential on purpose (C199, decided 2026-09-29): lists share NetBox objects
+    as devices do (a manufacturer, a platform, the tags), created on first
+    encounter, so two lists written at once would race to create them.
 
     Inherits the write gate and dry-run behaviour of :func:`sync_list_to_netbox`.
     """

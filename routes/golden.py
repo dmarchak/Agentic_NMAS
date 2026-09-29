@@ -259,6 +259,13 @@ def _read_running(device: dict, phases: dict = None) -> tuple:
             "read_s": (round(marks["read_end"] - marks["read_start"], 1)
                        if "read_end" in marks else None),
             "close_s": (round(ended - marks["read_end"], 1) if "read_end" in marks else None)})
+        if not text:
+            # WHERE it failed and WHY, kept at the moment it is known (the
+            # operator, 2026-09-29: s3's connect failed and the log said only
+            # "not reached", the result only "skipped"; the reason sat in a
+            # traceback under an address, the C152 shape).
+            phases["failed_in"] = "connect" if "read_start" not in marks else "show running-config"
+            phases["error"] = error
     return (text, "") if text else (None, error)
 
 
@@ -349,6 +356,12 @@ def _read_all(list_name: str, repo: str, devices: list, progress=None) -> tuple:
               "read_series_s": round(sum((p["read_s"] for p in phases.values()
                                           if p["read_s"] is not None), 0.0), 1)}
     for host, p in phases.items():
+        if p.get("failed_in"):
+            log.warning("capture: %s could not be read after %.1f s: %s failed after %.1f s: %s",
+                        host, per.get(host, 0), p["failed_in"],
+                        p["connect_s"] if p["failed_in"] == "connect" else (p["read_s"] or 0.0),
+                        p.get("error") or "no reason recorded")
+            continue
         log.info("capture: %s read in %.1f s: connect %.1f s, show running-config %s, "
                  "disconnect %s", host, per.get(host, 0), p["connect_s"],
                  "not reached" if p["read_s"] is None else f"{p['read_s']:.1f} s",
@@ -548,7 +561,8 @@ def capture_apply():
             entry, text = read_by_host[host]
             if not entry["read"]:
                 outcomes.append({"device": host, "outcome": "unread", "reason": entry["error"]})
-                skipped.append({"hostname": host, "reason": "could not be read"})
+                skipped.append({"hostname": host,
+                                "reason": f"could not be read: {entry['error']}"})
                 continue
             if entry["capture_hash"] != confirmations[host]:
                 outcomes.append({"device": host, "outcome": "moved",
