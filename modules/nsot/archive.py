@@ -191,8 +191,21 @@ def s3_archive_hook(context: dict) -> dict:
     return {"ok": True, "message": f"archived {len(uploaded)} config(s)"}
 
 
+def publication_hook(context: dict) -> dict:
+    """Re-read HEAD against the remote now (C223). Imported lazily: the
+    reader imports reader_job and settings, which a hook module should not
+    pull in at import."""
+    from modules.readers.remote_publication import refresh_hook
+
+    return refresh_hook(context)
+
+
 def register_default_hooks() -> None:
     """Register push and archive. Idempotent."""
     from modules.nsot.hooks import register
     register("git-push", push_hook, timeout=30)
+    # After the push, so the re-read sees what the push did (C223): the
+    # Remote card, the Git tab and Needs attention then show whether this
+    # commit is published without waiting for the reader's next cycle.
+    register("publication-check", publication_hook, timeout=30)
     register("s3-archive", s3_archive_hook, timeout=60)

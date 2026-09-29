@@ -21,8 +21,14 @@ reading: the log, a commit's diff, and the status, which names anything left
 uncommitted and what to do about it.
 
 Jenkins validation pipelines were removed in P.4 (docs/NSOT_CI.md). The
-per-list `pipeline_commits.json` is still READ, so a commit linked to a
-pipeline before then keeps showing that name in the log; nothing writes it.
+per-list `pipeline_commits.json` linked a commit to a pipeline before then;
+since 2026-09-29 nothing reads it either, and the Git tab's "Pipeline (before
+P.4)" column is gone (the operator: it meant nothing outside the project's
+history and was populated only for commits older than P.4).
+
+The status also says whether the repository is PUBLISHED (C223): the
+`remote-publication` reader's comparison of HEAD with the remote's own
+branch, in the one sentence `remote_publication.describe()` makes.
 """
 
 from __future__ import annotations
@@ -39,7 +45,6 @@ log = logging.getLogger(__name__)
 
 _GIT_AUTHOR_NAME  = "NMAS"
 _GIT_AUTHOR_EMAIL = "nmas@localhost"
-_PC_FILE          = "pipeline_commits.json"   # per-list tracking file
 
 # Lines stripped before storing — avoids noise in diffs
 # Moved to modules/nsot/normalize.py. Re-exported here because this name is
@@ -56,10 +61,6 @@ def _repo_dir(list_name: str) -> str:
     from modules.config import LISTS_DIR, list_slug
     return os.path.join(LISTS_DIR, list_slug(list_name), "config_repo")
 
-
-def _pc_path(list_name: str) -> str:
-    from modules.config import LISTS_DIR, list_slug
-    return os.path.join(LISTS_DIR, list_slug(list_name), _PC_FILE)
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +109,9 @@ def init_config_repo(list_name: str) -> bool:
         with open(gi, "w", encoding="utf-8") as fh:
             fh.write("*.swp\n*.tmp\n")
     _git(repo, "add", ".gitignore")
-    _git(repo, "commit", "--allow-empty", "-m",
-         "Initialize device configuration repository")
+    from modules.nsot.repo import commit as _commit
+    _commit(repo, "Initialize device configuration repository", list_name=list_name,
+            allow_empty=True, source="init")
     log.info("config_git: repo initialised for list '%s'", list_name)
     return True
 
@@ -150,23 +152,11 @@ def write_and_stage(list_name: str, hostname: str, config_text: str,
 
 
 # ---------------------------------------------------------------------------
-# Pipeline-commit tracking
-# ---------------------------------------------------------------------------
-
-def _load_pc(list_name: str) -> dict:
-    try:
-        with open(_pc_path(list_name), encoding="utf-8") as fh:
-            return json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {"pipelines": {}, "commits": {}}
-
-
-# ---------------------------------------------------------------------------
 # Git log / status
 # ---------------------------------------------------------------------------
 
 def get_commit_log(list_name: str, limit: int = 40) -> list[dict]:
-    """Return recent git commits, with any pipeline linked before P.4."""
+    """Return recent git commits."""
     repo = _repo_dir(list_name)
     if not os.path.isdir(os.path.join(repo, ".git")):
         return []
@@ -176,24 +166,18 @@ def get_commit_log(list_name: str, limit: int = 40) -> list[dict]:
     if rc != 0 or not out:
         return []
 
-    pc        = _load_pc(list_name)
-    meta_map  = pc.get("commits", {})
-
     entries = []
     for line in out.splitlines():
         parts = line.split("|", 4)
         if len(parts) < 5:
             continue
         full_hash, short_hash, subject, date, author = parts
-        meta = meta_map.get(short_hash) or meta_map.get(full_hash[:7], {})
         entries.append({
             "hash":            full_hash,
             "short_hash":      short_hash,
             "message":         subject,
             "date":            date,
             "author":          author,
-            # A pipeline linked before P.4 removed Jenkins: history, not state.
-            "pipeline":        meta.get("pipeline", ""),
         })
 
     return entries
@@ -262,7 +246,7 @@ def get_repo_status(list_name: str) -> dict:
                               "--untracked-files=all")
     if rc != 0:
         return {"initialised": True, "ok": False, "branch": branch or "main",
-                "last_commit": last_commit,
+                "last_commit": last_commit, "publication": publication(list_name),
                 "error": f"could not read the repository's status: {err}"}
     uncommitted = []
     for line in porcelain.splitlines():
@@ -282,4 +266,17 @@ def get_repo_status(list_name: str) -> dict:
         "branch":       branch or "main",
         "last_commit":  last_commit,
         "uncommitted":  uncommitted,
+        "publication":  publication(list_name),
     }
+
+
+def publication(list_name: str) -> dict:
+    """Is this list's history on its remote: the reader's stored comparison
+    of HEAD with the remote's own branch, as the one sentence (C223)."""
+    from modules.readers import remote_publication as P
+
+    try:
+        return P.describe(P.status_for(list_name))
+    except Exception as exc:                   # noqa: BLE001
+        return {"level": "warning", "state": "not_read", "detail": "",
+                "clause": f"whether it is pushed could not be read: {exc}"}

@@ -1952,7 +1952,9 @@
   <h2 class="text-primary mb-0 me-auto">Git Config History</h2>
   <button class="btn btn-outline-secondary btn-sm" onclick="loadGitTab()">↻ Refresh</button>
 </div>
-<p class="text-muted small mb-3">
+<details class="small text-muted mb-3">
+  <summary>How this works</summary>
+  <p class="mt-2 mb-0">
   <strong>Save All Configs reads every device, shows what each golden would become and how it
   compares with its committed intent, and commits once you confirm</strong> — one commit for the whole batch,
   with per-device <code>golden/&lt;device&gt;/&lt;timestamp&gt;</code> tags and a
@@ -1960,10 +1962,11 @@
   matches its committed intent (a capture that departs is recorded, marked
   <code>Intent-Match: no</code>, and earns no baseline). Nothing is left
   staged, and a device whose config has not changed produces no commit but is still
-  reported.
-  Commit <em>here</em> for <code>infra/</code> files and anything else you version by
-  hand.
-</p>
+  reported. Every commit is handed to the push hook; whether the history is on the
+  remote is measured by asking the remote for its branch, never taken from the hook's
+  own record.
+  </p>
+</details>
 
 <!-- Status bar -->
 <div id="gitStatusBar" class="alert alert-secondary small mb-3 d-none">
@@ -1978,7 +1981,6 @@
       <tr>
         <th style="width:6em">Hash</th>
         <th>Message</th>
-        <th style="width:10em">Pipeline (before P.4)</th>
         <th style="width:12em">Date</th>
       </tr>
     </thead>
@@ -3832,19 +3834,37 @@ ${tasks}
       return;
     }
     const left = s.uncommitted || [];
+    // Committed is a fact about THIS repository; published is a fact about the
+    // remote, measured by asking it (C223): "Everything is committed" alone
+    // read as done while GitHub was a commit behind.
+    const pub = s.publication || {level: 'warning', state: 'not_read',
+                                  clause: 'whether it is pushed was not reported', detail: ''};
+    const last = `<div class="text-muted">Last commit: ${escHtml(s.last_commit || '(none)')}</div>`;
+    const pubLine = `<span title="${escHtml(pub.detail || '')}">${escHtml(pub.clause)}</span>`;
     if (!left.length) {
-      bar.className = 'alert alert-success small mb-3';
-      txt.innerHTML = `<strong>Everything is committed.</strong> Last commit: ${escHtml(s.last_commit || '(none)')}`;
+      bar.className = 'alert alert-' + gitLevel(pub.level) + ' small mb-3';
+      txt.innerHTML = (pub.state === 'in_sync'
+          ? `<strong>Everything is committed</strong> ${pubLine}.`
+          : `<strong>Everything is committed</strong> · ${pubLine}.`) + last;
       return;
     }
     // Nothing here commits these: every write commits in its own call, so a
     // path left over is a finding, with what it means and what to do.
     const onlyNsot = left.every(u => u.path.startsWith('.nsot/'));
-    bar.className = 'alert ' + (onlyNsot ? 'alert-secondary' : 'alert-warning') + ' small mb-3';
+    const worst = pub.level === 'danger' ? 'danger' : (onlyNsot ? gitLevel(pub.level) : 'warning');
+    bar.className = 'alert alert-' + worst + ' small mb-3';
     txt.innerHTML = `<strong>${left.length} uncommitted path(s).</strong> Nothing on this page commits them.`
       + '<ul class="mb-0 mt-1">' + left.map(u =>
           `<li><code>${escHtml(u.path)}</code> (${escHtml(u.state)}): ${escHtml(u.means)}</li>`).join('')
-      + '</ul>';
+      + '</ul>'
+      + `<div>What is committed: ${pubLine}.</div>` + last;
+  }
+
+  // The level is decided on the server (remote_publication.describe); this
+  // only maps it to a Bootstrap class, and an unknown one is never green.
+  function gitLevel(level) {
+    return ({success: 'success', warning: 'warning', danger: 'danger',
+             secondary: 'secondary'})[level] || 'warning';
   }
 
   // ── commit log table ───────────────────────────────────────────────────────
@@ -3863,13 +3883,9 @@ ${tasks}
     if (table)       table.style.display = '';
 
     tbody.innerHTML = commits.map(c => {
-      const pipe    = c.pipeline
-        ? `<span class="text-muted" style="font-size:.75rem">${escHtml(c.pipeline.slice(-18))}</span>`
-        : '<span class="text-muted">—</span>';
       return `<tr style="cursor:pointer" onclick="viewGitCommit('${escHtml(c.hash)}')" title="View files changed in this commit">
         <td><code>${escHtml(c.short_hash)}</code></td>
         <td>${escHtml(c.message)}</td>
-        <td>${pipe}</td>
         <td class="text-muted">${escHtml((c.date || '').slice(0,16))}</td>
       </tr>`;
     }).join('');

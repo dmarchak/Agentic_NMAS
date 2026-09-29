@@ -1283,10 +1283,84 @@ def netbox_secrets_source(cached=None) -> dict:
                 f"{len(v.get('devices') or [])} holding a credential")
 
 
+# ---------------------------------------------------------------------------
+# Source: history committed and not on its remote (C223)
+# ---------------------------------------------------------------------------
+
+def remote_source(cached=None) -> dict:
+    """A list whose commits are not on its remote, from the `remote-publication`
+    reader: HEAD against the remote's own branch, asked by `git ls-remote`,
+    never the push hook's record (C223: abandon's commit never reached the
+    hook, and the hook's record said nothing). Its sentence is
+    `remote_publication.describe()`, the one the Git tab and the Remote card
+    draw. An unreadable remote record (C172) is named on the row."""
+    from modules import reader_job
+    from modules.readers import remote_publication as P
+
+    started = time.time()
+    got = reader_job.read_cached(P.READER.name) if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("remote", "Publication to the remote", read_at=started,
+                             took_ms=took, error=f"not read yet: {why}")
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    lists = (good.get("value") or {}).get("lists") or {}
+    rows, fine = [], []
+    for name, pub in sorted(lists.items()):
+        said = P.describe(pub, now=started)
+        if said["state"] in ("in_sync", "no_remote") and said["level"] == "success":
+            fine.append(name)
+            continue
+        if said["state"] == "no_remote":
+            continue
+        remote = pub.get("remote") or "its remote"
+        if said["state"] == "ahead":
+            what = f"{pub.get('ahead', 0)} commit(s) on {name} not pushed to {remote}"
+            since = pub.get("oldest_at")
+            action = {"label": "Push from the Git tab's Remote card (Push now), after its "
+                               "preview; the next commit's push also sends every commit "
+                               "before it. If it does not go, the card names the failure"}
+        elif said["state"] == "in_sync":
+            # In step today, and the record the push hook reads cannot be read,
+            # so the NEXT commit will not be pushed (C172).
+            what = f"{name}'s remote record cannot be read, so its next commit will not be pushed"
+            since = None
+            action = {"label": "Repair or re-adopt the list's remote from the Git tab's Remote "
+                               "card; the record is data/lists/<list>/remote.json on the host"}
+        elif said["state"] in ("remote_ahead", "diverged"):
+            what = f"{name}'s history and {remote} do not match"
+            since = None
+            action = {"label": "Resolve it by hand on the host: NMAS never force-pushes, so "
+                               "compare the two histories and decide which is the record"}
+        else:
+            what = f"Whether {name}'s history is on {remote} is not known"
+            since = None
+            action = {"label": "Read the reason: it names what could not be asked. A remote "
+                               "that cannot be asked also cannot be pushed to"}
+        rows.append(row(
+            source="remote", key=f"{name}:{said['state']}", level=(
+                "danger" if said["level"] == "danger" else "warning"),
+            what=what, cause=f"{name}: {said['clause']}. {said['detail']}".strip(),
+            action=action, since=since,
+            operands={"list": name, "head": str(pub.get("head", ""))[:7],
+                      "remote_head": str(pub.get("remote_head", ""))[:7],
+                      "not_pushed": str(pub.get("ahead", "")), "record": pub.get("record", "")}))
+    return source_result(
+        "remote", "Publication to the remote", read_at=started, took_ms=took, rows=rows,
+        value_at=value_at, stale_after_seconds=promise, reader=P.READER.name,
+        checked=(f"{len(lists)} list repository(ies) compared with their remote's branch; "
+                 f"published: {', '.join(fine) or 'none'}"))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
-           reachability_source, netbox_secrets_source)
+           reachability_source, netbox_secrets_source, remote_source)
 
 
 def _attach(rows: list) -> list:

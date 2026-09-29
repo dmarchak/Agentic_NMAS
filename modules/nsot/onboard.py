@@ -1771,12 +1771,15 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
             # a failed save had written) was committed as "abandon" (C104).
             rc, _out, err = _repo.git(repo, "add", "-A", "--", rel)
             if rc == 0:
-                rc, _out, err = _repo.git(
-                    repo, "-c", "user.email=nmas@local",
-                    "-c", "user.name=NMAS", "commit", "-m",
-                    f"abandon: {hostname} - onboarding withdrawn\n\n"
-                    f"Source: onboarding\nActor: {actor or 'unknown'}\n",
-                    "--", rel)
+                # Through the ONE commit, which publishes (C223): this commit
+                # called git directly and never reached the push hook, so it
+                # stayed on the host while onboarding's commit went out.
+                rc, _out, err = _repo.commit(
+                    repo, f"abandon: {hostname} - onboarding withdrawn\n\n"
+                          f"Source: onboarding\nActor: {actor or 'unknown'}\n",
+                    list_name=list_name, paths=(rel,),
+                    git_config=("user.email=nmas@local", "user.name=NMAS"),
+                    source="onboarding", actor=actor or "unknown")
                 if rc != 0:
                     _repo.git(repo, "reset", "-q", "--", rel)
             if rc != 0:

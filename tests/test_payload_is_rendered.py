@@ -194,7 +194,8 @@ RENDERS = {
         ((I4, "loadDriftStatus", "data"), (I4, "driftDetailHtml", "data"))),
     "GET /remote/status": Render(
         _get("/remote/status"),
-        {GR2: ("loadRemotePanel",), GR3: ("_gLastPush",)},
+        # remotePublicationHtml draws `publication` (C223).
+        {GR2: ("loadRemotePanel", "remotePublicationHtml"), GR3: ("_gLastPush",)},
         ((GR2, "loadRemotePanel", "s"),)),
     "GET /ai/agent_log": Render(
         _get("/ai/agent_log?limit=50"),

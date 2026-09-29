@@ -79,9 +79,17 @@ class TestTheGitTabDescribesWhatSaveAllDoes:
         assert "every capture" in git_tab and "matches its committed intent" in git_tab
         assert "Intent-Match: no" in git_tab
 
-    def test_the_tab_says_what_the_manual_commit_is_for(self, git_tab):
-        """Otherwise the button looks redundant and gets used wrongly."""
-        assert "infra/" in git_tab
+    def test_the_tab_offers_no_manual_commit(self, git_tab):
+        """It said "Commit here for infra/ files" for a manual commit C104
+        removed (2026-09-27); the sentence outlived the button by two days and
+        went with the explanation's move behind "How this works" (2026-09-29)."""
+        assert "Commit <em>here</em>" not in git_tab and "infra/" not in git_tab
+
+    def test_the_explanation_is_one_level_down(self, git_tab):
+        """The presentation rule (the operator, 2026-09-29): the screen answers
+        "is the record committed and published", and Save All's rules are
+        behind a disclosure, not a paragraph read every visit."""
+        assert "How this works" in git_tab
 
     def test_the_route_docstring_matches_the_tab(self):
         import routes.golden as golden

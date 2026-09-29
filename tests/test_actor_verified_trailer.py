@@ -164,11 +164,10 @@ class TestNoWriterGoesAround:
     Population by proxy: this lists every commit call in modules/ and scripts/
     and requires each to be NSoT's git() or a named exception."""
 
-    #: (file, function) → why it may commit without git().
-    EXEMPT = {
-        ("modules/config_git.py", "init_config_repo"):
-            "the repository's empty first commit, which names no actor",
-    }
+    #: (file, function) → why it may commit without git(). Empty since C223
+    #: (2026-09-29): every commit goes through `repo.commit()`, which calls
+    #: git(), so config_git's first commit is no longer an exception.
+    EXEMPT = {}
 
     def _all(self):
         files = list((ROOT / "modules").rglob("*.py")) + [
@@ -179,10 +178,10 @@ class TestNoWriterGoesAround:
                 yield str(p.relative_to(ROOT)), fn, callee
 
     def test_the_scan_finds_something(self):
+        # Since C223 the one commit call is `repo.commit()`'s own; the scan
+        # must find it, or it finds nothing.
         found = list(self._all())
-        assert len(found) >= 3, found
-        assert any(f == "modules/nsot/repo.py" for f, _, _ in found)
-        assert any(f == "modules/config_git.py" for f, _, _ in found)
+        assert ("modules/nsot/repo.py", "commit", "git") in found, found
 
     def test_every_commit_goes_through_git_or_is_named(self):
         bad = [(f, fn, c) for f, fn, c in self._all()

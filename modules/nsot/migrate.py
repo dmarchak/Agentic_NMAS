@@ -337,9 +337,9 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
         # 1. Commit anything the old flow left staged.
         rc, out, _ = _repo.git(repo, "diff", "--cached", "--name-only")
         if rc == 0 and out.strip():
-            _repo.git(repo, "commit", "-m",
-                      "migration: commit previously staged configs\n\n"
-                      f"Source: migration\nActor: {actor}\n")
+            _repo.commit(repo, "migration: commit previously staged configs\n\n"
+                               f"Source: migration\nActor: {actor}\n",
+                         list_name=list_name, source="migration", actor=actor)
             log.info("migrate: committed %d previously staged file(s)",
                      len(out.splitlines()))
 
@@ -436,7 +436,8 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
             # would not change the tree. Belt to the guard's braces — an empty
             # migration commit stays impossible even if the check above is
             # wrong or removed.
-            rc, _, err = _repo.git(repo, "commit", "-m", message)
+            rc, _, err = _repo.commit(repo, message, list_name=list_name,
+                                      source="migration", actor=actor)
             created_commit = rc == 0
             if not created_commit:
                 log.error("migrate: commit failed: %s", err)

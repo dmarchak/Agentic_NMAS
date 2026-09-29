@@ -209,7 +209,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.integration_health",
                            "modules.readers.ci_verdict",
                            "modules.readers.baseline_usability",
-                           "modules.readers.netbox_secrets")
+                           "modules.readers.netbox_secrets",
+                           "modules.readers.remote_publication")
 
 
 # ---------------------------------------------------------------------------

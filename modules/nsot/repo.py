@@ -294,8 +294,10 @@ def init_repo(repo: str) -> bool:
     rc, out, _ = git(repo, "rev-parse", "--verify", "HEAD")
     if rc != 0:
         git(repo, "add", ".gitattributes", ".gitignore")
-        git(repo, "commit", "--allow-empty", "-m",
-            "Initialize NSoT configuration repository")
+        # Not published here: init_repo runs only on a write path, whose own
+        # commit follows and pushes the branch, carrying this one with it.
+        commit(repo, "Initialize NSoT configuration repository", allow_empty=True,
+               publish_now=False)
         return True
 
     # A hygiene top-up wrote to .gitignore but nothing committed it, so the
@@ -304,8 +306,9 @@ def init_repo(repo: str) -> bool:
     rc, dirty, _ = git(repo, "status", "--porcelain", "--", ".gitignore")
     if rc == 0 and dirty.strip():
         git(repo, "add", ".gitignore")
-        rc, _, err = git(repo, "commit", "-m",
-                         "repo: update .gitignore\n\nSource: hygiene\n")
+        # Carried by the calling write path's own commit (see above).
+        rc, _, err = commit(repo, "repo: update .gitignore\n\nSource: hygiene\n",
+                            publish_now=False)
         if rc == 0:
             log.info("repo: committed a .gitignore top-up in %s", repo)
         else:
@@ -421,7 +424,7 @@ def apply_pending_renames(repo: str, actor: str = "nmas") -> dict:
             own = [old_rel, new_rel, MANIFEST_REL]
             try:
                 stage_exactly(repo, own)
-                rc, _, err = git(repo, "commit", "-m", message)
+                rc, _, err = commit(repo, message, source="rename", actor=actor)
             except StagesMoreThanItWrote as exc:
                 rc, err = 1, str(exc)
             if rc != 0:
@@ -890,7 +893,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                                         "Not-Done: no golden changed: every capture "
                                         "equals its committed golden"]
                                        + list(extra_trailers or [])) + "\n")
-                rc, _o, err = git(repo, "commit", "--allow-empty", "-m", message)
+                rc, _o, err = commit(repo, message, allow_empty=True, publish_now=False)
                 if rc == 0:
                     decision_commit = git(repo, "rev-parse", "HEAD")[1].strip()
                 else:
@@ -924,12 +927,9 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             # produced nothing to publish, and waking the push path to do
             # nothing would make every unchanged Save All hit the network.
             if tags or decision_commit:
-                from modules.nsot.hooks import run_post_commit
                 _rc, head_sha, _e = git(repo, "rev-parse", "HEAD")
-                run_post_commit({"list_name": list_name, "repo": repo,
-                                 "sha": (head_sha or "").strip(),
-                                 "source": source, "actor": actor,
-                                 "tags": tags, "devices": []})
+                publish(repo, (head_sha or "").strip(), list_name=list_name,
+                        source=source, actor=actor, tags=tags)
             return {"ok": True, "commit": decision_commit, "changed": [],
                     "decision_only": bool(decision_commit),
                     "unchanged": unchanged, "tags": tags,
@@ -983,7 +983,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         trailers.extend(extra_trailers or [])
 
         commit_message = f"{subject}\n\n" + "\n".join(trailers) + "\n"
-        rc, _, err = git(repo, "commit", "-m", commit_message)
+        rc, _, err = commit(repo, commit_message, publish_now=False)
         if rc != 0:
             _undo_golden_writes(repo, before, own)
             return {"ok": False, "error": f"commit failed: {err}",
@@ -1025,10 +1025,8 @@ def save_golden(list_name: str, items: list, source: str = "manual",
     log.info("repo: saved golden for %d device(s) in '%s' — %s (%d unchanged)",
              len(changed), list_name, sha[:8], len(unchanged))
 
-    from modules.nsot.hooks import run_post_commit
-    run_post_commit({"list_name": list_name, "repo": repo, "sha": sha,
-                     "source": source, "actor": actor, "tags": tags,
-                     "devices": [c["hostname"] for c in changed]})
+    publish(repo, sha, list_name=list_name, source=source, actor=actor, tags=tags,
+            devices=[c["hostname"] for c in changed])
 
     # `baseline` on both return paths, so a caller never has to sift `tags`
     # to find out whether a restore point exists.
@@ -1122,6 +1120,68 @@ def _unique_tag(repo: str, tag: str, sha: str) -> str:
     return f"{tag}-{sha[:7]}"
 
 
+def list_of_repo(repo: str) -> str:
+    """The registered list whose config repository is *repo*, or "".
+
+    Resolved from the lists' name-to-slug map, never through
+    `get_list_data_dir()`, which creates a directory (C51): a commit must not
+    bring a list into existence by asking which list it belongs to.
+    """
+    from modules.config import LISTS_DIR
+    from modules.device import _load_device_lists_config
+
+    target = os.path.realpath(repo)
+    for name, slug in (_load_device_lists_config().get("lists") or {}).items():
+        if os.path.realpath(os.path.join(LISTS_DIR, slug, "config_repo")) == target:
+            return name
+    return ""
+
+
+def publish(repo: str, sha: str, *, list_name: str = "", source: str = "",
+            actor: str = "", tags=None, devices=None) -> None:
+    """Hand a commit to the post-commit hooks (push, archive). Returns at once.
+
+    Called by :func:`commit`, and directly ONLY by a caller that commits with
+    ``publish_now=False`` because it must tag between committing and pushing
+    (`save_golden`, the batch's baseline). `tests/test_every_commit_publishes.py`
+    holds every such caller to calling this.
+    """
+    from modules.nsot.hooks import run_post_commit
+
+    run_post_commit({"list_name": list_name or list_of_repo(repo), "repo": repo,
+                     "sha": sha, "source": source, "actor": actor,
+                     "tags": list(tags or []), "devices": list(devices or [])})
+
+
+def commit(repo: str, message: str, *, list_name: str = "", paths=(), allow_empty=False,
+           git_config=(), publish_now: bool = True, source: str = "", actor: str = "",
+           tags=None, devices=None) -> tuple:
+    """THE commit in a list's repository: commit, then publish (C223).
+
+    Pushing is a property of committing, never something each caller
+    remembers. Abandon committed through `git(... "commit" ...)` directly, so
+    its commit stayed on the host while onboarding's, one step earlier on the
+    same list and remote, went out; the same was true of the rename commit, the
+    migration and the list repository's first commit. No call outside this
+    function names `"commit"` to git (`tests/test_every_commit_publishes.py`,
+    an AST scan of the program and its scripts with a floor), and a caller that
+    defers publishing must call :func:`publish` itself.
+
+    Returns ``(rc, sha, stderr)``; ``sha`` is empty when the commit failed.
+    """
+    config_args = [a for kv in git_config for a in ("-c", kv)]
+    flags = ["--allow-empty"] if allow_empty else []
+    tail = ["--", *paths] if paths else []
+    rc, _out, err = git(repo, *config_args, "commit", *flags, "-m", message, *tail)
+    if rc != 0:
+        return rc, "", err
+    _rc, sha, _e = git(repo, "rev-parse", "HEAD")
+    if publish_now:
+        publish(repo, sha, list_name=list_name, source=source, actor=actor,
+                tags=tags, devices=devices)
+    return rc, sha, err
+
+
 def _commit_paths(list_name: str, paths: list, subject: str, trailers: list,
                   source: str) -> dict:
     """Stage and commit specific paths. Shared plumbing for non-golden commits.
@@ -1149,7 +1209,7 @@ def _commit_paths(list_name: str, paths: list, subject: str, trailers: list,
 
         message = f"{subject}\n\n" + "\n".join(
             trailers + [f"Source: {source}"]) + "\n"
-        rc, _, err = git(repo, "commit", "-m", message)
+        rc, _, err = commit(repo, message, publish_now=False)
         if rc != 0:
             # Unstaged, never left for another commit to carry. The file stays
             # on disk: it is the person's edit, and the status bar names it.
@@ -1162,9 +1222,8 @@ def _commit_paths(list_name: str, paths: list, subject: str, trailers: list,
     log.info("repo: %s commit %s in '%s' (%d path(s))",
              source, sha[:8], list_name, len(changed))
 
-    from modules.nsot.hooks import run_post_commit
-    run_post_commit({"list_name": list_name, "repo": repo, "sha": sha,
-                     "source": source, "tags": [], "devices": []})
+    # Published after the lock is released and `gc` has run, as before.
+    publish(repo, sha, list_name=list_name, source=source)
     return {"ok": True, "commit": sha, "changed": changed}
 
 

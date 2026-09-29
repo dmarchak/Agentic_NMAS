@@ -27,8 +27,10 @@ async function loadRemotePanel() {
   }
   try {
     const s = await (await fetch('/remote/status')).json();
+    const pub = remotePublicationHtml(s.publication);
     if (!s.configured) {
-      host.innerHTML = `
+      const state = (s.publication || {}).state;
+      host.innerHTML = (state && state !== 'no_remote' && state !== 'not_read') ? pub : `
         <div class="alert alert-secondary py-2 px-3 mb-2">
           <strong>No remote for this list.</strong>
           Its history is on this host only.
@@ -43,6 +45,7 @@ async function loadRemotePanel() {
         <h6 class="text-primary fw-semibold mb-2">Remote
           <span class="text-muted fw-normal small ms-1">${_gEsc(s.owner_repo)}</span>
         </h6>
+        ${pub}
         <div class="small">
           <div>alias <code>${_gEsc(s.ssh_alias)}</code> ·
                branch <code>${_gEsc(s.branch)}</code> ·
@@ -84,6 +87,23 @@ async function loadRemotePanel() {
       Remote card failed to load: ${_gEsc(String(e && e.message || e))}</div>`;
     return false;
   }
+}
+
+/* Whether the history is ON the remote (C223): the server's one sentence
+   (remote_publication.describe), measured by asking the remote for its branch,
+   never taken from the push hook's own record. The level is the server's; an
+   unknown one is never drawn green. PURE. */
+function remotePublicationHtml(p) {
+  if (!p) {
+    return '<div class="alert alert-warning py-1 px-2 mb-2 small">Whether this history is '
+         + 'pushed was not reported.</div>';
+  }
+  const cls = ({success: 'success', warning: 'warning', danger: 'danger',
+                secondary: 'secondary'})[p.level] || 'warning';
+  const head = p.state === 'in_sync' ? 'Published' : 'Committed';
+  return `<div class="alert alert-${cls} py-1 px-2 mb-2 small" data-publication="${_gEsc(p.state || '')}"
+               title="${_gEsc(p.detail || '')}"><strong>${head}</strong>
+            ${p.state === 'in_sync' ? '' : '· '}${_gEsc(p.clause || '')}.</div>`;
 }
 
 /* The second measured case (Stage 7.0): after a commit, the card showed a

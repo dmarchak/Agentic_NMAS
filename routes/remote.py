@@ -32,10 +32,18 @@ def _list_name() -> str:
 @bp.route("/status", methods=["GET"])
 def status():
     """What this list's remote is, and whether it may be pushed to."""
+    from modules.config_git import publication
+
     list_name = _list_name()
+    # Whether the history is ON the remote, measured by asking it (C223), on
+    # both branches: an unreadable remote.json reads as "no remote" below
+    # (C172), and the comparison still says what the repository's own origin
+    # holds.
+    published = publication(list_name)
     config = R.load_remote(list_name)
     if not config:
-        return jsonify({"ok": True, "list": list_name, "configured": False})
+        return jsonify({"ok": True, "list": list_name, "configured": False,
+                        "publication": published})
 
     covers = R.acknowledgement_covers(list_name)
     return jsonify({
@@ -52,6 +60,7 @@ def status():
         "last_push_failure": config.get("last_push_failure"),
         "acknowledged": config.get("acknowledged_secrets"),
         "acknowledgement_covers": covers,
+        "publication": published,
     })
 
 

@@ -2499,6 +2499,21 @@ The landing page drew every section 1a source from stored or cached values, each
 5. **Numbers.** One commit [git]; 17 tests. Not recoverable: an estimate (none was written).
 6. **Where it left the product.** The break-glass record is exported from the browser, verified by the server before it is sent, recorded as a reveal, and tracked by job health as "downloaded by X at T" with the instruction to verify the copy kept.
 
+#### 7.3 — C223: every commit publishes, and "not pushed" is measured at the remote
+
+*Open: built 2026-09-29, awaiting the operator's deploy. Abandon's commit `7a72258` is deliberately left unpushed until then, so the fix is seen closing a real gap.*
+
+1. **What it was.** A demo onboard-and-abandon of a throwaway `R10` left the abandon commit on the host while onboarding's commit, one step earlier on the same list and remote, was on GitHub. The GUI reported a clean abandon, and the Git tab read "Everything is committed". The operator asked for the cause confirmed, the class swept and made structural, and "N commit(s) not pushed" drawn from HEAD against the remote, not from the hook's own record.
+2. **How it was implemented.** `repo.commit()` is the one commit in a list's repository, and it hands every commit to the post-commit hooks. `repo.publish()` is called directly only where a caller tags between committing and pushing. A reader (`remote-publication`) asks each list's remote for its branch with `git ls-remote` through the repository's own `origin`, every 120 s and after every commit, and one sentence (`describe()`) is drawn by the Git tab, the Remote card and a Needs attention row. On the same screen, per the presentation rule: Save All's rules moved behind "How this works", and the "Pipeline (before P.4)" column, filled only for commits older than P.4, was removed with the reader behind it.
+3. **Issues encountered.**
+   - C223 itself: abandon committed through git directly and never reached the push hook, confirmed from the code. The sweep found four more sites bypassing it: the rename commit, both migration commits, and the list repository's first commit.
+   - A stale sentence: the Git tab still said "Commit here for `infra/` files" for the manual commit C104 had removed; its test pinned it.
+   - The first measurement from the host: `ls-remote` took 0.99 s, and a second attempt got no answer before the tunnel session closed. So the reader has a bound, and a remote that does not answer reads as not asked, never as in sync.
+   - C172 (an unreadable `remote.json` read as no remote) produces the same symptom from another cause; the reader asks through `origin`, so it is visible now, and the row names it.
+4. **How they were resolved.** C223 fixed and closed pending the host run; the stale sentence removed and its test inverted; C172's symptom made visible, the record itself not fixed (its row says so). Controls: abandon put back to a direct commit fails the scan and the real-abandon test; `_commit_paths` without `publish()` fails the deferral rule; a reader calling an ancestor "in sync" fails four state tests. One control first broke the file's syntax, so its result was discarded and it was redone as the smallest change.
+5. **Numbers.** One commit [git]; 33 tests in two files. Not recoverable: an estimate (none was written).
+6. **Where it left the product.** A commit cannot skip the push hook without failing the suite, and whether the history is on the remote is a measured fact on the screens a person reads.
+
 #### 7.3 step 2 — Mode B: removing a line the device has and intent lacks
 
 *Written at close, 2026-09-29.*

@@ -151,7 +151,7 @@ class TestTheStatusNamesWhatIsLeft:
         var els = {gitStatusBar: {className: '', classList: {remove: function () {}}},
                    gitStatusText: {textContent: '', innerHTML: ''}};
         var document = {getElementById: function (id) { return els[id] || null; }};
-        """ + lift(page, "escHtml") + "\n" + lift(page, "_renderGitStatus") + f"""
+        """ + lift(page, "escHtml") + "\n" + lift(page, "gitLevel") + "\n" + lift(page, "_renderGitStatus") + f"""
         _renderGitStatus({json.dumps(payload)});
         [els.gitStatusBar.className, els.gitStatusText.innerHTML || els.gitStatusText.textContent];
         """
@@ -170,8 +170,11 @@ class TestTheStatusNamesWhatIsLeft:
                                    "uncommitted": [{"path": "golden/r1.cfg", "state": "M",
                                                     "means": "x"}]})
         assert "committed." not in html.split("uncommitted")[0]
+        # Green needs the remote too since C223: committed AND pushed.
         cls, html = self._render({"initialised": True, "ok": True, "last_commit": "abc",
-                                  "uncommitted": []})
+                                  "uncommitted": [], "publication": {
+                                      "level": "success", "state": "in_sync",
+                                      "clause": "and pushed to a/b", "detail": ""}})
         assert "alert-success" in cls and "Everything is committed" in html
 
     def test_a_status_that_could_not_be_read_says_so(self):
