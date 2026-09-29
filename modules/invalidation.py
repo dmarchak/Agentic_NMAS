@@ -90,6 +90,14 @@ VOCABULARY = {
     "reachability": "whether each device answers, as the reachability reader last stored it",
     "integration_health": "whether each integration answers, as the integration-health reader last stored it",
     "ci_verdict": "the running commit's CI verdict, as the ci-verdict reader last stored it",
+    "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",
+}
+
+#: Announcers that are not reader jobs (C188 step 2): a background job a
+#: request started, announcing when it finishes. Declared here so the keys
+#: they send are senders to `keys_in_use`, exactly as a reader's are.
+ANNOUNCERS = {
+    "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state
@@ -209,8 +217,10 @@ DECLARED = {
     "bulk_clear": ("bulk_ops",),
     # Reads sent as POST: a body carries the question, and nothing is stored.
     "deploy.plan": Nothing("a plan reads and computes; its host_vars write was removed (C33)"),
-    "golden.capture_preview": Nothing("reads each device's running config and computes a "
-                                      "preview; it records nothing"),
+    "golden.capture_preview": Nothing("starts a job that reads each device's running config "
+                                      "and computes a preview; it records nothing, and the "
+                                      "job ANNOUNCES capture_preview when it finishes "
+                                      "(ANNOUNCERS, C188)"),
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
     "golden.restore_preview": Nothing("a preview computes the program a restore would send"),
     "golden.migrate_plan": Nothing("the migration's dry run; it writes nothing by design"),
@@ -254,7 +264,8 @@ def keys_in_use() -> set:
     senders, and a panel subscribed to either hears it."""
     from modules import reader_job
     return ({k for v in DECLARED.values() if not isinstance(v, Nothing) for k in v}
-            | {k for r in reader_job.readers() for k in r.invalidates})
+            | {k for r in reader_job.readers() for k in r.invalidates}
+            | {k for keys in ANNOUNCERS.values() for k in keys})
 
 
 def keys_for(endpoint: str) -> tuple:

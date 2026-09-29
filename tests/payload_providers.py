@@ -244,12 +244,28 @@ def netbox_status(mp, tmp):
 def capture_preview(mp, tmp):
     """7.1 step 4: r2's real config with the host's exact break, so the
     preview carries a golden diff AND a departure from committed intent."""
-    from tests.test_capture import build_capture_lab
+    from tests.test_capture import build_capture_lab, run_capture_preview
     from tests.test_intent_match import _broken
 
     lab = build_capture_lab(mp, tmp)
     lab["running"]["r2"] = _broken(lab["captured"])
-    return _ok(lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}))
+    # The job's RESULT (C188 step 2): what `GET /golden/capture/preview/<job>`
+    # answers once the reads finish, which is the payload the modal draws.
+    return _ok(run_capture_preview(lab["client"], {"devices": ["r2"]}))
+
+
+def capture_preview_start(mp, tmp):
+    """C188 step 2: the POST that starts the preview's job, as the page gets
+    it (202, the job's id and the devices it reads), before any read ends."""
+    from modules.nsot import capture_job
+    from tests.test_capture import build_capture_lab
+
+    lab = build_capture_lab(mp, tmp)
+    r = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]})
+    assert r.status_code == 202, r.get_data(as_text=True)[:300]
+    d = r.get_json()
+    assert capture_job.wait(d["job"], 60)   # finish before the lab is torn down
+    return d
 
 
 def golden_panel(mp, tmp, path):
@@ -288,10 +304,10 @@ def restore_points(mp, tmp):
     """7.1 step 5 (C80): r2's restore points, from a real repository holding
     its onboarding golden, its own golden tag and a baseline earned by a
     whole-fleet capture at intent. Not a hand-built list."""
-    from tests.test_capture import build_capture_lab
+    from tests.test_capture import build_capture_lab, run_capture_preview
 
     lab = build_capture_lab(mp, tmp)
-    d = _ok(lab["client"].post("/golden/capture/preview", json={"devices": []}))
+    d = _ok(run_capture_preview(lab["client"], {"devices": []}))
     h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
     _ok(lab["client"].post("/golden/capture/apply",
                            json={"confirmations": {"r2": h}, "fleet": True}))
@@ -300,12 +316,12 @@ def restore_points(mp, tmp):
 
 def capture_apply(mp, tmp):
     """The same, confirmed and recorded: a departing capture's result."""
-    from tests.test_capture import build_capture_lab
+    from tests.test_capture import build_capture_lab, run_capture_preview
     from tests.test_intent_match import _broken
 
     lab = build_capture_lab(mp, tmp)
     lab["running"]["r2"] = _broken(lab["captured"])
-    d = _ok(lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}))
+    d = _ok(run_capture_preview(lab["client"], {"devices": ["r2"]}))
     h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
     # Two handed-off drift items (C105): r2's is closed by the capture, and
     # one for a device this capture does not record stays pending, so both

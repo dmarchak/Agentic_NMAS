@@ -140,10 +140,18 @@ RENDERS = {
         adapters={"modules/preview_confirm.py": ("operation_result", "build_result",
                                                  "result_level"),
                   "modules/nsot/receipts.py": ("rows_for", "_checks")}),
+    # C188 step 2: the POST starts a job and answers at once; the preview is
+    # the job's result, read by its id when the job announces it finished.
     "POST /golden/capture/preview": Render(
+        lambda mp, tmp: P.capture_preview_start(mp, tmp),
+        {CAP: ("previewCapture",)},
+        ((CAP, "previewCapture", "d"),)),
+    "GET /golden/capture/preview/<job>": Render(
         lambda mp, tmp: P.capture_preview(mp, tmp),
-        {CAP: ("previewCapture", "captureSelection", "refreshButton"), PC: PC_FNS},
-        ((CAP, "previewCapture", "d"),), maps=("select_data",),
+        {CAP: ("previewCapture", "captureWaitingWords", "captureSelection", "refreshButton"),
+         PC: PC_FNS},
+        ((CAP, "previewCapture", "jd"), (CAP, "captureWaitingWords", "jd")),
+        maps=("select_data",),
         adapters={"modules/preview_confirm.py": ("capture_preview", "_intent_words", "build")}),
     "POST /golden/capture/apply": Render(
         lambda mp, tmp: P.capture_apply(mp, tmp),
@@ -401,6 +409,7 @@ UNDRAWN = {
         ("name", "the tool's key; the card is keyed by it at the call site")],
     "POST /golden/capture/preview": [
         ("list", LIST)],
+    "GET /golden/capture/preview/<job>": [("list", LIST)],
     "POST /golden/capture/apply": [("list", LIST)],
     "GET /netbox/status": [
         ("filename", "the list's legacy CSV name; nothing needs it on screen, "
@@ -697,7 +706,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 107
+UNDRAWN_CEILING = 108  # +1: C188 step 2's job result carries `list`, as the POST did
 PHANTOM_CEILING = 18
 
 

@@ -8,6 +8,7 @@ from apply to commit, across processes (a `flock` the kernel releases when
 its holder dies), and a second operation is refused with the holder named.
 """
 
+from tests.test_capture import run_capture_preview
 import ast
 import os
 import re
@@ -176,8 +177,7 @@ class TestEveryChangingPathHoldsIt:
         from tests.test_capture import _hash, build_capture_lab
 
         lab = build_capture_lab(monkeypatch, tmp_path)
-        h = _hash(lab["client"].post("/golden/capture/preview",
-                                     json={"devices": ["r2"]}).get_json())
+        h = _hash(run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json())
         before = sp.run(["git", "-C", lab["repo"], "rev-parse", "HEAD"],
                         capture_output=True, text=True).stdout
         with Holder("Lab", "r2"):

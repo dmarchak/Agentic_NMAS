@@ -3,13 +3,20 @@ then the apply): 101 s and 102 s of reads measured on the host 2026-09-29,
 s3 the slowest at 23-24 s. A capture now reads its devices AT ONCE, times
 each, and names the slowest, since a parallel read is only as fast as its
 slowest member (the operator).
+
+Step 2: the preview no longer answers when the reads end. The POST starts a
+JOB and answers at once (202), the in-flight panel shows the reads, and the
+job ANNOUNCES `capture_preview` (C58) when it finishes, so no request waits on
+a device and no edge limit can end one.
 """
 
 import threading
 import time
 
+import pytest
+
 import routes.golden as G
-from tests.test_capture import build_capture_lab
+from tests.test_capture import build_capture_lab, run_capture_preview
 
 
 
@@ -83,7 +90,7 @@ class TestTheTimingIsSaid:
     def test_the_preview_and_the_result_say_it_through_the_real_routes(self, tmp_path,
                                                                       monkeypatch):
         lab = build_capture_lab(monkeypatch, tmp_path)
-        d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
         p = d["preview"]
         assert "Read 1 device(s) in " in p["what"]["summary"]
         assert "slowest r2" in p["what"]["summary"]
@@ -93,3 +100,124 @@ class TestTheTimingIsSaid:
         out = lab["client"].post("/golden/capture/apply",
                                  json={"confirmations": {"r2": h}}).get_json()
         assert "slowest r2" in out["result"]["happened"]["summary"]
+
+
+class TestThePreviewIsAJob:
+    """C188 step 2, through the real routes: a read held open by a gate
+    proves the POST answered BEFORE any read ended (a fast fake could not)."""
+
+    @pytest.fixture
+    def held(self, tmp_path, monkeypatch):
+        from modules import invalidation as I
+
+        lab = build_capture_lab(monkeypatch, tmp_path)
+        gate = threading.Event()
+        real = G._capture_entry
+
+        def entry(list_name, repo, device):
+            assert gate.wait(30), "the test never released the read"
+            return real(list_name, repo, device)
+
+        monkeypatch.setattr(G, "_capture_entry", entry)
+        heard = []
+        monkeypatch.setattr(I, "_emitter", lambda event, msg: heard.append((event, msg)))
+        yield lab, gate, heard
+        gate.set()
+
+    def test_the_post_answers_while_the_reads_are_still_running(self, held):
+        from modules.nsot import capture_job
+
+        lab, gate, heard = held
+        r = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]})
+        assert r.status_code == 202, r.get_data(as_text=True)[:300]
+        d = r.get_json()
+        assert d["ok"] and d["devices"] == ["r2"] and d["job"]
+        running = lab["client"].get(f"/golden/capture/preview/{d['job']}").get_json()
+        assert running["state"] == "running" and running["preview"] is None
+        assert "reading 1 device(s) at once" in running["step_words"], running
+        assert "NetBox" not in running["step_words"], "a capture counts no NetBox requests"
+        assert heard == [], "nothing is announced before the reads end"
+        # The in-flight panel lists it while it runs (C99's standing rule).
+        panel = lab["client"].get("/operations/in_flight").get_json()
+        assert panel["ok"], panel
+        rows = [x for x in panel["running"] if x["operation"] == "capture preview"]
+        assert rows and rows[0]["device"] == "Lab: 1 device(s)", panel["running"]
+        gate.set()
+        assert capture_job.wait(d["job"], 30)
+        done = lab["client"].get(f"/golden/capture/preview/{d['job']}").get_json()
+        assert done["state"] == "done" and done["preview"]["what"]["targets"][0]["name"] == "r2"
+        assert [m["keys"] for e, m in heard] == [["capture_preview"]]
+        assert heard[0][1]["by"] == "capture-preview" and heard[0][1]["ok"] is True
+        assert "read 1 of 1 device(s)" in done["step_words"]
+
+    def test_a_failed_announcement_is_recorded_and_the_result_still_served(self, held,
+                                                                         monkeypatch):
+        from modules import invalidation as I
+        from modules.nsot import capture_job
+
+        lab, gate, _heard = held
+        monkeypatch.setattr(I, "_emitter", None)          # no socket: announce raises
+        gate.set()
+        d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        assert capture_job.wait(d["job"], 30)
+        assert capture_job.get(d["job"])["announced"] is False
+        done = lab["client"].get(f"/golden/capture/preview/{d['job']}").get_json()
+        assert done["state"] == "done" and done["preview"]
+
+    def test_a_job_that_raises_is_failed_with_its_reason(self, held, monkeypatch):
+        from modules.nsot import capture_job
+
+        lab, gate, heard = held
+
+        def boom(*a, **k):
+            raise RuntimeError("the preview could not be built")
+
+        monkeypatch.setattr("modules.preview_confirm.capture_preview", boom)
+        gate.set()
+        d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        assert capture_job.wait(d["job"], 30)
+        got = lab["client"].get(f"/golden/capture/preview/{d['job']}").get_json()
+        assert got["state"] == "failed" and got["ok"] is False
+        assert "RuntimeError: the preview could not be built" in got["error"]
+        assert heard and heard[-1][1]["ok"] is False, "a failed job is announced too"
+
+    def test_an_unknown_job_says_why_and_is_never_an_empty_preview(self, held):
+        lab, _gate, _heard = held
+        r = lab["client"].get("/golden/capture/preview/0123456789abcdef")
+        d = r.get_json()
+        assert r.status_code == 404 and d["state"] == "unknown" and not d["ok"]
+        assert "server restarted" in d["error"] and "start the preview again" in d["error"]
+
+    def test_nothing_to_capture_still_answers_at_once_with_no_job(self, tmp_path,
+                                                                 monkeypatch):
+        lab = build_capture_lab(monkeypatch, tmp_path)
+        r = lab["client"].post("/golden/capture/preview", json={"scope": "no_golden"})
+        d = r.get_json()
+        assert r.status_code == 200 and "job" not in d and d["preview"] is None
+        assert "nothing to capture" in d["nothing"]
+
+
+class TestTheModalSaysWhatItWaitsFor:
+    """The SHIPPED client's pure parts, executed."""
+
+    def _js(self, expr):
+        import dukpy
+
+        from tests.payload_render import shipped
+        return dukpy.evaljs("var window = {};\n" + shipped("nmas_capture.js") + "\n" + expr)
+
+    def test_waiting_names_the_devices_and_what_it_is_doing(self):
+        w = self._js("window.captureWaitingWords(['s1', 's3'], {step_words: 'read 1 of 2 device(s); "
+                     "waiting on s3', elapsed_s: 12.5}, 'connected')")
+        assert w["live"] is True
+        assert w["lines"][0] == "Reading 2 device(s) at once, on the server: s1, s3."
+        assert w["lines"][1] == "Now: read 1 of 2 device(s); waiting on s3 (12.5 s so far)."
+        assert not any("Check now" in x for x in w["lines"])
+
+    def test_a_page_without_the_live_channel_says_to_ask(self):
+        w = self._js("window.captureWaitingWords(['r2'], null, 'disconnected')")
+        assert w["live"] is False
+        assert any("will not appear by itself: press Check now" in x for x in w["lines"])
+
+    def test_an_announcement_with_no_job_open_does_nothing(self):
+        assert self._js("window.capturePreviewHeard()") is True

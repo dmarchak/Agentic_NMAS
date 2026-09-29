@@ -73,8 +73,9 @@ def _bodies(v):
         "freshness.gate": (409, ("json", {"configs": {"r1": _config_body("Oxi")}}),
                            "a supplied config that differs from the golden: blocked, with "
                            "the differing lines"),
-        "golden.capture_preview": (200, ("json", {"devices": ["r1"]}),
-                                   "r1 read NOW: the golden diff and the intent departure"),
+        "golden.capture_preview": (202, ("json", {"devices": ["r1"]}),
+                                   "starts a job reading r1 NOW; FOLLOWED to its result "
+                                   "(JOB_RESULTS): the golden diff and the intent departure"),
         "golden.migrate_plan": (200, ("json", {}), "a dry run over the legacy store"),
         "golden.restore_preview": (200, ("json", {"ref": v["_first_golden"],
                                                   "devices": ["r1"]}),
@@ -259,6 +260,27 @@ def _store_state():
     return state
 
 
+#: POSTs that answer 202 with a `job` and put their result behind a GET
+#: (C188 step 2: the capture preview's reads run as a job). The sweep FOLLOWS
+#: each to its result, because the result is where stored config lands now:
+#: stopping at the 202 would sweep a body that holds no config at all, and
+#: the GET sweep cannot reach a job (it fills arguments with planted names).
+JOB_RESULTS = {"golden.capture_preview": "/golden/capture/preview/{job}"}
+
+
+def _follow_job(client, endpoint, r):
+    """The POST's body plus its job's result, once the job has finished."""
+    from modules.nsot import capture_job
+
+    job = (r.get_json(silent=True) or {}).get("job") if r.status_code == 202 else None
+    if endpoint not in JOB_RESULTS or not job:
+        return r.get_data(as_text=True)
+    assert capture_job.wait(job, 60), f"{endpoint}: job {job} still running after 60 s"
+    got = client.get(JOB_RESULTS[endpoint].format(job=job))
+    assert got.status_code == 200, (endpoint, got.status_code, got.get_data(as_text=True)[:200])
+    return r.get_data(as_text=True) + "\n" + got.get_data(as_text=True)
+
+
 def _drive(v, person, writes=None):
     import app as A
     from modules import identity
@@ -288,12 +310,12 @@ def _drive(v, person, writes=None):
                 before = _store_state() if writes is not None else None
                 r = (client.post(url, data=body) if kind == "form"
                      else client.post(url, json=body))
+                text = _follow_job(client, endpoint, r)
                 if writes is not None:
                     after = _store_state()
                     writes[endpoint if not name else f"{endpoint}:{name}"] = sorted(
                         k for k in set(before) | set(after) if before.get(k) != after.get(k))
-                out[endpoint if not name else f"{endpoint}:{name}"] = (
-                    r.status_code, r.get_data(as_text=True))
+                out[endpoint if not name else f"{endpoint}:{name}"] = (r.status_code, text)
     finally:
         mp.undo()
     return out

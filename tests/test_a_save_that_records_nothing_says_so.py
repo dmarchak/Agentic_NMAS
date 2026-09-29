@@ -13,6 +13,7 @@ intent (`load-interval 30`, C70's residue), and WROTE NOTHING. Then:
   recommending the action that had just been refused.
 """
 
+from tests.test_capture import run_capture_preview
 import json
 import subprocess
 
@@ -34,7 +35,7 @@ def cap(tmp_path, monkeypatch):
     golden, and r2 departs from its committed intent."""
     lab = build_capture_lab(monkeypatch, tmp_path)
     lab["running"]["r2"] = _broken(lab["captured"])
-    d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+    d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
     h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
     out = lab["client"].post("/golden/capture/apply", json={"confirmations": {"r2": h}})
     assert out.get_json()["ok"]
@@ -42,7 +43,7 @@ def cap(tmp_path, monkeypatch):
 
 
 def _fleet_preview(cap):
-    d = cap["client"].post("/golden/capture/preview", json={"devices": []}).get_json()
+    d = run_capture_preview(cap["client"], {"devices": []}).get_json()
     assert d["ok"] and d["fleet"], d
     return d
 
@@ -82,7 +83,7 @@ class TestThePreviewSaysWhatConfirmingAchieves:
         assert out == {"disabled": False, "text": "Read the device and record the denial only"}
 
     def test_a_one_device_capture_that_changes_nothing_cannot_be_confirmed(self, cap):
-        d = cap["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        d = run_capture_preview(cap["client"], {"devices": ["r2"]}).get_json()
         c = d["preview"]["confirm"]
         assert c["may"] is False and c["statement"].startswith("Nothing to confirm")
 

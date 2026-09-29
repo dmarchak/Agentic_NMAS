@@ -15,6 +15,7 @@ a baseline earned by a whole-fleet capture at intent (`build_capture_lab`).
 The shipped component runs in duktape against the route's real response.
 """
 
+from tests.test_capture import run_capture_preview
 import json
 import os
 
@@ -37,7 +38,7 @@ def lab(tmp_path, monkeypatch):
 
     lab = build_capture_lab(monkeypatch, tmp_path)
     c = lab["client"]
-    d = c.post("/golden/capture/preview", json={"devices": []}).get_json()
+    d = run_capture_preview(c, {"devices": []}).get_json()
     h = d["preview"]["what"]["targets"][0]["select_data"]["hash"]
     out = c.post("/golden/capture/apply",
                  json={"confirmations": {"r2": h}, "fleet": True}).get_json()

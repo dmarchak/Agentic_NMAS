@@ -76,8 +76,24 @@ def build_capture_lab(monkeypatch, tmp_path):
             "captured": captured}
 
 
+def run_capture_preview(client, body):
+    """The preview as the page gets it (C188 step 2): POST starts a job and
+    answers at once; this waits for the job and returns its GET, the response
+    the page draws. A POST that starts no job (a refusal, or nothing to
+    capture) is returned as it is."""
+    from modules.nsot import capture_job
+
+    r = client.post("/golden/capture/preview", json=body)
+    job = (r.get_json(silent=True) or {}).get("job")
+    if not job:
+        return r
+    assert r.status_code == 202, r.get_data(as_text=True)[:300]
+    assert capture_job.wait(job, 60), f"capture preview {job} still running after 60 s"
+    return client.get(f"/golden/capture/preview/{job}")
+
+
 def _preview(cap, devices=("r2",)):
-    r = cap["client"].post("/golden/capture/preview", json={"devices": list(devices)})
+    r = run_capture_preview(cap["client"], {"devices": list(devices)})
     assert r.status_code == 200, r.get_data(as_text=True)[:300]
     return r.get_json()
 
@@ -206,7 +222,7 @@ class TestAutoCreateIsAScopeOfCapture:
         return cap
 
     def _scoped(self, cap):
-        r = cap["client"].post("/golden/capture/preview", json={"scope": "no_golden"})
+        r = run_capture_preview(cap["client"], {"scope": "no_golden"})
         assert r.status_code == 200, r.get_data(as_text=True)[:300]
         return r.get_json()
 

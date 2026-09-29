@@ -1798,6 +1798,15 @@ read through one function, and P.8 moves it without the reader changing.
   the receipt did not keep verify's removal read-back (it copies some of verify's
   fields), so it now records `removals_checked` and the result draws "removals read back
   gone". Save All's speed (C188, several minutes) is next.
+  **C188, Save All's speed, built 2026-09-29 in two steps.** Measured before, from the
+  host's log: the preview read nine devices in series (101 s of reads, about 107 s to
+  its answer, past Cloudflare's 100 s), and the apply read them again (102 s, about
+  113 s); s3 the slowest (23 to 24 s). Step 1: both read every device at once, timed,
+  the slowest named on the screen. Step 2: the preview is a JOB; the POST answers at
+  once, the in-flight panel shows the reads, and the job announces `capture_preview`
+  when it finishes, so no request waits on a device. The apply stays a request (about
+  the slowest device's read after step 1). **Accepted by the after-measurement**: the
+  operator's next Save All, read from the same log lines, per device and in total.
   **The gap Mode B has to get right** (the operator): every destructive or surprising
   result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
   default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and

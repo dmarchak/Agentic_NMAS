@@ -1507,12 +1507,14 @@ def _intent_words(i: dict) -> str:
     return words(i) if i else "not compared"
 
 
-def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
-                    not_read: list = None, timing: dict = None) -> dict:
+def capture_preview(entries: list, *, fleet: bool, inventory: list, request=None,
+                    not_read: list = None, timing: dict = None, confirm: dict = None) -> dict:
     """*entries*: per device ``{device, read, error, capture_hash, diff,
     changed, intent, platform}`` from reading it now. *not_read*: devices a
     scope left out (they already have a committed golden), named so the
-    preview never reads as the whole list."""
+    preview never reads as the whole list. *confirm*: the confirm part,
+    decided from the request before the reads ran on their own thread (C188
+    step 2); without it, it is decided from *request*."""
     targets, what_not = [], []
     if not_read:
         what_not.append({"target": "devices that already have a golden", "kind": "scope",
@@ -1595,7 +1597,7 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
                          "lines": []})
     changed = sum(1 for e in read if e.get("changed"))
     departs = sum(1 for e in read if (e.get("intent") or {}).get("state") != "match")
-    confirm = dict(confirm_part(request, "approve"))
+    confirm = dict(confirm if confirm is not None else confirm_part(request, "approve"))
     # The MODE travels back with the confirm and names the held devices on the
     # in-flight panel ("read for the denial record", never "captured"). It is
     # display only: what the apply does is decided by what it reads.

@@ -14,6 +14,7 @@ at the moment of the commit:
   recorded actor is not the verified one).
 """
 
+from tests.test_capture import run_capture_preview
 from tests import source_index
 import ast
 import pathlib
@@ -281,7 +282,7 @@ class TestAnApprovalCommitsItsApprover:
             "approving committed something: it must only hand off"
         assert approval_queue.get_pending()[0]["id"] == entry_id
 
-        pv = client.post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        pv = run_capture_preview(client, {"devices": ["r2"]}).get_json()
         h = pv["preview"]["what"]["targets"][0]["select_data"]["hash"]
         out = client.post("/golden/capture/apply", json={
             "confirmations": {"r2": h}, "approvals": handoff["approvals"]}).get_json()

@@ -43,9 +43,11 @@ def _purge(now: float) -> None:
         _ops.pop(next(iter(_ops)))
 
 
-def start(op_id: str, kind: str, label: str, actor: str = "") -> bool:
+def start(op_id: str, kind: str, label: str, actor: str = "", counts: str = "NetBox") -> bool:
     """Begin recording under *op_id*. Returns False (and records nothing)
-    for an id that is not ours to use."""
+    for an id that is not ours to use. *counts* names what `tick()` counts
+    requests to; "" for an operation that counts none (a capture preview's
+    device reads, C188), so its words never claim requests to NetBox."""
     if not valid_id(op_id):
         return False
     now = time.time()
@@ -54,7 +56,8 @@ def start(op_id: str, kind: str, label: str, actor: str = "") -> bool:
         _ops[op_id] = {"id": op_id, "kind": kind, "label": label, "actor": actor,
                        "started_at": now, "moved_at": now, "requests": 0,
                        "phase": "starting", "devices_done": 0, "devices_total": 0,
-                       "current": "", "finished_at": None, "outcome": ""}
+                       "current": "", "finished_at": None, "outcome": "",
+                       "counts": counts}
     return True
 
 
@@ -85,7 +88,8 @@ def finish(op_id: str, outcome: str = "done") -> None:
 
 def step_words(op: dict) -> str:
     """What it is doing now, in words, with its counts."""
-    parts = [f"{op['requests']} request(s) to NetBox so far"]
+    parts = ([f"{op['requests']} request(s) to {op['counts']} so far"]
+             if op.get("counts", "NetBox") else [])
     if op.get("devices_total"):
         parts.append(f"device {min(op['devices_done'] + 1, op['devices_total'])} of "
                      f"{op['devices_total']}" + (f" ({op['current']})" if op.get("current") else "")

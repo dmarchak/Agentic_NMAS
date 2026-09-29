@@ -10,6 +10,7 @@ holder, the CLIs included) and the receipts (so a reload does not lose a
 result); and a gate in every preview that names a holder BEFORE the confirm.
 """
 
+from tests.test_capture import run_capture_preview
 import json
 import os
 import time
@@ -169,8 +170,7 @@ class TestThePreviewNamesTheHolder:
 
         lab = build_capture_lab(monkeypatch, tmp_path)
         with D.hold("Lab", "r2", "restore", "someone@example.com"):
-            d = lab["client"].post("/golden/capture/preview",
-                                   json={"devices": ["r2"]}).get_json()
+            d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
         # Selectability is in the `what` part; per-device gates in `targets`.
         target = d["preview"]["what"]["targets"][0]
         gates = {g["name"]: g for g in d["preview"]["targets"][0]["gates"]}
@@ -182,7 +182,7 @@ class TestThePreviewNamesTheHolder:
         from tests.test_capture import build_capture_lab
 
         lab = build_capture_lab(monkeypatch, tmp_path)
-        d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
         target = d["preview"]["what"]["targets"][0]
         gates = {g["name"]: g for g in d["preview"]["targets"][0]["gates"]}
         assert gates["no other operation holds this device"]["state"] == "at_apply"
@@ -200,8 +200,7 @@ class TestAnUnselectableTargetSaysWhy:
 
         lab = build_capture_lab(monkeypatch, tmp_path)
         with D.hold("Lab", "r2", "restore", "someone@example.com"):
-            d = lab["client"].post("/golden/capture/preview",
-                                   json={"devices": ["r2"]}).get_json()
+            d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
         target = d["preview"]["what"]["targets"][0]
         assert target["selectable"] is False
         assert "someone@example.com" in target["why_not"], target["why_not"]
@@ -215,7 +214,7 @@ class TestAnUnselectableTargetSaysWhy:
         from tests.test_capture import build_capture_lab
 
         lab = build_capture_lab(monkeypatch, tmp_path)
-        d = lab["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
+        d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
         assert d["preview"]["what"]["targets"][0]["why_not"] == ""
 
     def test_the_builder_refuses_one_that_says_nothing(self):

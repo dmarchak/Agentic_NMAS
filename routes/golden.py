@@ -278,13 +278,15 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
 CAPTURE_READ_WORKERS = 16
 
 
-def _read_all(list_name: str, repo: str, devices: list) -> tuple:
+def _read_all(list_name: str, repo: str, devices: list, progress=None) -> tuple:
     """``([(entry, text)] in the devices' order, timing)``: every device read
     CONCURRENTLY, each timed, the slowest named, because a parallel read is
     only as fast as its slowest member (the operator, C188). A read that
-    raises is that device's `read: False`, never the whole capture's."""
+    raises is that device's `read: False`, never the whole capture's.
+    *progress*, when given, is called ``(done, total, waiting_on)`` as each
+    device finishes, for the in-flight panel (step 2)."""
     import time
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def one(device):
         started = time.monotonic()
@@ -299,7 +301,13 @@ def _read_all(list_name: str, repo: str, devices: list) -> tuple:
     workers = max(1, min(CAPTURE_READ_WORKERS, len(devices)))
     started = time.monotonic()
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="capture-read") as pool:
-        read = list(pool.map(one, devices))
+        futures = {pool.submit(one, d): i for i, d in enumerate(devices)}
+        read = [None] * len(devices)
+        for n, fut in enumerate(as_completed(futures), 1):
+            read[futures[fut]] = fut.result()
+            if progress is not None:
+                progress(n, len(devices), [devices[i].get("hostname", "")
+                                           for i in range(len(devices)) if read[i] is None])
     per = {e["device"]: s for e, _t, s in read}
     slowest = max(per, key=per.get) if per else ""
     timing = {"wall_s": round(time.monotonic() - started, 1), "workers": workers,
@@ -381,16 +389,68 @@ def capture_preview():
     else:
         fleet = not wanted
         devices = [d for d in inventory if fleet or d.get("hostname") in set(wanted)]
-    read, timing = _read_all(list_name, repo, devices)
-    entries = [e for e, _t in read]
-    preview = _parts(entries, fleet=fleet, inventory=inventory, request=request,
-                     not_read=excluded, timing=timing)
-    # The preview alone: it draws each device's read, and its `select_data`
-    # carries the hash the confirm is bound to. The raw reads are not sent.
-    # `nothing` is always carried (empty here): one payload shape whether or
-    # not a scope found anything, so the client reads a key that is there.
-    return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
-                                 "preview": preview, "nothing": ""}))
+    # C188 step 2: the reads run as a JOB, and this answers at once. The
+    # request no longer waits on a device, so no edge limit can end it (107 s
+    # for nine devices read in series, past Cloudflare's 100 s). What needs
+    # the request (who would confirm) is decided HERE, before the thread.
+    from modules import identity, op_progress
+    from modules.nsot import capture_job
+    from modules.preview_confirm import confirm_part
+
+    confirm = confirm_part(request, "approve")
+    who = identity.identify(request)
+    actor = who.actor if who.is_identified else "an unidentified viewer"
+
+    def work(job_id):
+        def progress(done, total, waiting):
+            op_progress.update(job_id, phase=(
+                f"read {done} of {total} device(s)"
+                + (f"; waiting on {', '.join(waiting)}" if waiting else "")))
+        op_progress.update(job_id, phase=f"reading {len(devices)} device(s) at once")
+        read, timing = _read_all(list_name, repo, devices, progress=progress)
+        entries = [e for e, _t in read]
+        preview = _parts(entries, fleet=fleet, inventory=inventory, confirm=confirm,
+                         not_read=excluded, timing=timing)
+        # The preview alone: it draws each device's read, and its
+        # `select_data` carries the hash the confirm is bound to. The raw
+        # reads are not sent. `nothing` is always carried (empty here): one
+        # payload shape whether or not a scope found anything.
+        return mask_payload({"list": list_name, "fleet": fleet, "preview": preview,
+                             "nothing": ""})
+
+    names = [d.get("hostname", "") for d in devices]
+    job = capture_job.start(list_name, f"{list_name}: {len(names)} device(s)", actor, work)
+    # `nothing` is always carried (empty here): one payload shape with the
+    # nothing-to-capture answer above, so the client reads a key that is there.
+    return jsonify({"ok": True, "list": list_name, "job": job, "devices": names,
+                    "nothing": ""}), 202
+
+
+@bp.route("/capture/preview/<job>", methods=["GET"])
+def capture_preview_result(job):
+    """The capture preview a POST started (C188 step 2), by its id: running
+    (with what it is doing), done (the preview), or failed (why). A READ; it
+    writes nothing. An id this server has no record of is 404 and says why,
+    never an empty preview: a restart loses a job, and a person starts it
+    again."""
+    from modules import op_progress
+    from modules.nsot import capture_job
+
+    got = capture_job.get(job)
+    if got is None:
+        return jsonify({"ok": False, "job": job, "state": "unknown",
+                        "error": ("This server has no capture preview " + job[:12]
+                                  + ": it finished more than "
+                                  + str(capture_job.KEEP_S // 60) + " minutes ago, or the "
+                                  "server restarted. Nothing was recorded; start the "
+                                  "preview again.")}), 404
+    op = op_progress.get(job) or {}
+    out = {"ok": got["state"] != "failed", "job": job, "state": got["state"],
+           "list": got["list"], "elapsed_s": got["elapsed_s"],
+           "step_words": op.get("step_words", ""), "error": got["error"], "fleet": None, "preview": None, "nothing": ""}
+    if got["state"] == "done":
+        out.update(got["payload"] or {})
+    return jsonify(out)
 
 
 @bp.route("/capture/apply", methods=["POST"])
