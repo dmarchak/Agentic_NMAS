@@ -329,7 +329,7 @@ class TestEveryVerifierGoesThroughTheResolver:
     """**The defect the live run found, and the control for it.**
 
     `nmas-check-startup-applies` read
-    `dmarchak@10.0.0.210:labs/lab/configs/r6.cfg` — the **default** lab's
+    `<user>@<lab-host>:labs/lab/configs/r6.cfg` — the **default** lab's
     directory — while `clab_target_for('Default', 'r6')` returned
     `labs/r6/configs`. The map existed and one caller was not using it,
     **by omission**: both verifiers fell back to `get_setting()` when the

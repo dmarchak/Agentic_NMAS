@@ -259,7 +259,8 @@ ssh-keyscan -t ed25519 <hypervisor> >> ~/.ssh/known_hosts
   if [ -e /etc/nmas/netbox-backup.env ]; then
     echo "env exists, left as it is"
   else
-    sudo install -m 0640 -o root -g <user> deploy/systemd/netbox-backup.env.example /etc/nmas/netbox-backup.env
+    scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/netbox-backup.env.example
+    sudo install -m 0640 -o root -g <user> /tmp/nmas-units/netbox-backup.env.example /etc/nmas/netbox-backup.env
   fi
 )
 sudoedit /etc/nmas/netbox-backup.env      # set NMAS_BACKUP_RCLONE_REMOTE (section 4); check RCLONE_CONFIG
@@ -270,8 +271,12 @@ sudo grep -v '^#' /etc/nmas/netbox-backup.env | grep .     # show what the unit 
 # 3c. The units, one run of each by hand, then the timers.
 ( set -eu
   cd ~/python/Agentic_NMAS
-  sudo install -m 0644 deploy/systemd/nmas-netbox-backup.service deploy/systemd/nmas-netbox-backup.timer \
-       deploy/systemd/nmas-netbox-restore-test.service deploy/systemd/nmas-netbox-restore-test.timer /etc/systemd/system/
+  # TEMPLATES (the repository is public): rendered from data/lab_hosts.json, never copied.
+  scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-netbox-backup.service \
+       deploy/systemd/nmas-netbox-backup.timer deploy/systemd/nmas-netbox-restore-test.service \
+       deploy/systemd/nmas-netbox-restore-test.timer
+  sudo install -m 0644 /tmp/nmas-units/nmas-netbox-backup.service /tmp/nmas-units/nmas-netbox-backup.timer \
+       /tmp/nmas-units/nmas-netbox-restore-test.service /tmp/nmas-units/nmas-netbox-restore-test.timer /etc/systemd/system/
   sudo systemctl daemon-reload
 )
 sudo systemctl start nmas-netbox-backup.service; journalctl -u nmas-netbox-backup -n 20 --no-pager

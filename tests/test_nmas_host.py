@@ -9,6 +9,7 @@ a recording runner stands in, so what would be sent is asserted instead.
 import json
 import os
 import socket
+import subprocess
 from importlib.machinery import SourceFileLoader
 
 import pytest
@@ -168,3 +169,111 @@ class TestTheHostsAreNotPublished:
 
     def test_the_default_file_is_under_the_gitignored_data_directory(self):
         assert H.HOSTS_FILE == os.path.join(ROOT, "data", "lab_hosts.json")
+
+    def test_a_field_is_read_without_asking_the_network(self, capsys):
+        asked = []
+        assert H.main(["clab", "--field", "lan"], probe=lambda a: asked.append(a) or True,
+                      runner=Runner()) == 0
+        assert capsys.readouterr().out.strip() == "192.0.2.10" and asked == []
+        H.main(["clab", "--field", "user"], probe=lambda a: True, runner=Runner())
+        assert capsys.readouterr().out.strip() == "op"
+
+    def test_a_field_with_a_command_is_refused(self):
+        with pytest.raises(SystemExit) as exc:
+            H.main(["clab", "--field", "lan", "--", "true"], probe=lambda a: True,
+                   runner=Runner())
+        assert exc.value.code == 2
+
+
+class TestTheUnitTemplates:
+    """deploy/systemd holds TEMPLATES since 2026-09-29 (the repository is
+    public); scripts/nmas-render-units fills them from the hosts file."""
+
+    R = SourceFileLoader("render_units", os.path.join(ROOT, "scripts", "nmas-render-units")).load_module()
+    UNITS = sorted(os.path.join(ROOT, "deploy", "systemd", f)
+                   for f in os.listdir(os.path.join(ROOT, "deploy", "systemd")))
+
+    def _hosts(self, tmp_path, monkeypatch, **nmas):
+        doc = dict(FAKE_HOSTS)
+        doc["nmas"] = {**FAKE_HOSTS["nmas"], **nmas}
+        path = tmp_path / "hosts.json"
+        path.write_text(json.dumps(doc))
+        monkeypatch.setenv(H.HOSTS_FILE_ENV, str(path))
+
+    def test_every_template_renders_with_nothing_left(self, tmp_path, monkeypatch):
+        self._hosts(tmp_path, monkeypatch, home="/srv/op", checkout="/srv/op/nmas")
+        out = tmp_path / "units"
+        assert self.R.main(["--out", str(out), *self.UNITS]) == 0
+        assert len(os.listdir(out)) == len(self.UNITS) >= 10
+        text = (out / "nmas-ztp-responder.service").read_text()
+        assert "User=op" in text and "ExecStart=/srv/op/nmas/scripts/nmas-ztp-responder" in text
+        assert "nmas-backup@192.0.2.80" in (out / "netbox-backup.env.example").read_text()
+        for f in out.iterdir():
+            assert not self.R.PLACEHOLDER.search(f.read_text()), f.name
+
+    def test_the_templates_carry_placeholders_not_a_host(self):
+        joined = "".join(open(u, encoding="utf-8").read() for u in self.UNITS)
+        assert "@NMAS_USER@" in joined and "@NMAS_CHECKOUT@" in joined
+
+    def test_a_missing_hosts_file_refuses_and_writes_nothing(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv(H.HOSTS_FILE_ENV, str(tmp_path / "absent.json"))
+        out = tmp_path / "units"
+        with pytest.raises(SystemExit) as exc:
+            self.R.main(["--out", str(out), *self.UNITS])
+        assert exc.value.code == 78 and not out.exists()
+        assert "absent.json does not exist" in capsys.readouterr().err
+
+    def test_a_value_it_cannot_establish_refuses_naming_the_placeholder(self, tmp_path, monkeypatch,
+                                                                        capsys):
+        self._hosts(tmp_path, monkeypatch, user="no-such-user-here")   # no home to find
+        out = tmp_path / "units"
+        rc = self.R.main(["--out", str(out), *self.UNITS])
+        assert rc == 78 and not out.exists()
+        assert "@NMAS_HOME@" in capsys.readouterr().err
+
+
+class TestTheSanitiserReadsTheHostsFile:
+    """oxidized-to-config.sh's host defaults, EXECUTED under bash: an unset
+    NMAS_URL is read through nmas-host, and a missing file refuses (exit 2,
+    the script's could-not-run code) naming it."""
+
+    def _block(self):
+        src = open(os.path.join(ROOT, "scripts", "oxidized-to-config.sh"), encoding="utf-8").read()
+        start = src.index("lab_value() {")
+        end = src.index('  NMAS_URL="http://$LAB_VALUE:5000"\nfi\n') + len('  NMAS_URL="http://$LAB_VALUE:5000"\nfi\n')
+        return src[start:end]
+
+    def _run(self, env):
+        script = (f'HERE={os.path.join(ROOT, "scripts")!r}\nNMAS_URL="${{NMAS_URL:-}}"\n'
+                  + self._block() + '\necho "URL=$NMAS_URL"\n')
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                              env={**os.environ, **env}, timeout=30)
+
+    def test_an_unset_url_is_read_from_the_file(self, _hosts_file):
+        out = self._run({H.HOSTS_FILE_ENV: str(_hosts_file)})
+        assert out.returncode == 0 and "URL=http://192.0.2.11:5000" in out.stdout, out
+
+    def test_a_missing_file_refuses_naming_it(self, tmp_path):
+        out = self._run({H.HOSTS_FILE_ENV: str(tmp_path / "absent.json")})
+        assert out.returncode == 2 and "REFUSED - NMAS_URL is not set" in out.stdout
+        assert "absent.json does not exist" in out.stdout
+        # Anchored: the refusal itself says "set NMAS_URL=", so a bare search
+        # for "URL=" matches the sentence explaining the refusal.
+        assert not [l for l in out.stdout.splitlines() if l.startswith("URL=")]
+
+    def test_an_explicit_url_wins_and_reads_nothing(self, tmp_path):
+        out = self._run({H.HOSTS_FILE_ENV: str(tmp_path / "absent.json"),
+                         "NMAS_URL": "http://192.0.2.99:5000"})
+        assert out.returncode == 0 and "URL=http://192.0.2.99:5000" in out.stdout
+
+
+class TestItReadsTheSuitesStoreNotTheCheckouts:
+    def test_the_data_directory_follows_nmas_data_dir(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(H.HOSTS_FILE_ENV, raising=False)
+        monkeypatch.setenv("NMAS_DATA_DIR", str(tmp_path))
+        assert H.hosts_path() == str(tmp_path / "lab_hosts.json")
+
+    def test_without_either_it_is_the_checkouts_data_directory(self, monkeypatch):
+        monkeypatch.delenv(H.HOSTS_FILE_ENV, raising=False)
+        monkeypatch.delenv("NMAS_DATA_DIR", raising=False)
+        assert H.hosts_path() == H.HOSTS_FILE

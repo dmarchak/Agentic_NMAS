@@ -673,22 +673,22 @@ class TestTheActorConventionIsWrittenDown:
         monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
 
         hostvars.write_committed(repo_dir, {"hostname": "s1", "interfaces": []})
-        plain = _repo.save_host_vars("lab", ["s1"], actor="dmarchak")
+        plain = _repo.save_host_vars("lab", ["s1"], actor="operator")
         assert plain["ok"], plain
 
         body = TestTheWritePathActuallyRuns._git(
             repo_dir, "log", "-1", "--format=%B")
-        assert "Actor: dmarchak" in body
+        assert "Actor: operator" in body
         assert "Tool:" not in body
         assert "Source: extraction" in body
 
         hostvars.write_committed(repo_dir, {
             "hostname": "s1", "interfaces": [{"name": "Gi0/1"}]})
-        tooled = _repo.save_host_vars("lab", ["s1"], actor="dmarchak",
+        tooled = _repo.save_host_vars("lab", ["s1"], actor="operator",
                                       tool="some_script", source="repair")
         assert tooled["ok"], tooled
         body = TestTheWritePathActuallyRuns._git(
             repo_dir, "log", "-1", "--format=%B")
-        assert "Actor: dmarchak" in body
+        assert "Actor: operator" in body
         assert "Tool: some_script" in body
         assert "Source: repair" in body

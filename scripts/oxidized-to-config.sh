@@ -16,7 +16,11 @@
 #     ./oxidized-to-config.sh --no-deploy    convert and diff only
 #     ./oxidized-to-config.sh --yes          skip the prompt (for cron)
 #     CLAB=user@host ./oxidized-to-config.sh
-#     NMAS_URL=http://10.0.0.211:5000 ./oxidized-to-config.sh
+#     NMAS_URL=http://<nmas-host>:5000 ./oxidized-to-config.sh
+#
+#   With neither set, both come from data/lab_hosts.json beside the NMAS
+#   checkout, through nmas-host (the repository is public, so the hosts'
+#   addresses are not in this file); a missing file REFUSES, exit 2.
 #
 # WHERE THE DEVICE LIST COMES FROM
 #   The NMAS, once, via nmas-clab-targets. It used to be SIX places encoding
@@ -106,9 +110,9 @@ REF="${REF:-HEAD}"
 # Whether CLAB was set in the environment, checked BEFORE the default is
 # applied: the map carries a host too, and an explicit CLAB= must still win.
 CLAB_FROM_ENV="${CLAB+yes}"
-CLAB="${CLAB:-dmarchak@10.0.0.210}"
+CLAB="${CLAB:-}"
 STAGE="/tmp/oxidized-staged"
-NMAS_URL="${NMAS_URL:-http://10.0.0.211:5000}"
+NMAS_URL="${NMAS_URL:-}"
 # HELPERS ARE RESOLVED BESIDE THIS SCRIPT, NEVER THROUGH PATH.
 #
 # Measured 2026-09-25: `~/bin/nmas-clab-targets` was on the operator's
@@ -128,7 +132,7 @@ FRESH="${FRESH:-$HERE/nmas-oxidized-freshness}"
 # The committer's identity, on EVERY commit this job makes (see the commit
 # step): used by the reconcile below as well as the per-lab commit.
 GIT_ID=(-c user.name=clab-sync -c user.email=clab-sync@nmas.invalid)
-for helper in "$TARGETS" "$FRESH"; do
+for helper in "$TARGETS" "$FRESH" "$HERE/nmas-host"; do
   if [ ! -x "$helper" ]; then
     echo "REFUSED - helper not found or not executable: $helper"
     echo "  (resolved beside this script, $SELF -- not through PATH, which"
@@ -136,6 +140,27 @@ for helper in "$TARGETS" "$FRESH"; do
     exit 2
   fi
 done
+# THE HOSTS ARE NOT IN THIS FILE (the operator, 2026-09-29: the repository
+# is public). An unset NMAS_URL or CLAB is read from data/lab_hosts.json
+# through nmas-host, beside this script, and a file that is missing or
+# unreadable REFUSES naming it: a guessed address is how a config lands on
+# the wrong machine. Not in a command substitution, so `exit` leaves the job.
+lab_value() {  # $1 host, $2 field, $3 the variable it stands in for -> LAB_VALUE
+  local out
+  if ! out="$("$HERE/nmas-host" "$1" --field "$2" 2>&1)"; then
+    echo "REFUSED - $3 is not set, and the lab hosts file could not be read:"
+    echo "  $out"
+    echo "  The hosts' addresses are kept out of the public repository, in"
+    echo "  data/lab_hosts.json beside the NMAS checkout. Create it, or set $3=."
+    exit 2
+  fi
+  LAB_VALUE="$out"
+}
+if [ -z "$NMAS_URL" ]; then
+  lab_value nmas lan NMAS_URL
+  NMAS_URL="http://$LAB_VALUE:5000"
+fi
+
 # The RAW configs, kept so the gate compares the exact bytes this run read.
 # Re-reading them for the gate would be a second `git show` and a second
 # chance for Oxidized to have polled in between - the gate would then approve
@@ -187,6 +212,11 @@ while IFS=$'\t' read -r n cfgdir lab clabhost platform oxnode; do
   LAB[$n]="$lab"
   [ -z "$CLAB_FROM_ENV" ] && [ -n "${clabhost:-}" ] && CLAB="$clabhost"
 done <<<"$map"
+# Only when neither the environment nor the map named the lab host.
+if [ -z "$CLAB" ]; then
+  lab_value clab user CLAB; clab_user="$LAB_VALUE"
+  lab_value clab lan CLAB; CLAB="$clab_user@$LAB_VALUE"
+fi
 
 [ ${#DEVICES[@]} -gt 0 ] || { echo "REFUSED - the map is empty. That is a fact about the answer, not about the fleet."; exit 2; }
 

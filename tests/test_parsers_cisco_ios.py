@@ -193,7 +193,7 @@ class TestIosXeSpecific:
     def test_acl_entries_are_ordered(self, r1):
         acl = r1["acls"][0]
         assert acl["name"] == "PROMETHEUS_SERVER"
-        assert acl["entries"] == ["10 permit 10.0.0.211"]
+        assert acl["entries"] == ["10 permit 192.0.2.211"]
 
     def test_pki_trustpoints_kept_certificates_stripped(self, r1):
         """Trustpoint config is renderable; the certificate body is not."""

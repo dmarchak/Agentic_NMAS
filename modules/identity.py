@@ -97,7 +97,7 @@ class Identity:
 
 
 #: Service actors are prefixed so no reader can mistake a Client ID for a
-#: person. `e367826f93b8….access` and `dustin@example.com` are both opaque
+#: person. `e367826f93b8….access` and `operator@example.com` are both opaque
 #: strings in a log line; only one of them is a human being.
 SERVICE_ACTOR_PREFIX = "service:"
 

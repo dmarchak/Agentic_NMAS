@@ -1,34 +1,30 @@
 """Nothing personal or installation-specific is published (2026-09-29).
 
-The repository is public. The documentation pass replaced the operator's
-email, the user name and home paths, the homelab's LAN addresses, the tunnel
-domain, the config repository's name, credential digests and chassis serials
-with placeholders (`<operator>`, `<user>`, `<home>`, `<nmas-host>`,
-`<lab-host>`, `<hypervisor>`, `<tunnel-host>`, `<laptop>`, `<LAN>`,
-`<domain>`, `<repo>`, `<account>`, `[Author]`, `<redacted>`). This keeps them
-out of what is written next.
+The repository is public, and the operator decided it stays public with its
+history unrewritten, so this check is the only thing between a future commit
+and the public record. The population is EVERY tracked text file: the docs,
+CLAUDE.md and README, and the program, its scripts, deploy templates, tests
+and fixtures (the operator: "so none of these can drift back").
 
-The population is every tracked file under `docs/`, plus `CLAUDE.md` and
-`README.md`. The rules are:
+The rules:
 
 - **an email address**, except a documentation domain (`example.com`,
   `.example`, `.invalid`, `.test`);
 - **a home directory** (`/home/<name>`, `C:/Users/<name>`), except a service
-  account's (`/home/nmas`, the install example), which names no person;
-- **an address in the homelab's `10.0.0.0/24`**. vrnetlab's internal
-  addresses share that /24 (`10.0.0.15`, `.2`, `.3`, the same inside every
-  container), so quoted device output would match. That is handled by a
-  PER-LINE exemption keyed on the line's content hash with its reason, never
-  by narrowing the pattern. An edited line loses its exemption and is read
-  again, and an exemption whose line is gone fails (no ghosts);
-- **a local denylist**, `data/publication_denylist.txt`, which is gitignored
-  (so the terms themselves are not published). It holds the name, the user
-  name, the domain and the redacted digests. Where the file is absent (CI, a
-  fresh clone), that one rule SKIPS and says so, because an absent list
+  account's (`/home/nmas`, the install example);
+- **an address in the homelab's /24**;
+- **a local denylist**, `data/publication_denylist.txt` (gitignored, so the
+  terms are not themselves published): the name, the user name, the domain,
+  the config repository's name and the redacted digests. Where the file is
+  absent (CI, a fresh clone), that rule SKIPS and says so: an absent list
   checks nothing and must not read as clean.
 
-An exemption covers the address rule only. The email, home and denylist rules
-still run on an exempt line.
+vrnetlab's internal addresses share the homelab's /24 (the same inside every
+container), so captured device output matches the address rule. That, and
+every other excused line, is `tests/publication_exemptions.py`: ONE LINE per
+entry, keyed on its content hash, with its reason and the rules it is excused
+from. The pattern is never narrowed; an edited line is read again; an entry
+whose line is gone fails (no ghosts).
 """
 
 import hashlib
@@ -48,34 +44,8 @@ HOME = re.compile(r"/home/(?!<)([A-Za-z_][\w.-]*)|[A-Za-z]:[\\/]+Users[\\/]+([^\
 SERVICE_HOMES = {"nmas"}
 LAN = re.compile(r"\b10\.0\.0\.\d{1,3}(?:/\d{1,2})?\b")
 
-VRNETLAB = "vrnetlab's internal address, the same inside every container: quoted device or NetBox output, not the homelab"
-# (path, sha256 of the stripped line [:12]) -> why the address on it is not the homelab's.
-ADDRESS_EXEMPT = {
-    ("docs/NSOT_WRITEUP.md", "65d73a3b391d"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "6ddf6399503e"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "83d4b9123c9f"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "25715794b34e"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "453247b4e56d"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "691ae00f5397"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "e65637a37ac0"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "c197b94492e2"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "3fe23aaf744c"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "5e27570dfa0f"): VRNETLAB,
-    ("docs/NSOT_WRITEUP_NOTES.md", "90a9938fc540"): VRNETLAB,
-    ("docs/OPEN_FINDINGS.md", "d61da30d6e24"): "the suite's fixture address, quoted from the app log",
-    ("docs/OPEN_FINDINGS.md", "22925f26679b"): "the suite's fixture address, quoted from the app log",
-    ("docs/OPEN_FINDINGS.md", "07623b5e97d7"): "a static route in r3's and r4's configs (10.0.0.0/8 to Null0)",
-    ("docs/OPEN_FINDINGS.md", "27d3c4ac05f6"): VRNETLAB,
-    ("docs/P6_ZTP_PROBE.md", "3b43d8de0cb6"): VRNETLAB + " (10.0.0.2 is its qemu gateway)",
-    ("docs/P6_ZTP_PROBE.md", "2f31694af734"): "vrnetlab's qemu DHCP resolver, inside the container",
-    ("docs/PHASE2_DHCP.md", "1dc599275d51"): VRNETLAB,
-    ("docs/PHASE2_DHCP.md", "eeb1506b2887"): VRNETLAB,
-    ("docs/R6_PHASE1.md", "2677c75621ed"): VRNETLAB,
-    ("CLAUDE.md", "a126bf59a559"): VRNETLAB,
-    ("CLAUDE.md", "41fddedeca84"): VRNETLAB,
-    ("CLAUDE.md", "78d35b5cb4c8"): VRNETLAB,
-    ("CLAUDE.md", "d70a0a321f4c"): VRNETLAB,
-}
+#: The rule names an exemption can excuse.
+RULES = ("email", "home", "address", "denylist")
 
 
 def line_key(line: str) -> str:
@@ -99,30 +69,41 @@ def _term_pattern(term: str):
     return re.compile(body, re.I)
 
 
-def scan(path: str, text: str, *, exempt=ADDRESS_EXEMPT, denylist=None):
-    """Findings in one file: (path, line number, rule, what). Pure."""
+def _excused(exempt, path, line, rule):
+    entry = exempt.get((path, line_key(line)))
+    return entry is not None and rule in entry[1]
+
+
+def scan(path: str, text: str, *, exempt=None, denylist=None):
+    """Findings in one file: (path, line number, rule, what). Pure.
+    *exempt* maps (path, line hash) -> (reason, rules excused)."""
+    exempt = {} if exempt is None else exempt
     terms = [(t, _term_pattern(t)) for t in (denylist or [])]
     found = []
     for n, line in enumerate(text.splitlines(), 1):
-        for m in EMAIL.finditer(line):
-            if not DOC_DOMAINS.search(m.group(1)):
-                found.append((path, n, "email", m.group(0)))
-        for m in HOME.finditer(line):
-            who = m.group(1) or m.group(2)
-            if who not in SERVICE_HOMES:
-                found.append((path, n, "home directory", m.group(0)))
-        if LAN.search(line) and (path, line_key(line)) not in exempt:
+        if not _excused(exempt, path, line, "email"):
+            for m in EMAIL.finditer(line):
+                if not DOC_DOMAINS.search(m.group(1)):
+                    found.append((path, n, "email", m.group(0)))
+        if not _excused(exempt, path, line, "home"):
+            for m in HOME.finditer(line):
+                if (m.group(1) or m.group(2)) not in SERVICE_HOMES:
+                    found.append((path, n, "home directory", m.group(0)))
+        if LAN.search(line) and not _excused(exempt, path, line, "address"):
             found.append((path, n, "homelab address (no exemption for this line: "
-                          f"{line_key(line)})", ", ".join(sorted(set(LAN.findall(line))))))
-        for term, rx in terms:
-            if rx.search(line):
-                found.append((path, n, "local denylist", term))
+                          f"{line_key(line)}; use a documentation address such as "
+                          "192.0.2.x, or exempt the line with its reason)",
+                          ", ".join(sorted(set(LAN.findall(line))))))
+        if not _excused(exempt, path, line, "denylist"):
+            for term, rx in terms:
+                if rx.search(line):
+                    found.append((path, n, "local denylist", term))
     return found
 
 
 def published_files():
-    out = subprocess.run(["git", "-C", ROOT, "ls-files", "docs", "CLAUDE.md", "README.md"],
-                         capture_output=True, text=True, check=True).stdout.split()
+    out = subprocess.run(["git", "-C", ROOT, "ls-files"], capture_output=True, text=True,
+                         check=True).stdout.split()
     texts = {}
     for rel in out:
         try:
@@ -136,67 +117,99 @@ def published_files():
 @pytest.fixture(scope="module")
 def files():
     texts = published_files()
-    # The floor: 59 text files on 2026-09-29. A scan of nothing passes everything.
-    assert len(texts) >= 50 and "CLAUDE.md" in texts and "docs/NSOT_WRITEUP.md" in texts
+    # The floor: every tracked text file, over 700 on 2026-09-29, from every
+    # tree the operator named. A scan of a subset passes what it did not read.
+    assert len(texts) >= 600
+    for must in ("CLAUDE.md", "docs/NSOT_WRITEUP.md", "tests/fixtures/configs/fleet/r1.cfg",
+                 "deploy/systemd/nmas-startup-check.service", "scripts/nmas-host", "app.py"):
+        assert must in texts, must
     return texts
 
 
+@pytest.fixture(scope="module")
+def exempt():
+    from tests.publication_exemptions import EXEMPT, REASONS
+
+    assert all(reason in REASONS and rules and set(rules) <= set(RULES)
+               for reason, rules in EXEMPT.values()), "an entry with no reason or no rule"
+    return EXEMPT
+
+
 class TestThePublishedFiles:
-    def test_no_email_home_or_homelab_address(self, files):
-        found = [f for p, t in files.items() for f in scan(p, t)]
+    def test_no_email_home_or_homelab_address(self, files, exempt):
+        found = [f for p, t in files.items() for f in scan(p, t, exempt=exempt)]
         assert not found, "\n".join(f"{p}:{n}: {rule}: {what}" for p, n, rule, what in found)
 
-    def test_no_term_on_the_local_denylist(self, files):
+    def test_no_term_on_the_local_denylist(self, files, exempt):
         terms = load_denylist()
         if terms is None:
             pytest.skip(f"{DENYLIST} is absent on this machine (it is local by design), "
                         "so the denylist rule checked NOTHING here; the other rules ran")
         assert len(terms) >= 5, "a denylist this short is not the one written 2026-09-29"
-        found = [f for p, t in files.items() for f in scan(p, t, denylist=terms)
+        found = [f for p, t in files.items() for f in scan(p, t, exempt=exempt, denylist=terms)
                  if f[2] == "local denylist"]
         assert not found, "\n".join(f"{p}:{n}: denylisted term {w!r}" for p, n, _, w in found)
 
-    def test_every_exemption_names_a_line_that_exists(self, files):
+    def test_every_exemption_names_a_line_that_exists(self, files, exempt):
         present = {(p, line_key(l)) for p, t in files.items() for l in t.splitlines()}
-        ghosts = sorted(set(ADDRESS_EXEMPT) - present)
+        ghosts = sorted(set(exempt) - present)
         assert not ghosts, f"exemptions whose line is gone or was edited (re-read it): {ghosts}"
 
     def test_the_local_files_are_not_tracked(self):
-        for path in (DENYLIST, LAB_HOSTS):
+        for path in (DENYLIST, LAB_HOSTS, os.path.join(ROOT, ".claude", "settings.local.json")):
             rc = subprocess.run(["git", "-C", ROOT, "check-ignore", "-q", path]).returncode
             assert rc == 0, f"{path} is not gitignored: committing it would publish it"
+
+    def test_no_real_host_address_is_exempted(self, files, exempt):
+        """An exemption is for what is NOT the homelab; the hosts' real
+        addresses, when the local file names them, are never excused."""
+        import json
+        if not os.path.exists(LAB_HOSTS):
+            pytest.skip(f"{LAB_HOSTS} is absent on this machine; nothing to compare")
+        with open(LAB_HOSTS, encoding="utf-8") as fh:
+            real = {e["lan"] for k, e in json.load(fh).items() if not k.startswith("_")}
+        excused = [(p, n) for p, t in files.items()
+                   for n, l in enumerate(t.splitlines(), 1)
+                   if (p, line_key(l)) in exempt
+                   and any(re.search(rf"\b{re.escape(a)}\b", l) for a in real)]
+        assert not excused, excused
 
 
 class TestTheScanCanFail:
     """Controls: each rule is shown finding a planted case, and not finding
     the forms it deliberately allows."""
 
+    PLANTED_EMAIL = "someone.real" + "@mail-provider.net"
+    PLANTED_ADDRESS = "10.0.0" + ".15"
+
     def test_a_planted_email_is_found(self):
-        (f,) = scan("docs/x.md", "Actor: someone.real@mail-provider.net")
-        assert f[2] == "email" and f[3] == "someone.real@mail-provider.net"
+        (f,) = scan("docs/x.md", "Actor: " + self.PLANTED_EMAIL)
+        assert f[2] == "email" and f[3] == self.PLANTED_EMAIL
 
     def test_a_documentation_email_is_not(self):
         assert scan("docs/x.md", "forged@example.com and a@b.invalid") == []
 
     def test_a_home_directory_is_found_and_a_placeholder_or_service_home_is_not(self):
-        assert [f[3] for f in scan("docs/x.md", "cd /home/alice/labs")] == ["/home/alice"]
-        assert [f[2] for f in scan("docs/x.md", r"C:\Users\alice\x")] == ["home directory"]
+        who = "ali" + "ce"
+        assert [f[3] for f in scan("docs/x.md", f"cd /home/{who}/labs")] == [f"/home/{who}"]
+        assert [f[2] for f in scan("docs/x.md", "C:\\Users\\" + who + "\\x")] == ["home directory"]
         assert scan("docs/x.md", "cd <home>/labs; /home/<user>; /home/nmas/app") == []
 
     def test_a_homelab_address_is_found_unless_its_line_is_exempt(self):
-        line = "ip address 10.0.0.15 255.255.255.0"
-        assert [f[3] for f in scan("docs/x.md", line, exempt={})] == ["10.0.0.15"]
-        assert scan("docs/x.md", line, exempt={("docs/x.md", line_key(line)): "why"}) == []
+        line = f"ip address {self.PLANTED_ADDRESS} 255.255.255.0"
+        assert [f[3] for f in scan("docs/x.md", line)] == [self.PLANTED_ADDRESS]
+        ex = {("docs/x.md", line_key(line)): ("VRNETLAB", ("address",))}
+        assert scan("docs/x.md", line, exempt=ex) == []
 
     def test_an_exemption_covers_one_line_in_one_file_only(self):
-        line = "ip address 10.0.0.15 255.255.255.0"
-        ex = {("docs/x.md", line_key(line)): "why"}
+        line = f"ip address {self.PLANTED_ADDRESS} 255.255.255.0"
+        ex = {("docs/x.md", line_key(line)): ("VRNETLAB", ("address",))}
         assert scan("docs/y.md", line, exempt=ex), "another file is not exempt"
         assert scan("docs/x.md", line + " edited", exempt=ex), "an edited line is read again"
 
-    def test_an_exemption_covers_the_address_rule_only(self):
-        line = "10.0.0.15 seen by someone.real@mail-provider.net"
-        ex = {("docs/x.md", line_key(line)): "why"}
+    def test_an_exemption_covers_only_the_rules_it_names(self):
+        line = f"{self.PLANTED_ADDRESS} seen by {self.PLANTED_EMAIL}"
+        ex = {("docs/x.md", line_key(line)): ("VRNETLAB", ("address",))}
         assert [f[2] for f in scan("docs/x.md", line, exempt=ex)] == ["email"]
 
     def test_a_denylisted_term_is_found_as_a_word(self, tmp_path):

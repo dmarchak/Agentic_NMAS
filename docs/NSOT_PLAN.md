@@ -2201,7 +2201,8 @@ the confirmed path.
    ```
    scripts/nmas-heartbeat-rules --datasource-uid <loki-uid> --loki-url http://127.0.0.1:3100
    sudo install -m 0644 deploy/grafana/provisioning/alerting/nmas-heartbeat.yaml /etc/grafana/provisioning/alerting/
-   sudo install -m 0644 deploy/systemd/nmas-heartbeat-check.* /etc/systemd/system/
+   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-heartbeat-check.*
+   sudo install -m 0644 /tmp/nmas-units/nmas-heartbeat-check.* /etc/systemd/system/
    sudo systemctl daemon-reload && sudo systemctl enable --now nmas-heartbeat-check.timer
    ```
    Then reload Grafana's provisioning.

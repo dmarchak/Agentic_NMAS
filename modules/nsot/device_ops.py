@@ -14,7 +14,7 @@ So anything that changes a device, or the record of one, holds that device
 from its apply to its commit: deploy, restore, capture, credential rotation,
 onboarding's second phase, persisting a device's startup config, and
 retirement. A second operation is REFUSED, never queued, and the refusal
-names the holder: *"r2 is being restored by dustnm@gmail.com, started
+names the holder: *"r2 is being restored by operator@example.com, started
 18:52:49 UTC"* is a refusal a person can act on. A queue would do the second
 change later against a state its confirm never saw.
 

@@ -528,18 +528,18 @@ class TestTheBlockIsContainmentNotEquality:
     # (c) ------------------------------------------------------------------
     def test_an_explicit_retry_lifts_the_block(self, lab):
         repo, hv, _R, _note = lab
-        result = hv.authorise_retry(repo, "s4", actor="dustin",
+        result = hv.authorise_retry(repo, "s4", actor="operator",
                                     reason="link confirmed unused")
         assert result["ok"] is True
         assert hv.rolled_back_note(repo, "s4", self.FAILED) is None
 
     def test_the_retry_is_recorded(self, lab):
         repo, hv, _R, _note = lab
-        hv.authorise_retry(repo, "s4", actor="dustin", reason="link confirmed unused")
+        hv.authorise_retry(repo, "s4", actor="operator", reason="link confirmed unused")
         entries = hv.retry_log(repo)
         assert len(entries) == 1
         assert entries[0]["device"] == "s4"
-        assert entries[0]["actor"] == "dustin"
+        assert entries[0]["actor"] == "operator"
         assert entries[0]["reason"] == "link confirmed unused"
         assert entries[0]["note"]["commands"] == self.FAILED
 

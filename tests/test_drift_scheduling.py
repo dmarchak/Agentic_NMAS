@@ -125,8 +125,8 @@ class TestSilenceSaysWhenAndWhoAndWhat:
 
     def test_disabling_records_the_actor(self, lists):
         d = lists["module"]
-        d.set_disabled(True, actor="dustin@example.com")
-        assert d._load_state()["disabled_by"] == "dustin@example.com"
+        d.set_disabled(True, actor="operator@example.com")
+        assert d._load_state()["disabled_by"] == "operator@example.com"
 
     def test_re_enabling_clears_the_note(self, lists):
         d = lists["module"]
@@ -165,9 +165,9 @@ class TestStatusDistinguishesOffFromIdle:
 
     def test_the_status_carries_the_disabling_note(self, lists):
         d = lists["module"]
-        d.set_disabled(True, actor="dustin@example.com")
+        d.set_disabled(True, actor="operator@example.com")
         s = d.DriftChecker().status()
-        assert s["disabled_by"] == "dustin@example.com"
+        assert s["disabled_by"] == "operator@example.com"
         assert s["disabled_at"]
 
 

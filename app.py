@@ -1,4 +1,4 @@
-# Dustin Marchak
+# [Author]
 # Agentic Network Management
 # Device Manager web application
 

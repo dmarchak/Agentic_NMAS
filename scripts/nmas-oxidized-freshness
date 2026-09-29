@@ -5,7 +5,7 @@ For the sanitiser (`oxidized-to-config.sh`) to call **before it writes a
 startup config**. A redeploy replays that file, so whatever Oxidized last
 polled is what the device boots with next — approved or not.
 
-    nmas-oxidized-freshness --url http://10.0.0.211:5000 --raw-dir /tmp/raw
+    nmas-oxidized-freshness --url http://<nmas-host>:5000 --raw-dir /tmp/raw
     nmas-oxidized-freshness --url ... --report          # the signal, no write
 
 ## WHAT IT SENDS, AND WHY IT IS THE RAW CONFIG

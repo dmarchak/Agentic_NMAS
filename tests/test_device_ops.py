@@ -41,7 +41,7 @@ def no_hold_survives_a_test():
 class Holder:
     """Holds a device from ANOTHER thread, as a concurrent request would."""
 
-    def __init__(self, list_name, host, operation="restore", actor="dustnm@gmail.com",
+    def __init__(self, list_name, host, operation="restore", actor="operator@example.com",
                  detail="re-apply baseline/20260925T201032Z"):
         self.args = (list_name, host, operation, actor, detail)
         self.held, self.done = threading.Event(), threading.Event()
@@ -68,7 +68,7 @@ class TestTheLock:
             with pytest.raises(D.DeviceBusy) as exc:
                 D.acquire("Lab", "r2", "deploy", "someone@example.invalid")
         msg = str(exc.value)
-        assert re.match(r"r2 is being restored by dustnm@gmail\.com, started "
+        assert re.match(r"r2 is being restored by operator@example\.com, started "
                         r"\d\d:\d\d:\d\d UTC \(re-apply baseline/20260925T201032Z\)", msg), msg
         assert "refused, not queued" in msg and "nothing was sent" in msg
 
@@ -149,7 +149,7 @@ class TestEveryChangingPathHoldsIt:
         assert ran == []
         row = next(r for r in body["results"] if r["device"] == "s4")
         assert row["outcome"] == "refused"
-        assert "s4 is being restored by dustnm@gmail.com" in row["reason"]
+        assert "s4 is being restored by operator@example.com" in row["reason"]
         assert D.holder("Default", "s4") is None
 
     def test_a_restore_of_a_held_device_is_refused_and_released_after(self, monkeypatch):

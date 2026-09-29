@@ -111,7 +111,7 @@ class TestTemplateCrud:
 class TestApprovalGate:
     def test_approves_when_every_bound_device_passes(self, repo):
         result = approval.approve(repo, "cisco_ios/base.j2",
-                                  _devices(["s1", "s2", "s3"]), actor="dustin")
+                                  _devices(["s1", "s2", "s3"]), actor="operator")
         assert result["ok"], result.get("error")
         assert result["validation"]["device_count"] == 3
 
@@ -128,7 +128,7 @@ class TestApprovalGate:
         so it is evidence here, not a veto over s1 and s2."""
         devices = _devices(["s1", "s2", "s3"])
         devices[2]["running_config"] += "\nsome construct no template models 42\n"
-        result = approval.approve(repo, "cisco_ios/base.j2", devices, actor="dustin")
+        result = approval.approve(repo, "cisco_ios/base.j2", devices, actor="operator")
         assert result["ok"], result.get("error")
         evidence = result["evidence"]
         assert evidence["validated"] == ["s1", "s2"]
@@ -140,7 +140,7 @@ class TestApprovalGate:
         """A bound device with no capture (a pending onboarding) used to keep
         its whole platform unapprovable (D2)."""
         result = approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]),
-                                  actor="dustin",
+                                  actor="operator",
                                   not_validated=[{"device": "s9", "reason": "no captured config yet"}])
         assert result["ok"]
         assert result["evidence"]["not_validated"] == [
@@ -230,7 +230,7 @@ class TestFingerprintSchemeMigration:
         current = approval.template_fingerprint(repo, "cisco_ios/base.j2")
         return {**current, "scheme": 2, "devices": ["s1", "s2", "s3"],
                 "device_identities": ["uid:s1", "uid:s2", "uid:s3"],
-                "approved_at": "2026-09-20T00:00:00Z", "actor": "dustin"}
+                "approved_at": "2026-09-20T00:00:00Z", "actor": "operator"}
 
     def test_a_scheme_2_record_is_not_valid_under_3(self, repo):
         approval._save(repo, {"cisco_ios/base.j2": self._scheme2(repo)})
@@ -252,7 +252,7 @@ class TestFingerprintSchemeMigration:
     def test_re_approving_writes_the_current_scheme(self, repo):
         approval._save(repo, {"cisco_ios/base.j2": self._scheme2(repo)})
         result = approval.approve(repo, "cisco_ios/base.j2",
-                                  _devices(["s1", "s2", "s3"]), actor="dustin")
+                                  _devices(["s1", "s2", "s3"]), actor="operator")
         assert result["ok"] is True
         assert approval._load(repo)["cisco_ios/base.j2"]["scheme"] == 3
         assert approval.is_approved(repo, "cisco_ios/base.j2")
@@ -485,7 +485,7 @@ class TestRevocationIsARecordedFinding:
         approval._save(repo, {rel: {
             "fingerprint": "abc123", "scheme": approval.FINGERPRINT_SCHEME,
             "template_hash": "t", "evidence": {"validated": ["s1", "s2"]},
-            "approved_at": "2026-09-20T00:00:00Z", "actor": "dustin"}})
+            "approved_at": "2026-09-20T00:00:00Z", "actor": "operator"}})
         return repo, rel
 
     def test_a_revocation_requires_a_reason(self, tmp_path):
@@ -502,16 +502,16 @@ class TestRevocationIsARecordedFinding:
         from modules.nsot import approval
         repo, rel = self._approved_repo(tmp_path)
 
-        approval.revoke(repo, rel, reason=self.REASON, actor="dustin")
+        approval.revoke(repo, rel, reason=self.REASON, actor="operator")
         record = approval._load(repo)[rel]
 
         assert record["revoked"] is True
         assert record["reason"] == self.REASON
-        assert record["actor"] == "dustin"
+        assert record["actor"] == "operator"
         assert record["revoked_at"]
         # What was withdrawn, not merely that something was.
         assert record["previous_fingerprint"] == "abc123"
-        assert record["previously_approved_by"] == "dustin"
+        assert record["previously_approved_by"] == "operator"
         assert record["previous_evidence"] == {"validated": ["s1", "s2"]}
 
     def test_a_revoked_template_is_not_approved(self, tmp_path):
@@ -549,13 +549,13 @@ class TestRevocationIsARecordedFinding:
     def test_status_reports_the_revocation_and_its_reason(self, tmp_path):
         from modules.nsot import approval
         repo, rel = self._approved_repo(tmp_path)
-        approval.revoke(repo, rel, reason=self.REASON, actor="dustin")
+        approval.revoke(repo, rel, reason=self.REASON, actor="operator")
 
         status = approval.approval_status(repo, rel, {})
         assert status["approved"] is False
         assert status["revoked"] is True
         assert self.REASON in status["reason"]
-        assert status["actor"] == "dustin"
+        assert status["actor"] == "operator"
 
     def test_re_approving_clears_the_tombstone(self, tmp_path, monkeypatch):
         """Revocation blocks until re-validation passes — not for ever."""
@@ -569,7 +569,7 @@ class TestRevocationIsARecordedFinding:
         monkeypatch.setattr(approval, "template_fingerprint",
                             lambda *a, **k: {"fingerprint": "new", "template_hash": "t",
                                              "scheme": approval.FINGERPRINT_SCHEME})
-        result = approval.approve(repo, rel, [{"device": "s1"}], actor="dustin")
+        result = approval.approve(repo, rel, [{"device": "s1"}], actor="operator")
 
         assert result["ok"] is True
         assert approval._load(repo)[rel].get("revoked") is None
@@ -717,7 +717,7 @@ class TestOnboardingNoLongerRevokesItsPlatformsApproval:
         os.makedirs(repo)
         templates_repo.seed_templates(repo)
         manifest.upsert_device(repo, "uid:s1", "s1", "203.0.113.21", platform="cisco-ios")
-        approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]), actor="dustin")
+        approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]), actor="operator")
         assert approval.is_approved(repo, "cisco_ios/base.j2")
         manifest.upsert_device(repo, "uid:new", "brand-new", "203.0.113.99",
                                platform="cisco-ios")

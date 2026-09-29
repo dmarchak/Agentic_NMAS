@@ -11,6 +11,7 @@ them is a check that silently did not run.
 """
 
 import errno
+import json
 import os
 import re
 import socket
@@ -134,7 +135,10 @@ class TestTheRunner:
 
 
 #: The C46 address: the live NMAS, which on the deployment host is the host itself.
-LIVE_NMAS = ("10.0.0.211", 5000)
+#: A documentation address since 2026-09-29 (the repository is public, and the
+#: real one lives in data/lab_hosts.json): the guard refuses EVERY non-loopback
+#: connect, so what it proves does not depend on which address is asked.
+LIVE_NMAS = ("192.0.2.211", 5000)
 
 
 class TestEveryProcessATestStarts:
@@ -151,7 +155,7 @@ class TestEveryProcessATestStarts:
                              env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent"}, timeout=30)
         assert out.stdout.startswith("REFUSED") and "test harness refused" in out.stdout, out
         tried = guard.take()
-        assert len(tried) == 1 and "10.0.0.211" in tried[0], tried
+        assert len(tried) == 1 and "192.0.2.211" in tried[0], tried
 
     def test_a_name_is_not_resolved_in_a_child(self):
         guard = network_guard.spawn_guard()
@@ -220,13 +224,21 @@ class TestEveryProcessATestStarts:
         script = os.path.join(ROOT, "scripts", "oxidized-to-config.sh")
         link = tmp_path / "oxidized-to-config.sh"
         link.symlink_to(script)
+        # The sanitiser has no host default since 2026-09-29: an unset NMAS_URL
+        # comes from the hosts file, so the test gives it one naming LIVE_NMAS.
+        # With no file it would refuse before asking anything, and this case
+        # would pass without reaching the guard.
+        hosts = tmp_path / "lab_hosts.json"
+        hosts.write_text(json.dumps({"nmas": {"user": "op", "lan": LIVE_NMAS[0],
+                                              "tunnel": "ssh-nmas.example.net"}}))
         out = subprocess.run(["bash", str(link), "--yes"], capture_output=True, text=True,
                              env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
-                                  "REPO": str(tmp_path / "none")},
+                                  "REPO": str(tmp_path / "none"),
+                                  "NMAS_LAB_HOSTS": str(hosts)},
                              cwd=str(tmp_path), timeout=60)
         assert "the NMAS could not be asked" in out.stdout, out.stdout
         tried = network_guard.spawn_guard().take()
-        assert any("10.0.0.211" in t for t in tried), tried
+        assert any("192.0.2.211" in t for t in tried), tried
 
     def test_the_wrapper_saw_the_suites_spawns(self):
         """Floor: a wrapper that is not on the spawn path counts nothing."""
@@ -244,7 +256,7 @@ class TestAnAttemptFailsTheTestThatMadeIt:
             "import subprocess, sys\n"
             "def test_swallows_its_childs_error():\n"
             "    subprocess.run([sys.executable, '-c', 'import socket; s=socket.socket()\\n"
-            "try:\\n    s.connect((\\'10.0.0.211\\', 5000))\\nexcept OSError: pass'])\n")
+            "try:\\n    s.connect((\\'192.0.2.211\\', 5000))\\nexcept OSError: pass'])\n")
         env = {k: v for k, v in os.environ.items() if k != "NMAS_TEST_STORE_OWNER"}
         env["PYTHONPATH"] = ROOT
         done = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
@@ -252,7 +264,7 @@ class TestAnAttemptFailsTheTestThatMadeIt:
                               capture_output=True, text=True, cwd=ROOT, env=env, timeout=120)
         network_guard.spawn_guard().take()
         assert done.returncode == 1, done.stdout[-1500:]
-        assert "did something no test may do" in done.stdout and "10.0.0.211" in done.stdout, done.stdout[-1500:]
+        assert "did something no test may do" in done.stdout and "192.0.2.211" in done.stdout, done.stdout[-1500:]
 
 
 def test_a_run_through_the_runner_writes_no_bytecode():

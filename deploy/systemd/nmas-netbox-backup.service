@@ -1,6 +1,10 @@
+# TEMPLATE (2026-09-29): the repository is public, so the host's user and paths
+# are placeholders. Render it, never copy it:
 # NSOT_PLAN.md P.2 -- installed as a SYSTEM unit (no linger needed).
-#   sudo install -m 0644 deploy/systemd/nmas-netbox-backup.* /etc/systemd/system/
-#   sudo install -m 0644 deploy/systemd/nmas-netbox-restore-test.* /etc/systemd/system/
+#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-netbox-backup.*
+#   sudo install -m 0644 /tmp/nmas-units/nmas-netbox-backup.* /etc/systemd/system/
+#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-netbox-restore-test.*
+#   sudo install -m 0644 /tmp/nmas-units/nmas-netbox-restore-test.* /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now nmas-netbox-backup.timer nmas-netbox-restore-test.timer
 [Unit]
@@ -11,13 +15,13 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-User=dmarchak
-Group=dmarchak
+User=@NMAS_USER@
+Group=@NMAS_USER@
 SupplementaryGroups=docker
 UMask=0077
 StateDirectory=nmas-netbox
 StateDirectoryMode=0700
 EnvironmentFile=/etc/nmas/netbox-backup.env
-ExecStart=/home/dmarchak/python/Agentic_NMAS/scripts/nmas-netbox-backup
+ExecStart=@NMAS_CHECKOUT@/scripts/nmas-netbox-backup
 Nice=10
 TimeoutStartSec=30min

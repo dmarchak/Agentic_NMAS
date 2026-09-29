@@ -7,7 +7,7 @@ the two come to disagree**, and here the disagreement is invisible until a
 reboot: the file lands somewhere plausible either way, and the device comes
 back on whatever that directory held.
 
-    nmas-clab-targets --url http://10.0.0.211:5000
+    nmas-clab-targets --url http://<nmas-host>:5000
         -> hostname<TAB>configs_dir<TAB>lab<TAB>host<TAB>platform<TAB>oxidized_node
     nmas-clab-targets --url ... --device r6          # one line, or exit 3
     nmas-clab-targets --url ... --stray labs/lab/configs

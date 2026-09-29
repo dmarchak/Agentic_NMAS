@@ -3,6 +3,7 @@
 
     nmas-host <nmas|clab|pve> -- <command ...>     run a command on the host
     nmas-host <nmas|clab|pve> --target             print user@address for scp/rsync
+    nmas-host <nmas|clab|pve> --field <user|lan|tunnel>   print one value, asking nothing
 
 The ONE place the choice between the two paths is made (the operator,
 2026-09-29): two ways of reaching one machine, decided per command, is the
@@ -79,7 +80,14 @@ class HostsUnavailable(Exception):
 
 
 def hosts_path() -> str:
-    return os.environ.get(HOSTS_FILE_ENV) or HOSTS_FILE
+    """NMAS_LAB_HOSTS, else the data directory's file. The data directory is
+    `NMAS_DATA_DIR` when set, as for the program (`config.DATA_DIR`), so a
+    process the suite starts reads the suite's store and never this
+    checkout's real hosts (2026-09-29: the C46 test's sanitiser read them)."""
+    if os.environ.get(HOSTS_FILE_ENV):
+        return os.environ[HOSTS_FILE_ENV]
+    data = os.environ.get("NMAS_DATA_DIR")
+    return os.path.join(data, "lab_hosts.json") if data else HOSTS_FILE
 
 
 def load_hosts(path: str = "") -> dict:
@@ -160,8 +168,16 @@ def main(argv=None, *, probe=lan_answers, runner=run_ssh) -> int:
     ap.add_argument("host", choices=sorted(hosts))
     ap.add_argument("--target", action="store_true",
                     help="print user@address for scp/rsync and exit")
+    ap.add_argument("--field", choices=("user", "lan", "tunnel"),
+                    help="print one value from the hosts file and exit; nothing is probed. "
+                         "For scripts on a host that must not carry the address themselves")
     args = ap.parse_args(head)
 
+    if args.field:
+        if command or args.target:
+            ap.error("--field prints one value; it runs nothing and takes no --target")
+        print(dict(zip(("user", "lan", "tunnel"), hosts[args.host]))[args.field])
+        return 0
     if args.target and command:
         ap.error("--target prints the address; it runs nothing")
     if not args.target and not command:

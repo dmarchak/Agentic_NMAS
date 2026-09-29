@@ -154,7 +154,7 @@ class TestTheBadgeSaysWhatItCoversAndWhatItDoesNot:
         devices = [{"device": n, "platform": "cisco_ios",
                     "running_config": read_shipped(os.path.join(fleet, f"{n}.cfg"))} for n in ("s1", "s2")]
         devices[1]["running_config"] += "\nsome construct no template models 42\n"
-        approval.approve(repo, "cisco_ios/base.j2", devices, actor="dustin@example.invalid")
+        approval.approve(repo, "cisco_ios/base.j2", devices, actor="operator@example.invalid")
         monkeypatch.setattr(troutes, "_active_list", lambda *a: "Lab")
         monkeypatch.setattr(troutes, "_repo_for", lambda *_a: repo)
         monkeypatch.setattr(troutes, "_captured_golden", lambda *a, **k: (None, None))
@@ -167,7 +167,7 @@ class TestTheBadgeSaysWhatItCoversAndWhatItDoesNot:
         assert "covers the template itself" in html
         assert "blocked there alone" in html
         assert "validated on 1 of 2 bound device(s)" in html and "s2 did not round-trip" in html
-        assert "dustin@example.invalid" in html
+        assert "operator@example.invalid" in html
 
     def test_the_footnote_no_longer_states_the_scheme_2_rule(self):
         from tests.js_source import read_shipped

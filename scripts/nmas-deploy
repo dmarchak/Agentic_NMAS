@@ -116,7 +116,7 @@ def git(repo, *args, check=True):
 # ---------------------------------------------------------------------------
 
 def slug_of(remote_url):
-    """`github-nmas:dmarchak/Agentic_NMAS.git`, `git@github.com:o/r.git` or
+    """`github-nmas:<account>/Agentic_NMAS.git`, `git@github.com:o/r.git` or
     `https://github.com/o/r` -> `o/r`."""
     m = re.search(r"[:/]([^/:]+)/([^/]+?)(?:\.git)?/?$", remote_url.strip())
     if not m:

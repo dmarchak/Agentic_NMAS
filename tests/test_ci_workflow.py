@@ -73,7 +73,7 @@ def test_it_can_reach_no_other_repository(path):
     strings = list(_strings(doc))
     assert len(strings) >= 20, len(strings)
     assert not [t for t in strings if "secrets." in t], "a secret is how a workflow reaches another repository"
-    assert not [t for t in strings if "rcn-nsot-config" in t]
+    assert not [t for t in strings if "nsot-config" in t], "the config repository is never named"
     for key, _value in _walk(doc):
         assert key not in ("repository", "token", "ssh-key"), key
     for step in _steps(doc):

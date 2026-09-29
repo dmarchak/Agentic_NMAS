@@ -1,7 +1,7 @@
 # CI for the APP repository only (NSOT_CI.md, P.4 step 3).
 #
 # It checks out THIS repository and nothing else. The config repository
-# (rcn-nsot-config) holds plaintext device secrets by design and is never
+# (<repo>) holds plaintext device secrets by design and is never
 # read here: no `repository:` input, no secrets, read-only token, and
 # tests/test_ci_workflow.py fails on any of those. Actions are also disabled
 # in the config repository's own settings, as a second, independent layer.

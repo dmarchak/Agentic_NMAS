@@ -24,7 +24,7 @@ from modules import identity
 
 TEAM = "example-team.cloudflareaccess.com"
 AUD = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-TUNNEL = "10.0.0.21"
+TUNNEL = "192.0.2.21"
 
 
 @pytest.fixture(scope="module")
@@ -80,7 +80,7 @@ def _token(private, **overrides):
     import jwt
 
     now = int(time.time())
-    claims = {"aud": AUD, "iss": f"https://{TEAM}", "email": "dustin@example.com",
+    claims = {"aud": AUD, "iss": f"https://{TEAM}", "email": "operator@example.com",
               "iat": now, "exp": now + 600, "sub": "abc123"}
     claims.update(overrides)
     return jwt.encode(claims, private, algorithm="RS256")
@@ -115,8 +115,8 @@ class TestTheEmailHeaderIsNotEvidence:
         ident = identity.identify(
             _Req(token=_token(private), email_header="attacker@evil.example"))
 
-        assert ident.email == "dustin@example.com"
-        assert ident.actor == "dustin@example.com"
+        assert ident.email == "operator@example.com"
+        assert ident.actor == "operator@example.com"
 
 
 class TestAssertionValidation:
@@ -126,7 +126,7 @@ class TestAssertionValidation:
 
         assert ident.is_identified is True
         assert ident.outcome == "ok"
-        assert ident.actor == "dustin@example.com"
+        assert ident.actor == "operator@example.com"
 
     def test_the_wrong_audience_is_refused(self, configured, keys):
         """The AUD tag is what binds a token to THIS application."""
@@ -190,7 +190,7 @@ class TestThePeerCheckIsIndependent:
     def test_a_valid_assertion_from_an_untrusted_peer_does_not_identify(
             self, configured, keys):
         private, _ = keys
-        ident = identity.identify(_Req(token=_token(private), peer="10.0.0.30"))
+        ident = identity.identify(_Req(token=_token(private), peer="192.0.2.30"))
 
         assert ident.verified is True          # the token really is valid
         assert ident.peer_trusted is False
@@ -201,11 +201,11 @@ class TestThePeerCheckIsIndependent:
 
     def test_the_peer_comes_from_the_socket_not_a_forwarded_header(self, configured):
         """X-Forwarded-For is written by whoever is talking to us."""
-        request = _Req(peer="10.0.0.30")
+        request = _Req(peer="192.0.2.30")
         request.headers["X-Forwarded-For"] = TUNNEL
         request.headers["X-Real-IP"] = TUNNEL
 
-        assert identity.peer_address(request) == "10.0.0.30"
+        assert identity.peer_address(request) == "192.0.2.30"
 
     def test_an_empty_trusted_list_REFUSES(self, configured, keys, monkeypatch):
         """This test previously asserted the opposite, and pinned a fail-open.
@@ -235,7 +235,7 @@ class TestThePeerCheckIsIndependent:
         base = dict(configured, cf_access_trusted_peers="")
         monkeypatch.setattr(identity, "_setting",
                             lambda key, default=None: base.get(key, default))
-        ident = identity.identify(_Req(token=_token(private), peer="10.0.0.30"))
+        ident = identity.identify(_Req(token=_token(private), peer="192.0.2.30"))
 
         assert ident.is_identified is False
         assert ident.outcome == "not_configured"
@@ -302,7 +302,7 @@ class TestFailClosedAndHonestMessages:
         private, _ = keys
         ident, refusal = identity.require(_Req(token=_token(private)), "reveal")
         assert refusal is None
-        assert ident.actor == "dustin@example.com"
+        assert ident.actor == "operator@example.com"
 
     def test_approve_is_gated_by_default(self, configured):
         """Changed deliberately: approve puts configuration on a device."""
@@ -335,18 +335,18 @@ class TestNothingLogsAValue:
         token = _token(private)
         with caplog.at_level(logging.DEBUG):
             identity.identify(_Req(token=token))
-            identity.identify(_Req(token=token, peer="10.0.0.30"))
-            identity.identify(_Req(email_header="dustin@example.com"))
+            identity.identify(_Req(token=token, peer="192.0.2.30"))
+            identity.identify(_Req(email_header="operator@example.com"))
 
         logged = "\n".join(r.getMessage() for r in caplog.records)
-        assert "dustin@example.com" not in logged
+        assert "operator@example.com" not in logged
         assert token not in logged
         assert token[:40] not in logged
 
     def test_the_audit_row_carries_no_email(self, configured, keys):
         private, _ = keys
         row = identity.identify(_Req(token=_token(private))).audit()
-        assert row["actor"] == "dustin@example.com"      # the actor IS the point
+        assert row["actor"] == "operator@example.com"      # the actor IS the point
         assert "email" not in row                         # but not twice over
         assert set(row) == {"actor", "kind", "verified", "outcome", "peer",
                             "peer_trusted"}
@@ -442,7 +442,7 @@ class TestTheStatusRoute:
         assert body["verified"] is True
         assert body["peer_trusted"] is True
         assert body["is_identified"] is True
-        assert body["email"] == "dustin@example.com"
+        assert body["email"] == "operator@example.com"
         assert body["outcome"] == "ok"
 
     def test_it_distinguishes_which_headers_survived_the_tunnel(self, client, keys):
@@ -450,7 +450,7 @@ class TestTheStatusRoute:
         private, _ = keys
         response = client.get(
             "/identity/status",
-            headers={identity.EMAIL_HEADER: "dustin@example.com"},
+            headers={identity.EMAIL_HEADER: "operator@example.com"},
             environ_base={"REMOTE_ADDR": TUNNEL})
 
         seen = response.get_json()["headers_seen"]
@@ -478,11 +478,11 @@ class TestTheStatusRoute:
         with caplog.at_level(logging.DEBUG):
             client.get("/identity/status",
                        headers={identity.JWT_HEADER: token,
-                                identity.EMAIL_HEADER: "dustin@example.com"},
+                                identity.EMAIL_HEADER: "operator@example.com"},
                        environ_base={"REMOTE_ADDR": TUNNEL})
 
         logged = "\n".join(r.getMessage() for r in caplog.records)
-        assert "dustin@example.com" not in logged
+        assert "operator@example.com" not in logged
         assert token[:40] not in logged
 
     def test_an_untrusted_peer_sees_the_refusal_not_the_email(self, client, keys):
@@ -490,7 +490,7 @@ class TestTheStatusRoute:
         response = client.get(
             "/identity/status",
             headers={identity.JWT_HEADER: _token(private)},
-            environ_base={"REMOTE_ADDR": "10.0.0.30"})
+            environ_base={"REMOTE_ADDR": "192.0.2.30"})
 
         body = response.get_json()
         assert body["verified"] is True
@@ -551,7 +551,7 @@ class TestServiceTokensAreIdentifiedDistinctly:
         ident = identity.identify(_Req(token=_token(private)))
 
         assert ident.kind == "person"
-        assert ident.email == "dustin@example.com"
+        assert ident.email == "operator@example.com"
         assert ident.service_id == ""
         assert not ident.actor.startswith(identity.SERVICE_ACTOR_PREFIX)
 
@@ -596,7 +596,7 @@ class TestServiceTokensAreIdentifiedDistinctly:
                                                                  keys):
         private, _ = keys
         ident = identity.identify(
-            _Req(token=self._service_token(private), peer="10.0.0.30"))
+            _Req(token=self._service_token(private), peer="192.0.2.30"))
         assert ident.is_identified is False
         assert ident.kind == ""
 
@@ -857,7 +857,7 @@ class TestTheDiagnosticShowsTheAuditName:
         body = client.get("/identity/status",
                           headers={identity.JWT_HEADER: _token(private)},
                           environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
-        assert body["audit_name"] == "dustin@example.com"
+        assert body["audit_name"] == "operator@example.com"
 
 
 class TestTheDiagnosticReportsCapabilityNotConfiguration:

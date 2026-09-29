@@ -21,6 +21,33 @@ sudo -u nmas python3 -m venv .venv
 sudo -u nmas .venv/bin/pip install --no-deps -r requirements.lock
 ```
 
+### The local hosts file, `data/lab_hosts.json` (2026-09-29)
+
+The repository is public, so the hosts' users, addresses and tunnel hostnames
+are not in it. They live in `data/lab_hosts.json` (`data/` is gitignored), one
+entry per host:
+
+```json
+{"nmas": {"user": "<user>", "lan": "<nmas-host>", "tunnel": "ssh-nmas.<domain>"},
+ "clab": {"user": "<user>", "lan": "<lab-host>", "tunnel": "ssh-clab.<domain>"},
+ "pve":  {"user": "root",   "lan": "<hypervisor>", "tunnel": "ssh-pve.<domain>"}}
+```
+
+The `nmas` entry may also carry `home` and `checkout`; without them the unit
+renderer uses the user's home directory and the checkout it runs from. Three
+things read the file, and each REFUSES naming it when it is missing:
+
+- `scripts/nmas-host` (the laptop's way to the hosts);
+- `scripts/oxidized-to-config.sh` (the clab sync, on this host), for
+  `NMAS_URL` and `CLAB` when neither the environment nor the map sets them.
+  **The host's `clab-sync` job sets neither, so it needs this file on the host;**
+  without it every run refuses and job health names it;
+- `scripts/nmas-render-units`, which fills the `deploy/systemd/` templates
+  (every unit install step below renders first; the units are never copied).
+
+`scripts/nmas-rotate-credential` reads it only for an advice line, and says the
+address cannot be named instead of refusing a rotation.
+
 ### Which environment a rebuild produces (measured 2026-09-26, register C40)
 
 **The running host cannot be reproduced by pip's resolver.** It runs Ubuntu
@@ -103,7 +130,9 @@ the repository and enable the SOCKET, never the service (the socket starts
 it):
 
 ```bash
-sudo install -m 0644 deploy/systemd/nmas-ztp-responder.socket deploy/systemd/nmas-ztp-responder.service /etc/systemd/system/
+# The units are TEMPLATES (the repository is public): render them from data/lab_hosts.json.
+scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-ztp-responder.socket deploy/systemd/nmas-ztp-responder.service
+sudo install -m 0644 /tmp/nmas-units/nmas-ztp-responder.socket /tmp/nmas-units/nmas-ztp-responder.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now nmas-ztp-responder.socket
 systemctl show -p ActiveState,Listen nmas-ztp-responder.socket
@@ -140,7 +169,8 @@ carries the credential NMAS holds (two show commands each, never a save),
 writes `data/startup_check.json`, and job health reads that file:
 
 ```bash
-sudo install -m 0644 deploy/systemd/nmas-startup-check.service deploy/systemd/nmas-startup-check.timer /etc/systemd/system/
+scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-startup-check.service deploy/systemd/nmas-startup-check.timer
+sudo install -m 0644 /tmp/nmas-units/nmas-startup-check.service /tmp/nmas-units/nmas-startup-check.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now nmas-startup-check.timer
 sudo systemctl start nmas-startup-check.service

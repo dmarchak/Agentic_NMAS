@@ -38,10 +38,10 @@ def _rows(store):
 
 class TestTheDeclaration:
     def test_it_records_who_when_and_why(self, store):
-        out = ss.declare_not_applicable(KEY, "dmarchak", "script retired (C31)")
+        out = ss.declare_not_applicable(KEY, "operator", "script retired (C31)")
         assert out["ok"], out
         d = store["settings_not_applicable"][KEY]
-        assert d["by"] == "dmarchak" and d["reason"] == "script retired (C31)"
+        assert d["by"] == "operator" and d["reason"] == "script retired (C31)"
         assert d["at"].endswith("Z")
 
     @pytest.mark.parametrize("actor,reason", [("", "why"), ("me", ""), ("me", "   ")])
@@ -70,10 +70,10 @@ class TestJobHealthTellsTheTwoApart:
         assert _rows(store)[f"setting:{KEY}"]["state"] == "unset_guard"
 
     def test_declared_is_not_applicable_and_names_who(self, store):
-        ss.declare_not_applicable(KEY, "dmarchak", "script retired (C31)")
+        ss.declare_not_applicable(KEY, "operator", "script retired (C31)")
         row = _rows(store)[f"setting:{KEY}"]
         assert row["state"] == "not_applicable"
-        assert "dmarchak" in row["detail"] and "script retired" in row["detail"]
+        assert "operator" in row["detail"] and "script retired" in row["detail"]
         assert _rows(store)["setting:clab_host"]["state"] == "unset_guard"
 
     def test_set_and_declared_is_a_contradiction(self, store):
@@ -114,9 +114,9 @@ def _script():
 
 class TestTheScript:
     def test_it_declares_as_the_os_user(self, store, monkeypatch):
-        monkeypatch.setattr("getpass.getuser", lambda: "dmarchak")
+        monkeypatch.setattr("getpass.getuser", lambda: "operator")
         assert _script().main([KEY, "--reason", "retired"]) == 0
-        assert store["settings_not_applicable"][KEY]["by"] == "dmarchak"
+        assert store["settings_not_applicable"][KEY]["by"] == "operator"
 
     def test_a_refusal_exits_1(self, store, capsys):
         assert _script().main([KEY]) == 1

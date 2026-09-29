@@ -517,7 +517,7 @@ class TestTheWriteSurfaceIsStillThree:
                 return _Resp({"id": 41, "display": "10.0.0.15/24",
                               **(json or {})})
 
-        with netbox_guard.for_list("default", actor="dustin@example.com", authority="test: declared by the test (C155)"):
+        with netbox_guard.for_list("default", actor="operator@example.com", authority="test: declared by the test (C155)"):
             netbox_client._nb_patch(Sess(), "http://nb",
                                     "ipam/ip-addresses/41/",
                                     {"assigned_object_id": 60})
@@ -527,7 +527,7 @@ class TestTheWriteSurfaceIsStillThree:
         e = got["entries"][0]
         assert e["endpoint"] == "ipam/ip-addresses" and e["id"] == 41
         assert e["fields"]["assigned_object_id"] == {"before": 44, "after": 60}
-        assert e["actor"] == "dustin@example.com"
+        assert e["actor"] == "operator@example.com"
         assert e["name"] == "10.0.0.15/24"
 
     def test_an_unattributed_write_says_so_rather_than_blank(self, record,

@@ -215,7 +215,7 @@ class TestTheJobCarriesTheVerifiedPerson:
 
         def work(list_name, hostname, *, actor, fingerprint):
             seen["same"] = identity.actor_verification("op@example.com")
-            seen["other"] = identity.actor_verification("someone@else.com")
+            seen["other"] = identity.actor_verification("someone@example.com")
             return {"ok": True}
 
         job = RO.start("Lab", "r2", actor="op@example.com", fingerprint="f",

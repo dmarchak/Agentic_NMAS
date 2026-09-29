@@ -1266,7 +1266,11 @@ tunnel. The laptop's `~/.ssh/config` routes those hostnames through
 **The real addresses, tunnel hostnames and users are in `data/lab_hosts.json`**, a
 local file (`data/` is gitignored), because the repository is public
 (2026-09-29). `scripts/nmas-host` reads it and refuses, naming the file, when it is
-absent (exit 78); read it there when a real value is needed. Other placeholders in
+absent (exit 78); `nmas-host <host> --field <user|lan|tunnel>` prints one value,
+asking nothing. The same file is read on the HOST by the clab sync
+(`oxidized-to-config.sh`, for `NMAS_URL` and `CLAB`; it refuses without it) and
+by `scripts/nmas-render-units` (the unit templates), so it must exist there too
+(docs/DEPLOY_LINUX.md). Other placeholders in
 the docs: `<operator>` (the operator's email), `<home>` (a home directory),
 `<tunnel-host>` (cloudflared's LAN address), `<laptop>`, `<LAN>`, `<repo>` (the
 NSoT config repository), `<account>` (the GitHub account).
@@ -1391,8 +1395,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_persist_screen.py` | C164 (7.3), over the real module, route and recorder: the preview draws every step and what persist does NOT do, contacts no device, says at the confirm that the save carries the running config as it is, draws the hourly check's last reading with its age (never-run and unreadable different), and names each refusal as a gate (AST, both ways); the apply saves on a thread that HOLDS the device and records as the person (`via: device page`), a read-back that does not match leads the result, a moved plan and a held device are refused with nothing sent, and the apply needs its list; the Device page ships the button and client |
 | `test_every_commit_publishes.py` | C223: no call in the program or its scripts names `commit` to git except `repo.commit()`'s own (AST, subprocess lists included, the chokepoint's own call as the floor); a caller deferring the push calls `repo.publish()` (init_repo declared: its commits ride the caller's); nothing reaches `run_post_commit` around `publish()`; for real, a commit hands its sha and its list (resolved from the repository, creating nothing) to the hooks, init_repo publishes nothing, a failed commit publishes nothing, and the real abandon hands its commit over (the operator's R10 case); planted direct and subprocess commits and an unpublished deferral found |
 | `test_remote_publication.py` | C223, against real repositories with a bare remote: in sync; the operator's case (one commit not pushed, the oldest's sha and age, "1 commit(s) not pushed to … (oldest: …, 12 min)"); the next pushed commit sends both; the oldest is the first unpushed; the remote ahead and diverged (danger, never force-pushed); no branch counts every commit; a remote that cannot be asked or does not answer within the measured bound is `not_asked`, never in sync; an unreadable remote.json still compared through `origin` and naming C172; no origin and no record is no remote. The one sentence; Needs attention's row with the push as its action, published lists counted, in sync with an unreadable record a danger row, a reader with no value never silent; the SHIPPED Remote card and Git tab renderers executed (the level the server's, escaped, never green unreported), the Git log without its pre-P.4 pipeline column, and Save All's rules behind "How this works" |
-| `test_nothing_personal_is_published.py` | The repository is public: every tracked file under `docs/`, `CLAUDE.md` and `README.md` carries no email (documentation domains aside), no home directory (the `nmas` service home aside), no homelab `10.0.0.x` address except on a line exempted by its content hash with its reason (vrnetlab's internals, fixture traffic, a device route: 24 lines), and no term from the local denylist (skipped, saying so, where the file is absent); floor of 50 files; every exemption names a line that exists (an edited line is read again); both local files gitignored; controls: a planted email, home, address and denylisted word each found, documentation forms not, an exemption scoped to one line in one file and to the address rule only |
-| `test_nmas_host.py` | The one LAN-or-tunnel choice for reaching a lab host (the hosts read from the local, gitignored `data/lab_hosts.json`, never a literal in the script; a missing or unreadable file refuses naming it, exit 78, nothing run): a real TCP connect to a loopback listener answers and a closed port does not (3 s, port 22); each host goes to its LAN address when that answers and to its tunnel hostname when not, and the probe asks only the LAN address; the path is said before the command runs; every session clears forwardings and no ssh option passes through (`-L`, `-J`, a device name, no command and `--target` with a command are each refused before any connection); the expired-token failure, in the tunnel's own words, exits 75 naming the host and the operator's login command, with one attempt and no retry, while another ssh failure and the LAN path are never called an expired token |
+| `test_nothing_personal_is_published.py` | The repository is public: every tracked text file (floor 600; docs, program, scripts, deploy templates, tests and fixtures, since 2026-09-29) carries no email (documentation domains aside), no home directory (the `nmas` service home aside), no homelab `10.0.0.x` address except on a line exempted in `tests/publication_exemptions.py` by its content hash, with its reason and the rules it is excused from (326 lines: vrnetlab's internals, captured device output, invented test addresses and paths, examples, git's SSH form, Cisco's call-home address), no host address the local hosts file names ever exempted, and no term from the local denylist (skipped, saying so, where the file is absent); floor of 50 files; every exemption names a line that exists (an edited line is read again); both local files gitignored; controls: a planted email, home, address and denylisted word each found, documentation forms not, an exemption scoped to one line in one file and to the address rule only |
+| `test_nmas_host.py` | The one LAN-or-tunnel choice for reaching a lab host (the hosts read from the local, gitignored `data/lab_hosts.json`, never a literal in the script; a missing or unreadable file refuses naming it, exit 78, nothing run; `--field` reads one value probing nothing). The unit TEMPLATES: every one renders with nothing left, a missing hosts file or a value it cannot establish refuses naming it and writes nothing. The sanitiser's hosts block EXECUTED under bash: an unset `NMAS_URL` read from the file, a missing file exit 2 naming it, an explicit one reads nothing: a real TCP connect to a loopback listener answers and a closed port does not (3 s, port 22); each host goes to its LAN address when that answers and to its tunnel hostname when not, and the probe asks only the LAN address; the path is said before the command runs; every session clears forwardings and no ssh option passes through (`-L`, `-J`, a device name, no command and `--target` with a command are each refused before any connection); the expired-token failure, in the tunnel's own words, exits 75 naming the host and the operator's login command, with one attempt and no retry, while another ssh failure and the LAN path are never called an expired token |
 | `test_clab_targets.py` (C50) | an unknown lab resolves to NO paths with its cause named, and `persist()` refuses before the sync (never writing into another lab's directory); known labs and the default unchanged (the control); C207: the refusal returns rather than raising |
 | `test_retire.py` | the whole exit in one commit, history kept; the break-glass record must hold the CURRENT credential; what it will NOT do is stated; resumable; a failed commit restores the tree |
 | `test_clab_sync_commit.py` | C106 (2): a lab whose backup failed is NOT overwritten, is named as a backup failure (never blamed on the loop or the copy), and only copied labs are verified; executed under bash with one backup refused. The sanitiser's commit block EXECUTED under bash: identity rides on every commit; a failed commit names git's reason and is not "not versioned"; helpers resolve beside the script under a systemd PATH |
@@ -1568,13 +1572,20 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   `<redacted>` (distinct, `<redacted-1>`/`<redacted-2>`, where a comparison is
   the point). The real host values are in `data/lab_hosts.json` and the terms
   that must never appear in `data/publication_denylist.txt`, both local
-  (`data/` is gitignored). `tests/test_nothing_personal_is_published.py` scans
-  every tracked file under `docs/`, `CLAUDE.md` and `README.md` for an email, a
-  home directory, a homelab `10.0.0.x` address and a denylisted term. A line
-  quoting vrnetlab's internal addresses (they share the homelab's /24) carries a
-  PER-LINE exemption keyed on its content hash, with its reason; the pattern is
-  never narrowed. Where the denylist file is absent (CI), that one rule skips
-  and says so.
+  (`data/` is gitignored). **The repository stays public, its history
+  unrewritten (the operator, 2026-09-29), so this check is the only thing
+  between a commit and the public record:** `tests/test_nothing_personal_is_published.py`
+  scans EVERY tracked text file (docs, the program, scripts, deploy templates,
+  tests, fixtures) for an email, a home directory, a homelab `10.0.0.x` address
+  and a denylisted term. A line that is none of those but looks like one
+  (vrnetlab's internal addresses share the homelab's /24; invented test
+  addresses; Cisco's call-home address) is in `tests/publication_exemptions.py`,
+  ONE line per entry keyed on its content hash, with its reason and the rules it
+  is excused from; the pattern is never narrowed. **New test addresses are
+  documentation addresses** (192.0.2.x), which need no entry. Where the denylist
+  file is absent (CI), that one rule skips and says so. The systemd units in
+  `deploy/systemd/` are TEMPLATES, rendered by `scripts/nmas-render-units` from
+  `data/lab_hosts.json`; they are never copied.
 - Module-level `log = logging.getLogger(__name__)`
 - Use `pathlib` / `os.path`, never hardcoded separators or drive letters
 - **No IPv4 literals** in `modules/integrations/`, `modules/nsot/`, or `routes/` —

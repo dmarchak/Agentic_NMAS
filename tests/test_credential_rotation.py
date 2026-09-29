@@ -2159,7 +2159,7 @@ class TestAConfirmationSurvivesAnUnchangedDevice:
     safe direction, and it was still a gate that could never open.
 
     Measured on s1 while diagnosing: four consecutive preflights produced the
-    identical fingerprint 078fd91dcd2599a4 and identical values for every
+    identical fingerprint <redacted-fp-16> and identical values for every
     input. The inputs were never the unstable part.
     """
 

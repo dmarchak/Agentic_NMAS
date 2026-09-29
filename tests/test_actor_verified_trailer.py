@@ -66,7 +66,7 @@ class TestTheVerdict:
             assert identity.actor_verification(identity.UNAUTHENTICATED) == "none"
 
     def test_a_cli_is_host_shell(self, cli):
-        assert identity.actor_verification("dustin") == "host-shell"
+        assert identity.actor_verification("operator") == "host-shell"
 
     def test_the_apps_own_threads_are_none(self, app_process):
         """The app process outside a request (the drift scheduler, a hook) is
@@ -81,13 +81,13 @@ class TestTheVerdict:
 
 class TestTheMessage:
     def test_it_is_added_after_the_actor(self, cli):
-        msg = "golden: r1\n\nSource: manual\nActor: dustin\n"
+        msg = "golden: r1\n\nSource: manual\nActor: operator\n"
         out = R.with_actor_verification(msg)
         assert out == msg + "Actor-Verified: host-shell\n"
 
     def test_a_message_without_a_trailing_newline(self, cli):
-        out = R.with_actor_verification("x\n\nActor: dustin")
-        assert out.endswith("\nActor: dustin\nActor-Verified: host-shell")
+        out = R.with_actor_verification("x\n\nActor: operator")
+        assert out.endswith("\nActor: operator\nActor-Verified: host-shell")
 
     def test_no_actor_no_trailer(self, cli):
         assert R.with_actor_verification("template: seed library") == "template: seed library"
@@ -113,7 +113,7 @@ class TestEveryCommitThroughTheChokePoint:
         repo = _init(tmp_path)
         (tmp_path / "config_repo" / "f").write_text("x\n")
         R.git(repo, "add", "f")
-        rc, _, err = R.git(repo, "commit", "-m", "t\n\nSource: manual\nActor: dustin\n")
+        rc, _, err = R.git(repo, "commit", "-m", "t\n\nSource: manual\nActor: operator\n")
         assert rc == 0, err
         assert "Actor-Verified: host-shell" in _last_message(repo)
 
@@ -133,10 +133,10 @@ class TestEveryCommitThroughTheChokePoint:
                             lambda name: str(tmp_path / name))
         (tmp_path / "t").mkdir()
         out = R.save_golden("t", [R.GoldenItem("r1", "hostname r1\n", "192.0.2.1")],
-                            source="manual", actor="dustin", allow_new=True)
+                            source="manual", actor="operator", allow_new=True)
         assert out.get("ok"), out
         msg = _last_message(str(tmp_path / "t" / "config_repo"))
-        assert "Actor: dustin" in msg and "Actor-Verified: host-shell" in msg
+        assert "Actor: operator" in msg and "Actor-Verified: host-shell" in msg
 
 
 def _commit_calls(path):

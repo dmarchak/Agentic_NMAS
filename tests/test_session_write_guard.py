@@ -218,7 +218,7 @@ class TestEveryWriterNowHoldsTheDevice:
 
 
 class TestTheRefusalSaysHowLongAndWhetherItMoves:
-    BASE = {"device": "r2", "operation": "onboard", "actor": "dustnm@gmail.com",
+    BASE = {"device": "r2", "operation": "onboard", "actor": "operator@example.com",
             "detail": "phase two", "started": 1000.0, "pid": 4242,
             "progress": {"step": "rotate", "at": 1000.0 + 14 * 60}}
 

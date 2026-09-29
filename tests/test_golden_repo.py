@@ -127,11 +127,11 @@ class TestFileContent:
 
 class TestTrailersAndTags:
     def test_trailers_carry_provenance(self, lab):
-        _seed("Lab", [_item()], source="pipeline", actor="dustin",
+        _seed("Lab", [_item()], source="pipeline", actor="operator",
                       pipeline_id="cfg-7f3a")
         _rc, out, _ = R.git(lab, "log", "-1", "--format=%B")
         assert "Source: pipeline" in out
-        assert "Actor: dustin" in out
+        assert "Actor: operator" in out
         assert "Pipeline-Id: cfg-7f3a" in out
         assert "Device-Id: nb:42" in out
         assert "Device-Name: R1" in out

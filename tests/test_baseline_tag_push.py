@@ -143,10 +143,10 @@ class TestTheHookFiresOnTheNoCommitPath:
                       inventory_size=1)
         if not baseline:
             kwargs["baseline"] = False
-        _repo.save_golden("lab", [_repo.GoldenItem("s1", text, "10.0.0.21")],
+        _repo.save_golden("lab", [_repo.GoldenItem("s1", text, "192.0.2.21")],
                           **kwargs)
         return _repo.save_golden(
-            "lab", [_repo.GoldenItem("s1", text, "10.0.0.21")], **kwargs)
+            "lab", [_repo.GoldenItem("s1", text, "192.0.2.21")], **kwargs)
 
 
 class TestExactlyTheNamedTagIsPublished:

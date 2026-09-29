@@ -14,7 +14,7 @@ from modules import identity, redact
 
 TEAM = "example-team.cloudflareaccess.com"
 AUD = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-TUNNEL = "10.0.0.21"
+TUNNEL = "192.0.2.21"
 
 CONFIG = ("hostname r1\n"
           "snmp-server community public RO\n"
@@ -53,7 +53,7 @@ def access(monkeypatch, keys, tmp_path):
     return values
 
 
-def _person(private, email="dustin@example.com"):
+def _person(private, email="operator@example.com"):
     import jwt
     now = int(time.time())
     return jwt.encode({"type": "app", "aud": AUD, "iss": f"https://{TEAM}",
@@ -152,7 +152,7 @@ class TestRevealRequiresAPersonAndIsAudited:
 
         assert body["masked"] is False
         assert "snmp-server community public RO" in body["config"]
-        assert body["revealed_by"] == "dustin@example.com"
+        assert body["revealed_by"] == "operator@example.com"
 
     def test_the_reveal_is_recorded(self, client, keys):
         from modules import reveal_audit
@@ -163,7 +163,7 @@ class TestRevealRequiresAPersonAndIsAudited:
         rows = reveal_audit.entries()
 
         assert len(rows) == 1
-        assert rows[0]["actor"] == "dustin@example.com"
+        assert rows[0]["actor"] == "operator@example.com"
         assert rows[0]["kind"] == "person"
         assert rows[0]["what"] == "golden_config"
         assert rows[0]["target"] == "r1"

@@ -67,7 +67,7 @@ def text_of(html):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", html or "")).strip()
 
 
-MANUAL_COMMIT = {"at": "2026-09-22T18:50:32Z", "by": "dustnm@gmail.com",
+MANUAL_COMMIT = {"at": "2026-09-22T18:50:32Z", "by": "operator@example.com",
                  "kind": "commit",
                  "commit": "24438924707fa4a55784e2b024aedcf936c85f52",
                  "tags": []}
@@ -120,7 +120,7 @@ class TestItSaysHowItWasPublished:
             text_of(render(AUTO_TAG_ONLY)).split()[1]
 
     def test_the_actor_is_still_named(self):
-        assert "dustnm@gmail.com" in text_of(render(MANUAL_COMMIT))
+        assert "operator@example.com" in text_of(render(MANUAL_COMMIT))
 
 
 class TestEdges:
@@ -131,7 +131,7 @@ class TestEdges:
         """Older records predate 1.2b. They must not render as a confident
         blank."""
         out = text_of(render({"at": "2026-09-21T19:57:47Z",
-                              "by": "dustnm@gmail.com"}))
+                              "by": "operator@example.com"}))
         assert "2026-09-21T19:57:47Z" in out
         assert "unknown" in out
 

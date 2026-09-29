@@ -39,14 +39,14 @@ class TestAdoptRecordsWhatIsAlreadyThere:
     """
 
     def test_it_writes_a_per_list_remote_json(self, lab):
-        out = R.adopt("default", ssh_alias="github-nsot", owner="dmarchak",
-                      repo="rcn-nsot-config", key_path="~/.ssh/nsot_deploy")
+        out = R.adopt("default", ssh_alias="github-nsot", owner="acct",
+                      repo="nsot-config", key_path="~/.ssh/nsot_deploy")
         assert out["ok"]
 
         saved = json.loads((lab / "default" / "remote.json").read_text())
         assert saved["ssh_alias"] == "github-nsot"
-        assert saved["owner"] == "dmarchak"
-        assert saved["repo"] == "rcn-nsot-config"
+        assert saved["owner"] == "acct"
+        assert saved["repo"] == "nsot-config"
 
     def test_an_adopted_setup_is_not_managed_by_nmas(self, lab):
         """NMAS verifies and pushes; it never rewrites a human's key or stanza."""
@@ -104,24 +104,24 @@ class TestTheKeyScopeIsReadFromTheGreeting:
     def _scope(self, monkeypatch, reply):
         monkeypatch.setattr(R, "_run", lambda *a, **k: type(
             "P", (), {"stdout": reply, "stderr": "", "returncode": 1})())
-        return R.check_key_scope({"ssh_alias": "a", "owner": "dmarchak",
-                                  "repo": "rcn-nsot-config",
+        return R.check_key_scope({"ssh_alias": "a", "owner": "acct",
+                                  "repo": "nsot-config",
                                   "key_path": "~/.ssh/k"})
 
     def test_a_repo_scoped_key_passes(self, monkeypatch):
         out = self._scope(monkeypatch,
-                          "Hi dmarchak/rcn-nsot-config! You've successfully "
+                          "Hi acct/nsot-config! You've successfully "
                           "authenticated, but GitHub does not provide shell access.")
         assert out["ok"] is True
 
     def test_an_account_wide_key_is_refused(self, monkeypatch):
-        out = self._scope(monkeypatch, "Hi dmarchak! You've successfully "
+        out = self._scope(monkeypatch, "Hi acct! You've successfully "
                                        "authenticated")
         assert out["ok"] is False
         assert "ACCOUNT-WIDE" in out["fix"]
 
     def test_a_key_for_the_wrong_repository_is_refused(self, monkeypatch):
-        out = self._scope(monkeypatch, "Hi dmarchak/some-other-repo! hello")
+        out = self._scope(monkeypatch, "Hi acct/some-other-repo! hello")
         assert out["ok"] is False
         assert "some-other-repo" in out["fix"]
 
@@ -239,12 +239,12 @@ class TestTheRightRepository:
     def test_another_lists_repository_is_refused(self, lab, tmp_path,
                                                  monkeypatch):
         """Two networks sharing a repository is the silent catastrophe."""
-        R.adopt("other", ssh_alias="a", owner="dmarchak", repo="shared")
+        R.adopt("other", ssh_alias="a", owner="acct", repo="shared")
         monkeypatch.setattr(R, "_run", lambda *a, **k: type(
             "P", (), {"stdout": "", "stderr": "", "returncode": 0})())
 
         out = R.check_right_repository(
-            {"owner": "dmarchak", "repo": "shared", "ssh_alias": "a"},
+            {"owner": "acct", "repo": "shared", "ssh_alias": "a"},
             "default", self._repo(tmp_path))
         assert out["ok"] is False
         assert "other" in out["detail"]
@@ -894,19 +894,19 @@ class TestAListIsNotItsOwnRival:
 
     def test_a_list_passes_against_its_own_remote(self, lab, tmp_path,
                                                   monkeypatch):
-        R.adopt("default", ssh_alias="a", owner="dmarchak", repo="rcn-nsot-config")
+        R.adopt("default", ssh_alias="a", owner="acct", repo="nsot-config")
         monkeypatch.setattr(R, "_run", lambda *a, **k: type(
             "P", (), {"stdout": "", "stderr": "", "returncode": 0})())
 
         out = R.check_right_repository(
-            {"owner": "dmarchak", "repo": "rcn-nsot-config", "ssh_alias": "a"},
+            {"owner": "acct", "repo": "nsot-config", "ssh_alias": "a"},
             "default", self._repo(tmp_path))
         assert out["ok"] is True, out
 
     def test_it_passes_when_called_by_DISPLAY_name(self, lab, tmp_path,
                                                    monkeypatch):
         """The exact shape of the bug: 'Default' vs the 'default' directory."""
-        R.adopt("default", ssh_alias="a", owner="dmarchak", repo="rcn-nsot-config")
+        R.adopt("default", ssh_alias="a", owner="acct", repo="nsot-config")
         monkeypatch.setattr(R, "_run", lambda *a, **k: type(
             "P", (), {"stdout": "", "stderr": "", "returncode": 0})())
         # get_list_data_dir is case-insensitive about the list name in this
@@ -917,19 +917,19 @@ class TestAListIsNotItsOwnRival:
                             lambda name: real(name.lower()))
 
         out = R.check_right_repository(
-            {"owner": "dmarchak", "repo": "rcn-nsot-config", "ssh_alias": "a"},
+            {"owner": "acct", "repo": "nsot-config", "ssh_alias": "a"},
             "Default", self._repo(tmp_path))
         assert out["ok"] is True, (
             "the list was compared against itself under another spelling")
 
     def test_a_second_list_naming_the_same_repo_is_refused(self, lab, tmp_path,
                                                            monkeypatch):
-        R.adopt("other", ssh_alias="b", owner="dmarchak", repo="rcn-nsot-config")
+        R.adopt("other", ssh_alias="b", owner="acct", repo="nsot-config")
         monkeypatch.setattr(R, "_run", lambda *a, **k: type(
             "P", (), {"stdout": "", "stderr": "", "returncode": 0})())
 
         out = R.check_right_repository(
-            {"owner": "dmarchak", "repo": "rcn-nsot-config", "ssh_alias": "a"},
+            {"owner": "acct", "repo": "nsot-config", "ssh_alias": "a"},
             "default", self._repo(tmp_path))
         assert out["ok"] is False
         assert out["detail"] == "other", "it must name the list that owns it"

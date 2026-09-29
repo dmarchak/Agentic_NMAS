@@ -206,7 +206,7 @@ class TestUnmodeledAcknowledgement:
         unmodeled = RA.unmodeled_lines(parsed)
         parsed["unmodeled_ack"] = {
             "lines": lines if lines is not None else list(unmodeled) + (extra_lines or []),
-            "actor": "dustin", "acknowledged_at": "2026-09-20T12:00:00Z"}
+            "actor": "operator", "acknowledged_at": "2026-09-20T12:00:00Z"}
         return build_artifact("s1", _config("s1") + UNKNOWN, "cisco_ios",
                               template_approved=True, host_vars=parsed)
 
@@ -216,7 +216,7 @@ class TestUnmodeledAcknowledgement:
     def test_partial_acknowledgement_does_not_unblock(self):
         parsed = get_parser("cisco_ios").parse(_config("s1") + UNKNOWN)
         parsed["unmodeled_ack"] = {"lines": ["quantum-tunnel profile ALPHA"],
-                                   "actor": "dustin"}
+                                   "actor": "operator"}
         artifact = build_artifact("s1", _config("s1") + UNKNOWN, "cisco_ios",
                                   template_approved=True, host_vars=parsed)
         assert artifact.deployable is False
@@ -226,7 +226,7 @@ class TestUnmodeledAcknowledgement:
         """An acknowledgement is bound to content, not to a click."""
         parsed = get_parser("cisco_ios").parse(_config("s1") + UNKNOWN)
         parsed["unmodeled_ack"] = {"lines": RA.unmodeled_lines(parsed),
-                                   "actor": "dustin"}
+                                   "actor": "operator"}
         approved = build_artifact("s1", _config("s1") + UNKNOWN, "cisco_ios",
                                   template_approved=True, host_vars=parsed)
         assert approved.deployable is True
@@ -263,10 +263,10 @@ class TestUnmodeledAcknowledgement:
         from modules.nsot import hostvars
         parsed = get_parser("cisco_ios").parse(_config("s1") + UNKNOWN)
         parsed["unmodeled_ack"] = {"lines": RA.unmodeled_lines(parsed),
-                                   "actor": "dustin",
+                                   "actor": "operator",
                                    "acknowledged_at": "2026-09-20T12:00:00Z"}
         restored = hostvars.from_yaml(hostvars.to_yaml(parsed))
-        assert restored["unmodeled_ack"]["actor"] == "dustin"
+        assert restored["unmodeled_ack"]["actor"] == "operator"
         assert RA.acknowledgement_is_complete(restored) is True
 
 
