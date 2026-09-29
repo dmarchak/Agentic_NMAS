@@ -86,6 +86,13 @@ UNREMOVABLE = (
     (re.compile(r"^banner\s"), "a banner spans lines the line model cannot represent"),
     (re.compile(r"^crypto pki\b"), "a trustpoint or certificate body spans lines, and is "
                                    "the device's own"),
+    # MEASURED, and retired from the probe so no run dirties a device to learn
+    # it again (the operator, 2026-09-28).
+    (re.compile(r"^logging buffered\b"),
+     "measured on cisco_ios (s4, 2026-09-29): `no logging buffered <n>` turns buffered "
+     "logging OFF and leaves `no logging buffered` behind, a state neither the device had "
+     "nor intent names. Its absence means the platform default, and restoring a default is "
+     "`default <command>`, which is not built"),
 )
 
 
@@ -107,7 +114,6 @@ SHAPES = (
     Shape("global.snmp-server-community", "global", "leaf",
           r"^snmp-server community \S+( view \S+)? (RO|RW)( \S+)?$"),
     Shape("global.logging-host", "global", "leaf", r"^logging host \S+( .+)?$"),
-    Shape("global.logging-buffered", "global", "leaf", r"^logging buffered( .+)?$"),
     Shape("global.event-manager-applet", "global", "stanza", r"^event manager applet \S+( .+)?$"),
     Shape("global.ip-prefix-list-entry", "global", "leaf",
           r"^ip prefix-list \S+ seq \d+ (permit|deny) .+$"),
@@ -124,6 +130,8 @@ RESULT_WORDS = {
     "broader": "removes MORE than that line",
     "different": "changes other configuration",
     "incomplete": "does not remove the line",
+    "overrides_default": ("leaves the device OFF its default: `no` turns the feature off "
+                          "instead of restoring the default, and leaves a `no` line"),
     "refused": "is rejected by the device",
     "failed": "could not be measured",
 }

@@ -1,0 +1,37 @@
+{
+  "_about": "Mode B's platform record: what `no <line>` DID, per shape, measured by scripts/nmas-removal-probe on a real device. Only `exact` allows a removal. Written from the probe's own output; a row reclassified since says so.",
+  "by_dialect": {
+    "cisco_ios": {
+      "global.logging-buffered": {
+        "at": "2026-09-29T04:17:53Z",
+        "detail": "appeared: no logging buffered. Recorded by the run as `different`; the probe now names this result `overrides_default`. Retired from the probe; refused by name in removal.UNREMOVABLE",
+        "device": "s4",
+        "result": "overrides_default"
+      },
+      "global.logging-host": {
+        "at": "2026-09-29T04:17:53Z",
+        "detail": "",
+        "device": "s4",
+        "result": "exact"
+      },
+      "global.snmp-server-community": {
+        "at": "2026-09-29T04:17:53Z",
+        "detail": "",
+        "device": "s4",
+        "result": "exact"
+      },
+      "interface.description": {
+        "at": "2026-09-29T04:17:53Z",
+        "detail": "",
+        "device": "s4",
+        "result": "exact"
+      },
+      "interface.load-interval": {
+        "at": "2026-09-29T04:17:53Z",
+        "detail": "",
+        "device": "s4",
+        "result": "exact"
+      }
+    }
+  }
+}

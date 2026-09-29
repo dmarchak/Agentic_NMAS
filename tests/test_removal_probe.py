@@ -35,7 +35,7 @@ class TestEveryShapeIsProbed:
         so never removed; an exemplar with no shape measures nothing Mode B
         uses."""
         assert set(P.EXEMPLARS) == {s.key for s in RM.SHAPES}
-        assert len(P.EXEMPLARS) >= 11
+        assert len(P.EXEMPLARS) >= 10, "a floor: logging-buffered was retired, 11 to 10"
 
     def test_each_exemplar_is_an_instance_of_its_shape(self):
         for key in P.EXEMPLARS:
@@ -147,3 +147,41 @@ class TestALiveProcessIsNotAScratch:
         assert P.fold([{"result": "exact"}, {"result": "unmeasured"}]) == "unmeasured"
         assert P.fold([{"result": "exact"}, {"result": "broader"}]) == "broader"
         assert P.fold([{"result": "exact"}, {"result": "exact"}]) == "exact"
+
+
+
+class TestTheFirstRealRun:
+    """s4, 2026-09-29: removing `logging buffered 16001` left
+    `no logging buffered`, and the repair could not undo it."""
+
+    S4 = open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "s4.cfg"),
+              encoding="utf-8").read()
+    UNIT = {"chain": [], "line": "logging buffered 16001"}
+
+    def test_a_no_form_left_behind_is_overrides_default_not_different(self):
+        out = P.classify(self.S4 + "logging buffered 16001\n",
+                         self.S4 + "no logging buffered\n", self.UNIT)
+        assert out == {"result": "overrides_default", "detail": "appeared: no logging buffered"}
+
+    def test_an_unrelated_line_appearing_is_still_different(self):
+        out = P.classify(self.S4 + "logging buffered 16001\n",
+                         self.S4 + "no ip domain lookup\n", self.UNIT)
+        assert out["result"] == "different"
+
+    def test_the_repair_sees_the_line_the_residue_calculation_pairs_away(self):
+        """s4 carries `no logging console`, and the setting key reduces both it
+        and `no logging buffered` to `logging` (C193): the residue calculation
+        offers NOTHING, which is what the first run's repair acted on."""
+        now = self.S4 + "no logging buffered\n"
+        assert RM.candidates(self.S4, now) == [], "the collision, pinned until C193 is fixed"
+        assert P.extras(self.S4, now) == [{"chain": [], "line": "no logging buffered"}]
+
+    def test_logging_buffered_is_retired_from_the_probe(self):
+        assert "global.logging-buffered" not in P.EXEMPLARS
+
+    def test_the_run_repairs_with_the_plain_difference(self):
+        """The seam: `extras` is right only if the run calls it."""
+        src = open(SCRIPT, encoding="utf-8").read()
+        body = src[src.index("def main"):]
+        assert "extra = extras(before, now)" in body
+        assert "candidates(" not in body

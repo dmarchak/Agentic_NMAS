@@ -222,6 +222,58 @@ class TestOnlyWhatWasMeasured:
     def test_the_suspected_shapes_are_in_the_table(self):
         """Measured so the record shows WHY they are refused, never assumed."""
         keys = {s.key for s in RM.SHAPES}
-        assert {"global.numbered-acl-entry", "bgp.neighbor-remote-as", "global.logging-buffered",
+        assert {"global.numbered-acl-entry", "bgp.neighbor-remote-as",
                 "global.route-map-sequence", "named-acl.entry",
                 "global.snmp-server-community"} <= keys
+
+
+
+S4 = _cfg("s4")
+
+
+class TestTheCommittedRecord:
+    """The first real measurement (s4, cisco_ios, 2026-09-29) is load-bearing:
+    what it measured exact is removable on that platform, and on no other."""
+
+    GI01 = "interface GigabitEthernet0/1"
+
+    def _s4_with(self, line):
+        return S4.replace(self.GI01 + "\n", f"{self.GI01}\n{line}\n", 1)
+
+    @pytest.mark.real_measurements
+    def test_a_measured_shape_is_removable_on_its_platform_and_not_elsewhere(self):
+        running = self._s4_with(" load-interval 30")
+        unit = [_unit([self.GI01], " load-interval 30")]
+        ios = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_ios")
+        assert ios["commands"] == [self.GI01, " no load-interval 30", "exit"], ios
+        xe = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_iosxe")
+        assert xe["commands"] == [] and "not been measured on cisco_iosxe" in \
+            xe["refused"][0]["reason"]
+
+    @pytest.mark.real_measurements
+    def test_the_community_removal_c139_needs_is_measured_on_ios(self):
+        out = program(S4, [_unit([], next(l for l in S4.splitlines()
+                                          if l.startswith("snmp-server community")))],
+                      mgmt_ip="10.255.1.24", dialect="cisco_ios")
+        assert out["commands"] and out["commands"][0].startswith("no snmp-server community")
+        assert out["secret_position"], "still needs a stated reason"
+
+    @pytest.mark.real_measurements
+    def test_logging_buffered_is_refused_by_name_citing_s4(self):
+        running = S4 + "logging buffered 16001\n"
+        out = program(running, [_unit([], "logging buffered 16001")], mgmt_ip="10.255.1.24",
+                      dialect="cisco_ios")
+        assert out["commands"] == []
+        assert "measured on cisco_ios (s4, 2026-09-29)" in out["refused"][0]["reason"]
+        assert "logging-buffered" not in {s.key for s in RM.SHAPES}, "retired from the probe"
+
+    @pytest.mark.real_measurements
+    def test_the_record_holds_only_what_no_did(self):
+        import json
+        rec = json.load(open(RM.MEASURED_FILE, encoding="utf-8"))
+        rows = rec["by_dialect"]["cisco_ios"]
+        assert {k for k, v in rows.items() if v["result"] == "exact"} == {
+            "interface.load-interval", "interface.description",
+            "global.snmp-server-community", "global.logging-host"}
+        assert rows["global.logging-buffered"]["result"] == "overrides_default"
+        assert all(v["result"] not in ("unmeasured", "failed") for v in rows.values())

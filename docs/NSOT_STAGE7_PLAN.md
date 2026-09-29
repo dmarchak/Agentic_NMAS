@@ -1701,6 +1701,17 @@ read through one function, and P.8 moves it without the reader changing.
   has no scratch (IOS allows one process), so it adds a neighbour to the device's LIVE
   process and runs only with `--allow-live-bgp` (C192). A shape the run could not ask
   about is `unmeasured` and never enters the platform record.
+  **First record, 2026-09-29 (the operator's run on s4, cisco_ios):** four shapes exact
+  (load-interval, description, snmp-server community with three examples including an ACL
+  and a view, logging host). `logging buffered` was the prediction, confirmed: removing
+  `logging buffered 16001` left `no logging buffered`, buffered logging OFF instead of at
+  its default. It is its own class, `overrides_default` (anything whose absence means a
+  default rather than nothing), refused by name citing the run, and retired from the
+  probe so no run dirties a device to learn it again. The run's self-check stopped it
+  there (NOT RESTORED): its repair took the residue calculation, which paired the
+  leftover with s4's `no logging console` (C193), and now takes a plain difference.
+  Still unmeasured on IOS: the numbered ACL entry and route-map sequence (the two most
+  likely to destroy), the applet, the prefix-list and named-ACL entries.
   Next: 2b the pipeline (confirm hash over removals, per-line reasons, rollback
   that re-adds verbatim, read-back that each line is gone), 2c the preview, 2d r2 on the
   host.

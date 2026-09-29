@@ -92,10 +92,6 @@ EXEMPLARS = {
         "setup": ["logging host 192.0.2.10"],
         "unit": {"chain": [], "line": "logging host 192.0.2.10"},
         "teardown": []}],
-    "global.logging-buffered": [{
-        "setup": ["logging buffered 16001"],
-        "unit": {"chain": [], "line": "logging buffered 16001"},
-        "teardown": []}],
     "global.event-manager-applet": [{
         "setup": ["event manager applet NMASPROBE", " event timer watchdog time 86400",
                   " action 1.0 syslog msg \"NMASPROBE\""],
@@ -132,11 +128,12 @@ EXEMPLARS = {
 #: When exemplars disagree, the shape reads as the worst of them.
 #: `exact` only if EVERY example was exact: an unmeasured example cannot let
 #: an exact one speak for the shape.
-WORST = ("failed", "refused", "broader", "different", "incomplete", "unmeasured", "exact")
+WORST = ("failed", "refused", "broader", "overrides_default", "different", "incomplete",
+         "unmeasured", "exact")
 
 #: What the platform record may hold: what `no` DID. `failed` (the scratch did
 #: not land) and `unmeasured` are facts about the run, kept in `full` only.
-RECORDED = ("exact", "broader", "different", "incomplete", "refused")
+RECORDED = ("exact", "broader", "overrides_default", "different", "incomplete", "refused")
 
 
 def fold(rows: list) -> str:
@@ -196,6 +193,20 @@ def report(results: dict, dialect: str) -> dict:
             "full": results}
 
 
+def extras(before: str, now: str) -> list:
+    """Every line on the device now that it did not carry before, as units,
+    a stanza as one. A plain difference of the two read-backs, NEVER the
+    residue calculation: that pairs `no logging buffered` with s4's own
+    `no logging console` as one setting, so the repair it fed sent nothing and
+    the first real run could not undo its own change (C193)."""
+    was, out = _lines(before), []
+    for path in sorted(_lines(now) - was, key=len):
+        if any(path[:len(p)] == p for p in (tuple(u["chain"]) + (u["line"],) for u in out)):
+            continue
+        out.append({"chain": list(path[:-1]), "line": path[-1]})
+    return out
+
+
 def plan_for(key: str, bgp: str = LIVE_BGP) -> list:
     """What the probe would do for *key*: each exemplar's setup, the program,
     and the teardown. Pure: the dry run prints it."""
@@ -220,6 +231,20 @@ def classify(with_scratch: str, after: str, unit: dict, error: str = "") -> dict
     removed, added = before - now, now - before
     if path in now:
         return {"result": "incomplete", "detail": "the line is still on the device"}
+    command = unit["line"].strip().split()
+
+    def _negates(p):
+        # `no` plus a leading part of the removed command, in its stanza.
+        words = p[-1].strip().split()
+        return (list(p[:-1]) == list(unit["chain"]) and words[:1] == ["no"]
+                and 0 < len(words) - 1 < len(command) and words[1:] == command[:len(words) - 1])
+
+    if added and all(_negates(p) for p in added):
+        # A `no` form of the removed command appeared, and nothing else: the
+        # feature is OFF, not back at its default (measured: logging buffered
+        # on s4). A property of a class of commands, not a measurement anomaly.
+        return {"result": "overrides_default", "detail": "appeared: " + "; ".join(
+            " > ".join(p) for p in sorted(added))[:300]}
     if added:
         return {"result": "different", "detail": "appeared: " + "; ".join(
             " > ".join(p) for p in sorted(added))[:300]}
@@ -270,7 +295,7 @@ def main() -> int:
     from modules.nsot import device_ops, roundtrip
     from modules.nsot.deploy import merge_commands
     from modules.nsot.platform import platform_for_device
-    from modules.nsot.removal import candidates, negation_program
+    from modules.nsot.removal import negation_program
     from modules.nsot.restore import _devices_of
     from modules.pipeline import IOS_ERROR_PATTERN
 
@@ -326,10 +351,9 @@ def main() -> int:
                     if ex["teardown"]:
                         send(ex["teardown"])
                     now = read()
-                    extra = candidates(before, now)
+                    extra = extras(before, now)
                     if extra:
-                        send(negation_program([{"chain": e["chain"], "line": e["line"]}
-                                               for e in extra]))
+                        send(negation_program(extra))
                     missing = merge_commands(before, read())
                     if missing:
                         send(missing)
