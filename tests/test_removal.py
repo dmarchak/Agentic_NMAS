@@ -242,10 +242,13 @@ class TestTheCommittedRecord:
 
     @pytest.mark.real_measurements
     def test_a_measured_shape_is_removable_on_its_platform_and_not_elsewhere(self):
-        running = self._s4_with(" load-interval 30")
-        unit = [_unit([self.GI01], " load-interval 30")]
+        """A named-ACL entry: exact on cisco_ios (s4), unmeasured on cisco_iosxe (r3's
+        run could not measure it). load-interval was the example until r3 measured it."""
+        acl = "ip access-list extended SCRATCH"
+        running = S4 + f"{acl}\n permit ip host 192.0.2.1 any\n"
+        unit = [_unit([acl], " permit ip host 192.0.2.1 any")]
         ios = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_ios")
-        assert ios["commands"] == [self.GI01, " no load-interval 30", "exit"], ios
+        assert ios["commands"] == [acl, " no permit ip host 192.0.2.1 any", "exit"], ios
         xe = program(running, unit, mgmt_ip="10.255.1.24", dialect="cisco_iosxe")
         assert xe["commands"] == [] and "not been measured on cisco_iosxe" in \
             xe["refused"][0]["reason"]
@@ -302,3 +305,23 @@ class TestTheCommittedRecord:
         assert "access-list 97 permit 192.0.2.2" in rows["global.numbered-acl-entry"]["detail"]
         assert rows["global.logging-buffered"]["result"] == "overrides_default"
         assert all(v["result"] not in ("unmeasured", "failed") for v in rows.values())
+
+
+
+class TestWhyAShapeIsUnmeasured:
+    @pytest.mark.real_measurements
+    def test_the_refusal_says_why_the_run_could_not_measure_it(self):
+        running = R3 + "ip access-list extended SCRATCH\n 10 permit ip host 192.0.2.1 any\n"
+        out = program(running, [_unit(["ip access-list extended SCRATCH"],
+                                      " 10 permit ip host 192.0.2.1 any")],
+                      mgmt_ip="", dialect="cisco_iosxe")
+        why = out["refused"][0]["reason"]
+        assert "has not been measured on cisco_iosxe (r3," in why and "PROBE defect" in why
+
+    @pytest.mark.real_measurements
+    def test_r2s_residue_shape_is_measured_exact_on_iosxe(self):
+        """Mode B's acceptance, unlocked in the record: r2's program is allowed."""
+        out = program(R2_BROKEN, [_unit(["interface GigabitEthernet2"], " load-interval 30")],
+                      mgmt_ip="10.255.1.12", dialect="cisco_iosxe")
+        assert out["commands"] == ["interface GigabitEthernet2", " no load-interval 30", "exit"]
+        assert out["refused"] == []

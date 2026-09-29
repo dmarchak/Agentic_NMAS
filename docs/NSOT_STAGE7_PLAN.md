@@ -1722,6 +1722,21 @@ read through one function, and P.8 moves it without the reader changing.
   are exact: the obvious generalisation ("list entries are dangerous") would have refused
   two safe shapes. The run needed no repair past its teardowns and ended equivalent, and
   s4's Capture as golden confirmed it independently (matches its golden and its intent).
+  **cisco_iosxe (the operator's run on r3, 2026-09-29): 7 exact**, including
+  `interface.load-interval`, r2's residue shape, so **the acceptance is unlocked in the
+  record**: r2's `interface GigabitEthernet2` / ` no load-interval 30` / `exit` passes
+  every gate but the pipeline, which is 2b. BGP unmeasured by choice. Both ACL shapes
+  "did not land", and both were the probe's own defects (C195), now fixed and to be
+  re-run with the new `numbered-acl.list-entry` shape. r3 afterwards (the operator's
+  control): the r5 session unchanged, no scratch anywhere, NAT-PRIVATE intact.
+  **The gap Mode B has to get right** (the operator): every destructive or surprising
+  result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
+  default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and
+  WHAT THE DEVICE STORES. So the probe measures the removal of the line as the device
+  DISPLAYS it (the form the golden holds and Mode B builds from), files it under the
+  shape that displayed line is, and records what the setup added. Which other forms
+  IOS-XE normalises (sequence numbers, the list form, legacy `logging <addr>`, masks,
+  wildcards) is answered by that evidence, per shape, rather than guessed in advance.
   **The repair for an `overrides_default` line, proven on s4 (the operator, 2026-09-29):
   THE DEFAULT IS DISCOVERABLE FROM A SIBLING ON THE SAME IMAGE.** s3 runs the same vIOS
   image and its committed golden has no `logging buffered` line, so it is at the default;

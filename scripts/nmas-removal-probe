@@ -109,8 +109,14 @@ EXEMPLARS = {
         "teardown": ["no route-map NMASPROBE"]}],
     "global.numbered-acl-entry": [{
         "setup": ["access-list 97 permit 192.0.2.1", "access-list 97 permit 192.0.2.2"],
-        "unit": {"chain": [], "line": "access-list 97 permit 192.0.2.1"},
+        "unit": {"chain": [], "line": "access-list 97 permit 192.0.2.1",
+                 "match_in_readback": True},
         "teardown": ["no access-list 97"]}],
+    "numbered-acl.list-entry": [{
+        "setup": ["ip access-list standard 96", " permit 192.0.2.1", " permit 192.0.2.2"],
+        "unit": {"chain": ["ip access-list standard 96"], "line": " permit 192.0.2.1",
+                 "match_in_readback": True},
+        "teardown": ["no ip access-list standard 96"]}],
     "named-acl.entry": [{
         "setup": ["ip access-list extended NMASPROBE", " permit ip host 192.0.2.1 any",
                   " permit ip host 192.0.2.2 any"],
@@ -157,20 +163,62 @@ def _fill(items, bgp: str) -> list:
     return [x.replace("{bgp}", bgp) for x in items]
 
 
-def _locate(unit: dict, config: str) -> dict:
-    """The unit as the device PRINTS it. A named ACL's entries come back with
-    sequence numbers on IOS-XE (` 10 permit ...`), so the verbatim line to
-    negate is the one read back, never the one typed."""
-    if not unit.get("match_in_readback"):
-        return {"chain": unit["chain"], "line": unit["line"]}
+def _unsequenced(text: str) -> str:
+    words = text.strip().split(None, 1)
+    return words[1] if len(words) == 2 and words[0].isdigit() else text.strip()
+
+
+def _locate(unit: dict, config: str):
+    """The unit as the device DISPLAYS it, or None if it is not there. What
+    Mode B removes is built from the golden, which holds the displayed form,
+    so the probe measures the removal of THAT line, never the typed one (the
+    operator, r3's run, 2026-09-29). The forms looked for:
+
+    * exactly as typed;
+    * the same entry with a sequence number (IOS-XE numbers ACL entries);
+    * a numbered ACL entry typed at the top (`access-list 97 permit X`) shown
+      as `ip access-list standard|extended 97` / ` 10 permit X` (IOS-XE), and
+      the reverse (typed in list form, shown at the top: IOS).
+    """
+    import re
     from modules.nsot.removal import _chains
-    typed = unit["line"].strip()
-    for line, chain in _chains(config):
-        text = line.strip()
-        numbered = text.split(None, 1)[0].isdigit() and text.split(None, 1)[-1] == typed
-        if list(chain) == unit["chain"] and (text == typed or numbered):
-            return {"chain": list(chain), "line": line}
-    return {"chain": unit["chain"], "line": unit["line"]}
+
+    entries = _chains(config)
+    typed, chain = unit["line"].strip(), list(unit["chain"])
+    for line, c in entries:
+        if list(c) == chain and line.strip() == typed:
+            return {"chain": chain, "line": line}
+    if not unit.get("match_in_readback"):
+        return None
+    for line, c in entries:
+        if list(c) == chain and _unsequenced(line) == typed:
+            return {"chain": chain, "line": line}
+    top = re.match(r"^access-list (\d+) (.+)$", typed) if not chain else None
+    listed = re.match(r"^ip access-list (?:standard|extended) (\d+)$", chain[0]) \
+        if len(chain) == 1 else None
+    for line, c in entries:
+        if top and len(c) == 1 and re.match(rf"^ip access-list (standard|extended) {top.group(1)}$",
+                                             c[0]) and _unsequenced(line) == top.group(2):
+            return {"chain": list(c), "line": line}
+        if listed and not c and line.strip() == f"access-list {listed.group(1)} {typed}":
+            return {"chain": [], "line": line}
+    return None
+
+
+def setup_added(before: str, with_scratch: str) -> list:
+    """What the setup ADDED, as the device displays it: the evidence a
+    "did not land" needs, so the next reader does not have to guess (C194)."""
+    return [" > ".join(p) for p in sorted(_lines(with_scratch) - _lines(before))][:20]
+
+
+def located_key(unit: dict, config: str) -> str:
+    """The shape the DISPLAYED line is, which is the shape Mode B will
+    classify it as: the key its measurement belongs under."""
+    from modules.nsot.removal import _chains, _headers, shape_for
+    path = tuple(unit["chain"]) + (unit["line"],)
+    kind = "stanza" if path in _headers(_chains(config)) else "leaf"
+    shape = shape_for(unit["chain"], unit["line"], kind)
+    return shape.key if shape else ""
 
 
 def skip_reason(ex: dict, bgp: str, allow_live_bgp: bool) -> str:
@@ -182,6 +230,26 @@ def skip_reason(ex: dict, bgp: str, allow_live_bgp: bool) -> str:
         return ("not measured: it adds a neighbour to this device's LIVE BGP process "
                 f"({bgp}), which this run was not allowed to do (--allow-live-bgp)")
     return ""
+
+
+def file_results(results: dict, key: str, rows: list, **meta) -> None:
+    """File each example under the shape its line was DISPLAYED as, which is
+    the key Mode B will look up; one sent as one shape and shown as another
+    says so in its row. An example that did not land stays under its own key."""
+    by_key = {}
+    for row in rows:
+        shown = row.get("shown_as")
+        target = shown if shown and shown != "(no shape)" else key
+        if shown == "(no shape)":
+            row = {**row, "result": "unmeasured",
+                   "detail": "not measured: the device displays it as a line no shape covers"}
+        by_key.setdefault(target, []).append(row)
+    for target, group in by_key.items():
+        prior = (results.get(target) or {}).get("exemplars") or []
+        group = prior + group
+        results[target] = {"result": fold(group),
+                           "detail": "; ".join(x["detail"] for x in group if x.get("detail")),
+                           "exemplars": group, **meta}
 
 
 def report(results: dict, dialect: str) -> dict:
@@ -213,7 +281,8 @@ def plan_for(key: str, bgp: str = LIVE_BGP) -> list:
     from modules.nsot.removal import negation_program
     out = []
     for ex in EXEMPLARS[key]:
-        unit = {"chain": _fill(ex["unit"]["chain"], bgp), "line": ex["unit"]["line"]}
+        unit = {"chain": _fill(ex["unit"]["chain"], bgp), "line": ex["unit"]["line"],
+                **({"match_in_readback": True} if ex["unit"].get("match_in_readback") else {})}
         out.append({"setup": _fill(ex["setup"], bgp), "unit": unit,
                     "program": negation_program([unit]),
                     "teardown": _fill(ex["teardown"], bgp), "needs": ex.get("needs", ""),
@@ -282,7 +351,9 @@ def main() -> int:
                 print(f"{key}" + ("  (LIVE: runs only with --allow-live-bgp)" if ex["live"]
                                   else f"  (needs {ex['needs']})" if ex["needs"] else ""))
                 print("  add:      " + " / ".join(ex["setup"]))
-                print("  remove:   " + " / ".join(ex["program"]))
+                print("  remove:   " + " / ".join(ex["program"])
+                      + ("   (as typed; at --apply it is built from the line as the device "
+                         "DISPLAYS it)" if ex["unit"].get("match_in_readback") else ""))
                 print("  teardown: " + (" / ".join(ex["teardown"]) or "(none: the removal is it)"))
         print("\n--apply --list <list> --device <device> --actor <you> measures them.")
         return 0
@@ -338,35 +409,41 @@ def main() -> int:
                     before = read()
                     err = send(ex["setup"])
                     with_scratch = read()
-                    unit = _locate(ex["unit"], with_scratch)
-                    if err or tuple(unit["chain"]) + (unit["line"],) not in _lines(with_scratch):
-                        rows.append({"result": "failed", "detail": "the scratch did not land: "
-                                     + (err or "not in the read-back")})
+                    unit = None if err else _locate(ex["unit"], with_scratch)
+                    if unit is None:
+                        rows.append({"result": "failed", "sent_as": key,
+                                     "detail": "the scratch did not land: "
+                                     + (err or "not found in the read-back in any form looked "
+                                               "for"),
+                                     "setup_added": setup_added(before, with_scratch)})
                     else:
+                        shown_as = located_key(unit, with_scratch)
                         program = negation_program([unit])
                         err = send(program)
                         row = classify(with_scratch, read(), unit, err)
-                        rows.append({**row, "program": program})
-                    # Back to BEFORE: the scratch away, anything lost put back.
-                    if ex["teardown"]:
-                        send(ex["teardown"])
+                        rows.append({**row, "program": program, "sent_as": key,
+                                     "shown_as": shown_as or "(no shape)"})
+                    # Back to BEFORE: the scratch away, anything lost put back,
+                    # and WHAT EACH STEP SENT recorded, so a clean end says
+                    # whether the repair was needed (C194).
+                    restore = {"teardown": list(ex["teardown"]),
+                               "teardown_error": send(ex["teardown"]) if ex["teardown"] else ""}
                     now = read()
                     extra = extras(before, now)
+                    restore["extras_sent"] = negation_program(extra) if extra else []
                     if extra:
-                        send(negation_program(extra))
+                        restore["extras_error"] = send(restore["extras_sent"])
                     missing = merge_commands(before, read())
+                    restore["readded"] = list(missing)
                     if missing:
-                        send(missing)
+                        restore["readd_error"] = send(missing)
+                    rows[-1]["restore"] = restore
                     final = roundtrip.configs_equivalent(before, read())
                     if not final["equal"]:
                         damaged = {"shape": key, "only_before": final["only_left"],
                                    "only_now": final["only_right"]}
                         break
-                results[key] = {
-                    "result": fold(rows),
-                    "detail": "; ".join(x["detail"] for x in rows if x["detail"]),
-                    "device": args.device, "at": at, "dialect": dialect,
-                    "exemplars": rows}
+                file_results(results, key, rows, device=args.device, at=at, dialect=dialect)
                 if damaged:
                     break
         finally:

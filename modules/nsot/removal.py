@@ -98,11 +98,17 @@ UNREMOVABLE = (
 
 class Shape(NamedTuple):
     """A kind of line whose removal can be measured: where it sits
-    (``context``), whether it is a line or a stanza, and the pattern."""
+    (``context``), whether it is a line or a stanza, the pattern, and (where
+    two behaviours share a context) the HEADER it sits under. IOS-XE shows a
+    numbered ACL as `ip access-list standard 97` with numbered entries, the
+    same context as a named ACL's; without the header both would read one
+    measurement, and a destructive one could borrow a safe one's (the
+    operator, r3's run, 2026-09-29)."""
     key: str
     context: str
     kind: str
     pattern: str
+    header: str = ""
 
 
 #: Every shape the probe measures, including the ones SUSPECTED of removing
@@ -120,7 +126,11 @@ SHAPES = (
     Shape("global.route-map-sequence", "global", "stanza",
           r"^route-map \S+ (permit|deny) \d+$"),
     Shape("global.numbered-acl-entry", "global", "leaf", r"^access-list \d+ .+$"),
-    Shape("named-acl.entry", "ip access-list", "leaf", r"^(\d+ )?(permit|deny|remark) .+$"),
+    Shape("numbered-acl.list-entry", "ip access-list", "leaf",
+          r"^(\d+ )?(permit|deny|remark) .+$",
+          header=r"^ip access-list (standard|extended) \d+$"),
+    Shape("named-acl.entry", "ip access-list", "leaf", r"^(\d+ )?(permit|deny|remark) .+$",
+          header=r"^ip(v6)? access-list (?:(?:standard|extended) )?(?!\d+$)\S+$"),
     Shape("bgp.neighbor-remote-as", "router bgp", "leaf", r"^neighbor \S+ remote-as \d+$"),
 )
 
@@ -143,12 +153,16 @@ def measured() -> dict:
     """``{"state": absent|unreadable|ok, "by_dialect": {dialect: {key: row}}}``.
     Absent and unreadable are different answers, and neither allows anything."""
     if not os.path.exists(MEASURED_FILE):
-        return {"state": "absent", "by_dialect": {}}
+        return {"state": "absent", "by_dialect": {}, "unmeasured": {}}
     try:
         with open(MEASURED_FILE, encoding="utf-8") as fh:
-            return {"state": "ok", "by_dialect": json.load(fh).get("by_dialect") or {}}
+            doc = json.load(fh)
+        # `unmeasured`: shapes a run could not measure, with why. Never a
+        # platform fact, and never allowing anything: only the refusal's words.
+        return {"state": "ok", "by_dialect": doc.get("by_dialect") or {},
+                "unmeasured": doc.get("unmeasured") or {}}
     except (OSError, ValueError) as exc:
-        return {"state": "unreadable", "by_dialect": {}, "error": str(exc)}
+        return {"state": "unreadable", "by_dialect": {}, "unmeasured": {}, "error": str(exc)}
 
 
 def _in_context(context: str, chain: tuple) -> bool:
@@ -165,7 +179,8 @@ def shape_for(chain, line: str, kind: str):
     text = line.strip()
     for shape in SHAPES:
         if shape.kind == kind and _in_context(shape.context, tuple(chain)) \
-                and re.search(shape.pattern, text):
+                and re.search(shape.pattern, text) \
+                and (not shape.header or bool(chain) and re.search(shape.header, chain[0])):
             return shape
     return None
 
@@ -184,8 +199,11 @@ def _unmeasured(chain, line: str, kind: str, dialect: str) -> str:
         return f"the removal measurements could not be read ({record.get('error')})"
     row = (record["by_dialect"].get(dialect) or {}).get(shape.key)
     if not row:
-        return (f"`{shape.key}` has not been measured on {dialect}: run "
-                f"scripts/nmas-removal-probe --shape {shape.key} on a {dialect} device")
+        why = ((record.get("unmeasured") or {}).get(dialect) or {}).get(shape.key) or {}
+        return (f"`{shape.key}` has not been measured on {dialect}"
+                + (f" ({why.get('device')}, {why.get('at')}: {why.get('reason')})"
+                   if why.get("reason") else "")
+                + f": run scripts/nmas-removal-probe --shape {shape.key} on a {dialect} device")
     if row.get("result") != "exact":
         return (f"measured on {dialect} ({row.get('device')}, {row.get('at')}): `no <line>` "
                 f"{RESULT_WORDS.get(row.get('result'), row.get('result'))}"

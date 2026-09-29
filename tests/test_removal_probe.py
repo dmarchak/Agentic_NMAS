@@ -35,7 +35,7 @@ class TestEveryShapeIsProbed:
         so never removed; an exemplar with no shape measures nothing Mode B
         uses."""
         assert set(P.EXEMPLARS) == {s.key for s in RM.SHAPES}
-        assert len(P.EXEMPLARS) >= 10, "a floor: logging-buffered was retired, 11 to 10"
+        assert len(P.EXEMPLARS) >= 11, "a floor: 11 less logging-buffered, plus the list-form ACL"
 
     def test_each_exemplar_is_an_instance_of_its_shape(self):
         for key in P.EXEMPLARS:
@@ -185,3 +185,76 @@ class TestTheFirstRealRun:
         body = src[src.index("def main"):]
         assert "extra = extras(before, now)" in body
         assert "candidates(" not in body
+
+
+class TestWhatTheDeviceDisplays:
+    """r3 (IOS-XE), 2026-09-29: both ACL shapes came back "did not land". The
+    named one because `plan_for` dropped the example's read-back matching (a
+    seam: the locator's test set the flag by hand); the numbered one because
+    IOS-XE shows `access-list 97 permit X` as `ip access-list standard 97` /
+    ` 10 permit X`, a form nothing looked for."""
+
+    R3 = open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "r3.cfg"),
+              encoding="utf-8").read()
+    XE = R3 + ("ip access-list extended NMASPROBE\n 10 permit ip host 192.0.2.1 any\n"
+               " 20 permit ip host 192.0.2.2 any\nip access-list standard 97\n"
+               " 10 permit 192.0.2.1\n 20 permit 192.0.2.2\n")
+
+    def test_the_example_reaches_the_locator_with_its_matching_intact(self):
+        """The seam, through `plan_for`, the path the run takes."""
+        (ex,) = P.plan_for("named-acl.entry")
+        assert P._locate(ex["unit"], self.XE) == {
+            "chain": ["ip access-list extended NMASPROBE"],
+            "line": " 10 permit ip host 192.0.2.1 any"}
+
+    def test_a_numbered_entry_typed_at_the_top_is_found_in_list_form(self):
+        (ex,) = P.plan_for("global.numbered-acl-entry")
+        found = P._locate(ex["unit"], self.XE)
+        assert found == {"chain": ["ip access-list standard 97"], "line": " 10 permit 192.0.2.1"}
+        assert P.located_key(found, self.XE) == "numbered-acl.list-entry", \
+            "filed under the shape Mode B would classify the displayed line as"
+        assert RM.negation_program([found]) == ["ip access-list standard 97",
+                                                " no 10 permit 192.0.2.1", "exit"]
+
+    def test_a_list_form_entry_shown_at_the_top_is_found_too(self):
+        """The reverse, IOS's display: typed in list form, shown as a top line."""
+        (ex,) = P.plan_for("numbered-acl.list-entry")
+        shown = R2_WITH = R2 + "access-list 96 permit 192.0.2.1\naccess-list 96 permit 192.0.2.2\n"
+        found = P._locate(ex["unit"], shown)
+        assert found == {"chain": [], "line": "access-list 96 permit 192.0.2.1"}
+        assert P.located_key(found, R2_WITH) == "global.numbered-acl-entry"
+
+    def test_not_there_in_any_form_is_none_and_the_evidence_is_kept(self):
+        (ex,) = P.plan_for("named-acl.entry")
+        assert P._locate(ex["unit"], self.R3) is None
+        added = P.setup_added(self.R3, self.XE)
+        assert "ip access-list extended NMASPROBE >  10 permit ip host 192.0.2.1 any" in added
+
+    def test_a_result_is_filed_under_the_shape_it_was_shown_as(self):
+        results = {}
+        P.file_results(results, "global.numbered-acl-entry", [
+            {"result": "exact", "detail": "", "shown_as": "numbered-acl.list-entry",
+             "sent_as": "global.numbered-acl-entry"}], device="r3", at="t", dialect="x")
+        assert set(results) == {"numbered-acl.list-entry"}
+        P.file_results(results, "global.logging-host", [
+            {"result": "exact", "detail": "", "shown_as": "(no shape)"}], device="r3", at="t",
+            dialect="x")
+        assert results["global.logging-host"]["result"] == "unmeasured"
+
+    def test_every_example_records_what_its_restore_sent(self):
+        """C194: a clean end says whether the repair was needed."""
+        src = open(SCRIPT, encoding="utf-8").read()
+        body = src[src.index("def main"):]
+        for field in ('"teardown_error"', 'restore["extras_sent"]', 'restore["readded"]',
+                      'rows[-1]["restore"] = restore'):
+            assert field in body, field
+
+
+class TestTheHeaderSeparatesTwoBehaviours:
+    def test_numbered_and_named_lists_are_different_shapes(self):
+        assert RM.shape_for(["ip access-list standard 97"], " 10 permit 192.0.2.1",
+                            "leaf").key == "numbered-acl.list-entry"
+        assert RM.shape_for(["ip access-list standard NAT-PRIVATE"],
+                            " 10 permit 10.0.0.0 0.255.255.255", "leaf").key == "named-acl.entry"
+        assert RM.shape_for(["ip access-list extended NMASPROBE"],
+                            " 10 permit ip host 192.0.2.1 any", "leaf").key == "named-acl.entry"

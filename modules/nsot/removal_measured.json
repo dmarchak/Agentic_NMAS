@@ -1,5 +1,5 @@
 {
-  "_about": "Mode B's platform record: what `no <line>` DID, per shape, measured by scripts/nmas-removal-probe on a real device. Only `exact` allows a removal. Written from the probe's own output; a row reclassified since says so.",
+  "_about": "Mode B's platform record: what `no <line>` DID, per shape, measured by scripts/nmas-removal-probe on a real device. Only `exact` allows a removal. Written from the probe's own output; a row reclassified since says so. `unmeasured` says why a shape has no row on a platform, and allows nothing.",
   "by_dialect": {
     "cisco_ios": {
       "global.event-manager-applet": {
@@ -61,6 +61,69 @@
         "detail": "",
         "device": "s4",
         "result": "exact"
+      }
+    },
+    "cisco_iosxe": {
+      "global.event-manager-applet": {
+        "at": "2026-09-29T04:48:57Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
+      },
+      "global.ip-prefix-list-entry": {
+        "at": "2026-09-29T04:48:57Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
+      },
+      "global.logging-host": {
+        "at": "2026-09-29T04:48:57Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
+      },
+      "global.route-map-sequence": {
+        "at": "2026-09-29T04:48:57Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
+      },
+      "global.snmp-server-community": {
+        "at": "2026-09-29T04:48:57Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
+      },
+      "interface.description": {
+        "at": "2026-09-29T04:48:57Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
+      },
+      "interface.load-interval": {
+        "at": "2026-09-29T04:48:57Z",
+        "detail": "",
+        "device": "r3",
+        "result": "exact"
+      }
+    }
+  },
+  "unmeasured": {
+    "cisco_iosxe": {
+      "global.numbered-acl-entry": {
+        "at": "2026-09-29T04:48:57Z",
+        "device": "r3",
+        "reason": "IOS-XE displays a numbered ACL in list form (`ip access-list standard 97` / ` 10 permit ...`), a form the probe did not look for. It does now, and files the result under `numbered-acl.list-entry`, the shape Mode B classifies that displayed line as; re-run"
+      },
+      "named-acl.entry": {
+        "at": "2026-09-29T04:48:57Z",
+        "device": "r3",
+        "reason": "a PROBE defect, not a platform fact: the probe rebuilt each example without its read-back matching (`match_in_readback`), so the sequence-numbered line IOS-XE displays (` 10 permit ...`, as r3's own NAT-PRIVATE shows) was never looked for. Fixed; re-run"
+      },
+      "numbered-acl.list-entry": {
+        "at": "2026-09-29T04:48:57Z",
+        "device": "r3",
+        "reason": "added after this run: the displayed form of a numbered ACL entry; re-run"
       }
     }
   }
