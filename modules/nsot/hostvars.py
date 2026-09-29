@@ -805,8 +805,103 @@ def _set_path(doc, path, value):
     return False
 
 
+def put_back_committed(repo: str, paths: list) -> None:
+    """A failed commit leaves each written file as it was committed, or
+    removes one nothing had committed: an uncommitted intent file is what
+    the Git tab names as residue, and no writer may leave one (C106's rule;
+    `_commit_paths` only unstages)."""
+    from modules.nsot.repo import git_raw
+
+    for path in paths:
+        rel = os.path.relpath(path, repo).replace(os.sep, "/")
+        rc, out, _ = git_raw(repo, "show", f"HEAD:{rel}")
+        if rc == 0:
+            with open(path, "w", encoding="utf-8", newline="") as fh:
+                fh.write(out)
+        else:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
 class RevertConflict(ValueError):
     """A later commit changed the same lines this revert would undo."""
+
+
+def _shown(value) -> str:
+    """A flattened intent value for a preview line; absent is said, not blank."""
+    if value is _MISSING:
+        return "(absent)"
+    text = repr(value)
+    return text if len(text) <= 200 else text[:197] + "..."
+
+
+def plan_revert(repo: str, hostname: str, sha: str = "") -> dict:
+    """What undoing one intent commit would commit, computed and NOT written.
+
+    ``{ok, target, subject, reverted_paths, changes, kept_later_commits,
+    document}`` where *document* is the whole intent after the revert and
+    *changes* names each path with its value now and after the revert. A
+    conflict is ``{ok: False, conflict: True, conflicts: [...], error}`` with
+    the paths named. :func:`revert_intent_change` writes what this computes,
+    so a preview and its apply are one computation (7.3)."""
+    commits = intent_commits(repo, hostname, limit=50)
+    if not commits:
+        return {"ok": False, "error": f"'{hostname}' has no committed intent."}
+
+    target = sha or commits[0]["sha"]
+    position = next((i for i, c in enumerate(commits)
+                     if c["sha"].startswith(target)), None)
+    if position is None:
+        return {"ok": False,
+                "error": f"{target[:8]} is not an intent commit for {hostname}"}
+    target = commits[position]["sha"]
+    subject = commits[position]["subject"]
+
+    if position + 1 >= len(commits):
+        return {"ok": False, "target": target, "subject": subject, "error": (
+            f"{target[:8]} is the first intent commit for '{hostname}', so "
+            "there is no earlier state for its change to be undone to. Edit "
+            "the intent instead.")}
+
+    before = committed_at(repo, hostname, commits[position + 1]["sha"])
+    after = committed_at(repo, hostname, target)
+    current = read_committed(repo, hostname)
+    if before is None or after is None or current is None:
+        return {"ok": False, "target": target, "subject": subject,
+                "error": "could not read intent around that commit"}
+
+    flat_before, flat_after = _walk(before), _walk(after)
+    flat_current = _walk(current)
+
+    changed = [p for p in set(flat_before) | set(flat_after)
+               if flat_before.get(p, _MISSING) != flat_after.get(p, _MISSING)]
+    if not changed:
+        return {"ok": False, "target": target, "subject": subject,
+                "error": f"{target[:8]} changed nothing to undo"}
+
+    conflicts = [p for p in changed
+                 if flat_current.get(p, _MISSING) != flat_after.get(p, _MISSING)]
+    if conflicts:
+        named = [".".join(str(part) for part in p) for p in sorted(conflicts)]
+        return {"ok": False, "conflict": True, "target": target, "subject": subject,
+                "conflicts": named, "error": (
+                    f"refusing to revert {target[:8]}: a later commit changed the same "
+                    f"setting(s) — {', '.join(named[:5])}. Decide which edit should win "
+                    "and make that edit explicitly.")}
+
+    reverted, changes = [], []
+    for path in sorted(changed):
+        if _set_path(current, path, flat_before.get(path, _MISSING)):
+            dotted = ".".join(str(part) for part in path)
+            reverted.append(dotted)
+            changes.append({"path": dotted, "now": _shown(flat_current.get(path, _MISSING)),
+                            "after": _shown(flat_before.get(path, _MISSING))})
+    return {"ok": True, "target": target, "subject": subject, "reverted_paths": reverted,
+            "changes": changes, "kept_later_commits": [c["sha"] for c in commits[:position]],
+            "kept_subjects": [c["subject"] for c in commits[:position]],
+            "document": current}
 
 
 def revert_intent_change(repo: str, hostname: str, sha: str = "") -> dict:
@@ -824,59 +919,16 @@ def revert_intent_change(repo: str, hostname: str, sha: str = "") -> dict:
     path ``A`` changed goes back to what it was *before* ``A``, and nothing
     else is touched. A path that a later commit also changed is a genuine
     conflict and is **refused with the paths named**, because guessing which
-    edit wins is the operator's call.
+    edit wins is the operator's call. Computed by :func:`plan_revert`.
     """
-    commits = intent_commits(repo, hostname, limit=50)
-    if not commits:
-        return {"ok": False, "error": f"'{hostname}' has no committed intent."}
-
-    target = sha or commits[0]["sha"]
-    position = next((i for i, c in enumerate(commits)
-                     if c["sha"].startswith(target)), None)
-    if position is None:
-        return {"ok": False,
-                "error": f"{target[:8]} is not an intent commit for {hostname}"}
-    target = commits[position]["sha"]
-
-    if position + 1 >= len(commits):
-        return {"ok": False, "error": (
-            f"{target[:8]} is the first intent commit for '{hostname}', so "
-            "there is no earlier state for its change to be undone to. Edit "
-            "the intent instead.")}
-
-    before = committed_at(repo, hostname, commits[position + 1]["sha"])
-    after = committed_at(repo, hostname, target)
-    current = read_committed(repo, hostname)
-    if before is None or after is None or current is None:
-        return {"ok": False, "error": "could not read intent around that commit"}
-
-    flat_before, flat_after = _walk(before), _walk(after)
-    flat_current = _walk(current)
-
-    changed = [p for p in set(flat_before) | set(flat_after)
-               if flat_before.get(p, _MISSING) != flat_after.get(p, _MISSING)]
-    if not changed:
-        return {"ok": False,
-                "error": f"{target[:8]} changed nothing to undo"}
-
-    conflicts = [p for p in changed
-                 if flat_current.get(p, _MISSING) != flat_after.get(p, _MISSING)]
-    if conflicts:
-        named = ", ".join(".".join(str(part) for part in p)
-                          for p in sorted(conflicts)[:5])
-        raise RevertConflict(
-            f"refusing to revert {target[:8]}: a later commit changed the same "
-            f"setting(s) — {named}. Decide which edit should win and make that "
-            "edit explicitly.")
-
-    reverted = []
-    for path in sorted(changed):
-        if _set_path(current, path, flat_before.get(path, _MISSING)):
-            reverted.append(".".join(str(part) for part in path))
-
-    write_committed(repo, current)
-    return {"ok": True, "target": target, "reverted_paths": reverted,
-            "kept_later_commits": [c["sha"] for c in commits[:position]]}
+    plan = plan_revert(repo, hostname, sha)
+    if plan.get("conflict"):
+        raise RevertConflict(plan["error"])
+    if not plan.get("ok"):
+        return {"ok": False, "error": plan["error"]}
+    write_committed(repo, plan["document"])
+    return {"ok": True, "target": plan["target"], "reverted_paths": plan["reverted_paths"],
+            "kept_later_commits": plan["kept_later_commits"]}
 
 
 RETRY_LOG_REL = os.path.join(".nsot", "retry_log.json")
@@ -902,23 +954,31 @@ def authorise_retry(repo: str, hostname: str, actor: str = "user",
     if not note:
         return {"ok": False, "error": f"'{hostname}' has no rolled-back note"}
 
-    path = os.path.join(repo, RETRY_LOG_REL)
-    try:
-        with open(path, encoding="utf-8") as fh:
-            log_entries = json.load(fh)
-    except (OSError, ValueError):
-        log_entries = []
-    if not isinstance(log_entries, list):
-        log_entries = []
+    from modules.filestore import PathLock, StoreUnreadable, read_json_for_write, write_atomic
 
     record = {"device": hostname, "actor": actor, "reason": reason,
               "at": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
               "note": note}
-    log_entries.append(record)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(log_entries, fh, indent=2, sort_keys=True)
-        fh.write("\n")
+    # The audit of every decision to re-send a change that failed (C213): it
+    # was read with an unreadable file taken as EMPTY and written back by
+    # truncating in place, so one torn read erased every earlier retry and
+    # recorded the new one alone. Locked, atomic, and unreadable REFUSES.
+    path = os.path.join(repo, RETRY_LOG_REL)
+    with PathLock(path):
+        try:
+            log_entries = read_json_for_write(path, empty=[])
+        except StoreUnreadable as exc:
+            return {"ok": False, "error": (
+                f"{exc} Nothing was authorised: the block stands, because a retry "
+                "the audit cannot record is a retry nobody can see later.")}
+        if not isinstance(log_entries, list):
+            return {"ok": False, "error": (
+                f"{RETRY_LOG_REL} does not hold a list, so nothing was authorised: "
+                "the block stands.")}
+        log_entries.append(record)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        write_atomic(path, json.dumps(log_entries, indent=2, sort_keys=True) + "\n",
+                     newline="\n")
 
     clear_rolled_back(repo, hostname)
     log.warning("hostvars: retry of a rolled-back change authorised for %s by "

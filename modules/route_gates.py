@@ -105,9 +105,9 @@ GATES = {
     "retire.apply": _g(A, "retires a device: removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row, the only stored copy of its credential"),
     "templatize.seed_apply": _g(A, "commits a device's first full intent, parsed from its committed golden"),
     "templatize.edit_committed": _g(A, "commits an edit to intent"),
-    "templatize.revert_committed": _g(A, "commits the inverse of an intent commit"),
+    "templatize.revert_apply": _g(A, "commits the inverse of one intent commit's change"),
     "templatize.bulk_apply": _g(A, "commits one change to many devices' intent"),
-    "templatize.retry_rolled_back": _g(A, "lifts a blocked change (the lines a rollback undid) so it may be sent again"),
+    "templatize.retry_apply": _g(A, "lifts a blocked change (the lines a rollback undid) so it may be sent again"),
     "freshness.authorise": _g(A, "authorises one divergence past the freshness gate"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and
     # the old one-click route is gone, because nothing in it asked whether the
@@ -181,6 +181,8 @@ GATES = {
     "rotate.preview": _g(N, "computes the rotation plan and READS the device's account line; changes nothing"),
     "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
     "templatize.seed_preview": _g(N, "parses committed goldens from git; writes nothing"),
+    "templatize.revert_preview": _g(N, "computes a revert from git; writes nothing"),
+    "templatize.retry_preview": _g(N, "reads the rollback record and the retry log; writes nothing"),
     "templatize.report": _g(N, "reads goldens; opens no session and writes nothing"),
     "templates.preview": _g(N, "renders; writes nothing"),
     "templates.validate": _g(N, "validates; writes nothing"),

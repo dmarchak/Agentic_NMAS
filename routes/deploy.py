@@ -88,7 +88,6 @@ def _artifact_for(list_name: str, hostname: str):
     own ``template_report``, which gates here, per device, with the lines
     named; editing one device's intent cannot revoke the template.
     """
-    from modules.device import get_current_device_list, load_saved_devices
     from modules.nsot import approval, hostvars, templates_repo
     from modules.nsot.render_artifact import build_artifact
 
@@ -101,9 +100,16 @@ def _artifact_for(list_name: str, hostname: str):
         return None, (f"golden refused: {record['refused']}" if record["refused"]
                       else "no golden config for this device")
 
-    _name, csv_path = get_current_device_list()
-    device = next((d for d in load_saved_devices(csv_path)
-                   if d.get("hostname") == hostname), {})
+    # The row comes from THIS list's inventory (C215): it came from the ACTIVE
+    # list's, so a plan for list B read list A's row, and a device with no row
+    # there took `platform_for_device({})`, measured as `cisco_ios`: the plan
+    # chose the IOS template for an IOS-XE device. A device the list does not
+    # hold is refused by name; a lookup that misses never picks a default.
+    from modules.nsot.restore import _devices_of
+    device = next((d for d in _devices_of(list_name) if d.get("hostname") == hostname), None)
+    if device is None:
+        return None, (f"{hostname} is not in {list_name}'s inventory, so its platform, and "
+                      "the template to render it with, are unknown")
     from modules.nsot.platform import platform_for_device
     platform = platform_for_device(device)
 
@@ -1025,7 +1031,8 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
                 "reason": "no device completed successfully"}
 
     batch_id = f"batch-{report.get('batch_id') or _os.urandom(3).hex()}"
-    earned = _baseline_earned(report, pending, failed, source_ref=source_ref)
+    earned = _baseline_earned(report, pending, failed, source_ref=source_ref,
+                              list_name=list_name)
     what = label or f"via pipeline {batch_id}"
     # No "baseline" in the subject (C83): the tag is the claim, and it is
     # decided by save_golden after this commit and may be denied.
@@ -1086,7 +1093,7 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
 
 
 def _baseline_earned(report: dict, pending: list, failed: list,
-                     source_ref: str = "") -> dict:
+                     source_ref: str = "", *, list_name: str) -> dict:
     """Whether this batch produced a state worth calling a baseline.
 
     **Each path's baseline is keyed on the claim its tag makes**, which are not
@@ -1122,15 +1129,15 @@ def _baseline_earned(report: dict, pending: list, failed: list,
     other direction: it answers whether the template reproduces the device, not
     whether the commit is the network.
     """
-    from modules.device import get_current_device_list, load_saved_devices
+    from modules.nsot.restore import _devices_of
 
     reasons = []
     if failed:
         reasons.append(f"{len(failed)} device(s) did not succeed: {sorted(failed)}")
 
     try:
-        _name, csv_path = get_current_device_list()
-        inventory = {d.get("hostname", "") for d in load_saved_devices(csv_path)}
+        # The batch's own list (C215), never the active one.
+        inventory = {d.get("hostname", "") for d in _devices_of(list_name)}
     except Exception as exc:                  # noqa: BLE001
         log.warning("deploy: could not read the inventory to judge baseline "
                     "eligibility (%s)", exc)

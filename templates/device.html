@@ -76,6 +76,19 @@
             title="Commit this device's first full intent, parsed from its committed golden: see the document and what the template cannot reproduce, then confirm. Nothing is sent to the device">
       Seed intent
     </button>
+    <!-- Revert and retry (7.3): the two ways out of a rollback, which mean opposite things -->
+    <button type="button" class="btn btn-outline-secondary"
+            data-hostname="{{ device['hostname'] }}"
+            onclick="openRevert(this.dataset.hostname)"
+            title="The change was wrong: undo one intent commit's change, keeping every later commit. See the document after it, then confirm. Nothing is sent to the device">
+      Revert intent…
+    </button>
+    <button type="button" class="btn btn-outline-secondary"
+            data-hostname="{{ device['hostname'] }}"
+            onclick="openRetry(this.dataset.hostname)"
+            title="The change was right and the failure was elsewhere: lift a rollback block with a stated reason, so the next deploy may send it again. Nothing is sent now">
+      Retry rolled-back change…
+    </button>
     <!-- Rotate (7.3): the login credential, previewed, confirmed and run as a job -->
     <button type="button" class="btn btn-outline-danger"
             data-hostname="{{ device['hostname'] }}"

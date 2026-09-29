@@ -1050,7 +1050,10 @@ def breakglass_rows(exports=None, current=None) -> list:
                          "device": r["device"], "list": list_name, "state": "breakglass_stale",
                          "max_age_minutes": 0,
                          "action": {"label": "Export the break-glass record again: it cannot "
-                                             "recover this device as it stands",
+                                             "recover this device as it stands. Verify the "
+                                             "copy on the machine that keeps it before it "
+                                             "leaves the host (C221): this host logs the "
+                                             "export, never where the file went",
                                     "command": export_cmd.replace("<list>", list_name)},
                          "detail": (f"the record exported {when} "
                                     + ("holds an older credential: rotated since"
@@ -1059,8 +1062,21 @@ def breakglass_rows(exports=None, current=None) -> list:
         if not stale:
             rows.append({"unit": f"breakglass:{list_name}", "what": what, "state": "ok",
                          "max_age_minutes": 0,
+                         # What the host KNOWS (C221, the operator, 2026-09-29): an export
+                         # was WRITTEN here at that time. A copy lost on the way off the
+                         # host (the operator's first export today, deleted before it
+                         # reached the laptop) reads exactly the same, so the row never
+                         # claims the record exists anywhere.
+                         "action": {"label": "Verify the copy you keep: this host cannot see "
+                                             "where the export went",
+                                    "command": ("on the host: nmas-breakglass digests --list "
+                                                f"{list_name} > digests.json; beside the record: "
+                                                "nmas-breakglass verify rcn.bg --against "
+                                                "digests.json")},
                          "detail": (f"{len(now_digests)} of {len(now_digests)} device(s) current "
-                                    f"in the record exported {when}, as exported from this host")})
+                                    f"in the record exported from this host at {when}. The host "
+                                    "logs that the export was written, never where it went or "
+                                    "whether it survived: verify the copy you keep")})
     return rows
 
 

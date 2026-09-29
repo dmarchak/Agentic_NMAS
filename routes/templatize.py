@@ -419,80 +419,110 @@ def edit_committed(hostname):
                     "error": result.get("error", "")})
 
 
-@bp.route("/committed/<path:hostname>/revert", methods=["POST"])
-def revert_committed(hostname):
-    """Undo one intent commit's change, keeping every later one.
+# ---------------------------------------------------------------------------
+# Revert and retry (7.3): the two ways out of a rollback, previewed and
+# confirmed from the Device page (modules/nsot/intent_ops.py). They replace
+# `/committed/<h>/revert` and `/rolled-back/<h>/retry`, two routes with no
+# screen; the revert route also cleared the rollback block after ANY revert
+# commit, whatever it undid (C214).
+# ---------------------------------------------------------------------------
 
-    The other half of a rollback. Rollback restores the *device*; this restores
-    the *intent*, which otherwise keeps asserting the change should be there
-    and makes the next plan propose exactly what just failed.
+def _intent_op_args(data: dict, *, carried: bool, action: str):
+    """``(list_name, device, error_response)``. A preview may derive its list;
+    an apply CARRIES it, because it ends in a commit or a lifted block."""
+    from modules.nsot.restore import _devices_of
 
-    Targeted, not a snapshot restore: with an unrelated commit on top,
-    restoring "the previous committed intent" would either bring the
-    rolled-back change back or discard the unrelated one. Pass ``sha`` to undo
-    a specific commit; the default is the most recent.
-
-    A forward commit, so intent history stays linear and a revert reads like
-    any other edit, which is what it is.
-    """
-    from modules.nsot import hostvars, repo as repo_service
-
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    repo = _repo_for(list_name)
-
-    try:
-        outcome = hostvars.revert_intent_change(repo, hostname,
-                                                sha=data.get("sha", ""))
-    except hostvars.RevertConflict as exc:
-        return jsonify({"ok": False, "conflict": True, "error": str(exc)}), 409
-    except (hostvars.SecretLeak, hostvars.NonPrintableContent) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    if not outcome.get("ok"):
-        return jsonify(outcome), 409
-
-    target = outcome["target"]
-    result = repo_service.save_host_vars(
-        list_name, [hostname], actor=request_actor(),
-        message=f"host_vars: {hostname} revert {target[:8]}")
-    # Only once the revert is COMMITTED: a failed commit leaves the reverted
-    # intent uncommitted, so the block must stand, or the next plan offers
-    # the failed change again with nothing recorded (found C104).
-    cleared = (hostvars.clear_rolled_back(repo, hostname)
-               if result.get("ok") else False)
-
-    return jsonify({"ok": result.get("ok", False), "hostname": hostname,
-                    "reverted": target,
-                    "reverted_paths": outcome["reverted_paths"],
-                    "kept_later_commits": outcome["kept_later_commits"],
-                    "commit": result.get("commit", ""),
-                    "rolled_back_note_cleared": cleared,
-                    "error": result.get("error", "")})
+    list_name = (data.get("list_name") or "").strip()
+    if carried and not list_name:
+        return "", "", (jsonify({"ok": False, "error": (
+            f"No list named: {action} changes one list's record, so the list comes from the "
+            "preview that was confirmed, never from whichever list is active. Nothing was "
+            "changed.")}), 400)
+    list_name = list_name or _active_list(data)
+    device = (data.get("device") or "").strip()
+    if not device:
+        return list_name, "", (jsonify({"ok": False, "error": "No device named"}), 400)
+    if device not in {d.get("hostname") for d in _devices_of(list_name)}:
+        return list_name, device, (jsonify({"ok": False, "error": (
+            f"{device} is not in {list_name}'s inventory: nothing to {action}")}), 404)
+    return list_name, device, None
 
 
-@bp.route("/rolled-back/<path:hostname>/retry", methods=["POST"])
-def retry_rolled_back(hostname):
-    """Deliberately allow a rolled-back change to be attempted again.
-
-    The only way the block lifts while the failed change is still in intent,
-    and it is an explicit action with a recorded reason. A retry that happened
-    as a side effect of editing something else would be indistinguishable, in
-    the log, from never having been blocked.
-    """
-    from modules.nsot import hostvars
+@bp.route("/revert/preview", methods=["POST"])
+def revert_preview():
+    """What undoing one intent commit would commit. Reads git only."""
+    from modules.nsot import intent_ops
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import revert_preview as _parts
 
     data = request.get_json(silent=True) or {}
-    reason = (data.get("reason") or "").strip()
-    if not reason:
-        return jsonify({"ok": False, "error": (
-            "A reason is required. This re-authorises a change that was rolled "
-            "back after failing verification.")}), 400
+    list_name, device, err = _intent_op_args(data, carried=False, action="revert")
+    if err:
+        return err
+    entry = intent_ops.public(intent_ops.revert_entry(list_name, device,
+                                                      (data.get("sha") or "").strip()))
+    return jsonify(mask_payload({"ok": True, "list": list_name,
+                                 "commits": entry.get("commits") or [],
+                                 "preview": _parts(entry, list_name=list_name,
+                                                   request=request)}))
 
-    repo = _repo_for(_active_list(data))
-    result = hostvars.authorise_retry(repo, hostname,
-                                      actor=request_actor(),
-                                      reason=reason)
-    return jsonify(result), (200 if result.get("ok") else 404)
+
+@bp.route("/revert/apply", methods=["POST"])
+def revert_apply():
+    """Revert the confirmed commit as the verified person: computed again,
+    refused if it moved, one commit, the block measured after it."""
+    from modules.nsot import intent_ops
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import revert_result
+
+    data = request.get_json(silent=True) or {}
+    list_name, device, err = _intent_op_args(data, carried=True, action="revert")
+    if err:
+        return err
+    sha, confirmed = (data.get("sha") or "").strip(), (data.get("hash") or "").strip()
+    if not sha or not confirmed:
+        return jsonify({"ok": False, "error": "Nothing confirmed: nothing committed"}), 400
+    out = intent_ops.revert_apply(list_name, device, sha, confirmed, request_actor())
+    return jsonify(mask_payload({"ok": True, "list": list_name, "result": revert_result(out)}))
+
+
+@bp.route("/retry/preview", methods=["POST"])
+def retry_preview():
+    """The block a retry would lift, whether it blocks anything now, and how
+    often this device was retried before. Reads the record only."""
+    from modules.nsot import intent_ops
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import retry_preview as _parts
+
+    data = request.get_json(silent=True) or {}
+    list_name, device, err = _intent_op_args(data, carried=False, action="retry")
+    if err:
+        return err
+    entry = intent_ops.retry_entry(list_name, device)
+    return jsonify(mask_payload({"ok": True, "list": list_name,
+                                 "preview": _parts(entry, list_name=list_name,
+                                                   request=request)}))
+
+
+@bp.route("/retry/apply", methods=["POST"])
+def retry_apply():
+    """Authorise the retry as the verified person, with a reason in the shape
+    of one. The ONLY way a standing block lifts while the failed change is
+    still in intent."""
+    from modules.nsot import intent_ops
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import retry_result
+
+    data = request.get_json(silent=True) or {}
+    list_name, device, err = _intent_op_args(data, carried=True, action="retry")
+    if err:
+        return err
+    confirmed = (data.get("hash") or "").strip()
+    if not confirmed:
+        return jsonify({"ok": False, "error": "Nothing confirmed: nothing authorised"}), 400
+    out = intent_ops.retry_apply(list_name, device, confirmed,
+                                 (data.get("reason") or "").strip(), request_actor())
+    return jsonify(mask_payload({"ok": True, "list": list_name, "result": retry_result(out)}))
 
 
 @bp.route("/rolled-back/retries", methods=["GET"])
@@ -511,6 +541,40 @@ def rolled_back():
     return jsonify({"ok": True, "rolled_back": got["applies"], "stale": got["stale"],
                     "unreadable": got["unreadable"],
                     "blocking_count": len(got["applies"])})
+
+
+#: The applicability words that mean a note no longer blocks anything.
+STALE_APPLICABILITY = ("no committed intent", "no longer applies")
+
+
+def note_applicability(list_name: str, hostname: str, *, has_intent: bool = None) -> str:
+    """Whether *hostname*'s rolled-back note blocks a plan NOW, in words:
+    ``blocking``, ``no longer applies``, ``no committed intent`` or
+    ``unknown``. The one per-device classifier: the list below and the
+    Device page's revert and retry (7.3) all ask it."""
+    from modules.nsot import hostvars
+    from routes.deploy import _artifact_for, _current_program
+
+    repo = _repo_for(list_name)
+    if has_intent is None:
+        has_intent = hostname in set(hostvars.list_committed(repo))
+    if not has_intent:
+        # A note for a device with no committed intent is planned by
+        # nothing; it is history, not a block.
+        return "no committed intent"
+    try:
+        built, _error = _artifact_for(list_name, hostname)
+        program = _current_program(built[0], built[1]) if built else None
+    except Exception as exc:              # noqa: BLE001
+        log.warning("templatize: could not compute %s's program to test "
+                    "its rolled-back note (%s) — reporting it as standing",
+                    hostname, exc)
+        return "unknown"
+    if program is None:
+        return "unknown"
+    if hostvars.rolled_back_note(repo, hostname, program):
+        return "blocking"
+    return "no longer applies"
 
 
 def rolled_back_notes(list_name: str) -> dict:
@@ -533,7 +597,6 @@ def rolled_back_notes(list_name: str) -> dict:
     blocking note for each and plan the whole fleet to say one thing.
     """
     from modules.nsot import hostvars
-    from routes.deploy import _artifact_for, _current_program
 
     repo = _repo_for(list_name)
     record = hostvars._load_rolled_back(repo)
@@ -541,30 +604,13 @@ def rolled_back_notes(list_name: str) -> dict:
         return {"applies": {}, "stale": {},
                 "unreadable": hostvars._unreadable_note(repo, record["__unreadable__"])["reason"]}
     applies, stale = {}, {}
-
+    committed = set(hostvars.list_committed(repo))
     for hostname in sorted(record):
-        if hostname not in set(hostvars.list_committed(repo)):
-            # A note for a device with no committed intent is planned by
-            # nothing; it is history, not a block.
-            stale[hostname] = {**record[hostname], "applicability": "no committed intent"}
-            continue
         raw = record[hostname]
-        try:
-            built, error = _artifact_for(list_name, hostname)
-            program = _current_program(built[0], built[1]) if built else None
-        except Exception as exc:              # noqa: BLE001
-            log.warning("templatize: could not compute %s's program to test "
-                        "its rolled-back note (%s) — reporting it as standing",
-                        hostname, exc)
-            applies[hostname] = {**raw, "applicability": "unknown"}
-            continue
-
-        if program is None:
-            applies[hostname] = {**raw, "applicability": "unknown"}
-        elif hostvars.rolled_back_note(repo, hostname, program):
-            applies[hostname] = {**raw, "applicability": "blocking"}
-        else:
-            stale[hostname] = {**raw, "applicability": "no longer applies"}
+        applicability = note_applicability(list_name, hostname,
+                                           has_intent=hostname in committed)
+        (stale if applicability in STALE_APPLICABILITY else applies)[hostname] = {
+            **raw, "applicability": applicability}
     return {"applies": applies, "stale": stale, "unreadable": ""}
 
 

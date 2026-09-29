@@ -231,20 +231,6 @@ def apply(list_name: str, inventory: list, confirmations: dict, actor: str) -> d
 
 def _put_back(repo: str, paths: list) -> None:
     """A failed commit leaves each written file as it was committed, or
-    removes one nothing had committed: an uncommitted intent file is what
-    the Git tab names as residue, and a seed must not leave one."""
-    import os
-
-    from modules.nsot.repo import git_raw
-
-    for path in paths:
-        rel = os.path.relpath(path, repo).replace(os.sep, "/")
-        rc, out, _ = git_raw(repo, "show", f"HEAD:{rel}")
-        if rc == 0:
-            with open(path, "w", encoding="utf-8", newline="") as fh:
-                fh.write(out)
-        else:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+    removes one nothing had committed (`hostvars.put_back_committed`)."""
+    from modules.nsot.hostvars import put_back_committed
+    put_back_committed(repo, paths)

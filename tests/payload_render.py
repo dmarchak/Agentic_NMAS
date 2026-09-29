@@ -99,14 +99,15 @@ def lift(src: str, name: str) -> str:
 
 #: The shared components live beside gen/, not in it: named by their path
 #: under static/js/.
-COMPONENTS = ("nmas_preview_confirm.js", "nmas_capture.js", "nmas_restore_scope.js",
-              "nmas_in_flight.js", "nmas_attention.js", "nmas_status_bar.js", "nmas_seed.js",
-              "nmas_retire.js")
-
 
 def shipped(file: str) -> str:
-    base = os.path.dirname(GEN) if file in COMPONENTS else GEN
-    return open(os.path.join(base, file), encoding="utf-8").read()
+    """A shipped script by name: a component in `static/js/`, else a script
+    moved out of a page into `static/js/gen/`. Resolved by where the file IS,
+    so a new component needs no entry in a list (persist, rotate and the
+    intent operations were in none)."""
+    top = os.path.join(os.path.dirname(GEN), file)
+    return open(top if os.path.exists(top) else os.path.join(GEN, file),
+                encoding="utf-8").read()
 
 
 _DOT = re.compile(r"(?:\?\.|\.)\s*([A-Za-z_$][\w$]*)")

@@ -2475,3 +2475,243 @@ def rotate_result(result: dict, plan: dict) -> dict:
         not_watched=(f"Job health's rotation row for {name} stays until a persist reads SAFE; "
                      "the break-glass currency row until you export again."),
         titles=ROTATE_RESULT_TITLES)
+
+
+# ---------------------------------------------------------------------------
+# Revert and retry (7.3): the two ways out of a rollback, from the Device
+# page. `modules/nsot/intent_ops.py`.
+# ---------------------------------------------------------------------------
+
+REVERT_TITLES = {"program": "What will be committed as its intent",
+                 "what": "What will be reverted"}
+REVERT_RESULT_TITLES = {"sent": "What was committed as intent",
+                        "checks": "The rollback block, measured after the commit",
+                        "happened": "What was reverted"}
+RETRY_TITLES = {"program": "The program the rollback blocked",
+                "what": "What will be retried"}
+RETRY_RESULT_TITLES = {"sent": "The program now allowed to be sent again",
+                       "checks": "What was recorded",
+                       "happened": "What was authorised"}
+
+INTENT_OP_WORDS = {
+    "reverted": "reverted: the commit's change is undone in its intent",
+    "authorised": "authorised: the blocked change may be sent again",
+    "refused": "refused: nothing was changed",
+    "moved": "refused: it moved since the preview, nothing was changed",
+    "busy": "refused: another operation holds this device (C98), nothing was changed",
+    "failed": "failed: nothing was changed, and the intent file is as it was committed",
+}
+
+_NOT_SENT = ("Nothing is sent to the device: this changes intent and the record only. "
+             "The device changes at the next deploy, planned and confirmed as always.")
+
+
+def _note_words(note) -> str:
+    if not note:
+        return "none"
+    return (f"rolled back {note.get('at') or '?'} against intent "
+            f"{note.get('intent_commit') or '?'}: {note.get('reason') or 'no reason recorded'}")
+
+
+def revert_preview(entry: dict, *, list_name: str, request) -> dict:
+    """*entry*: `intent_ops.public(revert_entry())`."""
+    name = entry["device"]
+    ok = not entry.get("error")
+    note = entry.get("note")
+    what_not = [{"target": name, "kind": "not_sent", "text": _NOT_SENT, "lines": []},
+                {"target": name, "kind": "keeps_later",
+                 "text": ("Every later intent commit is kept: only this commit's own change is "
+                          "undone." if entry.get("kept") else
+                          "It is the most recent intent commit, so no later commit is kept."),
+                 "lines": [f"{k['sha']} {k['subject']}" for k in entry.get("kept") or []]}]
+    if note:
+        what_not.append({"target": name, "kind": "block",
+                         "text": ("The rollback block is NOT lifted by the revert itself: after "
+                                  "the commit the program is computed again, and the block is "
+                                  "cleared only if the failed lines are no longer in it."),
+                         "lines": list(note.get("commands") or [])})
+    if entry.get("conflicts"):
+        what_not.append({"target": name, "kind": "conflict",
+                         "text": ("Refused: a later commit changed the same setting(s). Decide "
+                                  "which edit should win and make that edit in its intent."),
+                         "lines": list(entry["conflicts"])})
+    target = {
+        "name": name,
+        "state": "revertible" if ok else "refused",
+        "selectable": ok and not entry.get("busy"),
+        "select_data": {"hash": entry.get("hash") or "", "list": list_name,
+                        "sha": entry.get("target") or ""},
+        "program": {"lines": list(entry.get("diff") or []) if ok else [],
+                    "caption": ("The intent document after the revert, against what is "
+                                "committed now. Nothing is sent to the device"),
+                    "unit": "line(s) of the document, none sent",
+                    "notes": ([{"title": "Each setting, now and after the revert",
+                                "lines": [f"{c['path']}: {c['now']} -> {c['after']}"
+                                          for c in entry.get("changes") or []]}]
+                              if ok else []),
+                    "none": "Nothing to commit: " + (entry.get("error") or "")},
+        "operands": [
+            {"name": "commit to revert",
+             "value": f"{entry.get('target') or '?'} {entry.get('subject') or ''}".strip()},
+            {"name": "later commits kept", "value": str(len(entry.get("kept") or []))},
+            {"name": "rollback block", "value": _note_words(note)},
+            {"name": "revert hash", "value": entry.get("hash") or "none"}],
+        "gates": [gate("the commit's change can be undone", "pass" if ok else "fail",
+                       "no later commit changed the same settings" if ok
+                       else entry.get("error") or ""),
+                  busy_gate(entry),
+                  gate("intent unchanged since this preview", "at_apply",
+                       "the revert is computed again at apply, and a different hash refuses "
+                       "with nothing committed")],
+    }
+    confirm = confirm_part(request, "approve")
+    if target["selectable"]:
+        confirm["effect"] = (f"One intent commit for {name} (`Source: revert`) undoes "
+                             f"{entry.get('target')}'s change and keeps everything after it. "
+                             "The device is not touched; deploy afterwards to converge it.")
+        confirm["button"] = f"Revert {entry.get('target')} on {name}"
+    return build(
+        action="revert", summary=(f"Undo one intent commit's change on {name}: "
+                                  f"{entry.get('target') or '?'} "
+                                  f"({entry.get('subject') or 'no subject'})."),
+        targets=[target], what_not=what_not, nothing_left_out="",
+        confirm=confirm, titles=REVERT_TITLES,
+        explain={"program": [{"concept": "intent",
+                              "text": "A revert says the change was WRONG: intent stops "
+                                      "asserting it. A retry says it was right and the failure "
+                                      "was elsewhere. They mean opposite things."}]})
+
+
+def revert_result(out: dict) -> dict:
+    """*out*: `intent_ops.revert_apply()`'s."""
+    name, outcome = out["device"], out["outcome"]
+    e = out.get("entry") or {}
+    done = outcome == "reverted"
+    block = out.get("block") or {}
+    words = INTENT_OP_WORDS.get(outcome, outcome)
+    commit = ((out.get("save") or {}).get("commit") or "") if done else ""
+    did_not = [{"target": name, "kind": "not_sent", "text": _NOT_SENT, "lines": []}]
+    if not done:
+        did_not.insert(0, {"target": name, "kind": outcome,
+                           "text": words + (f": {out['reason']}" if out.get("reason") else ""),
+                           "lines": []})
+    elif block.get("state") in ("standing", "unknown"):
+        did_not.insert(0, {"target": name, "kind": "block_" + block["state"],
+                           "text": block["text"], "lines": []})
+    level = ("failed" if not done else
+             "partial" if block.get("state") in ("standing", "unknown") else "success")
+    summary = (f"{name}: {e.get('target')}'s change is undone in its intent (commit "
+               f"{commit[:12]}). {block.get('text', '')}" if done
+               else f"{name}: {words}" + (f": {out['reason']}" if out.get("reason") else ""))
+    return build_result(
+        action="revert", level=level, summary=summary.strip(),
+        targets=[{"name": name, "outcome": outcome, "words": words,
+                  "reason": out.get("reason", ""),
+                  "sent": {"lines": list(e.get("diff") or []) if done else [],
+                           "caption": "Committed as its intent. Nothing was sent to the device",
+                           "none": "Nothing was committed."},
+                  "checks": ({"ran": True, "ok": block.get("state") in ("cleared", "gone", "none"),
+                              "statements": [block.get("text") or "no block"], "issues": []}
+                             if done else {"ran": False, "why": out.get("reason") or words})}],
+        did_not=did_not, nothing_left_out="",
+        record={"commit": commit, "tags": [], "baseline": "",
+                "statement": (f"Intent commit {commit[:12]} (`Source: revert`, `Reverts:` naming "
+                              f"{e.get('target_full') or e.get('target')}) records it."
+                              if done else "No intent commit: nothing was reverted.")},
+        not_watched=(f"The device is unchanged by this; {name}'s next plan shows what a deploy "
+                     "would send to converge it."),
+        titles=REVERT_RESULT_TITLES)
+
+
+def retry_preview(entry: dict, *, list_name: str, request) -> dict:
+    """*entry*: `intent_ops.retry_entry()`."""
+    from modules.nsot.authorisation import SHAPE_RULE
+
+    name = entry["device"]
+    ok = not entry.get("error")
+    note = entry.get("note") or {}
+    hist = entry.get("history") or {}
+    before = ("could not be read: " + hist["unreadable"] if hist.get("unreadable") else
+              "never" if not hist.get("count") else
+              f"{hist['count']} time(s), last {hist['last']['at']} by {hist['last']['actor']}: "
+              f"{hist['last']['reason']}")
+    what_not = [{"target": name, "kind": "not_sent", "text": _NOT_SENT, "lines": []},
+                {"target": name, "kind": "intent_kept",
+                 "text": ("Intent is not changed: the change that failed stays asserted, and the "
+                          "next plan offers the program below again."), "lines": []}]
+    target = {
+        "name": name,
+        "state": "retryable" if ok else "refused",
+        "selectable": ok and not entry.get("busy"),
+        "select_data": {"hash": entry.get("hash") or "", "list": list_name},
+        "program": {"lines": list(note.get("commands") or []) if ok else [],
+                    "caption": ("The program that failed verification and was rolled back. "
+                                "Nothing is sent now: a retry lets the next deploy send it"),
+                    "unit": "line(s) blocked, none sent now",
+                    "none": "Nothing to retry: " + (entry.get("error") or "")},
+        "operands": [
+            {"name": "rollback block", "value": _note_words(note) if note else "none"},
+            {"name": "applies now", "value": entry.get("applicability") or "not measured"},
+            {"name": "retried before on this device", "value": before},
+            {"name": "block hash", "value": entry.get("hash") or "none"}],
+        "gates": [gate("a rollback block stands", "pass" if ok else "fail",
+                       entry.get("applicability") if ok else entry.get("error") or ""),
+                  busy_gate(entry),
+                  gate("a stated reason", "at_apply", SHAPE_RULE),
+                  gate("block unchanged since this preview", "at_apply",
+                       "the block is read again at apply, and a different one refuses with "
+                       "nothing authorised")],
+    }
+    confirm = confirm_part(request, "approve")
+    if target["selectable"]:
+        confirm["effect"] = (f"The block on {name} is lifted, recorded with your reason in the "
+                             "retry log. The next plan offers the failed program again, "
+                             "and nothing else changes it.")
+        confirm["button"] = f"Authorise the retry on {name}"
+    return build(
+        action="retry", summary=(f"Allow the change rolled back on {name} to be sent again, "
+                                 "with a stated reason."),
+        targets=[target], what_not=what_not, nothing_left_out="",
+        confirm=confirm, titles=RETRY_TITLES,
+        explain={"confirm": [{"concept": "confirm-by-hash",
+                              "text": "The reason is testimony: it is recorded as said, and the "
+                                      "same retry again and again is the pattern worth "
+                                      "seeing, so each preview counts the earlier ones."}]})
+
+
+def retry_result(out: dict) -> dict:
+    """*out*: `intent_ops.retry_apply()`'s."""
+    name, outcome = out["device"], out["outcome"]
+    e = out.get("entry") or {}
+    note = e.get("note") or {}
+    done = outcome == "authorised"
+    words = INTENT_OP_WORDS.get(outcome, outcome)
+    rec = out.get("record") or {}
+    did_not = [{"target": name, "kind": "not_sent", "text": _NOT_SENT, "lines": []}]
+    if not done:
+        did_not.insert(0, {"target": name, "kind": outcome,
+                           "text": words + (f": {out['reason']}" if out.get("reason") else ""),
+                           "lines": []})
+    return build_result(
+        action="retry", level="success" if done else "failed",
+        summary=(f"{name}: the rollback block is lifted, and the next plan offers the failed "
+                 "program again." if done else
+                 f"{name}: {words}" + (f": {out['reason']}" if out.get("reason") else "")),
+        targets=[{"name": name, "outcome": outcome, "words": words,
+                  "reason": out.get("reason", ""),
+                  "sent": {"lines": list(note.get("commands") or []) if done else [],
+                           "caption": "Allowed to be sent again. Nothing was sent now",
+                           "none": "Nothing was authorised."},
+                  "checks": ({"ran": True, "ok": True,
+                              "statements": [f"stated reason, as testimony: {rec.get('reason')}",
+                                             f"recorded {rec.get('at')} by {rec.get('actor')}"],
+                              "issues": []}
+                             if done else {"ran": False, "why": out.get("reason") or words})}],
+        did_not=did_not, nothing_left_out="",
+        record={"commit": "", "tags": [], "baseline": "",
+                "statement": ("The retry is recorded in the retry log (`.nsot/retry_log.json`) "
+                              "with the block it lifted, the person and the reason."
+                              if done else "Nothing was recorded: nothing was authorised.")},
+        not_watched=(f"Nothing is sent until {name} is deployed again; that deploy is planned, "
+                     "confirmed and verified like any other, and rolls back again if it fails."),
+        titles=RETRY_RESULT_TITLES)

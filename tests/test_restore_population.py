@@ -99,7 +99,8 @@ class TestTheSurvey:
         from routes import deploy
 
         src = inspect.getsource(deploy._baseline_earned)
-        assert "load_saved_devices" in src
+        # The inventory of the BATCH'S OWN list (C215), never the active one.
+        assert "_devices_of(list_name)" in src and "get_current_device_list" not in src
         assert "not targeted" in src
 
 

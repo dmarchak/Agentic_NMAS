@@ -122,6 +122,12 @@ def _bodies(v):
         "templatize.seed_preview": (200, ("json", {"list_name": LIST, "devices": ["r1"]}),
                                     "r1's committed golden parsed into the intent a seed "
                                     "would commit (r1 already seeded: shown, not selectable)"),
+        "templatize.revert_preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
+                                      "r1's intent commits and the revert of the newest, "
+                                      "computed from git"),
+        "templatize.retry_preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
+                                     "r1's rollback record (none: nothing to retry) and its "
+                                     "retry history"),
         "templatize.preview_committed_edit": (200, ("json", {"list_name": LIST,
                                                              "yaml": v["_intent_text"]}),
                                               "committed intent, previewed against the device"),

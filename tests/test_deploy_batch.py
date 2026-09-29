@@ -543,15 +543,6 @@ class TestTheBlockIsContainmentNotEquality:
         assert entries[0]["reason"] == "link confirmed unused"
         assert entries[0]["note"]["commands"] == self.FAILED
 
-    def test_a_retry_route_requires_a_reason(self):
-        import flask
-        from routes.templatize import retry_rolled_back
-
-        app = flask.Flask(__name__)
-        with app.test_request_context(json={}):
-            _body, status = retry_rolled_back("s4")
-        assert status == 400
-
     def test_retrying_a_device_with_no_note_is_refused(self, lab):
         repo, hv, _R, _note = lab
         assert hv.authorise_retry(repo, "s9", reason="x")["ok"] is False
@@ -1171,8 +1162,10 @@ class TestEachPathsBaselineIsKeyedOnItsOwnClaim:
     FLEET = ["r2", "s3", "s4"]
 
     @pytest.fixture
-    def fleet(self, monkeypatch):
+    def fleet(self, monkeypatch, tmp_path):
         import modules.device as D
+        # The batch's own list's inventory is read (C215): resolve it here.
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path))
         monkeypatch.setattr(D, "load_saved_devices",
                             lambda path=None: [{"hostname": h, "ip": f"203.0.113.{i}"}
                                                for i, h in enumerate(self.FLEET, 12)])
@@ -1195,20 +1188,20 @@ class TestEachPathsBaselineIsKeyedOnItsOwnClaim:
         pending = [self._pending(d, f"hostname {d}\nboot-start-marker\n",
                                  target=f"hostname {d}\n")
                    for d in self.FLEET]
-        outcome = _baseline_earned({}, pending, [], source_ref="")
+        outcome = _baseline_earned({}, pending, [], source_ref="", list_name="Lab")
         assert outcome["baseline"] is True, outcome["baseline_reasons"]
 
     def test_a_failed_device_denies_it(self, fleet):
         from routes.deploy import _baseline_earned
         pending = [self._pending(d, f"hostname {d}\n") for d in ("r2", "s3")]
-        outcome = _baseline_earned({}, pending, ["s4"], source_ref="")
+        outcome = _baseline_earned({}, pending, ["s4"], source_ref="", list_name="Lab")
         assert outcome["baseline"] is False
         assert "did not succeed" in outcome["baseline_reasons"][0]
 
     def test_a_partial_fleet_denies_it(self, fleet):
         from routes.deploy import _baseline_earned
         pending = [self._pending("s3", "hostname s3\n")]
-        outcome = _baseline_earned({}, pending, [], source_ref="")
+        outcome = _baseline_earned({}, pending, [], source_ref="", list_name="Lab")
         assert outcome["baseline"] is False
         assert "not targeted" in outcome["baseline_reasons"][0]
 
@@ -1217,7 +1210,8 @@ class TestEachPathsBaselineIsKeyedOnItsOwnClaim:
         pending = [self._pending(d, f"hostname {d}\n", target=f"hostname {d}\n")
                    for d in self.FLEET]
         outcome = _baseline_earned({}, pending, [],
-                                   source_ref="baseline/20260920T212325Z-migrated")
+                                   source_ref="baseline/20260920T212325Z-migrated",
+                                   list_name="Lab")
         assert outcome["baseline"] is True, outcome["baseline_reasons"]
 
     def test_a_restore_leaving_residue_is_denied_and_names_the_device(self, fleet):
@@ -1229,7 +1223,7 @@ class TestEachPathsBaselineIsKeyedOnItsOwnClaim:
                    self._pending("s4",
                                  "hostname s4\ninterface Loopback0\n description left over\n",
                                  target="hostname s4\n")]
-        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x", list_name="Lab")
 
         assert outcome["baseline"] is False
         assert "s4" in outcome["baseline_reasons"][-1]
@@ -1246,7 +1240,7 @@ class TestEachPathsBaselineIsKeyedOnItsOwnClaim:
         pending = [self._pending(d, capture.replace("s3", d),
                                  target=target.replace("s3", d))
                    for d in self.FLEET]
-        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x", list_name="Lab")
         assert outcome["baseline"] is True, outcome["baseline_reasons"]
 
 
@@ -1267,8 +1261,10 @@ class TestARestoreBaselineIsEarnedByMeasurementNotByPath:
     FLEET = ["r2", "s3", "s4"]
 
     @pytest.fixture
-    def fleet(self, monkeypatch):
+    def fleet(self, monkeypatch, tmp_path):
         import modules.device as D
+        # The batch's own list's inventory is read (C215): resolve it here.
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(tmp_path))
         monkeypatch.setattr(D, "load_saved_devices",
                             lambda path=None: [{"hostname": h, "ip": f"203.0.113.{i}"}
                                                for i, h in enumerate(self.FLEET, 12)])
@@ -1291,7 +1287,7 @@ class TestARestoreBaselineIsEarnedByMeasurementNotByPath:
                    # Sent nothing, but read back and compared.
                    self._pending("s4", "hostname s4\n", target="hostname s4\n",
                                  sent_nothing=True)]
-        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x", list_name="Lab")
 
         assert outcome["baseline"] is True, outcome["baseline_reasons"]
         assert outcome["measured"] == ["r2", "s3", "s4"]
@@ -1302,7 +1298,7 @@ class TestARestoreBaselineIsEarnedByMeasurementNotByPath:
 
         pending = [self._pending(d, f"hostname {d}\n", target=f"hostname {d}\n")
                    for d in ("r2", "s3")]
-        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x", list_name="Lab")
 
         assert outcome["baseline"] is False
         assert any("s4" in reason for reason in outcome["baseline_reasons"])
@@ -1315,7 +1311,7 @@ class TestARestoreBaselineIsEarnedByMeasurementNotByPath:
         pending = [self._pending("r2", "hostname r2\n", target="hostname r2\n"),
                    self._pending("s3", "hostname s3\n", target="hostname s3\n"),
                    self._pending("s4", "hostname s4\n", target=None)]
-        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x", list_name="Lab")
 
         assert outcome["baseline"] is False
         assert [r["device"] for r in outcome["residual"]] == ["s4"]
@@ -1332,7 +1328,7 @@ class TestARestoreBaselineIsEarnedByMeasurementNotByPath:
                    self._pending("s3", "hostname s3\n", target="hostname s3\n"),
                    self._pending("s4", "hostname s4\nlogging host 198.51.100.9\n",
                                  target="hostname s4\n")]
-        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x")
+        outcome = _baseline_earned({}, pending, [], source_ref="baseline/x", list_name="Lab")
 
         assert outcome["baseline"] is False
         assert [r["device"] for r in outcome["residual"]] == ["s4"]
@@ -1344,7 +1340,7 @@ class TestARestoreBaselineIsEarnedByMeasurementNotByPath:
         pending = [self._pending(d, f"hostname {d}\nboot-start-marker\n",
                                  target=f"hostname {d}\n")
                    for d in self.FLEET]
-        outcome = _baseline_earned({}, pending, [], source_ref="")
+        outcome = _baseline_earned({}, pending, [], source_ref="", list_name="Lab")
         assert outcome["baseline"] is True, outcome["baseline_reasons"]
 
 

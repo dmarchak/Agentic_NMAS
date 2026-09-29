@@ -77,6 +77,13 @@ RESULT_COMPONENT = {
     "rotate.apply": ("static/js/nmas_rotate.js", "runApply", "jobs.jobs_health"),
     "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed",
                               "templatize.read_committed"),
+    # Revert and retry (7.3): drawn by the component. A revert's record is
+    # the intent commit it wrote, which the intent editor reads back from
+    # HEAD; a retry's is the retry log, served by its reader.
+    "templatize.revert_apply": ("static/js/nmas_intent_ops.js", "runApply",
+                                "templatize.read_committed"),
+    "templatize.retry_apply": ("static/js/nmas_intent_ops.js", "runApply",
+                               "templatize.rolled_back_retries"),
     # Onboarding's Create (C86): phase 1, drawn as pending; the record read
     # back is the device's pending row.
     "onboard.create": ("static/js/gen/partials__onboard_wizard.1.js", "onboardCreate",
@@ -130,7 +137,7 @@ PENDING = {
 NO_GUI = {
     "freshness.authorise", "templates.revoke_approval", "templates.save_bindings",
     "templatize.bulk_apply",
-    "templatize.retry_rolled_back", "templatize.revert_committed", "remote.adopt",
+    "remote.adopt",
 }
 
 #: (file, the literal that draws success unearned) -> reason. Only shrinks.
@@ -255,7 +262,7 @@ class TestNoGuiIsTheReachabilityFact:
         unreachable_gated = {ep for ep in _population()
                              if by_endpoint.get(ep, set()) & set(KNOWN_UNREACHABLE)}
         assert unreachable_gated == NO_GUI, (sorted(unreachable_gated ^ NO_GUI))
-        assert len(NO_GUI) >= 7
+        assert len(NO_GUI) >= 5
 
 
 class TestColourAndEscaping:

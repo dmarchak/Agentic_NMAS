@@ -323,7 +323,10 @@ The device page's Monitoring section embeds **this device's** Grafana panels
   removes 2 to 4**: serve Grafana under the NMAS's own origin (a reverse proxy
   at a subpath, `root_url` and `serve_from_sub_path` set), so the frame is
   same-origin and needs no second Access application; its cost is the NMAS
-  proxying Grafana's own authentication. The operator's choice.
+  proxying Grafana's own authentication. The operator's choice. **DEFERRED TO P.8** (the
+  operator, 2026-09-29), both options kept: its own hostname behind Access (simplest; the
+  Access cookie in a cross-site frame may not work) or Grafana under the NMAS's origin
+  (same-origin, more plumbing).
 - **Oxidized fetch history and DHCP leases are rendered by the NMAS** from
   their own integrations: they are records, not graphs.
 
@@ -875,17 +878,25 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
   fleet device the operator chooses, from its page; the result reaches
   `rotated_and_persisted`, the commit reads `Actor-Verified: access`, the break-glass row
   names the device until it is exported again.
-- **Revert and retry from the Device page: BUILT IN PART, PAUSED 2026-09-29 by the
-  operator** (to answer the three questions below first; uncommitted). Written so far:
-  `modules/nsot/intent_ops.py` (each previewed, confirmed by hash, applied holding the
-  device), `hostvars.plan_revert()` (the revert computed without writing, so preview and
-  apply are one computation), the per-device classifier `note_applicability()`, the
-  preview and result adapters, and four routes replacing the two with no screen. Found on
-  the way: C213 (the retry log erased by one torn read) and C214 (any revert lifted the
-  rollback block), both fixed in that work. Remaining: the client, the Device page
-  buttons, the tests, the harness registrations, a real run.
-- **Three questions about seed intent's consumers (the operator, 2026-09-29), answered.
-  Build nothing until the operator has answered back.**
+- **Revert and retry from the Device page: BUILT 2026-09-29, awaiting a real run.**
+  `modules/nsot/intent_ops.py`: each previewed (reads git and the record only), confirmed
+  by hash with the list carried, applied holding the device, drawn by the one component.
+  Revert computes with `hostvars.plan_revert()` (one computation for preview and apply),
+  commits `Source: revert` with a `Reverts:` trailer, puts the file back on a failed
+  commit, and MEASURES the rollback block afterwards, clearing it only when it no longer
+  blocks (C214). Retry needs a reason in the shape of one (C140's rule), says how often
+  the device was retried before, and refuses on an unreadable retry log (C213). One
+  classifier, `note_applicability()`, for the list and both screens. They replace two
+  routes with no screen. C215 fixed with them. **Acceptance**: on a throwaway (C117's run
+  engineers the rollback), retry a blocked change with a reason and see the next plan
+  offer it; revert a commit and see the block measured.
+- **Three questions about seed intent's consumers (the operator, 2026-09-29), answered,
+  and DECIDED the same evening:** C216, seed keeps declared blocks (the bootstrap stays
+  management-only); ADOPT as scoped below (a tool account added, nothing else changed,
+  persist previews running against startup), placed after rotate's real run, which is
+  done, so adopt is next after revert and retry; CLONE skipped, with GROUP INTENT (one
+  owner, devices inherit) recorded as the principled answer, for Stage 9 or after 7.x;
+  stage D (vIOS onboarding) waits until a vIOS onboarding is planned.
   1. **Seed on a freshly onboarded device, MEASURED on probe-r1a's real repository** (the
      host's `~/r1-probe-repo-2026-09-28.tgz`, read via the tunnel, driven through the real
      seed and plan routes on a scratch copy): **yes, it is the greenfield bridge.** From

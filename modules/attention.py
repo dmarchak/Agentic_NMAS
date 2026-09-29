@@ -104,6 +104,10 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
     part (endpoints, read costs), drawn one level down, on hover (the
     operator's presentation rule, 2026-09-28)."""
     if error:
+        # Kept where it outlives the row (the operator, 2026-09-29): a transient
+        # "could not be read: Approvals" cleared on the next read, and nothing
+        # anywhere said which read failed or why.
+        log.warning("attention: %s could not be read: %s", label, error)
         return {"source": source, "label": label, "state": "unreadable",
                 "read_at": _iso(read_at), "value_at": None, "took_ms": took_ms,
                 "checked": "nothing: the read failed",

@@ -59,8 +59,6 @@ KNOWN_UNREACHABLE = {
     "POST /templatize/report": (A, "the same coverage report with a body; Source of truth, Templates (7.6)"),
     "GET /templatize/rolled-back": (A, "rollback-blocked devices; a Needs attention row (7.2)"),
     "GET /templatize/rolled-back/retries": (A, "the retry record; Device, History (7.3)"),
-    "POST /templatize/rolled-back/<path:hostname>/retry": (A, "the ONLY way to re-send a blocked change; Device, Actions (7.3)"),
-    "POST /templatize/committed/<path:hostname>/revert": (A, "revert one intent commit (the documented way out of a rollback's intent); Device, Actions (7.3). Counted reachable until 2026-09-27 because the editor's own fetch shared its prefix"),
     "POST /templatize/bulk/preview": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),
     "POST /templatize/bulk/apply": (A, "bulk intent (P.1b), a GUI-owned task; Fleet, selection (7.4)"),
     "POST /templates/revoke/<path:rel_path>": (A, "withdraw an approval with a reason; Source of truth, Templates (7.6)"),
@@ -122,7 +120,7 @@ KNOWN_UNREACHABLE = {
 # revert never had an entry point, and was counted as reached because the
 # editor's `'/templatize/committed/' + host` matched its stem. A route's
 # words after its converter must now appear near the reference.
-CEILING = 51
+CEILING = 49
 
 
 @pytest.fixture(scope="module")
@@ -157,7 +155,7 @@ class TestThePopulation:
         assert pairs["GET /onboard/pending"] is True
         assert pairs["POST /add_quick_action"] is True          # url_for, device page
         assert pairs["POST /drift/settings"] is True            # a mixed path, write half
-        assert pairs["POST /templatize/rolled-back/<path:hostname>/retry"] is False
+        assert pairs["POST /templatize/bulk/apply"] is False     # bulk intent: no page yet
         assert pairs["POST /list/variables"] is False           # its GET half is no proof
 
 
@@ -219,8 +217,19 @@ class TestTailWordsAfterAConverter:
     editor's `'/templatize/committed/' + host` (found by the result survey,
     2026-09-27). Anchored both ways, from the shipped pages."""
 
-    def test_intent_revert_is_not_reached(self, reach):
-        assert reach["POST /templatize/committed/<path:hostname>/revert"] is False
+    def test_a_stem_alone_does_not_reach_a_route_with_tail_words(self):
+        """The shipped example is gone (the revert route was replaced by
+        `/templatize/revert/*` in 7.3, and every route left under the
+        editor's stem is genuinely reached), so the property is driven on a
+        planted page: the editor's own fetch shape, and the same with its
+        tail word (the control)."""
+        from tests.route_references import path_references
+
+        rule = "/templatize/committed/<path:hostname>/revert"
+        stem_only = "fetch('/templatize/committed/' + encodeURIComponent(h), {method: 'POST'})"
+        assert path_references(stem_only, rule, True) == set()
+        with_tail = stem_only.replace("(h)", "(h) + '/revert'")
+        assert path_references(with_tail, rule, True), "the control: the tail word is read"
 
     def test_an_assembled_url_still_reaches_its_route(self, reach):
         """Control: `/ai/approvals/${id}/${action}` reaches both actions."""

@@ -158,6 +158,23 @@ async function onboardCreate() {
   } catch (e) { showToast('Create failed: ' + e, 'danger'); }
 }
 
+/* The platform select's options, and each blocked platform's REASON drawn
+   beside it (C222, C109's rule): the reason rode in the option's `title`,
+   which a disabled option does not show, so the screen said only "blocked".
+   PURE: {options, blocked} as HTML, every value escaped. */
+function onboardPlatformOptions(platforms) {
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const options = platforms.map(p =>
+    `<option value="${esc(p.platform)}"${p.blocked ? ' disabled' : ''}>`
+    + `${esc(p.platform)}${p.blocked ? ' (blocked: see below)' : ''}</option>`).join('');
+  const blocked = platforms.filter(p => p.blocked).map(p =>
+    `<div data-platform-blocked="${esc(p.platform)}"><strong>${esc(p.platform)}</strong> `
+    + `is blocked: ${esc(p.reason || 'no reason was given (a defect: a refusal names its cause)')}</div>`
+  ).join('');
+  return {options, blocked};
+}
+
 async function openOnboardWizard() {
   /* ON OPEN, from the select's CURRENT value. A select's initial value is set
      without firing `change`, so a remembered "dhcp" left the form saying one
@@ -172,10 +189,10 @@ async function openOnboardWizard() {
       /* A blocked platform is LISTED AND DISABLED, not omitted: an absent
          option teaches the operator the tool does not support their device,
          which is a different and wrong lesson. */
-      sel.innerHTML = (d.platforms || []).map(p =>
-        `<option value="${p.platform}" ${p.blocked ? 'disabled' : ''}
-                 title="${p.reason || ''}">${p.platform}${p.blocked ? ' — blocked' : ''}</option>`
-      ).join('');
+      const built = onboardPlatformOptions(d.platforms || []);
+      sel.innerHTML = built.options;
+      const why = document.getElementById('obPlatformBlocked');
+      if (why) why.innerHTML = built.blocked;
     } catch (_) { /* the plan call will report it */ }
   }
   const lsel = document.getElementById('obList');

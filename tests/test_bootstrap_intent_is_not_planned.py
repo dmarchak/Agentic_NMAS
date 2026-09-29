@@ -33,14 +33,13 @@ def planned(monkeypatch):
     """The REAL `_artifact_for`, only its storage reads stubbed, rendering
     through the real packaged template (where the host's crash came from)."""
     import routes.deploy as rd
-    from modules import device
     from modules.nsot import approval, hostvars, templates_repo
 
     monkeypatch.setattr(rd, "_repo_for", lambda ln: "/nonexistent")
     monkeypatch.setattr(rd, "_captured_record",
                         lambda repo, h: {"text": CAPTURE, "refused": ""})
-    monkeypatch.setattr(device, "get_current_device_list", lambda: ("probe-r1", "x.csv"))
-    monkeypatch.setattr(device, "load_saved_devices", lambda p: [
+    # The plan reads the list's OWN inventory (C215).
+    monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [
         {"hostname": "probe-r1a", "ip": "10.255.0.33", "platform": "cisco_iosxe"}])
     monkeypatch.setattr(templates_repo, "template_for_device",
                         lambda repo, h, p: "cisco_iosxe/base.j2")

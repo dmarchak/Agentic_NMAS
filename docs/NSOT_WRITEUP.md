@@ -77,7 +77,7 @@ close are marked *written at close*.
 | P-items | P.1 to P.6 | Backfilled below |
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate); retire and rotate await their real runs |
+| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry); persist and rotate accepted on the host; retire and revert/retry await their real runs |
 | | 7.4 to 7.10 | Not started |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
@@ -2437,7 +2437,7 @@ The landing page drew every section 1a source from stored or cached values, each
 
 #### 7.3 — Rotate from the Device page
 
-*Open: built 2026-09-29, AWAITING a real run on the host. Its numbers are partial.*
+*Closed 2026-09-29: ACCEPTED on the host, on r2, by the operator.*
 
 1. **What it was.** Rotation, the riskiest operation in the tool, existed only as `nmas-rotate-credential` on the host. The operator asked for it on the Device page, "built assuming a fourth failure mode exists": three ways in three days for a rotation to leave a device unmanageable (B15, C53, C106) [NSOT_STAGE7_PLAN.md "7.3 gains rotate"].
 2. **How it was implemented.** Step 1 first: the recovery path (C210, below). Step 2: `rotate_op` runs `credential_rotation`'s plan, rotate and persist as one operation, holding the device across both; the apply is a job (rotate plus persist can pass the 100 s edge limit), announced when it finishes; the job carries the person's verified identity into its thread; the result is `summarise()`'s danger-first sentence with each of the eight states' one action. Landed after C205 (the connect bound), C203 (persist holding the device) and C50 (an unknown lab refused), each of which it depends on.
@@ -2445,9 +2445,26 @@ The landing page drew every section 1a source from stored or cached values, each
    - C210: designing the screen found the fourth failure mode before it happened. The password is staged before the push, so a process that dies between the push and the record (an app restart; a deploy causes one) leaves the device on a password the inventory does not hold, and nothing read the staged file.
    - A commit made on a background thread read `Actor-Verified: none` although the gate had verified the person who confirmed it (found building the job; no row, fixed in the step that needed it).
    - C211: `stage_plaintext()` creates the file then chmods it (ciphertext, minor).
-4. **How they were resolved.** C210 fixed as step 1 (`nmas-rotation-recover`, a job-health row per staged file nobody holds); the identity carried by `identity.carried()`; C211 registered.
-5. **Numbers.** Two commits so far (`fe951e9`, step 1, and step 2) [git]; 12 and 24 tests; six controls fired. Not recoverable: an estimate (none was written). Not yet run on the host.
-6. **Where it left the product.** A device's credential can be rotated from its page, and no state it can reach, including a process dying mid-way, goes unnamed.
+   - From the real run (the operator): C217, the job's own in-flight row stayed at "starting" and called the operation "may be stuck" beside the device's true row ("persisting"), in garbled words; C218, about four minutes in the containerlab boot-file chain drawn only as "persisting"; C219, the result's next step drawn under "What did not happen"; C220, the preview's live line masked twice.
+   - Around the run: C221, the break-glass row read "current" for the operator's first export of the day, which was deleted on the host before it reached the laptop (the row tracked that an export was WRITTEN).
+4. **How they were resolved.** C210 fixed as step 1 (`nmas-rotation-recover`, a job-health row per staged file nobody holds); the identity carried by `identity.carried()`; C211 registered; C217 to C220 registered, the in-flight pair (C217, C218) to ride with the next change to that component (the operator); C221 fixed the same evening.
+5. **Numbers.** Two commits, `fe951e9` (2026-09-29 11:01, step 1) and `9fd5e06` (11:08, step 2), after `2b1ea78` (10:54, C205, which it depends on) [git; the build's working time is not recoverable from commit times]; 12 and 24 tests; six controls fired. Not recoverable: an estimate (none was written). **Acceptance on the host, r2** (the operator, the afternoon of 2026-09-29): "rotated, committed, saved on the device and read back from its own startup config, present in the startup file, that file applies on boot, and nmas-check-startup-applies reads SAFE"; the fresh login verified on the first try; commit `60d233984c2c` carries `Source: rotation`, `Actor: dustnm@gmail.com`, `Intent-Match: yes (1 of 1)` and `Actor-Verified: access`, the carried identity's first real run; every gate passed, the sudo-helper gate included, which was expected to fail. The baseline-decay row fired 21 s after the rotation, naming r2, as designed. The break-glass record was exported again and read `ok 9 of 9 device(s) current`, the laptop's verify showing r2's digest changed (`fac44d8a9805` -> `d8e9cff850ca`) and the other eight identical.
+6. **Where it left the product.** A device's credential is rotated from its page, end to end, recorded as the person who confirmed it, persisted and read back; the operation that broke four ways that week completed from the interface on its first real run, and no state it can reach, a process dying mid-way included, goes unnamed.
+
+#### 7.3 — Revert and retry from the Device page
+
+*Open: built 2026-09-29, awaiting a real run (C117's run engineers the rollback they answer).*
+
+1. **What it was.** A rollback restores the device and leaves intent asserting the change that failed, so the next plan is blocked. The two ways out mean opposite things (revert: the change was wrong; retry: it was right and the failure was elsewhere), and both existed as routes with no screen [NSOT_STAGE7_PLAN.md "7.3 gains rotate and retire", which names them as intent operations].
+2. **How it was implemented.** `modules/nsot/intent_ops.py`, on seed's model: preview, confirm by hash with the list carried, apply holding the device, the one component's result. Revert splits `hostvars.revert_intent_change()` into `plan_revert()` (computed, nothing written) and the write, so preview and apply are one computation; it commits `Source: revert` with `Reverts:`, and puts the file back on a failed commit (the helper moved to `hostvars.put_back_committed`, which seed uses too). Retry takes a reason in the shape of one (C140's rule) and counts earlier retries. One per-device classifier, `note_applicability()`, extracted from `rolled_back_notes()`. The client, `static/js/nmas_intent_ops.js`, serves both from two Device-page buttons.
+3. **Issues encountered.**
+   - C213: the retry log, the audit of every decision to re-send a failed change, was read with an unreadable file taken as empty and written back by truncating in place.
+   - C214: the old revert route cleared the rollback block after ANY committed revert, so reverting an unrelated change lifted the block on a failed one.
+   - C215 (found measuring seed for the operator's question, fixed here by the operator's decision): the deploy plan read the device row from the ACTIVE list and defaulted the platform on a miss; the same shape in the baseline judgement.
+   - Paused mid-build by the operator's three questions about seed; `tests/payload_render.shipped()` found files through a hand-kept list that persist and rotate were missing from, resolved by location now.
+4. **How they were resolved.** C213 and C214 fixed in the operation's own path; C215 fixed at both sites. Controls: each fix put back from a copy fails exactly its test.
+5. **Numbers.** One commit with the rest of the evening's items [git]; 26 tests. Not recoverable: an estimate (none was written).
+6. **Where it left the product.** A rollback's two ways out are on the Device page, each previewed, recorded and drawn, and the block lifts only by measurement or by a stated decision, never by a side effect.
 
 #### 7.3 step 2 — Mode B: removing a line the device has and intent lacks
 

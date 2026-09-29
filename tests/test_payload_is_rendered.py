@@ -310,7 +310,7 @@ RENDERS = {
         ((I1, "applyDeviceRegions", "data"),)),
     "GET /onboard/platforms": Render(
         _get("/onboard/platforms"),
-        {"partials__onboard_wizard.1.js": ("openOnboardWizard",)},
+        {"partials__onboard_wizard.1.js": ("openOnboardWizard", "onboardPlatformOptions")},
         (("partials__onboard_wizard.1.js", "openOnboardWizard", "d"),)),
     "GET /settings/integrations/general": Render(
         _get("/settings/integrations/general"),

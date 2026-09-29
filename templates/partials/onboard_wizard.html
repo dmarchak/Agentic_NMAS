@@ -39,6 +39,9 @@
             <label class="form-label small fw-semibold" for="obPlatform">Platform</label>
             <select class="form-select form-select-sm" id="obPlatform"></select>
           </div>
+          {# Each blocked platform's reason, visible (C222): a disabled option's
+             title is not shown, so the screen said only "blocked". #}
+          <div class="col-12 small text-muted" id="obPlatformBlocked"></div>
           {# A SOURCE, never an "address optional" checkbox. The generator
              refuses an empty address because the failure it prevents is
              silent -- the device boots, reports healthy, answers its console

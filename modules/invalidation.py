@@ -136,9 +136,9 @@ DECLARED = {
     "retire.apply": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
     "templatize.seed_apply": ("intent", "remote"),
     "templatize.edit_committed": ("intent", "remote"),
-    "templatize.revert_committed": ("intent", "remote"),
+    "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
-    "templatize.retry_rolled_back": ("rolled_back",),
+    "templatize.retry_apply": ("rolled_back",),
     "templates.write_template": ("templates", "remote"),
     "templates.approve": ("templates", "remote"),
     "templates.revoke_approval": ("templates", "remote"),
@@ -233,6 +233,10 @@ DECLARED = {
     "persist.preview": Nothing("computes the persist plan from the inventory and the "
                                "startup check's record; contacts no device and writes nothing"),
     "retire.preview": Nothing("computes the retire plan from the repository, the CSV, the credential store, the settings and the export log; writes nothing"),
+    "templatize.revert_preview": Nothing("computes the revert of one intent commit from git; "
+                                         "writes nothing"),
+    "templatize.retry_preview": Nothing("reads the rollback record and the retry log; writes "
+                                        "nothing"),
     "templatize.seed_preview": Nothing("parses committed goldens from git and computes the "
                                        "intent a seed would commit; writes nothing"),
     "templatize.bulk_preview": Nothing("previews a bulk intent change; the apply commits"),
