@@ -1782,6 +1782,22 @@ read through one function, and P.8 moves it without the reader changing.
   saying it is refused where the platform's removal is not measured. **Next: 2d**, r2
   on the host: tick ` load-interval 30` in r2's Deploy plan, give the reason, confirm;
   verify reads it gone; the next Save All earns the baseline.
+  **Step 2d PASSED ON THE HOST (the operator, 2026-09-29): MODE B'S ACCEPTANCE.** r2's
+  Deploy plan, ` load-interval 30` under GigabitEthernet2 ticked for removal, reason
+  "Removing unnecessary configuration"; deployed 05:53:33 UTC, the receipt carrying the
+  removal by id (`2d7f42a57dbd`), the reason, the three-line program matching its
+  confirmed hash, and verify ok (neighbours and routes unchanged). Save All afterwards:
+  all nine devices match their committed intent, r2's capture hash 1f85ec28 to
+  35980cc3, and **baseline/20260929T060249Z EARNED** (nine devices, credentials
+  current): the first earned baseline with a recorded decision. The chain from C70 is
+  closed (docs/NSOT_WRITEUP_NOTES.md, "The line the tool could not remove").
+  **Two things from the run, both fixed the same day:** the removal asked for ONE
+  decision TWICE (the line's tick, then a second box in the program, because removals
+  reused the dangerous-line authorisation wholesale): a removal's line now has only its
+  reason field, and the reason authorises it, while a dangerous line keeps its box; and
+  the receipt did not keep verify's removal read-back (it copies some of verify's
+  fields), so it now records `removals_checked` and the result draws "removals read back
+  gone". Save All's speed (C188, several minutes) is next.
   **The gap Mode B has to get right** (the operator): every destructive or surprising
   result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
   default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and

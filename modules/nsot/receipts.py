@@ -97,6 +97,9 @@ def _checks(result: dict) -> dict:
         "routes_compared": verify.get("routes_compared"),
         "interfaces_up": [pre.get("interfaces_up"), post.get("interfaces_up")],
         "pending_convergence": list(result.get("pending_convergence") or []),
+        # Mode B: how many removed lines verify read back GONE. It was read and
+        # not recorded, so r2's first removal receipt could not show it.
+        "removals_checked": verify.get("removals_checked") or 0,
     }
     if not protocols:
         checks["neighbours_note"] = ("no routing protocol on this device: the "

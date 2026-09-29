@@ -10626,3 +10626,54 @@ of the rollback's acceptance run (C178). The suite was green throughout, and
 the deploy receipts recorded "verified". The general form is in CLAUDE.md:
 a check that accepts the first healthy reading must wait out the subject's own
 settling time.
+
+
+## The line the tool could not remove (2026-09-27 to 29)
+
+The cleanest end-to-end story the project has (the operator's reading), and
+every step of it was a measurement.
+
+1. **A hand change, for a test.** C70's restore run needed a device that
+   departed from intent, so ` load-interval 30` went onto r2's GigabitEthernet2
+   by hand. It stayed.
+2. **The tool could not remove it.** Every deploy is merge-only and a restore
+   is additive, so a line the device has and intent lacks is reported as "will
+   NOT be removed" and nothing more. The only ways out were a console or
+   adopting the line into intent.
+3. **Every baseline was refused, for two days.** A baseline asserts the network
+   is at its committed intent, and r2 was not. Save All read nine devices,
+   changed nothing, and was refused, first with the reason in a toast that
+   vanished (C184), then in an empty decision commit (`17239ae`) naming
+   `load-interval 30` as the blocker.
+4. **The screen told the operator to do the forbidden thing.** The blocker's
+   honest resolution was "remove it by hand on the console", in a tool that had
+   removed its terminal because a source of truth cannot have a hole in its
+   claim. The operator moved Mode B from "deferred" to 7.3, early.
+5. **Removal was measured before it was allowed.** `no <exact line>` can do more
+   than undo the line, so a line is removed only where a probe MEASURED, on its
+   platform, that it removes exactly itself. The probe's first run stopped on
+   its own safety net (`logging buffered` left the device OFF its default); its
+   runs found `no access-list 97 <entry>` deletes the whole list on IOS (the
+   case an unmeasured Mode B would have destroyed while reporting success), a
+   probe defect on IOS-XE, and a shape collision that would have let a
+   destructive removal borrow a safe one's measurement. `interface.load-interval`
+   measured exact on both platforms.
+6. **The pipeline learned to remove, and to undo a removal.** A map of the
+   deploy path found seven places a `no` line would be dropped, refused or
+   mishandled; the worst was rollback, which read a pushed `no X` as never
+   applied and reported "restored" with X still gone. The undo re-adds the
+   device's own lines, and verify reads each removal back gone.
+7. **The screen could not have selected it, as first designed.** The plan is
+   masked, so a secret-position line's text could never be sent back; selection
+   is by a server-computed id.
+8. **The tool removed the line it could not remove.** r2's Deploy plan, one
+   tick, one reason, three lines sent (`interface GigabitEthernet2` /
+   ` no load-interval 30` / `exit`), verify ok; Save All: nine of nine at
+   intent, and `baseline/20260929T060249Z` earned, the first with a recorded
+   decision.
+
+What the chain shows: a gap the tool named honestly ("the tool cannot remove a
+line") was more useful than one it hid, because the sentence on the screen is
+what made it undeniable. And the capability that closed it was built the way
+the rest were: measured on the platform, every seam driven with real output,
+and accepted on the host.

@@ -57,6 +57,13 @@ async function _reauthoriseDevice(device) {
     (authorise[b.dataset.authDevice] = authorise[b.dataset.authDevice] || []).push(
       {line: b.dataset.line, reason: reasonEl ? reasonEl.value : ''});
   });
+  // A removal's line has no box: its tick was made where it was selected, and
+  // a reason given here is what authorises it (Mode B).
+  document.querySelectorAll('#deployPlanBody input[data-auth-reason][data-auth-removal]').forEach(r => {
+    if (!r.value.trim()) return;
+    (authorise[r.dataset.authDevice] = authorise[r.dataset.authDevice] || []).push(
+      {line: r.dataset.line, reason: r.value});
+  });
   // Mode B: the lines ticked for removal, BY ID, per device.
   const remove = {};
   document.querySelectorAll('#deployPlanBody input[type=checkbox][data-remove-id]').forEach(b => {

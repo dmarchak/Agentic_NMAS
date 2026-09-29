@@ -177,20 +177,30 @@
             : 'dangerous';
         // A reason is TESTIMONY (C140): the person's statement, drawn as that,
         // never as the cause. Its minimum is shape, never quality.
+        // A REMOVAL was chosen by its tick in "What will NOT happen"; that tick
+        // is the decision, so here it asks only WHY (the operator, 2026-09-29:
+        // the removal asked for one decision twice). A dangerous or secret
+        // line keeps its box, because there the tick is the only act of choosing.
+        var removal = kind === 'removal';
         var state = a && a.reason
           ? what + ': AUTHORISED, stated reason: "' + esc(a.reason) + '"'
-          : what + ': authorise this exact line with your reason';
-        var box = hooks.authorise
+          : removal
+            ? what + ': say why, and the reason authorises it'
+            : what + ': authorise this exact line with your reason';
+        var box = hooks.authorise && !removal
           ? '<input type="checkbox" class="form-check-input mt-0" data-auth-device="'
             + esc(t.name) + '" data-line="' + esc(key) + '"' + (a ? ' checked' : '')
             + ' onchange="' + esc(hooks.authorise) + '(this.dataset.authDevice)">'
           : '';
         var reason = hooks.authorise
           ? '<input type="text" class="form-control form-control-sm mt-1" data-auth-reason'
+            + (removal ? ' data-auth-removal' : '')
             + ' data-auth-device="' + esc(t.name) + '" data-line="' + esc(key) + '"'
-            + ' placeholder="why this line is deliberate (a few words, recorded as yours)"'
+            + ' placeholder="' + (removal ? 'why this line is being removed'
+                                          : 'why this line is deliberate')
+            + ' (a few words, recorded as yours)"'
             + ' value="' + esc(a ? a.reason : '') + '"'
-            + ' onchange="if (this.parentNode.querySelector(\'input[type=checkbox]\').checked) '
+            + ' onchange="' + (removal ? '' : 'if (this.parentNode.querySelector(\'input[type=checkbox]\').checked) ')
             + esc(hooks.authorise) + '(this.dataset.authDevice)">'
           : '';
         // The AGGREGATE (C140): the same line authorised here again and again
@@ -482,7 +492,11 @@
              + 'the route check is skipped for this deploy)</span>'
            : c.routes_compared === true ? '' : ' <span class="text-muted">(whether it was '
              + 'compared was not recorded)</span>') + '</div><div>interfaces up '
-        + pair(c.interfaces_up) + '</div></div>'
+        + pair(c.interfaces_up) + '</div>'
+        // Mode B: each removed line read back GONE by verify.
+        + (c.removals_checked ? '<div data-pr-removals>removals read back gone: '
+           + esc(String(c.removals_checked)) + '</div>' : '')
+        + '</div>'
         + (c.issues || []).map(function (i) {
             return '<div class="small text-danger">' + esc(i) + '</div>';
           }).join('')

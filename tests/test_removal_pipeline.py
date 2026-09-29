@@ -451,3 +451,89 @@ class TestTheWizardSendsTheIdsItsHashCovers:
         assert sent["remove"] == {"s4": ["2d7f42a57dbd"]}
         assert sent["authorise"] == {"s4": [REASON]}
         assert sent["command_hashes"] == {"s4": "c1"}
+
+
+class TestOneTickOneSentence:
+    """The operator, on r2's acceptance run: the removal asked for one decision
+    twice (the line's tick, then a second box in the program). The tick where
+    it is selected IS the decision; the program asks only why."""
+
+    def _html(self, client):
+        from tests.payload_render import render_preview
+        _, d0 = _plan(client, [], [SHUT])
+        rid = _removal_id(d0)
+        out, _d = _plan(client, [rid], [SHUT])
+        return render_preview(out["preview"], {"remove": "_r", "authorise": "_a"})
+
+    def test_a_removal_line_has_a_reason_and_no_second_box(self, client):
+        html = self._html(client)
+        at = html.index("removes a line the device has and intent does not")
+        row = html[html.rfind("<div", 0, at - 200):html.index("</div>", at) + 400]
+        assert "data-auth-removal" in html and "why this line is being removed" in html
+        assert 'data-auth-device="s4" data-line="no description retired uplink"' in html
+        assert not [m for m in _boxes(html) if 'data-line="no description retired uplink"' in m], \
+            "no checkbox for a removal: its tick was made where it was selected"
+        assert "say why, and the reason authorises it" in row
+
+    def test_a_dangerous_line_keeps_its_box(self, client):
+        html = self._html(client)
+        assert [m for m in _boxes(html) if 'data-line="shutdown"' in m]
+
+    def test_the_wizard_re_plans_with_a_removals_reason_and_no_box(self):
+        """The shipped `_reauthoriseDevice`, EXECUTED with one removal reason
+        typed and no box anywhere: the reason reaches the re-plan."""
+        import json as _json
+
+        import dukpy
+
+        from tests.js_source import read_shipped
+        src = read_shipped("static/js/gen/partials__deploy_wizard.1.js")
+        start = src.index("async function _reauthoriseDevice(")
+        end = src.index("\n}\n", start) + 2
+        fn = (src[start:end].replace("async function", "function")
+              .replace("await fetch(", "fetch(").replace("await r.json()", "r.json()"))
+        assert "await" not in fn
+        stubs = """
+        var sent = null;
+        var _deployPlan = {devices: [{device: 's4'}]};
+        var reason = {value: 'the uplink was retired last week',
+                      dataset: {authDevice: 's4', line: 'no description retired uplink'}};
+        var tick = {checked: true, dataset: {removeDevice: 's4', removeId: 'abc123abc123'}};
+        var document = {querySelectorAll: function (sel) {
+          if (sel.indexOf('data-auth-removal') >= 0) return [reason];
+          if (sel.indexOf('data-remove-id') >= 0) return [tick];
+          return [];
+        }};
+        function showToast() {}
+        function _renderDeployPlan() {}
+        function _updateDeploySummary() {}
+        function fetch(url, opts) { sent = opts.body; return {json: function () { return {ok: false, error: 'x'}; }}; }
+        """
+        body = _json.loads(dukpy.evaljs(stubs + fn + "\n_reauthoriseDevice('s4'); sent"))
+        assert body["authorise"] == {"s4": [REASON]}
+        assert body["remove"] == {"s4": ["abc123abc123"]}
+
+
+def _removal_id(d):
+    return next(r["id"] for r in d["removable"]
+                if "description retired uplink" in r["line"] and r["chain"] == [GI03])
+
+
+def _boxes(html):
+    import re
+    return re.findall(r'<input type="checkbox"[^>]*>', html)
+
+
+class TestTheReceiptKeepsTheReadBack:
+    def test_the_receipt_says_the_removal_was_read_back_gone_and_it_is_drawn(self):
+        from modules.nsot import receipts
+        from tests.payload_render import render_result
+        rows = receipts.rows_for({"results": [{
+            "device": "r2", "outcome": "deployed", "commands": ["interface Gi2", " no x", "exit"],
+            "authorised": [], "verify": {"ok": True, "issues": [], "removals_checked": 1,
+                                          "checked_protocols": [], "pre": {}, "post": {}}}]},
+            list_name="Lab", action="deploy", actor="op", actor_kind="person")
+        assert rows[0]["checks"]["removals_checked"] == 1
+        from modules.preview_confirm import operation_result
+        result = operation_result(rows, {"results": []}, {"ok": True, "path": "x"}, "deploy")
+        assert "removals read back gone: 1" in render_result(result)
