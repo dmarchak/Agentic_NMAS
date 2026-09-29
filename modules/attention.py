@@ -1322,16 +1322,18 @@ def remote_source(cached=None) -> dict:
         if said["state"] == "ahead":
             what = f"{pub.get('ahead', 0)} commit(s) on {name} not pushed to {remote}"
             since = pub.get("oldest_at")
-            action = {"label": "Push from the Git tab's Remote card (Push now), after its "
-                               "preview; the next commit's push also sends every commit "
-                               "before it. If it does not go, the card names the failure"}
+            action = {"label": "Push now, on the Remote card: the Devices tab, below the "
+                               "device list, in the golden repository section. The next "
+                               "commit's push also sends every commit before it. If it does "
+                               "not go, the card names the failure"}
         elif said["state"] == "in_sync":
             # In step today, and the record the push hook reads cannot be read,
             # so the NEXT commit will not be pushed (C172).
             what = f"{name}'s remote record cannot be read, so its next commit will not be pushed"
             since = None
-            action = {"label": "Repair or re-adopt the list's remote from the Git tab's Remote "
-                               "card; the record is data/lists/<list>/remote.json on the host"}
+            action = {"label": "Repair or re-adopt the list's remote from the Remote card (the "
+                               "Devices tab, below the device list); the record is "
+                               "data/lists/<list>/remote.json on the host"}
         elif said["state"] in ("remote_ahead", "diverged"):
             what = f"{name}'s history and {remote} do not match"
             since = None

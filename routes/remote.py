@@ -161,6 +161,20 @@ def acknowledge():
     return jsonify(result), (200 if result["ok"] else 400)
 
 
+def _reread_publication() -> None:
+    """A manual push goes around the post-commit hooks, so it re-reads the
+    remote itself (C223): otherwise the Remote card, the Git tab and Needs
+    attention kept "1 commit(s) not pushed" for up to a reader cycle after
+    the push had sent it. On a thread, so the answer does not wait on the
+    remote."""
+    import threading
+
+    from modules.readers.remote_publication import refresh_hook
+
+    threading.Thread(target=refresh_hook, args=({},), daemon=True,
+                     name="remote-publication-reread").start()
+
+
 @bp.route("/push", methods=["POST"])
 def push():
     """Publish. main + --follow-tags, then notes if any note ref exists."""
@@ -170,6 +184,7 @@ def push():
 
     list_name = _list_name()
     out = R.push(list_name, actor=ident.actor)
+    _reread_publication()
     if not out["ok"]:
         return jsonify(out), 409
     out["auto_push_offered"] = True

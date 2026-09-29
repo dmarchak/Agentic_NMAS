@@ -202,6 +202,9 @@ class TestNeedsAttention:
         (r,) = out["rows"]
         assert r["what"] == "1 commit(s) on Default not pushed to acct/nsot"
         assert "oldest: 7a72258" in r["cause"] and "Push now" in r["action"]["label"]
+        # The button is on the Devices tab; the first text sent the operator to
+        # the Git tab, which has no Push (2026-09-29).
+        assert "Devices tab" in r["action"]["label"] and "Git tab" not in r["action"]["label"]
         assert r["level"] == "warning" and r["since"]
 
     def test_published_lists_are_counted_not_rows(self):
@@ -282,3 +285,29 @@ class TestTheScreensDrawTheOneSentence:
         page = open(os.path.join(root, "templates", "index.html"), encoding="utf-8").read()
         assert "Pipeline (before P.4)" not in page and "c.pipeline" not in page
         assert "<summary>How this works</summary>" in page
+
+
+class TestAManualPushReReads:
+    """Push now goes around the post-commit hooks, so the row it answers stayed
+    up for a reader cycle after the push (2026-09-29)."""
+
+    def test_the_push_route_re_reads(self):
+        import ast
+        import inspect
+
+        import routes.remote as RR
+
+        tree = ast.parse(inspect.getsource(RR.push))
+        called = {n.func.id for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        assert "_reread_publication" in called
+
+    def test_the_re_read_runs_the_reader_off_the_request(self, monkeypatch):
+        import threading
+
+        import routes.remote as RR
+
+        ran = threading.Event()
+        monkeypatch.setattr(P, "refresh_hook", lambda ctx: ran.set())
+        RR._reread_publication()
+        assert ran.wait(5), "the push did not re-read the remote"
