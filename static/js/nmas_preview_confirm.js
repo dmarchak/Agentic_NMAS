@@ -518,6 +518,26 @@
     return resultSection('checks', title(r, 'checks', 'What was checked'), body);
   }
 
+  /* The operations a next step may open, by the key the server names, and
+     the words on their button. Opened by the one listener each operation's
+     client installs (`data-nmas-open`); the server never names code. */
+  var NEXT_OPENS = {breakglass_export: 'Export the break-glass record…'};
+
+  /* A result's next step, drawn apart (C219): never under "What did not
+     happen", which is for things that did not occur. */
+  function nextHtml(n) {
+    if (!n || !n.text) return '';
+    var args = n.args || {};
+    return '<div class="alert alert-info py-2 px-3 small" data-pr-next><strong>Next:</strong> '
+      + esc(n.text)
+      + (NEXT_OPENS[n.open]
+         ? ' <button type="button" class="btn btn-sm btn-outline-danger ms-1" data-nmas-open="'
+           + esc(n.open) + '" data-nmas-list="' + esc(args.list || '') + '">'
+           + esc(NEXT_OPENS[n.open]) + '</button>'
+         : '')
+      + '</div>';
+  }
+
   function previewConfirmResultHtml(r, hooks) {
     hooks = hooks || {};
     if (!r || (r.parts || []).join(',') !== RESULT_PARTS.join(',')) {
@@ -536,7 +556,8 @@
         + '</div>';
     }).join('');
     var head = '<div class="alert ' + lv[0] + ' py-2 px-3" data-pr-level="' + esc(r.level) + '">'
-      + '<strong>' + esc(lv[2]) + '.</strong> ' + esc(r.happened.summary) + '</div>';
+      + '<strong>' + esc(lv[2]) + '.</strong> ' + esc(r.happened.summary) + '</div>'
+      + nextHtml(r.next);
     var dn = r.did_not || {};
     var didNot = (dn.items || []).length
       ? (dn.items || []).map(function (i) {

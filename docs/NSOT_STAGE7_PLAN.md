@@ -890,6 +890,66 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
   routes with no screen. C215 fixed with them. **Acceptance**: on a throwaway (C117's run
   engineers the rollback), retry a blocked change with a reason and see the next plan
   offer it; revert a commit and see the block measured.
+- **The break-glass export from the browser: BUILT 2026-09-29, awaiting a real run**
+  (the operator's request the same evening, placed after revert and retry and before
+  adopt). The day's re-export took about ten manual steps across two machines, and the
+  first attempt was LOST: the laptop half ran on the host and its cleanup deleted
+  `/dev/shm/rcn-breakglass.bg` before it was copied, while the export was already logged
+  (C221). `modules/breakglass_export.py` builds, seals and VERIFIES the record in memory:
+  the passphrase entered twice and at least 12 characters, refused before anything is
+  built; the plan recomputed and bound to the preview's hash (a rotation in between
+  refuses); the sealed bytes OPENED with the passphrase and every device, every credential
+  (by digest) and the escrowed key checked against what was put in, the key required to
+  open what the live key opens; then a reveal row (who, when, the device count, the file's
+  sha256; nothing is sent unrecorded) and the export log (`via: browser`, "downloaded by X
+  at T"). The file never touches the host's disk. Gate `reveal` (a verified person). One
+  client, `static/js/nmas_breakglass.js`, three entry points by `data-nmas-open`: the
+  rotate result's new next-step slot (C219), Needs attention's break-glass row, the
+  Settings page. The CLI stays for the host-side case, and the result names the laptop's
+  verify as an optional check. **Acceptance**: export from the browser, verify the
+  download on the laptop (`verify --against` the host's digests), and see job health read
+  "current in the record downloaded by <person> at T".
+- **The tool updates itself from the GUI (the operator's revision, 2026-09-29): SCOPED,
+  not built.** The named exceptions become two, FIRST INSTALLATION and BREAK-GLASS;
+  upgrading and restarting moves into the GUI. The principle holds: CI decides WHAT can
+  deploy, a verified person decides WHEN, and a button that person presses keeps both;
+  what was refused earlier was an unattended restart, which this is not.
+  1. Preview and confirm through the shared component: current commit, target commit,
+     the commits between, and the CI verdict for the target in the gate's own states
+     (passed; PENDING, offering to wait and follow it; FAILED or CANCELLED, refused naming
+     the run).
+  2. **Never restart from inside the request, and the app holds NO privilege** (the
+     operator's privilege decision the same evening). The app writes a REQUEST file
+     (target commit, the requesting person, the time) and nothing else: no sudo rule, no
+     polkit grant. A ROOT-OWNED `nmas-update.path` unit watches that file and starts
+     `nmas-update.service`, which runs a ROOT-OWNED script in `/usr/local/sbin`, never
+     `~/bin` and never anything in the repository. The script treats the file as a
+     request, not an instruction: it re-derives the CI verdict for the target itself,
+     refuses anything not passed, and refuses a malformed or stale request by name. So
+     the most anything that can write the file can achieve is deploying a commit CI
+     already passed. Git runs as the service user (`runuser -u <user>`); only the restart
+     runs as root; nothing from the checkout is ever executed as root, or anyone who can
+     edit the repository or `~/bin` has root. So the gate's logic (`nmas-deploy`'s
+     verdict) gets a root-owned copy for this path; the CLI stays for the host-side case.
+  3. **The browser waits on a fact, not a timer**: it polls `/health` until the running
+     commit equals the target, then reloads, drawing "waiting for the new version (N s)"
+     while the server is down rather than a Cloudflare error.
+  4. **A new version that does not come up is rolled back**: if `/health` does not report
+     the target within a bound derived from measured restart times (the timeout rule),
+     the update job checks out the previous commit and restarts it, and the outcome
+     (succeeded, rolled back, rollback failed) is written where the next page load shows
+     it. Without it a bad release leaves no GUI to fix it from.
+  5. **A release that needs a host step says so**: a new systemd unit, a sudoers change
+     or a package install cannot be done by the button; a commit that needs one is
+     marked, and the update refuses it naming the step rather than deploying code that
+     cannot run.
+  6. Person-gated like any confirm, recorded as who updated from what to what, and
+     refused for the agent's identity.
+  Installing the path unit, the service unit and the root-owned script is a one-time host
+  step under the first-installation exception: written install steps, and a job-health
+  check that the script and both units are root-owned and not writable by the service
+  user, a DANGER row if they ever are. Placement: the operator's to set (it touches no
+  device; its first real run is the operator's by definition).
 - **Three questions about seed intent's consumers (the operator, 2026-09-29), answered,
   and DECIDED the same evening:** C216, seed keeps declared blocks (the bootstrap stays
   management-only); ADOPT as scoped below (a tool account added, nothing else changed,

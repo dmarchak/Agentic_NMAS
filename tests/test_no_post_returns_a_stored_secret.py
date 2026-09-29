@@ -113,6 +113,9 @@ def _bodies(v):
         "retire.preview": (200, ("json", {"list_name": LIST, "device": "r1",
                                           "reason": "leaving management"}),
                            "r1's retire plan: its steps, the credential gate, the export log"),
+        "breakglass.preview": (200, ("json", {"list_name": LIST}),
+                               "the list's devices by name and the key's fingerprint an export "
+                               "would hold; no value"),
         "rotate.preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
                            "r1's rotation plan: its preflight (the live read refused by the "
                            "suite's network guard, drawn as a failed gate), the masked program"),

@@ -9,6 +9,22 @@
 
 <hr>
 
+{# The break-glass record (7.3): one of three entry points to the ONE export,
+   `static/js/nmas_breakglass.js` (the others: the rotate result's next step
+   and Needs attention's break-glass row). The list is the active one here;
+   the preview names it and the confirm carries it. #}
+<div class="d-flex align-items-center justify-content-between p-3 mb-3 rounded border border-danger-subtle"
+     data-breakglass-settings>
+  <div>
+    <div class="fw-semibold">Break-glass record</div>
+    <div class="text-muted small">Every device's credential and the application key, sealed with
+      your passphrase, verified, and downloaded to this browser. The host never writes the file.
+      Export again after any rotation; Needs attention says when.</div>
+  </div>
+  <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0 ms-3"
+          data-nmas-open="breakglass_export" data-nmas-list="">Export…</button>
+</div>
+
 <h6 class="text-primary fw-semibold mb-2">
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor"
        class="me-1" viewBox="0 0 16 16">

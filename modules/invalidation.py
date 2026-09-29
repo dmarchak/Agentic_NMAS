@@ -192,6 +192,9 @@ DECLARED = {
     # A device, its files and backups.
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),
+    "breakglass.export": Nothing("appends to the export log and the reveal record, which job "
+                                 "health's reader reads on its own interval; no panel shows "
+                                 "either directly"),
     "rotate.apply": Nothing("starts a job and answers at once; the job changes the credential and ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "bulk_execute": ("device_state",),
     "bulk_reload": ("device_state", "inventory"),
@@ -229,6 +232,8 @@ DECLARED = {
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
+    "breakglass.preview": Nothing("names the devices and the key's fingerprint an export "
+                                  "would hold; writes nothing"),
     "rotate.preview": Nothing("computes the rotation plan and reads the device's account line; writes nothing"),
     "persist.preview": Nothing("computes the persist plan from the inventory and the "
                                "startup check's record; contacts no device and writes nothing"),

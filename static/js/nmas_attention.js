@@ -128,7 +128,14 @@
     var html = a.known === false
       ? '<span class="text-muted">' + esc(a.label) + '</span>'
       : '<strong>' + esc(a.label) + '</strong>';
-    if (a.command) html += ': <code>' + esc(a.command) + '</code>';
+    // An action that is an operation of the tool opens it (the break-glass
+    // export, 7.3); the command beside it is the host-side way.
+    if (a.open === 'breakglass_export') {
+      html += ' <button type="button" class="btn btn-sm btn-outline-danger py-0 ms-1" '
+        + 'data-nmas-open="breakglass_export" data-nmas-list="' + esc(a.list || '') + '">'
+        + 'Export…</button>';
+    }
+    if (a.command) html += (a.open ? ' or on the host' : '') + ': <code>' + esc(a.command) + '</code>';
     if (a.reference) html += ' (' + esc(a.reference) + ')';
     return html;
   }

@@ -595,11 +595,28 @@ class ResultIncomplete(ValueError):
     """A result part is missing, or empty without saying so."""
 
 
+#: The operations a result's next step may OPEN, by key. A key, never a
+#: function name from the server: the client maps each to its one opener
+#: (`data-nmas-open`), so a result can offer the next operation without the
+#: server naming code to run.
+NEXT_OPENS = ("breakglass_export",)
+
+
 def build_result(*, action: str, level: str, summary: str, targets: list,
                  did_not: list, nothing_left_out: str, record: dict,
-                 not_watched: str, titles: dict = None) -> dict:
+                 not_watched: str, titles: dict = None, next_step: dict = None) -> dict:
     """The result. Floors, as the preview's: a part with nothing to say states
-    it, because an empty section and a missing one read the same."""
+    it, because an empty section and a missing one read the same.
+
+    *next_step* is ``{"text", "open", "args"}``: what to do next, drawn apart,
+    never under "What did not happen" (C219: a next step is not a thing that
+    failed to occur). ``open`` names an operation in `NEXT_OPENS`."""
+    if next_step is not None:
+        if not next_step.get("text"):
+            raise ResultIncomplete("the next step has no text")
+        if next_step.get("open") and next_step["open"] not in NEXT_OPENS:
+            raise ResultIncomplete(f"the next step opens an unknown operation "
+                                   f"{next_step['open']!r}")
     if level not in RESULT_LEVELS:
         raise ResultIncomplete(f"unknown level {level!r}")
     if not summary:
@@ -629,7 +646,9 @@ def build_result(*, action: str, level: str, summary: str, targets: list,
                          "stage": t.get("stage", ""),
                          "reason": t.get("reason", ""), "outcome": t.get("outcome", "")}
                         for t in targets],
-            "record": record, "not_watched": not_watched}
+            "record": record, "not_watched": not_watched,
+            **({"next": {"text": next_step["text"], "open": next_step.get("open", ""),
+                         "args": dict(next_step.get("args") or {})}} if next_step else {})}
 
 
 def result_level(rows: list, receipt_ok: bool, breaker_tripped: bool = False) -> str:
@@ -2411,7 +2430,8 @@ def _rotate_state_action(state: str, name: str, list_name: str) -> str:
     from modules.nsot import credential_rotation as cr
 
     return {
-        cr.ROTATED_PERSISTED: "Export the break-glass record again (nmas-breakglass export).",
+        cr.ROTATED_PERSISTED: ("Export the break-glass record again: the record you keep holds "
+                               "the credential this rotation replaced."),
         cr.ROTATED_PENDING_PERSIST: (f"Persist it: Persist… on {name}'s page, then export the "
                                      "break-glass record again."),
         cr.ROTATED_UNVERIFIED: (f"Do not reload it. Fix the failed stage, then "
@@ -2448,7 +2468,6 @@ def rotate_result(result: dict, plan: dict) -> dict:
     if result.get("persist_skipped"):
         did_not.append({"target": name, "kind": "persistence",
                         "text": "persist did not run: " + result["persist_skipped"], "lines": []})
-    did_not.append({"target": name, "kind": "action", "text": "Next: " + action, "lines": []})
     did_not += [{"target": name, "kind": "not_doing", "text": n, "lines": []}
                 for n in ROTATE_NOT_DOING]
     commit = ((result.get("commit") or {}).get("commit") or "")
@@ -2474,7 +2493,14 @@ def rotate_result(result: dict, plan: dict) -> dict:
                                 "health reads it.")},
         not_watched=(f"Job health's rotation row for {name} stays until a persist reads SAFE; "
                      "the break-glass currency row until you export again."),
-        titles=ROTATE_RESULT_TITLES)
+        titles=ROTATE_RESULT_TITLES,
+        # The next step in its own slot (C219), and where the rotation leaves the
+        # record stale, the export itself (the operator, 2026-09-29).
+        next_step={"text": action,
+                   "open": ("breakglass_export" if state in (cr.ROTATED_PERSISTED,
+                                                             cr.ROTATED_PENDING_PERSIST)
+                            and list_name != "<its list>" else ""),
+                   "args": {"list": list_name}})
 
 
 # ---------------------------------------------------------------------------
@@ -2715,3 +2741,150 @@ def retry_result(out: dict) -> dict:
         not_watched=(f"Nothing is sent until {name} is deployed again; that deploy is planned, "
                      "confirmed and verified like any other, and rolls back again if it fails."),
         titles=RETRY_RESULT_TITLES)
+
+
+
+# ---------------------------------------------------------------------------
+# The break-glass export from the browser (7.3): `modules/breakglass_export.py`.
+# The most sensitive action in the tool: every device's credential at once.
+# ---------------------------------------------------------------------------
+
+BREAKGLASS_TITLES = {"program": "What the record will hold",
+                     "what": "What will be exported"}
+BREAKGLASS_RESULT_TITLES = {"sent": "What the record holds",
+                            "checks": "Verified before it was sent",
+                            "happened": "What was exported"}
+
+BREAKGLASS_NOT_DOING = (
+    "the file is never written to this host's disk: it is built, sealed and verified in "
+    "memory and sent to your browser, so there is nothing to clean up",
+    "the passphrase is never stored, logged or recorded, and appears in no error",
+    "this host cannot see where the file goes after it leaves: verify the copy you keep",
+    "no device is contacted and no credential is changed",
+)
+
+
+def _breakglass_verify_command(list_name: str) -> str:
+    return (f"on the host: nmas-breakglass digests --list {list_name} > digests.json; "
+            "beside the record: nmas-breakglass verify <file> --against digests.json")
+
+
+def breakglass_preview(plan: dict, *, request) -> dict:
+    """*plan*: `breakglass_export.export_plan()`'s. One target, the list."""
+    from modules.breakglass import MIN_PASSPHRASE
+
+    name = plan.get("list_name") or "?"
+    devices = plan.get("devices") or []
+    no_pw = [d["hostname"] for d in devices if not d["has_password"]]
+    kc = plan.get("key_check") or {}
+    gates = [gate("the list holds devices", "pass" if devices else "fail",
+                  f"{len(devices)} device(s)" if devices else "nothing to recover"),
+             gate("the application key can be read and escrowed",
+                  "pass" if plan.get("key_fingerprint") else "fail",
+                  f"fingerprint {plan.get('key_fingerprint')}" if plan.get("key_fingerprint")
+                  else "the key file could not be read"),
+             gate("the passphrase, twice, at least " + str(MIN_PASSPHRASE) + " characters",
+                  "at_apply", "checked before anything is built; the two must match"),
+             gate("credentials unchanged since this preview", "at_apply",
+                  "the plan is computed again and a different hash (a rotation) refuses"),
+             gate("the finished record opens and verifies", "at_apply",
+                  "the sealed bytes are opened with your passphrase: every device, every "
+                  "credential and the escrowed key are checked before anything is sent"),
+             gate("the reveal is recorded", "at_apply",
+                  "who, when, the device count and the file's sha256; nothing is sent "
+                  "unrecorded")]
+    what_not = [{"target": name, "kind": "not_doing", "text": t, "lines": []}
+                for t in BREAKGLASS_NOT_DOING]
+    if no_pw:
+        what_not.insert(0, {"target": name, "kind": "no_password",
+                            "text": "These devices have no stored password and are recorded "
+                                    "without one (a known gap, never a surprise in an outage):",
+                            "lines": no_pw})
+    if kc.get("verdict") not in ("opens", None):
+        what_not.insert(0, {"target": name, "kind": "key",
+                            "text": (f"The application key opens {kc.get('opened')} of "
+                                     f"{kc.get('total')} stored value(s) ({kc.get('verdict')}). "
+                                     "It is the key in use, so it is escrowed anyway; resolve "
+                                     "the difference before relying on it."), "lines": []})
+    target = {
+        "name": name, "state": "exportable" if plan.get("ok") else "refused",
+        "selectable": bool(plan.get("ok")),
+        "select_data": {"hash": plan.get("hash") or "", "list": name},
+        "program": {"lines": [f"{d['hostname']}  {d['ip']}  {d['platform']}"
+                              + ("" if d["has_password"] else "  (no password)")
+                              + ("  + enable secret" if d["has_enable_secret"] else "")
+                              for d in devices],
+                    "caption": ("Each device's login credential, and the application key, "
+                                "sealed with your passphrase. No value is shown here"),
+                    "unit": "device(s) in the record",
+                    "none": "Nothing to export: " + "; ".join(plan.get("refusals") or [])},
+        "operands": [{"name": "list", "value": name},
+                     {"name": "devices", "value": str(len(devices))},
+                     {"name": "key fingerprint", "value": plan.get("key_fingerprint") or "none"},
+                     {"name": "key opens", "value": f"{kc.get('opened')} of {kc.get('total')} "
+                                                   "stored value(s)"},
+                     {"name": "credentials hash", "value": plan.get("hash") or "none"}],
+        "gates": gates,
+    }
+    confirm = confirm_part(request, "reveal")
+    if target["selectable"]:
+        confirm["effect"] = ("The file holds EVERY device's credential in plaintext once opened. "
+                             "Keep it where the passphrase cannot be found beside it, and verify "
+                             "it where you keep it.")
+        confirm["button"] = f"Build, verify and download ({len(devices)} device(s))"
+    return build(
+        action="breakglass_export",
+        summary=f"Export {name}'s break-glass record to this browser, sealed with your passphrase.",
+        targets=[target], what_not=what_not, nothing_left_out="",
+        confirm=confirm, titles=BREAKGLASS_TITLES)
+
+
+def breakglass_result(out: dict, list_name: str, actor: str = "") -> dict:
+    """*out*: `breakglass_export.export_in_memory()`'s, without its bytes."""
+    ok = bool(out.get("ok"))
+    v = out.get("verified") or {}
+    plan = out.get("plan") or {}
+    stage = out.get("stage", "")
+    if ok:
+        summary = (f"{list_name}'s break-glass record was built, opened with your passphrase and "
+                   f"verified ({v.get('devices')} device(s), the key opening "
+                   f"{v.get('key_opens')} stored value(s)), and sent to this browser. sha256 "
+                   f"{out.get('sha256')}.")
+    else:
+        summary = f"Nothing was sent: {out.get('error') or 'no reason given'}"
+    did_not = [{"target": list_name, "kind": "not_doing", "text": t, "lines": []}
+               for t in BREAKGLASS_NOT_DOING]
+    if ok and not out.get("logged"):
+        did_not.insert(0, {"target": list_name, "kind": "not_logged",
+                           "text": "The export was NOT logged, so job health cannot tell when "
+                                   "this record goes stale.", "lines": []})
+    return build_result(
+        action="breakglass_export", level="success" if ok and out.get("logged") else
+        "partial" if ok else "failed", summary=summary,
+        targets=[{"name": list_name, "outcome": "exported" if ok else "refused",
+                  "words": "exported and verified" if ok else f"refused at {stage or '?'}",
+                  "reason": "" if ok else out.get("error", ""),
+                  "sent": {"lines": [d["hostname"] for d in plan.get("devices") or []]
+                           if ok else [],
+                           "caption": "Sealed in the file, each with its credential",
+                           "none": "Nothing was sent."},
+                  "checks": ({"ran": True, "ok": True,
+                              "statements": [f"opened with your passphrase: {v.get('devices')} "
+                                             "device(s), each credential as put in",
+                                             f"escrowed key {v.get('key_fingerprint')}: opens "
+                                             f"{v.get('key_opens')} stored value(s)",
+                                             f"file sha256 {out.get('sha256')}"],
+                              "issues": []}
+                             if ok else {"ran": False, "why": out.get("error") or "refused"})}],
+        did_not=did_not, nothing_left_out="",
+        record={"commit": "", "tags": [], "baseline": "",
+                "statement": (f"A reveal row (who: {actor or 'you'}, when, {v.get('devices')} "
+                              f"device(s), sha256) and the export log (\"downloaded by "
+                              f"{actor or 'you'} at {out.get('at')}\", digests only)."
+                              if ok else "Nothing was recorded: nothing was sent.")},
+        not_watched=("This host cannot see where the file went. Job health's break-glass row "
+                     "reads \"current in the record downloaded at T\" and asks you to verify "
+                     "the copy you keep."),
+        titles=BREAKGLASS_RESULT_TITLES,
+        next_step=({"text": "Optional, and worth doing where you keep it: "
+                            + _breakglass_verify_command(list_name)} if ok else None))

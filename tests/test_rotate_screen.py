@@ -172,9 +172,13 @@ class TestEveryStateIsNamedWithItsAction:
         from modules.preview_confirm import rotate_result
 
         result = rotate_result({"device": "r2", "state": state, "steps": []}, _plan())
-        (nxt,) = [i for i in result["did_not"]["items"] if i["kind"] == "action"]
-        assert nxt["text"].startswith("Next: ")
-        assert "The state above is what is known" not in nxt["text"], state
+        nxt = result["next"]
+        assert nxt["text"] and "The state above is what is known" not in nxt["text"], state
+        # C219: the next step has its own slot, never "What did not happen".
+        assert not [i for i in result["did_not"]["items"] if "Next" in i["text"]]
+        opens = state in (cr.ROTATED_PERSISTED, cr.ROTATED_PENDING_PERSIST)
+        assert (nxt["open"] == "breakglass_export") is opens, state
+        assert not opens or nxt["args"] == {"list": "Lab"}
         assert result["happened"]["summary"] == cr.summarise(
             {"device": "r2", "state": state, "steps": []})
 
@@ -183,7 +187,7 @@ class TestEveryStateIsNamedWithItsAction:
 
         result = rotate_result({"device": "r2", "state": cr.ROTATED_NOT_RECORDED, "steps": []},
                                _plan())
-        assert "nmas-rotation-recover r2 --list Lab" in str(result["did_not"])
+        assert "nmas-rotation-recover r2 --list Lab" in result["next"]["text"]
 
     def test_a_persist_that_did_not_finish_is_said_and_never_green(self, lab):
         lab["state"]["persist_state"] = cr.ROTATED_UNVERIFIED

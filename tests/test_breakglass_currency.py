@@ -146,9 +146,11 @@ class TestJobHealthTracksIt:
     def test_no_export_logged_is_unknown_and_says_how_to_settle_it(self):
         (r,) = self._rows({"state": "absent", "by_list": {}}, {"default": _now_digests()})
         assert r["state"] == "unknown" and "--against" in r["detail"]
-        assert r["action"]["label"].startswith("Export the break-glass record on this host "
-                                               "to establish the baseline")
-        assert "/dev/shm/" in r["action"]["command"], "never beside data/key.key"
+        assert r["action"]["label"].startswith("Export the break-glass record to establish "
+                                               "the baseline")
+        assert r["action"]["open"] == "breakglass_export" and r["action"]["list"] == "default", \
+            "the row opens the browser export (7.3)"
+        assert "/dev/shm/" in r["action"]["command"], "the host's way: never beside data/key.key"
 
     def test_an_unreadable_log_is_unknown_never_current(self):
         (r,) = self._rows({"state": "unreadable", "by_list": {}, "error": "bad"},

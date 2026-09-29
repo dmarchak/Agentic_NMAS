@@ -73,8 +73,14 @@ class BreakglassError(Exception):
     """Refusal, or a passphrase that does not open the record."""
 
 
+#: The shortest passphrase accepted. Not a judgement of quality: the file is
+#: an OFFLINE target, attacked at the attacker's leisure, and scrypt's cost
+#: only multiplies what a short passphrase gives away.
+MIN_PASSPHRASE = 12
+
+
 def _key_from(passphrase: str, salt: bytes) -> bytes:
-    if not passphrase or len(passphrase) < 12:
+    if not passphrase or len(passphrase) < MIN_PASSPHRASE:
         raise BreakglassError(
             "the passphrase must be at least 12 characters. This file is the "
             "last way into the devices; a short passphrase makes it the "
@@ -439,14 +445,18 @@ def compare(record: dict, current: dict) -> list:
 
 
 def record_export(data_dir: str, *, list_name: str, devices: list, path: str,
-                  key_fingerprint: str, actor: str, at: float = None) -> dict:
-    """Append this export to the log: when, which list, where it was written,
-    the key's fingerprint and each device's digest. Never a value."""
+                  key_fingerprint: str, actor: str, at: float = None,
+                  via: str = "host", sha256: str = "") -> dict:
+    """Append this export to the log: when, which list, where it was written
+    (or ``via: browser``, downloaded, with the file's sha256), the key's
+    fingerprint and each device's digest. Never a value."""
     from modules.config import open_secure
 
     row = {"at": at if at is not None else time.time(), "list": list_name,
            "path": path, "key_fingerprint": key_fingerprint, "actor": actor,
-           "devices": digests_of(devices)}
+           "via": via, "devices": digests_of(devices)}
+    if sha256:
+        row["sha256"] = sha256
     with open_secure(os.path.join(data_dir, EXPORT_LOG), "a") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
     return row
@@ -467,3 +477,4 @@ def last_exports(data_dir: str) -> dict:
         if r.get("list") and r.get("at", 0) >= newest.get(r["list"], {}).get("at", 0):
             newest[r["list"]] = r
     return {"state": "ok", "by_list": newest}
+

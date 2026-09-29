@@ -57,26 +57,11 @@ def _passphrase(confirm=False):
 
 
 def _devices(list_name):
-    """This list's rows, decrypted. Never the active list -- the list is
-    named on the command line and carried from there."""
-    from modules.config import get_list_data_dir
-    from modules.device import decrypt_field, load_saved_devices
-    from modules.nsot.platform import platform_for_device
+    """This list's rows, decrypted (`breakglass_export.list_devices`, the one
+    implementation the browser export uses too)."""
+    from modules.breakglass_export import list_devices
 
-    path = os.path.join(get_list_data_dir(list_name), "devices.csv")
-    rows = []
-    for device in load_saved_devices(path):
-        rows.append({
-            "hostname": device.get("hostname", ""),
-            "ip": device.get("ip", ""),
-            "username": device.get("username", ""),
-            "password": decrypt_field(device.get("password", "")),
-            "secret": decrypt_field(device.get("secret", "")),
-            "platform": platform_for_device(device),
-            "list_name": list_name,
-            "container": device.get("container", ""),
-        })
-    return rows
+    return list_devices(list_name)
 
 
 def _export(args):
@@ -304,18 +289,10 @@ def _data_dir(data_dir=""):
 
 
 def _live_key(data_dir=""):
-    """The key file's bytes, or b"" -- READ ONLY. Deliberately not
-    `device.load_key()` or `secrets_store`, both of which CREATE a key when
-    none exists, and a verify that generates the key it is checking for
-    would pass against itself."""
-    from modules.config import KEY_FILE
+    """The key file's bytes, or b"", READ ONLY (`breakglass_export.live_key`)."""
+    from modules.breakglass_export import live_key
 
-    path = os.path.join(data_dir, os.path.basename(KEY_FILE)) if data_dir else KEY_FILE
-    try:
-        with open(path, "rb") as handle:
-            return handle.read().strip()
-    except OSError:
-        return b""
+    return live_key(data_dir)
 
 
 def _live_stores(data_dir=""):

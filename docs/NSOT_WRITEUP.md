@@ -77,7 +77,7 @@ close are marked *written at close*.
 | P-items | P.1 to P.6 | Backfilled below |
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry); persist and rotate accepted on the host; retire and revert/retry await their real runs |
+| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs |
 | | 7.4 to 7.10 | Not started |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
@@ -2465,6 +2465,17 @@ The landing page drew every section 1a source from stored or cached values, each
 4. **How they were resolved.** C213 and C214 fixed in the operation's own path; C215 fixed at both sites. Controls: each fix put back from a copy fails exactly its test.
 5. **Numbers.** One commit with the rest of the evening's items [git]; 26 tests. Not recoverable: an estimate (none was written).
 6. **Where it left the product.** A rollback's two ways out are on the Device page, each previewed, recorded and drawn, and the block lifts only by measurement or by a stated decision, never by a side effect.
+
+#### 7.3 — The break-glass export from the browser
+
+*Open: built 2026-09-29, awaiting a real run.*
+
+1. **What it was.** The re-export after r2's rotation took about ten manual steps across two machines, and the first attempt was lost: the laptop half ran on the host and its cleanup deleted the staged file before it was copied, after the export had been logged (C221). The operator asked for a button that does the host side and downloads the file through the browser.
+2. **How it was implemented.** `modules/breakglass_export.py`, apart from the record format so that module stays independent of the application's stores: the passphrase twice and 12+ characters, refused before anything is built; the plan recomputed and bound to the preview's hash; the record sealed in memory, then OPENED with the passphrase and checked (every device, every credential by digest, the escrowed key, and the key opening what the live key opens); a reveal row, required before anything is sent; the export log with `via: browser` and the sha256. The route returns the sealed bytes beside the masked result; the page decodes them into a download. One client, three entry points (the rotate result's new next-step slot, Needs attention's break-glass row, the Settings page), opened by a data attribute that names the operation, never a function. The CLI now calls the same device and key readers.
+3. **Issues encountered.** The first placement put the export code in `modules/breakglass.py`, and its test that the record module never reads the app's stores failed: the property it guards (a record opens during an outage without them) was real, so the export moved to its own module. C219 (the result component had no slot for a next step) was built as part of the entry points.
+4. **How they were resolved.** The module split; C219 fixed. Controls: skipping the verify, dropping the passphrase scrub and ignoring the reveal record each fail exactly their tests.
+5. **Numbers.** One commit [git]; 17 tests. Not recoverable: an estimate (none was written).
+6. **Where it left the product.** The break-glass record is exported from the browser, verified by the server before it is sent, recorded as a reveal, and tracked by job health as "downloaded by X at T" with the instruction to verify the copy kept.
 
 #### 7.3 step 2 — Mode B: removing a line the device has and intent lacks
 

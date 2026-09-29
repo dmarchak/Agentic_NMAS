@@ -1032,9 +1032,9 @@ def breakglass_rows(exports=None, current=None) -> list:
         if not last:
             rows.append({"unit": f"breakglass:{list_name}", "what": what, "state": "unknown",
                          "max_age_minutes": 0,
-                         "action": {"label": "Export the break-glass record on this host to "
-                                             "establish the baseline its currency is tracked "
-                                             "against; copy it off the host and remove it",
+                         "action": {"label": "Export the break-glass record to establish the "
+                                             "baseline its currency is tracked against",
+                                    "open": "breakglass_export", "list": list_name,
                                     "command": export_cmd.replace("<list>", list_name)},
                          "detail": (f"no break-glass export of {list_name} is logged on this "
                                     f"host ({bg.EXPORT_LOG} began 2026-09-28), so nothing says "
@@ -1043,6 +1043,11 @@ def breakglass_rows(exports=None, current=None) -> list:
                                     "<digests>`, or export again")})
             continue
         when = time.strftime("%Y-%m-%d %H:%M", time.localtime(last.get("at", 0)))
+        # What the host can know, by how the export left (the operator,
+        # 2026-09-29): a browser download is known to have been SENT to a
+        # person; a host export to have been WRITTEN. Neither says where it went.
+        made = (f"downloaded by {last.get('actor') or '?'} at {when}"
+                if last.get("via") == "browser" else f"exported from this host at {when}")
         stale = [r for r in bg.compare(last.get("devices") or {}, now_digests)
                  if r["state"] in ("differs", "missing")]
         for r in stale:
@@ -1051,11 +1056,11 @@ def breakglass_rows(exports=None, current=None) -> list:
                          "max_age_minutes": 0,
                          "action": {"label": "Export the break-glass record again: it cannot "
                                              "recover this device as it stands. Verify the "
-                                             "copy on the machine that keeps it before it "
-                                             "leaves the host (C221): this host logs the "
-                                             "export, never where the file went",
+                                             "copy on the machine that keeps it (C221): this "
+                                             "host logs the export, never where the file went",
+                                    "open": "breakglass_export", "list": list_name,
                                     "command": export_cmd.replace("<list>", list_name)},
-                         "detail": (f"the record exported {when} "
+                         "detail": (f"the record {made} "
                                     + ("holds an older credential: rotated since"
                                        if r["state"] == "differs" else "has no entry for it")
                                     + f" (written to {last.get('path', '?')})")})
@@ -1074,9 +1079,9 @@ def breakglass_rows(exports=None, current=None) -> list:
                                                 "nmas-breakglass verify rcn.bg --against "
                                                 "digests.json")},
                          "detail": (f"{len(now_digests)} of {len(now_digests)} device(s) current "
-                                    f"in the record exported from this host at {when}. The host "
-                                    "logs that the export was written, never where it went or "
-                                    "whether it survived: verify the copy you keep")})
+                                    f"in the record {made}. The host logs the export, never "
+                                    "where it went or whether it survived: verify the copy "
+                                    "you keep")})
     return rows
 
 

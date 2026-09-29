@@ -160,6 +160,7 @@ GATES = {
     "bulk_tftp_download": _g(R, "copies files OFF devices to a TFTP server the form names"),
     "bulk_download_config": _g(R, "copies running or startup config to a TFTP server the form names"),
     "download_device_file": _g(R, "copies a file off a device to a TFTP server the form names"),
+    "breakglass.export": _g(R, "every device's credential and the application key, sealed and sent to the browser"),
 
     # ---- publish_remote --------------------------------------------------
     "remote.push": _g(P, "publishes the repository"),
@@ -179,6 +180,7 @@ GATES = {
     "templatize.preview_committed_edit": _g(N, "renders an edit; writes nothing"),
     "retire.preview": _g(N, "computes the retire plan and reads the export log; writes nothing"),
     "rotate.preview": _g(N, "computes the rotation plan and READS the device's account line; changes nothing"),
+    "breakglass.preview": _g(N, "names the devices and the key's fingerprint an export would hold; reveals no value"),
     "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
     "templatize.seed_preview": _g(N, "parses committed goldens from git; writes nothing"),
     "templatize.revert_preview": _g(N, "computes a revert from git; writes nothing"),
