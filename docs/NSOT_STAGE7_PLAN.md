@@ -296,6 +296,34 @@ The device page's Monitoring section embeds **this device's** Grafana panels
   first step.
 - **If the embed fails, the page says which prerequisite failed.** A blank
   frame fails acceptance.
+- **The iframe test's prerequisites, MEASURED 2026-09-29 (read via the tunnel,
+  read-only): four, and the list above named three.**
+  1. **Grafana refuses framing**: `X-Frame-Options: deny` on `/login`,
+     `/api/health` and `/d/`, so `allow_embedding` is off. (`grafana.ini` is
+     root-only; the header is the measurement.)
+  2. **The NMAS knows Grafana only at a loopback address**
+     (`grafana_url = http://127.0.0.1:3000`). Grafana listens on every interface,
+     but a browser on the tunnel cannot reach the LAN, and an `http://` frame
+     inside the `https://` page is mixed content, blocked by the browser. The
+     address the NMAS reads Grafana at and the address a BROWSER reaches it at
+     are two facts, the "management interface names two networks" shape: an
+     embed needs a second setting, never a reuse of `grafana_url`.
+  3. **No tunnel hostname for Grafana is visible from here**: nothing of
+     cloudflared runs on the NMAS host, so the `homelab` tunnel's ingress is
+     dashboard-managed and only the operator can say whether Grafana has one,
+     with an Access policy (and, for a cross-site frame, Grafana's session
+     cookie needs `cookie_samesite = none`, or the frame lands on a login page).
+  4. **The NMAS's own Content-Security-Policy blocks it**, not named above:
+     `modules/csp.py` sets no `frame-src`, so it falls back to
+     `default-src 'self'` and refuses any other origin's frame before Grafana is
+     asked. The fix is ours: `frame-src` naming exactly the browser-facing
+     Grafana origin (the setting from 2), never a wildcard.
+  **1 and 3 are the operator's** (root on the host, the tunnel dashboard); 2's
+  setting and 4 are the tool's, once 3 names the origin. **An alternative that
+  removes 2 to 4**: serve Grafana under the NMAS's own origin (a reverse proxy
+  at a subpath, `root_url` and `serve_from_sub_path` set), so the frame is
+  same-origin and needs no second Access application; its cost is the NMAS
+  proxying Grafana's own authentication. The operator's choice.
 - **Oxidized fetch history and DHCP leases are rendered by the NMAS** from
   their own integrations: they are records, not graphs.
 
@@ -847,6 +875,90 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
   fleet device the operator chooses, from its page; the result reaches
   `rotated_and_persisted`, the commit reads `Actor-Verified: access`, the break-glass row
   names the device until it is exported again.
+- **Revert and retry from the Device page: BUILT IN PART, PAUSED 2026-09-29 by the
+  operator** (to answer the three questions below first; uncommitted). Written so far:
+  `modules/nsot/intent_ops.py` (each previewed, confirmed by hash, applied holding the
+  device), `hostvars.plan_revert()` (the revert computed without writing, so preview and
+  apply are one computation), the per-device classifier `note_applicability()`, the
+  preview and result adapters, and four routes replacing the two with no screen. Found on
+  the way: C213 (the retry log erased by one torn read) and C214 (any revert lifted the
+  rollback block), both fixed in that work. Remaining: the client, the Device page
+  buttons, the tests, the harness registrations, a real run.
+- **Three questions about seed intent's consumers (the operator, 2026-09-29), answered.
+  Build nothing until the operator has answered back.**
+  1. **Seed on a freshly onboarded device, MEASURED on probe-r1a's real repository** (the
+     host's `~/r1-probe-repo-2026-09-28.tgz`, read via the tunnel, driven through the real
+     seed and plan routes on a scratch copy): **yes, it is the greenfield bridge.** From
+     onboarding's bootstrap-only intent (`574d549`) and its golden (`105905a`), the seed
+     committed full-model intent: two interfaces with their addresses and VRF, the
+     account by secret reference, the five `line` stanzas, the management VRF and its two
+     default routes, at 100% round-trip and 100% modelled. The deploy plan then accepted
+     it (every gate passing, the program empty because intent equals the device), and one
+     edit to the seeded intent produced a real program the plan would send. **Two things
+     the run found, both C117's to know:** the device's template must be APPROVED first
+     (the probe repo never approved one; scheme 3 approves on this device's own
+     capture); and C216, the P.1 syslog block reaches onboarding's intent and never the
+     device, and the seed drops it from intent too. A third came from the harness: C215,
+     the plan reads the device's row from the active list, so it chose the IOS template
+     until the row was where it looks. **So C117's onboard, seed, deploy loop is sound as
+     designed**, with the approval as an explicit step and C216 decided first if the
+     acceptance is to show a heartbeat.
+  2. **ADOPT, for brownfield: scoped, not built.** Onboarding's phase 2 without phase 1:
+     the person supplies list, address, platform and the device's CURRENT credential;
+     the tool stages that credential exactly as phase 1 stages the bootstrap one (the
+     device override, keyed on the address), verifies (reaching it is the
+     verification), captures, then takes the device into management, persists, records
+     NetBox, promotes, and the seed follows (seed already handles NEVER-committed
+     intent). **Three design points that are the operator's:**
+     - **ADD an account for the tool; never rotate the supplied one.** A brownfield
+       device's account is usually a person's or a team's, and rotating it locks them
+       out. Adding one is the deploy's own rule ("a deploy may ADD an account, never
+       CHANGE one"), and it reuses rotation's machinery (stage before the push, verify on
+       a fresh login, record, persist, and C210's recovery); only the program differs.
+       The supplied credential is then used by nothing, and the result says so.
+     - **No RW-community removal, and no change beyond the account.** Phase 2 removes a
+       vrnetlab RW community because WE put it there; on a brownfield device something
+       real may use it. Adopt names it and leaves it.
+     - **Persist previews running against startup first.** A brownfield device's running
+       config may carry unsaved changes, and saving makes them its boot config; the
+       preview draws the difference and the confirm says so (C184's rule).
+     **NetBox:** the device's objects usually exist, made by a person. The import's
+     preview (the NetBox tab's, one-shot token) shows creates against updates; updates
+     are already recorded with their before-state in the modification record, and
+     creates are tagged and recorded as created (true). A NEW adoption record
+     (`data/netbox_adopted.json`: object, who, when, why, the authority) holds the
+     per-device objects that existed before (the device, its interfaces and addresses;
+     never shared site, region or VRF objects, which stay the person's). Remove's
+     intersection (tagged AND created) cannot reach an adopted object, so nothing a
+     person made becomes deletable. **C100 does not have to come first.** It would let
+     NetBox's own changelog tell the tool's writes from a person's; a first adopt needs
+     only its own record, snapshotted at adoption, the same kind of self-written store
+     the created record already is (C100's stated limit, not worsened: a lost file loses
+     adoption facts, never makes an object deletable). The same record then answers A3:
+     the nine reference devices are adopted, not recorded as created.
+     **Cost**, from the finished same-kind stages: Mode B (5.5 h, 15 commits, the nearest
+     multi-part operation over device and record) and Phase 2 DHCP (one real run, 15
+     defects, 9 fix commits): about 6 to 10 hours and 12 to 20 commits, most of it the
+     real run's findings, on a throwaway that boots vrnetlab's own config (admin/admin,
+     no bootstrap: a device we did not configure). **Recommendation: pull adopt into
+     7.3, after rotate's REAL RUN rather than straight after rotate's build**, because
+     adopt reuses rotation's stage, verify, record and persist, and none of that has run
+     on the host from the page yet (the sudo-helper gate is expected there). Revert and
+     retry's remainder first (small, most of it written).
+  3. **Clone intent ("start this device's intent from another's"): scoped, not built.**
+     Cheap if it copies only the DEVICE-INDEPENDENT sections (logging, SNMP settings,
+     NTP, services, lines, VLANs, banners) between devices of ONE platform, as one
+     operation on seed's model (previewed diff, hash, `Source: clone`, `Cloned-From:`):
+     about 2 to 3 hours with a real run. What it cannot copy, and why: interfaces and
+     addresses (they are the device), accounts and secrets (a copied `secret_ref` would
+     point at the other device's value, the C139 shape: one secret, two owners), and
+     routing, whose identity is addresses (router-id, neighbours, networks). So it takes
+     ZTP from "ends reachable" to "ends with the fleet's common settings", and the routing
+     is still written by hand. **The catch is ownership:** a clone makes N copies of one
+     fact that then drift apart, and bulk intent (P.1b) already applies one change to
+     many devices. The principled form is GROUP intent (a role's shared settings with one
+     owner, each device inheriting), a render-context change larger than a clone. The
+     operator's choice between the cheap copy and the one owner.
 - **7.3 gains PERSIST** (C164, the operator's decision, 2026-09-28): save on the device
   and read the startup config back, the operation `nmas-persist-native` runs today,
   with the same treatment (preview, confirm, result, receipt, a real run). It is the
