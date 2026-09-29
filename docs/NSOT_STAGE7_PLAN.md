@@ -1884,6 +1884,35 @@ read through one function, and P.8 moves it without the reader changing.
   earned 30 minutes after the first. The apply three times faster than the preview for
   the same reads is not explained (C198): each read is now split into connect and
   `show running-config`, logged and drawn, and the next Save All says where the time is.
+  **Mode B's fourth case, a restore's residue: a DECISION, recorded overnight 2026-09-29
+  (the operator's queue item 8: "if it fits cleanly; if it needs a design decision, write
+  the options").** The server side fits: `routes/golden.restore_preview` and
+  `routes/deploy.run_targets` would call the same `_program()`, `removable()` and
+  fingerprint-with-ids the deploy plan does, and `_deploy_one` already takes `remove`.
+  The CLIENT does not fit: the restore authorises lines in a SEPARATE modal before the
+  program is shown (`_authoriseDangerous`, then `_confirmRestorePreview`), where the
+  deploy wizard ticks a residue line in the preview and re-plans in place. And it
+  changes what the Baselines panel's button, named "Re-apply this baseline" because a
+  restore is ADDITIVE, means.
+  - **(a) Removals inside the restore.** The residue rows get the tick and the reason in
+    place, the restore modal re-plans with `remove`, and the hash, receipt and verify
+    carry it as they do for a deploy. A restore could then EARN its baseline by removing
+    the residue that denies it today. Cost: the restore client's two-modal flow is
+    restructured to re-plan from inside the preview, and the button's name and the
+    confirm's words change from "re-apply" to "re-apply, and remove what you ticked".
+  - **(b) Restore stays additive; removal keeps ONE home, the Deploy plan** (section
+    6a). A restore commits the ref's intent with the device ("device and intent as one
+    unit"), so after it the Deploy plan's residue for that device is the lines the ref
+    does not hold, and Mode B removes them there, measured and authorised as now. Cost:
+    two operations where (a) is one, and the restore's residue item names the next step
+    ("remove these through the Deploy plan"). EXPECTED, not measured: that the Deploy
+    plan's residue after a restore equals the restore's (a template render of the ref's
+    intent against the ref's golden, 100% round-trip on the fleet; unrenderable blocks
+    such as banners are excluded from both).
+  **Recommendation: (b)**, with the one-line pointer in the restore's residue item. A
+  removal already has one measured, accepted home, and (a) would give it a second client
+  flow with a different authorisation step: the minimalism rule's "two ways to do one
+  thing means one is wrong". Nothing is built for either until decided.
   **The gap Mode B has to get right** (the operator): every destructive or surprising
   result so far (the numbered ACL broader on IOS, `logging buffered` overriding its
   default, the ACLs unrecognised on IOS-XE) came from the gap between WHAT IS SENT and
