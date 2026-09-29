@@ -1712,6 +1712,16 @@ read through one function, and P.8 moves it without the reader changing.
   leftover with s4's `no logging console` (C193), and now takes a plain difference.
   Still unmeasured on IOS: the numbered ACL entry and route-map sequence (the two most
   likely to destroy), the applet, the prefix-list and named-ACL entries.
+  **The repair for an `overrides_default` line, proven on s4 (the operator, 2026-09-29):
+  THE DEFAULT IS DISCOVERABLE FROM A SIBLING ON THE SAME IMAGE.** s3 runs the same vIOS
+  image and its committed golden has no `logging buffered` line, so it is at the default;
+  its `show logging` gave `level debugging, Log Buffer (8192 bytes)`. `logging buffered
+  8192 debugging` sent to s4, then `show running-config | include logging buffered`
+  printed nothing (IOS hides a setting at its default), `show logging` matched s3, and the
+  device logged `%SYS-5-LOG_CONFIG_CHANGE`. No reload. Setting the value explicitly is
+  preferred to `default <command>` because the value sent can be verified. What the tool
+  holds and what it does not: the sibling's GOLDEN says the sibling is at the default (no
+  line); the VALUE came from a live read of the sibling. A built repair would need both.
   Next: 2b the pipeline (confirm hash over removals, per-line reasons, rollback
   that re-adds verbatim, read-back that each line is gone), 2c the preview, 2d r2 on the
   host.
