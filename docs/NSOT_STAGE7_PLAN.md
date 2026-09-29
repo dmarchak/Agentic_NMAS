@@ -1932,3 +1932,8 @@ read through one function, and P.8 moves it without the reader changing.
     client-side role check, and that a refused control renders its reason.
     Its control fails when a button is drawn without consulting `may`
     ([NSOT_AUTHORIZATION.md](NSOT_AUTHORIZATION.md) section 7).
+14. **Every sub-task has its writeup entry** (the operator, 2026-09-29):
+    [NSOT_WRITEUP.md](NSOT_WRITEUP.md) holds one entry per sub-task (what it
+    was, how it was built, its findings by ID, how each was resolved, its
+    numbers and where it left the product), written in the turn it closed.
+    A stage is not closed while an entry is missing or says "to be written".

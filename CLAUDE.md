@@ -6038,6 +6038,25 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   restore runs it. `pipeline_builder.py` generated Jenkins pipeline XML and
   went with Jenkins in P.4.
 
+## The writeup
+
+**[docs/NSOT_WRITEUP.md](docs/NSOT_WRITEUP.md) is the writeup: one entry per phase and
+sub-task** (the operator's requirement, 2026-09-29). Each entry has six parts: what it was,
+how it was implemented, the issues it found by register ID (including those outside
+its scope), how each was resolved (fixed, deferred by decision, or withdrawn, with the
+reason), its numbers (commits with their selection rule, time, findings, estimate versus
+actual) and where it left the product. **An entry is written in the turn its stage or
+sub-task closes**, while the detail is in hand: this project has lost detail to
+summarisation before (the tenants-versus-regions exchange had to be re-measured), and the
+numbers are what cannot be recovered later. A detail that cannot be recovered says
+"Not recoverable" and is never filled in. The cross-cutting sections (patterns, rate
+measurements, where the product stood) are updated when a close adds to them.
+[docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md) stays the raw notebook the
+writeup draws on. P.1 to P.6 and 7.0 to 7.2 were backfilled on 2026-09-29 from the plan,
+the register and git, and each says where its sources ran out. **The backfill was a
+survey of its own**: reading the scheduled rows against the code found D6 done and still
+scheduled, and C38 scheduled into 7.2 and never built.
+
 ## Open findings register
 
 **[docs/OPEN_FINDINGS.md](docs/OPEN_FINDINGS.md) is the list of things
