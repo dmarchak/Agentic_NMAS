@@ -7,6 +7,8 @@ from intent and no baseline can be earned (C184, recorded in 17239ae).
 
 import os
 
+import pytest
+
 from modules.nsot import removal as RM
 from tests.test_intent_match import _broken
 
@@ -27,6 +29,25 @@ def _unit(chain, line):
     return {"chain": list(chain), "line": line}
 
 
+def _measure(monkeypatch, result="exact", keys=None, dialect="cisco_iosxe"):
+    rows = {k: {"result": result, "device": "probe", "at": "2026-09-28T00:00:00Z",
+                "detail": "" if result == "exact" else "also removed: x"}
+            for k in (keys or [s.key for s in RM.SHAPES])}
+    monkeypatch.setattr(RM, "measured", lambda: {"state": "ok", "by_dialect": {dialect: rows}})
+
+
+@pytest.fixture(autouse=True)
+def every_shape_measured_exact(request, monkeypatch):
+    """Most tests are about the computation, so every shape reads measured
+    and exact unless a test is about the measurement gate itself."""
+    if not request.node.get_closest_marker("real_measurements"):
+        _measure(monkeypatch)
+
+
+def program(running, units, mgmt_ip="10.255.1.12", dialect="cisco_iosxe"):
+    return RM.removal_program(running, units, mgmt_ip=mgmt_ip, dialect=dialect)
+
+
 class TestTheAcceptanceCase:
     def test_the_one_candidate_is_the_line_the_host_carries(self):
         cands = RM.candidates(R2, R2_BROKEN)
@@ -34,7 +55,7 @@ class TestTheAcceptanceCase:
             (["interface GigabitEthernet2"], " load-interval 30", "leaf")]
 
     def test_its_program_is_the_verbatim_negation_in_its_stanza(self):
-        out = RM.removal_program(R2_BROKEN, [_unit(["interface GigabitEthernet2"],
+        out = program(R2_BROKEN, [_unit(["interface GigabitEthernet2"],
                                                    " load-interval 30")],
                                  mgmt_ip="10.255.1.12")
         assert out["commands"] == ["interface GigabitEthernet2", " no load-interval 30", "exit"]
@@ -54,36 +75,39 @@ class TestShapes:
         assert stanza["line"] == "event manager applet NMAS-HEARTBEAT"
         assert len(stanza["children"]) == 2, "its children are listed, never offered alone"
         assert not [c for c in cands if c["chain"][:1] == [stanza["line"]]]
-        out = RM.removal_program(running, [_unit([], stanza["line"])])
+        out = program(running, [_unit([], stanza["line"])])
         assert out["commands"] == ["no event manager applet NMAS-HEARTBEAT"]
 
     def test_a_child_selected_with_its_stanza_is_implied(self):
         running = R2 + "event manager applet X\n event timer watchdog time 300\n"
-        out = RM.removal_program(running, [
+        out = program(running, [
             _unit([], "event manager applet X"),
             _unit(["event manager applet X"], " event timer watchdog time 300")])
         assert out["commands"] == ["no event manager applet X"]
 
     def test_a_no_line_is_removed_by_its_positive_form(self):
-        out = RM.removal_program(R2, [_unit([], "no ip http server")])
-        assert out["commands"] == ["ip http server"]
+        """The builder's rule. No shape covers `no ip http server` yet, so the
+        gated path refuses it until one is measured (the next test)."""
+        assert RM.negation_program([_unit([], "no ip http server")]) == ["ip http server"]
+        out = program(R2, [_unit([], "no ip http server")])
+        assert out["commands"] == [] and "no measured shape" in out["refused"][0]["reason"]
 
     def test_the_line_is_the_devices_own_never_rebuilt(self):
         running = R2.replace("snmp-server community public RO",
                              "snmp-server community public RO 99", 1)
-        out = RM.removal_program(running, [_unit([], "snmp-server community public RO 99")])
+        out = program(running, [_unit([], "snmp-server community public RO 99")])
         assert out["commands"] == ["no snmp-server community public RO 99"]
         assert out["secret_position"], "a community is a secret position, flagged for a reason"
 
     def test_a_unit_not_on_the_device_is_refused_and_sends_nothing(self):
-        out = RM.removal_program(R2, [_unit(["interface GigabitEthernet2"], " load-interval 30")])
+        out = program(R2, [_unit(["interface GigabitEthernet2"], " load-interval 30")])
         assert out["commands"] == []
         assert out["refused"][0]["reason"].startswith("not on the device")
 
 
 class TestRefusals:
     def _why(self, running, chain, line, mgmt_ip="10.255.1.12"):
-        out = RM.removal_program(running, [_unit(chain, line)], mgmt_ip=mgmt_ip)
+        out = program(running, [_unit(chain, line)], mgmt_ip=mgmt_ip)
         assert out["commands"] == [], out
         return out["refused"][0]["reason"]
 
@@ -94,8 +118,8 @@ class TestRefusals:
 
     def test_another_interfaces_line_is_not_the_management_path(self):
         """The control: the refusal is keyed on the address, not on 'interface'."""
-        out = RM.removal_program(R2_BROKEN, [_unit(["interface GigabitEthernet2"],
-                                                   " load-interval 30")], mgmt_ip="10.255.1.12")
+        out = program(R2_BROKEN, [_unit(["interface GigabitEthernet2"],
+                                                   " load-interval 30")])
         assert out["commands"]
 
     def test_the_vty_lines_and_ssh(self):
@@ -131,7 +155,7 @@ class TestRefusals:
     def test_an_unreferenced_named_object_is_removable(self):
         """The control for the reference check: the same shape with no user."""
         running = R3 + "ip prefix-list UNUSED seq 5 permit 192.0.2.0/24\n"
-        out = RM.removal_program(running, [_unit([], "ip prefix-list UNUSED seq 5 permit "
+        out = program(running, [_unit([], "ip prefix-list UNUSED seq 5 permit "
                                                      "192.0.2.0/24")])
         assert out["commands"] == ["no ip prefix-list UNUSED seq 5 permit 192.0.2.0/24"]
 
@@ -145,3 +169,59 @@ class TestTheFleet:
         for name in names:
             text = _cfg(name)
             assert RM.candidates(text, text) == [], name
+
+
+class TestOnlyWhatWasMeasured:
+    """The operator (2026-09-28): ask the platform rather than reason about
+    it, because this is where being wrong destroys configuration."""
+
+    LOAD = [_unit(["interface GigabitEthernet2"], " load-interval 30")]
+
+    @pytest.mark.real_measurements
+    def test_the_committed_record_allows_nothing_unmeasured(self):
+        rec = RM.measured()
+        assert rec["state"] in ("absent", "ok")
+        rows = rec["by_dialect"].get("cisco_iosxe") or {}
+        if (rows.get("interface.load-interval") or {}).get("result") != "exact":
+            out = program(R2_BROKEN, self.LOAD)
+            assert out["commands"] == []
+            assert "scripts/nmas-removal-probe --shape interface.load-interval" in \
+                out["refused"][0]["reason"]
+
+    def test_not_measured_on_this_platform_is_refused_naming_the_probe(self, monkeypatch):
+        _measure(monkeypatch, dialect="cisco_ios")
+        out = program(R2_BROKEN, self.LOAD, dialect="cisco_iosxe")
+        assert out["commands"] == []
+        assert "has not been measured on cisco_iosxe" in out["refused"][0]["reason"]
+
+    def test_a_shape_measured_broader_is_refused_with_what_was_measured(self, monkeypatch):
+        _measure(monkeypatch, result="broader")
+        out = program(R2_BROKEN, self.LOAD)
+        why = out["refused"][0]["reason"]
+        assert "removes MORE than that line" in why and "also removed: x" in why
+
+    def test_a_line_no_shape_covers_is_refused(self):
+        running = R2 + "service tcp-keepalives-in\n"
+        out = program(running, [_unit([], "service tcp-keepalives-in")])
+        assert out["commands"] == []
+        assert out["refused"][0]["reason"].startswith("no measured shape covers this line")
+
+    def test_no_platform_is_refused(self):
+        out = program(R2_BROKEN, self.LOAD, dialect="")
+        assert "platform is not known" in out["refused"][0]["reason"]
+
+    @pytest.mark.real_measurements
+    def test_an_unreadable_record_allows_nothing(self, tmp_path, monkeypatch):
+        bad = tmp_path / "m.json"
+        bad.write_text("{not json")
+        monkeypatch.setattr(RM, "MEASURED_FILE", str(bad))
+        assert RM.measured()["state"] == "unreadable"
+        out = program(R2_BROKEN, self.LOAD)
+        assert "could not be read" in out["refused"][0]["reason"]
+
+    def test_the_suspected_shapes_are_in_the_table(self):
+        """Measured so the record shows WHY they are refused, never assumed."""
+        keys = {s.key for s in RM.SHAPES}
+        assert {"global.numbered-acl-entry", "bgp.neighbor-remote-as", "global.logging-buffered",
+                "global.route-map-sequence", "named-acl.entry",
+                "global.snmp-server-community"} <= keys

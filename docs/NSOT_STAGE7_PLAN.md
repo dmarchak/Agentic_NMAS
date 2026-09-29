@@ -1675,7 +1675,30 @@ read through one function, and P.8 moves it without the reader changing.
   management path, an account and a named object something still uses (naming the
   user). On the real fleet: r2's program is `interface GigabitEthernet2` /
   ` no load-interval 30` / `exit`; r3's `NO-PRIVATE` prefix-list is refused naming its BGP
-  neighbour. Next: 2b the pipeline (confirm hash over removals, per-line reasons, rollback
+  neighbour.
+  **And only where MEASURED** (the operator, 2026-09-28: `no <exact line>` can do more
+  than undo the line, `no access-list 10 <entry>` deleting the whole list; "ask the
+  platform rather than reason about it, because this is where being wrong destroys
+  config"). A line is removed only if it matches a shape in `removal.SHAPES` that
+  `scripts/nmas-removal-probe` measured on the device's PLATFORM removing exactly that
+  line (`removal_measured.json`, absent until the first run, so today NOTHING is
+  removable, r2 included). Every other line is refused as unmeasured, naming the probe.
+  The shapes include the ones SUSPECTED of being broader, so the record shows why they
+  are refused: numbered ACL entries; a route-map sequence; a community with an ACL or a
+  view (the operator's list); a prefix-list entry and a named-ACL entry (entries in a
+  list); a BGP neighbour's `remote-as` (suspected of removing the whole neighbour); and
+  `logging buffered` (suspected of turning logging OFF rather than restoring the
+  default). Refused outright, without a probe: banners and certificate bodies (lines the
+  model cannot represent). Left unmeasured, so refused: `switchport trunk allowed vlan
+  add` continuation lines, `ip nat` (it prompts when translations exist), and
+  `ipv6 unicast-routing` / `ip routing` (they take every routing protocol with them).
+  The probe adds a scratch instance of each shape (names `NMASPROBE`, RFC 5737
+  addresses, Loopback199), sends what Mode B would send, compares the read-backs
+  (`exact`, `broader`, `different`, `incomplete`, `refused`), takes the scratch away,
+  puts back anything removed, and requires the device EQUIVALENT to its state before,
+  or stops with that as its first line. RUNNING config only, never saved. **Its run is
+  the operator's**: one device per platform (cisco_iosxe, cisco_ios).
+  Next: 2b the pipeline (confirm hash over removals, per-line reasons, rollback
   that re-adds verbatim, read-back that each line is gone), 2c the preview, 2d r2 on the
   host.
   **Costed 2026-09-28** (the operator asked what it costs and whether

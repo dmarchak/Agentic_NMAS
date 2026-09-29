@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""Measure, on a real device, what `no <exact line>` does for each removal shape.
+
+Mode B (7.3 step 2) removes a line only where this probe MEASURED, on the
+device's platform, that `no <the line>` removes exactly that line and nothing
+else (`modules/nsot/removal.py`, SHAPES). The operator's rule: ask the
+platform rather than reason about it, because this is the one part of Mode B
+where being wrong destroys configuration rather than refusing to
+(`no access-list 10 <entry>` deletes the whole list).
+
+For each shape, on the named device:
+
+  1. read the running config (the BEFORE);
+  2. add a scratch instance of the shape (names start `NMASPROBE`, addresses
+     are RFC 5737 documentation addresses, the interface is Loopback199);
+  3. read it back, and stop if the scratch did not land;
+  4. send the program Mode B would send (`removal.negation_program`);
+  5. read it back and compare with step 3: exactly the line gone is
+     `exact`; more gone is `broader`; anything added or changed is
+     `different`; the line still there is `incomplete`; a device error is
+     `refused`;
+  6. take the scratch away, and put back anything step 4 removed;
+  7. read it back and require it EQUIVALENT to step 1. If not, the probe
+     stops, and its first line says so and prints what differs.
+
+It changes the RUNNING config only and never saves, so a reload also returns
+the device to what it was. It holds the device (C98) for the whole run.
+
+    nmas-removal-probe                                       # dry run: every shape's plan
+    nmas-removal-probe --list Default --device r2 --apply --actor you@example.com
+    nmas-removal-probe ... --shape interface.load-interval --out /dev/shm/removal.json
+
+Run it on one device of each PLATFORM (cisco_iosxe, cisco_ios): the record is
+per platform. The JSON it prints (or writes with --out) is what
+`modules/nsot/removal_measured.json` records. Exit 0 measured (whatever the
+results), 1 refused before touching the device, 2 the device was NOT
+returned to its starting state (named first, with what differs).
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+LOOP = "interface Loopback199"
+
+#: One or more scratch instances per shape: the setup, the unit removed, and
+#: the teardown. Each shape in removal.SHAPES has an entry (a test holds the
+#: two equal). `needs` names a precondition read from the device.
+EXEMPLARS = {
+    "interface.load-interval": [{
+        "setup": [LOOP, " load-interval 30"],
+        "unit": {"chain": [LOOP], "line": " load-interval 30"},
+        "teardown": ["no " + LOOP]}],
+    "interface.description": [{
+        "setup": [LOOP, " description NMASPROBE removal probe"],
+        "unit": {"chain": [LOOP], "line": " description NMASPROBE removal probe"},
+        "teardown": ["no " + LOOP]}],
+    "global.snmp-server-community": [
+        {"setup": ["snmp-server community NMASPROBE1 RO"],
+         "unit": {"chain": [], "line": "snmp-server community NMASPROBE1 RO"},
+         "teardown": []},
+        {"setup": ["access-list 98 permit 192.0.2.1", "snmp-server community NMASPROBE2 RO 98"],
+         "unit": {"chain": [], "line": "snmp-server community NMASPROBE2 RO 98"},
+         "teardown": ["no access-list 98"]},
+        {"setup": ["snmp-server view NMASPROBEVIEW iso included",
+                   "snmp-server community NMASPROBE3 view NMASPROBEVIEW RO"],
+         "unit": {"chain": [], "line": "snmp-server community NMASPROBE3 view NMASPROBEVIEW RO"},
+         "teardown": ["no snmp-server view NMASPROBEVIEW"]}],
+    "global.logging-host": [{
+        "setup": ["logging host 192.0.2.10"],
+        "unit": {"chain": [], "line": "logging host 192.0.2.10"},
+        "teardown": []}],
+    "global.logging-buffered": [{
+        "setup": ["logging buffered 16001"],
+        "unit": {"chain": [], "line": "logging buffered 16001"},
+        "teardown": []}],
+    "global.event-manager-applet": [{
+        "setup": ["event manager applet NMASPROBE", " event timer watchdog time 86400",
+                  " action 1.0 syslog msg \"NMASPROBE\""],
+        "unit": {"chain": [], "line": "event manager applet NMASPROBE"},
+        "teardown": []}],
+    "global.ip-prefix-list-entry": [{
+        "setup": ["ip prefix-list NMASPROBE seq 5 permit 192.0.2.0/24",
+                  "ip prefix-list NMASPROBE seq 10 permit 198.51.100.0/24"],
+        "unit": {"chain": [], "line": "ip prefix-list NMASPROBE seq 5 permit 192.0.2.0/24"},
+        "teardown": ["no ip prefix-list NMASPROBE"]}],
+    "global.route-map-sequence": [{
+        "setup": ["route-map NMASPROBE permit 10", " set metric 10",
+                  "route-map NMASPROBE permit 20", " set metric 20"],
+        "unit": {"chain": [], "line": "route-map NMASPROBE permit 10"},
+        "teardown": ["no route-map NMASPROBE"]}],
+    "global.numbered-acl-entry": [{
+        "setup": ["access-list 97 permit 192.0.2.1", "access-list 97 permit 192.0.2.2"],
+        "unit": {"chain": [], "line": "access-list 97 permit 192.0.2.1"},
+        "teardown": ["no access-list 97"]}],
+    "named-acl.entry": [{
+        "setup": ["ip access-list extended NMASPROBE", " permit ip host 192.0.2.1 any",
+                  " permit ip host 192.0.2.2 any"],
+        "unit": {"chain": ["ip access-list extended NMASPROBE"],
+                 "line": " permit ip host 192.0.2.1 any", "match_in_readback": True},
+        "teardown": ["no ip access-list extended NMASPROBE"]}],
+    "bgp.neighbor-remote-as": [{
+        "needs": "router bgp",
+        "setup": ["{bgp}", " neighbor 192.0.2.99 remote-as 64999",
+                  " neighbor 192.0.2.99 description NMASPROBE"],
+        "unit": {"chain": ["{bgp}"], "line": " neighbor 192.0.2.99 remote-as 64999"},
+        "teardown": ["{bgp}", " no neighbor 192.0.2.99"]}],
+}
+
+#: When exemplars disagree, the shape reads as the worst of them.
+WORST = ("failed", "refused", "broader", "different", "incomplete", "exact")
+
+
+def _lines(config: str) -> set:
+    from modules.nsot.removal import _chains
+    return {chain + (line,) for line, chain in _chains(config)}
+
+
+def _bgp_header(config: str) -> str:
+    return next((l.strip() for l in config.splitlines() if l.startswith("router bgp ")), "")
+
+
+def _fill(items, bgp: str) -> list:
+    return [x.replace("{bgp}", bgp) for x in items]
+
+
+def _locate(unit: dict, config: str) -> dict:
+    """The unit as the device PRINTS it. A named ACL's entries come back with
+    sequence numbers on IOS-XE (` 10 permit ...`), so the verbatim line to
+    negate is the one read back, never the one typed."""
+    if not unit.get("match_in_readback"):
+        return {"chain": unit["chain"], "line": unit["line"]}
+    from modules.nsot.removal import _chains
+    typed = unit["line"].strip()
+    for line, chain in _chains(config):
+        text = line.strip()
+        numbered = text.split(None, 1)[0].isdigit() and text.split(None, 1)[-1] == typed
+        if list(chain) == unit["chain"] and (text == typed or numbered):
+            return {"chain": list(chain), "line": line}
+    return {"chain": unit["chain"], "line": unit["line"]}
+
+
+def plan_for(key: str, bgp: str = "router bgp 65000") -> list:
+    """What the probe would do for *key*: each exemplar's setup, the program,
+    and the teardown. Pure: the dry run prints it."""
+    from modules.nsot.removal import negation_program
+    out = []
+    for ex in EXEMPLARS[key]:
+        unit = {"chain": _fill(ex["unit"]["chain"], bgp), "line": ex["unit"]["line"]}
+        out.append({"setup": _fill(ex["setup"], bgp), "unit": unit,
+                    "program": negation_program([unit]),
+                    "teardown": _fill(ex["teardown"], bgp), "needs": ex.get("needs", "")})
+    return out
+
+
+def classify(with_scratch: str, after: str, unit: dict, error: str = "") -> dict:
+    """What the removal did, from the read before it and the read after it."""
+    if error:
+        return {"result": "refused", "detail": error.strip()[:300]}
+    before, now = _lines(with_scratch), _lines(after)
+    path = tuple(unit["chain"]) + (unit["line"],)
+    expected = {p for p in before if p[:len(path)] == path}
+    removed, added = before - now, now - before
+    if path in now:
+        return {"result": "incomplete", "detail": "the line is still on the device"}
+    if added:
+        return {"result": "different", "detail": "appeared: " + "; ".join(
+            " > ".join(p) for p in sorted(added))[:300]}
+    if removed - expected:
+        return {"result": "broader", "detail": "also removed: " + "; ".join(
+            " > ".join(p) for p in sorted(removed - expected))[:300]}
+    return {"result": "exact", "detail": ""}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--list", dest="list_name", default="")
+    ap.add_argument("--device", default="")
+    ap.add_argument("--shape", action="append", default=[])
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--out", default="")
+    args = ap.parse_args()
+
+    from modules.nsot.removal import SHAPES
+    keys = args.shape or [s.key for s in SHAPES]
+    unknown = sorted(set(keys) - set(EXEMPLARS))
+    if unknown:
+        print(f"REFUSED: no such shape: {', '.join(unknown)}")
+        return 1
+
+    if not args.apply:
+        print("DRY RUN: nothing connects. Each shape's scratch, the program Mode B "
+              "would send, and the teardown:\n")
+        for key in keys:
+            for ex in plan_for(key):
+                print(f"{key}" + (f"  (needs {ex['needs']})" if ex["needs"] else ""))
+                print("  add:      " + " / ".join(ex["setup"]))
+                print("  remove:   " + " / ".join(ex["program"]))
+                print("  teardown: " + (" / ".join(ex["teardown"]) or "(none: the removal is it)"))
+        print("\n--apply --list <list> --device <device> --actor <you> measures them.")
+        return 0
+
+    if not (args.list_name and args.device and args.actor):
+        print("REFUSED: --apply needs --list, --device and --actor (who is accountable)")
+        return 1
+    from modules.commands import run_device_command
+    from modules.connection import open_ssh, stored_connection_params
+    from modules.nsot import device_ops, roundtrip
+    from modules.nsot.deploy import merge_commands
+    from modules.nsot.platform import platform_for_device
+    from modules.nsot.removal import candidates, negation_program
+    from modules.nsot.restore import _devices_of
+    from modules.pipeline import IOS_ERROR_PATTERN
+
+    device = next((d for d in _devices_of(args.list_name)
+                   if d.get("hostname") == args.device), None)
+    if device is None:
+        print(f"REFUSED: {args.device} is not in list {args.list_name}")
+        return 1
+    dialect = platform_for_device(device)
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    results, damaged = {}, None
+
+    with device_ops.hold(args.list_name, args.device, "probe", args.actor,
+                         detail="removal shapes"):
+        conn = open_ssh(stored_connection_params(device), owner="probe:removal")
+        try:
+            conn.enable()
+
+            def read():
+                return run_device_command(conn, "show running-config", read_timeout=120)
+
+            def send(lines):
+                try:
+                    conn.send_config_set(lines, read_timeout=60,
+                                         error_pattern=IOS_ERROR_PATTERN)
+                    return ""
+                except Exception as exc:          # noqa: BLE001
+                    return f"{type(exc).__name__}: {exc}"
+
+            start = read()
+            bgp = _bgp_header(start)
+            for key in keys:
+                device_ops.note(f"probe {key}")
+                rows = []
+                for ex in plan_for(key, bgp or "router bgp 65000"):
+                    if ex["needs"] == "router bgp" and not bgp:
+                        rows.append({"result": "failed",
+                                     "detail": "not applicable here: no router bgp"})
+                        continue
+                    before = read()
+                    err = send(ex["setup"])
+                    with_scratch = read()
+                    unit = _locate(ex["unit"], with_scratch)
+                    if err or tuple(unit["chain"]) + (unit["line"],) not in _lines(with_scratch):
+                        rows.append({"result": "failed", "detail": "the scratch did not land: "
+                                     + (err or "not in the read-back")})
+                    else:
+                        program = negation_program([unit])
+                        err = send(program)
+                        row = classify(with_scratch, read(), unit, err)
+                        rows.append({**row, "program": program})
+                    # Back to BEFORE: the scratch away, anything lost put back.
+                    if ex["teardown"]:
+                        send(ex["teardown"])
+                    now = read()
+                    extra = candidates(before, now)
+                    if extra:
+                        send(negation_program([{"chain": e["chain"], "line": e["line"]}
+                                               for e in extra]))
+                    missing = merge_commands(before, read())
+                    if missing:
+                        send(missing)
+                    final = roundtrip.configs_equivalent(before, read())
+                    if not final["equal"]:
+                        damaged = {"shape": key, "only_before": final["only_left"],
+                                   "only_now": final["only_right"]}
+                        break
+                results[key] = {
+                    "result": next(r for r in WORST if r in {x["result"] for x in rows}),
+                    "detail": "; ".join(x["detail"] for x in rows if x["detail"]),
+                    "device": args.device, "at": at, "dialect": dialect,
+                    "exemplars": rows}
+                if damaged:
+                    break
+        finally:
+            conn.disconnect()
+
+    report = {"by_dialect": {dialect: {k: {x: v[x] for x in ("result", "detail", "device", "at")}
+                                       for k, v in results.items()}},
+              "full": results}
+    if damaged:
+        print(f"NOT RESTORED: {args.device} differs from its state before the probe, after "
+              f"shape {damaged['shape']}. It changed the RUNNING config only and saved nothing, "
+              "so a reload returns it. What differs:")
+        for line in damaged["only_before"]:
+            print(f"  missing now: {line}")
+        for line in damaged["only_now"]:
+            print(f"  added now:   {line}")
+    for key, row in results.items():
+        print(f"{key}: {row['result']}" + (f"  ({row['detail']})" if row["detail"] else ""))
+    text = json.dumps(report, indent=2, sort_keys=True)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        print(f"written: {args.out}")
+    else:
+        print(text)
+    return 2 if damaged else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

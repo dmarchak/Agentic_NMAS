@@ -48,6 +48,7 @@ OPERATION_WORDS = {
     "bulk": "changed by a bulk operation",
     "reload": "reloaded",
     "file": "changed by a file action",
+    "probe": "probed for removal shapes (scratch config added and removed, never saved)",
 }
 
 #: An operation whose RESULT differs from its kind's usual one, in words

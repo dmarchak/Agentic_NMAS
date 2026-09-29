@@ -45,13 +45,29 @@ A line that is itself a ``no`` is removed by its positive form.
   addresses from every member interface. Conservative on purpose: any other
   line naming the object refuses, and the reason names that line.
 
+**Allowed only where MEASURED** (the operator, 2026-09-28: "ask the platform
+rather than reason about it; this is the one part of Mode B where being wrong
+destroys config rather than refusing to"). `no <exact line>` can do more than
+undo the line: `no access-list 10 <entry>` deletes the whole list, and the
+same shape is suspected of a BGP neighbour's `remote-as` (the whole
+neighbour), of `logging buffered` (turns logging off rather than restoring
+the default), and of entries in any list. So a line is removed only if it
+matches a SHAPE (:data:`SHAPES`) that `scripts/nmas-removal-probe` measured on
+the device's PLATFORM, on a device, removing exactly that line and nothing
+else (``removal_measured.json``). Anything else is refused as unmeasured,
+naming the probe. An allowlist, the C61 lesson: a command added later cannot
+outgrow it.
+
 A line in a secret position is removable, and flagged ``secret_position``, so
 the preview can require a stated reason for it the way C79 does. The flag is
 set from `redact.redact_positional`, the same slots every mask uses.
 """
 
+import json
 import logging
+import os
 import re
+from typing import NamedTuple
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +83,106 @@ UNREMOVABLE = (
     (re.compile(r"^boot-(start|end)-marker\b"), "a boot marker is not configuration"),
     (re.compile(r"^line\s"), "a line stanza cannot be removed; change its settings instead"),
     (re.compile(r"^end$"), "`end` is not configuration"),
+    (re.compile(r"^banner\s"), "a banner spans lines the line model cannot represent"),
+    (re.compile(r"^crypto pki\b"), "a trustpoint or certificate body spans lines, and is "
+                                   "the device's own"),
 )
+
+
+class Shape(NamedTuple):
+    """A kind of line whose removal can be measured: where it sits
+    (``context``), whether it is a line or a stanza, and the pattern."""
+    key: str
+    context: str
+    kind: str
+    pattern: str
+
+
+#: Every shape the probe measures, including the ones SUSPECTED of removing
+#: more than their line: they are measured so the record shows why they are
+#: refused, never assumed. A line matching none is refused as unmeasured.
+SHAPES = (
+    Shape("interface.load-interval", "interface", "leaf", r"^load-interval \d+$"),
+    Shape("interface.description", "interface", "leaf", r"^description .+$"),
+    Shape("global.snmp-server-community", "global", "leaf",
+          r"^snmp-server community \S+( view \S+)? (RO|RW)( \S+)?$"),
+    Shape("global.logging-host", "global", "leaf", r"^logging host \S+( .+)?$"),
+    Shape("global.logging-buffered", "global", "leaf", r"^logging buffered( .+)?$"),
+    Shape("global.event-manager-applet", "global", "stanza", r"^event manager applet \S+( .+)?$"),
+    Shape("global.ip-prefix-list-entry", "global", "leaf",
+          r"^ip prefix-list \S+ seq \d+ (permit|deny) .+$"),
+    Shape("global.route-map-sequence", "global", "stanza",
+          r"^route-map \S+ (permit|deny) \d+$"),
+    Shape("global.numbered-acl-entry", "global", "leaf", r"^access-list \d+ .+$"),
+    Shape("named-acl.entry", "ip access-list", "leaf", r"^(\d+ )?(permit|deny|remark) .+$"),
+    Shape("bgp.neighbor-remote-as", "router bgp", "leaf", r"^neighbor \S+ remote-as \d+$"),
+)
+
+#: What a measurement found, in words.
+RESULT_WORDS = {
+    "exact": "removes exactly that line",
+    "broader": "removes MORE than that line",
+    "different": "changes other configuration",
+    "incomplete": "does not remove the line",
+    "refused": "is rejected by the device",
+    "failed": "could not be measured",
+}
+
+MEASURED_FILE = os.path.join(os.path.dirname(__file__), "removal_measured.json")
+
+
+def measured() -> dict:
+    """``{"state": absent|unreadable|ok, "by_dialect": {dialect: {key: row}}}``.
+    Absent and unreadable are different answers, and neither allows anything."""
+    if not os.path.exists(MEASURED_FILE):
+        return {"state": "absent", "by_dialect": {}}
+    try:
+        with open(MEASURED_FILE, encoding="utf-8") as fh:
+            return {"state": "ok", "by_dialect": json.load(fh).get("by_dialect") or {}}
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "by_dialect": {}, "error": str(exc)}
+
+
+def _in_context(context: str, chain: tuple) -> bool:
+    if context == "global":
+        return not chain
+    if len(chain) != 1:
+        return False
+    return chain[0].startswith({"interface": "interface ", "ip access-list": "ip access-list ",
+                                "router bgp": "router bgp "}.get(context, "\0"))
+
+
+def shape_for(chain, line: str, kind: str):
+    """The measured shape this line is an instance of, or None."""
+    text = line.strip()
+    for shape in SHAPES:
+        if shape.kind == kind and _in_context(shape.context, tuple(chain)) \
+                and re.search(shape.pattern, text):
+            return shape
+    return None
+
+
+def _unmeasured(chain, line: str, kind: str, dialect: str) -> str:
+    """Why this unit may not be removed on *dialect* yet, or ""."""
+    shape = shape_for(chain, line, kind)
+    if shape is None:
+        return ("no measured shape covers this line: what `no` does to it on the platform "
+                "is not known, so nothing is sent. A shape is added to removal.SHAPES and "
+                "measured with scripts/nmas-removal-probe first")
+    if not dialect:
+        return "the device's platform is not known, and removal is measured per platform"
+    record = measured()
+    if record["state"] == "unreadable":
+        return f"the removal measurements could not be read ({record.get('error')})"
+    row = (record["by_dialect"].get(dialect) or {}).get(shape.key)
+    if not row:
+        return (f"`{shape.key}` has not been measured on {dialect}: run "
+                f"scripts/nmas-removal-probe --shape {shape.key} on a {dialect} device")
+    if row.get("result") != "exact":
+        return (f"measured on {dialect} ({row.get('device')}, {row.get('at')}): `no <line>` "
+                f"{RESULT_WORDS.get(row.get('result'), row.get('result'))}"
+                + (f": {row['detail']}" if row.get("detail") else ""))
+    return ""
 
 #: The management path, at the global level. Each may be how the tool
 #: reaches the device, and a removal that breaks it cannot be undone by the
@@ -230,43 +345,12 @@ def _references(name: str, unit: dict, running: list) -> list:
     return out
 
 
-def removal_program(running_config: str, selected: list, *, mgmt_ip: str = "") -> dict:
-    """The exact program removing *selected* units from *running_config*.
-
-    ``{"commands", "removed", "refused", "secret_position"}``. Each unit is
-    ``{"chain", "line"}`` as :func:`candidates` gives it. A unit not on the
-    device is refused (the device moved, or the unit was never there); a unit
-    inside a stanza also selected is implied and sends nothing of its own."""
-    from modules.nsot import ifnames
+def negation_program(units: list) -> list:
+    """The program for *units* (``{"chain", "line"}``), and nothing else:
+    each negated verbatim in its stanza, one `exit` per open level. No gate
+    runs here; :func:`removal_program` is the gated path, and the probe calls
+    this to measure what the gates would allow."""
     from modules.nsot.deploy import assert_sendable
-    from modules.redact import redact_positional
-
-    running = _chains(running_config)
-    present = {chain + (line,) for line, chain in running}
-    mgmt_ifaces = _management_interfaces(running, mgmt_ip)
-    units = []
-    for u in selected or []:
-        chain = tuple(ifnames.canonicalise_line(c) for c in u.get("chain") or [])
-        units.append({"chain": list(chain), "line": ifnames.canonicalise_line(u.get("line", ""))})
-    whole = {tuple(u["chain"]) + (u["line"],) for u in units}
-
-    removed, refused, secret, pending = [], [], [], []
-    for u in units:
-        path = tuple(u["chain"]) + (u["line"],)
-        if path not in present:
-            refused.append({**u, "reason": "not on the device: it moved since the preview, "
-                                           "or was never there"})
-            continue
-        if any(path[:len(w)] == w and path != w for w in whole):
-            continue                     # implied by a stanza also selected
-        why = _refusal(u, running, mgmt_ifaces)
-        if why:
-            refused.append({**u, "reason": why})
-            continue
-        removed.append(u)
-        if redact_positional(u["line"]) != u["line"]:
-            secret.append(u)
-        pending.append((list(u["chain"]), _negate(u["line"])))
 
     commands, open_chain = [], []
 
@@ -275,13 +359,56 @@ def removal_program(running_config: str, selected: list, *, mgmt_ip: str = "") -
             commands.append("exit")
         open_chain.clear()
 
-    for chain, command in pending:
+    for u in units:
+        chain = list(u["chain"])
         if chain != open_chain:
             _close()
             commands.extend(chain)
             open_chain.extend(chain)
-        commands.append(command)
+        commands.append(_negate(u["line"]))
     _close()
     assert_sendable(commands)
-    return {"commands": commands, "removed": removed, "refused": refused,
+    return commands
+
+
+def removal_program(running_config: str, selected: list, *, mgmt_ip: str = "",
+                    dialect: str = "") -> dict:
+    """The exact program removing *selected* units from *running_config*.
+
+    ``{"commands", "removed", "refused", "secret_position"}``. Each unit is
+    ``{"chain", "line"}`` as :func:`candidates` gives it. A unit not on the
+    device is refused (the device moved, or the unit was never there); a unit
+    inside a stanza also selected is implied and sends nothing of its own."""
+    from modules.nsot import ifnames
+    from modules.redact import redact_positional
+
+    running = _chains(running_config)
+    headers = _headers(running)
+    present = {chain + (line,) for line, chain in running}
+    mgmt_ifaces = _management_interfaces(running, mgmt_ip)
+    units = []
+    for u in selected or []:
+        chain = tuple(ifnames.canonicalise_line(c) for c in u.get("chain") or [])
+        units.append({"chain": list(chain), "line": ifnames.canonicalise_line(u.get("line", ""))})
+    whole = {tuple(u["chain"]) + (u["line"],) for u in units}
+
+    removed, refused, secret = [], [], []
+    for u in units:
+        path = tuple(u["chain"]) + (u["line"],)
+        if path not in present:
+            refused.append({**u, "reason": "not on the device: it moved since the preview, "
+                                           "or was never there"})
+            continue
+        if any(path[:len(w)] == w and path != w for w in whole):
+            continue                     # implied by a stanza also selected
+        kind = "stanza" if path in headers else "leaf"
+        why = (_refusal(u, running, mgmt_ifaces)
+               or _unmeasured(u["chain"], u["line"], kind, dialect))
+        if why:
+            refused.append({**u, "reason": why})
+            continue
+        removed.append(u)
+        if redact_positional(u["line"]) != u["line"]:
+            secret.append(u)
+    return {"commands": negation_program(removed), "removed": removed, "refused": refused,
             "secret_position": secret}
