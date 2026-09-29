@@ -191,7 +191,7 @@ def classify_diff(target_config: str, running_config: str) -> dict:
     from modules.nsot import ifnames
 
     def _index(text):
-        precise, broad, verbatim = {}, {}, set()
+        precise, broad, verbatim, negations, prefixes = {}, {}, set(), {}, {}
         for leaf in config_leaves(text):
             canonical = ifnames.canonicalise_line(leaf.line)
             key_precise, key_broad = _command_keys(Leaf(canonical, leaf.chain))
@@ -199,14 +199,19 @@ def classify_diff(target_config: str, running_config: str) -> dict:
             verbatim.add((chain_key, canonical))
             precise.setdefault((chain_key, key_precise), canonical)
             broad.setdefault((chain_key, key_broad), []).append(canonical)
-        return precise, broad, verbatim
+            _add_negation_keys(negations, prefixes, chain_key, canonical)
+        return (precise, broad, negations, prefixes), verbatim
 
-    target_precise, target_broad, target_verbatim = _index(target_config)
-    run_precise, run_broad, run_verbatim = _index(running_config)
+    target_index, target_verbatim = _index(target_config)
+    run_index, run_verbatim = _index(running_config)
 
-    def _counterpart(chain_key, canonical, precise_index, broad_index):
+    def _counterpart(chain_key, canonical, index):
+        precise_index, broad_index, negations, prefixes = index
         key_precise, key_broad = _command_keys(Leaf(canonical, chain_key))
         hit = precise_index.get((chain_key, key_precise))
+        if hit is not None:
+            return hit
+        hit = _negation_pair(chain_key, canonical, negations, prefixes)
         if hit is not None:
             return hit
         if key_broad not in FREE_FORM_COMMANDS:
@@ -221,7 +226,7 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         chain_key = tuple(ifnames.canonicalise_line(c) for c in leaf.chain)
         if (chain_key, canonical) in run_verbatim:
             continue
-        current = _counterpart(chain_key, canonical, run_precise, run_broad)
+        current = _counterpart(chain_key, canonical, run_index)
         if current is None:
             add.append(line)
         else:
@@ -234,7 +239,7 @@ def classify_diff(target_config: str, running_config: str) -> dict:
         if (chain_key, canonical) in target_verbatim:
             continue
         # Being replaced is not being left behind.
-        if _counterpart(chain_key, canonical, target_precise, target_broad) is not None:
+        if _counterpart(chain_key, canonical, target_index) is not None:
             continue
         residue.append(line)
 
@@ -748,10 +753,56 @@ def _command_keys(leaf) -> tuple:
         return "", ""
     if words[0] == "no":
         words = words[1:]
-    if not words:
-        return "", ""
+        if not words:
+            return "", ""
+        # A `no` form takes no value: IOS reads it as naming the setting by
+        # its words, so its key is ALL of them (C193). Dropping its last word
+        # as a "value" reduced `no logging buffered` and `no logging console`
+        # to one key, `logging`: Mode B could not offer the first as residue
+        # beside the second, the previews omitted it from "will NOT be
+        # removed", and a rollback could re-send the sibling. A `no` line
+        # pairs with a positive one by PREFIX, `_negation_pair()`.
+        return " ".join(words), words[0]
     precise = words[0] if len(words) == 1 else " ".join(words[:-1])
     return precise, words[0]
+
+
+def _add_negation_keys(negations: dict, prefixes: dict, chain_key: tuple,
+                       canonical: str) -> None:
+    """Index *canonical* for `_negation_pair()`: a `no` line under its whole
+    remainder, a positive line under every leading run of its words."""
+    words = canonical.strip().split()
+    if not words:
+        return
+    if words[0] == "no":
+        if len(words) > 1:
+            negations.setdefault((chain_key, " ".join(words[1:])), canonical)
+        return
+    for i in range(1, len(words) + 1):
+        prefixes.setdefault((chain_key, " ".join(words[:i])), []).append(canonical)
+
+
+def _negation_pair(chain_key: tuple, canonical: str, negations: dict,
+                   prefixes: dict):
+    """The line on the OTHER side of a negation that sets the same thing, or
+    None (C193). ``no X`` and a positive line P are one setting when P's words
+    begin with X's: ``no logging buffered`` and ``logging buffered 8192
+    debugging``, ``no ip http server`` and ``ip http server``, ``no
+    passive-interface Gi3`` and ``passive-interface Gi3``, but never ``no ip
+    http server`` and ``ip http secure-server``. A `no` line pairs only with a
+    UNIQUE positive (several, like two ``ip address`` lines, is ambiguous and
+    pairs with none); a positive line takes its LONGEST matching negation."""
+    words = canonical.strip().split()
+    if not words:
+        return None
+    if words[0] == "no":
+        found = prefixes.get((chain_key, " ".join(words[1:])), [])
+        return found[0] if len(found) == 1 else None
+    for i in range(len(words), 0, -1):
+        hit = negations.get((chain_key, " ".join(words[:i])))
+        if hit is not None:
+            return hit
+    return None
 
 
 def landed_leaves(pushed: list, landed) -> tuple:
@@ -850,15 +901,19 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
     """
     from modules.nsot import ifnames
 
-    precise_index, broad_index = {}, {}
+    precise_index, broad_index, negations, prefixes = {}, {}, {}, {}
     for line, chain in _section_chains(pre_config):
         precise, broad = _command_keys(Leaf(line, tuple(chain)))
         precise_index.setdefault((tuple(chain), precise), line)
         broad_index.setdefault((tuple(chain), broad), []).append(line)
+        _add_negation_keys(negations, prefixes, tuple(chain), line)
 
     def _previous(chain, line):
         precise, broad = _command_keys(Leaf(line, tuple(chain)))
         hit = precise_index.get((tuple(chain), precise))
+        if hit is not None:
+            return hit
+        hit = _negation_pair(tuple(chain), line, negations, prefixes)
         if hit is not None:
             return hit
         if broad not in FREE_FORM_COMMANDS:
@@ -1106,6 +1161,15 @@ def assert_rollback_provenance(rollback: list, pushed: list,
             keys = {canonical.strip(), f"key:{precise}"}
             if broad in FREE_FORM_COMMANDS:
                 keys.add(f"key:{broad}")
+            # Across a negation (C193): a pushed `no X` is undone by the
+            # positive line the device held whose words begin with X; a
+            # pushed positive P by `no <a leading run of P's words>`.
+            words = canonical.strip().split()
+            if words and words[0] == "no":
+                keys.add(f"negated:{' '.join(words[1:])}")
+            else:
+                keys.update(f"prefix:{' '.join(words[:i])}"
+                            for i in range(1, len(words) + 1))
             pushed_leaves.setdefault(chain, set()).update(keys)
         else:
             pushed_ancestry.add((chain, canonical))
@@ -1133,11 +1197,17 @@ def assert_rollback_provenance(rollback: list, pushed: list,
                 continue          # undoing a section this push created
             if f"key:{precise}" in known or broad_ok:
                 continue
+            if f"prefix:{stripped[3:].strip()}" in known:
+                continue          # the negation of a setting this push made
             orphans.append((entry["line"], "negates nothing this deploy pushed"))
             continue
 
         if f"key:{precise}" in known or broad_ok:
             continue
+        words = stripped.split()
+        if any(f"negated:{' '.join(words[:i])}" in known
+               for i in range(1, len(words) + 1)):
+            continue              # restores what a pushed `no` line removed
         orphans.append((entry["line"],
                         "restores a setting this deploy did not touch"))
 

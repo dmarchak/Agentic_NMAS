@@ -168,12 +168,18 @@ class TestTheFirstRealRun:
                          self.S4 + "no ip domain lookup\n", self.UNIT)
         assert out["result"] == "different"
 
-    def test_the_repair_sees_the_line_the_residue_calculation_pairs_away(self):
-        """s4 carries `no logging console`, and the setting key reduces both it
+    def test_the_repair_sees_the_line_the_residue_calculation_now_sees_too(self):
+        """s4 carries `no logging console`, and the setting key reduced both it
         and `no logging buffered` to `logging` (C193): the residue calculation
-        offers NOTHING, which is what the first run's repair acted on."""
+        offered NOTHING, which is what the first run's repair acted on. Fixed
+        2026-09-29: the leftover is residue, offered, and refused by the
+        measured gate with its reason, never invisible. The repair's plain
+        difference still agrees."""
         now = self.S4 + "no logging buffered\n"
-        assert RM.candidates(self.S4, now) == [], "the collision, pinned until C193 is fixed"
+        offered = RM.candidates(self.S4, now)
+        assert [c["line"] for c in offered] == ["no logging buffered"], offered
+        (unit,) = RM.removable(self.S4, now, mgmt_ip="10.255.1.14", dialect="cisco_ios")
+        assert "no measured shape covers this line" in unit["why_not"]
         assert P.extras(self.S4, now) == [{"chain": [], "line": "no logging buffered"}]
 
     def test_logging_buffered_is_retired_from_the_probe(self):

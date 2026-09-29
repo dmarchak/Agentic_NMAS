@@ -1240,7 +1240,7 @@ The landing page drew every section 1a source from stored or cached values, each
    - Also measured, not a finding: `logging buffered` leaves the device off its default (`overrides_default`), so it was retired from the probe set.
 4. **How they were resolved.**
    - C192, C194, C195 and C197 fixed.
-   - C193 pinned by a test and registered (C).
+   - C193 pinned by a test and registered (C); FIXED 2026-09-29 overnight (a `no` form keyed on its whole remainder, paired with its positive by prefix, in all three consumers; C200 and C201 registered from the same reading).
    - C196 open (UNKNOWN: does vIOS accept the list-form edit).
    - C191 registered.
    - The numbered-ACL global entry is refused on IOS, citing s4.
