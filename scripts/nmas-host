@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""Reach a lab HOST: the LAN address when it answers, else the Cloudflare tunnel.
+
+    nmas-host <nmas|clab|pve> -- <command ...>     run a command on the host
+    nmas-host <nmas|clab|pve> --target             print user@address for scp/rsync
+
+The ONE place the choice between the two paths is made (the operator,
+2026-09-29): two ways of reaching one machine, decided per command, is the
+one-owner-per-fact problem. Every host read goes through this.
+
+**It says which path it used**, on stderr, before anything runs ("nmas: via
+LAN" / "nmas: via tunnel"), so a failure is attributable to a path.
+
+**The LAN check** is a TCP connect to port 22 with a 3 s timeout. It answers
+means the direct path, which needs no token. It does not answer means the
+tunnel hostname, which `~/.ssh/config` routes through
+`cloudflared access ssh --hostname %h`.
+
+**The expired-token failure STOPS.** The tunnel needs a Cloudflare Access
+token only the operator can obtain (it opens a browser). An expired one fails
+with `websocket: bad handshake` and `Connection closed by UNKNOWN port 65535`.
+This script recognises that, says which host, names the login command for the
+operator, and exits 75. It never retries and never tries to log in: a retry
+loop against an expired token is a wait that cannot observe what it waits for.
+
+**Hosts only, never devices.** No ssh option passes through (an unknown flag
+is refused), and every session runs with `ClearAllForwardings=yes`, so nothing
+reached through here can carry a port forward or a jump to a router or switch.
+Devices are reached only through the tool.
+
+**Every command is named before it runs**, on stderr. Proxmox is root, and the
+operator asked that any command there be named first; naming them all costs a
+line and removes a special case.
+
+Reaching a machine from further away widens nothing: host commands stay
+read-only, unless the operator asks for a specific action.
+"""
+
+import argparse
+import shlex
+import socket
+import subprocess
+import sys
+import threading
+
+# name: (user, LAN address, tunnel hostname)
+HOSTS = {
+    "nmas": ("dmarchak", "10.0.0.211", "ssh-nmas.dmarchak.dev"),
+    "clab": ("dmarchak", "10.0.0.210", "ssh-clab.dmarchak.dev"),
+    "pve": ("root", "10.0.0.80", "ssh-pve.dmarchak.dev"),
+}
+SSH_PORT = 22
+LAN_TIMEOUT_S = 3.0
+
+EXIT_TOKEN_EXPIRED = 75
+TOKEN_EXPIRED_MARKS = ("websocket: bad handshake",
+                       "Connection closed by UNKNOWN port 65535")
+
+SSH_OPTIONS = ("-o", "BatchMode=yes", "-o", "ClearAllForwardings=yes",
+               "-o", "ForwardAgent=no", "-o", "ForwardX11=no")
+
+
+def lan_answers(address: str, port: int = SSH_PORT, timeout: float = LAN_TIMEOUT_S) -> bool:
+    """A TCP connect to *address*:*port* within *timeout*."""
+    try:
+        with socket.create_connection((address, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def choose(name: str, *, probe=lan_answers) -> dict:
+    """The path to *name*: `{target, path, why}`. The one decision."""
+    user, lan, tunnel = HOSTS[name]
+    if probe(lan):
+        return {"target": f"{user}@{lan}", "path": "LAN", "address": lan,
+                "why": f"{lan}:{SSH_PORT} answered"}
+    return {"target": f"{user}@{tunnel}", "path": "tunnel", "address": tunnel,
+            "why": f"{lan}:{SSH_PORT} did not answer within {LAN_TIMEOUT_S:g} s"}
+
+
+def token_expired(stderr_text: str) -> bool:
+    """The tunnel's expired-Access-token failure, by its own words."""
+    return any(mark in stderr_text for mark in TOKEN_EXPIRED_MARKS)
+
+
+def ssh_argv(target: str, command: list) -> list:
+    """The ssh invocation: fixed options, no forwarding, the command last."""
+    return ["ssh", *SSH_OPTIONS, target, "--", shlex.join(command)]
+
+
+def run_ssh(argv: list) -> tuple:
+    """Run *argv* with stdin and stdout passed through; stderr is passed
+    through AND kept, so the expired-token failure can be recognised."""
+    proc = subprocess.Popen(argv, stderr=subprocess.PIPE)
+    kept = []
+
+    def _tee():
+        for raw in proc.stderr:
+            line = raw.decode("utf-8", "replace")
+            kept.append(line)
+            sys.stderr.write(line)
+            sys.stderr.flush()
+
+    t = threading.Thread(target=_tee, daemon=True)
+    t.start()
+    rc = proc.wait()
+    t.join(5)
+    return rc, "".join(kept)
+
+
+def main(argv=None, *, probe=lan_answers, runner=run_ssh) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # Split at the FIRST `--`: before it, this helper's own arguments (parsed,
+    # so an unknown flag such as `-L` is REFUSED); after it, the command. No
+    # option can reach ssh from either side.
+    head, command = (argv[:argv.index("--")], argv[argv.index("--") + 1:]) \
+        if "--" in argv else (argv, [])
+    ap = argparse.ArgumentParser(
+        prog="nmas-host", description="Reach a lab host: LAN if it answers, else the tunnel.",
+        epilog="nmas-host <host> -- <command ...>   |   nmas-host <host> --target")
+    ap.add_argument("host", choices=sorted(HOSTS))
+    ap.add_argument("--target", action="store_true",
+                    help="print user@address for scp/rsync and exit")
+    args = ap.parse_args(head)
+
+    if args.target and command:
+        ap.error("--target prints the address; it runs nothing")
+    if not args.target and not command:
+        ap.error("name a command after --: this helper opens no interactive shell")
+
+    path = choose(args.host, probe=probe)
+    print(f"{args.host}: via {path['path']} ({path['address']}; {path['why']})",
+          file=sys.stderr)
+    if args.target:
+        print(path["target"])
+        return 0
+
+    print(f"{args.host}: running: {shlex.join(command)}", file=sys.stderr)
+    rc, err = runner(ssh_argv(path["target"], command))
+    if rc == 255 and path["path"] == "tunnel" and token_expired(err):
+        print(f"\nSTOP: the Cloudflare Access token for {path['address']} has expired "
+              f"(or was never obtained). Nothing was run and nothing retries. The operator "
+              f"runs: cloudflared access login https://{path['address']}", file=sys.stderr)
+        return EXIT_TOKEN_EXPIRED
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1213,6 +1213,50 @@ NMAS_HEADLESS=1 python app.py      # headless (no browser)
 Settings (API key, integrations, TFTP, server bind) are all configurable
 from the UI Settings panel — no restart needed except for bind host/port.
 
+## Reaching the lab hosts
+
+The operator's decision, 2026-09-29. Each host has two paths: a LAN address,
+and a hostname behind Cloudflare Zero Trust Access on the operator's `homelab`
+tunnel. The laptop's `~/.ssh/config` routes those hostnames through
+`ProxyCommand cloudflared access ssh --hostname %h`.
+
+| Host | LAN | Tunnel hostname | User |
+|---|---|---|---|
+| the NMAS host | `10.0.0.211` | `ssh-nmas.dmarchak.dev` | `dmarchak` |
+| the containerlab VM | `10.0.0.210` | `ssh-clab.dmarchak.dev` | `dmarchak` |
+| Proxmox | `10.0.0.80` | `ssh-pve.dmarchak.dev` | `root` |
+
+- **One helper makes the choice, and every host read goes through it:
+  `scripts/nmas-host <nmas|clab|pve> -- <command>`.** For scp and rsync,
+  `--target` prints `user@address`. It tries a TCP connect to the LAN
+  address's port 22 with a 3 s bound: the LAN if it answers (no token), else
+  the tunnel. Deciding per command would be two ways of reaching one machine,
+  and two owners of one fact. It also names the path it used on stderr
+  ("via LAN" or "via tunnel"), so a failure is attributable. **Report the
+  path with every host result.**
+- **An expired Access token is a STOP, never a retry.** Only the operator can
+  get a token, because getting one opens a browser. An expired token fails
+  with `websocket: bad handshake` and
+  `Connection closed by UNKNOWN port 65535`. `nmas-host` recognises it, exits
+  75, and names the host and the operator's command,
+  `cloudflared access login https://<host>`. Tell the operator which host,
+  and do not loop and do not try to log in. A retry loop against an expired
+  token is a wait that cannot observe what it waits for, the same defect as
+  the `gh` poll that could never ask.
+- **Reaching a host from further away widens nothing.** Host commands stay
+  read-only. `nmas-deploy` is the operator's. No writes to `data/`, devices,
+  NetBox, Grafana or the lab without the operator.
+- **Hosts only, never devices.** Network devices are reachable only through
+  the tool. Never open a tunnel path, a jump chain or a port forward that
+  reaches a router or switch, because that would rebuild the terminal 7.8
+  removes. `nmas-host` passes no ssh option through (an unknown flag is
+  refused), and it runs every session with `ClearAllForwardings=yes`.
+  `scripts/nmas-lab-tunnel` predates this rule and forwards to lab nodes,
+  including a probe runbook's SSH forwards to device addresses (C212).
+- **Proxmox is root.** `ssh-pve` is read-only unless the operator asks for a
+  specific action there. Name any command before running it: `nmas-host`
+  prints every command before it runs.
+
 ## Tests
 
 ```bash
@@ -1298,6 +1342,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_rotate_screen.py` | 7.3's rotate screen over the real route, job registry, adapters and `rotate_op.run()`: the program is what is sent with the password masked, each preflight check a gate by name, the confirm saying the device then accepts only the new password; the apply answers 202 and the result is read by id, the device held across rotate AND persist, a moved fingerprint and a refused plan start nothing, the list carried; every one of the eight states has its own next step and `summarise()`'s words, a persist that did not finish never green, no recorded password skipping persist and saying so; a commit inside the job reads `access` only for the carried actor, `none` with nothing carried; a held device refused with nothing sent; a job this server does not know points at the rotation row |
 | `test_rotation_recover.py` | C210, the rotate screen's first piece: a staged credential is settled by ASKING the device, holding it: accepted is recorded and only then cleared (a failed record keeps the only copy), refused with the recorded one accepted means the rotation never landed, refusing both changes nothing and names the console, a device that cannot be asked changes nothing; no credential reaches the result or the record; job health makes a staged file nobody holds a `not_recorded` row naming `nmas-rotation-recover`, and leaves a held device to the in-flight panel; the recovery outcomes read as rows; the command prints the state and no credential |
 | `test_persist_screen.py` | C164 (7.3), over the real module, route and recorder: the preview draws every step and what persist does NOT do, contacts no device, says at the confirm that the save carries the running config as it is, draws the hourly check's last reading with its age (never-run and unreadable different), and names each refusal as a gate (AST, both ways); the apply saves on a thread that HOLDS the device and records as the person (`via: device page`), a read-back that does not match leads the result, a moved plan and a held device are refused with nothing sent, and the apply needs its list; the Device page ships the button and client |
+| `test_nmas_host.py` | The one LAN-or-tunnel choice for reaching a lab host: a real TCP connect to a loopback listener answers and a closed port does not (3 s, port 22); each host goes to its LAN address when that answers and to its tunnel hostname when not, and the probe asks only the LAN address; the path is said before the command runs; every session clears forwardings and no ssh option passes through (`-L`, `-J`, a device name, no command and `--target` with a command are each refused before any connection); the expired-token failure, in the tunnel's own words, exits 75 naming the host and the operator's login command, with one attempt and no retry, while another ssh failure and the LAN path are never called an expired token |
 | `test_clab_targets.py` (C50) | an unknown lab resolves to NO paths with its cause named, and `persist()` refuses before the sync (never writing into another lab's directory); known labs and the default unchanged (the control); C207: the refusal returns rather than raising |
 | `test_retire.py` | the whole exit in one commit, history kept; the break-glass record must hold the CURRENT credential; what it will NOT do is stated; resumable; a failed commit restores the tree |
 | `test_clab_sync_commit.py` | C106 (2): a lab whose backup failed is NOT overwritten, is named as a backup failure (never blamed on the loop or the copy), and only copied labs are verified; executed under bash with one backup refused. The sanitiser's commit block EXECUTED under bash: identity rides on every commit; a failed commit names git's reason and is not "not versioned"; helpers resolve beside the script under a systemd PATH |
