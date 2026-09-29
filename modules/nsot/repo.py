@@ -863,6 +863,38 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             earned, denied = _baseline_decision(baseline, source, 0, unchanged,
                                                 inventory_size, skipped, intent,
                                                 require_coverage=True)
+            # A DECISION MADE WITH NOTHING TO COMMIT IS STILL RECORDED
+            # (2026-09-28, the operator's first real occurrence): Save All read
+            # nine devices, all unchanged, denied the baseline because r2
+            # departs from its intent, and wrote nothing, so the reason was in
+            # a toast and nowhere else, and "take a current baseline" went on
+            # recommending the action that had just been refused. The decision
+            # is the thing worth keeping when no configuration moved, so it
+            # gets a commit of its own, empty, whose subject SAYS nothing
+            # changed (so it is no false record of a change), carrying the
+            # same `Baseline:` and `Intent-Match:` trailers a changing save
+            # carries. An earned tag then marks that commit.
+            decision = _baseline_trailer(earned, denied, baseline, source, 0,
+                                         baseline_reasons)
+            decision_commit = ""
+            if decision:
+                if baseline is False and baseline_reasons:
+                    denied = [str(r) for r in baseline_reasons]
+                # The subject names what HAPPENED (C83): nothing changed, a
+                # decision was recorded. Only the tag, if earned, claims one.
+                message = (f"golden: no configuration changed; decision recorded "
+                           f"({len(unchanged)} device(s) measured via {source})\n\n"
+                           + "\n".join([f"Source: {source}", f"Actor: {actor}",
+                                        f"Devices-Measured: {','.join(unchanged)}",
+                                        _intent_trailer(intent), decision,
+                                        "Not-Done: no golden changed: every capture "
+                                        "equals its committed golden"]
+                                       + list(extra_trailers or [])) + "\n")
+                rc, _o, err = git(repo, "commit", "--allow-empty", "-m", message)
+                if rc == 0:
+                    decision_commit = git(repo, "rev-parse", "HEAD")[1].strip()
+                else:
+                    log.error("repo: the baseline decision could not be recorded: %s", err)
             if earned:
                 _rc, head, _err = git(repo, "rev-parse", "HEAD")
                 head = (head or "").strip()
@@ -891,22 +923,26 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             # Guarded on `tags`: a no-op save that earns no baseline has
             # produced nothing to publish, and waking the push path to do
             # nothing would make every unchanged Save All hit the network.
-            if tags:
+            if tags or decision_commit:
                 from modules.nsot.hooks import run_post_commit
                 _rc, head_sha, _e = git(repo, "rev-parse", "HEAD")
                 run_post_commit({"list_name": list_name, "repo": repo,
                                  "sha": (head_sha or "").strip(),
                                  "source": source, "actor": actor,
                                  "tags": tags, "devices": []})
-            return {"ok": True, "commit": "", "changed": [],
+            return {"ok": True, "commit": decision_commit, "changed": [],
+                    "decision_only": bool(decision_commit),
                     "unchanged": unchanged, "tags": tags,
                     "baseline": baseline_tag, "baseline_denied": denied,
                     "intent": intent,
                     "renamed": rename_result["renamed"],
-                    "message": ("No content changed — no commit created."
-                                + (f" Baseline {baseline_tag} tagged at the "
-                                   "existing HEAD: every capture was verified "
-                                   "equal to it." if baseline_tag else ""))}
+                    "message": (("No configuration changed; the baseline decision is "
+                                 f"recorded in commit {decision_commit[:12]}."
+                                 if decision_commit else
+                                 "No content changed — no commit created.")
+                                + (f" Baseline {baseline_tag} tagged: every capture was "
+                                   "verified equal to its golden and at its committed "
+                                   "intent." if baseline_tag else ""))}
 
         names = ", ".join(c["hostname"] for c in changed)
         subject = message or (

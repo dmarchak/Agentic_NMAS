@@ -101,7 +101,7 @@ class TestTheHookFiresOnTheNoCommitPath:
                             lambda ctx: calls.append(ctx))
         out = self._save_unchanged_twice(tmp_path, monkeypatch, _repo)
 
-        assert out["commit"] == "", "the second save was not the no-commit path"
+        assert out["decision_only"], "the second save was not the no-change path"
         assert out["baseline"], "the second save earned no baseline to publish"
         assert len(calls) == 2, (
             f"the no-commit path did not call the hook ({len(calls)} call(s))")
@@ -109,7 +109,7 @@ class TestTheHookFiresOnTheNoCommitPath:
         second = calls[1]
         assert second["tags"] == [out["baseline"]]
         assert second["devices"] == [], "nothing changed, so no device did"
-        assert second["sha"], "the hook needs the HEAD the tag sits on"
+        assert second["sha"] == out["commit"], "the hook publishes the decision commit"
 
     def test_it_does_not_fire_when_nothing_was_earned(self, tmp_path,
                                                       monkeypatch):

@@ -62,7 +62,7 @@ async function loadGoldenRepoPanel() {
           <h6 class="text-primary fw-semibold mb-2">Baselines
             <span class="text-muted fw-normal small ms-1">(stored network-wide configuration)</span>
           </h6>
-          ${_gBaselinesHtml(baselines)}
+          ${_gBaselinesHtml(baselines, bRes.last_decision)}
         </div>
       </div>`;
   } catch (e) { console.error('loadGoldenRepoPanel', e); }
@@ -84,19 +84,11 @@ function _gLegacyStoreCard(l) {
   if (!l || !l.ok) return '';
   if (!l.legacy_files) return '';              // already gone: say nothing
   const only = l.only_legacy || [];
-  if (l.retirable) {
-    return `
-      <div class="card border-success-subtle mb-3">
-        <div class="card-body py-2 px-3">
-          <h6 class="text-success-emphasis fw-semibold mb-1">Legacy golden store can be retired</h6>
-          <p class="text-muted small mb-0">
-            <code>golden_configs/</code> holds ${l.legacy_files} file(s), and the
-            manifest knows every device in it. Nothing here is the only copy of
-            anything, so the directory and the header-scan fallback can be removed.
-          </p>
-        </div>
-      </div>`;
-  }
+  // Retirable is SCHEDULED WORK, not a thing for the reader to do: the
+  // directory and the header-scan fallback are removed in 7.8 (the plan
+  // holds it). A notice either tells the reader what to do or does not
+  // appear (the operator, 2026-09-28), so this draws nothing.
+  if (l.retirable) return '';
   return `
     <div class="card border-warning-subtle mb-3">
       <div class="card-body py-2 px-3">

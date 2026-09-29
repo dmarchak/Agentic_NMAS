@@ -649,8 +649,17 @@ def baseline_source(log_fn=None) -> dict:
                         if ln.startswith("Source: ")), "")
     at = float(ct)
     rows = []
-    if decision.startswith("denied"):
-        reasons = decision.split(":", 1)[1].strip() if ":" in decision else ""
+    reasons = decision.split(":", 1)[1].strip() if ":" in decision else ""
+    # ONE row when the last decision was a denial AND no stored baseline is
+    # usable: both say "there is no restore point", and the denial names the
+    # blocker, which the usability row's remedy must name too (the operator,
+    # 2026-09-28: "take a current one with Save All" was followed and could
+    # not succeed while r2 departed from its intent).
+    blocker = ({"reasons": reasons or "the decision recorded no reason",
+                "commit": sha[:10], "at": _iso(at)}
+               if decision.startswith("denied") else None)
+    usability = _baseline_usability_row(lst, blocker=blocker)
+    if decision.startswith("denied") and not usability["rows"]:
         rows.append(row(
             source="baseline", key=f"{lst}:last", level="warning",
             what=f"The network's last baseline was not earned ({source_line or 'a save'})",
@@ -661,10 +670,12 @@ def baseline_source(log_fn=None) -> dict:
                   + f" (decided by commit {sha[:10]} at {_iso(at)}; a save since that made "
                     "no decision, a one-device capture or a Save All that changed nothing, "
                     "leaves it standing)",
-            action={"label": "Resolve what the reasons name, then capture the fleet again "
-                             "with Save All"},
+            action={"label": "Resolve each departure the reasons name, one of two ways "
+                             "that mean opposite things: change the DEVICE (a line intent "
+                             "has is deployed; a line only the device has is removed by hand, "
+                             "since the tool never removes one) if intent is right, or Edit "
+                             "INTENT if the device is right. Then Save All"},
             since=at, operands={"list": lst, "commit": sha[:10], "source": source_line}))
-    usability = _baseline_usability_row(lst)
     rows += usability["rows"]
     return source_result("baseline", "Baseline", read_at=started, took_ms=took, rows=rows,
                          value_at=at,
@@ -673,7 +684,7 @@ def baseline_source(log_fn=None) -> dict:
                                  + usability["checked"])
 
 
-def _baseline_usability_row(lst: str, cached=None) -> dict:
+def _baseline_usability_row(lst: str, cached=None, blocker: dict = None) -> dict:
     """No stored baseline can be re-applied (the operator, 2026-09-28): every
     one predates a credential rotation (the restore's guard refuses each,
     C75) or is withdrawn. The Baselines panel said it once per row and never
@@ -700,14 +711,25 @@ def _baseline_usability_row(lst: str, cached=None) -> dict:
              + (f" The newest, {newest['tag']}, would change the credential on "
                 f"{', '.join(newest['stale'])}." if newest else "")
              + (f" Withdrawn: {', '.join(withdrawn)}." if withdrawn else "")
-             + " A baseline's usefulness decays with every rotation.")
+             + " A baseline's usefulness decays with every rotation."
+             + (f" A new one cannot be earned right now: the last Save All was denied "
+                f"({blocker['reasons']}; commit {blocker['commit']} at {blocker['at']})."
+                if blocker else ""))
+    action = ({"label": "Resolve each departure the denial names, one of two ways that mean "
+                        "opposite things: change the DEVICE if intent is right (a line only the "
+                        "device has is removed by hand: the tool never removes one), or Edit "
+                        "INTENT if the device is right. Then Save All. Save All alone will be "
+                        "refused again while it departs"}
+              if blocker else
+              {"label": "Take a current baseline: Save All captures every device, and earns "
+                        "a baseline if each is at its committed intent; if not, it records "
+                        "the denial and names the device and its lines"})
     return {"rows": [row(
         source="baseline", key=f"{lst}:unusable", level="warning",
-        what="No stored baseline can be re-applied",
+        what=("No stored baseline can be re-applied, and a new one cannot be earned yet"
+              if blocker else "No stored baseline can be re-applied"),
         cause=cause,
-        action={"label": "Take a current baseline: Save All captures every device, and earns "
-                         "a baseline if each is at its committed intent (the first to record "
-                         "its decision); if not, it says which device is not"},
+        action=action,
         operands={"list": lst, "baselines": str(value["count"]),
                   "newest": newest["tag"] if newest else "none"},
         since=_ts(good.get("value_at")))],

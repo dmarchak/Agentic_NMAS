@@ -217,8 +217,9 @@ function _gToggle(label, hideLabel, attr) {
    rows used to say it once each, and nobody derives a conclusion from twelve
    rows saying the same thing. Older rows behind one toggle, deleted ones
    behind another, none cut (the table used to stop at ten, silently). PURE. */
-function _gBaselinesHtml(baselines) {
+function _gBaselinesHtml(baselines, lastDecision) {
   const all = baselines || [];
+  const denied = lastDecision && lastDecision.state === 'denied' ? lastDecision : null;
   if (!all.length) {
     return '<p class="text-muted small mb-0">No baselines yet. Save All takes one when every device is captured and matches its committed intent.</p>';
   }
@@ -231,7 +232,16 @@ function _gBaselinesHtml(baselines) {
     ? `<div class="alert alert-warning py-1 px-2 small mb-2" data-baselines-none>
          No stored baseline can be re-applied: each is withdrawn or would change a credential a
          device holds now (the restore refuses those, C75). A baseline's usefulness decays with
-         every rotation. Take a current one with Save All.</div>` : '';
+         every rotation.
+         ${denied
+           ? `<strong>A new one cannot be earned yet:</strong> the last Save All was denied
+              (${_gEsc(denied.reasons || 'no reason recorded')}; commit
+              <code>${_gEsc(denied.commit)}</code>, ${_gEsc(_gWhen(denied.at))}). Resolve each departure one
+              of two ways that mean opposite things: change the device if intent is right (a line
+              only the device has is removed by hand; the tool never removes one), or edit intent
+              if the device is right. Then Save All.`
+           : 'Take a current one with Save All: it records whether one was earned, and why not.'}
+       </div>` : '';
   return `${none}<div class="table-responsive"><table class="table table-sm align-middle mb-0">
       <tbody>${head.map(_gBaselineRow).join('')}</tbody>
       ${rest.length ? `<tbody class="d-none" data-baselines-older>${rest.map(_gBaselineRow).join('')}</tbody>` : ''}

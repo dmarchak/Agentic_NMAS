@@ -926,6 +926,18 @@ class TestABaselineNeedsNoCommit:
         from modules.nsot.repo import git
         return git(lab, "rev-parse", "HEAD")[1].strip()
 
+    def _tree(self, lab, ref):
+        from modules.nsot.repo import git
+        return git(lab, "rev-parse", f"{ref}^{{tree}}")[1].strip()
+
+    def _subject(self, lab, ref):
+        from modules.nsot.repo import git
+        return git(lab, "log", "-1", "--format=%s", ref)[1].strip()
+
+    def _body(self, lab, ref):
+        from modules.nsot.repo import git
+        return git(lab, "log", "-1", "--format=%B", ref)[1]
+
     def _tags(self, lab, pattern="baseline/*"):
         from modules.nsot.repo import git
         return [t for t in git(lab, "tag", "-l", pattern)[1].splitlines() if t]
@@ -946,8 +958,11 @@ class TestABaselineNeedsNoCommit:
                             allow_new=True)
 
         assert again["ok"] is True
-        assert again["commit"] == "", "no empty commit may be created"
-        assert self._head(lab) == head_before, "HEAD must not move"
+        # The decision is RECORDED (2026-09-28): one empty commit, its tree the
+        # previous HEAD's, its subject saying nothing changed.
+        assert again["commit"] and again["decision_only"]
+        assert self._tree(lab, again["commit"]) == self._tree(lab, head_before)
+        assert "no configuration changed" in self._subject(lab, again["commit"])
 
         new = set(self._tags(lab)) - baselines_before
         assert len(new) == 1, f"expected one new baseline, got {new}"
@@ -966,7 +981,10 @@ class TestABaselineNeedsNoCommit:
                           actor="user", inventory_size=2, skipped=[],
                           allow_new=True)
         tagged = git(lab, "rev-parse", f"{out['baseline']}^{{commit}}")[1].strip()
-        assert tagged == head
+        # On the decision commit, which holds exactly the tree it measured.
+        assert tagged == out["commit"]
+        assert self._tree(lab, tagged) == self._tree(lab, head)
+        assert "Baseline: earned" in self._body(lab, tagged)
 
     def test_the_annotation_says_it_measured_rather_than_changed(self, lab):
         from modules.nsot.repo import git, save_golden
@@ -1000,10 +1018,12 @@ class TestABaselineNeedsNoCommit:
                           skipped=[{"hostname": "r3", "reason": "offline"}])
 
         assert out["ok"] is True
-        assert out["commit"] == ""
         assert out.get("baseline", "") == ""
-        assert self._head(lab) == head_before
         assert set(self._tags(lab)) == before, "no baseline may appear"
+        # The DENIAL is recorded, with its reason, on a commit changing nothing.
+        assert out["decision_only"] and "Baseline: denied" in self._body(lab, out["commit"])
+        assert "r3" in self._body(lab, out["commit"])
+        assert self._tree(lab, out["commit"]) == self._tree(lab, head_before)
 
     def test_coverage_is_unproven_when_the_caller_says_nothing(self, lab):
         """Callers that do not supply inventory size get no baseline.
@@ -1021,9 +1041,9 @@ class TestABaselineNeedsNoCommit:
 
         out = save_golden("lab", self._items(names), source="save_all",
                           actor="user", allow_new=True)
-        assert out["commit"] == ""
         assert out.get("baseline", "") == ""
         assert set(self._tags(lab)) == before
+        assert "Baseline: denied" in self._body(lab, out["commit"]), "the denial is recorded"
 
     def test_a_changed_save_still_baselines_on_its_own_commit(self, lab):
         """The pre-existing path is untouched."""
@@ -1057,22 +1077,24 @@ class TestABaselineNeedsNoCommit:
         assert unchanged["baseline"].startswith("baseline/")
         assert committed["baseline"] != unchanged["baseline"]
 
-    def test_no_empty_commit_is_ever_created(self, lab):
-        """Counted, so a future 'just commit something' cannot creep in."""
+    def test_an_empty_commit_records_a_decision_and_nothing_else(self, lab):
+        """Counted, so a future 'just commit something' cannot creep in: one
+        empty commit per DECISION, and a save that decides nothing (a
+        one-device capture, `baseline=False`) creates none."""
         from modules.nsot.repo import git, save_golden
 
         names = ["r1", "r2"]
         save_golden("lab", self._items(names), source="save_all", actor="user",
                     inventory_size=2, skipped=[], allow_new=True)
-        count_before = len(git(lab, "log", "--format=%h")[1].splitlines())
-
+        count = lambda: len(git(lab, "log", "--format=%h")[1].splitlines())  # noqa: E731
+        before = count()
         for _ in range(3):
             save_golden("lab", self._items(names), source="save_all",
-                        actor="user", inventory_size=2, skipped=[],
-                        allow_new=True)
-
-        count_after = len(git(lab, "log", "--format=%h")[1].splitlines())
-        assert count_after == count_before
+                        actor="user", inventory_size=2, skipped=[], allow_new=True)
+        assert count() == before + 3, "each Save All's decision is recorded"
+        save_golden("lab", self._items(["r1"]), source="capture", actor="user",
+                    baseline=False, allow_new=True)
+        assert count() == before + 3, "no decision, no commit"
 
 
 

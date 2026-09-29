@@ -1445,6 +1445,16 @@ CAPTURE_RESULT_TITLES = {"sent": "What was recorded", "checks": "Checked against
                          "happened": "What was recorded"}
 
 
+def _intent_resolutions(i: dict) -> list:
+    from modules.nsot.intent_match import resolutions
+    return resolutions(i)
+
+
+def _intent_sentence(i: dict) -> str:
+    from modules.nsot.intent_match import explain
+    return explain(i) if i else "not compared"
+
+
 def _intent_words(i: dict) -> str:
     from modules.nsot.intent_match import words
     return words(i) if i else "not compared"
@@ -1474,7 +1484,7 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
         elif intent.get("state") != "match":
             what_not.append({
                 "target": name, "kind": "departs_from_intent",
-                "text": ("Departs from its committed intent (" + _intent_words(intent) + "). "
+                "text": (_intent_sentence(intent)[0].upper() + _intent_sentence(intent)[1:] + ". "
                          "Recording it makes the golden a state nobody intended: it will be "
                          "recorded, marked `Intent-Match: no`, and it cannot be part of a baseline."
                          if intent.get("state") == "differs" else
@@ -1497,7 +1507,15 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
                                       "records that it was measured.")},
             "operands": [{"name": "capture hash", "value": e.get("capture_hash") or "none"},
                          {"name": "platform", "value": e.get("platform") or "unknown"},
-                         {"name": "committed intent", "value": _intent_words(intent)}],
+                         {"name": "committed intent", "value": _intent_sentence(intent),
+                          # It decides a fleet capture's outcome: drawn apart,
+                          # with its lines and the two ways out, each saying
+                          # what it asserts.
+                          **({"blocks": "the baseline",
+                              "lines": list(intent.get("lines") or []),
+                              "resolutions": _intent_resolutions(intent)}
+                             if fleet and e.get("read") and intent.get("state") != "match"
+                             else {})}],
             "gates": ([gate("device read", "pass" if e.get("read") else "fail",
                             "" if e.get("read") else (e.get("error") or "no answer")),
                        busy_gate(e)]
@@ -1527,6 +1545,30 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
                          "lines": []})
     changed = sum(1 for e in read if e.get("changed"))
     departs = sum(1 for e in read if (e.get("intent") or {}).get("state") != "match")
+    confirm = dict(confirm_part(request, "approve"))
+    # WHAT CONFIRMING ACHIEVES, at the confirm (the operator, 2026-09-28): a
+    # preview that knows the operation has no effect says so there, and the
+    # button says it too, never "Record 9 device(s)" over a save recording none.
+    if read and not changed:
+        if not fleet:
+            confirm.update(may=False, statement=(
+                "Nothing to confirm: every selected device matches its golden, so "
+                "nothing would be recorded."))
+        elif len(read) == len(inventory) and not departs:
+            confirm.update(effect=("No golden will change: every device matches its golden. "
+                                   "Confirming takes a baseline at this measured state, and "
+                                   "records the decision."),
+                           button="Take the baseline")
+        else:
+            blockers = [f"{e['device']} {_intent_sentence(e.get('intent') or {})}"
+                        for e in read if (e.get("intent") or {}).get("state") != "match"]
+            if len(read) < len(inventory):
+                blockers.append(f"{len(inventory) - len(read)} device(s) could not be read")
+            confirm.update(effect=("Nothing will be recorded as a golden and no baseline will be "
+                                   "taken: " + "; ".join(blockers) + ". Confirming records only "
+                                   "that the fleet was measured and why no baseline was earned, "
+                                   "as a commit that changes nothing."),
+                           button="Record the denial only")
     return build(
         action="capture",
         summary=(f"Record the running config of {len(read)} of {len(entries)} device(s) as "
@@ -1534,7 +1576,7 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
                  f"{departs} depart from committed intent."),
         targets=targets, what_not=what_not,
         nothing_left_out="Nothing: every device was read and matches its intent.",
-        confirm=confirm_part(request, "approve"), titles=CAPTURE_TITLES,
+        confirm=confirm, titles=CAPTURE_TITLES,
         explain={"confirm": [{"concept": "confirm-by-hash",
                               "text": "You are confirming these captures. Each device is read again "
                                       "at apply, and one whose config moved is refused."}]})
@@ -1575,23 +1617,53 @@ def capture_result(outcomes: list, save: dict, *, fleet: bool) -> dict:
                         "text": "No baseline tag: " + reason, "lines": []})
     commit = (save or {}).get("commit", "")
     baseline = (save or {}).get("baseline", "")
-    statement = ((f"Golden commit {commit[:12]} records "
-                  f"{', '.join((save or {}).get('changed') or [])}." if commit else
-                  "No golden commit: nothing changed, or nothing was recorded.")
-                 + (f" Baseline {baseline} was tagged: every device captured and at its "
-                    "committed intent." if baseline else "")
-                 + (" The commit's `Intent-Match:` trailer says which captures depart from intent."
-                    if commit else ""))
-    recorded = [o for o in outcomes if o["outcome"] in ("captured", "unchanged")]
+    decision_only = bool((save or {}).get("decision_only"))
+    denied = list((save or {}).get("baseline_denied") or [])
+    changed = [o for o in outcomes if o["outcome"] == "captured"]
+    unchanged = [o for o in outcomes if o["outcome"] == "unchanged"]
+    recorded = changed + unchanged
+    # "Recorded" means a golden CHANGED and a commit holds it (the operator,
+    # 2026-09-28: "9 of 9 device(s) recorded" was drawn over a Save All that
+    # wrote nothing). An unchanged device was MEASURED, and says so.
+    if decision_only:
+        statement = (f"No golden changed. Commit {commit[:12]} records the baseline "
+                     f"decision ({'earned' if baseline else 'denied'}), so the reason is kept.")
+    elif commit:
+        statement = (f"Golden commit {commit[:12]} records "
+                     f"{', '.join((save or {}).get('changed') or [])}. The commit's "
+                     "`Intent-Match:` trailer says which captures depart from intent.")
+    else:
+        statement = "No commit: nothing changed, or nothing was recorded."
+    if baseline:
+        statement += (f" Baseline {baseline} was tagged: every device captured and at its "
+                      "committed intent.")
+    read_part = (f"{len(recorded)} of {len(outcomes)} device(s) read: {len(changed)} recorded "
+                 f"as a new golden, {len(unchanged)} unchanged"
+                 + (", so no golden changed" if recorded and not changed else "") + ".")
+    if fleet and not baseline:
+        # THE THING SAVE ALL WAS RUN FOR leads the result, as the preview led
+        # with it: the operator ran it because the panel said to take a
+        # current baseline, and the result never said none was taken.
+        summary = ("No baseline was taken: " + ("; ".join(denied) if denied else
+                   "not every device was captured") + ". " + read_part)
+    else:
+        summary = read_part + (f" Baseline {baseline} taken." if baseline else "")
     clean = (recorded and len(recorded) == len(outcomes)
              and all((o.get("intent") or {}).get("state") == "match" for o in recorded)
              and (baseline or not fleet) and (save or {}).get("ok", False))
-    level = ("nothing" if not outcomes else "success" if clean
-             else "failed" if not recorded else "partial")
+    if not outcomes:
+        level = "nothing"
+    elif not recorded:
+        level = "failed"
+    elif clean:
+        level = "success"
+    elif fleet and not baseline and not changed:
+        level = "failed"     # no golden moved and no baseline: nothing it was run for happened
+    else:
+        level = "partial"
     return build_result(
         action="capture", level=level,
-        summary=(f"{len(recorded)} of {len(outcomes)} device(s) recorded"
-                 + (f"; baseline {baseline}" if baseline else "") + "."),
+        summary=summary,
         targets=targets, did_not=did_not,
         nothing_left_out="Nothing: every device was recorded and matches its intent.",
         record={"commit": commit, "tags": list((save or {}).get("tags") or []),

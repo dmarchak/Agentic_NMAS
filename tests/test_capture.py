@@ -110,7 +110,11 @@ class TestThePreviewAsksWhatTheRestOfTheToolAsks:
         assert "What will change in its golden" in html
         assert "+ load-interval 30" in html
         part = html[html.index('data-pc-part="what_not"'):]
-        assert "Departs from its committed intent (+1 -1)" in part
+        # In words, the lines named (the operator, 2026-09-28: "(+1 -1)" read
+        # as a number and was the fact that decided the operation).
+        assert "Departs from its committed intent: 1 line(s) on the device that intent " \
+               "does not have (`load-interval 30`)" in part
+        assert "1 line(s) in intent that the device does not have" in part
         assert "No baseline tag: capturing part of the fleet never earns one" in part
         gates = {g["name"]: g["state"] for g in d["preview"]["targets"][0]["gates"]}
         assert gates == {"device read": "pass", "capture unchanged since this preview": "at_apply",

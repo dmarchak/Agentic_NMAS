@@ -588,7 +588,11 @@ tools refuse to act on it, and its pooled SSH session is closed.
 - **`save_golden()`'s empty-commit guard covers the whole commit**, not just
   `golden/`. A restore to a ref a device already matches changes no golden and
   still moves its intent; `extra_paths` staged content keeps the commit alive.
-  A call with neither still creates nothing.
+  A call with neither still creates nothing, EXCEPT a baseline decision (C184,
+  2026-09-28): a Save All that changes no golden still DECIDES the baseline, and
+  that decision gets an empty commit whose subject says no configuration changed,
+  carrying `Baseline:` and `Intent-Match:`, so a denial and its reason are kept
+  and an earned tag has its own commit. Without it the reason lived in a toast.
 - Stale devices are skipped and **named** in the confirm dialog.
 - **Migration is dry-run by default.** It merges case-insensitive and IP-level
   duplicates keeping the newest content, reports every merge, and backs up
@@ -1300,6 +1304,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_store_integrity_c158_c160.py` | C158, C160: the NetBox created-object record, `rolled_back.json` and devices.csv lose nothing to two PROCESSES writing at once; an unreadable created record refuses every write and keeps the file; an unreadable rolled-back record BLOCKS every plan naming the record (it lifted every block); a devices.csv write replaces the file (a new inode), never truncates it; Reorder keeps a device the order does not name; Refresh Hostnames keeps a rotation made while it ran; `csv.DictWriter` lives in one module; two lock instances for one path nest without blocking (bounded, so a regression fails rather than hangs) |
 | `test_version_item.py` | 7.2 step 18: who you are, from the real identity diagnostic's payload (a person by email, a service by its audit name, not identified with the reason on hover). 7.2 step 17: the verdict is `scripts/nmas-deploy`'s own, and no module or route defines a second (AST); the exit codes named by the script's constants; an unknown loaded commit a failed read; `/health/version` composes the stored running-version row and verdict and CALLS NEITHER (counted); a stored verdict for another commit is "not judged yet", never this commit's; the source rows a failed verdict and never reads another commit's; the SHIPPED item draws the commit, a MIXED VERSION in red, each verdict's words and a stale verdict |
 | `test_reachability_reader.py` | C92 (7.2 step 19): one miss is a missed probe and the threshold-th is not answering, since then; an answer resets the count and keeps an unbroken state's since; the threshold comes from the one function; the claim names the probe; `STATUS` is the app's dict, updated in place, a departed device leaving; every list probed, an address once; an announce-on-change reader with no keepalive refused; it announces on a change, skips an unchanged cycle and keeps alive; the source is ONE row naming every device not answering; the session reaper never probes |
+| `test_a_save_that_records_nothing_says_so.py` | C184 on r2's REAL config with the host's break already its golden: the fleet preview states the effect at the confirm ("Nothing will be recorded as a golden and no baseline will be taken: r2 departs ... `load-interval 30`") and the shipped button says "Record the denial only"; a one-device capture changing nothing cannot be confirmed; the deciding operand is drawn apart, in words, with its lines and both resolutions (what each asserts, the tool's inability to remove a line said, no button); the result leads with the denial, never says recorded for an unchanged device, reads failed; the denial is an empty commit whose tree is its parent's; the panel then names the blocker, not Save All; Needs attention draws one row naming it |
 | `test_golden_panel_says_what_to_do.py` | C182 (the reader judges each baseline and names the usable one, recomputes only when HEAD or the tags move; none usable is ONE Needs attention row naming the newest and the remedy, drawn even with no decision recorded yet, the host's state; the shipped table says it once and shows the newest kept row); the legacy action says what SURVIVES (the migration's verbatim backup first, then any equivalent committed version) or to keep a copy; a withdrawn row is one line, its reasoning on hover; deleted rows behind their own toggle; C176, C177, on a real repository with baselines in every state: each row carries what its commit recorded it earned, `unrecorded` never read as fine; a withdrawn baseline carries its reason and the command deleting the tag here and on the remote, both restore routes answer 409 sending nothing (a current one is not refused: the control), and the Device chooser does not offer it; a deleted one is drawn where it was; every baseline carried, none cut; the SHIPPED table collapses to the newest usable row with the credential column on each, older rows behind a toggle; each legacy file carries its state and one action from the record (retired: delete, with the command; managed: capture; neither: find out) |
 | `test_commits_stage_what_they_wrote.py` | C175: every writer (an intent commit, a golden commit, one carrying intent by file, a template commit, a rename, a seed) driven with another device's golden and intent edited on disk commits only its own files; a hand-staged path refuses the commit and names it, left staged; `stage_exactly` refuses every tree and any directory; a scan of the program and its scripts finds no writer handing over a tree, as a literal or a built `paths`/`extra_paths` list, the migration declared, with a planted floor |
 | `test_seed_intent.py` | C148 (7.3 step 1), on r2's REAL config with onboarding's bootstrap intent: the preview draws the document against the bootstrap with every gate and writes nothing, and no secret value leaves; full intent is drawn and not selectable, and intent committed AFTER the preview is never replaced (the hash cannot see it); no golden says capture it first; the apply commits exactly `host_vars/r2.yml` as the person, `Source: seed`, `Seeded-From:` naming the golden, the committed text line for line what the preview drew, the secrets in the store, and the deploy plan's bootstrap refusal gone; a moved golden, a held device (from another thread) and no list named commit nothing; a failed commit puts the file back; an unmodelled line (planted) is named and the result partial; another device's uncommitted edit stays uncommitted, with the control that the default staging carries it (C175); the four replaced routes answer 404 |
@@ -2220,7 +2225,11 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the evidence: reachable, never first, nothing summarised away. It exists because WE needed
   to trust the page while building it. Needs attention, the status bar, the freshness panel
   and the drift panel were brought to it the day it was decided; every later screen inherits
-  it (NSOT_STAGE7_PLAN, 7.2).
+  it (NSOT_STAGE7_PLAN, 7.2). **A NOTICE TELLS THE READER WHAT TO DO, OR IT DOES NOT APPEAR**
+  (the operator's addendum, the same day): a condition comes with its action, or with a plain
+  "nothing to do, because"; work the project will do later is a plan item, never a notice.
+  The legacy store's "can be retired" stated a conclusion and stopped, on the panel where the
+  per-file action had just been fixed: the fix had landed on the instance, not the class.
 - **NEVER LET A WRONG THING LOOK LIKE A WORKING THING.** The governing
   design requirement, and the one this tool can actually keep.
   **What infrastructure-as-code here genuinely protects:** drift between
@@ -5242,6 +5251,19 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   the failure is not evidence that it did not. Verify has now been wrong in ten independent
   ways (C62, C64 to C68, C108, C114, C115, C178), all found by asking the same code a new
   question, none by review (docs/NSOT_WRITEUP_NOTES.md).
+- **A PREVIEW THAT KNOWS THE OPERATION HAS NO EFFECT SAYS SO AT THE CONFIRM** (the operator,
+  2026-09-28, C184), and the button says it too: Save All's preview had computed that nothing
+  would be committed and no baseline taken, drew both in sections above, and offered
+  "Record 9 device(s)". The same standard as a box that cannot be ticked saying why beside
+  it. "Nothing changed" must never be indistinguishable from "it worked".
+- **AN OPERAND THAT DECIDES THE OUTCOME IS DRAWN AS A BLOCKER, NOT AS ONE OPERAND AMONG MANY**
+  (the operator, C184): "committed intent: -1" was the line that decided the operation, in
+  the font of every other. `blocks` on an operand draws it apart, in words, with its lines.
+- **WHEN A BLOCKER HAS TWO RESOLUTIONS THAT MEAN OPPOSITE THINGS, THE SCREEN NAMES BOTH AND
+  SAYS WHAT EACH ASSERTS** (the operator, C184). "Make intent match the device" alone would
+  silently pick one side of the distinction the tool is built on, and launder a hand change
+  into what should be. Neither is one click from a blocked preview, and the device-side
+  resolution says when the tool cannot perform it (it never removes a line).
 - **AN ACTION THAT REMOVES DATA SAYS WHETHER THE DATA SURVIVES, WHERE, AND WHAT WOULD BE LOST**
   (the operator, 2026-09-28). "Delete its file" with no statement of consequence is the same
   failure as a refusal that does not name its operand. The legacy-store action now compares

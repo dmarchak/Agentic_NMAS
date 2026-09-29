@@ -220,9 +220,33 @@
     return section('program', title(p, 'program', 'The exact program'), body);
   }
 
+  /* An operand that DECIDES the outcome (`blocks`: what it blocks) is drawn
+     apart from the informational ones, with what it blocks, first: "committed
+     intent: -1" sat among the others in the same font and was the one line
+     that decided the operation (the operator, 2026-09-28). */
   function operandsHtml(t) {
-    return section('operands', 'Operands', '<div class="small font-monospace">'
-      + (t.operands || []).map(function (o) {
+    var ops = t.operands || [];
+    var blocking = ops.filter(function (o) { return o.blocks; });
+    var plain = ops.filter(function (o) { return !o.blocks; });
+    return section('operands', 'Operands',
+      blocking.map(function (o) {
+        // Its CONTENT, not only a count (C179), and both ways out, each with
+        // what it asserts. Text only: neither resolution is one click away.
+        return '<div class="small mb-2" data-pc-blocking>'
+          + '<div class="text-danger-emphasis fw-semibold">'
+          + '<span class="badge bg-danger">blocks ' + esc(o.blocks) + '</span> '
+          + esc(o.name) + ': ' + esc(o.value) + '</div>'
+          + ((o.lines || []).length ? '<pre class="small mb-1 p-1 bg-body-tertiary text-body">'
+             + (o.lines || []).map(esc).join('\n') + '</pre>' : '')
+          + ((o.resolutions || []).length ? '<ul class="mb-0" data-pc-resolutions>'
+             + o.resolutions.map(function (r) {
+                 return '<li>' + esc(r.do) + ' <span class="text-muted">asserts: '
+                   + esc(r.asserts) + (r.note ? '; ' + esc(r.note) : '') + '</span></li>';
+               }).join('') + '</ul>' : '')
+          + '</div>';
+      }).join('')
+      + '<div class="small font-monospace">'
+      + plain.map(function (o) {
           return '<div>' + esc(o.name) + ': ' + esc(o.value) + '</div>';
         }).join('') + '</div>');
   }
@@ -237,9 +261,15 @@
     }).join(''));
   }
 
+  /* What confirming WILL achieve, at the confirm, when the preview knows
+     (the operator, 2026-09-28: the preview had computed that nothing would be
+     committed and no baseline taken, drew both in sections above, and offered
+     Confirm as if the operation would do what it was run for). */
   function confirmHtml(p) {
     var c = p.confirm || {};
     return section('confirm', 'Confirm', explain(p, 'confirm')
+      + (c.effect ? '<div class="alert alert-warning py-1 px-2 small mb-1" data-pc-effect>'
+                    + esc(c.effect) + '</div>' : '')
       + '<div class="small fw-semibold"' + (c.may ? '' : ' data-pc-refusal') + '>'
       + esc(c.statement) + '</div>');
   }
@@ -269,8 +299,10 @@
   function previewConfirmButton(p, selectedCount, label) {
     var c = (p && p.confirm) || {};
     if (!c.may) return {disabled: true, text: c.statement || 'You may not confirm.'};
-    if (!selectedCount) return {disabled: true, text: label};
-    return {disabled: false, text: label};
+    if (!selectedCount) return {disabled: true, text: c.button || label};
+    // The server's label when it knows the effect: "Record the denial only",
+    // never "Record 9 device(s)" over a save that will record none.
+    return {disabled: false, text: c.button || label};
   }
 
   /* ---- The RESULT half (7.1 step 2): what happened, drawn the way what

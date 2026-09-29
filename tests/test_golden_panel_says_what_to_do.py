@@ -338,3 +338,30 @@ class TestNoUsableBaselineIsANeedsAttentionRow:
                             lambda name: self._cached(self._none_usable()))
         res = attention.baseline_source(log_fn=lambda: "")
         assert [r["what"] for r in res["rows"]] == ["No stored baseline can be re-applied"]
+
+
+class TestANoticeSaysWhatToDoOrIsNotDrawn:
+    """The operator's addendum to the presentation rule (2026-09-28): "can be
+    retired" stated a conclusion and stopped. Scheduled work is a plan item
+    (7.8), never a notice."""
+
+    def _card(self, payload):
+        import dukpy
+        from tests.payload_render import lift, shipped
+        src = shipped("partials__golden_repo.3.js")
+        js = lift(shipped("partials__golden_repo.1.js"), "_gEsc") + "\n" + lift(src, "_gLegacyStoreCard")
+        return dukpy.evaljs(js + "\n_gLegacyStoreCard(" + json.dumps(payload) + ")")
+
+    def test_a_retirable_store_draws_nothing(self):
+        assert self._card({"ok": True, "legacy_files": 8, "only_legacy": [],
+                           "retirable": True}) == ""
+
+    def test_a_store_holding_a_sole_copy_draws_each_action(self, lab):
+        payload = lab["client"].get("/golden/legacy_store").get_json()
+        html = self._card(payload)
+        assert 'data-legacy-state="retired"' in html and "rm " in html
+        assert 'data-legacy-state="unknown"' in html and "Find out what it was" in html
+
+    def test_the_removal_is_a_plan_item(self):
+        plan = open(os.path.join(ROOT, "docs", "NSOT_STAGE7_PLAN.md"), encoding="utf-8").read()
+        assert "The legacy golden store (`golden_configs/`) and the header-scan fallback" in plan

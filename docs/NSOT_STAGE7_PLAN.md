@@ -532,7 +532,7 @@ first.**
 | **7.5** | Versions: commits by actor and source (stating once *"N of M commits carry a verified identity"*, drawn beside its caveat: history carries known misstatements, listed by hash in `modules/nsot/record_exceptions.py` (the eleven rotation commits recorded `Source: manual`, C104; the two restores recorded `Source: pipeline`, C110; and the measured ABSENCE of agent-recorded first goldens, a checked negative). **It is the honest history of what the record got wrong, and the Versions screen draws from it rather than treating git as ground truth** (the operator, 2026-09-27): with C110 fixed, restore trailers mean something for the first time, and the screen must say which of the older ones do not. A screen stating a claim about history draws those exceptions next to the claim, with the rest marked *"recorded, not verified"*: D10, P.3 step 10), baselines with their reasons, re-applying one, the remote with connect |
 | **7.6** | Source of truth: templates (the scheme-3 approval badge saying what it covers and what it does not, P.5; revoke, bindings, coverage, seed status), NetBox, credentials, freshness authorisations |
 | **7.7** | Settings split, file-only settings listed, diagnostics |
-| **7.8** | Removals, each with `check_removed_definitions.py` and a recorded reason, last so nothing goes before its replacement is on screen. **The Topology tab** (its built-in discovery, once 7.3's Neighbours carries it, and the topology-service panel, which goes with the deferred fleet view; C126). **The backup store retires only after section 6a's prerequisite** (the template preview and the two other renders read no backup), which is blocking, not a note |
+| **7.8** | Removals, each with `check_removed_definitions.py` and a recorded reason, last so nothing goes before its replacement is on screen. **The Topology tab** (its built-in discovery, once 7.3's Neighbours carries it, and the topology-service panel, which goes with the deferred fleet view; C126). **The backup store retires only after section 6a's prerequisite** (the template preview and the two other renders read no backup), which is blocking, not a note. **The legacy golden store (`golden_configs/`) and the header-scan fallback** (`_find_golden_config_file`'s last link and the legacy entries of `repo.list_goldens()`): their retirement condition, `legacy_only_goldens()` empty for every list, holds on the host since r5's file was deleted 2026-09-28, so this is removal work with no prerequisite left (a plan item, never a notice on the landing page) |
 | **7.9** | Configure forms: batch 1 (a parallel track, not blocking) |
 
 ### 7.0 built, 2026-09-27 (awaiting the host check)
@@ -1519,7 +1519,13 @@ that is stale or did not answer IS something needing attention, so it is a
 row, never a line in a provenance list. What was checked, and how (ages,
 then absolute times, read costs and endpoints on hover), exists because we
 needed to trust the page while building it: a debugging need, so it is
-reachable and never first. Nothing is summarised away. The preview's operands
+reachable and never first. **A NOTICE TELLS THE READER WHAT TO DO, OR IT DOES
+NOT APPEAR** (the operator, 2026-09-28, after the legacy store's "can be retired"
+stated a conclusion and stopped): a condition is drawn with its action, or with
+a plain "nothing to do, because"; work the project will do later ("can be
+removed", "eventually") is a plan item, never a notice on the page people come
+to for what needs attention. C164 did this for Needs attention's rows; this is
+the same rule for every other notice. Nothing is summarised away. The preview's operands
 and the result's record already had this shape, which is why they read well.
 Every screen after this inherits it. **Applied 2026-09-28 to the four built
 panels**, each asked "does it lead with what's wrong or with what was
@@ -1581,8 +1587,9 @@ something forces an item earlier.
   credentials, freshness authorisations.
 - **7.7 Settings**: the split, the file-only list, diagnostics, and C171's dead
   fields retired.
-- **7.8 Removals**: the terminal, the Topology tab, and the backup store after
-  its prerequisite.
+- **7.8 Removals**: the terminal, the Topology tab, the backup store after
+  its prerequisite, and the legacy golden store with its header-scan
+  fallback (retirable on the host since 2026-09-28).
 - **7.9 Configure forms**, batch 1 (a parallel track).
 - **Stage 8**: the agent has never executed a tool (27 recorded runs, zero
   calls). Every step is still to do: 8.1 models, 8.2 the tool library against

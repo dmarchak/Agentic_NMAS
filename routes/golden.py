@@ -156,9 +156,29 @@ def baselines():
             # The restore's own credential guard refuses these (C75).
             entry["credential_guarded"] = gaps["guarded"]
             entry["no_intent"] = gaps["no_golden"]
-        return jsonify({"ok": True, "baselines": entries})
+        return jsonify({"ok": True, "baselines": entries,
+                        "last_decision": _last_baseline_decision(repo)})
     except Exception as exc:                  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+def _last_baseline_decision(repo: str) -> dict:
+    """The newest `Baseline:` decision the history records (a changing save's
+    commit, or, since 2026-09-28, an empty decision commit when nothing
+    changed): what the panel's remedy must name, so it never recommends an
+    action the last attempt showed would be refused. ``{}`` when none."""
+    from modules.nsot.repo import git
+
+    rc, out, _err = git(repo, "log", "-1", "-E", "--grep=^Baseline: ",
+                        "--format=%H%x1f%cI%x1f%B")
+    if rc != 0 or not (out or "").strip():
+        return {}
+    sha, at, body = out.split("\x1f", 2)
+    line = next((l[len("Baseline: "):].strip() for l in body.splitlines()
+                 if l.startswith("Baseline: ")), "")
+    return {"commit": sha[:12], "at": at.strip(),
+            "state": "earned" if line == "earned" else "denied",
+            "reasons": line.split(":", 1)[1].strip() if line.startswith("denied:") else ""}
 
 
 @bp.route("/restore_points/<path:hostname>", methods=["GET"])
