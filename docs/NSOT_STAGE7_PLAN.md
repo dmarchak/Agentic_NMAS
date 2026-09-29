@@ -1663,7 +1663,22 @@ read through one function, and P.8 moves it without the reader changing.
   restore is additive, so a line added on the device (r2's `load-interval 30`, C70's
   residue) leaves only by a person on the console, or is adopted into intent; until one of
   those, every capture departs from intent and no baseline can be earned (C184).
-  **Costed 2026-09-28, not yet placed** (the operator asked what it costs and whether
+  **PLACED 2026-09-28 (the operator): 7.3 step 2, early, with r2's `load-interval 30` as
+  its acceptance**, which the record now names as the exact blocker (`17239ae`'s
+  `Baseline: denied:` trailer). C188's serial device reads go with it, because its preview
+  reads devices the same way and would inherit the same 100 s ceiling.
+  **Step 2a BUILT the same night: the computation** (`modules/nsot/removal.py`, nothing
+  connects). `candidates()` offers residue leaves and whole stanzas the target lacks (one
+  unit, children listed); `removal_program()` turns the SELECTED units into the exact
+  program (verbatim `no`, a `no` line by its positive form, placed in its stanza) and
+  refuses, with the reason, a construct IOS will not remove, a numbered ACL entry, the
+  management path, an account and a named object something still uses (naming the
+  user). On the real fleet: r2's program is `interface GigabitEthernet2` /
+  ` no load-interval 30` / `exit`; r3's `NO-PRIVATE` prefix-list is refused naming its BGP
+  neighbour. Next: 2b the pipeline (confirm hash over removals, per-line reasons, rollback
+  that re-adds verbatim, read-back that each line is gone), 2c the preview, 2d r2 on the
+  host.
+  **Costed 2026-09-28** (the operator asked what it costs and whether
   it belongs in Stage 7: "the interface manages the network" is false while the only
   way to remove a line is a console). Four places wait on it: r2's `load-interval 30`
   (a leaf under an interface), C12's heartbeat block (a stanza plus logging leaves), C139's
