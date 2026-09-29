@@ -268,12 +268,37 @@ class TestTheCommittedRecord:
         assert "logging-buffered" not in {s.key for s in RM.SHAPES}, "retired from the probe"
 
     @pytest.mark.real_measurements
+    def test_of_three_list_entry_shapes_only_the_numbered_acl_is_refused_on_ios(self):
+        """Resemblance would have refused all three; measurement refused one."""
+        running = S4 + ("access-list 97 permit 192.0.2.1\naccess-list 97 permit 192.0.2.2\n"
+                        "ip prefix-list SCRATCH seq 5 permit 192.0.2.0/24\n"
+                        "ip access-list extended SCRATCH\n permit ip host 192.0.2.1 any\n"
+                        "route-map SCRATCH permit 10\n set metric 10\n")
+        acl = program(running, [_unit([], "access-list 97 permit 192.0.2.1")],
+                      mgmt_ip="10.255.1.24", dialect="cisco_ios")
+        assert acl["commands"] == [] and "measured on cisco_ios, s4" in acl["refused"][0]["reason"]
+        ok = program(running, [
+            _unit([], "ip prefix-list SCRATCH seq 5 permit 192.0.2.0/24"),
+            _unit(["ip access-list extended SCRATCH"], " permit ip host 192.0.2.1 any"),
+            _unit([], "route-map SCRATCH permit 10")],
+            mgmt_ip="10.255.1.24", dialect="cisco_ios")
+        assert ok["refused"] == [], ok["refused"]
+        assert ok["commands"] == ["no ip prefix-list SCRATCH seq 5 permit 192.0.2.0/24",
+                                  "ip access-list extended SCRATCH",
+                                  " no permit ip host 192.0.2.1 any", "exit",
+                                  "no route-map SCRATCH permit 10"]
+
+    @pytest.mark.real_measurements
     def test_the_record_holds_only_what_no_did(self):
         import json
         rec = json.load(open(RM.MEASURED_FILE, encoding="utf-8"))
         rows = rec["by_dialect"]["cisco_ios"]
         assert {k for k, v in rows.items() if v["result"] == "exact"} == {
             "interface.load-interval", "interface.description",
-            "global.snmp-server-community", "global.logging-host"}
+            "global.snmp-server-community", "global.logging-host",
+            "global.route-map-sequence", "global.event-manager-applet",
+            "global.ip-prefix-list-entry", "named-acl.entry"}
+        assert rows["global.numbered-acl-entry"]["result"] == "broader"
+        assert "access-list 97 permit 192.0.2.2" in rows["global.numbered-acl-entry"]["detail"]
         assert rows["global.logging-buffered"]["result"] == "overrides_default"
         assert all(v["result"] not in ("unmeasured", "failed") for v in rows.values())

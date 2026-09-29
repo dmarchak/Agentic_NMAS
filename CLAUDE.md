@@ -5291,7 +5291,10 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   `logging console`, `no ip domain lookup` and `no cdp run` look like it, but some may be
   the reverse case (the device already carries the non-default `no` form, and removing it
   restores the default). So they stay unmeasured, and refused, until the platform is
-  asked. The same asymmetry as the read-only allowlist (C61) and "a pattern earns a
+  asked. Measured the same night, the generalisation in the other direction would
+  have cost two capabilities: of three "entry in a list" shapes on IOS, the numbered ACL
+  entry deletes its whole list and the named-ACL and prefix-list entries remove exactly
+  themselves. The same asymmetry as the read-only allowlist (C61) and "a pattern earns a
   member by measurement": the cost of a wrong refusal is a question, and the cost of a
   wrong allowance is configuration destroyed.
 - **A PROBE THAT CONTINUES PAST A FAILED RESTORE MEASURES ITS OWN DAMAGE** (the operator,

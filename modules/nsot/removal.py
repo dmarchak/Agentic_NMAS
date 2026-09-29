@@ -308,7 +308,9 @@ def _refusal(unit: dict, running: list, mgmt_ifaces: set) -> str:
                     "removing the tool's own account locks it out")
         if NUMBERED_ACL.search(text):
             return ("IOS deletes the WHOLE numbered access-list for `no access-list <n> "
-                    "...`, not this entry")
+                    "...`, not this entry (measured on cisco_ios, s4, 2026-09-29: removing "
+                    "`access-list 97 permit 192.0.2.1` also removed `access-list 97 permit "
+                    "192.0.2.2`)")
         for pattern, why in MANAGEMENT_GLOBAL:
             if pattern.search(text):
                 return "the management path: " + why

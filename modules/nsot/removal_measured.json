@@ -2,6 +2,18 @@
   "_about": "Mode B's platform record: what `no <line>` DID, per shape, measured by scripts/nmas-removal-probe on a real device. Only `exact` allows a removal. Written from the probe's own output; a row reclassified since says so.",
   "by_dialect": {
     "cisco_ios": {
+      "global.event-manager-applet": {
+        "at": "2026-09-29T04:39:56Z",
+        "detail": "",
+        "device": "s4",
+        "result": "exact"
+      },
+      "global.ip-prefix-list-entry": {
+        "at": "2026-09-29T04:39:56Z",
+        "detail": "",
+        "device": "s4",
+        "result": "exact"
+      },
       "global.logging-buffered": {
         "at": "2026-09-29T04:17:53Z",
         "detail": "appeared: no logging buffered. Recorded by the run as `different`; the probe now names this result `overrides_default`. Retired from the probe; refused by name in removal.UNREMOVABLE",
@@ -10,6 +22,18 @@
       },
       "global.logging-host": {
         "at": "2026-09-29T04:17:53Z",
+        "detail": "",
+        "device": "s4",
+        "result": "exact"
+      },
+      "global.numbered-acl-entry": {
+        "at": "2026-09-29T04:39:56Z",
+        "detail": "also removed: access-list 97 permit 192.0.2.2",
+        "device": "s4",
+        "result": "broader"
+      },
+      "global.route-map-sequence": {
+        "at": "2026-09-29T04:39:56Z",
         "detail": "",
         "device": "s4",
         "result": "exact"
@@ -28,6 +52,12 @@
       },
       "interface.load-interval": {
         "at": "2026-09-29T04:17:53Z",
+        "detail": "",
+        "device": "s4",
+        "result": "exact"
+      },
+      "named-acl.entry": {
+        "at": "2026-09-29T04:39:56Z",
         "detail": "",
         "device": "s4",
         "result": "exact"

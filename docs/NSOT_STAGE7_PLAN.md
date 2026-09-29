@@ -1712,6 +1712,16 @@ read through one function, and P.8 moves it without the reader changing.
   leftover with s4's `no logging console` (C193), and now takes a plain difference.
   Still unmeasured on IOS: the numbered ACL entry and route-map sequence (the two most
   likely to destroy), the applet, the prefix-list and named-ACL entries.
+  **IOS FULLY MEASURED (the operator's second run on s4, 2026-09-29):** 8 exact
+  (load-interval, description, snmp-server community, logging host, route-map sequence,
+  event-manager applet, prefix-list entry, named-ACL entry), 1 broader (the numbered ACL
+  entry: removing `access-list 97 permit 192.0.2.1` also removed `... permit 192.0.2.2`, the
+  case where an unmeasured Mode B would have destroyed config while reporting success), 1
+  `overrides_default` (logging buffered), and BGP not applicable on a switch. Of the three
+  "entry in a list" shapes, numbered ACLs are destructive and named ACLs and prefix-lists
+  are exact: the obvious generalisation ("list entries are dangerous") would have refused
+  two safe shapes. The run needed no repair past its teardowns and ended equivalent, and
+  s4's Capture as golden confirmed it independently (matches its golden and its intent).
   **The repair for an `overrides_default` line, proven on s4 (the operator, 2026-09-29):
   THE DEFAULT IS DISCOVERABLE FROM A SIBLING ON THE SAME IMAGE.** s3 runs the same vIOS
   image and its committed golden has no `logging buffered` line, so it is at the default;
