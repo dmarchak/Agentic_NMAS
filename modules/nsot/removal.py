@@ -440,3 +440,62 @@ def removal_program(running_config: str, selected: list, *, mgmt_ip: str = "",
             secret.append(u)
     return {"commands": negation_program(removed), "removed": removed, "refused": refused,
             "secret_position": secret}
+
+
+def _subtree_fragment(units: list, config: str) -> str:
+    """The part of *config* the units cover (each unit's line, and for a
+    stanza every line under it), with the headers above them, as config text
+    in the device's own order and indentation."""
+    from modules.nsot import ifnames
+
+    paths = [tuple(ifnames.canonicalise_line(c) for c in u["chain"])
+             + (ifnames.canonicalise_line(u["line"]),) for u in units]
+    out, seen = [], set()
+    for line, chain in _chains(config):
+        path = chain + (line,)
+        if not any(path[:len(p)] == p for p in paths):
+            continue
+        for depth in range(len(chain)):
+            head = chain[:depth + 1]
+            if head not in seen:
+                seen.add(head)
+                out.append(head[-1])
+        if path not in seen:
+            seen.add(path)
+            out.append(line)
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def restore_program(units: list, pre_config: str, now_config: str) -> list:
+    """Undo a removal: the removed lines put back VERBATIM from the pre-change
+    snapshot (a stanza with every line it held), and only what is missing now.
+
+    The inverse of a removal is not a negation: it is the device's own
+    lines, re-added. So it is built by the one builder deploys use,
+    `merge_commands()`, over the fragment of the snapshot the units covered,
+    and every line it sends is asserted to be a line the snapshot held: the
+    rollback's provenance, as `assert_rollback_provenance` is for a deploy."""
+    from modules.nsot.deploy import merge_commands, program_lines
+
+    fragment = _subtree_fragment(units, pre_config)
+    if not fragment:
+        return []
+    program = merge_commands(fragment, now_config)
+    held = {chain + (line,) for line, chain in _chains(pre_config)}
+    stray = [f"{' > '.join(c)} > {l}".lstrip(" >") for c, l in program_lines(program)
+             if tuple(c) + (l,) not in held]
+    if stray:
+        raise RuntimeError("a removal's undo would send a line the snapshot never held: "
+                           + "; ".join(stray))
+    return program
+
+
+def still_present(units: list, config: str) -> list:
+    """The units a read-back still shows: a removal that did not take. A
+    stanza counts by its header."""
+    from modules.nsot import ifnames
+
+    present = {chain + (line,) for line, chain in _chains(config)}
+    return [u for u in units
+            if tuple(ifnames.canonicalise_line(c) for c in u["chain"])
+            + (ifnames.canonicalise_line(u["line"]),) in present]

@@ -330,3 +330,36 @@ class TestWhyAShapeIsUnmeasured:
                       mgmt_ip="10.255.1.12", dialect="cisco_iosxe")
         assert out["commands"] == ["interface GigabitEthernet2", " no load-interval 30", "exit"]
         assert out["refused"] == []
+
+
+class TestUndoAndReadBack:
+    """2b's pure half: a removal is undone by re-adding the device's OWN lines
+    from the pre-change snapshot, and a read-back names what did not go."""
+
+    LOAD = [_unit(["interface GigabitEthernet2"], " load-interval 30")]
+
+    def test_the_undo_is_the_removed_line_verbatim_in_its_stanza(self):
+        assert RM.restore_program(self.LOAD, R2_BROKEN, R2) == [
+            "interface GigabitEthernet2", " load-interval 30", "exit"]
+
+    def test_a_stanza_comes_back_with_every_line_it_held(self):
+        before = R2 + 'event manager applet X\n event timer watchdog time 300\n action 1.0 syslog msg "x"\n'
+        assert RM.restore_program([_unit([], "event manager applet X")], before, R2) == [
+            "event manager applet X", " event timer watchdog time 300",
+            ' action 1.0 syslog msg "x"', "exit"]
+
+    def test_only_what_is_missing_now_is_sent(self):
+        assert RM.restore_program(self.LOAD, R2_BROKEN, R2_BROKEN) == [], \
+            "the removal never took: nothing to put back"
+
+    def test_the_undo_never_sends_a_line_the_snapshot_did_not_hold(self, monkeypatch):
+        from modules.nsot import deploy
+        monkeypatch.setattr(deploy, "merge_commands",
+                            lambda fragment, now: ["interface GigabitEthernet2",
+                                                   " load-interval 31", "exit"])
+        with pytest.raises(RuntimeError, match="never held"):
+            RM.restore_program(self.LOAD, R2_BROKEN, R2)
+
+    def test_the_read_back_names_what_did_not_go(self):
+        assert RM.still_present(self.LOAD, R2_BROKEN) == self.LOAD
+        assert RM.still_present(self.LOAD, R2) == []
