@@ -50,6 +50,33 @@ OPERATION_WORDS = {
     "file": "changed by a file action",
 }
 
+#: An operation whose RESULT differs from its kind's usual one, in words
+#: (the operator, 2026-09-28): a Save All that will record only a denial
+#: holds each device as a capture, and "is being captured" contradicted the
+#: button that started it. Keyed on (operation, the hold's detail); a detail
+#: not listed here is drawn as it always was.
+MODE_WORDS = {
+    ("capture", "denial_only"): "read for the denial record (nothing will be recorded as "
+                                "its golden)",
+    ("capture", "baseline_only"): "read for the baseline (nothing will be recorded as its "
+                                  "golden)",
+}
+
+#: The capture modes the apply accepts from the confirm; anything else is
+#: the ordinary capture, never drawn raw.
+CAPTURE_MODES = ("record", "denial_only", "baseline_only")
+
+
+def _words(holder: dict) -> tuple:
+    """(what it is doing, the detail still worth drawing)."""
+    op, detail = holder.get("operation", ""), holder.get("detail") or ""
+    if (op, detail) in MODE_WORDS:
+        return MODE_WORDS[(op, detail)], ""
+    if op == "capture" and detail == "record":
+        return OPERATION_WORDS["capture"], ""
+    return OPERATION_WORDS.get(op, op or "?"), detail
+
+
 #: No progress for this long and the refusal says the holder may be stuck.
 #: A pipeline's longest wait is a settle window (90 s) plus a read (120 s),
 #: so ten minutes without a step is past anything a working operation does.
@@ -80,10 +107,9 @@ def describe(holder: dict, now: float = None) -> str:
     stuck". There is no force: a hold ends when its operation finishes or its
     process stops, and then the kernel releases it."""
     now = time.time() if now is None else now
-    word = OPERATION_WORDS.get(holder.get("operation", ""), holder.get("operation", "?"))
+    word, detail = _words(holder)
     started_at = holder.get("started", 0) or 0
     started = time.strftime("%H:%M:%S UTC", time.gmtime(started_at))
-    detail = holder.get("detail") or ""
     progress = holder.get("progress") or {}
     moved = progress.get("at", started_at) or started_at
     text = (f"{holder.get('device', '?')} is being {word} by {holder.get('actor') or 'unknown'}, "
@@ -172,7 +198,7 @@ def in_flight(list_name: str, now: float = None) -> list:
         step = progress.get("step", "")
         rows.append({
             "device": h.get("device", ""), "operation": h.get("operation", ""),
-            "words": OPERATION_WORDS.get(h.get("operation", ""), h.get("operation", "")),
+            "words": _words(h)[0],
             "actor": h.get("actor", ""), "pid": h.get("pid"),
             "started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started)),
             "held_for_s": round(now - started),

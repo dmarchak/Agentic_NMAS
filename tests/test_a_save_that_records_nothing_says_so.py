@@ -54,7 +54,11 @@ class TestThePreviewSaysWhatConfirmingAchieves:
         assert effect.startswith("Nothing will be recorded as a golden and no baseline will "
                                  "be taken: r2 departs from its committed intent")
         assert "`load-interval 30`" in effect
-        assert p["confirm"]["button"] == "Record the denial only"
+        # The WORK as well as the outcome: the devices are still read.
+        assert p["confirm"]["button"] == "Read the device and record the denial only"
+        assert "Every device is still read at apply" in effect
+        assert p["confirm"]["working"] == "Reading the device for the denial record…"
+        assert p["confirm"]["mode"] == "denial_only"
         html = render_preview(p)
         confirm = html[html.index('data-pc-part="confirm"'):]
         assert "data-pc-effect" in confirm and "Nothing will be recorded as a golden" in confirm
@@ -75,7 +79,7 @@ class TestThePreviewSaysWhatConfirmingAchieves:
         js = lift(shipped("nmas_preview_confirm.js"), "previewConfirmButton")
         out = dukpy.evaljs(js + "\npreviewConfirmButton(" + json.dumps(p)
                            + ", 1, 'Record 1 device(s)')")
-        assert out == {"disabled": False, "text": "Record the denial only"}
+        assert out == {"disabled": False, "text": "Read the device and record the denial only"}
 
     def test_a_one_device_capture_that_changes_nothing_cannot_be_confirmed(self, cap):
         d = cap["client"].post("/golden/capture/preview", json={"devices": ["r2"]}).get_json()
@@ -132,6 +136,54 @@ class TestTheResultAndTheRecord:
                             + f"\n_gBaselinesHtml({json.dumps(rows)}, {json.dumps(last)})")
         assert "A new one cannot be earned yet" in html and "load-interval 30" in html
         assert "Take a current one with Save All" not in html
+
+
+class TestTheWorkIsNamedAsWellAsTheOutcome:
+    """The operator (2026-09-28): "Record the denial only" was read as "skip the
+    capture", and the in-flight panel then said every device "is being
+    captured", contradicting the button that started it."""
+
+    def test_the_apply_holds_each_device_under_the_confirmed_mode(self, cap, monkeypatch):
+        from modules.nsot import device_ops
+        seen = []
+        real = device_ops.acquire_many
+
+        def spy(*a, **kw):
+            seen.append(kw.get("detail"))
+            return real(*a, **kw)
+        monkeypatch.setattr(device_ops, "acquire_many", spy)
+        p = _fleet_preview(cap)["preview"]
+        h = p["what"]["targets"][0]["select_data"]["hash"]
+        cap["client"].post("/golden/capture/apply", json={
+            "confirmations": {"r2": h}, "fleet": True, "mode": p["confirm"]["mode"]})
+        cap["client"].post("/golden/capture/apply", json={
+            "confirmations": {"r2": h}, "fleet": True, "mode": "<script>"})
+        assert seen == ["denial_only", "record"], "an unknown mode is the ordinary capture"
+
+    def test_the_panel_words_a_denial_hold_as_a_read(self, tmp_path, monkeypatch):
+        from modules.nsot import device_ops
+        monkeypatch.setattr("modules.config.DATA_DIR", str(tmp_path))
+        device_ops.acquire("Lab", "r2", "capture", "op@example.com", "denial_only")
+        device_ops.acquire("Lab", "r3", "capture", "op@example.com", "record")
+        try:
+            rows = {r["device"]: r for r in device_ops.in_flight("Lab")}
+            assert rows["r2"]["words"].startswith("read for the denial record")
+            assert rows["r3"]["words"] == "captured", "the ordinary capture is unchanged"
+            text = device_ops.describe(device_ops.holder("Lab", "r2"))
+            assert "is being read for the denial record" in text
+            assert "denial_only" not in text, "the mode key is never drawn raw"
+        finally:
+            device_ops.release("Lab", "r2")
+            device_ops.release("Lab", "r3")
+
+    def test_the_shipped_client_sends_the_mode_and_says_it_is_reading(self):
+        import os
+        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "static", "js", "nmas_capture.js"), encoding="utf-8").read()
+        body = src[src.index("fetch('/golden/capture/apply'"):]
+        body = body[:body.index("})")]
+        assert "mode: conf.mode || 'record'" in body
+        assert "btn.textContent = conf.working ||" in src
 
 
 class TestNeedsAttentionNamesTheBlocker:

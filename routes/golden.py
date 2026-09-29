@@ -374,9 +374,13 @@ def capture_apply():
     # One operation per device (C98): a capture recording a device while a
     # deploy or restore changes it would record a half-made state.
     from modules.nsot import device_ops
+    # The mode the confirmed preview named, for the in-flight panel's words
+    # only; an unknown one is the ordinary capture.
+    mode = data.get("mode") if data.get("mode") in device_ops.CAPTURE_MODES else "record"
     held, refused_busy = device_ops.acquire_many(
         list_name, [d.get("hostname", "") for d in inventory
-                    if d.get("hostname", "") in confirmations], "capture", request_actor())
+                    if d.get("hostname", "") in confirmations], "capture", request_actor(),
+        detail=mode)
     busy = {r["device"]: r["reason"] for r in refused_busy}
     try:
         outcomes, items, skipped, texts = [], [], [], {}

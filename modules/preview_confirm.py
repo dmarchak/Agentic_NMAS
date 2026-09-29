@@ -1546,9 +1546,20 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
     changed = sum(1 for e in read if e.get("changed"))
     departs = sum(1 for e in read if (e.get("intent") or {}).get("state") != "match")
     confirm = dict(confirm_part(request, "approve"))
+    # The MODE travels back with the confirm and names the held devices on the
+    # in-flight panel ("read for the denial record", never "captured"). It is
+    # display only: what the apply does is decided by what it reads.
+    confirm["mode"] = "record"
     # WHAT CONFIRMING ACHIEVES, at the confirm (the operator, 2026-09-28): a
     # preview that knows the operation has no effect says so there, and the
     # button says it too, never "Record 9 device(s)" over a save recording none.
+    # And a control named for its OUTCOME says the WORK it still does (the
+    # operator, the same night): "Record the denial only" was read as "skip
+    # the reads", and nine SSH sessions followed.
+    still_read = (" Every device is still read at apply: the decision depends on each "
+                  "one's state now, and a device that moved since this preview is refused. "
+                  "Nothing is sent to any device.")
+    reading = f"all {len(read)} devices" if len(read) > 1 else "the device"
     if read and not changed:
         if not fleet:
             confirm.update(may=False, statement=(
@@ -1557,8 +1568,10 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
         elif len(read) == len(inventory) and not departs:
             confirm.update(effect=("No golden will change: every device matches its golden. "
                                    "Confirming takes a baseline at this measured state, and "
-                                   "records the decision."),
-                           button="Take the baseline")
+                                   "records the decision." + still_read),
+                           button=f"Read {reading} and take the baseline",
+                           working=f"Reading {reading} for the baseline…",
+                           mode="baseline_only")
         else:
             blockers = [f"{e['device']} {_intent_sentence(e.get('intent') or {})}"
                         for e in read if (e.get("intent") or {}).get("state") != "match"]
@@ -1567,8 +1580,10 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request,
             confirm.update(effect=("Nothing will be recorded as a golden and no baseline will be "
                                    "taken: " + "; ".join(blockers) + ". Confirming records only "
                                    "that the fleet was measured and why no baseline was earned, "
-                                   "as a commit that changes nothing."),
-                           button="Record the denial only")
+                                   "as a commit that changes nothing." + still_read),
+                           button=f"Read {reading} and record the denial only",
+                           working=f"Reading {reading} for the denial record…",
+                           mode="denial_only")
     return build(
         action="capture",
         summary=(f"Record the running config of {len(read)} of {len(entries)} device(s) as "

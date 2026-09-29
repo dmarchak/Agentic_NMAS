@@ -102,15 +102,18 @@
     el.querySelector('[data-capture-confirm]').addEventListener('click', async function () {
       var btn = this;
       var boxes = Array.prototype.slice.call(el.querySelectorAll('input[data-pc-select]'));
+      var conf = (state.preview && state.preview.confirm) || {};
       btn.disabled = true;
-      btn.textContent = 'Recording…';
+      // The work, not only the outcome: a denial record still reads every device.
+      btn.textContent = conf.working || 'Reading and recording…';
       var ad;
       inFlightBusy(true);        // the panel says what runs meanwhile (C99)
       try {
         var ar = await fetch('/golden/capture/apply', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify(Object.assign(
-            {confirmations: captureSelection(boxes), fleet: state.fleet},
+            {confirmations: captureSelection(boxes), fleet: state.fleet,
+             mode: conf.mode || 'record'},
             approvals ? {approvals: approvals} : {}))});
         ad = await ar.json();
       } catch (e) {
