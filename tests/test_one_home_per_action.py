@@ -54,8 +54,10 @@ CONFIG_TASKS = {
 KNOWN_DUPLICATES = {
     # Widened 2026-09-29 (C191): the scan now counts Netmiko's save_config, and
     # found three more saves (after a push, after a rollback, onboarding's).
-    ("save_startup",): {"app.py:save_config", "modules/backups.py:save_running_to_startup",
-                        "modules/pipeline.py:_push_via_netmiko",
+    # C103 (2026-09-29): Save Device Config and Save to Startup REMOVED, the
+    # operator's decision: Persist is the one save a person reaches, and the two
+    # that went could report success without proving it.
+    ("save_startup",): {"modules/pipeline.py:_push_via_netmiko",
                         "modules/pipeline.py:_restore_config",
                         "modules/nsot/onboard.py:persist_on_device"},
     ("delete", "file"): {"app.py:delete_file", "modules/bulk_ops.py:_execute_delete_file"},

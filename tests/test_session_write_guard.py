@@ -176,20 +176,6 @@ def client(monkeypatch):
 
 
 class TestEveryWriterNowHoldsTheDevice:
-    def test_save_device_config_holds_it_and_saves(self, client):
-        client.post(f"/device/{IP}/save_config", data={"active_tab": "utilities"})
-        assert "write memory" in FakeConn.sent
-        assert D.holder(LIST, HOST) is None, "released after"
-
-    def test_save_device_config_is_refused_while_a_deploy_holds_it(self, client):
-        """Refused BY THE LOCK, naming the holder. "Nothing was sent" alone
-        would also be true if the route lost its hold and the session guard
-        refused instead, so the words are asserted."""
-        with Holder():
-            client.post(f"/device/{IP}/save_config", data={"active_tab": "utilities"})
-        assert "write memory" not in FakeConn.sent
-        assert "r2 is being deployed to by other@example.invalid" in _flashes(client)
-
     def test_run_command_a_read_never_waits(self, client):
         with Holder():
             r = client.post(f"/run_command/{IP}", data={"command": "show clock"},
@@ -279,7 +265,6 @@ HELD_BY_CALLER = {
     "modules/bulk_ops.py:_execute_tftp_download": "the bulk worker, per device",
     "modules/bulk_ops.py:_execute_config_download": "the bulk worker, per device",
     "modules/bulk_ops.py:_execute_delete_file": "the bulk worker, per device",
-    "modules/backups.py:save_running_to_startup": "app.save_to_startup",
     "modules/nsot/credential_rotation.py:push_rotation": "rotate()",
     "modules/commands.py:run_device_command": "its callers: /run_command holds a non-read",
     "modules/device_reload.py:reload_device": "app.bulk_reload's per-device thread (C153)",

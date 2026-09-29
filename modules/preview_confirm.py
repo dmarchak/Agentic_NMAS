@@ -102,6 +102,12 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
         program = t.get("program") or {}
         if not program.get("lines") and not program.get("none"):
             raise PreviewIncomplete(f"part 3 (program) for {name} is empty and does not say so")
+        if program.get("caption") and not program.get("unit"):
+            # The count beside a caption says WHAT it counts (the operator,
+            # 2026-09-29: "(3 line(s))" over one line sent and two reads, C127's
+            # wording defect back in a new preview). Every screen declares it.
+            raise PreviewIncomplete(f"part 3 (program) for {name} has a caption and does "
+                                    "not say what its count counts (`unit`)")
         if not t.get("operands"):
             raise PreviewIncomplete(f"part 4 (operands) for {name} is empty")
         if not t.get("gates"):
@@ -805,6 +811,7 @@ def onboard_preview(plan: dict, bootstrap_config: str, confirm: dict) -> dict:
                                 "or served, and sent to no device from here. The credential in it "
                                 "is a placeholder: the real one-time bootstrap credential is "
                                 "generated when you press Create and is never sent to the browser"),
+                    "unit": "line(s) of config, sent to no device",
                     "none": "No startup config: the plan could not render one (its reason is a "
                             "failed gate below).",
                     "notes": []},
@@ -975,6 +982,7 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
                     "authorisation_error": "", "notes": [],
                     "caption": "What NetBox will be told to create and update. Nothing is "
                                "sent to a device",
+                    "unit": "change(s) to NetBox",
                     "none": "Nothing: NetBox already holds what the golden configs describe."},
         "operands": [
             {"name": "List", "value": name},
@@ -1111,6 +1119,7 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
         "program": {"lines": [_nb_line("delete", o) for o in deleted], "dangerous": [],
                     "authorised": [], "authorisation_error": "", "notes": notes,
                     "caption": "What NetBox will be told to delete",
+                    "unit": "object(s) to delete in NetBox",
                     "none": "Nothing: " + summary},
         "operands": [
             {"name": "List", "value": name},
@@ -1568,6 +1577,7 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request=None
                         # golden will become, not a program for the device.
                         "caption": ("The difference between the device now and its golden. "
                                     "Nothing is sent: confirming records the device as it is"),
+                        "unit": "line(s) of difference, none sent",
                         "none": ("Nothing is recorded: it could not be read." if not e.get("read")
                                  else "Unchanged: the device matches its current golden. Confirming "
                                       "records that it was measured.")},
@@ -1867,6 +1877,7 @@ def seed_preview(entries: list, *, request) -> dict:
                 "lines": list(e.get("diff") or []) if ok else [],
                 "caption": ("The intent document to commit, against what is committed now. "
                             "Nothing is sent to the device: seeding records what it should be"),
+                "unit": "line(s) of the document, none sent",
                 "none": ("Nothing to commit: " + (e.get("error") or "")) if not ok
                         else "Its committed intent already equals the seed."},
             "operands": [
@@ -2042,6 +2053,7 @@ def retire_preview(plan: dict, *, busy: str, request) -> dict:
                     "caption": ("Each step is skipped if already done, so a retirement that "
                                 "stopped part way is finished by running it again. Nothing is "
                                 "sent to the device"),
+                    "unit": "change(s) to the record",
                     "none": "Nothing to do: " + "; ".join(plan.get("refusals") or ["no steps"])},
         "operands": [
             {"name": "reason", "value": plan.get("reason") or "none given"},
@@ -2158,6 +2170,10 @@ PERSIST_RESULT_TITLES = {"sent": "What was sent to the device",
                          "checks": "The startup config, read back",
                          "happened": "What was persisted", "did_not": "What persist did NOT do"}
 
+#: What persist sends, ONE producer for the preview and the result, so the two
+#: cannot disagree about what the operation does.
+PERSIST_SENT = "write memory (the device's own save)"
+
 PERSIST_CHECK_WORDS = {
     "persisted": "the last hourly check read it persisted",
     "not_persisted": "the last hourly check read it NOT persisted",
@@ -2200,14 +2216,24 @@ def persist_preview(plan: dict, *, busy: str, request) -> dict:
         "state": "persistable" if selectable else "refused",
         "selectable": selectable,
         "select_data": {"hash": plan.get("hash") or "", "list": plan.get("list_name") or ""},
-        "program": {"lines": [s["what"] for s in plan.get("steps") or []],
-                    "caption": ("Sent to the device: its own save. Read from it: the startup "
-                                "config and the running config's `username` lines"),
+        # EXACTLY what is sent, as the result will say it (the operator, 2026-09-29:
+        # the preview counted two reads as lines, "(3 line(s))", while the result
+        # said "Sent to the device: write memory"). The reads and the record are
+        # a note beside it.
+        "program": {"lines": [PERSIST_SENT],
+                    "caption": "Sent to the device",
+                    "unit": "line(s) sent",
+                    "notes": [{"title": "Then read from the device, and recorded",
+                               "lines": [s["what"] for s in plan.get("steps") or []
+                                         if s["key"] != "save"]}],
                     "none": "Nothing to do: " + "; ".join(plan.get("refusals") or ["no steps"])},
         "operands": [
             {"name": "list", "value": plan.get("list_name") or "?"},
             {"name": "management address", "value": plan.get("ip") or "none recorded"},
-            {"name": "driver", "value": plan.get("device_type") or "none recorded"},
+            {"name": "session driver (Netmiko)",
+             "value": plan.get("device_type") or "none recorded"},
+            {"name": "config dialect (the inventory's platform)",
+             "value": plan.get("dialect") or "none recorded"},
             {"name": "account", "value": plan.get("username") or "?"},
             {"name": "startup config, last checked",
              "value": _persist_check_words(plan.get("last_check") or {})},
@@ -2263,7 +2289,7 @@ def persist_result(result: dict, plan: dict, actor: str = "") -> dict:
         action="persist", level=level, summary=summary,
         targets=[{"name": name, "outcome": state, "words": words,
                   "reason": "" if state == "persisted" else detail,
-                  "sent": {"lines": ["write memory (the device's own save)"] if sent else [],
+                  "sent": {"lines": [PERSIST_SENT] if sent else [],
                            "caption": "Sent to the device",
                            "none": "Nothing was sent."},
                   "checks": ({"ran": True, "ok": state == "persisted",

@@ -231,7 +231,7 @@
       // capture's diff and an onboarding's startup config are sent nowhere,
       // and the one sentence said they were.
       body = '<div class="small"' + (prog.caption ? ' data-pc-caption' : '') + '>'
-        + (prog.caption ? esc(prog.caption) + ' (' + lines.length + ' line(s))'
+        + (prog.caption ? esc(prog.caption) + ' (' + lines.length + ' ' + esc(prog.unit || 'line(s)') + ')'
                         : 'Exactly these ' + lines.length + ' line(s) will be sent, in this order')
         + '</div>'
         + '<div class="font-monospace small bg-body-tertiary text-body p-2 rounded" '

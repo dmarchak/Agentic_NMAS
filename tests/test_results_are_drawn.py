@@ -105,8 +105,6 @@ PENDING = {
     "bulk_delete_file": "the bulk results modal, until closed",
     "bulk_tftp_upload": "the bulk results modal, until closed",
     "run_command": "the device page re-rendered with the output",
-    "save_config": "the device page re-rendered with the output",
-    "save_to_startup": "the device page re-rendered with the output",
     "delete_file": "the device page re-rendered",
     "upload_file": "the device page re-rendered",
     "ai_chat": "the chat stream (Stage 8 decides what the agent's record is)",
@@ -173,7 +171,7 @@ UNESCAPED = {
 }
 
 # PENDING 23 -> 21: onboarding's Verify and Abandon drawn by the component (7.1).
-CEILINGS = {"PENDING": 21, "FALSE_GREEN": 0, "UNESCAPED": 0}
+CEILINGS = {"PENDING": 19, "FALSE_GREEN": 0, "UNESCAPED": 0}
 
 
 def _population():

@@ -1219,10 +1219,69 @@ def reachability_source(cached=None) -> dict:
                     if c.get("missed_last_probe") else "")))
 
 
+def netbox_secrets_source(cached=None) -> dict:
+    """A credential NetBox holds in a device's stored config context is a live
+    exposure in a shared system (the operator, 2026-09-29): one row per device,
+    naming the slot kinds and never a value, with the action that can clear it.
+    Where NMAS recorded writing the context it may mask it; where it did not,
+    it is somebody's data, and the row says to remove it in NetBox."""
+    from modules import reader_job
+
+    started = time.time()
+    got = reader_job.read_cached("netbox-secrets") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("netbox-secrets", "NetBox stored credentials", read_at=started,
+                             took_ms=took, error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    if not v.get("configured"):
+        return source_result("netbox-secrets", "NetBox stored credentials", read_at=started,
+                             took_ms=took, value_at=value_at, stale_after_seconds=promise,
+                             reader="netbox-secrets",
+                             checked=f"no NetBox configured ({v.get('why') or 'no reason'}): "
+                                     "nothing to hold one")
+    rows = []
+    for d in v.get("devices") or []:
+        name = d.get("name") or f"device {d.get('id')}"
+        held = ", ".join(d.get("slots") or []) or "a credential"
+        comm = d.get("communities") or 0
+        cause = (f"NetBox device {d.get('id')} ({name}) holds {held} unmasked in its stored "
+                 f"config context" + (f", and {comm} structured SNMP community value(s)"
+                                      if comm else "")
+                 + ": readable by everyone who can read NetBox")
+        if d.get("record_unreadable"):
+            cause += (f". Whether NMAS wrote it cannot be told: the modification record is "
+                      f"unreadable ({d['record_unreadable']})")
+            action = {"label": "The reason above is what is known", "known": False}
+        elif d.get("wrote"):
+            cause += f". NMAS wrote this context ({d['wrote']}), so it may mask it"
+            action = {"label": "Mask it with the import's own masking, read back",
+                      "command": f"nmas-netbox-mask-context --device {name} --apply"}
+        else:
+            cause += ". NMAS has no record of writing it, so it is somebody's data and NMAS "
+            cause += "will not change it"
+            action = {"label": f"Remove the credential lines from {name}'s config context in "
+                               "NetBox by hand"}
+        rows.append(row(source="netbox-secrets", key=f"netbox:{d.get('id')}", level="danger",
+                        what=f"NetBox holds a credential for {name}", devices=[name],
+                        cause=cause, operands={"netbox_id": d.get("id")}, action=action))
+    return source_result(
+        "netbox-secrets", "NetBox stored credentials", read_at=started, took_ms=took,
+        rows=rows, value_at=value_at, stale_after_seconds=promise, reader="netbox-secrets",
+        checked=f"{v.get('scanned', 0)} NetBox device(s) scanned, "
+                f"{len(v.get('devices') or [])} holding a credential")
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
-           reachability_source)
+           reachability_source, netbox_secrets_source)
 
 
 def _attach(rows: list) -> list:

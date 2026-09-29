@@ -32,6 +32,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+#: The SSH connect bound, in seconds (C205, the operator's decision 2026-09-29):
+#: 2.5 times the slowest connect measured, s3's 13.7 s at the 2026-09-29 Save All
+#: preview (vIOS switches connect 2 to 4 times slower than the IOS-XE routers).
+#: Netmiko's default is 10 s and nothing had chosen it, so the slowest device
+#: failed whenever it was slow. The cost, accepted: a device that is truly down
+#: takes 35 s to report. Re-derive it when the measurement moves; per platform,
+#: and per network once P.8 exists, is the recorded follow-up.
+CONNECT_TIMEOUT_S = 35
+
+
 def connection_params(dev: dict, *, password: str, secret: str = None) -> dict:
     """Build the ConnectHandler kwargs. The only place they are assembled.
 
@@ -283,7 +293,11 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
         # sessions did, so a fake installed at the Netmiko boundary reaches here.
         import netmiko
 
-        conn = netmiko.ConnectHandler(**params)
+        # The connect bound is CHOSEN here, from a measurement (C205): it was
+        # Netmiko's default 10 s, set by nothing, while s3's connect measured
+        # 13.7 s, so a Save All gave up on a device that was answering. A
+        # caller's own value wins.
+        conn = netmiko.ConnectHandler(**{"conn_timeout": CONNECT_TIMEOUT_S, **params})
     except Exception:
         _drop(ip, sid, "connect failed")
         raise

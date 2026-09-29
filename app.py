@@ -76,7 +76,6 @@ from modules.quick_actions import load_quick_actions, save_quick_actions
 from modules.utils import make_device_filename
 from modules.commands import run_device_command
 from modules.backups import (
-    save_running_to_startup,
     get_running_config,
     get_startup_config,
     save_config_backup,
@@ -1038,60 +1037,6 @@ def device_status(ip):
     return {"ip": ip, "online": online}
 
 
-# Save running config (temporary connection)
-@app.route("/device/<ip>/save_config", methods=["POST"])
-def save_config(ip):
-    # Save the running config on the device
-    active_tab = request.form.get("active_tab", "utilities")
-
-    _, current_list_file = get_current_device_list()
-    devices = load_saved_devices(current_list_file)
-    dev = next((d for d in devices if d["ip"] == ip), None)
-    if not dev:
-        flash("Device not found", "danger")
-        return redirect(url_for("index"))
-
-    try:
-
-        def execute(conn):
-            # Ensure not stuck in config mode
-            if conn.check_config_mode():
-                conn.exit_config_mode()
-            output = conn.send_command_timing("write memory")
-            if "[confirm]" in output.lower() or "confirm?" in output.lower():
-                output += conn.send_command_timing("\n")
-            return output
-
-        # `write memory` changes the device's startup config, so it holds the
-        # device like any other change (C98, C101): racing a deploy mid-push
-        # would save a half-applied config while both reported success.
-        from modules import identity as _identity
-        from modules.nsot import device_ops as _device_ops
-        _list_name, _ = get_current_device_list()
-        with _device_ops.hold(_list_name, dev["hostname"], "save",
-                              _identity.request_actor(), ip=dev["ip"]):
-            output = with_temp_connection(dev, execute)
-
-        filename = make_device_filename(dev["hostname"])
-        filesystems, file_list, selected_fs = get_device_context(dev)
-
-        return render_template(
-            "device.html",
-            device=dev,
-            output=output,
-            filename=filename,
-            filesystems=filesystems,
-            files=file_list,
-            selected_fs=selected_fs,
-            active_tab=active_tab,
-            quick_actions=load_quick_actions().get("global", []),
-            tftp_server=TFTP_SERVER_IP,
-        )
-    except Exception as e:
-        flash(f"Error saving config: {e}", "danger")
-        return redirect(url_for("manage_device", ip=ip))
-
-
 # Reorder devices (CSV rewrite)
 @app.route("/reorder", methods=["POST"])
 def reorder_devices():
@@ -1794,38 +1739,6 @@ def backup_config(ip):
     except Exception as e:
         app.logger.error(f"Backup failed for {ip}: {str(e)}")
         flash(f"Backup failed: {str(e)}", "danger")
-
-    return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
-
-
-@app.route("/device/<ip>/save_running_to_startup", methods=["POST"])
-def save_to_startup(ip):
-    """Save running-config to startup-config on device."""
-    try:
-        _, current_list_file = get_current_device_list()
-        devices = load_saved_devices(current_list_file)
-        dev = next((d for d in devices if d["ip"] == ip), None)
-
-        if not dev:
-            flash("Device not found", "danger")
-            return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
-
-        app.logger.info(f"Saving running-config to startup-config on: {ip}")
-
-        # Get connection
-        conn = get_persistent_connection(dev, connections, lock)
-
-        # Save config
-        from modules.nsot import device_ops as _device_ops
-        with _device_ops.hold_device(dev, "save", detail="save to startup"):
-            output = save_running_to_startup(conn)
-
-        flash("Running configuration saved to startup-config", "success")
-        app.logger.info(f"Config saved on {ip}: {output}")
-
-    except Exception as e:
-        app.logger.error(f"Failed to save config on {ip}: {str(e)}")
-        flash(f"Failed to save configuration: {str(e)}", "danger")
 
     return redirect(url_for("manage_device", ip=ip, active_tab="backups"))
 

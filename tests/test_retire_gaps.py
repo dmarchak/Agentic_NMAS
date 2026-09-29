@@ -135,11 +135,43 @@ class TestNetBoxStoredCredentials:
         assert "context is NOT masked" in joined
         assert "NMAS has no record of writing this context" in joined
 
-    def test_an_unreadable_record_is_unknown_never_clean(self, nb):
+    def test_an_unreadable_record_REFUSES_never_clean(self, nb):
+        """The operator's decision, 2026-09-29: could not check is not nothing
+        there (absent against unreadable), so the retirement is refused."""
         nb["state"]["record"] = (None, "unreadable (JSONDecodeError)")
         p = RT.plan("Lab", "r5", "left management")
-        assert "could not be checked" in " ".join(p["not_doing"])
+        assert p["ok"] is False
+        assert "could not be checked" in p["refused_by"]["netbox_mask"]
         assert "holds no unmasked credential" not in " ".join(p["not_doing"])
+
+    def test_a_netbox_that_cannot_be_read_REFUSES(self, nb, monkeypatch):
+        monkeypatch.setattr(RT, "_netbox_facts", lambda l, h: {
+            "checked": False, "configured": True, "reason": "ConnectionError: refused"})
+        p = RT.plan("Lab", "r5", "left management")
+        assert p["ok"] is False
+        why = p["refused_by"]["netbox_mask"]
+        assert "NetBox could not be read (ConnectionError: refused)" in why
+        assert "not nothing there" in why
+
+    def test_no_netbox_configured_proceeds_the_control(self, nb, monkeypatch):
+        """A NetBox that is not configured holds nothing: refusing here would
+        block every retirement on an install without one."""
+        monkeypatch.setattr(RT, "_netbox_facts", lambda l, h: {
+            "checked": False, "configured": False,
+            "reason": "NetBox URL and API token are not configured"})
+        p = RT.plan("Lab", "r5", "left management")
+        assert p["ok"], p["refusals"]
+        assert "netbox_mask" not in p["refused_by"]
+
+    def test_a_context_nmas_never_wrote_proceeds_and_stays_in_front_of_a_person(self, nb):
+        """The operator's decision, 2026-09-29: NMAS cannot mask what it did not
+        write, so refusing would leave no path forward; the exposure it leaves
+        is a Needs attention row (the netbox-secrets reader)."""
+        nb["state"]["record"] = ({}, None)
+        p = RT.plan("Lab", "r5", "left management")
+        assert p["ok"], p["refusals"]
+        joined = " ".join(p["not_doing"])
+        assert "It stays a Needs attention row" in joined
 
     def test_a_clean_context_is_a_done_step_saying_so(self, nb):
         nb["fake"].store["dcim/devices"][0]["local_context_data"] = {}

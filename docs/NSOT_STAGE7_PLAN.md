@@ -837,7 +837,9 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
   sessions, NMAS's own pool, and its remedy is an operation that is stuck, which C98
   names and by design never forces; the rest are host or Proxmox state, whose action
   is the host command (C164's restated promise).
-  **BUILT 2026-09-29, awaiting a real run on the host.** The Device page's Persist…
+  **BUILT and ACCEPTED 2026-09-29** (the operator, on r2, the first persist through the
+  interface: sent `write memory`, read back the startup config carrying the running
+  `username` line, recorded as the operator via the Device page). The Device page's Persist…
   opens a preview that contacts no device: each step (save, read back, record), what
   persist does NOT do (no running change, no rotation, no lab boot file or router.db,
   no golden), the inventory gates by name, the busy gate, the hourly startup check's
@@ -1573,6 +1575,14 @@ screen already drew. What that retirement left, and what retire does now:
   by job (hand-kept on the host, C168; P.7 generates them).
 - **The result words every step**, and a test holds every step key the plan can make to
   its words.
+**THE TWO OTHER STATES, DECIDED 2026-09-29 afternoon (the operator), and built:** a
+context NMAS NEVER WROTE proceeds, named in Not-Done (NMAS cannot mask what it did not
+write, and refusing would block the retirement with no path forward), and the exposure it
+leaves is a Needs attention row from the new netbox-secrets reader, whose population is
+what NetBox HOLDS, until someone removes it in NetBox; a context NMAS COULD NOT CHECK (the
+record unreadable, or a configured NetBox that did not answer) REFUSES, naming why:
+could not read is not nothing there. A NetBox that is not configured holds nothing and
+proceeds (`tests/test_retire_gaps.py`, `tests/test_netbox_secrets_reader.py`).
 **DECIDED 2026-09-29 (the operator): neither option as written.** Reads work with writes
 off, so the preview checks whether the device's NetBox context holds an unmasked
 credential. If it does, the retirement is REFUSED, naming it (the `netbox_mask` gate):

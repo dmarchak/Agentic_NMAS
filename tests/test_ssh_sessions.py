@@ -347,3 +347,25 @@ class TestTheFlashListingIsARead:
         fs, _files, chosen = device.get_device_context({"ip": "192.0.2.1"})
         assert chosen == "bootflash:" and fs[0] == "bootflash:"
         assert sent and all(refusal(c) == "" for c in sent), sent
+
+
+class TestTheConnectBoundIsChosen:
+    """C205: the SSH connect bound was Netmiko's default 10 s, set by nothing,
+    while s3's connect measured 13.7 s, so a Save All gave up on a device that
+    was answering (the operator: "s3 was never failing, the tool gave up on
+    it"). It is chosen now, in the one opener, from the measurement."""
+
+    def test_every_session_carries_the_bound(self):
+        conn = C.open_ssh(_params(), owner="test")
+        assert conn.params["conn_timeout"] == C.CONNECT_TIMEOUT_S == 35
+        conn.disconnect()
+
+    def test_it_is_derived_from_the_slowest_measured_connect(self):
+        slowest_measured_s = 13.7        # s3, the 2026-09-29 Save All preview
+        assert C.CONNECT_TIMEOUT_S >= 2.5 * slowest_measured_s
+        assert C.CONNECT_TIMEOUT_S > 10, "not the library default nobody chose"
+
+    def test_a_callers_own_value_wins(self):
+        conn = C.open_ssh({**_params(), "conn_timeout": 5}, owner="test")
+        assert conn.params["conn_timeout"] == 5
+        conn.disconnect()

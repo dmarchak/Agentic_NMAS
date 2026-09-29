@@ -189,8 +189,6 @@ DECLARED = {
     "clear_snmp_traps": ("monitoring",),
     # A device, its files and backups.
     "run_command": ("device_state",),
-    "save_config": ("device_state",),
-    "save_to_startup": ("device_state",),
     "persist.apply": ("device_state",),
     "bulk_execute": ("device_state",),
     "bulk_reload": ("device_state", "inventory"),

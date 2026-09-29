@@ -29,11 +29,6 @@ def get_backup_index_file() -> str:
     return os.path.join(get_backups_dir(), "backup_index.json")
 
 
-def save_running_to_startup(conn) -> str:
-    output = conn.send_command_timing("write memory")
-    return output
-
-
 def get_running_config(conn) -> str:
     return conn.send_command("show running-config", read_timeout=30)
 

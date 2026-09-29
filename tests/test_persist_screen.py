@@ -89,10 +89,12 @@ def _gate(p, name):
 class TestThePreview:
     def test_every_step_and_what_it_will_not_do(self, lab):
         p = _preview(lab)
-        lines = p["targets"][0]["program"]["lines"]
-        assert lines[0].startswith("save r2's running config to its startup config")
-        assert any("read the startup config back" in l for l in lines)
-        assert any(l.startswith("record the outcome") for l in lines)
+        program = p["targets"][0]["program"]
+        assert program["lines"] == ["write memory (the device's own save)"], (
+            "the program is exactly what is SENT; the reads are not lines sent")
+        (note,) = program["notes"]
+        assert any("read the startup config back" in l for l in note["lines"])
+        assert any(l.startswith("record the outcome") for l in note["lines"])
         said = " ".join(i["text"] for i in p["what_not"]["items"])
         for claim in ("running configuration is not changed", "no credential is rotated",
                       "containerlab startup file and Oxidized's router.db are not written",
@@ -117,6 +119,14 @@ class TestThePreview:
         confirm = _preview(lab)["confirm"]
         assert "including any change not in its committed intent" in confirm.get("effect", "")
         assert confirm.get("button") == "Save and read back r2"
+
+    def test_the_driver_and_the_dialect_are_drawn_apart(self, lab):
+        """The operator, 2026-09-29: the preview named `driver: cisco_ios` for
+        r2, an IOS-XE router. The Netmiko driver and the config dialect are
+        different facts, and each is named for what it is."""
+        op = {o["name"]: o["value"] for o in _preview(lab)["targets"][0]["operands"]}
+        assert op["session driver (Netmiko)"] == "cisco_xe"
+        assert op["config dialect (the inventory's platform)"] == "cisco_iosxe"
 
     def test_the_last_hourly_check_is_drawn_with_its_age(self, lab):
         import time
@@ -154,6 +164,35 @@ class TestThePreview:
                 if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "refuse"
                 and n.args and isinstance(n.args[0], ast.Constant)}
         assert keys and keys == {k for k, _t, _d in PO.GATES}, keys
+
+
+class TestThePreviewAndTheResultAgree:
+    """The operator, 2026-09-29: the preview said "(3 line(s))" for one line
+    sent and two reads, while the result said "Sent to the device: write
+    memory". The preview and the result must not disagree about what the
+    operation does, and a count must say what it counts."""
+
+    def test_what_the_preview_says_is_sent_is_what_the_result_says_was(self, lab):
+        p = _preview(lab)
+        result = _apply(lab, p)
+        assert p["targets"][0]["program"]["lines"] == result["targets"][0]["sent"]["lines"]
+        html = render_preview(p)
+        assert "Sent to the device (1 line(s) sent)" in html, html[:2000]
+        assert "(3 line(s))" not in html
+
+    def test_a_captioned_program_that_does_not_say_what_it_counts_is_refused(self):
+        from modules.preview_confirm import PreviewIncomplete, build, gate
+
+        target = {"name": "x", "state": "s", "selectable": True, "select_data": {},
+                  "program": {"lines": ["a"], "caption": "Sent somewhere"},
+                  "operands": [{"name": "n", "value": "v"}],
+                  "gates": [gate("g", "pass")]}
+        with pytest.raises(PreviewIncomplete, match="what its count counts"):
+            build(action="x", summary="s", targets=[target], what_not=[],
+                  nothing_left_out="n", confirm={"statement": "s"})
+        target["program"]["unit"] = "line(s) sent"
+        build(action="x", summary="s", targets=[target], what_not=[],
+              nothing_left_out="n", confirm={"statement": "s"})
 
 
 class TestTheApply:

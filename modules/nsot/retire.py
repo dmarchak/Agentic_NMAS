@@ -113,7 +113,9 @@ def _netbox_facts(list_name: str, hostname: str) -> dict:
 
         ok, err, session, base = _nb_ready()
         if not ok:
-            return {"checked": False, "reason": err}
+            # NOT CONFIGURED is its own fact: there is no NetBox to hold
+            # anything. An unreachable one is not (below, `configured` True).
+            return {"checked": False, "configured": False, "reason": err}
         dev = _nb_first(session, base, "dcim/devices/", name=hostname)
         if not dev:
             return {"checked": True, "exists": False}
@@ -123,7 +125,7 @@ def _netbox_facts(list_name: str, hostname: str) -> dict:
                 "created_by_nmas": netbox_guard.was_created_by_nmas(
                     list_name, "dcim/devices", dev["id"])}
     except Exception as exc:                   # noqa: BLE001
-        return {"checked": False, "reason": str(exc)}
+        return {"checked": False, "configured": True, "reason": str(exc)}
 
 
 def plan(list_name: str, hostname: str, reason: str = "") -> dict:
@@ -288,6 +290,14 @@ def _mask_facts(nb: dict) -> dict:
     """What retire does about the credentials NetBox holds in the device's
     stored context (C139). A step only when NMAS may and can mask them;
     otherwise a Not-Done line saying exactly why they stay."""
+    # COULD NOT CHECK REFUSES (the operator's decision, 2026-09-29): "couldn't
+    # read it" is not "nothing there", absent against unreadable. A NetBox that
+    # is not configured at all holds nothing, and proceeds.
+    if not nb.get("checked") and nb.get("configured"):
+        return {"refuse": (f"NetBox could not be read ({nb.get('reason')}), so whether it "
+                           "still holds this device's credentials cannot be told, and once "
+                           "it leaves no import reaches it again (C139). Could not read is "
+                           "not nothing there: preview again when NetBox answers")}
     if not nb.get("exists"):
         return {}
     from modules.netbox_context_mask import assess_device
@@ -295,14 +305,21 @@ def _mask_facts(nb: dict) -> dict:
     a = assess_device(nb["device"])
     where = f"NetBox device {nb['id']}"
     if a["holds"] is None:
-        return {"not_doing": f"{where}: whether it still holds a credential in its "
-                             f"stored config context could not be checked ({a['why']})"}
+        return {"refuse": (f"{where}: whether it still holds a credential in its stored "
+                           f"config context could not be checked ({a['why']}). Could not "
+                           "check is not nothing there: preview again when it can be read")}
     if a["holds"] is False:
         return {"step": f"{where} holds no unmasked credential in its stored context: "
                         "nothing to mask", "done": True,
                 "kept": "It holds no unmasked credential."}
     if not a["may"]:
-        return {"not_doing": f"{where}'s stored config context is NOT masked: {a['why']}"}
+        # PROCEEDS (the operator's decision, 2026-09-29): NMAS cannot mask what
+        # it did not write, and refusing would block the retirement with no path
+        # forward. The exposure it leaves is a Needs attention row, from the
+        # netbox-secrets reader, until someone removes it in NetBox.
+        return {"not_doing": (f"{where}'s stored config context is NOT masked: {a['why']}. "
+                              "It stays a Needs attention row (NetBox holds a credential) "
+                              "until someone removes it in NetBox")}
     if not nb.get("writes"):
         # REFUSED, not proceeded past (the operator's decision, 2026-09-29):
         # reads work with writes off, so the tool knows the credential is

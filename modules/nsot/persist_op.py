@@ -100,6 +100,14 @@ def plan(list_name: str, hostname: str) -> dict:
 
     out["ip"] = row.get("ip", "")
     out["device_type"] = row.get("device_type", "")
+    # The session driver and the config dialect are different facts
+    # (`nsot/platform.py`), drawn apart so neither reads as the other: r2
+    # records driver `cisco_ios` and dialect `cisco_iosxe`.
+    try:
+        from modules.nsot.platform import platform_for_device
+        out["dialect"] = platform_for_device(row) if row else ""
+    except Exception as exc:                   # noqa: BLE001
+        out["dialect"] = f"not resolved ({exc})"
     out["username"] = row.get("username", "admin")
     out["last_check"] = _last_check(list_name, hostname)
     out["steps"] = [

@@ -89,8 +89,6 @@ GATES = {
     "bulk_delete_file": _g(C, "deletes files from devices' flash"),
     "upload_file": _g(C, "copies a file onto a device's flash"),
     "delete_file": _g(C, "deletes a file from a device's flash"),
-    "save_config": _g(C, "runs write memory: changes the device's startup config"),
-    "save_to_startup": _g(C, "copies running to startup: changes what the device boots"),
     "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
     "ai_chat": _g(C, "the assistant holds tools that push config until P.3 step 8 removes them"),
     "ai_agent_run": _g(C, "runs the background agent, which holds device tools until P.3 step 8"),

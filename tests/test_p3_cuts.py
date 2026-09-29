@@ -30,6 +30,10 @@ CUT = [
     # P.3 step 3 (D5): the unguarded golden replay, behind two buttons.
     ("POST", "/device/192.0.2.1/restore_golden_config"),
     ("POST", "/bulk_restore_golden_config"),
+    # C103 (2026-09-29, the operator's decision): the two saves that could
+    # report success without proving it. Persist is the one save now.
+    ("POST", "/device/192.0.2.1/save_config"),
+    ("POST", "/device/192.0.2.1/save_running_to_startup"),
 ]
 
 #: What a caller would have written to reach each one.
@@ -41,7 +45,7 @@ NEEDLES = ["/execute_command", "url_for('run_script'", "/run_script",
            "bulkRemoveStaticRoutes", "/configure/apply", "/netbox/sync",
            "/netbox/remove", "run_playbook_id", "runPlaybook",
            "showRestoreModal", "/restore_golden_config",
-           "url_for('restore_golden_config'"]
+           "url_for('restore_golden_config'", "url_for('save_to_startup'", "/save_running_to_startup"]
 
 
 def _client():

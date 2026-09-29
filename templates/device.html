@@ -49,11 +49,6 @@
     <span id="connectionStatus" class="badge bg-secondary">Checking...</span>
   </div>
   <div class="btn-group">
-    <!-- Save Device Config -->
-    <form method="post" action="{{ url_for('save_config', ip=device['ip']) }}" style="display:inline;">
-      <input type="hidden" name="active_tab" value="{{ tab }}">
-      <button type="submit" class="btn btn-outline-success">💾 Save Device Config</button>
-    </form>
     <!-- Restore Golden Config -->
     <a class="btn btn-outline-warning"
        href="{{ url_for('index', restore_head=device['hostname']) }}"
@@ -544,21 +539,6 @@
               </div>
               <button type="submit" class="btn btn-primary btn-sm w-100">
                 Backup Config
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      <div class="col-md-4">
-        <div class="card h-100">
-          <div class="card-body">
-            <h5 class="card-title">💾 Save to Startup</h5>
-            <p class="card-text">Save running-config to startup-config on device.</p>
-            <form method="post" action="{{ url_for('save_to_startup', ip=device['ip']) }}"
-                  onsubmit="return confirm('Save running config to startup config?');">
-              <button type="submit" class="btn btn-success btn-sm w-100">
-                Write Memory
               </button>
             </form>
           </div>
