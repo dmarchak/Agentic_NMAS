@@ -814,3 +814,47 @@ class TestADeclaredFileIsADecisionNotAGap:
         monkeypatch.setattr("sys.argv", ["x", "--url", "u", "--device", "r1"])
         assert helper.main() == helper.EXIT_OK
         assert "r1\tlabs/lab/configs\tdefault" in capsys.readouterr().out
+
+
+class TestAnUnknownLabIsRefusedNotDefaulted:
+    """C50: a manifest `clab_lab` naming a lab `clab_labs` does not hold (a
+    typo, or a lab nobody described) resolved to rcn-lab1's paths, and the
+    `named: False` flag saying so was read by nothing. So a persist would write
+    that device's startup file into `labs/lab/configs/` and check rcn-lab1's
+    C8000v launch patch, and pass: the map's own hazard, reachable through the
+    map. It resolves to NO paths now, with the cause named."""
+
+    @pytest.fixture
+    def typo(self, labs, monkeypatch):
+        monkeypatch.setattr(labs, "_lab_of",
+                            lambda ln, host: {"r6": "r6", "r7": "r6x"}.get(host, "default"))
+        return labs
+
+    def test_the_resolver_gives_no_paths_and_says_why(self, typo):
+        t = typo.clab_target_for("Default", "r7")
+        assert t["configs_dir"] == "" and t["launch_patch"] == "" and t["sync_script"] == ""
+        assert t["lab"] == "r6x" and t["named"] is False
+        assert "'r6x'" in t["why"] and "not in clab_labs" in t["why"] and "C50" in t["why"]
+        assert "labs/lab" not in str(t), "nothing of the default lab's paths"
+
+    def test_persist_refuses_before_the_sync_naming_the_lab(self, typo, monkeypatch):
+        calls = []
+        monkeypatch.setattr(typo, "save_on_device", lambda *a, **k: {"ok": True})
+        for name in ("update_oxidized_row", "reload_oxidized", "confirm_fetch"):
+            monkeypatch.setattr(typo, name, lambda *a, **k: {"ok": True})
+        monkeypatch.setattr(typo, "run_sync", lambda **k: calls.append(k) or {"ok": True})
+        out = typo.persist({"device": "r7", "state": typo.ROTATED_PENDING_PERSIST,
+                            "steps": []},
+                           mgmt_ip="203.0.113.17", username="admin", password="pw",
+                           hostname="r7", new_hash="9 $9$s$h", after_iso=typo.utc_now(),
+                           platform="cisco_iosxe", list_name="Default")
+        assert calls == [], "nothing is synced into another lab's directory"
+        assert out["state"] == typo.ROTATED_UNVERIFIED
+        assert out["persistence"][-1]["name"] == "clab_target"
+        assert "'r6x'" in out["reason"] and "not in clab_labs" in out["reason"]
+
+    def test_the_known_labs_are_unchanged_the_control(self, typo):
+        assert typo.clab_target_for("Default", "r6")["configs_dir"] == "labs/r6/configs"
+        t = typo.clab_target_for("Default", "r1")
+        assert t["lab"] == "default" and t["configs_dir"] == "labs/lab/configs"
+        assert t["named"] is True

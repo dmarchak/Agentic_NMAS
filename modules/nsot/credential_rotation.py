@@ -2172,9 +2172,20 @@ def clab_target_for(list_name: str, hostname: str) -> dict:
     }
     labs = get_setting("clab_labs", {}) or {}
     name = _lab_of(list_name, hostname)
-    if name == DEFAULT_LAB or name not in labs:
-        return {**defaults, "lab": DEFAULT_LAB,
-                "named": name in labs or name == DEFAULT_LAB}
+    if name == DEFAULT_LAB:
+        return {**defaults, "lab": DEFAULT_LAB, "named": True}
+    if name not in labs:
+        # C50: a lab the map does not know (a typo, or a lab nobody described)
+        # resolved to rcn-lab1's paths, so a persist wrote into that lab's
+        # directory and checked rcn-lab1's C8000v launch patch, and passed.
+        # No paths now: every consumer refuses an empty configs_dir or
+        # launch_patch, and `why` names the cause. The host still falls back
+        # (one containerlab VM); the paths never do.
+        return {"host": defaults["host"], "configs_dir": "", "launch_patch": "",
+                "sync_script": "", "lab": name, "named": False,
+                "why": (f"lab {name!r} (the manifest's clab_lab for {hostname}) is not in "
+                        "clab_labs: a typo, or a lab nobody described. Refusing rather than "
+                        "resolving it to the default lab's paths (C50)")}
 
     lab = labs[name] or {}
     # The host falls back: one containerlab VM, several labs on it. The three
@@ -2306,9 +2317,9 @@ def sync_targets(list_name: str) -> dict:
             # devices nobody thought about.
             gaps.append("platform")
         if gaps:
-            row["error"] = (f"lab {target['lab']!r} names no "
-                            f"{' and no '.join(gaps)}, so there is nowhere "
-                            "safe to write or verify this device")
+            row["error"] = target.get("why") or (
+                f"lab {target['lab']!r} names no {' and no '.join(gaps)}, so there is "
+                "nowhere safe to write or verify this device")
             incomplete.append(name)
         rows.append(row)
 
@@ -2910,13 +2921,16 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
     # not forwarded.
     missing = [k for k in ("configs_dir", "launch_patch") if not target[k]]
     if missing:
-        result["reason"] = (
+        result["reason"] = target.get("why") or (
             f"lab {target['lab']!r} names no {' and no '.join(missing)} for "
             f"{hostname}. Refusing rather than falling back to the default "
             "lab's paths: a launch patch from another lab would be read, "
             "found to carry the user-skip, and the check would pass about a "
             "file that is not the one booting this device.")
-        _stage("clab_target", False)
+        # A dict, as every stage's outcome is: `_stage()` unpacks it, and the
+        # bare False this passed raised TypeError, so the refusal crashed
+        # instead of refusing (found by C50's test, 2026-09-29).
+        _stage("clab_target", {"ok": False, "error": result["reason"]})
         return result
     kw.setdefault("clab", target["host"])
     kw.setdefault("remote_dir", target["configs_dir"])
