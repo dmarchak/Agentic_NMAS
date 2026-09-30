@@ -4010,6 +4010,10 @@ integrations need, derived from the connectors the network uses, with ONE owner.
     the gap, else Propose; an excluded section is no row.
   - **Found by its own tests:** the proposal's effect called a section a device already held
     "gained". Fixed: only a section its own intent lacks is inherited.
+  - **Found by the operator's review (C253):** LLDP and CDP were reported held by no device
+    while eight held them; the detector read a key no parser writes. Fixed, with every
+    detector now held to the real fleet's intent, and the platform defaults (C254) recorded
+    as not measured until the operator's probe reads them.
   - **The operator's acceptance on the host:**
     1. Propose on the lab's network;
     2. Apply to r6 from its row;

@@ -27,6 +27,7 @@ they are; a derived section replaces the committed one.
 import hashlib
 import json
 import logging
+import os
 
 log = logging.getLogger(__name__)
 
@@ -68,11 +69,36 @@ def section_value(name: str, intent: dict):
         v = intent.get("telemetry")
         if v:
             return {"telemetry": v}
-    elif name in ("lldp", "cdp"):
-        v = intent.get(name)
-        if not _empty(v):
-            return {name: v}
+    elif name in FLAG_SECTIONS:
+        # The parsers store these as boolean FLAGS (`_h_flag`: `flags: {"lldp
+        # run": True}`, `no lldp run` as False). The first version read
+        # `intent["lldp"]`, a key no parser writes, taken from the design
+        # document, and reported "no device's committed intent holds it" for
+        # eight devices that did (the operator, 2026-09-30).
+        flags = intent.get("flags") or {}
+        flag = FLAG_SECTIONS[name]
+        if flag in flags:
+            return {"flags": {flag: bool(flags[flag])}}
     return None
+
+
+#: The sections the parsers store as boolean flags, by the flag's key.
+FLAG_SECTIONS = {"lldp": "lldp run", "cdp": "cdp run"}
+
+DEFAULTS_FILE = os.path.join(os.path.dirname(__file__), "platform_defaults.json")
+
+
+def platform_default(dialect: str, flag: str, path: str = None) -> dict:
+    """``{"state": "on"|"off"|"not_measured", ...}``: whether *flag* is ON on
+    *dialect* when its line is ABSENT, as MEASURED (platform_defaults.json).
+    An unreadable record is not measured, never on or off."""
+    path = path or DEFAULTS_FILE                   # read at call time, not definition
+    try:
+        with open(path, encoding="utf-8") as fh:
+            got = ((json.load(fh).get("by_dialect") or {}).get(dialect) or {}).get(flag)
+    except (OSError, ValueError) as exc:
+        return {"state": "not_measured", "why": f"the defaults record could not be read: {exc}"}
+    return dict(got) if isinstance(got, dict) and got.get("state") else {"state": "not_measured"}
 
 
 def _canon(v) -> str:
@@ -175,6 +201,20 @@ def propose(list_name: str, get=None) -> dict:
         section = {"source": source, "data": only["value"]}
         if any(plat not in holder_plats for _h, plat in lacking):
             section["platforms"] = holder_plats
+        if name in FLAG_SECTIONS:
+            # An ABSENT line may be "on by default" (the operator: CDP on vIOS).
+            # Each platform a non-holder is on says what its absence means, as
+            # MEASURED; the section still applies only where devices write the
+            # line, so a default line is never pushed where it is never printed.
+            flag = FLAG_SECTIONS[name]
+            defaults = {}
+            for h, plat in lacking:
+                d = defaults.setdefault(plat, dict(platform_default(plat, flag), devices=[]))
+                d["devices"].append(h)
+            row["defaults"] = defaults
+            lacking = [(h, plat) for h, plat in lacking
+                       if not (defaults[plat]["state"] == "on"
+                               and only["value"]["flags"][flag] is True)]
         refs = _p.secret_refs(only["value"])
         if refs:
             agree = _secret_agreement(list_name, refs, holders)

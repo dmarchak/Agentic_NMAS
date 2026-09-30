@@ -2055,6 +2055,25 @@ def profile_propose_preview(p: dict, diff: list, *, request) -> dict:
                          "lines": [f"held by {', '.join(v['devices'])}: "
                                    + json.dumps(v["value"], sort_keys=True)
                                    for v in s.get("variants") or []]})
+    for s in proposed:
+        # A flag absent from a device: on by default, off, or not measured
+        # (platform_defaults.json), said per platform, never assumed.
+        for plat, d in sorted((s.get("defaults") or {}).items()):
+            devs = ", ".join(d.get("devices") or [])
+            applies = not s.get("platforms") or plat in s["platforms"]
+            meaning = {"on": f"it is ON by default there ({d.get('evidence', 'measured')}), so "
+                             "they hold it without the line",
+                       "off": f"it is OFF by default there ({d.get('evidence', 'measured')}), so "
+                              "they do not run it"}.get(
+                d["state"], "whether it is on by default there is NOT MEASURED"
+                            + (f" (measure on {d['measure_on']})" if d.get("measure_on") else ""))
+            what_not.append({"target": plat, "kind": "platform_default",
+                             "text": (f"{_section_words(s['section'])} is not written on {devs} "
+                                      f"({plat}): {meaning}. "
+                                      + ("They inherit the line." if applies and d["state"] != "on"
+                                         else "The section is not applied to "
+                                              f"{plat}: nothing is added there.")),
+                             "lines": []})
     for sk in p.get("skipped") or []:
         what_not.append({"target": sk["device"], "kind": "not_read",
                          "text": f"Not read: {sk['why']}", "lines": []})

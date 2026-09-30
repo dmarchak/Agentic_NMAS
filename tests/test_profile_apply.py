@@ -24,7 +24,11 @@ def _r6_config():
     # Every SNMP line, `snmp ifmib ifindex persist` included: a partial section
     # is a second VERSION of the fleet's SNMP, which the proposal (rightly)
     # refuses to reconcile (measured: it did, on the first run of this test).
-    lines = [l for l in text.splitlines() if not l.lstrip().startswith("snmp")]
+    lines = [l for l in text.splitlines() if not l.lstrip().startswith("snmp")
+             # r6 carries neither discovery protocol (the operator, measured on
+             # Default's repository, 2026-09-30), so it is missing from the
+             # LLDP-built topology.
+             and l.strip() not in ("lldp run", "cdp run")]
     return "\n".join(l.replace("hostname r2", "hostname r6") if l.startswith("hostname") else l
                      for l in lines) + "\n"
 
@@ -39,6 +43,7 @@ def lab(monkeypatch, tmp_path):
     lab = build_capture_lab(monkeypatch, tmp_path)
     r6 = _r6_config()
     assert "snmp" not in r6 and "snmp-server" in lab["captured"]
+    assert "lldp run" not in r6 and "lldp run" in lab["captured"]
     save_golden("Lab", [GoldenItem("r6", r6, "203.0.113.16", platform="cisco_iosxe")],
                 source="onboarding", actor="t", allow_new=True, baseline=False)
     hostvars.write_committed(lab["repo"], get_parser("cisco_iosxe").parse(r6))
@@ -79,7 +84,7 @@ class TestThePropose:
         snmp = next(s for s in p["sections"] if s["section"] == "snmp")
         assert snmp["proposed"] and snmp["holders"] == ["r2"] and snmp["inherit"] == ["r6"]
         assert p["doc"]["sections"]["snmp"]["source"] == "prometheus"
-        assert {"device": "r6", "inherits": ["snmp"]} in p["effect"]
+        assert {"device": "r6", "inherits": ["cdp", "lldp", "snmp"]} in p["effect"]
         assert "secrets" not in pp.public(p)
 
     def test_a_connector_not_configured_proposes_nothing_for_it_and_says_why(self, lab):
@@ -166,7 +171,8 @@ class TestTheScopedDeploy:
         (d,) = body["devices"]
         assert body["scope"] == "profile" and not d.get("refused"), d.get("refused")
         sent = [c.strip() for c in d["commands"] if c.strip() != "exit"]
-        assert sent and all(c.startswith("snmp") for c in sent), sent
+        # The profile's lines only: SNMP, and the discovery flags r6 lacks.
+        assert sent and all(c.startswith("snmp") or c in ("lldp run", "cdp run") for c in sent), sent
         held = [r["line"].strip() for r in d["profile_scope"]["held_back"]]
         assert "ntp server 192.0.2.99" in held
         assert not any("192.0.2.99" in c for c in d["commands"])
@@ -253,3 +259,128 @@ class TestTheShippedClients:
         base = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
         assert "js/nmas_profile.js" in base
         assert "showToast" not in self._js("static/js/nmas_profile.js")
+
+
+# ------------------------------------------------ LLDP, CDP and platform defaults
+
+FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
+#: Each section's presence, read from the CONFIG TEXT, never through the parser
+#: or the detector under test (the control's expectation must not share their source).
+MARKER = {"snmp": r"^snmp-server ", "syslog": r"^logging host ", "ntp": r"^ntp server ",
+          "telemetry": r"^telemetry ietf subscription ", "lldp": r"^lldp run$",
+          "cdp": r"^cdp run$"}
+
+
+class TestEveryDetectorReadsWhatTheParserWrites:
+    """The operator, 2026-09-30: "Not proposed, LLDP: no device's committed
+    intent holds it", while eight devices' intent held `lldp run: true`. The
+    detector read `intent["lldp"]`, a key from the design document that no
+    parser writes (they store `flags: {"lldp run": True}`). So every
+    section's detector is held to the REAL intent of the nine real configs."""
+
+    def test_each_detector_finds_exactly_the_devices_whose_config_has_it(self):
+        from modules.nsot.parsers import get_parser
+        from modules.nsot.profile_propose import DERIVED, section_value
+        seen, bad = {s: 0 for s in DERIVED}, []
+        for name in sorted(os.listdir(FLEET)):
+            text = open(os.path.join(FLEET, name), encoding="utf-8").read()
+            intent = get_parser("cisco_iosxe" if name.startswith("r") else "cisco_ios").parse(text)
+            for sec in DERIVED:
+                has = bool(re.search(MARKER[sec], text, re.M))
+                seen[sec] += has
+                if has != (section_value(sec, intent) is not None):
+                    bad.append((name, sec, has))
+        assert bad == []
+        # The floor: every section is on some real device, so none passes vacuously.
+        assert all(n >= 1 for n in seen.values()), seen
+        assert seen["lldp"] == 9 and seen["cdp"] == 5          # r1-r5 and s1-s4; r1-r5
+
+    def test_an_explicit_no_is_its_own_version(self):
+        from modules.nsot.profile_propose import section_value
+        assert section_value("lldp", {"flags": {"lldp run": False}}) == {"flags": {"lldp run": False}}
+        assert section_value("cdp", {"flags": {"aaa new-model": True}}) is None
+
+    def test_lldp_and_cdp_are_proposed_and_r6_inherits_them(self, lab):
+        from modules.nsot import profile_propose as pp
+        p = pp.propose("Lab")
+        rows = {s["section"]: s for s in p["sections"]}
+        assert rows["lldp"]["proposed"] and rows["lldp"]["inherit"] == ["r6"]
+        assert rows["cdp"]["proposed"] and rows["cdp"]["inherit"] == ["r6"]
+        assert p["doc"]["sections"]["lldp"]["data"] == {"flags": {"lldp run": True}}
+
+    def test_the_scoped_apply_to_r6_sends_lldp_and_cdp(self, lab):
+        _commit_proposal()
+        d = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
+                                                     "list_name": "Lab"}).get_json()["devices"][0]
+        sent = [c.strip() for c in d["commands"]]
+        assert "lldp run" in sent and "cdp run" in sent and "snmp-server contact noc" in sent
+
+
+def _with_s1(monkeypatch):
+    """The lab's fleet plus s1 from its REAL config (cisco_ios, `lldp run`, no
+    `cdp run`), so a second platform's absence can be judged."""
+    from modules.nsot import profile_propose as pp
+    from modules.nsot.parsers import get_parser
+    real = pp._fleet
+    s1 = get_parser("cisco_ios").parse(open(os.path.join(FLEET, "s1.cfg"), encoding="utf-8").read())
+
+    def fleet(list_name):
+        out, skipped = real(list_name)
+        return out + [("s1", "cisco_ios", "", s1)], skipped
+    monkeypatch.setattr(pp, "_fleet", fleet)
+
+
+class TestAnAbsentLineMayBeOnByDefault:
+    """The operator, 2026-09-30: CDP is written on r1-r4 (IOS-XE) and absent on
+    s1-s4 (vIOS); an absent line can mean on by default. The default is
+    MEASURED per platform (platform_defaults.json), never assumed, and a
+    section applies only where devices write its line, so a default line is
+    never pushed onto a platform that never prints it."""
+
+    def test_the_record_measures_before_it_claims(self):
+        from modules.nsot import profile_propose as pp
+        doc = json.load(open(pp.DEFAULTS_FILE, encoding="utf-8"))
+        states = [v["state"] for plat in doc["by_dialect"].values() for v in plat.values()]
+        assert states and set(states) <= {"on", "off", "not_measured"}
+        for plat in doc["by_dialect"].values():
+            for flag, v in plat.items():
+                if v["state"] != "not_measured":        # a verdict carries its evidence
+                    assert v.get("evidence") and v.get("device") and v.get("measured_at"), flag
+        assert "nmas-capture-output" in doc["how"]
+
+    def test_cdp_absent_on_a_switch_is_not_measured_and_not_applied_there(self, lab, monkeypatch):
+        from modules.nsot import profile_propose as pp
+        from modules.preview_confirm import profile_propose_preview
+        _with_s1(monkeypatch)
+        p = pp.public(pp.propose("Lab"))
+        cdp = next(s for s in p["sections"] if s["section"] == "cdp")
+        assert cdp["platforms"] == ["cisco_iosxe"] and cdp["inherit"] == ["r6"]
+        assert cdp["defaults"]["cisco_ios"]["state"] == "not_measured"
+        assert cdp["defaults"]["cisco_ios"]["devices"] == ["s1"]
+        lldp = next(s for s in p["sections"] if s["section"] == "lldp")
+        assert lldp["holders"] == ["r2", "s1"] and not lldp["platforms"]   # both platforms
+        import app as A
+        with A.app.test_request_context("/"):
+            pv = profile_propose_preview(p, pp.document_diff(p), request=__import__("flask").request)
+        words = [w["text"] for w in pv["what_not"]["items"] if w["kind"] == "platform_default"]
+        assert any("CDP is not written on s1 (cisco_ios): whether it is on by default there is "
+                   "NOT MEASURED" in w and "not applied to cisco_ios" in w for w in words), words
+
+    def test_a_measured_default_on_is_said_and_still_never_pushed(self, lab, monkeypatch, tmp_path):
+        from modules.nsot import profile_propose as pp
+        _with_s1(monkeypatch)
+        rec = tmp_path / "defaults.json"
+        rec.write_text(json.dumps({"version": 1, "how": "x", "by_dialect": {"cisco_ios": {
+            "cdp run": {"state": "on", "device": "s1", "measured_at": "2026-09-30",
+                        "evidence": "s1: show cdp: Global CDP information"}}}}))
+        monkeypatch.setattr(pp, "DEFAULTS_FILE", str(rec))
+        cdp = next(s for s in pp.propose("Lab")["sections"] if s["section"] == "cdp")
+        assert cdp["defaults"]["cisco_ios"]["state"] == "on"
+        assert cdp["platforms"] == ["cisco_iosxe"] and "s1" not in cdp["inherit"]
+
+    def test_an_unreadable_record_is_not_measured_never_on_or_off(self, tmp_path):
+        from modules.nsot import profile_propose as pp
+        bad = tmp_path / "broken.json"
+        bad.write_text("{")
+        got = pp.platform_default("cisco_ios", "cdp run", str(bad))
+        assert got["state"] == "not_measured" and "could not be read" in got["why"]

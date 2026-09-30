@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "what": "Whether a feature the monitoring profile covers is ON when its line is ABSENT from a platform's running configuration. An absent line can mean 'on by default', not 'disabled'. Measured per platform, never assumed; a state not measured is 'not_measured', and nothing reads it as on or off (the rule of removal_measured.json).",
+  "how": "On a device of the platform whose running configuration does NOT carry the line, read it with the tool's read-only probe, on the NMAS host as the service user: scripts/nmas-capture-output --device <name> --command 'show cdp' --command 'show lldp' --out /tmp/nmas-defaults . `show cdp` answers '% CDP is not enabled' or 'Global CDP information'; `show lldp` answers '% LLDP is not enabled' or 'Global LLDP Information'. Record the verdict with the device, the platform, the capture's date and its first line.",
+  "by_dialect": {
+    "cisco_ios": {
+      "cdp run": {"state": "not_measured",
+                  "measure_on": "s1 (vIOS L2; its configuration carries no `cdp run`)"},
+      "lldp run": {"state": "not_measured",
+                   "measure_on": "no device of this platform lacks `lldp run` today (s1-s4 all carry it), so it cannot be measured on the current fleet"}
+    },
+    "cisco_iosxe": {
+      "cdp run": {"state": "not_measured",
+                  "measure_on": "r6 (C8000V; its configuration carries neither line)"},
+      "lldp run": {"state": "not_measured",
+                   "measure_on": "r6 (C8000V; its configuration carries neither line)"}
+    }
+  },
+  "observations": [
+    {"what": "r1 (cisco_iosxe) carries `cdp run`, and its `show cdp neighbors detail` lists 0 entries while its `show lldp neighbors detail` lists s3 and s1 on the same links (captured read-only 2026-09-27, tests/fixtures/operational/). No CDP adjacency forms between r1 and the switches; whether the switches run CDP, or r1's interfaces do not enable it, is not established. `show cdp interface` on r1 and `show cdp` on s1 settle it.",
+     "verdict": "none"}
+  ]
+}

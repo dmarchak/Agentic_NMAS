@@ -28,7 +28,9 @@ Being in the list's repository makes it per network with no new store. The conne
 settings it derives from become per network with P.8.
 
 **It holds data, never configuration text.** Each section has the shape the parsers
-already emit into `host_vars` (`snmp`, `logging.syslog`, `ntp_servers`, `lldp`, `cdp`,
+already emit into `host_vars` (`snmp`, `logging.syslog`, `ntp_servers`, the `lldp run` and
+`cdp run` FLAGS under `flags` (C253: this line once said `lldp` and `cdp`, a shape no parser
+writes),
 `telemetry`). The PLATFORM TEMPLATES render it, so IOS and IOS-XE syntax differences stay
 where they already live, and nothing in the profile is platform text. A section carries
 `platforms:` where it applies to some platforms only (telemetry: `cisco_iosxe`) and
@@ -46,7 +48,7 @@ commit). It never writes itself.
 | Syslog | Loki configured; the syslog receiver's address (the host's rsyslog, which writes `/var/log/network/<address>.log` for Promtail) | `hosts`, `trap: notifications`, the source interface RULE (below) |
 | Heartbeat | the heartbeat alert rules exist (P.1's, P.7's generated ones) | `heartbeat: 300` (the NMAS-HEARTBEAT applet) |
 | NTP | a per-network setting (no connector) | `ntp_servers` |
-| LLDP, CDP | always (the topology and the `lldp` job read them) | `lldp: run`, `cdp: run` |
+| LLDP, CDP | always (the topology and the `lldp` job read them) | `flags: {"lldp run": true}`, `flags: {"cdp run": true}`; applied only to the platforms whose devices write the line, and an absent line read from the MEASURED defaults (`modules/nsot/platform_defaults.json`, C254) |
 | Telemetry | the Telegraf endpoint, a new per-network setting (it is not a setting today) | the fleet's measured subscriptions (101 CPU, 102 interfaces), receiver from the setting; `platforms: [cisco_iosxe]` |
 | IP SLA | a POLICY, never addresses (section 6) | `policy`, `type`, `frequency`; `roles: [router]` |
 
