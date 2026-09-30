@@ -190,8 +190,15 @@ person arrives with three different questions.
   - the product name;
   - **the network switcher**: the current device list, and which other list to show;
   - **the device jump box** (section 8);
-  - the **status bar**: integration health, the running version and its CI verdict, and the
-    live channel;
+  - the **status bar**: integration health and the live channel. **The running commit and its
+    CI verdict left it on 2026-09-30** (the operator: the bar was cramped). They live under
+    **Help > About** and in **Settings**, with the version. Their reason stays, as rows:
+    **quiet when fine, loud when not.** Needs attention draws a row when the running commit
+    is not CI-verified (the `ci-verdict` reader's failed or cancelled verdict, which is
+    already a source), and a row when the host runs behind what has been pushed (the
+    running commit is an ancestor of `origin/main` and not its tip, named with the count of
+    commits behind and the deploy command). A mixed version stays the running-version row
+    it is today;
   - the **AI assistant** button;
   - **identity**: who you are, or "not identified: you can look, not change". The theme toggle
     lives in this menu.
@@ -742,15 +749,9 @@ and two ES-module islands. No build step.**
 - **What it buys:** a component model on the client, client-side navigation without a
   round trip, and a larger ecosystem of components.
 - **What it costs:**
-  1. **A toolchain none of the three machines has:** npm, a lockfile and a bundler on the
-     laptop and in CI. Then either the host builds (it has no npm) or built bundles are
-     committed.
-  2. **A dependency tree the vendoring discipline cannot hold.** Each library today is a
-     named, hash-pinned file checked against its registry. A bundler's dev tree is hundreds
-     of packages. It needs its own audit posture, which this project does not have.
-  3. **Every screen rewritten as components,** and the back end made JSON-only where it
+  1. **Every screen rewritten as components,** and the back end made JSON-only where it
      renders pages today.
-  4. **The guarantees rebuilt in a second test stack.** The 67 test files that read or
+  2. **The guarantees rebuilt in a second test stack.** The 67 test files that read or
      execute the shipped pages are retired. The mechanised checks built on them (payload to
      render, reachability, requests resolve, results drawn, concepts taught) are rebuilt for
      components, or lost. They are where C55, C85, C121 and others were caught.
@@ -764,25 +765,36 @@ Like A, but the islands get a component model with no bundler (both vendored, ab
 It is worth choosing only if the builder's state outgrows an Alpine component. The spike
 below decides.
 
+**Corrected by the operator (2026-09-30): two reasons removed from B's costs, because they are
+not the kind that decide a front end.** "None of the machines has npm" is an environment
+convenience; npm can be installed. And "a bundler's dependency tree cannot be hash-pinned"
+was wrong: npm's lockfile records an integrity hash for every package. Neither weighs
+against B any longer.
+
 **Recommendation: A**, with C held for the islands if the spike shows the builder needs it.
-- **The large majority of the screens are server-shaped,** which A does best: fewer moving
-  parts, fragments the tests can read directly, and the live-data contract already built.
-- **The two client-heavy screens are islands in every option,** so a framework would buy
-  little where it matters and cost the most where the project's guarantees live.
-- **A is also the route to `script-src` without `unsafe-inline`.**
-- **"Rather rewire than ship a compromise" does not argue for B here:** nothing in the
-  mockups is built worse by A.
+The argument that carries it is the front-end one:
+- **The large majority of the screens are server-shaped** (lists, forms, paged tables and
+  fragments that change when the server announces), and A builds exactly those well.
+- **The two client-heavy pieces, the panel renderer and the query builder, are separate
+  modules in every option,** so a framework's component model buys little where the
+  screens are hard.
+- **Nothing in the mockups is built worse by A,** so "rather rewire than ship a compromise"
+  does not argue for B.
 
-**What the recommendation rests on, stated so it can be checked: a spike before commitment.**
-Build the device page's Overview and its Monitoring tab in A, rendering `rcn-lab1-snmp`'s
-three device panels natively. Measure:
-- page weight, and time to interactive through the tunnel and on a phone;
-- that the CSP holds with no `unsafe-eval`;
-- how many lines each part took;
-- that a fragment test and a node test each catch a planted defect.
+Secondary, and not deciding: A keeps the mechanised checks reading what the browser gets,
+and it is the route to `script-src` without `unsafe-inline`.
 
-If A builds it badly, the spike says where, and B or C is costed against that screen rather
-than argued in general.
+**The spike: APPROVED (the operator, 2026-09-30).** Build the device page's Overview and its
+Monitoring tab in A, in the real app with real data, rendering `rcn-lab1-snmp`'s device
+panels natively. **It is judged FIRST on what the operator judges it on:**
+- does it look like the mockup;
+- do the menus and the live updates feel smooth;
+- does it work well on the operator's phone.
+
+**Then on the technical measures:** page weight, the CSP (no `unsafe-eval`), lines of code,
+and whether the tests catch a planted defect. The operator uses it and decides before the
+rest of the redesign commits to A. If A builds it badly, the spike says where, and B or C is
+costed against that screen rather than argued in general.
 
 **No time forecast yet, deliberately.** A forecast is made from a finished stage of the same
 kind (NSOT_WRITEUP's rule), and no front-end rebuild has finished here. The spike is the
@@ -1053,8 +1065,9 @@ both, with costs.
     device template variable, named by UID (for Default: `rcn-lab1-snmp`, "RCN Lab 1 -
     SNMP per device"), and a second setting naming the VARIABLE the app sets (for Default:
     `device`, whose values come from `label_values(ifOperStatus{role=~"$role"}, device)`).
-    - **Only panels whose queries use the variable are drawn** (3 of `rcn-lab1-snmp`'s 8:
-      throughput, interface state, errors and discards). A panel that does not select one
+    - **Only panels whose queries use the variable are drawn** (4 of `rcn-lab1-snmp`'s 8:
+      Devices offline, throughput, interface state, errors and discards; first counted as
+      3, missing the regex form, and corrected the same day). A panel that does not select one
       device shows the fleet, and drawing it under one device's name would be a wrong thing
       that looks right. The count left out is stated, and they are on Monitoring.
     - **A device dashboard with no such variable** draws no panels and says so on the
@@ -1062,6 +1075,16 @@ both, with costs.
       falls back to the whole fleet.
     - **A device the variable's values do not list** (Prometheus has never seen it) is its
       own state: "Prometheus holds no series for r7", never an empty chart.
+    - **A selector on the device page too** (the operator, 2026-09-30), listing ONLY the
+      dashboards that have the configured device variable, defaulting to the setting, and
+      changing the view, never the default: the Monitoring page's behaviour.
+    - **The excluded panels are listed, each with its reason** ("this panel's query does not
+      select by device", naming the query), so the operator can fix them in Grafana; a
+      fixed panel then appears on every device page with no change here. For
+      `rcn-lab1-snmp`, measured: Devices online, Interface History, CPU Utilization (5 min
+      avg) and LinkDown Logs. The rule is mechanical: a panel is drawn when a query
+      references the variable (`device="$device"`, or `device=~"$device"`, which with one
+      device set selects that device).
   - **By UID, never by title**, so a rename in Grafana breaks nothing. A configured UID that
     Grafana no longer holds is a **Needs attention row** naming the setting, the UID and the
     dashboards it does hold, never a blank panel.
@@ -1144,6 +1167,67 @@ both, with costs.
     page (they appear in that device's Monitoring or Logs tab).
   - **Both pass all five questions:** a query reads; masking applies to log lines; every
     query is bounded (range, step, series and line limits, a timeout).
+- **Time ranges: presets, plus a custom range** (the operator, 2026-09-30: 15 min / 1 h /
+  24 h / 7 d is not enough). One picker serves the dashboards, the query screens and the
+  device page.
+  - **Relative:** "last N minutes, hours or days", typed (`last 90 minutes`, `last 3 days`).
+  - **Absolute:** a from and a to, each a date and a time, shown in UTC with the browser's
+    local time beside it.
+  - **Bounded, with the limits said on the picker, measured on the host (2026-09-30):**
+    | Backend | Longest range it serves | Other limits |
+    |---|---|---|
+    | Loki 3.3 | 30 days 1 hour (`max_query_length: 30d1h`); logs are kept 30 days (`retention_period: 30d`) | 5,000 lines a query (`max_entries_limit_per_query`), 500 series, a 1-minute timeout, split by the hour |
+    | Prometheus 2.45 | its retention, 90 days or 100 GiB | 50,000,000 samples a query, a 2-minute timeout, and Prometheus's own 11,000 points per series |
+    | Thanos 0.37 (the data lake) | its retention, not measured (the compactor's configuration is not readable through Grafana) | a 2-minute timeout |
+  - **The step widens with the range,** so a long range never asks for an unmanageable
+    series: step = the range divided by at most 1,000 points, rounded up to a readable unit
+    (15 s at 1 hour, 2 minutes at 24 hours, 15 minutes at 7 days, 1 hour at 30 days, 3 hours
+    at 90 days), never below the data source's scrape interval. The step in use is shown
+    beside the range.
+  - **A range past a limit is REFUSED, naming the limit** ("Loki serves at most 30 days 1
+    hour; this range is 45 days"), never silently trimmed: a trimmed answer reads as the
+    whole range.
+- **Live topology, on the Monitoring page (the operator, 2026-09-30).**
+  - **Why the dashboard's topology panel does not render, measured.** `rcn-lab-overview`'s
+    "Live topology (NetworkX / LLDP)" is an HTML text panel. Its `<img>` points at the
+    topology service's PUBLIC tunnel hostname (`topology.<domain>/topology.svg?cb=$__to`),
+    not at port 8088. From outside the LAN that URL answers 200 with the SVG and no login,
+    so the reachability guess was not the cause. It does not render in the app for two
+    reasons of the app's own: text panels are never run in the app's page (the renderer's
+    rule above), and the app's CSP (`img-src 'self' data: blob:`) would refuse the
+    cross-origin image anyway. If it is also blank inside Grafana itself, the discriminator
+    is opening that image URL alone in the same browser. The public URL is its own finding
+    (C231: the network's map on the internet, no login).
+  - **The two options, costed:**
+    - **(a) The service's SVG, fetched server-side through the reader pattern.**
+      `/topology/service/svg` already fetches it on the LAN per request; as a reader job
+      (every 60 s) it gains an age stamp and stops costing a request. Small: a reader
+      declaration and a stamp. What it cannot do: no click to a device, no alert on a node,
+      the service's dark palette inside the design system, and a 1100 x 720 picture whose
+      labels are unreadable at phone width.
+    - **(b) A native, interactive map drawn by the app.** The data already exists without a
+      single device read: the topology service's `/graph.json` (measured: nodes with
+      addresses, and 11 edges with the port on each end, discovered by LLDP, with the time it
+      was generated), Prometheus's `ifOperStatus` for each link's state (73 series), the
+      reachability reader's `STATUS`, and the Grafana reader's incidents. So the service stays
+      the ONE owner of discovery (the reason `topology_view.py` exists: a second
+      implementation of discovery is the wrong move), and the app draws.
+      - **What it shows:** each node's answering state, its firing alerts as a count badge, and
+        each link's state from both ends' `ifOperStatus`, the ports named on hover or tap.
+        Click or tap a node to open its device page.
+      - **The population is the inventory, not the graph** (the drift checker's lesson). A
+        managed device the graph lacks (r6 and edge1 today) is drawn apart, labelled "no LLDP
+        neighbour seen"; a graph node that is not managed (r5, retired) is drawn muted and
+        labelled "not managed".
+      - **At phone width** it becomes a list of devices with their links, since a graph at
+        390 px is decoration. The same data, drawn as rows.
+      - **Cost:** a reader job for `graph.json` (60 s), one route composing the four sources,
+        and the drawing on vis-network, which is already vendored and hash-pinned, with a
+        layout pinned by node id so the map does not rearrange on every refresh. Moderate:
+        the library, the data and the discovery already exist.
+  - **Recommendation: (b),** for the reasons the operator gave: it is the one-stop shop
+    (a click reaches the device, an alert shows where it is) and it is drawn in the design
+    system. (a)'s reader is not built separately, because (b) reads the same service.
 - **Hosts:** Proxmox VMs (the existing read-only client) and containerlab nodes, whose status
   needs a new read-only reader (section 15.2).
 
@@ -1183,6 +1267,12 @@ both, with costs.
   is observed, not Kea's. (Kea's legal-log hook would be the alternative, and the host's
   package does not ship it: measured 2026-09-30, the hooks directory holds bootp,
   flex_option, ha, lease_cmds, mysql_cb, pgsql_cb, run_script and stat_cmds.)
+
+**The DHCP page's tabs are one set, present while a preview is open** (the operator,
+2026-09-30): Subnets, Active leases, Reservations, Pools, Lease history. A reservation's
+preview opens beside them, and shows the POOL CONTEXT its checks are about: the subnet's
+pools as a strip, where the address falls against them, and the nearest pool named ("::20 is
+below the pool ::100 to ::200; no clash").
 
 **IPv6 alongside IPv4, everywhere (the operator, 2026-09-30).** The first mockup drew IPv4
 alone, and that was a gap: VLAN 30 is IPv6-only and Kea's DHCPv6 is running. Measured on the

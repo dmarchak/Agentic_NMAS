@@ -444,6 +444,26 @@ session needs no reconstruction:
   a spike: the device page's Overview and Monitoring tab, built in A and measured, before
   any commitment.
 
+**Mockup version 7 reviewed (the operator, 2026-09-30; brief 3.1, 9b, 14.2):**
+- **The top bar keeps integration health only;** the commit, its CI verdict and the version
+  move to Help > About and Settings, and a Needs attention row appears when the running
+  commit is not CI-verified or the host is behind what is pushed.
+- **Custom time ranges,** relative and absolute, bounded by each backend's measured limit
+  (Loki 30 days 1 hour, Prometheus 90 days), the step widening with the range, a range past
+  a limit refused naming it.
+- **A live topology on Monitoring, drawn natively** (option (b)) from the topology service's
+  `graph.json`, with states and alerts on it. The dashboard panel's cause was measured: an
+  `<img>` at the service's public hostname, not port 8088; that hostname serves the
+  network's map to the internet with no login (C231).
+- **The device page's dashboard selector** offers only dashboards with the device variable,
+  and the panels left out are listed with why (4 of `rcn-lab1-snmp`'s 8, first counted as 3).
+- **DHCP:** the tabs stay one set during a preview, with the pool context in the
+  reservation preview.
+- **9b corrected:** npm's absence and a lockfile's hashes removed as reasons; the front-end
+  argument carries option A.
+- **The spike is APPROVED:** the device page's Overview and Monitoring tab in A, judged first
+  on look, smoothness and the phone, then on the technical measures.
+
 **The order from here (the operator, 2026-09-29), each step waiting for sign-off:**
 1. the brief updated with the integration screens, the rule and its classification, and the
    extended findability questions (done: sections 13 to 16; signed off with corrections
