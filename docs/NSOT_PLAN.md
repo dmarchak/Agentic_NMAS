@@ -5372,6 +5372,143 @@ section 12.4.
   blocker.
 - **Size:** 30 to 60 commits.
 
+**8.11 Many AI providers, configured at once and switched at will (SCOPED 2026-09-30, the
+operator, with the same day's update; NOT built).** The principle, as for sign-in and access:
+the people running it choose. Some prefer, or are required by policy to use, another AI than
+Claude, and some networks (air-gapped ones) cannot send anything to a hosted AI at all.
+
+**Today, measured 2026-09-30:**
+- ONE client, Anthropic's (`messages.create` in `ai_assistant.py`).
+- Its "providers" are three Claude presets (Sonnet, Opus, Haiku, the background agent on
+  Haiku), chosen INSTALLATION-WIDE (`set_active_provider`), with no per-user choice.
+- `requirements.txt` pins `openai` ("Used for Groq and Ollama") and `groq`, and nothing in
+  the program imports either (C252).
+
+**1. One internal interface; providers plug in.** A chat with tools: messages, tool schemas,
+tool calls, tool results, token usage, the model version the provider RETURNED.
+- **At minimum:**
+  - Anthropic (native, today's);
+  - OpenAI (native, and Azure OpenAI for enterprises);
+  - Google Gemini (native);
+  - xAI Grok;
+  - ANY OpenAI-compatible endpoint (Mistral, DeepSeek, Qwen, OpenRouter, Groq and most
+    others, with no per-vendor code);
+  - LOCAL models through Ollama or vLLM, on the user's own hardware: **the air-gapped
+    option**, which the design has always aimed at.
+- **Recommendation: our own thin adapters, not LiteLLM.** The OpenAI-shaped API covers
+  OpenAI, Azure (a base URL and API version), xAI, Groq, Mistral, DeepSeek, OpenRouter, Ollama
+  and vLLM with ONE adapter on the `openai` SDK, and Gemini publishes an OpenAI-compatible
+  endpoint too. So it is two adapters (Anthropic native, OpenAI-compatible), plus a native
+  Gemini one only if a measured need appears.
+  - **LiteLLM** would cover more names, at the cost of a large, fast-moving dependency tree
+    (a supply-chain surface, and a lock generated on the host, C40).
+  - **More important,** its normalisation of tool calls would HIDE the per-model differences
+    the evaluation (point 6) exists to measure.
+  - **The one real piece of work is ours either way:** translating tool calls between
+    Anthropic's content blocks and OpenAI's `tool_calls`.
+  - Revisit LiteLLM if a needed provider has no OpenAI-compatible endpoint.
+- **An agent-disabled mode stays** (`ai_enabled` off).
+
+**2. CONFIGURE MANY, SWITCH AT WILL.**
+- **Configure:** Settings holds any number of provider configurations. Each has:
+  - the provider;
+  - the endpoint;
+  - the model;
+  - the key's reference in the credential store;
+  - where data goes, in words;
+  - its evaluation record.
+- **Switch:** the person using the assistant selects among them at the time, in one click from
+  the assistant panel, with a per-user default.
+- **CONFIGURING and SELECTING are separate permissions:**
+  - an INSTALLATION ADMINISTRATOR configures (keys and local endpoints, stored encrypted and
+    revealed only through the reveal gate, like every credential);
+  - any user selects among the configured ones, with no access to the keys.
+  - Until 9.I's roles exist: configure is gated `configure`, and select is not a device
+    action.
+
+**3. Policy per network (after P.8).**
+- An administrator can restrict which configurations a network may use ("local model only"
+  for a sensitive network).
+- The picker shows a restricted model as UNAVAILABLE THERE WITH THE REASON, never hidden: the
+  visible-not-hidden rule of the roles.
+
+**4. Every answer records its model.**
+- In a conversation that switches, each reply is labelled with the provider and the model
+  VERSION that produced it (the version the provider returned, not the configured name).
+- The audit trail records which model proposed each action:
+  - the approval queue's item;
+  - the proposal a person confirms;
+  - `ai_usage_log`.
+
+**5. The safety gates are MODEL-INDEPENDENT.**
+- Whichever model is chosen, it proposes, and the program's gates, previews and confirmations
+  decide.
+- The agent's permissions are its ROLE (VIEWER plus `author`, Stage 10's roles; 8.3's
+  enforced allowlist at the tool dispatch, never in the prompt). **Changing the model never
+  changes what the agent may do.**
+
+**6. Models differ at tool use: MEASURE EACH.**
+- **One evaluation suite runs against any configuration** (Stage 8's fixtures). It measures:
+  - tool selection;
+  - argument correctness;
+  - refusing out-of-scope actions;
+  - handling tool errors;
+  - never inventing device output (a fixture whose right answer is "the tool failed").
+- **A model gets the agent's TOOLS only after passing it.** A model that fails is still
+  offered for read-only chat help, labelled so.
+- **Each result is recorded with the model version.** When the version a provider returns
+  changes under the same name, the record is drawn STALE with both versions, and a re-run is
+  offered.
+- **Tools stay on over a stale record**, because the gates bound what a tool can do whatever
+  the model. The evaluation measures usefulness and correctness, never permission. The stale
+  label is what a person reads.
+- **Local models vary most.** The minimum capability is stated as the suite passing, with
+  native tool calling and a context window large enough for the tool library plus one device
+  configuration. No model is named as passing before it is measured.
+
+**7. What leaves the network is the administrator's decision.**
+- Secret masking and log redaction (`redact.py`, today at the one `messages.create` call)
+  move to the provider interface, so they apply identically to every adapter.
+- Settings states plainly where data goes for each configuration: hosted (which company,
+  which region where the provider offers a choice), or local (nothing leaves).
+- Providers' data-handling terms and jurisdictions are documented neutrally. No provider is
+  preferred by default, except that local is highlighted for air-gapped networks.
+
+**8. Cost and limits.**
+- Token accounting per provider and model (`ai_usage_log` gains both and the version; a local
+  model costs no tokens, said as such).
+- A budget per installation and per user, with the existing prefer-fewer-calls rule.
+- Rate-limit and error handling per adapter, with bounds from measurement.
+- A FALLBACK configuration is optional and explicit, never silent: when one answers, the reply
+  is labelled "fell back from X because Y".
+
+**9. Context across a switch mid-conversation.**
+- **The conversation is stored in a PROVIDER-NEUTRAL form:** text, tool calls and tool results,
+  each with the model that produced it. The next request is rendered for the chosen model from
+  that form, tool calls translated to its format.
+- **Too long for the new model's window:** the existing history compression trims it (oldest
+  turns summarised; the system prompt, the current task and the latest tool results kept), and
+  the panel says "trimmed to fit <model>'s <N> tokens".
+- **Switched to a model NOT allowed tools:** it is sent no tool schemas. Earlier tool calls and
+  results are rendered to it as quoted text, so the conversation continues read-only.
+- **Provider-bound content** (Anthropic's signed thinking blocks) cannot be carried to another
+  provider. It is dropped at the switch, and the panel says so.
+
+**10. Placement.**
+- **Built in Stage 8,** so the agent is multi-provider from its first real tool run (8.4).
+  Claude is the first provider exercised, and at least one other (ideally a local model)
+  passes the evaluation before Stage 8 closes.
+- **The per-user default and the configure/select split** need 9.I's users and roles; the
+  network policy needs P.8.
+- **Stage 10** carries the wizard's provider step (configure, Test, run the evaluation) and
+  the documentation of where each provider sends data.
+- **Size:** 40 to 80 commits (two adapters, the neutral transcript, the picker and policy, the
+  evaluation runner, the accounting).
+- **Depends on:** 8.3 (the enforced allowlist) and 8.4 (the agent's first real runs), 9.I for
+  users and roles, P.8 for per-network policy.
+- **It closes C252** (the unused `openai` and `groq` pins): used by the OpenAI-compatible
+  adapter, or removed.
+
 ---
 
 ### STAGE 9 — hardening and cleanup (ADDED 2026-09-28, the operator; reshaped the same night)
@@ -5891,6 +6028,11 @@ one install's transport, not the design.
       driven by the AI assistant in Stage 8's 8.10;
     - a third platform (Junos recommended) through the pipeline as its acceptance test, not
       a release blocker.
+
+12. **AI providers, configured at once and switched at will (Stage 8's 8.11):**
+    - the wizard's provider step (configure, Test, run the evaluation);
+    - the documentation of where each provider sends data;
+    - local models (Ollama or vLLM) highlighted as the air-gapped option.
 
 **The Stage 9 part:**
 - **9.S** (gunicorn behind nginx, first; it closes C189);

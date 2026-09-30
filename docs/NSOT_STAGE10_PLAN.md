@@ -1091,3 +1091,28 @@ to Stage 8 (outside the release's critical path).
 - 8.10 depends on 9.P, P.10's sandbox, 8.3 (the agent's enforced authority) and 8.4 (the
   agent's first real runs);
 - the release depends on 9.P and the second vendor, never on 8.10.
+
+---
+
+## 13. AI providers: configured at once, switched at will
+
+**SCOPED 2026-09-30 (the operator, with the same day's update).** The design is Stage 8's item
+8.11 ([NSOT_PLAN.md](NSOT_PLAN.md)):
+- any number of provider configurations (Anthropic, OpenAI and Azure OpenAI, Gemini, xAI,
+  any OpenAI-compatible endpoint, local models through Ollama or vLLM);
+- selected by the person using the assistant in one click, with a per-user default;
+- configured only by an installation administrator;
+- restricted per network by policy, shown unavailable with the reason;
+- every reply labelled with the model version that produced it;
+- tools only for a model that passed the evaluation;
+- the gates model-independent.
+
+**Stage 10's part:**
+- **The first-run wizard gains a provider step:** configure one or more, a Test per
+  configuration, and the evaluation run that decides whether a model may use the agent's
+  tools. Skippable: the assistant stays off until one is configured.
+- **The documentation:** where each provider sends data (hosted: which company and region;
+  local: nothing leaves), stated neutrally, and the local route highlighted for air-gapped
+  networks.
+- **The release ships the AI OFF by default** (7.1): a provider is the installer's choice,
+  never assumed.
