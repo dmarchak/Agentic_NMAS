@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+"""Correct a device's role in a list's inventory, previewed and recorded (C225).
+
+    nmas-inventory-role <list> <device> <router|switch|firewall> --reason "..."
+    nmas-inventory-role <list> <device> <role> --reason "..." --apply
+
+The interim entry point to `modules/inventory_edit.py`, the one implementation
+the Device page's role edit will call. Without `--apply` it previews: the role
+now and after, each gate, what follows (the Prometheus targets' role label,
+the topology icon, NetBox at its next import) and what it does NOT do, and
+writes nothing. `--apply` re-plans under the list's lock, writes the one
+field, and appends the audit row (`inventory_edits.jsonl`, 0600) with you as
+the actor, `host-shell`. The reason is a sentence (three words or more), as
+for an authorised line.
+
+The app's keeper regenerates Prometheus's targets within 300 s of an edit made
+here (a change in another process has no sender in the app).
+
+Exit 0: previewed and confirmable, or applied; 1: refused (named); 2: the
+list or the device could not be found.
+"""
+
+import sys
+
+ROOT = __import__("os").path.dirname(__import__("os").path.dirname(
+    __import__("os").path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+import argparse  # noqa: E402
+import getpass  # noqa: E402
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("list")
+    ap.add_argument("device")
+    ap.add_argument("role")
+    ap.add_argument("--reason", default="", help="why, as a sentence")
+    ap.add_argument("--apply", action="store_true", help="write it and record it")
+    args = ap.parse_args(argv)
+
+    from modules import inventory_edit as E
+    from modules.nsot.listref import UnknownList
+
+    try:
+        p = E.plan(args.list, args.device, args.role, args.reason)
+    except (E.RoleEditRefused, UnknownList) as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 2
+    print(f"{p['device']} in {p['list']}: role {p['before'] or '(none)'!s} -> {p['after']}")
+    for g in p["gates"]:
+        print(f"  {'pass' if g['state'] == 'pass' else 'FAIL'}  {g['gate']}: {g['why']}")
+    print("what follows:")
+    for line in p["follows"]:
+        print(f"  {line}")
+    print("what it does not do:")
+    for line in p["not_done"]:
+        print(f"  {line}")
+    if not p["confirmable"]:
+        print("REFUSED: see the failing gate above; nothing was written", file=sys.stderr)
+        return 1
+    if not args.apply:
+        print("preview only: nothing written (--apply writes it and records it)")
+        return 0
+    try:
+        rec = E.apply(p["list"], p["device"], p["after"], args.reason, p["fingerprint"],
+                      actor=getpass.getuser(), actor_verified="host-shell")
+    except E.RoleEditRefused as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 1
+    if not rec.get("recorded"):
+        print(f"WRITTEN AND NOT RECORDED: {p['device']}'s role is {p['after']}, and its audit "
+              f"row could not be written ({rec.get('record_error')})", file=sys.stderr)
+        return 1
+    print(f"written and recorded: {p['device']}'s role is {p['after']} "
+          f"(inventory_edits.jsonl, {rec['at']}, by {rec['actor']})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
