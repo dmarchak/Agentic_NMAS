@@ -91,6 +91,7 @@ GATES = {
     "delete_file": _g(C, "deletes a file from a device's flash"),
     "rotate.apply": _g(C, "rotates a device's login credential: the device then accepts only the new password"),
     "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
+    "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
     "ai_chat": _g(C, "the assistant holds tools that push config until P.3 step 8 removes them"),
     "ai_agent_run": _g(C, "runs the background agent, which holds device tools until P.3 step 8"),
 
@@ -182,6 +183,7 @@ GATES = {
     "rotate.preview": _g(N, "computes the rotation plan and READS the device's account line; changes nothing"),
     "breakglass.preview": _g(N, "names the devices and the key's fingerprint an export would hold; reveals no value"),
     "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
+    "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),
     "templatize.seed_preview": _g(N, "parses committed goldens from git; writes nothing"),
     "templatize.revert_preview": _g(N, "computes a revert from git; writes nothing"),
     "templatize.retry_preview": _g(N, "reads the rollback record and the retry log; writes nothing"),

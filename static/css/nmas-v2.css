@@ -378,3 +378,15 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
   .helpnav-head { display: none; }
   .recent li { flex-direction: column; gap: 2px; }
 }
+
+/* The Update page (modules/update_op.py). */
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.sub-head { margin: 14px 0 6px; font-size: 13px; font-weight: 600; }
+.plain-list, .commit-list, .gate-list { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.plain-list li, .commit-list li, .gate-list li { padding: 3px 0; overflow-wrap: anywhere; }
+.gate-list .ico { vertical-align: -2px; }
+.gate-list .gate-pass .ico { color: var(--ok); }
+.gate-list .gate-fail .ico { color: var(--danger); }
+.confirm { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
+.confirm p { margin: 0 0 8px; }
+.wait { font-weight: 500; }

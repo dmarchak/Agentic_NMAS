@@ -90,13 +90,13 @@ def test_the_headline_counts_and_names():
     journal = _ok(NOW - 60)
     # images=[] and settings=[]: this test is about the systemd jobs' count;
     # the Proxmox image rows, the settings rows and the SSH-session rows
-    # (C97), the running-version row and the reader rows (test_reader_job.py)
-    # have their own tests.
+    # (C97), the running-version row, the reader rows (test_reader_job.py) and
+    # the updater's install row (test_update_button.py) have their own tests.
     h = J.health(NOW, _runner(LOADED, journal), images=[], settings=[],
-                 rotations=[], owner=[], sessions=[], version=[], readers=[])
+                 rotations=[], owner=[], sessions=[], version=[], readers=[], updater=[])
     assert h["headline"] == f"{len(J.JOBS)} of {len(J.JOBS)} job(s) ok"
     h = J.health(NOW, _runner(LOADED, _fail(NOW - 60)), images=[], settings=[],
-                 rotations=[], owner=[], sessions=[], version=[], readers=[])
+                 rotations=[], owner=[], sessions=[], version=[], readers=[], updater=[])
     assert h["headline"].startswith("0 of") and "clab-sync" in h["headline"]
 
 

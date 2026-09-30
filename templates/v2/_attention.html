@@ -42,7 +42,8 @@
         <span class="cmd"><code>{{ r.action.command }}</code><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ r.action.command }}" x-on:click="copy" x-text="label">Copy</button></span>
         {%- endif %}
         {%- if r.action.reference %}<span class="muted">({{ r.action.reference }})</span>{% endif %}
-        {%- if r.action.open %}<a class="btn btn-small" href="{{ url_for('index') }}">Open on today's page</a>{% endif %}
+        {%- if r.action.open == 'app_update' %}<a class="btn btn-small btn-primary" href="{{ url_for('v2.update') }}">Update…</a>
+        {%- elif r.action.open %}<a class="btn btn-small" href="{{ url_for('index') }}">Open on today's page</a>{% endif %}
       </div>
     </article>
     {%- endfor %}

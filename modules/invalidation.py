@@ -195,6 +195,9 @@ DECLARED = {
     # A device, its files and backups.
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),
+    # The Update button: a request is written now; the version moves when the
+    # root-owned updater acts, and the page waits on /health for it.
+    "update.apply": ("app_version",),
     "breakglass.export": Nothing("appends to the export log and the reveal record, which job "
                                  "health's reader reads on its own interval; no panel shows "
                                  "either directly"),
@@ -240,6 +243,8 @@ DECLARED = {
     "rotate.preview": Nothing("computes the rotation plan and reads the device's account line; writes nothing"),
     "persist.preview": Nothing("computes the persist plan from the inventory and the "
                                "startup check's record; contacts no device and writes nothing"),
+    "update.check": Nothing("starts the app-pushed reader, which announces app_version itself "
+                            "when it finishes"),
     "retire.preview": Nothing("computes the retire plan from the repository, the CSV, the credential store, the settings and the export log; writes nothing"),
     "templatize.revert_preview": Nothing("computes the revert of one intent commit from git; "
                                          "writes nothing"),

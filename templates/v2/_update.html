@@ -1,0 +1,89 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- The Update operation (modules/update_op.py): the last outcome, the preview
+    in its parts, and the confirm, which then waits on /health. Re-fetched when
+    the `app-pushed` reader announces. -#}
+{%- set f = p.facts -%}
+{%- set OUT_KIND = {'updated': 'ok', 'refused': 'warn', 'rolled_back': 'warn', 'rollback_failed': 'danger', 'failed': 'danger', 'running': 'info'} -%}
+{%- set CI_KIND = {'verified': 'ok', 'failed': 'danger', 'cancelled': 'warn', 'pending': 'warn', 'could_not_ask': 'muted'} -%}
+<div id="update-panel" class="stack" hx-get="{{ url_for('v2.update_panel') }}" hx-swap="outerHTML"
+     hx-trigger="nmas:app_version from:body, nmas:job_health from:body">
+
+{#- 1. What the last update did: shown on the next page load after it. -#}
+{%- set last = p.last -%}
+{%- if last.state == 'ok' and last.value %}{% set o = last.value %}
+<section class="card" id="update-last" data-outcome="{{ o.outcome }}">
+  <div class="card-head"><h2>The last update</h2>{{ badge(words.get(o.outcome, o.outcome)|truncate(40, True), OUT_KIND.get(o.outcome, 'muted')) }}</div>
+  <dl class="facts">
+    {%- if o.to %}<div><dt>From, to</dt><dd><span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ o.to[:10] }}</span></dd></div>{% endif %}
+    {%- if o.requested_by %}<div><dt>Requested by</dt><dd>{{ o.requested_by }}{% if o.requested_at %} <span class="muted">· {{ stamp(o.requested_at) }}</span>{% endif %}</dd></div>{% endif %}
+    <div><dt>Outcome</dt><dd>{{ words.get(o.outcome, o.outcome) }}{% if o.step %}: {{ o.step }}{% endif %}{% if o.ended_at %} <span class="muted">· {{ stamp(o.ended_at) }}</span>{% endif %}</dd></div>
+    {%- if o.reason %}<div><dt>Why</dt><dd>{{ o.reason }}</dd></div>{% endif %}
+    {%- for n in o.notes or [] %}<div><dt>Note</dt><dd>{{ n }}</dd></div>{% endfor %}
+  </dl>
+</section>
+{%- elif last.state == 'unreadable' %}
+<div class="notice notice-danger">{{ icon('warn') }}<p>The updater's record could not be read ({{ last.error }}): whether the last update happened is not known here. This is not the same as none having run.</p></div>
+{%- endif %}
+
+{#- 2. The preview. -#}
+<section class="card" id="update-preview">
+  <div class="card-head"><h2>
+    {%- if f.state == 'at_tip' %}Nothing to update
+    {%- elif f.target %}Update from <span class="mono">{{ f.running[:10] }}</span> to <span class="mono">{{ f.target[:10] }}</span>
+    {%- else %}Not compared yet{% endif -%}
+  </h2>{% if f.value_at %}<span class="muted">asked {{ stamp(f.value_at) }}</span>{% endif %}
+    <button type="button" class="btn btn-small" x-data="check" x-on:click="run" x-bind:disabled="busy" x-text="label" data-url="{{ url_for('update.check') }}">Check again</button>
+  </div>
+  {%- if f.state == 'at_tip' %}
+  <p>The running commit, <span class="mono">{{ f.running[:10] }}</span>, is the tip of origin/main. Nothing is waiting.</p>
+  {%- else %}
+  <dl class="facts">
+    <div><dt>What</dt><dd>{% if f.behind is not none %}{{ f.behind }} commit{{ '' if f.behind == 1 else 's' }}{% else %}an unknown number of commits{% endif %} pushed and not running{% if f.behind_since %} <span class="muted">· ahead since {{ stamp(f.behind_since) }} ({{ f.behind_since_basis }})</span>{% endif %}</dd></div>
+    <div><dt>CI for the target</dt><dd>{{ badge(f.ci.state or 'not asked', CI_KIND.get(f.ci.state, 'muted')) }} {{ f.ci.sentence or 'not asked yet' }}{% if f.ci.asked_at %} <span class="muted">· asked {{ stamp(f.ci.asked_at) }}</span>{% endif %}</dd></div>
+  </dl>
+  {%- if f.commits %}
+  <h3 class="sub-head">The commits it would run</h3>
+  <ul class="commit-list" id="update-commits">
+    {%- for c in f.commits %}<li><span class="mono">{{ c.sha[:10] }}</span> {{ c.subject }} <span class="muted">· {{ c.author }}, {{ stamp(c.at) }}</span></li>{% endfor %}
+  </ul>
+  {%- if f.commits_cut %}<p class="muted">Showing the newest {{ f.commits|length }} of {{ f.behind }}.</p>{% endif %}
+  {%- endif %}
+  {%- if f.host_steps %}
+  <h3 class="sub-head">Host steps this release needs</h3>
+  <p class="muted">Each is done on the host by a person; the updater refuses the release until you say each is done. The tool cannot check them.</p>
+  <ul class="plain-list" id="update-host-steps">
+    {%- for s in f.host_steps %}<li><label><input type="checkbox" data-host-step="{{ s.sha }}"> Done: {{ s.step }} <span class="muted mono">({{ s.sha[:10] }})</span></label></li>{% endfor %}
+  </ul>
+  {%- endif %}
+  <h3 class="sub-head">What it does NOT do</h3>
+  <ul class="plain-list" id="update-not">
+    <li>It runs nothing from the repository as root: git runs as the service user, and only the restart is root's.</li>
+    <li>It touches no device, no list's repository and no NetBox.</li>
+    <li>It does not update the updater itself.{% if f.updater_changes %} <strong>This release changes the updater's own files ({{ f.updater_changes|join(', ') }}): re-install them after it (docs/UPDATE.md, "Re-install").</strong>{% endif %}</li>
+    <li>It rolls back only a version that does not come up within {{ up_bound_s }} s. A defect found later is fixed by the next release, not by this button.</li>
+  </ul>
+  <h3 class="sub-head">Checks</h3>
+  <ul class="gate-list" id="update-gates">
+    {%- for g in p.gates %}<li class="gate-{{ g.state }}">{{ icon('check' if g.state == 'pass' else 'warn', 14) }} <strong>{{ g.name }}</strong><span class="muted"> · {{ g.detail }}</span></li>{% endfor %}
+  </ul>
+  <div class="confirm" x-data="update" data-hash="{{ p.hash }}" data-target="{{ f.target }}"
+       data-apply-url="{{ url_for('update.apply') }}" data-status-url="{{ url_for('update.status') }}"
+       data-health-url="{{ url_for('health.health') }}" data-timeout="{{ updater_timeout_s }}"
+       data-selectable="{{ 'yes' if p.selectable and confirm.may else 'no' }}">
+    <p>{{ confirm.statement }}</p>
+    {%- if not p.selectable %}<p class="muted" id="update-why-not">Not now: {{ p.why_not }}</p>{% endif %}
+    <button type="button" class="btn btn-primary" x-on:click="confirm" x-bind:disabled="blocked" x-show="idle">Update to {{ f.target[:10] or '?' }}</button>
+    <p class="wait" x-show="waiting" x-text="words" role="status" aria-live="polite"></p>
+  </div>
+  {%- endif %}
+</section>
+
+{%- if hist.rows|length > 1 %}
+<section class="card" id="update-history">
+  <div class="card-head"><h2>Earlier updates</h2></div>
+  <ul class="plain-list">
+    {%- for o in hist.rows[1:] %}<li>{{ badge(o.outcome, OUT_KIND.get(o.outcome, 'muted')) }} <span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ (o.to or '')[:10] }}</span> <span class="muted">· {{ o.requested_by or '' }} · {{ stamp(o.ended_at or o.at) }}</span></li>{% endfor %}
+  </ul>
+</section>
+{%- endif %}
+</div>

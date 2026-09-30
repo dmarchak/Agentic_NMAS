@@ -94,9 +94,17 @@ def installation() -> dict:
     else:
         pushed = {"state": value.get("state"), "words": app_pushed.words(value),
                   "value_at": good.get("value_at")}
+    from modules import update_op
+
+    last = update_op.outcome()
+    lv = last.get("value") or {}
+    last["words"] = (f"{update_op.OUTCOME_WORDS.get(lv.get('outcome'), lv.get('outcome'))}: "
+                     f"{str(lv.get('from') or '')[:10]} to {str(lv.get('to') or '')[:10]}"
+                     + (f" by {lv['requested_by']}" if lv.get("requested_by") else "")) if lv else ""
     return {"running": facts.get("running") or "", "subject": _subject(facts.get("running")),
             "started_at": facts.get("started_at"), "pid": os.getpid(),
-            "version": facts.get("version") or {}, "ci": facts.get("ci") or {}, "pushed": pushed}
+            "version": facts.get("version") or {}, "ci": facts.get("ci") or {}, "pushed": pushed,
+            "last_update": last}
 
 
 @bp.route("/help/about", methods=["GET"])
@@ -110,3 +118,36 @@ def installation_card():
     """About's installation card alone, re-fetched when the CI verdict or the
     pushed comparison is re-read."""
     return _strict(render_template("v2/_installation.html", inst=installation(), who=_who()))
+
+
+# ------------------------------------------------------------- the Update button
+# (the operator, 2026-09-30; modules/update_op.py; docs/UPDATE.md). ONE page,
+# two entry points: Needs attention's "behind what is pushed" row and Help >
+# About. The page draws the preview from the `app-pushed` reader's stored
+# value (no page load fetches or asks GitHub), confirms by the preview's hash,
+# then waits on /health for the new commit, never on a timer.
+
+def _update_ctx() -> dict:
+    from flask import request
+
+    from modules import update_op
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import confirm_part
+
+    p = update_op.plan()
+    return {"p": mask_payload(p), "hist": update_op.history(5),
+            "confirm": confirm_part(request, "confirm"),
+            "words": update_op.OUTCOME_WORDS, "up_bound_s": update_op.UP_BOUND_S,
+            "updater_timeout_s": update_op.UPDATER_TIMEOUT_S}
+
+
+@bp.route("/update", methods=["GET"])
+def update():
+    """Update NMAS: the preview, the confirm, and the last update's outcome."""
+    return _page("v2/update.html", active_nav="help", **_update_ctx())
+
+
+@bp.route("/update/panel", methods=["GET"])
+def update_panel():
+    """The preview alone, re-fetched when the reader announces `app_version`."""
+    return _strict(render_template("v2/_update.html", who=_who(), **_update_ctx()))

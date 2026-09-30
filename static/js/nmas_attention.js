@@ -135,6 +135,10 @@
         + 'data-nmas-open="breakglass_export" data-nmas-list="' + esc(a.list || '') + '">'
         + 'Export…</button>';
     }
+    // The Update button (the operator, 2026-09-30): one page, on the redesign.
+    if (a.open === 'app_update') {
+      html += ' <a class="btn btn-sm btn-primary py-0 ms-1" data-nmas-update href="/v2/update">Update…</a>';
+    }
     if (a.command) html += (a.open ? ' or on the host' : '') + ': <code>' + esc(a.command) + '</code>';
     if (a.reference) html += ' (' + esc(a.reference) + ')';
     return html;

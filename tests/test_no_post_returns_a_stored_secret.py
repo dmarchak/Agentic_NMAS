@@ -119,6 +119,9 @@ def _bodies(v):
         "rotate.preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
                            "r1's rotation plan: its preflight (the live read refused by the "
                            "suite's network guard, drawn as a failed gate), the masked program"),
+        "update.check": (409, ("json", {}),
+                         "the reader jobs do not run in the test process: refused by name, "
+                         "nothing asked (no network, no store)"),
         "persist.preview": (200, ("json", {"list_name": LIST, "device": "r1"}),
                             "r1's persist plan: its steps, the inventory gates and the "
                             "startup check's last reading; no device contacted"),

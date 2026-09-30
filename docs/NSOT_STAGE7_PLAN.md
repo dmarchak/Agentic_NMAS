@@ -1297,8 +1297,14 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
   verify as an optional check. **Acceptance**: export from the browser, verify the
   download on the laptop (`verify --against` the host's digests), and see job health read
   "current in the record downloaded by <person> at T".
-- **The tool updates itself from the GUI (the operator's revision, 2026-09-29): SCOPED,
-  not built.** The named exceptions become two, FIRST INSTALLATION and BREAK-GLASS;
+- **The tool updates itself from the GUI (the operator's revision, 2026-09-29): BUILT
+  2026-09-30** (the operator: "every commit you push creates this row, so it's the
+  operation I'd use most"; placed before P.9 step (b)). docs/UPDATE.md is the design as
+  built and the operator's one-time install, with its check (`scripts/nmas-update-check`,
+  job health's `updater` row). Needs attention's "behind what is pushed" row opens it,
+  and Help > About links to the same page. The row carries SINCE WHEN origin/main has
+  been ahead, first seen by the `app-pushed` reader. The rollback bound, 120 s, is
+  measured (C241 is the one restart past it). As scoped: The named exceptions become two, FIRST INSTALLATION and BREAK-GLASS;
   upgrading and restarting moves into the GUI. The principle holds: CI decides WHAT can
   deploy, a verified person decides WHEN, and a button that person presses keeps both;
   what was refused earlier was an unattended restart, which this is not.

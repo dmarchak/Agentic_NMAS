@@ -26,7 +26,10 @@ Each member is in exactly one place:
   not as a place to put things;
 - ``PENDING``: measured today, and it only shrinks;
 - ``NO_GUI``: no page sends it, the same fact the reachability test records.
-  The result rule applies once it has one.
+  The result rule applies once it has one;
+- ``PAGE_RECORD``: drawn by a redesigned (v2) page from the action's own
+  record on its next load, the template's source as the evidence (the
+  Update button, 2026-09-30).
 
 **Colour is part of the result** (the operator): a green toast on a partial
 success is a false statement in a different medium. ``FALSE_GREEN`` pins
@@ -107,6 +110,19 @@ RESULT_COMPONENT = {
 
 #: The bar: changes nothing durable AND has no operands worth re-reading.
 TOAST_ENOUGH = {}
+
+#: Drawn by a REDESIGNED page (option A) from the action's own record, on the
+#: next load: {endpoint: (template, what the template must draw, the route
+#: that reads the record back)}. The v2 pages are server-rendered under the
+#: strict policy, so the evidence is the template's source, as the
+#: component's is its function's.
+PAGE_RECORD = {
+    # The Update button: the request is answered 202, the page waits on
+    # /health, and the updater's record is drawn as "The last update" (its
+    # outcome and reason) on the Update page, whose panel route re-reads it.
+    "update.apply": ("templates/v2/_update.html", ('id="update-last"', "o.outcome", "o.reason"),
+                     "v2.update_panel"),
+}
 
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.
 PENDING = {
@@ -213,7 +229,8 @@ class TestEveryResultIsPlaced:
 
     def test_every_member_is_in_exactly_one_place(self):
         places = {"RESULT_COMPONENT": set(RESULT_COMPONENT), "TOAST_ENOUGH": set(TOAST_ENOUGH),
-                  "PENDING": set(PENDING), "NO_GUI": set(NO_GUI)}
+                  "PENDING": set(PENDING), "NO_GUI": set(NO_GUI),
+                  "PAGE_RECORD": set(PAGE_RECORD)}
         pop = _population()
         unplaced = sorted(pop - set().union(*places.values()))
         assert unplaced == [], f"a gated action with no result placement: {unplaced}"
@@ -227,7 +244,7 @@ class TestEveryResultIsPlaced:
         must leave its list."""
         pop = _population()
         for name, keys in (("RESULT_COMPONENT", RESULT_COMPONENT), ("TOAST_ENOUGH", TOAST_ENOUGH),
-                           ("PENDING", PENDING), ("NO_GUI", NO_GUI)):
+                           ("PENDING", PENDING), ("NO_GUI", NO_GUI), ("PAGE_RECORD", PAGE_RECORD)):
             assert set(keys) <= pop, (name, sorted(set(keys) - pop))
 
     def test_the_lists_only_shrink(self):
@@ -352,6 +369,16 @@ class TestTheComponentDrawsTheseResults:
         for ep, (rel, fn, reader) in RESULT_COMPONENT.items():
             body = lift(_read(rel), fn)
             assert "previewConfirmResultHtml(" in body, (ep, fn)
+            assert reader in endpoints, (ep, reader)
+
+    def test_each_page_entry_draws_its_record_and_can_be_read_again(self):
+        import app as A
+
+        endpoints = {r.endpoint for r in A.app.url_map.iter_rules()}
+        assert PAGE_RECORD
+        for ep, (rel, marks, reader) in PAGE_RECORD.items():
+            src = _read(rel)
+            assert all(m in src for m in marks), (ep, [m for m in marks if m not in src])
             assert reader in endpoints, (ep, reader)
 
     def test_the_restore_flow_draws_its_apply_result(self):

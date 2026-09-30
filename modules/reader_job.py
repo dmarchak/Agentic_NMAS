@@ -469,5 +469,12 @@ def start(announce=None) -> list:
     return started
 
 
+def running(name: str) -> bool:
+    """Is *name*'s reader thread alive in THIS process? The app starts them;
+    a CLI, a test or another process does not, and asks nothing on demand."""
+    t = _threads.get(name)
+    return t is not None and t.is_alive()
+
+
 def stop() -> None:
     _stop.set()

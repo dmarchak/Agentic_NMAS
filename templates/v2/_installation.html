@@ -18,6 +18,13 @@
     <div><dt>Pushed</dt><dd>
       {{ badge({'at_tip': 'at the tip', 'behind': 'behind', 'behind_unfetched': 'behind', 'not_on_remote': 'not pushed'}.get(inst.pushed.state, inst.pushed.state), PUSHED_KIND.get(inst.pushed.state, 'muted')) }} {{ inst.pushed.words }}
       {%- if inst.pushed.value_at %}<span class="muted"> · asked {{ stamp(inst.pushed.value_at) }}</span>{% endif -%}
+      {%- if inst.pushed.state in ('behind', 'behind_unfetched') %} <a class="btn btn-small btn-primary" id="about-update" href="{{ url_for('v2.update') }}">Update…</a>{% endif -%}
+    </dd></div>
+    <div><dt>Last update</dt><dd>
+      {%- if inst.last_update.state == 'ok' and inst.last_update.value %}{{ inst.last_update.words }}{% if inst.last_update.value.ended_at %} <span class="muted">· {{ stamp(inst.last_update.value.ended_at) }}</span>{% endif %}
+      {%- elif inst.last_update.state == 'unreadable' %}the updater's record could not be read <span class="muted">· not the same as none</span>
+      {%- else %}none recorded <span class="muted">· the Update button's updater has written nothing on this host</span>{% endif %}
+      <a class="muted" href="{{ url_for('v2.update') }}">Update page</a>
     </dd></div>
     <div><dt>Checkout</dt><dd>
       {{ badge({'ok': 'the same commit', 'mixed_version': 'MIXED VERSION'}.get(inst.version.state, inst.version.state or 'unknown'), 'ok' if inst.version.state == 'ok' else ('danger' if inst.version.state == 'mixed_version' else 'muted')) }} {{ inst.version.detail or '' }}

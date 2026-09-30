@@ -155,6 +155,10 @@ _JOB_STATES = {
     "not_monitored": ("is not configured for an integration the network uses", "warning"),
     "breakglass_stale": ("is not recoverable from the break-glass record: it holds an "
                          "older credential", "danger"),
+    # The Update button's root-owned updater (docs/UPDATE.md).
+    "writable": ("is run as root and writable by someone else", "danger"),
+    "path_inactive": ("is not watching for update requests", "danger"),
+    "differs": ("differs from this release's copy", "warning"),
 }
 
 
@@ -1358,17 +1362,35 @@ def pushed_source(cached=None) -> dict:
                                      f"{str(health._COMMIT)[:10]}: not compared yet")
     rows = []
     if v.get("state") in _PUSHED_LEVEL:
+        from modules import update_op
+
         sentence = app_pushed.words(v)
-        action = ({"label": "Deploy what is pushed (nmas-deploy fetches, waits for CI and "
-                            "restarts; a person's step)", "command": "scripts/nmas-deploy --wait"}
+        # THE UPDATE BUTTON (the operator, 2026-09-30): the app knows it is out
+        # of date, so its action is the Update operation, never a terminal.
+        tip = str(v.get("tip") or "")
+        action = ({"label": f"Update to {tip[:10]}: preview the commits and CI's verdict, "
+                            "then confirm", "open": "app_update"}
                   if v["state"] != "not_on_remote" else
                   {"label": "The host should run only pushed commits: find where this one came "
-                            "from before deploying over it", "known": False})
-        rows.append(row(source="pushed", key=running[:10], level=_PUSHED_LEVEL[v["state"]],
+                            "from before updating over it", "known": False})
+        cause = (f"origin/{v.get('branch') or 'main'} was asked with git ls-remote; "
+                 "the host moves only when a person updates it")
+        last = (update_op.outcome().get("value") or {})
+        level = _PUSHED_LEVEL[v["state"]]
+        if last.get("outcome") in ("refused", "rolled_back", "rollback_failed", "failed") \
+                and last.get("from") == running:
+            # One event, one row: the update that did not happen is this row's
+            # cause, not a second row beside it.
+            cause += (f". The last update, to {str(last.get('to') or '?')[:10]} by "
+                      f"{last.get('requested_by') or '?'}, "
+                      f"{update_op.OUTCOME_WORDS.get(last['outcome'], last['outcome'])} "
+                      f"({last.get('ended_at') or last.get('at') or '?'}): {last.get('reason')}")
+            if last["outcome"] == "rollback_failed":
+                level = "danger"
+        rows.append(row(source="pushed", key=running[:10], level=level,
                         what=sentence[0].upper() + sentence[1:],
-                        cause=f"origin/{v.get('branch') or 'main'} was asked with git ls-remote; "
-                              "the host moves only when a person deploys",
-                        action=action))
+                        since=_ts(v.get("behind_since")),
+                        cause=cause, action=action))
     return source_result("pushed", label, read_at=started, took_ms=took, rows=rows,
                          value_at=value_at, stale_after_seconds=promise, reader="app-pushed",
                          checked=app_pushed.words(v))

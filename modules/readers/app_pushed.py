@@ -16,14 +16,24 @@ Four answers, each in words:
 - ``behind``: the tip is newer and this checkout has its objects, so the gap
   is counted (`rev-list --count running..tip`);
 - ``behind_unfetched``: the tip is a commit this checkout has not fetched, so
-  how far behind is unknown until `nmas-deploy` fetches (said, never guessed);
+  how far behind is unknown (said, never guessed). The reader FETCHES it
+  (the Update operation, 2026-09-30), so this stays only when the fetch fails,
+  and the value names why;
 - ``not_on_remote``: the running commit is not an ancestor of the tip (a local
   commit, or a rewritten remote).
 A remote that cannot be asked within the bound raises, so the reader keeps
 the last good value and says the read failed (rule 3), never "up to date".
+
+Behind the tip it also records what the Update operation previews
+(`enrich()`): the commits between, their `Host-Step:` trailers, which of the
+updater's sources the release changes, whether the checkout is clean, the
+tip's CI verdict by `nmas-deploy`'s own gate, and since when the tip has been
+ahead of this running commit. The page reads it; no page load asks GitHub.
 """
 
 import os
+import re
+import time
 
 from modules import reader_job
 from modules.readers.remote_publication import LOCAL_GIT_TIMEOUT_S, LS_REMOTE_TIMEOUT_S, _git
@@ -54,13 +64,113 @@ def judge(root: str, running: str, git=_git) -> dict:
     return dict(out, state="not_on_remote", behind=None)
 
 
-def read(running=None, root=ROOT, git=_git) -> dict:
+#: A fetch of origin's main, bounded. NOT measured: about 30x the measured
+#: `ls-remote` (about 1 s); a fetch that fails leaves the tip unfetched and
+#: says so, never "up to date".
+FETCH_TIMEOUT_S = 30
+
+#: How many commits between the running commit and the tip are listed; more
+#: are counted and the list says it is cut.
+COMMITS_SHOWN = 50
+
+#: The files the Update operation's ROOT-OWNED copies come from
+#: (docs/UPDATE.md). A release that changes one needs the host step that
+#: re-installs it, and the preview says so.
+UPDATER_SOURCES = ("deploy/update/nmas-update", "scripts/nmas-deploy",
+                   "deploy/systemd/nmas-update.path", "deploy/systemd/nmas-update.service")
+
+#: A commit that needs a person's step on the host before its code can run
+#: (a new unit, a package, a sudoers change) carries this trailer, one per
+#: step; the Update operation lists each and the updater refuses a release
+#: whose steps the person has not said are done.
+HOST_STEP = re.compile(r"^Host-Step:\s*(.+?)\s*$", re.M)
+
+#: The CI states that never change for a commit, so a tip's verdict is asked
+#: once; anything else is asked again at the next read.
+FINAL_CI = ("verified", "failed", "cancelled")
+
+
+def _iso(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def enrich(root: str, v: dict, previous: dict = None, verdict=None, git=_git,
+           now: float = None) -> dict:
+    """What the Update operation shows about a tip ahead of the running
+    commit: the commits between, their `Host-Step:` trailers, which updater
+    sources the release changes, whether the checkout is clean, the tip's CI
+    verdict (asked ONCE per tip when final, by `nmas-deploy`'s own gate), and
+    SINCE WHEN origin/main has been ahead of this running commit: first seen
+    by this reader, kept while the running commit stays, said as that."""
+    now = time.time() if now is None else now
+    previous = previous or {}
+    running, tip = v["running"], v["tip"]
+    out = dict(v)
+    if v["state"] == "at_tip":
+        return out
+    same = previous.get("running") == running and previous.get("state") != "at_tip"
+    out["behind_since"] = (previous.get("behind_since") if same and previous.get("behind_since")
+                           else _iso(now))
+    out["behind_since_basis"] = (f"first seen by this reader, which asks every "
+                                 f"{INTERVAL_SECONDS} s")
+    if v["state"] != "behind":
+        return out
+    rc, text, err = git(root, "log", f"--max-count={COMMITS_SHOWN}",
+                        "--format=%H%x1f%s%x1f%an%x1f%cI", f"{running}..{tip}")
+    out["commits"] = ([dict(zip(("sha", "subject", "author", "at"), line.split("\x1f")))
+                       for line in text.splitlines() if line] if rc == 0 else [])
+    out["commits_cut"] = rc == 0 and (v.get("behind") or 0) > len(out["commits"])
+    if rc != 0:
+        out["commits_error"] = err[:200] or f"git log exited {rc}"
+    rc, text, err = git(root, "log", "--format=%H%x1f%B%x1e", f"{running}..{tip}")
+    steps = []
+    for chunk in (text.split("\x1e") if rc == 0 else []):
+        sha, _sep, body = chunk.strip().partition("\x1f")
+        steps += [{"sha": sha, "step": s} for s in HOST_STEP.findall(body)]
+    out["host_steps"] = steps
+    if rc != 0:
+        out["host_steps_error"] = err[:200] or f"git log exited {rc}"
+    rc, text, _err = git(root, "diff", "--name-only", running, tip, "--", *UPDATER_SOURCES)
+    out["updater_changes"] = [p for p in text.splitlines() if p] if rc == 0 else None
+    rc, text, _err = git(root, "status", "--porcelain", "--untracked-files=no")
+    out["checkout_changes"] = [p for p in text.splitlines() if p][:10] if rc == 0 else None
+    ci = previous.get("ci") or {}
+    if not (ci.get("tip") == tip and ci.get("state") in FINAL_CI):
+        from modules.readers import ci_verdict as CV
+
+        try:
+            mod = CV.deploy_script()
+            code, sentence = (verdict or mod.ci_verdict)(root, tip)
+            ci = {"tip": tip, "state": CV.state_of(mod, code), "sentence": sentence,
+                  "asked_at": _iso(now)}
+        except Exception as exc:                          # noqa: BLE001
+            ci = {"tip": tip, "state": "could_not_ask", "asked_at": _iso(now),
+                  "sentence": f"the verdict raised {type(exc).__name__}: {exc}"}
+    out["ci"] = ci
+    return out
+
+
+def read(running=None, root=ROOT, git=_git, previous=None, verdict=None) -> dict:
+    from modules import reader_job
     from routes import health
 
     running = health._COMMIT if running is None else running
     if not running:
         raise RuntimeError(f"the loaded commit is unknown: {health._COMMIT_ERROR}")
-    return judge(root, running, git=git)
+    v = judge(root, running, git=git)
+    if v["state"] == "behind_unfetched":
+        # Fetch what is pushed, so the gap can be counted and listed: the
+        # Update operation's preview names every commit it would run.
+        rc, _out, err = git(root, "fetch", "--quiet", "origin", BRANCH, timeout=FETCH_TIMEOUT_S)
+        if rc == 0:
+            v = judge(root, running, git=git)
+        else:
+            v = dict(v, fetch_error=err[:200] or f"git fetch exited {rc}")
+    if previous is None:
+        got = reader_job.read_cached(READER.name)
+        previous = (((got.get("doc") or {}).get("last_good") or {}).get("value") or {}) \
+            if got.get("state") == "ok" else {}
+    return enrich(root, v, previous, verdict=verdict, git=git)
 
 
 def words(v: dict) -> str:
@@ -76,7 +186,9 @@ def words(v: dict) -> str:
                 f"origin/{BRANCH} is {tip}")
     if state == "behind_unfetched":
         return (f"the host runs {run} and origin/{BRANCH} is {tip}, a commit this checkout "
-                "has not fetched, so how far behind is unknown until nmas-deploy fetches it")
+                "has not fetched, so how far behind is unknown"
+                + (f" (the fetch failed: {v['fetch_error']})" if v.get("fetch_error")
+                   else " until it is fetched"))
     if state == "not_on_remote":
         return (f"the running commit {run} is not on origin/{BRANCH} ({tip}): a local commit, "
                 "or a remote rewritten under it")
@@ -86,7 +198,8 @@ def words(v: dict) -> str:
 def changed(previous: dict, value: dict) -> bool:
     def key(v):
         v = v or {}
-        return (v.get("running"), v.get("tip"), v.get("state"), v.get("behind"))
+        return (v.get("running"), v.get("tip"), v.get("state"), v.get("behind"),
+                (v.get("ci") or {}).get("state"))
     return key(previous) != key(value)
 
 

@@ -1262,6 +1262,18 @@ def monitoring_rows() -> list:
                  "detail": f"the check raised {type(exc).__name__}: {exc} -- not the same as covered"}]
 
 
+def updater_rows() -> list:
+    """The Update button's root-owned updater: installed, root-owned, not
+    writable by the service user, the path unit watching (`modules.update_op`)."""
+    try:
+        from modules import update_op
+        return update_op.install_rows()
+    except Exception as exc:                            # noqa: BLE001
+        return [{"unit": "updater", "state": "unknown", "max_age_minutes": 0,
+                 "what": "the Update button's root-owned updater is installed",
+                 "detail": f"the check raised {type(exc).__name__}: {exc}"}]
+
+
 def prometheus_target_rows() -> list:
     """Does the running Prometheus scrape the inventory, labelled (C232)?
     `modules.prometheus_targets` owns the comparison; no row while Prometheus
@@ -1278,7 +1290,7 @@ def prometheus_target_rows() -> list:
 def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None, ztp=None, responder=None,
            startup=None, sessions=None, version=None, readers=None,
-           breakglass=None, prometheus=None, monitoring=None) -> dict:
+           breakglass=None, prometheus=None, monitoring=None, updater=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -1297,6 +1309,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += breakglass_rows() if breakglass is None else list(breakglass)
     jobs += prometheus_target_rows() if prometheus is None else list(prometheus)
     jobs += monitoring_rows() if monitoring is None else list(monitoring)
+    jobs += updater_rows() if updater is None else list(updater)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     gone = sum(1 for j in jobs if j["state"] == "departed")

@@ -1,0 +1,11 @@
+{%- extends "v2/base.html" -%}
+{% block title %}Update · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Update NMAS</h1>
+    <p class="sub">Run what is pushed: CI decides what can run, you decide when. The app asks; a root-owned updater re-checks CI, restarts the app and rolls back a version that does not come up.</p>
+  </div>
+</div>
+{% include "v2/_update.html" %}
+{% endblock %}

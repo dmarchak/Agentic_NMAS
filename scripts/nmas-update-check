@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Is the Update button's updater installed as it must be? (docs/UPDATE.md)
+
+Run it AS THE SERVICE USER, never with sudo: "not writable by the service
+user" is asked of the user running this, as the app asks it. It prints job
+health's own row (`modules/update_op.install_rows()`, the same function) and
+each installed file.
+
+Exit 0: ok. 1: installed and differing from this release's copy (it works;
+re-install when convenient). 2: not installed, not watching, or writable by
+someone other than root (the danger). 3: could not check.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def main() -> int:
+    from modules import update_op
+
+    if os.geteuid() == 0:
+        print("nmas-update-check: run it as the service user, not root: the check asks what "
+              "THAT user can write", file=sys.stderr)
+        return 3
+    try:
+        state = update_op.install_state()
+    except Exception as exc:                          # noqa: BLE001
+        print(f"nmas-update-check: could not check: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 3
+    (row,) = update_op.install_rows(state)
+    print(f"{row['unit']}: {row['state']}: {row['detail']}")
+    for f in state["files"]:
+        problems = "; ".join(f.get("problems") or []) or ("absent" if f["state"] == "absent" else "ok")
+        match = {True: ", matches this release", False: ", DIFFERS from this release"}.get(
+            f.get("matches_release"), "")
+        print(f"  {f['path']}: {problems}{match}")
+    if "path_active" in state:
+        print(f"  nmas-update.path active: {state['path_active']}")
+    return {"ok": 0, "differs": 1}.get(state["state"], 2)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

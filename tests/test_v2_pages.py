@@ -81,7 +81,7 @@ class TestTheAppPushedReader:
         _git(other, "push", "-q", "origin", "HEAD:main")
         v = P.judge(str(repos["work"]), repos["shas"][2])
         assert v["state"] == "behind_unfetched" and v["behind"] is None
-        assert "has not fetched" in P.words(v) and "unknown until nmas-deploy fetches" in P.words(v)
+        assert "has not fetched" in P.words(v) and "unknown until it is fetched" in P.words(v)
 
     def test_a_local_commit_is_not_on_the_remote(self, repos):
         from modules.readers import app_pushed as P
@@ -127,12 +127,14 @@ class TestThePushedRow:
                          monkeypatch=monkeypatch)
         assert r["rows"] == [] and "is the tip of origin/main" in r["checked"]
 
-    def test_behind_is_a_warning_with_the_deploy_command(self, monkeypatch):
+    def test_behind_is_a_warning_whose_action_is_the_update_button(self, monkeypatch):
         r = self._source({"running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 2,
                           "branch": "main"}, monkeypatch=monkeypatch)
         (row,) = r["rows"]
         assert row["level"] == "warning" and row["what"].startswith("The host runs 2 commits behind")
-        assert row["action"]["command"] == "scripts/nmas-deploy --wait"
+        # The operator, 2026-09-30: the app knows it is behind, so its action
+        # is the Update operation, never a terminal command.
+        assert row["action"]["open"] == "app_update" and "command" not in row["action"]
 
     def test_not_on_the_remote_names_no_deploy(self, monkeypatch):
         r = self._source({"running": "a" * 40, "tip": "b" * 40, "state": "not_on_remote",

@@ -1,0 +1,23 @@
+# TEMPLATE (2026-09-30): the repository is public, so the host's user and paths
+# are placeholders. Render it, never copy it (docs/UPDATE.md has the whole install).
+# The root half of the Update button: /usr/local/sbin/nmas-update, a ROOT-OWNED
+# copy, never the repository's file. It re-checks CI itself, runs git as the
+# service user, restarts the app, confirms the new commit by identity, and rolls
+# back a version that does not come up. Its settings come from this unit, never
+# from the request.
+[Unit]
+Description=NMAS: update the app to a CI-passed commit a person requested
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=NMAS_UPDATE_REPO=@NMAS_CHECKOUT@
+Environment=NMAS_UPDATE_USER=@NMAS_USER@
+Environment=NMAS_UPDATE_SERVICE=flask-app.service
+Environment=NMAS_UPDATE_HEALTH=http://127.0.0.1:5000/health
+ExecStart=/usr/local/sbin/nmas-update
+# A fetch, the CI gate (up to 11 GitHub reads, 10 s each), a restart bounded at
+# 120 s and a rollback bounded the same: under 6 minutes at worst, so 15.
+TimeoutStartSec=15min

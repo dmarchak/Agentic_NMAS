@@ -1,0 +1,391 @@
+#!/usr/bin/env python3
+"""THE NMAS UPDATER: the root half of the Update button (docs/UPDATE.md).
+
+Installed ROOT-OWNED as /usr/local/sbin/nmas-update, started by
+`nmas-update.service` when `nmas-update.path` sees a request in the app's
+request directory. It is never run from the repository, and it never runs
+anything from the repository as root.
+
+The app holds NO privilege: it writes a REQUEST (target commit, the commit it
+runs now, the requesting person, the time, the host steps the person said are
+done) and nothing else. This script treats the request as a request, never an
+instruction:
+
+- the file is opened without following a link, must be a regular file owned
+  by the service user and small, and must parse to exactly the shape below; a
+  malformed or stale request is REFUSED BY NAME (never quoting its content);
+- it RE-DERIVES the CI verdict for the target itself, through its OWN
+  root-owned copy of `nmas-deploy`'s gate (/usr/local/lib/nmas-update/), and
+  refuses anything the gate does not pass;
+- the target must still be origin/main after a fetch, and the checkout must
+  still be at the commit the preview named and clean;
+- every `Host-Step:` trailer between the two must be one the person said is
+  done.
+So the most anything that can write the request can achieve is running a
+commit CI already passed.
+
+Git runs as the SERVICE USER (`runuser`), with that user's home: a repository
+can name programs in its config, and root must never run them. Only the
+restart runs as root. Success is decided by IDENTITY, as `nmas-deploy` decides
+it: systemd's MainPID changed, `/health` answers from that pid, and it reports
+the target commit. A version that does not come up within UP_BOUND_S is
+ROLLED BACK (the checkout reset to the commit it ran, restarted, confirmed the
+same way), and every outcome is written where the app reads it on the next
+page load: /var/lib/nmas-update/outcome.json (0644) and history.jsonl.
+
+Environment (set by the root-owned unit, never by the request):
+  NMAS_UPDATE_REPO      the checkout the service runs
+  NMAS_UPDATE_USER      the service user
+  NMAS_UPDATE_SERVICE   the app's unit (default flask-app.service)
+  NMAS_UPDATE_HEALTH    the app's /health (default http://127.0.0.1:5000/health)
+"""
+
+import datetime
+import fcntl
+import importlib.machinery
+import importlib.util
+import json
+import os
+import pwd
+import re
+import stat
+import subprocess
+import sys
+import time
+
+GATE_PATH = "/usr/local/lib/nmas-update/nmas-deploy"
+STATE_DIR = "/var/lib/nmas-update"
+LOCK_PATH = "/run/nmas-update.lock"
+
+#: How long the new version has to come up before it is rolled back. From
+#: 120 restarts in the host's deploy audit (2026-09-30): restart issued to
+#: confirmed running, median 2.1 s, p90 10.2 s, the slowest normal ones 17.5,
+#: 19.1 and 38.9 s, and one of 574.7 s that is not explained. 120 s is about
+#: 3x the slowest normal restart and covers 119 of the 120.
+UP_BOUND_S = 120
+
+#: A request older than this is refused as stale: a person confirmed a preview
+#: minutes ago, not an hour ago.
+STALE_S = 900
+MAX_BYTES = 4096
+REQUEST_NAME = re.compile(r"^[0-9a-f]{16}\.json$")
+SHA = re.compile(r"^[0-9a-f]{40}$")
+HOST_STEP = re.compile(r"^Host-Step:\s*(.+?)\s*$", re.M)
+
+#: The request's shape, exactly: a key it lacks, or one it adds, is refused.
+FIELDS = {"id": str, "target": str, "from": str, "requested_by": str,
+          "requested_at": str, "acknowledged_host_steps": list}
+
+
+class Refused(Exception):
+    """Refused before anything changed; the message is the whole reason."""
+
+
+def iso(epoch=None) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() if epoch is None else epoch))
+
+
+def parse_iso(text):
+    try:
+        return datetime.datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# The request
+# ---------------------------------------------------------------------------
+
+def validate(doc, now: float) -> dict:
+    """The request, checked field by field. Raises `Refused` naming the field,
+    never quoting a value that did not pass."""
+    if not isinstance(doc, dict):
+        raise Refused("the request is not a JSON object")
+    missing = sorted(set(FIELDS) - set(doc))
+    extra = sorted(set(doc) - set(FIELDS))
+    if missing or extra:
+        raise Refused("the request's fields are not the updater's: "
+                      + (f"missing {missing}" if missing else "")
+                      + ("; " if missing and extra else "")
+                      + (f"unexpected {extra}" if extra else ""))
+    for key, kind in FIELDS.items():
+        if not isinstance(doc[key], kind):
+            raise Refused(f"the request's {key} is not a {kind.__name__}")
+    if not re.fullmatch(r"[0-9a-f]{16}", doc["id"]):
+        raise Refused("the request's id is not 16 hex digits")
+    for key in ("target", "from"):
+        if not SHA.fullmatch(doc[key]):
+            raise Refused(f"the request's {key} is not a full commit hash")
+    if not (0 < len(doc["requested_by"]) <= 200):
+        raise Refused("the request names no person")
+    at = parse_iso(doc["requested_at"])
+    if at is None:
+        raise Refused("the request's time cannot be read")
+    if at > now + 60:
+        raise Refused("the request is dated in the future")
+    if now - at > STALE_S:
+        raise Refused(f"the request is stale: made {round(now - at)} s ago, and a confirm "
+                      f"older than {STALE_S} s is not acted on. Preview again")
+    if not all(isinstance(s, str) and SHA.fullmatch(s) for s in doc["acknowledged_host_steps"]):
+        raise Refused("the request's acknowledged host steps are not commit hashes")
+    return doc
+
+
+def take_requests(directory: str, uid: int) -> tuple:
+    """(newest valid-looking request or None, [notes]). Every entry is REMOVED,
+    so the path unit's directory is empty again whatever happens next: a
+    request is acted on once. A file is read only if it is a regular file the
+    service user owns, opened without following a link."""
+    notes, found = [], []
+    try:
+        dfd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        return None, [f"the request directory could not be opened: {exc.strerror}"]
+    try:
+        for name in sorted(os.listdir(dfd)):
+            try:
+                st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+            except OSError:
+                continue
+            if stat.S_ISDIR(st.st_mode):
+                try:
+                    os.rmdir(name, dir_fd=dfd)
+                except OSError:
+                    notes.append(f"a directory named {name!r} is in the request directory and "
+                                 "is not empty: remove it, or the path unit keeps starting")
+                continue
+            if REQUEST_NAME.match(name) and stat.S_ISREG(st.st_mode) and st.st_uid == uid \
+                    and st.st_size <= MAX_BYTES:
+                try:
+                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+                    with os.fdopen(fd, "rb") as fh:
+                        found.append((name, fh.read(MAX_BYTES + 1)))
+                except OSError as exc:
+                    notes.append(f"{name} could not be read: {exc.strerror}")
+            else:
+                notes.append(f"{name!r} is not a request (a regular file the service user owns, "
+                             f"named <16 hex>.json, at most {MAX_BYTES} bytes); removed unread")
+            try:
+                os.unlink(name, dir_fd=dfd)
+            except OSError as exc:
+                notes.append(f"{name} could not be removed: {exc.strerror}")
+    finally:
+        os.close(dfd)
+    parsed = []
+    for name, raw in found:
+        try:
+            parsed.append(json.loads(raw.decode("utf-8")))
+        except (UnicodeDecodeError, ValueError):
+            notes.append(f"{name} is not JSON; removed")
+    if not parsed:
+        return None, notes
+    parsed.sort(key=lambda d: str(d.get("requested_at", "")) if isinstance(d, dict) else "")
+    newest = parsed[-1]
+    if len(parsed) > 1:
+        notes.append(f"{len(parsed) - 1} older request(s) superseded by the newest")
+    return newest, notes
+
+
+# ---------------------------------------------------------------------------
+# Git as the service user, and the gate
+# ---------------------------------------------------------------------------
+
+def user_git_for(repo: str, user: str, run=subprocess.run):
+    """A `git(repo, *args, check=True)` with `nmas-deploy`'s signature that
+    runs as *user*, with that user's home, never as root."""
+    home = pwd.getpwnam(user).pw_dir
+    env = {"HOME": home, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
+           "GIT_TERMINAL_PROMPT": "0", "GIT_SSH_COMMAND": "ssh -o BatchMode=yes"}
+
+    def git(_repo, *args, check=True):
+        out = run(["runuser", "-u", user, "--", "git", "-C", repo, *args],
+                  capture_output=True, text=True, env=env, timeout=120)
+        if check and out.returncode != 0:
+            raise RuntimeError(f"git {' '.join(args)}: {out.stderr.strip()[:300]}")
+        return out.stdout.strip()
+    return git
+
+
+def load_gate(path: str = GATE_PATH):
+    """The root-owned copy of `nmas-deploy`, loaded as a module. Refused unless
+    root owns it and nobody else can write it: a gate someone else can edit is
+    not a gate."""
+    st = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o022:
+        raise Refused(f"{path} is not a root-owned file only root can write: re-install it "
+                      "(docs/UPDATE.md)")
+    loader = importlib.machinery.SourceFileLoader("nmas_update_gate", path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+def host_steps(git, repo: str, head: str, target: str) -> list:
+    text = git(repo, "log", "--format=%H%x1f%B%x1e", f"{head}..{target}")
+    out = []
+    for chunk in text.split("\x1e"):
+        sha, _sep, body = chunk.strip().partition("\x1f")
+        out += [{"sha": sha, "step": s} for s in HOST_STEP.findall(body)]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The update
+# ---------------------------------------------------------------------------
+
+def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time.time,
+           sleep=time.sleep, report=lambda step: None) -> dict:
+    """Run one request. Returns the outcome record. Nothing moves before every
+    check has passed; after the checkout moves, any failure rolls back."""
+    target, head_req = req["target"], req["from"]
+    rec = {"id": req["id"], "from": head_req, "to": target, "requested_by": req["requested_by"],
+           "requested_at": req["requested_at"], "started_at": iso(clock())}
+
+    report("checking the checkout")
+    dirty = git(repo, "status", "--porcelain", "--untracked-files=no")
+    if dirty:
+        raise Refused("the checkout has local changes, so nothing was moved: "
+                      + "; ".join(dirty.splitlines()[:5]))
+    report("fetching origin")
+    git(repo, "fetch", "--quiet", "origin")
+    head = git(repo, "rev-parse", "HEAD")
+    tip = git(repo, "rev-parse", "origin/main")
+    if head != head_req:
+        raise Refused(f"the checkout is at {head[:10]}, not {head_req[:10]} as the preview "
+                      "said: something else moved it. Nothing was moved; preview again")
+    if tip != target:
+        raise Refused(f"origin/main is now {tip[:10]}, not {target[:10]} as confirmed. Nothing "
+                      "was moved; preview again to update to what is pushed now")
+    try:
+        git(repo, "merge-base", "--is-ancestor", head, target)
+    except RuntimeError:
+        raise Refused(f"{target[:10]} is not a fast-forward of {head[:10]}. Nothing was moved")
+    report("asking CI")
+    gate.git = git                      # the gate's git, as the service user
+    code, sentence = gate.ci_verdict(repo, target)
+    rec["ci"] = sentence
+    if code != gate.OK:
+        raise Refused(f"the CI gate does not pass {target[:10]}: {sentence}")
+    steps = host_steps(git, repo, head, target)
+    undone = [s for s in steps if s["sha"] not in set(req["acknowledged_host_steps"])]
+    if undone:
+        raise Refused("host step(s) not confirmed as done: "
+                      + "; ".join(f"{s['sha'][:10]}: {s['step']}" for s in undone))
+    rec["host_steps"] = steps
+
+    before = unit()
+    rec["pid_before"] = before["MainPID"]
+    report(f"moving the checkout to {target[:10]}")
+    git(repo, "merge", "--ff-only", "--quiet", target)
+    try:
+        report("restarting the app")
+        restart()
+        report("waiting for the new version")
+        ok, seen, reason = gate.wait_for_running(target, before["MainPID"], health, unit,
+                                                 clock, sleep, timeout=UP_BOUND_S)
+    except Exception as exc:                             # noqa: BLE001
+        ok, seen, reason = False, None, f"the restart raised {type(exc).__name__}: {exc}"
+    rec["pid_after"] = ((seen or {}).get("unit") or {}).get("MainPID")
+    if ok:
+        return dict(rec, outcome="updated", ended_at=iso(clock()),
+                    reason=f"running {target[:10]} as pid {rec['pid_after']}")
+    return rollback(rec, reason, repo=repo, head=head, gate=gate, git=git, restart=restart,
+                    unit=unit, health=health, clock=clock, sleep=sleep, report=report)
+
+
+def rollback(rec: dict, reason: str, *, repo, head, gate, git, restart, unit, health, clock,
+             sleep, report) -> dict:
+    """The new version did not come up: put back the commit it ran, restart,
+    and confirm THAT by identity too."""
+    report(f"rolling back to {head[:10]}")
+    failed = f"{rec['to'][:10]} did not come up within {UP_BOUND_S} s: {reason}"
+    try:
+        git(repo, "reset", "--hard", "--quiet", head)
+        before = unit()
+        restart()
+        ok, _seen, why = gate.wait_for_running(head, before["MainPID"], health, unit,
+                                               clock, sleep, timeout=UP_BOUND_S)
+    except Exception as exc:                             # noqa: BLE001
+        ok, why = False, f"{type(exc).__name__}: {exc}"
+    if ok:
+        return dict(rec, outcome="rolled_back", ended_at=iso(clock()),
+                    reason=f"{failed}. Rolled back: {head[:10]} runs again")
+    return dict(rec, outcome="rollback_failed", ended_at=iso(clock()),
+                reason=f"{failed}. The rollback to {head[:10]} did not come up either: {why}")
+
+
+# ---------------------------------------------------------------------------
+# Where the app reads the outcome
+# ---------------------------------------------------------------------------
+
+def write_state(rec: dict, state_dir: str = STATE_DIR, history: bool = True) -> None:
+    os.makedirs(state_dir, mode=0o755, exist_ok=True)
+    tmp = os.path.join(state_dir, f".outcome.{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(rec, fh, sort_keys=True)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(state_dir, "outcome.json"))
+    if history:
+        fd = os.open(os.path.join(state_dir, "history.jsonl"),
+                     os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, sort_keys=True) + "\n")
+
+
+def main(env=None) -> int:
+    env = os.environ if env is None else env
+    repo, user = env.get("NMAS_UPDATE_REPO", ""), env.get("NMAS_UPDATE_USER", "")
+    service = env.get("NMAS_UPDATE_SERVICE", "flask-app.service")
+    if not repo or not user:
+        print("nmas-update: NMAS_UPDATE_REPO and NMAS_UPDATE_USER must be set by the unit",
+              file=sys.stderr)
+        return 78
+    lock = open(LOCK_PATH, "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    uid = pwd.getpwnam(user).pw_uid
+    req, notes = take_requests(os.path.join(repo, "data", "update", "requests"), uid)
+    if req is None:
+        if notes:
+            write_state({"outcome": "refused", "id": "", "at": iso(), "notes": notes,
+                         "reason": "no request could be read: " + "; ".join(notes)})
+        return 0
+    try:
+        req = validate(req, time.time())
+    except Refused as exc:
+        write_state({"outcome": "refused", "id": "", "at": iso(), "notes": notes,
+                     "reason": f"the request was refused: {exc}"})
+        return 0
+    os.environ["NMAS_HEALTH_URL"] = env.get("NMAS_UPDATE_HEALTH",
+                                            "http://127.0.0.1:5000/health")
+
+    def report(step):
+        write_state({"outcome": "running", "id": req["id"], "to": req["target"],
+                     "from": req["from"], "requested_by": req["requested_by"], "step": step,
+                     "at": iso()}, history=False)
+
+    try:
+        gate = load_gate()
+        git = user_git_for(repo, user)
+        rec = update(req, repo=repo, gate=gate, git=git,
+                     restart=lambda: subprocess.run(["systemctl", "restart", service],
+                                                    check=True, capture_output=True,
+                                                    text=True, timeout=120),
+                     unit=lambda: gate.unit_state(service), health=gate._health,
+                     report=report)
+    except Refused as exc:
+        rec = {"id": req["id"], "from": req["from"], "to": req["target"],
+               "requested_by": req["requested_by"], "outcome": "refused",
+               "reason": str(exc), "ended_at": iso()}
+    except Exception as exc:                             # noqa: BLE001
+        rec = {"id": req["id"], "from": req["from"], "to": req["target"],
+               "requested_by": req["requested_by"], "outcome": "failed",
+               "reason": f"the updater raised {type(exc).__name__}: {exc}", "ended_at": iso()}
+    if notes:
+        rec["notes"] = notes
+    write_state(rec)
+    return 0 if rec["outcome"] in ("updated", "refused") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
