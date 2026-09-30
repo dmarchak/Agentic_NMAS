@@ -119,6 +119,46 @@ directory's owner or mode, step 1); files behind a recent run read
 longer than the backstop mean the keeper is not running. With no directory
 named, nothing is written and the row's action is the Settings field.
 
+## Costed, not built: uptime and routing adjacencies (the operator, 2026-09-30)
+
+Read on the host, 2026-09-30, read-only: `/etc/snmp_exporter/snmp.yml` (v0.29.0) is
+hand-maintained. There is no generator on the host, and the IP SLA and LLDP modules were
+added by hand (`snmp.yml.bak-ipsla`, `.bak-lldp`). The IETF MIBs are installed
+(`/var/lib/mibs/ietf`: OSPF-MIB, OSPFV3-MIB, BGP4-MIB); Cisco's are not. `snmpwalk` is
+installed.
+
+- **Uptime costs one line per job.** The file already has a `system` module that walks
+  `1.3.6.1.2.1.1` (sysUpTime among its 12 metrics). Adding `system` to each SNMP job's
+  `params.module` in `prometheus.yml`, then a reload, gives `sysUpTime` for every target.
+  That is TimeTicks, hundredths of a second, so a panel divides by 100. It is the SNMP
+  agent's uptime, which a device reload resets (the case that matters). It wraps at 497
+  days.
+- **OSPF and BGP neighbour state need two new modules and a measurement first.** Each
+  table's standard coverage:
+
+  | Table | OID | What it gives | Covers |
+  |---|---|---|---|
+  | OSPF-MIB `ospfNbrTable` | 1.3.6.1.2.1.14.10.1 | `ospfNbrState` (1 down to 8 full), `ospfNbrRtrId`, `ospfNbrEvents` | OSPFv2 |
+  | OSPFV3-MIB `ospfv3NbrTable` | 1.3.6.1.2.1.191.1.9.1 | the same, for OSPFv3 | OSPFv3 (r3 and r4's core link) |
+  | BGP4-MIB `bgpPeerTable` | 1.3.6.1.2.1.15.3.1 | `bgpPeerState` (1 idle to 6 established), remote AS, `bgpPeerFsmEstablishedTime` | IPv4 peers only |
+  | CISCO-BGP4-MIB `cbgpPeer2Table` | 1.3.6.1.4.1.9.9.187.1.2.5.1 | the same, per address family | IPv4 and IPv6 (r3 and r4 declare an IPv6 peer, C74) |
+
+  Whether IOS-XE 17 and vIOS answer each table is not measured, and it decides which
+  modules to write. That is staged run 5 (NSOT_STAGE7_PLAN), the operator's, since it
+  asks devices. **The work after it:**
+  1. Generate the modules from the MIBs with `prom/snmp-generator` 0.29 (the exporter's
+     own version, so the module format matches), never hand-typed index handling. The
+     generator config and its output are committed as `deploy/snmp_exporter/`; this is
+     mine to do.
+  2. The operator's host step: back up `snmp.yml`, merge the modules in, and restart the
+     container (the ipsla and lldp precedent).
+  3. Two generated target files, `nmas-snmp-ospf.json` and `nmas-snmp-bgp.json`, holding
+     the devices whose committed golden runs each protocol, derived as the IP SLA file is.
+     Two jobs in `prometheus.yml` read them; this is mine plus one host edit.
+  4. Dashboard panels: OSPF neighbours full and BGP sessions established as stats (red
+     when fewer than intent declares), and each neighbour's state over time, with the
+     state mappings drawn natively.
+
 ## What it does not do
 
 - It does not touch alert rules (P.7).

@@ -435,6 +435,23 @@ session needs no reconstruction:
       addresses are documentation addresses). Their verdicts go into
       `modules/nsot/removal_measured.json`, and a shape measured anything but `exact` stays
       refused, with its reason drawn beside the line.
+5. **Which routing tables the devices answer over SNMP** (the operator, 2026-09-30;
+   costing in PROMETHEUS_TARGETS.md). Read-only; on the NMAS host, which has `snmpwalk`. The
+   community is read into a shell variable from the exporter's own file and never typed:
+   1. `C=$(python3 -c 'import yaml; print(yaml.safe_load(open("/etc/snmp_exporter/snmp.yml"))["auths"]["public_v2"]["community"])')`
+   2. For r3 (IOS-XE; OSPF, OSPFv3 and BGP) and s3 (vIOS; OSPF), each table's state column:
+      ```bash
+      for ip in 10.255.1.13 10.255.1.23; do
+        for oid in 1.3.6.1.2.1.14.10.1.6 1.3.6.1.2.1.191.1.9.1.8 \
+                   1.3.6.1.2.1.15.3.1.2 1.3.6.1.4.1.9.9.187.1.2.5.1.3; do
+          printf '== %s %s\n' "$ip" "$oid"
+          snmpwalk -v2c -c "$C" -On -t 5 "$ip" "$oid" | head -8
+        done
+      done > /tmp/routing-oids.txt; unset C; cat /tmp/routing-oids.txt
+      ```
+   3. Hand over `/tmp/routing-oids.txt`. It holds OIDs, addresses and state numbers, no
+      community. "No Such Object" for a table means that device does not implement it,
+      which is the answer, not a failure.
 
 **The Services mockups reviewed (the operator, 2026-09-30; brief 9b, 14.2, 15.1):**
 - **Every Grafana panel, rendered from the dashboard's own JSON model,** never a chosen few:
