@@ -152,6 +152,16 @@ DEFAULTS: dict = {
     "grafana_embed_mode":     "link",    # link | iframe
     "grafana_device_dashboard_url": "",  # supports {hostname} / {ip}
     "grafana_verify_tls":     True,
+    #: The device page's dashboard (NSOT_GUI_BRIEF 14.2, the operator,
+    #: 2026-09-30), by UID, never by title: a dashboard with a template
+    #: variable naming one device. Empty means none is set, and the device
+    #: page says so rather than guessing. Per network after P.8.
+    "grafana_device_dashboard_uid": "",
+    #: The template variable the app sets to the device.
+    "grafana_device_variable": "device",
+    #: What the variable's value is: the device's hostname, or its management
+    #: address (a dashboard selecting on `instance` wants the address, C232).
+    "grafana_device_variable_value": "hostname",   # hostname | address
 
     # ── Loki ────────────────────────────────────────────────────────────────
     "loki_url":              "",
@@ -643,6 +653,9 @@ SCHEMA: dict = {
         "grafana_url": _STR,
         "grafana_embed_mode": {"enum": ["link", "iframe"]},
         "grafana_verify_tls": _BOOL,
+        "grafana_device_dashboard_uid": _STR,
+        "grafana_device_variable": _STR,
+        "grafana_device_variable_value": {"enum": ["hostname", "address"]},
 
         "loki_url": _STR,
         "loki_auth_mode": {"enum": ["none", "basic", "bearer"]},

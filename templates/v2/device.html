@@ -1,0 +1,44 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge -%}
+{%- set active_nav = 'devices' -%}
+{% block title %}{{ device.hostname }} · NMAS{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('index') }}">Devices</a><span aria-hidden="true">/</span><span>{{ device.hostname }}</span></nav>
+<div class="page-head">
+  <div class="page-title">
+    <div class="title-row">
+      <h1 class="mono">{{ device.hostname }}</h1>
+      {% include "v2/_status.html" %}
+    </div>
+    <p class="sub">{{ device.device_type or 'platform not recorded' }} · <span class="mono">{{ device.ip }}</span> · signs in as <span class="mono">{{ device.username or '?' }}</span> · network {{ list_name }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="{{ url_for('manage_device', ip=device.ip) }}">Plan a deploy…</a>
+    <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
+      <button type="button" class="btn btn-outline" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
+      <div class="menu" role="menu" x-show="isOpen" x-cloak>
+        <p class="menu-note">These open on today's device page, where they are built.</p>
+        {% for label in ['Capture now…', 'Persist…', 'Rotate the credential…', 'Seed intent…', 'Restore from…'] %}
+        <a role="menuitem" class="menu-item" href="{{ url_for('manage_device', ip=device.ip) }}">{{ label }}</a>
+        {% endfor %}
+        <div class="menu-rule"></div>
+        <a role="menuitem" class="menu-item danger" href="{{ url_for('manage_device', ip=device.ip) }}">Retire…</a>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="tabs" role="tablist" aria-label="{{ device.hostname }} views">
+  {% for key, label in tabs %}
+    {% if key in built %}
+    <a role="tab" class="tab{% if key == tab %} on{% endif %}" aria-selected="{{ 'true' if key == tab else 'false' }}"
+       href="{{ url_for('device_v2.device', name=device.hostname, tab=key) }}"
+       hx-get="{{ url_for('device_v2.' + key, name=device.hostname) }}" hx-target="#tab-body" hx-push-url="{{ url_for('device_v2.device', name=device.hostname, tab=key) }}">{{ label }}</a>
+    {% else %}
+    <span role="tab" class="tab off" aria-disabled="true" title="Not in the spike: this tab is built with the rest of the redesign">{{ label }}</span>
+    {% endif %}
+  {% endfor %}
+</div>
+<div id="tab-body" class="tab-body">
+  {% if tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
+</div>
+{% endblock %}

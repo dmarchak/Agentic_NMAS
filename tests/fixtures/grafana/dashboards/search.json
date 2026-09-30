@@ -1,0 +1,91 @@
+[
+ {
+  "id": 4257245383770112,
+  "isDeleted": false,
+  "isStarred": false,
+  "orgId": 1,
+  "slug": "",
+  "sortMeta": 0,
+  "tags": [
+   "linux"
+  ],
+  "title": "Node Exporter Full",
+  "type": "dash-db",
+  "uid": "rYdddlPWk",
+  "uri": "db/node-exporter-full",
+  "url": "/d/rYdddlPWk/node-exporter-full"
+ },
+ {
+  "id": 4448366244282368,
+  "isDeleted": false,
+  "isStarred": false,
+  "orgId": 1,
+  "slug": "",
+  "sortMeta": 0,
+  "tags": [
+   "csci5840",
+   "rcn-lab1",
+   "snmp"
+  ],
+  "title": "RCN Lab 1 - SNMP per device",
+  "type": "dash-db",
+  "uid": "rcn-lab1-snmp",
+  "uri": "db/rcn-lab-1-snmp-per-device",
+  "url": "/d/rcn-lab1-snmp/rcn-lab-1-snmp-per-device"
+ },
+ {
+  "id": 170356410318848,
+  "isDeleted": false,
+  "isStarred": false,
+  "orgId": 1,
+  "slug": "",
+  "sortMeta": 0,
+  "tags": [
+   "csci5840",
+   "lab2",
+   "lab3",
+   "rcn-lab1"
+  ],
+  "title": "RCN Lab \u2014 Monitoring, Telemetry, Alerting and Data Lake",
+  "type": "dash-db",
+  "uid": "rcn-lab-overview",
+  "uri": "db/d464421",
+  "url": "/d/rcn-lab-overview/d464421"
+ },
+ {
+  "description": "For snmp_exporter IF-MIB",
+  "id": 4278595422928896,
+  "isDeleted": false,
+  "isStarred": false,
+  "orgId": 1,
+  "slug": "",
+  "sortMeta": 0,
+  "tags": [
+   "Prometheus",
+   "snmp_exporter"
+  ],
+  "title": "SNMP Exporter",
+  "type": "dash-db",
+  "uid": "7qKD6I1Wka",
+  "uri": "db/snmp-exporter",
+  "url": "/d/7qKD6I1Wka/snmp-exporter"
+ },
+ {
+  "description": "For snmp_exporter IF-MIB",
+  "id": 4278270490198016,
+  "isDeleted": false,
+  "isStarred": false,
+  "orgId": 1,
+  "slug": "",
+  "sortMeta": 0,
+  "tags": [
+   "Prometheus",
+   "snmp_exporter"
+  ],
+  "title": "SNMP Stats",
+  "type": "dash-db",
+  "uid": "7qKD6I1Wk",
+  "uri": "db/snmp-stats",
+  "url": "/d/7qKD6I1Wk/snmp-stats"
+ }
+]

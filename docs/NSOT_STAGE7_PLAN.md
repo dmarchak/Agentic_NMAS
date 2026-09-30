@@ -462,7 +462,8 @@ session needs no reconstruction:
 - **9b corrected:** npm's absence and a lockfile's hashes removed as reasons; the front-end
   argument carries option A.
 - **The spike is APPROVED:** the device page's Overview and Monitoring tab in A, judged first
-  on look, smoothness and the phone, then on the technical measures.
+  on look, smoothness and the phone, then on the technical measures. **BUILT 2026-09-30** at
+  `/v2/device/<name>`; its measures are in NSOT_GUI_BRIEF 9b. The operator's use decides A.
 
 **The order from here (the operator, 2026-09-29), each step waiting for sign-off:**
 1. the brief updated with the integration screens, the rule and its classification, and the

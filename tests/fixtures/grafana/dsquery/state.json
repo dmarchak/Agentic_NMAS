@@ -1,0 +1,255 @@
+{
+ "answer": {
+  "results": {
+   "A": {
+    "frames": [
+     {
+      "data": {
+       "values": [
+        [
+         1790742080044
+        ],
+        [
+         1
+        ]
+       ]
+      },
+      "schema": {
+       "fields": [
+        {
+         "config": {
+          "interval": 15000
+         },
+         "name": "Time",
+         "type": "time",
+         "typeInfo": {
+          "frame": "time.Time"
+         }
+        },
+        {
+         "config": {
+          "displayNameFromDS": "ifOperStatus{ifAlias=\"P2P to r4 Gi4 - OSPFv3 core interlink\", ifDescr=\"GigabitEthernet4\", ifIndex=\"4\", ifName=\"Gi4\", instance=\"10.255.1.13\", job=\"cisco_8000v\"}"
+         },
+         "labels": {
+          "__name__": "ifOperStatus",
+          "ifAlias": "P2P to r4 Gi4 - OSPFv3 core interlink",
+          "ifDescr": "GigabitEthernet4",
+          "ifIndex": "4",
+          "ifName": "Gi4",
+          "instance": "10.255.1.13",
+          "job": "cisco_8000v"
+         },
+         "name": "ifOperStatus",
+         "type": "number",
+         "typeInfo": {
+          "frame": "float64"
+         }
+        }
+       ],
+       "meta": {
+        "custom": {
+         "calculatedMinStep": 15000,
+         "resultType": "vector"
+        },
+        "executedQueryString": "Expr: ifOperStatus{instance=\"10.255.1.13\", ifDescr!~\"Null0|VoIP-Null0|GigabitEthernet1|GigabitEthernet0/0\"}\nStep: 15s",
+        "type": "numeric-multi",
+        "typeVersion": [
+         0,
+         1
+        ]
+       },
+       "refId": "A"
+      }
+     },
+     {
+      "data": {
+       "values": [
+        [
+         1790742080044
+        ],
+        [
+         1
+        ]
+       ]
+      },
+      "schema": {
+       "fields": [
+        {
+         "config": {
+          "interval": 15000
+         },
+         "name": "Time",
+         "type": "time",
+         "typeInfo": {
+          "frame": "time.Time"
+         }
+        },
+        {
+         "config": {
+          "displayNameFromDS": "ifOperStatus{ifAlias=\"eBGP to r5 Gi2 - simulated public\", ifDescr=\"GigabitEthernet2\", ifIndex=\"2\", ifName=\"Gi2\", instance=\"10.255.1.13\", job=\"cisco_8000v\"}"
+         },
+         "labels": {
+          "__name__": "ifOperStatus",
+          "ifAlias": "eBGP to r5 Gi2 - simulated public",
+          "ifDescr": "GigabitEthernet2",
+          "ifIndex": "2",
+          "ifName": "Gi2",
+          "instance": "10.255.1.13",
+          "job": "cisco_8000v"
+         },
+         "name": "ifOperStatus",
+         "type": "number",
+         "typeInfo": {
+          "frame": "float64"
+         }
+        }
+       ],
+       "meta": {
+        "custom": {
+         "resultType": "vector"
+        },
+        "type": "numeric-multi",
+        "typeVersion": [
+         0,
+         1
+        ]
+       },
+       "refId": "A"
+      }
+     },
+     {
+      "data": {
+       "values": [
+        [
+         1790742080044
+        ],
+        [
+         1
+        ]
+       ]
+      },
+      "schema": {
+       "fields": [
+        {
+         "config": {
+          "interval": 15000
+         },
+         "name": "Time",
+         "type": "time",
+         "typeInfo": {
+          "frame": "time.Time"
+         }
+        },
+        {
+         "config": {
+          "displayNameFromDS": "ifOperStatus{ifAlias=\"mgmt identity\", ifDescr=\"Loopback0\", ifIndex=\"7\", ifName=\"Lo0\", instance=\"10.255.1.13\", job=\"cisco_8000v\"}"
+         },
+         "labels": {
+          "__name__": "ifOperStatus",
+          "ifAlias": "mgmt identity",
+          "ifDescr": "Loopback0",
+          "ifIndex": "7",
+          "ifName": "Lo0",
+          "instance": "10.255.1.13",
+          "job": "cisco_8000v"
+         },
+         "name": "ifOperStatus",
+         "type": "number",
+         "typeInfo": {
+          "frame": "float64"
+         }
+        }
+       ],
+       "meta": {
+        "custom": {
+         "resultType": "vector"
+        },
+        "type": "numeric-multi",
+        "typeVersion": [
+         0,
+         1
+        ]
+       },
+       "refId": "A"
+      }
+     },
+     {
+      "data": {
+       "values": [
+        [
+         1790742080044
+        ],
+        [
+         1
+        ]
+       ]
+      },
+      "schema": {
+       "fields": [
+        {
+         "config": {
+          "interval": 15000
+         },
+         "name": "Time",
+         "type": "time",
+         "typeInfo": {
+          "frame": "time.Time"
+         }
+        },
+        {
+         "config": {
+          "displayNameFromDS": "ifOperStatus{ifAlias=\"s3 Gi0/2 - VLAN 100 CORE\", ifDescr=\"GigabitEthernet3\", ifIndex=\"3\", ifName=\"Gi3\", instance=\"10.255.1.13\", job=\"cisco_8000v\"}"
+         },
+         "labels": {
+          "__name__": "ifOperStatus",
+          "ifAlias": "s3 Gi0/2 - VLAN 100 CORE",
+          "ifDescr": "GigabitEthernet3",
+          "ifIndex": "3",
+          "ifName": "Gi3",
+          "instance": "10.255.1.13",
+          "job": "cisco_8000v"
+         },
+         "name": "ifOperStatus",
+         "type": "number",
+         "typeInfo": {
+          "frame": "float64"
+         }
+        }
+       ],
+       "meta": {
+        "custom": {
+         "resultType": "vector"
+        },
+        "type": "numeric-multi",
+        "typeVersion": [
+         0,
+         1
+        ]
+       },
+       "refId": "A"
+      }
+     }
+    ],
+    "status": 200
+   }
+  }
+ },
+ "error": null,
+ "request": {
+  "from": "now-5m",
+  "queries": [
+   {
+    "datasource": {
+     "type": "prometheus",
+     "uid": "efwpn8hr7sfeob"
+    },
+    "expr": "ifOperStatus{instance=\"10.255.1.13\", ifDescr!~\"Null0|VoIP-Null0|GigabitEthernet1|GigabitEthernet0/0\"}",
+    "format": "table",
+    "instant": true,
+    "range": false,
+    "refId": "A"
+   }
+  ],
+  "to": "now"
+ }
+}

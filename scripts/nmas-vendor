@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Vendor front-end files from the npm registry into static/js/vendor/, each
+recorded in MANIFEST.json with its sha256 and its tarball's registry integrity.
+
+    nmas-vendor htmx.org@2.0.4 dist/htmx.min.js
+    nmas-vendor @fontsource/ibm-plex-sans@latest files/ibm-plex-sans-latin-400-normal.woff2 LICENSE
+
+The front end loads nothing from a CDN (air-gapped networks; C123), so every
+library is a file in the repository, and `tests/test_csp.py` checks each file
+against the sha256 this records. What this adds is the other half: the
+TARBALL is checked against the integrity hash the registry publishes for that
+version (`dist.integrity`, sha512) before anything is extracted, so a file is
+what the registry says the package holds, not what a download happened to
+return. A mismatch writes nothing.
+
+Needs the network (registry.npmjs.org); run by a person, never by the suite.
+"""
+
+import sys
+
+ROOT = __import__("os").path.dirname(__import__("os").path.dirname(
+    __import__("os").path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+import argparse  # noqa: E402
+import base64  # noqa: E402
+import hashlib  # noqa: E402
+import io  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import tarfile  # noqa: E402
+import urllib.request  # noqa: E402
+
+REGISTRY = "https://registry.npmjs.org"
+VENDOR = os.path.join(ROOT, "static", "js", "vendor")
+
+
+def directory_for(package: str) -> str:
+    """`@alpinejs/csp` -> `alpinejs-csp`; an unscoped name is kept."""
+    return package.lstrip("@").replace("/", "-")
+
+
+def verify_integrity(blob: bytes, integrity: str) -> None:
+    """Refuse a tarball whose sha512 is not the registry's."""
+    algo, _, want = integrity.partition("-")
+    if algo != "sha512":
+        raise SystemExit(f"REFUSED: the registry published {algo!r} integrity; sha512 expected")
+    got = base64.b64encode(hashlib.sha512(blob).digest()).decode()
+    if got != want:
+        raise SystemExit(f"REFUSED: the tarball's sha512 is {got[:16]}…, the registry says {want[:16]}…; "
+                         "nothing was written")
+
+
+def extract(blob: bytes, members: list) -> dict:
+    """Each named member of the tarball (under its `package/` root), by name."""
+    out = {}
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
+        for name in members:
+            try:
+                fh = tar.extractfile("package/" + name)
+            except KeyError:
+                fh = None
+            if fh is None:
+                raise SystemExit(f"REFUSED: the tarball holds no package/{name}; nothing was written")
+            out[name] = fh.read()
+    return out
+
+
+def entries(package: str, version: str, tarball: str, integrity: str, files: dict) -> dict:
+    """Manifest entries, keyed by their path under static/js/vendor/."""
+    d = directory_for(package)
+    return {f"{d}/{os.path.basename(name)}": {
+        "bytes": len(data), "from": name, "integrity": integrity, "package": package,
+        "sha256": hashlib.sha256(data).hexdigest(), "tarball": tarball, "version": version}
+        for name, data in files.items()}
+
+
+def fetch(url: str) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": "nmas-automation/1.0"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.read()
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("spec", help="package@version (version may be latest)")
+    ap.add_argument("files", nargs="+", help="paths inside the package to vendor")
+    args = ap.parse_args(argv)
+    scope = "@" if args.spec.startswith("@") else ""
+    package, _, version = args.spec[len(scope):].partition("@")
+    package = scope + package
+    meta = json.loads(fetch(f"{REGISTRY}/{package}/{version or 'latest'}"))
+    version, dist = meta["version"], meta["dist"]
+    blob = fetch(dist["tarball"])
+    verify_integrity(blob, dist["integrity"])
+    files = extract(blob, args.files)
+    new = entries(package, version, dist["tarball"], dist["integrity"], files)
+    manifest_path = os.path.join(VENDOR, "MANIFEST.json")
+    manifest = json.load(open(manifest_path, encoding="utf-8"))
+    for rel, entry in new.items():
+        target = os.path.join(VENDOR, rel)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as fh:
+            fh.write(files[entry["from"]])
+        manifest[rel] = entry
+        print(f"vendored {rel} ({entry['bytes']} bytes) from {package}@{version}, integrity verified")
+    with open(manifest_path, "w", encoding="utf-8") as fh:
+        json.dump(dict(sorted(manifest.items())), fh, indent=1, sort_keys=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

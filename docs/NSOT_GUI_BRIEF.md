@@ -800,6 +800,36 @@ costed against that screen rather than argued in general.
 kind (NSOT_WRITEUP's rule), and no front-end rebuild has finished here. The spike is the
 first measurement, and the forecast follows from it.
 
+**The spike, BUILT (2026-09-30), awaiting the operator's use.** At `/v2/device/<name>`, beside
+today's page, which it does not replace. The Overview (answering, committed intent and golden,
+the four checks) and the Monitoring tab (the dashboard selector, 1h/6h/24h/7d and a typed
+relative range, each Monitoring state in its own words, the device panels drawn natively
+with uPlot, the rest listed with why). The other six tabs are drawn disabled; the Actions menu
+and "Plan a deploy" open today's device page. Live updates: the reachability badge, the
+Overview's checks, the top bar's integration strip and the Monitoring tab re-fetch when their
+reader announces; the panels re-read every 30 s while the page is visible. Not in the spike:
+the absolute from-to range (relative only), Help > About, and the dark theme.
+**The technical measures:**
+- **Page weight:** first load 192 KB compressed (the fonts 98 KB of it), of which 2 KB is
+  re-sent on each load and the rest cached; today's `/` is 558 KB compressed, 70 KB re-sent
+  each load.
+- **CSP:** `script-src 'self'` and `style-src 'self'`, no `unsafe-inline`, no `unsafe-eval`,
+  on the page and every fragment (`csp.STRICT_POLICY`); a test finds no inline script, style
+  or handler in anything rendered.
+- **Lines:** about 1,830 of program (Python 850, templates 300, CSS 260, JavaScript 425),
+  500 of tests, and a 110-line vendoring script; htmx, Alpine (CSP build), uPlot and the IBM
+  Plex fonts vendored with each tarball's sha512 checked against the registry.
+- **Planted defects: 10 of 10 caught**, each failing only the tests aimed at it: every panel
+  drawn, a panel served that the page does not draw, an inline style, a gap drawn as zero,
+  the policy dropped, C232's notice removed, an unapproved copy read as fine, a value drawn as
+  markup, an over-long range trimmed, the chosen range ignored. The last was first caught only
+  by accident (through the refusal test), so a direct test was added and it now fires on its
+  own.
+**What the operator sees first on the host:** the device dashboard setting is empty, so
+Monitoring says "No device dashboard is set" until `grafana_device_dashboard_uid` is set to
+`rcn-lab1-snmp`; after that, "the variable lists no devices at all" (C232) until either fix
+lands, and the panels answer empty.
+
 ## 10. The manual
 
 - **Where it lives:** Markdown in `docs/manual/`, versioned with the code, in the same

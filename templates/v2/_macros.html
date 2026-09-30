@@ -1,0 +1,39 @@
+{#- The redesign's small pieces, one macro each (NSOT_GUI_BRIEF section 6):
+    icons drawn inline as stroke SVG, a status badge, an age stamp. No style
+    attributes anywhere: the page's policy refuses inline styles. -#}
+
+{% macro icon(name, size=18) -%}
+<svg class="ico" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if name == 'attention' %}<circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path>
+{%- elif name == 'devices' %}<rect x="2" y="3" width="20" height="8" rx="2"></rect><rect x="2" y="13" width="20" height="8" rx="2"></rect><path d="M6 7h.01"></path><path d="M6 17h.01"></path>
+{%- elif name == 'history' %}<path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path>
+{%- elif name == 'monitoring' %}<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+{%- elif name == 'logs' %}<path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path>
+{%- elif name == 'dhcp' %}<rect x="3" y="14" width="18" height="7" rx="2"></rect><path d="M7 17.5h.01"></path><path d="M12 14v-4"></path><circle cx="12" cy="7" r="3"></circle>
+{%- elif name == 'templates' %}<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="m10 13-2 2 2 2"></path><path d="m14 17 2-2-2-2"></path>
+{%- elif name == 'netbox' %}<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"></path><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"></path>
+{%- elif name == 'credentials' %}<circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path>
+{%- elif name == 'help' %}<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path>
+{%- elif name == 'settings' %}<path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M1 14h6"></path><path d="M9 8h6"></path><path d="M17 16h6"></path>
+{%- elif name == 'search' %}<circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path>
+{%- elif name == 'down' %}<path d="m6 9 6 6 6-6"></path>
+{%- elif name == 'check' %}<circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path>
+{%- elif name == 'warn' %}<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path>
+{%- elif name == 'menu' %}<path d="M3 6h18"></path><path d="M3 12h18"></path><path d="M3 18h18"></path>
+{%- elif name == 'x' %}<path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
+{%- elif name == 'ext' %}<path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+{%- elif name == 'lock' %}<rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+{%- elif name == 'info' %}<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path>
+{%- elif name == 'dot' %}<circle cx="12" cy="12" r="4"></circle>
+{%- endif %}</svg>
+{%- endmacro %}
+
+{% macro badge(text, kind='neutral', ico='') -%}
+<span class="badge badge-{{ kind }}">{% if ico %}{{ icon(ico, 13) }}{% endif %}{{ text }}</span>
+{%- endmacro %}
+
+{% macro stamp(iso, words='') -%}
+{%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}" data-age="{{ iso }}">{{ words or iso }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
+{%- endmacro %}
+
+{% set STATE_KIND = {'ok': 'ok', 'warn': 'warn', 'danger': 'danger', 'unknown': 'muted'} %}

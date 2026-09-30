@@ -1,0 +1,141 @@
+"""routes/device_v2.py — the device page in the redesign: THE SPIKE.
+
+Approved by the operator on 2026-09-30 (NSOT_GUI_BRIEF 9b): the device
+page's Overview and Monitoring tab, built in option A (server-rendered Jinja,
+htmx for fragments, Alpine's CSP build for local state, one ES5 panel island
+over uPlot, no build step), in the real app with real data, to be judged
+first on look, smoothness and the phone, then on page weight, the CSP, lines
+of code and whether the tests catch a planted defect.
+
+Every route here is a READ. The page and its fragments carry the strict
+policy (`csp.STRICT_POLICY`): no inline script, no inline style, no eval.
+The device is addressed by NAME in the active list (the brief: an address
+moves for a DHCP or ZTP device).
+"""
+
+import logging
+
+from flask import Blueprint, jsonify, render_template, request
+
+from modules import csp, device_page
+
+log = logging.getLogger(__name__)
+
+bp = Blueprint("device_v2", __name__, url_prefix="/v2")
+
+TABS = [("overview", "Overview"), ("intent", "Intent"), ("history", "History"),
+        ("monitoring", "Monitoring"), ("logs", "Logs"), ("netbox", "NetBox"),
+        ("neighbours", "Neighbours"), ("ask", "Ask the device")]
+BUILT = ("overview", "monitoring")
+
+
+def _strict(resp, code=200):
+    from flask import make_response
+
+    r = make_response(resp, code)
+    r.headers["Content-Security-Policy"] = csp.STRICT_POLICY
+    return r
+
+
+def _actor() -> str:
+    try:
+        from modules import identity
+        return identity.request_actor() or ""
+    except Exception:                                  # noqa: BLE001
+        return ""
+
+
+def _device_or_404(name):
+    try:
+        return device_page.find_device(name), None
+    except device_page.NoSuchDevice as exc:
+        return None, _strict(render_template("v2/not_found.html", why=str(exc), actor=_actor()), 404)
+
+
+def _overview_ctx(ref, dev):
+    return {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev),
+            "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev)}
+
+
+def _monitoring_ctx(dev):
+    return {"device": dev, "m": device_page.monitoring(
+        dev, chosen_uid=request.args.get("dashboard", ""), range_text=request.args.get("range", "1h"))}
+
+
+@bp.route("/device/<name>", methods=["GET"])
+def device(name):
+    """The whole page, opened on the tab the URL names."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    tab = request.args.get("tab", "overview")
+    tab = tab if tab in BUILT else "overview"
+    ctx = {"device": dev, "list_name": ref.name, "tabs": TABS, "built": BUILT, "tab": tab,
+           "answer": device_page.answering(dev), "actor": _actor()}
+    ctx.update(_overview_ctx(ref, dev) if tab == "overview" else _monitoring_ctx(dev))
+    return _strict(render_template("v2/device.html", **ctx))
+
+
+@bp.route("/device/<name>/overview", methods=["GET"])
+def overview(name):
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_overview.html", **_overview_ctx(ref, dev)))
+
+
+@bp.route("/device/<name>/monitoring", methods=["GET"])
+def monitoring(name):
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    _ref, dev = found
+    return _strict(render_template("v2/_monitoring.html", **_monitoring_ctx(dev)))
+
+
+@bp.route("/device/<name>/status", methods=["GET"])
+def status(name):
+    """The answering badge, re-fetched when the reachability reader announces."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    _ref, dev = found
+    return _strict(render_template("v2/_status.html", device=dev, answer=device_page.answering(dev)))
+
+
+@bp.route("/device/<name>/panel/<uid>/<int:panel_id>", methods=["GET"])
+def panel(name, uid, panel_id):
+    """One device panel's data, for the browser to draw. Only a panel of that
+    dashboard that selects the device, with the dashboard's own query."""
+    try:
+        _ref, dev = device_page.find_device(name)
+    except device_page.NoSuchDevice as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    payload, code = device_page.panel_data(dev, uid, panel_id, request.args.get("range", "1h"))
+    return jsonify(payload), code
+
+
+@bp.route("/strip", methods=["GET"])
+def strip():
+    """The top bar's integration health, from the integration-health reader."""
+    value, at, why = device_page._cached("integrations")
+    rows = (value or {}).get("integrations") or []
+    configured = [r for r in rows if r.get("state") != "not_configured"]
+    down = [r for r in configured if r.get("state") != "up"]
+    return _strict(render_template("v2/_strip.html", rows=configured, down=down, value_at=at, why=why,
+                                   read=value is not None))
+
+
+@bp.route("/attention-count", methods=["GET"])
+def attention_count():
+    """The sidebar's Needs attention count: rows that ask for action."""
+    try:
+        from modules import attention
+        page = attention.needs_attention()
+        n = sum(1 for r in page.get("rows") or [] if r.get("level") in ("danger", "warning"))
+        return _strict(render_template("v2/_count.html", n=n, ok=True))
+    except Exception as exc:                            # noqa: BLE001
+        log.warning("v2 attention count failed: %s", exc)
+        return _strict(render_template("v2/_count.html", n=None, ok=False))

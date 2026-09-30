@@ -87,6 +87,7 @@ VOCABULARY = {
     "bulk_ops": "bulk operation records",
     "job_health": "job-health rows, as the job-health reader last stored them",
     "alerts": "Grafana's alert rules and instances, as the grafana-alerts reader last stored them",
+    "dashboards": "Grafana's dashboards and their models, as the grafana-dashboards reader last stored them",
     "reachability": "whether each device answers, as the reachability reader last stored it",
     "integration_health": "whether each integration answers, as the integration-health reader last stored it",
     "ci_verdict": "the running commit's CI verdict, as the ci-verdict reader last stored it",

@@ -1,0 +1,145 @@
+"""Grafana's dashboards, as a reader job: every dashboard Grafana holds and
+each one's model, trimmed to what the app draws from (NSOT_GUI_BRIEF 14.2).
+
+The Monitoring page and the device page render every panel from the
+dashboard's OWN definition, never a chosen few, so a panel added in Grafana
+appears in the app with no code change. Reading those models is an outside
+read, so it is never done on a page load (reader rule 1): this job reads
+`api/search?type=dash-db` and each dashboard's `api/dashboards/uid/<uid>`, and
+the pages read the stored value.
+
+**Referenced by UID, never by title** (the operator, 2026-09-30): the value is
+keyed by UID, so a renamed dashboard is still found, and a configured UID the
+value does not hold is a named state, never a blank panel.
+
+**A search answer exactly the size of its page is partial** (rule 5): the
+search is asked for at most `SEARCH_LIMIT`, and an answer of exactly that many
+is refused rather than stored as the whole set.
+"""
+
+import time
+
+from modules import reader_job
+
+SEARCH = "api/search"
+DASHBOARD = "api/dashboards/uid/<uid>"
+FRONTEND = "api/frontend/settings"
+SEARCH_LIMIT = 500
+INTERVAL_SECONDS = 300
+
+
+def _panels(model: dict) -> list:
+    """Every panel, rows included, in the dashboard's order, each trimmed to
+    what a renderer reads: type, title, grid position, targets, unit, and the
+    row it sits in."""
+    out, row = [], ""
+
+    def add(p, row_title):
+        defaults = ((p.get("fieldConfig") or {}).get("defaults") or {})
+        out.append({
+            "id": p.get("id"), "type": p.get("type"), "title": p.get("title") or "",
+            "gridPos": p.get("gridPos") or {}, "row": row_title,
+            "datasource": p.get("datasource"),
+            "unit": defaults.get("unit") or "",
+            "min": defaults.get("min"), "max": defaults.get("max"),
+            "thresholds": (defaults.get("thresholds") or {}).get("steps") or [],
+            "targets": [{"refId": t.get("refId"), "expr": t.get("expr") or "",
+                         "legendFormat": t.get("legendFormat") or "",
+                         "datasource": t.get("datasource"),
+                         "instant": bool(t.get("instant")), "format": t.get("format") or ""}
+                        for t in p.get("targets") or []],
+            "transformations": len(p.get("transformations") or []),
+        })
+
+    for p in model.get("panels") or []:
+        if p.get("type") == "row":
+            row = p.get("title") or ""
+            out.append({"id": p.get("id"), "type": "row", "title": row,
+                        "gridPos": p.get("gridPos") or {}, "row": row, "targets": [],
+                        "collapsed": bool(p.get("collapsed"))})
+            for inner in p.get("panels") or []:        # a collapsed row holds its panels
+                add(inner, row)
+            continue
+        add(p, row)
+    return out
+
+
+def _variables(model: dict) -> list:
+    out = []
+    for v in (model.get("templating") or {}).get("list") or []:
+        q = v.get("query")
+        out.append({"name": v.get("name"), "type": v.get("type"),
+                    "query": q if isinstance(q, str) else (q or {}).get("query") or "",
+                    "current": (v.get("current") or {}).get("value"),
+                    "multi": bool(v.get("multi"))})
+    return out
+
+
+def read(client=None) -> dict:
+    """Ask Grafana. Raises when it could not ask or the answer is partial."""
+    from modules.integrations.grafana import GrafanaIntegration
+
+    g = client or GrafanaIntegration()
+    got = g._get(SEARCH, type="dash-db", limit=SEARCH_LIMIT)
+    if not got.get("ok"):
+        raise ConnectionError(f"{SEARCH}: {got.get('error') or 'no answer'}")
+    found = got["response"].json() or []
+    if len(found) >= SEARCH_LIMIT:
+        raise reader_job.Truncated(f"{SEARCH} answered exactly {SEARCH_LIMIT}: a partial list")
+    dashboards = {}
+    for d in found:
+        uid = d.get("uid")
+        one = g._get(f"api/dashboards/uid/{uid}")
+        if not one.get("ok"):
+            raise ConnectionError(f"api/dashboards/uid/{uid}: {one.get('error') or 'no answer'}")
+        model = (one["response"].json() or {}).get("dashboard") or {}
+        dashboards[uid] = {"uid": uid, "title": model.get("title") or d.get("title") or uid,
+                           "folder": d.get("folderTitle") or "", "variables": _variables(model),
+                           "panels": _panels(model), "refresh": model.get("refresh") or ""}
+    fs = g._get(FRONTEND)
+    if not fs.get("ok"):
+        raise ConnectionError(f"{FRONTEND}: {fs.get('error') or 'no answer'}")
+    return {"dashboards": dashboards, "datasources": datasources(fs["response"].json() or {}),
+            "read_at": time.time()}
+
+
+def datasources(frontend: dict) -> list:
+    """The data sources, from Grafana's front-end settings (which any signed-in
+    role reads, so a Viewer token can): uid, type, name, and which is the
+    default, which a data-source variable with no current value resolves to."""
+    default = frontend.get("defaultDatasource")
+    return [{"uid": d.get("uid"), "type": d.get("type"), "name": name,
+             "is_default": name == default}
+            for name, d in sorted((frontend.get("datasources") or {}).items())
+            if d.get("uid") and d.get("type") not in ("grafana", "dashboard", "mixed")]
+
+
+#: The Monitoring tab re-renders on this reader's announcement, so it
+#: announces when a dashboard CHANGED, and at least this often regardless
+#: (rule 9's keepalive): a redraw every five minutes for nothing would reset
+#: every chart on an open page.
+KEEPALIVE_SECONDS = 1800
+
+
+def changed(previous: dict, value: dict) -> bool:
+    """Did anything a page draws move? The models and the data sources; never
+    the read time, which moves every cycle."""
+    def key(v):
+        return ((v or {}).get("dashboards"), (v or {}).get("datasources"))
+    return key(previous) != key(value)
+
+
+READER = reader_job.register(reader_job.Reader(
+    name="grafana-dashboards",
+    what="every dashboard Grafana holds and its model, for the pages that render its panels",
+    endpoints=(SEARCH, DASHBOARD, FRONTEND),
+    interval_seconds=INTERVAL_SECONDS,
+    interval_basis=("a dashboard changes when a person edits it in Grafana, which is rare; five "
+                    "minutes makes an edit appear soon without re-reading every model each minute"),
+    read=read,
+    invalidates=("dashboards",),
+    remedy="Check Grafana's URL and token in Settings > Integrations; the error names the endpoint",
+    window="the dashboards as they were at the read",
+    announce_if=changed,
+    announce_at_least_every=KEEPALIVE_SECONDS,
+))

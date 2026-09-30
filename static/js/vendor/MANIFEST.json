@@ -1,4 +1,94 @@
 {
+ "alpinejs-csp/cdn.min.js": {
+  "bytes": 72198,
+  "from": "dist/cdn.min.js",
+  "integrity": "sha512-SlRXmqO6kYhnxlg+99etmuzJtE9Lk4QbKjBHqerXzaMflJqoJXdz/SI3IvHJGZ/vRVyC3bR0SSBz40oY7goBeg==",
+  "package": "@alpinejs/csp",
+  "sha256": "0d18d7f8d7910e2e0212f0f056b12f50bebc3abb7d88d2f7c7cb4c336fe4519a",
+  "tarball": "https://registry.npmjs.org/@alpinejs/csp/-/csp-3.17.4.tgz",
+  "version": "3.17.4"
+ },
+ "fontsource-ibm-plex-mono/LICENSE": {
+  "bytes": 5299,
+  "from": "LICENSE",
+  "integrity": "sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q==",
+  "package": "@fontsource/ibm-plex-mono",
+  "sha256": "23b0a9d0c6d3f140a0b77e483c5cfa6bba574325ef5cb189ed9f2fec4884533f",
+  "tarball": "https://registry.npmjs.org/@fontsource/ibm-plex-mono/-/ibm-plex-mono-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "fontsource-ibm-plex-mono/ibm-plex-mono-latin-400-normal.woff2": {
+  "bytes": 14708,
+  "from": "files/ibm-plex-mono-latin-400-normal.woff2",
+  "integrity": "sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q==",
+  "package": "@fontsource/ibm-plex-mono",
+  "sha256": "08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7",
+  "tarball": "https://registry.npmjs.org/@fontsource/ibm-plex-mono/-/ibm-plex-mono-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "fontsource-ibm-plex-mono/ibm-plex-mono-latin-500-normal.woff2": {
+  "bytes": 14888,
+  "from": "files/ibm-plex-mono-latin-500-normal.woff2",
+  "integrity": "sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q==",
+  "package": "@fontsource/ibm-plex-mono",
+  "sha256": "01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22",
+  "tarball": "https://registry.npmjs.org/@fontsource/ibm-plex-mono/-/ibm-plex-mono-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "fontsource-ibm-plex-sans/LICENSE": {
+  "bytes": 4429,
+  "from": "LICENSE",
+  "integrity": "sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w==",
+  "package": "@fontsource/ibm-plex-sans",
+  "sha256": "d0283623ef57e722fd0eb688a8041589670c608ab780cd3612d06ba6f153d3fd",
+  "tarball": "https://registry.npmjs.org/@fontsource/ibm-plex-sans/-/ibm-plex-sans-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "fontsource-ibm-plex-sans/ibm-plex-sans-latin-400-normal.woff2": {
+  "bytes": 22588,
+  "from": "files/ibm-plex-sans-latin-400-normal.woff2",
+  "integrity": "sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w==",
+  "package": "@fontsource/ibm-plex-sans",
+  "sha256": "3b646991d30055a93a4ecc499713d4347953a74a947ecab435ab72070cbdab0e",
+  "tarball": "https://registry.npmjs.org/@fontsource/ibm-plex-sans/-/ibm-plex-sans-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "fontsource-ibm-plex-sans/ibm-plex-sans-latin-500-normal.woff2": {
+  "bytes": 24184,
+  "from": "files/ibm-plex-sans-latin-500-normal.woff2",
+  "integrity": "sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w==",
+  "package": "@fontsource/ibm-plex-sans",
+  "sha256": "0717336fb31fcdcde4b8deb3675bb4a0f7f6d484864afcd6751ac29975962203",
+  "tarball": "https://registry.npmjs.org/@fontsource/ibm-plex-sans/-/ibm-plex-sans-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "fontsource-ibm-plex-sans/ibm-plex-sans-latin-600-normal.woff2": {
+  "bytes": 24252,
+  "from": "files/ibm-plex-sans-latin-600-normal.woff2",
+  "integrity": "sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w==",
+  "package": "@fontsource/ibm-plex-sans",
+  "sha256": "8960851d691c054ed38e259bdcf1a6190d157b4203ed5bb32c632a863fb8ec2f",
+  "tarball": "https://registry.npmjs.org/@fontsource/ibm-plex-sans/-/ibm-plex-sans-5.3.0.tgz",
+  "version": "5.3.0"
+ },
+ "htmx.org/LICENSE": {
+  "bytes": 642,
+  "from": "LICENSE",
+  "integrity": "sha512-Thx/WtpeOQqSrqBCw/A1cwGJGg4UrVa3+sW0GmrM3p4gJgO89ecH4qtbnyzDDWFvBTqjnIMCgELTNt636dtamA==",
+  "package": "htmx.org",
+  "sha256": "d3d2456f76414f2456104660ebd65aff1c04cd7966b942bdabd63f3cdb316a38",
+  "tarball": "https://registry.npmjs.org/htmx.org/-/htmx.org-2.0.11.tgz",
+  "version": "2.0.11"
+ },
+ "htmx.org/htmx.min.js": {
+  "bytes": 52182,
+  "from": "dist/htmx.min.js",
+  "integrity": "sha512-Thx/WtpeOQqSrqBCw/A1cwGJGg4UrVa3+sW0GmrM3p4gJgO89ecH4qtbnyzDDWFvBTqjnIMCgELTNt636dtamA==",
+  "package": "htmx.org",
+  "sha256": "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717",
+  "tarball": "https://registry.npmjs.org/htmx.org/-/htmx.org-2.0.11.tgz",
+  "version": "2.0.11"
+ },
  "socket.io-client/LICENSE": {
   "bytes": 1116,
   "from": "LICENSE",
@@ -34,6 +124,33 @@
   "sha256": "8a9889aecc2f011e15031fed87eeb35ac75e62655a7b4889ba247ee8ea872474",
   "tarball": "https://registry.npmjs.org/sortablejs/-/sortablejs-1.15.0.tgz",
   "version": "1.15.0"
+ },
+ "uplot/LICENSE": {
+  "bytes": 1078,
+  "from": "LICENSE",
+  "integrity": "sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==",
+  "package": "uplot",
+  "sha256": "8f989229699b4fe2f1a0432d0e9edc338a8a911e250e2d1b01ecd770a5f5b1bd",
+  "tarball": "https://registry.npmjs.org/uplot/-/uplot-1.6.32.tgz",
+  "version": "1.6.32"
+ },
+ "uplot/uPlot.iife.min.js": {
+  "bytes": 51081,
+  "from": "dist/uPlot.iife.min.js",
+  "integrity": "sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==",
+  "package": "uplot",
+  "sha256": "19c8d4c6ad88929a79f4ae49d6f7161566dfd0ba3d15cc495e974f787eb78f1f",
+  "tarball": "https://registry.npmjs.org/uplot/-/uplot-1.6.32.tgz",
+  "version": "1.6.32"
+ },
+ "uplot/uPlot.min.css": {
+  "bytes": 1857,
+  "from": "dist/uPlot.min.css",
+  "integrity": "sha512-KIMVnG68zvu5XXUbC4LQEPnhwOxBuLyW1AHtpm6IKTXImkbLgkMy+jabjLgSLMasNuGGzQm/ep3tOkyTxpiQIw==",
+  "package": "uplot",
+  "sha256": "df630c6a8d6f8eeaff264b50f73ce5b114f646ffd9a0bb74f049b0a00135fa04",
+  "tarball": "https://registry.npmjs.org/uplot/-/uplot-1.6.32.tgz",
+  "version": "1.6.32"
  },
  "vis-network/LICENSE-APACHE-2.0": {
   "bytes": 10171,

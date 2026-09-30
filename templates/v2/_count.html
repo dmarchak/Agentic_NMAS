@@ -1,0 +1,3 @@
+{%- if not ok %}<span class="count count-unknown" title="Needs attention could not be read">?</span>
+{%- elif n %}<span class="count">{{ n }}</span>
+{%- else %}<span class="count count-zero" title="nothing needs attention">0</span>{% endif -%}

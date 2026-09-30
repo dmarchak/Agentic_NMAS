@@ -1,0 +1,95 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- set dev_name = device.hostname -%}
+{%- set cur_range = m.range or '1h' -%}
+{%- set dash_uid = (m.dashboard or {}).get('uid', '') -%}
+{#- Re-rendered when Grafana's dashboards change (the reader announces only a change). -#}
+<div class="monitoring" id="monitoring" hx-get="{{ url_for('device_v2.monitoring', name=dev_name, dashboard=dash_uid, range=cur_range) }}"
+     hx-trigger="nmas:dashboards from:body" hx-swap="outerHTML">
+<div class="toolbar">
+  <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
+    <button type="button" class="btn btn-select" aria-haspopup="listbox" x-bind:aria-expanded="expanded" x-on:click="toggle">
+      <span class="muted">Dashboard</span> <strong>{{ (m.dashboard or {}).get('title') or 'none chosen' }}</strong>{{ icon('down', 14) }}
+    </button>
+    <div class="menu menu-wide" role="listbox" x-show="isOpen" x-cloak>
+      <p class="menu-note">Only dashboards with a <span class="mono">{{ m.settings.variable }}</span> variable:
+        {{ m.offered|length }} of the {{ m.total_dashboards or 0 }} Grafana holds. Choosing one changes this view, not the default.</p>
+      {% for d in m.offered %}
+      <a role="option" class="menu-item{% if d.uid == dash_uid %} on{% endif %}" aria-selected="{{ 'true' if d.uid == dash_uid else 'false' }}"
+         href="{{ url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=d.uid, range=cur_range) }}"
+         hx-get="{{ url_for('device_v2.monitoring', name=dev_name, dashboard=d.uid, range=cur_range) }}" hx-target="#tab-body"
+         hx-push-url="{{ url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=d.uid, range=cur_range) }}">
+        <span class="grow">{{ d.title }}</span><span class="mono muted">{{ d.uid }}</span>{% if d.uid == m.settings.uid %} {{ badge('default', 'info') }}{% endif %}
+      </a>
+      {% else %}
+      <p class="menu-note">None of Grafana's dashboards has that variable.</p>
+      {% endfor %}
+    </div>
+  </div>
+  {% if m.device_value %}<span class="chip">{{ icon('lock', 12) }}<span class="mono">{{ m.settings.variable }} = {{ m.device_value }}</span></span>{% endif %}
+  <span class="grow"></span>
+  <div class="seg" role="group" aria-label="Time range">
+    {% for key in ['1h', '6h', '24h', '7d'] %}
+    <a class="seg-btn{% if cur_range == key %} on{% endif %}" aria-pressed="{{ 'true' if cur_range == key else 'false' }}"
+       href="{{ url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=dash_uid, range=key) }}"
+       hx-get="{{ url_for('device_v2.monitoring', name=dev_name, dashboard=dash_uid, range=key) }}" hx-target="#tab-body"
+       hx-push-url="{{ url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=dash_uid, range=key) }}">{{ key }}</a>
+    {% endfor %}
+  </div>
+  <form class="range-custom" hx-get="{{ url_for('device_v2.monitoring', name=dev_name) }}" hx-target="#tab-body">
+    <input type="hidden" name="dashboard" value="{{ dash_uid }}">
+    <label class="sr" for="range-in">Custom range</label>
+    <input id="range-in" type="text" name="range" placeholder="last 90 minutes" value="{{ cur_range if cur_range not in ['1h', '6h', '24h', '7d'] else '' }}">
+    <button type="submit" class="btn btn-small">Apply</button>
+  </form>
+</div>
+<p class="limits">Prometheus serves up to 90 days. {% if m.step %}Step {{ m.step }} s for {{ m.range_words }}: the step widens with the range.{% endif %}
+  {% if m.value_at %}Dashboards read {{ stamp(m.value_at) }}.{% endif %}</p>
+
+{%- if m.state == 'not_read' %}
+<div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>Grafana's dashboards have not been read yet.</strong> {{ m.why }}</div></div>
+{%- elif m.state == 'not_set' %}
+<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>No device dashboard is set for this network.</strong>
+  Name one by UID in Settings &gt; Integrations &gt; Grafana (Device dashboard UID), or choose one above for this view.</div></div>
+{%- elif m.state == 'uid_gone' %}
+<div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>Grafana holds no dashboard with UID <span class="mono">{{ m.uid }}</span>.</strong>
+  The setting names a dashboard that was deleted or never existed; choose one above, or correct the setting.</div></div>
+{%- elif m.state == 'no_variable' %}
+<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>No panels for {{ dev_name }}: {{ m.dashboard.title }} cannot be filtered to one device.</strong>
+  It has no variable named <span class="mono">{{ m.settings.variable }}</span> (its variables: {{ m.variables|join(', ') or 'none' }}), so its panels would show the whole fleet under {{ dev_name }}'s name. None are drawn.</div></div>
+{%- elif m.state == 'range_refused' %}
+<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>That range is refused.</strong> {{ m.why }}</div></div>
+{%- else %}
+  {%- set vs = m.variable_state or {} %}
+  {%- if vs.state == 'none' %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>The dashboard's <span class="mono">{{ m.settings.variable }}</span> variable lists no devices at all,</strong> so these panels will be empty.
+    Its query <span class="mono">{{ vs.query }}</span> returns nothing: no series carries a <span class="mono">{{ vs.label }}</span> label{% if vs.selector %} matching <span class="mono">{{ vs.selector }}</span>{% endif %}.
+    The SNMP series identify a device by <span class="mono">instance</span>, its address (C232). Fix it in Grafana (select on <span class="mono">instance</span>, and set Variable value to address in Settings), or give the series a <span class="mono">device</span> label at scrape (P.7).</div></div>
+  {%- elif vs.state == 'not_listed' %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Prometheus holds no series for {{ m.device_value }}</strong> under the <span class="mono">{{ vs.label }}</span> label ({{ vs.count }} other values are listed).</div></div>
+  {%- elif vs.state == 'could_not_ask' %}
+  <div class="notice notice-muted">{{ icon('info', 16) }}<div>Whether the variable lists {{ m.device_value }} could not be asked: {{ vs.error }}. The panels below still try.</div></div>
+  {%- endif %}
+  <div class="panels" data-refresh="30">
+    {% for p in m.drawn %}
+    <section class="panel gw-{{ (p.gridPos or {}).get('w', 24) }}" data-panel-src="{{ url_for('device_v2.panel', name=dev_name, uid=dash_uid, panel_id=p.id, range=cur_range) }}" data-panel-type="{{ p.type }}" data-panel-unit="{{ p.unit }}">
+      <div class="panel-head"><h3>{{ p.title|replace('$' ~ m.settings.variable, m.device_value) }}</h3><span class="panel-type mono">{{ p.type }}</span></div>
+      <div class="panel-body"><p class="panel-wait">Reading from Grafana…</p></div>
+    </section>
+    {% endfor %}
+  </div>
+  {% if m.left_out %}
+  <section class="card">
+    <div class="card-head"><h2>{{ m.left_out|length }} panel{{ '' if m.left_out|length == 1 else 's' }} left out: {{ 'its query does' if m.left_out|length == 1 else 'their queries do' }} not select by device</h2></div>
+    <table class="table">
+      <thead><tr><th>Panel</th><th>Why it is left out</th><th>Its query</th></tr></thead>
+      <tbody>
+      {% for x in m.left_out %}
+        <tr><td>{{ x.panel.title }}</td><td>{{ x.reason }}</td><td class="mono small">{{ x.query or '' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="card-foot">Add <span class="mono">{{ m.settings.variable }}="${{ m.settings.variable }}"</span> to a panel's query in Grafana and it appears on every device page, with no change here.</p>
+  </section>
+  {% endif %}
+{%- endif %}
+</div>

@@ -1,0 +1,62 @@
+{%- from "v2/_macros.html" import icon -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"allowEval": false, "allowScriptTags": false, "includeIndicatorStyles": false, "historyCacheSize": 0}'>
+<title>{% block title %}NMAS{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/nmas-v2.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/uplot/uPlot.min.css') }}">
+<script defer src="{{ url_for('static', filename='js/vendor/htmx.org/htmx.min.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/vendor/socket.io-client/socket.io.min.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/nmas_invalidation.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/vendor/uplot/uPlot.iife.min.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/nmas_panels.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/nmas_v2.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/vendor/alpinejs-csp/cdn.min.js') }}"></script>
+</head>
+<body class="v2" x-data="frame">
+<a class="skip" href="#main">Skip to the content</a>
+<div class="scrim" x-show="drawer" x-on:click="close" x-cloak></div>
+<nav class="sidebar" aria-label="Main" x-bind:class="drawerClass">
+  <div class="brand">
+    <div class="brand-mark">N</div>
+    <div class="brand-words"><span class="brand-name">NMAS</span><span class="brand-sub">Network source of truth</span></div>
+    <button type="button" class="icon-btn drawer-close" aria-label="Close the menu" x-on:click="close">{{ icon('x', 20) }}</button>
+  </div>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('attention') }}<span class="grow">Needs attention</span><span class="count" hx-get="{{ url_for('device_v2.attention_count') }}" hx-trigger="load" hx-swap="outerHTML"></span></a>
+  <a class="nav-item{% if active_nav == 'devices' %} active{% endif %}" href="{{ url_for('index') }}"{% if active_nav == 'devices' %} aria-current="page"{% endif %}>{{ icon('devices') }}<span>Devices</span></a>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('history') }}<span>History</span></a>
+  <div class="nav-head">OBSERVE</div>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('monitoring') }}<span>Monitoring</span></a>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('logs') }}<span>Logs</span></a>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('dhcp') }}<span>DHCP</span></a>
+  <div class="nav-head">SOURCE OF TRUTH</div>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('templates') }}<span>Templates</span></a>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('netbox') }}<span>NetBox</span></a>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('credentials') }}<span>Credentials</span></a>
+  <div class="grow"></div>
+  <p class="spike-note">A spike: only this device page is in the new design. Other items open today's screens.</p>
+  <div class="nav-rule"></div>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('help') }}<span>Help</span></a>
+  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('settings') }}<span>Settings</span></a>
+</nav>
+<div class="frame">
+  <header class="topbar">
+    <button type="button" class="icon-btn menu-btn" aria-label="Open the menu" x-on:click="open">{{ icon('menu', 22) }}</button>
+    <span class="net"><span class="net-label">Network</span> <strong>{{ list_name }}</strong></span>
+    <form class="jump" action="{{ url_for('device_v2.device', name='r') }}" method="get" data-base="{{ url_for('device_v2.device', name='r')[:-1] }}" x-on:submit.prevent="jump">
+      {{ icon('search', 15) }}<input type="text" name="name" aria-label="Go to device" placeholder="Go to device by name" autocomplete="off" x-ref="jumpbox"><kbd>/</kbd>
+    </form>
+    <span class="grow"></span>
+    <span class="strip" id="nmas-strip" hx-get="{{ url_for('device_v2.strip') }}" hx-trigger="load, nmas:integration_health from:body" hx-swap="innerHTML"></span>
+    <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Live</span></span>
+    <span class="who" title="{{ actor or 'not identified: you can look, not change' }}"><span class="avatar">{{ (actor or '?')[:2]|upper }}</span><span class="who-name">{{ actor or 'not identified' }}</span></span>
+  </header>
+  <main id="main" class="main">
+    {% block main %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

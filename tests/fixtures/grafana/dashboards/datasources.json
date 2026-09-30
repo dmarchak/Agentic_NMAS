@@ -1,0 +1,5 @@
+[
+ {"is_default": false, "name": "loki", "type": "loki", "uid": "efxk88ulvh3pcf"},
+ {"is_default": true, "name": "prometheus", "type": "prometheus", "uid": "efwpn8hr7sfeob"},
+ {"is_default": false, "name": "Thanos (lake)", "type": "prometheus", "uid": "afxkt521qhqtcc"}
+]

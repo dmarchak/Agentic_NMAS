@@ -48,6 +48,25 @@ POLICY = "; ".join((
 ))
 
 
+#: The redesign's policy (the spike, NSOT_GUI_BRIEF 9b): no `unsafe-inline`
+#: and no `unsafe-eval` for scripts OR styles. Its pages carry no inline
+#: script, no inline handler and no style attribute; Alpine's CSP build
+#: evaluates no expression with `new Function`, and htmx runs with
+#: `allowEval: false`. A page sets it itself, and `install` keeps it.
+STRICT_POLICY = "; ".join((
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self' data: blob:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+))
+
+
 def install(app) -> None:
     """Set the policy on every HTML response that does not carry its own."""
 

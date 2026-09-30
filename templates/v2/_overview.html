@@ -1,0 +1,41 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, STATE_KIND -%}
+{#- Re-fetched whenever a reader it draws from announces (nmas_v2.js). -#}
+<div class="grid-2" id="overview" hx-get="{{ url_for('device_v2.overview', name=device.hostname) }}" hx-swap="outerHTML"
+     hx-trigger="nmas:reachability from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:drift from:body">
+  <section class="card">
+    <div class="card-head"><h2>Around this device</h2></div>
+    <dl class="facts">
+      <div><dt>Answering</dt><dd>
+        {%- if answer.state == 'unknown' %}not probed yet <span class="muted">({{ answer.why }})</span>
+        {%- else %}{{ answer.text }}{% if answer.since %}, since {{ stamp(answer.since) }}{% endif %}
+        <span class="muted">· last probe {{ answer.last_result }}, {{ stamp(answer.checked_at) }}</span>{% endif -%}
+      </dd></div>
+      <div><dt>Committed intent</dt><dd>
+        {%- if records.intent %}<span class="mono">{{ records.intent.sha }}</span>, {{ stamp(records.intent.at) }}
+        <span class="muted">· {{ records.intent.source or 'no Source trailer' }}{% if records.intent.actor %} · {{ records.intent.actor }}{% endif %}</span>
+        {%- else %}none committed <span class="muted">· nothing declares what it should look like, so it is not deployable</span>{% endif -%}
+      </dd></div>
+      <div><dt>Golden</dt><dd>
+        {%- if records.golden %}<span class="mono">{{ records.golden.sha }}</span>, {{ stamp(records.golden.at) }}
+        <span class="muted">· {{ records.golden.source or 'no Source trailer' }}{% if records.golden.actor %} · {{ records.golden.actor }}{% endif %}</span>
+        {%- else %}none committed <span class="muted">· capture it to record what it runs</span>{% endif -%}
+      </dd></div>
+      <div><dt>Address</dt><dd><span class="mono">{{ device.ip }}</span></dd></div>
+      <div><dt>Platform</dt><dd>{{ device.device_type or 'not recorded' }}</dd></div>
+    </dl>
+    <p class="card-foot">A golden is a record of what the device runs; intent is what it should run.</p>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Checks</h2></div>
+    <ul class="checks">
+      {% for c in checks %}
+      <li class="check check-{{ STATE_KIND.get(c.state, 'muted') }}">
+        <span class="check-ico">{% if c.state == 'ok' %}{{ icon('check', 16) }}{% elif c.state in ('warn', 'danger') %}{{ icon('warn', 16) }}{% else %}{{ icon('dot', 16) }}{% endif %}</span>
+        <span class="check-body"><strong>{{ c.name }}</strong>: {{ c.text }}</span>
+        {% if c.at %}<span class="check-at">{{ stamp(c.at) }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="card-foot">Each check is the stored result of its own job; the time beside it is when that result was taken.</p>
+  </section>
+</div>

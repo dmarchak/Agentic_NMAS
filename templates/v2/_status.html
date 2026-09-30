@@ -1,0 +1,7 @@
+{%- from "v2/_macros.html" import badge -%}
+<span class="status" id="dev-status" hx-get="{{ url_for('device_v2.status', name=device.hostname) }}" hx-trigger="nmas:reachability from:body" hx-swap="outerHTML">
+{%- if answer.state == 'ok' %}{{ badge('Answering', 'ok', 'check') }}
+{%- elif answer.state == 'danger' %}{{ badge('Not answering', 'danger', 'warn') }}
+{%- else %}{{ badge('Not probed yet', 'muted') }}{% endif -%}
+{%- if answer.since %}<span class="status-since" title="checked {{ answer.checked_at }}">since <time data-age="{{ answer.since }}" datetime="{{ answer.since }}">{{ answer.since }}</time></span>{% endif -%}
+</span>

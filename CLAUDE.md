@@ -319,7 +319,21 @@ tracked in git.
   judges "answering" over consecutive misses against ONE
   `miss_threshold()` (3, measured); it OWNS `STATUS`, which the app hands
   every consumer as `device_status_cache`, and announces on a change with a
-  60 s keepalive
+  60 s keepalive. `readers/grafana_dashboards.py` stores every dashboard's
+  model, trimmed, keyed by UID, every 300 s, announcing `dashboards` only on a
+  change (30 min keepalive)
+- **The redesign's SPIKE (NSOT_GUI_BRIEF 9b, 2026-09-30)**: the device page's
+  Overview and Monitoring tab in option A at `/v2/device/<name>`
+  (**[routes/device_v2.py](routes/device_v2.py)**, `templates/v2/`,
+  **[static/css/nmas-v2.css](static/css/nmas-v2.css)**,
+  **[static/js/nmas_v2.js](static/js/nmas_v2.js)**,
+  **[static/js/nmas_panels.js](static/js/nmas_panels.js)**), under
+  `csp.STRICT_POLICY` (no inline script or style). What it reads is
+  **[modules/device_page.py](modules/device_page.py)** (every fact from a record
+  the app already keeps); **[modules/panels.py](modules/panels.py)** is the pure
+  panel logic (which panels select the device, the bounded range and step, the
+  `api/ds/query` request, the answer as series). `scripts/nmas-vendor` vendors an
+  npm package's files after checking the tarball's sha512 against the registry
 - **[modules/invalidation.py](modules/invalidation.py)** — Stage 7.0: what
   each mutating route invalidates, in a finite vocabulary of data keys; the
   response carries it. Client: **[static/js/nmas_invalidation.js](static/js/nmas_invalidation.js)**
@@ -1549,6 +1563,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_c53_device_stage.py` | C53: one pure judgement (`startup_carries`) for the save path and the job; the exposed line is not carried, no startup config is not, no username line is unknown; the check never saves; the CLI chain saves the device FIRST and a failure stops it and is recorded, with `nmas-persist-native` as the advice; the job's file (0600), a raised check is unknown, the script's exit codes; job-health rows: one ok row naming the count, the device that would boot the wrong credential named, stale, unreadable, and a run that found NO devices is not ok |
 | `test_kea_m5_helper.py` | P.6 M5: the helper reads subnet 255 from kea-dhcp4's control socket and adds the config-set control reservation, against a fake Kea socket; refuses a MAC or address already reserved; never calls config-write; D4's refusal of route and resolver options (3, 6, 33, 121) at global, shared-network, subnet and reservation level, with client classes reported as not ruled out |
 | `test_bootstrap_config.py` | ASCII over the whole output, comments included; probe fixtures == generator |
+| `test_device_v2.py` | The redesign's spike, through the real app with REAL captures (the `rcn-lab1-snmp` model stored by the real dashboards reader, three real `api/ds/query` answers, r2's golden): the page and every fragment carry the strict policy with no inline script, style or handler (the patterns shown finding one); an unknown or prefix name is a 404 naming the list; the Overview draws the golden's commit, absent intent in words, each check with an absent source unknown and an unapproved copy or a firing alert danger; Monitoring draws exactly the 4 panels whose queries select the device (counted from the raw model), lists the rest with why, offers only dashboards with the variable, and names each state (not read, not set, UID gone, no variable, C232's empty variable, device not listed, range refused); a panel's query is the dashboard's with the device filled and the chosen range, a panel it does not draw is refused, and nothing the browser sends reaches the query; the shipped scripts' helpers executed in duktape (units, gaps null never zero, thresholds, ages, the jump box), every announced key subscribed and heard, no data drawn as markup. Ten planted defects each caught by the test aimed at it |
 | `tests/fixtures/configs/` | sanitized real configs; `fleet/` holds all nine |
 | `tests/fake_netbox.py` | in-memory NetBox API (not a test module) |
 | `test_settings_migration.py` | schema, secret encryption, forward migration |

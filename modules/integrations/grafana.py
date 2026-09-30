@@ -16,7 +16,33 @@ class GrafanaIntegration(IntegrationClient):
     url_key = "grafana_url"
     secret_keys = ("grafana_token",)
     plain_keys = ("grafana_embed_mode", "grafana_device_dashboard_url",
-                  "grafana_verify_tls")
+                  "grafana_verify_tls", "grafana_device_dashboard_uid",
+                  "grafana_device_variable", "grafana_device_variable_value")
+
+    def query(self, body: dict, timeout: float = 20.0) -> dict:
+        """Run panel queries through Grafana's own query endpoint
+        (`api/ds/query`), exactly as Grafana's front end runs them: a POST that
+        READS, with the Viewer token, so a panel's data source and its macros
+        (`$__rate_interval`, `$__range`: measured, the back end expands them)
+        need no second configuration here. Never raises."""
+        if not self.is_configured():
+            return {"ok": False, "error": "Grafana is not configured — set it in Settings"}
+        url = f"{self.url}/api/ds/query"
+        try:
+            r = self.session().post(url, json=body, timeout=timeout)
+        except Exception as exc:                  # noqa: BLE001 - never raise into a handler
+            return {"ok": False, "error": f"Grafana did not answer: {type(exc).__name__}"}
+        if r.status_code >= 400:
+            try:
+                why = (r.json() or {}).get("message") or ""
+            except ValueError:
+                why = ""
+            return {"ok": False, "error": f"HTTP {r.status_code}" + (f": {why}" if why else ""),
+                    "status": r.status_code}
+        try:
+            return {"ok": True, "body": r.json()}
+        except ValueError:
+            return {"ok": False, "error": "Grafana's answer is not JSON"}
 
     def _auth_headers(self) -> dict:
         token = get_secret("grafana_token")

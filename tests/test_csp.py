@@ -83,9 +83,10 @@ class TestNothingLoadsFromOffTheHost:
 
         manifest = json.load(open(os.path.join(ROOT, "static", "js", "vendor", "MANIFEST.json")))
         # base.html is the layout both pages extend, so a library it loads
-        # is loaded by both (the socket client moved there for C58).
+        # is loaded by both (the socket client moved there for C58). The
+        # redesign's layout (v2/base.html) loads htmx, Alpine and uPlot.
         pages = "".join(open(os.path.join(ROOT, "templates", f), encoding="utf-8").read()
-                        for f in ("base.html", "index.html", "device.html"))
+                        for f in ("base.html", "index.html", "device.html", "v2/base.html"))
         code = [rel for rel in manifest if rel.endswith((".js", ".css"))]
         assert code and not [rel for rel in code if f"js/vendor/{rel}" not in pages], code
 
