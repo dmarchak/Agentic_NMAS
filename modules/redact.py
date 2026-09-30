@@ -167,6 +167,43 @@ _cache_lock = threading.Lock()
 CACHE_TTL = 30.0
 
 
+#: Values held in memory for ONE operation and never in any store (adopt's
+#: supplied credential, 2026-09-29): consulted like the stored ones for as
+#: long as the operation runs, never cached, never written.
+_transient: dict = {}
+_transient_lock = threading.Lock()
+
+
+class transient_secret:
+    """``with transient_secret(value, "adopt:supplied"):`` redacts *value* for
+    the block's duration. For a secret the tool must not store: the stores feed
+    the table, so a value nobody stored would otherwise never be redacted."""
+
+    def __init__(self, value: str, label: str = "transient"):
+        self.value, self.label = value or "", label
+
+    def __enter__(self):
+        # The same floor as the stores' values: a short value redacted by
+        # value corrupts every line that happens to contain it. What keeps a
+        # short one out of a log is that no path formats it into a message.
+        if self.value and len(self.value) >= MIN_REDACTABLE:
+            with _transient_lock:
+                _transient[self.value] = self.label
+        return self
+
+    def __exit__(self, *exc):
+        with _transient_lock:
+            _transient.pop(self.value, None)
+        return False
+
+
+def _with_transient(values: dict) -> dict:
+    with _transient_lock:
+        if not _transient:
+            return values
+        return {**values, **_transient}
+
+
 def invalidate_cache() -> None:
     """Drop the cached table — call after writing a secret."""
     with _cache_lock:
@@ -186,7 +223,7 @@ def known_secret_values() -> dict:
     with _cache_lock:
         if (_cache["values"] is not None
                 and time.monotonic() - _cache["at"] < CACHE_TTL):
-            return _cache["values"]
+            return _with_transient(_cache["values"])
 
     out = {}
     try:
@@ -217,7 +254,7 @@ def known_secret_values() -> dict:
     with _cache_lock:
         _cache["values"] = out
         _cache["at"] = time.monotonic()
-    return out
+    return _with_transient(out)
 
 
 def _compile(values: dict):

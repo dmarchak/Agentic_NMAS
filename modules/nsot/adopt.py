@@ -46,6 +46,110 @@ def account_lines(config_text: str, username: str) -> list:
             if l.strip().startswith(prefix) or l.strip() == f"username {username}"]
 
 
+_LOCAL = ("local", "local-case")
+
+
+def _vty_stanzas(vty_text: str) -> list:
+    """[{name, login, auth_list, exec_list, ssh}] for each `line vty` stanza."""
+    out, cur = [], None
+    for raw in (vty_text or "").splitlines():
+        line = raw.rstrip()
+        if line.startswith("line vty"):
+            cur = {"name": line[len("line "):].strip(), "login": "", "auth_list": "",
+                   "exec_list": "", "ssh": True}
+            out.append(cur)
+            continue
+        if cur is None or not raw.startswith(" "):
+            cur = None if not raw.startswith(" ") else cur
+            continue
+        s = line.strip()
+        if s == "login" or s == "login local" or s == "no login":
+            cur["login"] = s
+        elif s.startswith("login authentication "):
+            cur["auth_list"] = s.split()[-1]
+        elif s.startswith("authorization exec "):
+            cur["exec_list"] = s.split()[-1]
+        elif s.startswith("transport input"):
+            words = s.split()[2:]
+            cur["ssh"] = "ssh" in words or "all" in words
+    return out
+
+
+def _method_lists(aaa_text: str, kind: str) -> dict:
+    """{list name: [methods]} for `aaa authentication login` / `aaa authorization exec`."""
+    prefix = {"login": "aaa authentication login ", "exec": "aaa authorization exec "}[kind]
+    out = {}
+    for raw in (aaa_text or "").splitlines():
+        s = raw.strip()
+        if s.startswith(prefix):
+            words = s[len(prefix):].split()
+            if words:
+                out[words[0]] = words[1:]
+    return out
+
+
+def local_login_verdict(aaa_text: str, vty_text: str) -> dict:
+    """Would a LOCAL account log in over SSH? ``{"ok", "reason", "lines"}``.
+
+    Read from the device's own config before anything is sent, because a
+    device authenticating through TACACS+ or RADIUS may never consult a local
+    account: the fresh-login verify would then fail (safely, the account is
+    removed) with a reason that names nothing (the operator, 2026-09-29). The
+    lab uses local accounts; this is the first thing a real network would hit.
+
+    `local` AFTER a server group is refused too: IOS consults the next method
+    only when the servers do not ANSWER, so while they answer and reject the
+    tool's account, the local one is never tried."""
+    stanzas = [s for s in _vty_stanzas(vty_text) if s["ssh"]]
+    if not stanzas:
+        return {"ok": False, "lines": [], "reason": (
+            "no vty line accepts SSH (every `line vty` stanza's `transport input` "
+            "excludes it), so the tool has no way in")}
+    new_model = any(l.strip() == "aaa new-model" for l in (aaa_text or "").splitlines())
+    problems = []
+    if not new_model:
+        for s in stanzas:
+            if s["login"] != "login local":
+                problems.append(
+                    f"line {s['name']} uses `{s['login'] or 'login (the default)'}`, which "
+                    "authenticates against the line password, not local accounts; it would "
+                    "take `login local` on that line")
+    else:
+        logins, execs = _method_lists(aaa_text, "login"), _method_lists(aaa_text, "exec")
+        for s in stanzas:
+            name = s["auth_list"] or "default"
+            methods = logins.get(name)
+            if methods is None and name != "default":
+                problems.append(f"line {s['name']} names login method list '{name}', which is "
+                                "not defined")
+            elif methods is not None and (not methods or methods[0] not in _LOCAL):
+                shown = " ".join(methods) or "(none)"
+                how = ("consults a local account only if the servers do not answer, so it "
+                       "would be refused while they do" if any(m in _LOCAL for m in methods)
+                       else "never consults a local account")
+                problems.append(
+                    f"line {s['name']} authenticates with method list '{name}' = {shown}, "
+                    f"which {how}; it would take the tool's account on those servers, or a "
+                    "list with `local` first on the vty lines the tool uses")
+            ename = s["exec_list"] or "default"
+            emethods = execs.get(ename)
+            if emethods is not None and (not emethods or emethods[0] not in
+                                         (*_LOCAL, "if-authenticated", "none")):
+                problems.append(
+                    f"line {s['name']} authorizes exec with list '{ename}' = "
+                    f"{' '.join(emethods) or '(none)'}, which would not grant a local account "
+                    "a shell; it would take `local` or `if-authenticated` first")
+    if problems:
+        return {"ok": False, "lines": problems, "reason": (
+            "a local account would not log in over SSH on this device: "
+            + "; ".join(problems) + ". Adopt changes no authentication settings, so nothing "
+            "was sent")}
+    return {"ok": True, "lines": [], "reason": (
+        "local accounts log in over SSH ("
+        + ("aaa new-model, with local first" if new_model else "login local on every vty line")
+        + ")")}
+
+
 def add_program(tool_username: str, password: str) -> list:
     """The program: ONE setter line for an account the device does not have.
     Rotation's delete-then-set exists for a device that HAS a password entry;
@@ -62,12 +166,22 @@ def masked_program(tool_username: str) -> list:
     return masked_commands(tool_username, TOOL_PRIVILEGE, "secret")
 
 
-def add_tool_account(list_name: str, hostname: str, device: dict, *, repo: str,
+def add_tool_account(list_name: str, hostname: str, *, mgmt_ip: str, device_type: str,
+                     supplied_username: str, supplied_password: str,
+                     supplied_enable: str = "", repo: str,
                      tool_username: str = TOOL_ACCOUNT_DEFAULT, actor: str = "",
                      open_session=None, verify=None, record=None) -> dict:
     """Add the tool's account to a device reached with the SUPPLIED credential.
 
-    *device* carries the supplied credential Fernet-encrypted, like a CSV row.
+    **The supplied credential is never written** (the operator, 2026-09-29):
+    on a brownfield device it is somebody else's login, the tool has no use for
+    it once its own account is proven, and if adoption fails its owner still
+    holds it, so no copy is needed for recovery. It lives in this call's memory
+    only: never staged, never in the credential store or devices.csv, never in
+    a result or a log line (a transient redaction value for the call's
+    duration, and a scrub of every sentence the result carries). Staging
+    belongs to the credential the TOOL generates, whose loss would lock it out.
+
     Returns ``{"state", "steps", "reason", ...}``; the state is one of the five
     above. The ordering is rotation's lockout defence: the supplied session
     stays open from before the push until the new account is proven on a
@@ -77,12 +191,47 @@ def add_tool_account(list_name: str, hostname: str, device: dict, *, repo: str,
     tested without a device: *open_session(device)*, *verify(device, username,
     password)* and *record(ip, username, password)*.
     """
+    from modules import redact
+    from modules.device import fernet
+
+    # In memory only, for this call: the shape open_original_session reads.
+    device = {"ip": mgmt_ip, "hostname": hostname, "device_type": device_type,
+              "username": supplied_username,
+              "password": fernet.encrypt((supplied_password or "").encode()).decode(),
+              "secret": (fernet.encrypt(supplied_enable.encode()).decode()
+                         if supplied_enable else "")}
+    with redact.transient_secret(supplied_password, "adopt:supplied"), \
+            redact.transient_secret(supplied_enable, "adopt:supplied-enable"):
+        out = _add_tool_account(list_name, hostname, device, repo=repo,
+                                tool_username=tool_username, actor=actor,
+                                open_session=open_session, verify=verify, record=record)
+    return _scrub(out, (supplied_password, supplied_enable))
+
+
+def _scrub(result: dict, values) -> dict:
+    """No sentence the result carries holds a supplied value (any length: the
+    result is read by a person, not matched against configs)."""
+    values = [v for v in values if v]
+
+    def clean(text):
+        for v in values:
+            text = text.replace(v, "<supplied credential>")
+        return text
+    result["reason"] = clean(result.get("reason", ""))
+    for step in result.get("steps", []):
+        step["detail"] = clean(step.get("detail", ""))
+    return result
+
+
+def _add_tool_account(list_name, hostname, device, *, repo, tool_username, actor,
+                      open_session, verify, record) -> dict:
     from modules.nsot import credential_rotation as CR
     from modules.nsot import device_ops
 
     open_session = open_session or CR.open_original_session
-    verify = verify or (lambda dev, user, pw: CR.verify_with_retry(
-        dev, user, pw, secret=CR.enable_secret(dev)))
+    # The tool's own account is privilege 15 and carries no enable secret: its
+    # password is the fallback, as its record says (B14).
+    verify = verify or (lambda dev, user, pw: CR.verify_with_retry(dev, user, pw, secret=pw))
 
     def _record(ip, user, pw):
         from modules import credentials as _creds
@@ -127,6 +276,20 @@ def add_tool_account(list_name: str, hostname: str, device: dict, *, repo: str,
     _step("supplied_session", True, f"logged in as '{supplied}' and held open")
 
     try:
+        # Would a local account log in at all? Read before anything is sent.
+        try:
+            verdict = local_login_verdict(
+                session.send_command("show running-config | include ^aaa", read_timeout=60)
+                or "",
+                session.send_command("show running-config | section ^line vty",
+                                     read_timeout=60) or "")
+        except Exception as exc:               # noqa: BLE001
+            return _refuse("local_login", f"could not read the device's authentication "
+                                          f"settings: {type(exc).__name__}: {exc}"[:200])
+        if not verdict["ok"]:
+            return _refuse("local_login", verdict["reason"])
+        _step("local_login", True, verdict["reason"])
+
         # The device has the last word: an account by this name already
         # there is SOMEBODY's, and adopt changes no account it did not add.
         try:
