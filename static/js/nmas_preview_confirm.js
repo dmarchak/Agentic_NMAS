@@ -243,7 +243,7 @@
         + esc(prog.authorisation_error) + '</div>';
     }
     (prog.notes || []).forEach(function (n) {
-      var mine = n.from_this_edit || [], old = n.pre_existing || [];
+      var mine = n.from_this_edit || [], old = n.pre_existing || [], inherited = n.from_profile || [];
       var pre = function (x) {
         return '<pre class="small bg-body-tertiary text-body p-2 rounded mt-1 mb-1" '
           + 'style="max-height:140px;overflow:auto">' + esc(x.join('\n')) + '</pre>';
@@ -260,6 +260,10 @@
         + (n.intent_commit ? '<div class="text-muted">This edit: <code>'
            + esc(n.intent_commit.slice(0, 8)) + '</code> ' + esc(n.intent_subject || '') + '</div>' : '')
         + (n.note ? '<div class="text-warning-emphasis">' + esc(n.note) + '</div>' : '')
+        // P.9: lines the network's monitoring profile supplies, drawn apart so
+        // no inherited line is read as the edit's.
+        + (inherited.length ? '<div data-from-profile>Inherited from the network\'s monitoring profile: <strong>'
+           + inherited.length + '</strong> line(s)</div>' + pre(inherited) : '')
         + '<div>From this edit: <strong>' + mine.length + '</strong> line(s)</div>'
         + (mine.length ? pre(mine) : '')
         + '<div>Not from this edit: <strong>' + old.length + '</strong> line(s), '

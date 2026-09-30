@@ -120,9 +120,20 @@ def _artifact_for(list_name: str, hostname: str):
     # refused with its reason, never rendered (C154: it raised in the template).
     seed_only = committed is not None and hostvars.is_bootstrap_only(committed)
     bootstrap = committed is None or seed_only
+    # THE NETWORK'S MONITORING PROFILE (P.9), inherited through the one
+    # merge. A profile that cannot be read refuses the plan by name: rendering
+    # without it would plan to leave the device without what every device
+    # inherits, and look like a clean plan.
+    from modules.nsot import profile as _profile
+    try:
+        effective = (None if bootstrap else
+                     _profile.effective_for(repo, list_name, hostname, committed, platform,
+                                            role=(device.get("role") or "").strip()))
+    except _profile.ProfileRefused as exc:
+        return None, f"the network's monitoring profile cannot be used: {exc}"
     # Names become values here and only here, in memory, as late as possible.
     intent = (None if bootstrap else
-              hostvars.hydrate_secrets(committed, hostname, list_name))
+              hostvars.hydrate_secrets(effective, hostname, list_name))
 
     # Scheme 3 (P.5): approval is the template's closure hash alone, so no
     # bound device's host_vars are needed here. Building them was a full
@@ -204,13 +215,13 @@ def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
         result["pre_existing"] = list(to_add)
         result["note"] = ("first committed intent for this device — no earlier "
                           "render to attribute against")
-        return result
+        return _split_profile(repo, hostname, artifact, captured, to_add, result)
 
     previous = hostvars.committed_at(repo, hostname, previous_sha)
     if previous is None:
         result["attributable"] = False
         result["note"] = f"could not read host_vars at {previous_sha[:8]}"
-        return result
+        return _split_profile(repo, hostname, artifact, captured, to_add, result)
 
     try:
         render_kwargs = {
@@ -226,11 +237,49 @@ def _attribute_additions(repo: str, hostname: str, artifact, captured: str,
                     hostname, exc)
         result["attributable"] = False
         result["note"] = f"previous intent did not render: {exc}"
-        return result
+        return _split_profile(repo, hostname, artifact, captured, to_add, result)
 
     already = set(merge_diff(before, captured)["to_add"])
     result["from_this_edit"] = [l for l in to_add if l not in already]
     result["pre_existing"] = [l for l in to_add if l in already]
+    return _split_profile(repo, hostname, artifact, captured, to_add, result)
+
+
+def _split_profile(repo: str, hostname: str, artifact, captured: str, to_add: list,
+                   result: dict) -> dict:
+    """``from_profile``: the lines sent only because the network's monitoring
+    profile (P.9) supplies them, measured as the lines the device's OWN
+    intent, rendered alone, would not send. They leave the other two groups,
+    so no inherited line is ever called "from this edit". No profile, or
+    none that applies, is ``[]``."""
+    from modules.nsot import hostvars, profile as _profile, roundtrip
+    from modules.nsot.deploy import merge_diff
+
+    result["from_profile"] = []
+    try:
+        doc = _profile.read_committed(repo)
+        list_name = hostvars.list_name_for_repo(repo)
+        own = hostvars.read_committed(repo, hostname)
+        if not doc or own is None:
+            return result
+        if _profile.effective_for(repo, list_name, hostname, own, artifact.platform, doc=doc) == own:
+            return result
+        render_kwargs = {"template_name": (artifact.template or "base.j2").split("/")[-1]}
+        if getattr(artifact, "template_root", ""):
+            render_kwargs["template_root"] = artifact.template_root
+        alone = roundtrip.render(hostvars.hydrate_secrets(own, hostname, list_name),
+                                 artifact.platform, **render_kwargs)
+    except Exception as exc:                  # noqa: BLE001
+        log.warning("deploy: the profile's lines could not be told apart for %s: %s",
+                    hostname, exc)
+        result["note"] = ((result.get("note") + "; ") if result.get("note") else "") + \
+            f"the profile's lines could not be told apart: {exc}"
+        return result
+    own_add = set(merge_diff(alone, captured)["to_add"])
+    inherited = [l for l in to_add if l not in own_add]
+    result["from_profile"] = inherited
+    result["from_this_edit"] = [l for l in result["from_this_edit"] if l not in inherited]
+    result["pre_existing"] = [l for l in result["pre_existing"] if l not in inherited]
     return result
 
 

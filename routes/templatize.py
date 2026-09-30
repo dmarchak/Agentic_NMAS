@@ -315,10 +315,17 @@ def preview_committed_edit(hostname):
     # had revoked itself.
     from routes.templates import artifact_for
 
+    # Both sides render what the device would INHERIT as well (P.9): an edit
+    # that leaves the profile's lines alone must not read as removing them.
+    from modules.nsot import profile as _profile
+
+    def _eff(doc_):
+        return _profile.effective_for(repo, list_name, hostname, doc_, platform)
+
     try:
         edited = artifact_for(hostname, capture, repo, platform, template,
                               host_vars=hostvars.hydrate_secrets(
-                                  parsed, hostname, list_name))
+                                  _eff(parsed), hostname, list_name))
     except Exception as exc:                  # noqa: BLE001
         return jsonify({"ok": False, "stage": "render",
                         "error": f"{type(exc).__name__}: {exc}"}), 400
@@ -350,7 +357,7 @@ def preview_committed_edit(hostname):
     elif committed:
         current = artifact_for(hostname, capture, repo, platform, template,
                                host_vars=hostvars.hydrate_secrets(
-                                   committed, hostname, list_name))
+                                   _eff(committed), hostname, list_name))
         vs_intent = roundtrip.canonical_diff(
             current.rendered_masked, edited.rendered_masked,
             fromfile=f"committed ({hostname})", tofile=f"edited ({hostname})")
@@ -708,9 +715,11 @@ def _bulk_render_and_eligible(list_name: str, repo: str):
             raise RuntimeError("no captured config to render against")
         platform = _platform_of_host(host)
         template = templates_repo.template_for_device(repo, host, platform)
+        from modules.nsot import profile as _profile
         art = artifact_for(host, capture, repo, platform, template,
                            host_vars=hostvars.hydrate_secrets(
-                               host_vars, host, list_name))
+                               _profile.effective_for(repo, list_name, host, host_vars, platform),
+                               host, list_name))
         return art.rendered_masked, art.deployable, art.blocking_reasons
 
     return render, eligible

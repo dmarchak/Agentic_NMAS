@@ -1074,14 +1074,19 @@ def hydrate_secrets(host_vars: dict, hostname: str,
 
     refs = host_vars.get("secret_refs") or sorted(
         (host_vars.get("secrets") or {}).keys())
+    from modules.credentials import profile_secret_key
+
     secrets = {}
     for ref in refs:
-        value = get_template_secret(template_secret_key(list_name, hostname, ref))
+        # The device's own value first (an override), then the network's
+        # profile (P.9: one SNMP community per network).
+        value = (get_template_secret(template_secret_key(list_name, hostname, ref))
+                 or (get_template_secret(profile_secret_key(list_name, ref)) if list_name else ""))
         if value:
             secrets[ref] = value
         else:
             log.warning("hostvars: %s references secret %r with no stored value "
-                        "in list %r", hostname, ref, list_name)
+                        "in list %r (neither its own nor the profile's)", hostname, ref, list_name)
     return {**host_vars, "secrets": secrets}
 
 

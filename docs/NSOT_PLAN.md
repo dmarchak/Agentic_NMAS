@@ -3891,7 +3891,7 @@ per-list rules and targets, and 7.3 embeds per-list monitoring. The
 NetBox question in (1) is the operator's to answer first, because six keys and
 the inventory adapter move with it.
 
-### P.9 — The monitoring profile (DESIGNED 2026-09-30, not built; proposed NEXT, before the rest of the redesign's step 4)
+### P.9 — The monitoring profile (DESIGNED and DECIDED 2026-09-30; step (a), the model, BUILT the same day; NEXT: (b), r6 first)
 
 The operator's requirement (2026-09-30), after r6 was called "unreachable" by an SNMP alert
 when its configuration simply has no SNMP: every device, new and existing, carries what its
@@ -3916,10 +3916,91 @@ integrations need, derived from the connectors the network uses, with ONE owner.
   device's own facts and committed into its intent.
 - **Order, proposed:** (a) the model, (b) existing devices with r6 first, (c) new devices,
   (d) the screens inside step 4. It needs P.8 only for the connector settings to be per network.
+- **Step (a) BUILT 2026-09-30:** `modules/nsot/profile.py` (the document, its reader at HEAD and at a ref, its one commit, the one merge `effective()`, overrides, one owner at seed `strip_inherited()`, the profile-scoped secret), wired into the deploy plan and apply, the plan's attribution (`from_profile`, drawn apart in the preview), `intent_match`, the intent editor, bulk intent and restore validation (the profile as at the ref). A scan requires every render of intent to merge the profile. Acceptance on r2's real intent: a profile holding what the device holds changes no plan; a line it supplies and the device lacks is sent and attributed to the profile. Not yet: the proposal from connectors, seed calling `strip_inherited`, and the screens.
 - **Built ahead of it, 2026-09-30:** a device is an SNMP target only when its committed golden
   configures SNMP, and a device missing an integration the network uses is a Needs attention row
   (`modules/monitoring_coverage.py`) whose action names this item. r6's intent is not hand-edited
   before the profile exists.
+
+### P.10 — Validation before production, in layers (SCOPED 2026-09-30, the operator; NOT BUILT, placed after Stage 7)
+
+**The goal (the operator's):** a change is validated before it reaches production, in
+layers, and the pipeline learns from anything that slips through, so it never makes the
+same mistake twice. The same program hash runs through every layer and then production,
+so the change that passed validation is the change deployed (the confirm hash's rule,
+extended). Post-deploy verify and rollback stay the last line.
+
+**Why not a full test network, yet (measured by the operator, 2026-09-30):**
+- The clab VM keeps about 17 of its 24 vCPUs busy.
+- The host (2 x E5-2650 v3, 20 physical cores, 40 threads) sits at load about 18, with 75
+  of 126 GiB RAM used.
+- A permanent 1:1 twin would saturate every physical core and degrade production. s3's
+  slow clock (C9) and the connect timeouts (C205) are contention already. It would also
+  make the twin's own verify timings unreliable.
+
+CPU, not RAM, is the limit. The full and the partial replica are recorded as LATER options
+(below); **the hardware route is E5 v4 CPUs, which fit this socket**, and would make a
+permanent twin realistic.
+
+**Layer 1: a platform lint catalogue.** Rules built from MEASURED device behaviour, keyed
+by platform. Each rule cites the captured device output that proves it, and all of them
+run on every program before it is sent. **One catalogue gathered from where they are
+scattered today, never duplicated:**
+
+| Rule | Where it is today | Scope today |
+|---|---|---|
+| Printable ASCII, comments included | `deploy.assert_sendable` (modules/nsot/deploy.py) and `bootstrap_config` | the deploy path and the bootstrap |
+| A user cannot hold both `password` and `secret` on IOS-XE (`%CVAC-4-CLI_FAILURE`) | `credential_rotation.verify_startup_applies` | the startup-applies check only: EXTEND to the deploy path |
+| `ip domain name` (IOS-XE 17.6) against `ip domain-name` (vIOS 15.x) | `bootstrap_config` (lines 83 to 93, measured in stage C) | the bootstrap generator only |
+| IOS's bare `ERROR:` and `% Invalid` refusal formats | `pipeline.IOS_ERROR_PATTERN` | push error detection |
+| Removals that do more than they say | Mode B's `removal_measured.json` | removals only |
+| Dangerous lines, credentials unchanged, merge-only | `deploy.dangerous_in`, `assert_credentials_unchanged`, `assert_merge_only` | the deploy path |
+
+Candidates, each added only once MEASURED:
+- **Order dependencies:** the domain name before key generation, and an SNMP view before
+  the community that uses it.
+- **Hidden side effects:** `vrf forwarding` silently deleting an interface's address;
+  switchport changes; an OSPF process-ID change.
+- **Commands that prompt.**
+- **Management-path safety for ADDITIONS as well as removals:** an ACL added to the vty
+  lines or to the management interface. Removals are checked today, in removal.py.
+
+Two rules for the catalogue:
+- A rule is trusted only once it has been shown failing on the thing it is meant to catch.
+- Refusing by resemblance is safe; allowing by resemblance is not.
+
+**Layer 2: a parser sandbox.** One spare C8000v and one spare vIOS, with no topology.
+Before production, the exact program is sent to the matching spare, to learn whether IOS
+accepts it. It catches the quirks nobody has written a rule for yet. Two nodes, so it can
+run permanently or on demand. **First measurement: its CPU cost on the host**, one boot
+and idle of each; the C8000v's boot was the lab's heaviest single cost in stage B.
+
+**Layer 3: Batfish.** A config-level digital twin: whether OSPF and BGP adjacencies still
+form, what each routing table would hold, and whether flows are still permitted, without
+booting devices. Every Deploy plan is checked against it, with network invariants ("s1
+can reach r4", "r3 keeps its eBGP session to r5"). **First measurement: how well Batfish
+parses these IOS-XE and vIOS-L2 configs.** Its coverage of the fleet's constructs is
+measured read-only on the laptop against the committed goldens: nothing is installed on
+the lab host, and no device is involved.
+
+**The learning loop is Stage 8 (8.9)**, since it needs the assistant calling tools, which
+has never happened, and the layers above to exist.
+
+**Later options, recorded with the measurement above:**
+- a partial replica: the sites a change touches, booted on demand;
+- a full permanent twin, after the CPU upgrade.
+
+**Dependencies:**
+- The deploy receipts (C60), to measure false positives against past programs.
+- P.9, so validated programs include the inherited lines.
+- Stage 7's preview component, where each layer's verdict is drawn as a gate.
+
+**Placement, proposed:** after Stage 7, before Stage 8.
+- **Layer 1 first:** mostly gathering what exists, and it tightens the deploy path at once.
+- **Batfish's parse-coverage measurement** can run any time, since it is read-only.
+- **Its build follows the lint.**
+- **The sandbox last:** it waits on the CPU measurement and the operator's decision on
+  capacity.
 
 ### Course labs against the plan (decided 2026-09-26)
 
@@ -5144,6 +5225,27 @@ no tool reaches a device outside the confirmed deploy path; the prompt
 examples name only devices in this lab; and the background agent is enabled
 **last**, with one real run observed and reported -- the same bar drift
 had to clear; and triage is triggered as 8.6 decides (a read, never an inbound push).
+
+**8.9 The pipeline learns from what slips through (SCOPED 2026-09-30, the operator; NOT
+BUILT; after 8.3 and 8.4, and after P.10's layers exist).**
+1. Something slips through: verify fails, a rollback happens, or a device refuses a line.
+2. The assistant DRAFTS a new check from the incident: the rule, the captured output as
+   its evidence, and the layer it belongs in (a lint rule, a sandbox test, or a Batfish
+   invariant).
+3. It PROVES the draft before proposing it:
+   - it catches the program that caused the incident;
+   - it does NOT fire on the current fleet's intents, nor on past successful deploy
+     programs (the false-positive rate is measured against the deploy receipts, C60);
+   - where possible, it is reproduced on the sandbox.
+4. A PERSON APPROVES it, like a template approval, recorded with who and why. The AI never
+   adds a rule on its own. A rule that is too broad blocks legitimate work and gets
+   overridden; one that is wrong in the allowing direction lets danger through while
+   looking like coverage.
+5. Each rule records its origin (incident, platform, image version), so it can be
+   revisited when the platform changes.
+
+**The honest expectation:** this makes the pipeline never repeat a mistake. A genuinely
+new kind of failure stays possible, which is what verify and rollback remain for.
 
 ---
 

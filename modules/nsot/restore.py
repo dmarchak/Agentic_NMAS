@@ -168,7 +168,7 @@ def build_targets(list_name: str, ref: str, devices: list = None,
         gaps = []
         if ref_intent is not None:
             gaps = validate_restored_intent(repo, hostname, ref_intent,
-                                            stored, platform)
+                                            stored, platform, ref=ref)
         if gaps:
             skipped.append({"hostname": hostname, "ip": mgmt_ip,
                             "reason": "this ref's intent is not usable today",
@@ -337,7 +337,7 @@ def baseline_credential_gaps(repo: str, ref: str, list_name: str,
 
 
 def validate_restored_intent(repo: str, hostname: str, intent: dict,
-                             stored_golden: str, platform: str) -> list:
+                             stored_golden: str, platform: str, ref: str = "") -> list:
     """Plan-time gaps between old intent and the CURRENT tooling.
 
     Two ways a ref's intent can be unusable today, both refused here rather
@@ -353,15 +353,26 @@ def validate_restored_intent(repo: str, hostname: str, intent: dict,
       ``assert_no_mask`` catches at deploy — naming the device and the ref at
       plan time is the difference between a refusal and a failed batch.
     """
-    from modules.credentials import get_template_secret, template_secret_key
-    from modules.nsot import hostvars, roundtrip
+    from modules.credentials import (get_template_secret, profile_secret_key,
+                                     template_secret_key)
+    from modules.nsot import hostvars, profile as _profile, roundtrip
 
     gaps = []
     list_name = hostvars.list_name_for_repo(repo)
 
+    # The ref's intent with the profile AS IT WAS AT THE REF (P.9): the ref's
+    # golden was produced by both, and today's profile would add or change
+    # what that moment inherited.
+    try:
+        intent = _profile.effective_for(repo, list_name, hostname, intent, platform,
+                                        ref=ref or "HEAD")
+    except _profile.ProfileRefused as exc:
+        gaps.append(f"the monitoring profile at this ref cannot be used: {exc}")
+        return gaps
+
     for ref_name in (intent.get("secret_refs") or []):
-        if not get_template_secret(
-                template_secret_key(list_name, hostname, ref_name)):
+        if not (get_template_secret(template_secret_key(list_name, hostname, ref_name))
+                or get_template_secret(profile_secret_key(list_name, ref_name))):
             gaps.append(f"secret '{ref_name}' is named by this ref's intent but "
                         "is not in the credential store for this list")
 

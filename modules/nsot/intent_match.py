@@ -52,7 +52,11 @@ def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
         if not platform:
             entry = _manifest.find_by_name(repo, hostname)[1] or {}
             platform = entry.get("platform") or committed.get("platform") or ""
-        intent = hostvars.hydrate_secrets(committed, hostname, list_name)
+        # What the device should be includes what it inherits from the
+        # network's monitoring profile (P.9), through the one merge.
+        from modules.nsot import profile as _profile
+        effective = _profile.effective_for(repo, list_name, hostname, committed, platform)
+        intent = hostvars.hydrate_secrets(effective, hostname, list_name)
         template = templates_repo.template_for_device(repo, hostname, platform)
         stored = "\n".join(normalize.strip_for_repo(config_text or ""))
         artifact = build_artifact(hostname, stored, platform, template=template,

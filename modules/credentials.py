@@ -312,6 +312,19 @@ def template_secret_key(list_name: str, hostname: str, ref: str) -> str:
     return f"{list_slug(list_name)}:{hostname}:{ref}"
 
 
+#: The "device" slot of a network's PROFILE secrets (P.9). No device can be
+#: called this: a device name starts with a letter.
+PROFILE_SCOPE = "@profile"
+
+
+def profile_secret_key(list_name: str, ref: str) -> str:
+    """The ONE place a monitoring profile's secret key is built:
+    ``<slug>:@profile:<ref>``, one per network (P.9, decision 2: one SNMP
+    community per network). A device's own key, when it holds a value,
+    still wins: it is an override."""
+    return template_secret_key(list_name, PROFILE_SCOPE, ref)
+
+
 def split_template_secret_key(name: str) -> tuple:
     """``(slug, hostname, ref)``; slug is ``""`` for a legacy unscoped key."""
     parts = (name or "").split(":")

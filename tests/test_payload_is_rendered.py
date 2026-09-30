@@ -521,6 +521,10 @@ _STRINGS = "items are strings: an empty list hides no field"
 #: "strings" hides nothing. "records" is a state the fixture does not reach,
 #: a finding, and that list only shrinks. Measured 2026-09-27.
 EMPTY_IN_FIXTURE = {
+    "POST /deploy/plan preview.targets[].program.notes[].from_profile": (
+        S_, "this provider's lab commits no monitoring profile (P.9); the lines are "
+            "reached through the real /deploy/plan and drawn by the shipped renderer in "
+            "tests/test_monitoring_profile_plan.py"),
     "GET /ai/agent_log entries": (R_, "no agent run in the fixture; the entry "
                                      "fields the panel draws were never examined"),
     "GET /ai/approvals entries": (R_, "no queued item in the fixture; the approval "
