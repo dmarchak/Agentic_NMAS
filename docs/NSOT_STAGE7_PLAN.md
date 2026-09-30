@@ -38,15 +38,29 @@ tasks divide between those the GUI owns and maintenance that stays CLI
 
 ## 1. Five destinations and one device page
 
+**Renamed, 2026-09-29: the sidebar is the hybrid** (the operator, accepting
+[NSOT_GUI_BRIEF.md](NSOT_GUI_BRIEF.md) section 2). The findability check counted twenty of
+an operator's questions against three sidebars. Clicks barely separated them; the labels'
+first-click scent did.
+- **Fleet** is **Devices**.
+- **Versions** is **History**.
+- **Source of truth** is a sidebar HEADING over three items: **Templates**, **NetBox** and
+  **Credentials**. A person arrives with three different questions there, not one.
+- Help and Settings sit at the bottom.
+
+Each destination answers the question it answered before. Sections 1b, 1d and 1e keep their
+old headings where their text was written, and are read as the new names. Confirmed by the
+first-click test at the mockup review.
+
 Each task group from NSOT_TASKS.md lands in exactly one place:
 
 | Destination | Answers | Task groups |
 |---|---|---|
 | **Needs attention** (the landing page) | *Is anything wrong, and does anything need me?* | A; and the "needs a person" half of C, D and E |
-| **Fleet** | *Which devices, and what do I want to do to many of them?* | C (many), E |
+| **Devices** (was Fleet) | *Which devices, and what do I want to do to many of them?* | C (many), E |
 | **Device** (`/device/<hostname>`) | *What is going on with this one device, and change it* | B, C (one), D (one) |
-| **Versions** | *What changed, who changed it, and can I go back?* | D (baselines), F |
-| **Source of truth** | *Are the templates, NetBox and credentials right?* | G, H (profiles), F (NetBox) |
+| **History** (was Versions) | *What changed, who changed it, and can I go back?* | D (baselines), F |
+| **Templates · NetBox · Credentials** (under the heading Source of truth) | *Are the templates, NetBox and credentials right?* | G, H (profiles), F (NetBox) |
 | **Settings** | *How is the tool configured and connected?* | I, H (audits) |
 
 **Why five and not the old two** (Fleet and Monitoring). Monitoring is no
@@ -299,6 +313,56 @@ big screen.
   recovery.
 - **Every screen still to come is built in the new design:** adopt's screen,
   the rest of the Device page, and 7.4 to 7.9.
+
+**Progress:**
+- the research, [NSOT_GUI_RESEARCH.md](NSOT_GUI_RESEARCH.md): signed off 2026-09-29;
+- the brief, [NSOT_GUI_BRIEF.md](NSOT_GUI_BRIEF.md): received 2026-09-29, its five decision
+  points decided the same day (below);
+- the mockups: next.
+
+**THE FRONTEND DECIDES; THE BACKEND SERVES IT** (the operator, 2026-09-29, governing the
+rest of the redesign). A person's opinion of this program rests almost entirely on whether it
+is easy and enjoyable to use.
+- **Backend rewiring is the cost of doing it right,** never a reason not to: new routes,
+  reshaped data, restructured modules.
+- **Tests are a cost to weigh, never a veto.** The brief's first stack decision kept
+  Bootstrap partly because about 200 tests read the shipped pages: the backend's convenience
+  deciding the frontend.
+- **The stack is decided AFTER the mockups.** They are designed for the best experience,
+  unconstrained by the stack. Then the question is whether the current stack builds them
+  WELL, not merely possibly. Where a screen needs something it does badly, the brief names
+  the alternative and costs the switch honestly, and the operator would "rather rewire than
+  ship a compromise".
+
+**The brief's five decision points, decided (the operator, 2026-09-29):**
+1. **The hybrid sidebar: ACCEPTED** (section 1 above, acceptance item 10).
+2. **The Agent tab's Pause: REMOVED.** "A switch that looks permanent and resets on restart
+   is worse than none." One persistent control, in Settings > AI.
+3. **Drag-reorder: to be removed in favour of sortable columns, UNLESS something depends on
+   list order.** Measured (reported to the operator before any removal):
+   - No batch order through today's GUI depends on it:
+     - deploy from the GUI is one device;
+     - restore orders its targets alphabetically (`sorted(at_ref)`);
+     - capture reads concurrently;
+     - bulk reload runs each device on its own thread.
+   - **The deploy batch runs in the order its request lists** (`for hostname in
+     confirmations`), sequentially, with the circuit breaker. The redesign's selection bar
+     would build that order from the list's display order, which the drag handle sets: a
+     hidden control over rollout order.
+   - So the batch deploy preview states its ORDER and lets it be set there, visibly: the
+     first device is the canary, and the breaker stops after the first device that fails
+     verify.
+4. **Typed confirmation (the device's name): Retire only. AGREED.**
+5. **The legacy SNMP-trap and NetFlow views: REMOVE.** Traps and syslog live in Grafana and
+   Loki; this is duplicate D19. Checked first:
+   - no recorded lab deliverable depends on seeing them in the app. Labs 7 to 10 are recorded
+     in NSOT_PLAN "Course labs against the plan", and Lab 10's troubleshooting set names
+     Grafana's heartbeat alert, not the in-app views;
+   - the plan had already decided the collector's retirement (7.3-e), and the feature audit
+     marks SNMP Quick Poll as cut with them, so it does not move to the device page as the
+     brief placed it.
+
+   **The limit:** labs 1 to 6 are not recorded in this repository, so they were not checked.
 
 ## 2. The shared patterns: built once, used everywhere
 
@@ -2391,9 +2455,11 @@ read through one function, and P.8 moves it without the reader changing.
    names the prerequisite that failed. A blank frame fails.
 9. **CI has no destination:** each CI state appears beside its trigger
    (NSOT_CI.md §5), and there is no CI tab.
-10. **No subsystem tab:** the top-level navigation is a SIDEBAR grouped by
-    task (section 1g), holding exactly the five destinations, Settings and
-    Help, and a test pins it.
+10. **No subsystem tab:** the top-level navigation is the hybrid SIDEBAR
+    (section 1, NSOT_GUI_BRIEF.md section 2), and a test pins it. In order:
+    Needs attention, Devices, History, then the heading Source of truth over
+    Templates, NetBox and Credentials, with Help and Settings at the bottom.
+    The operator's first-click test on the mockups passes before building.
 11. **Scale:** nothing renders the whole inventory, and `test_scale.py` pins
     the page cost at 900 devices.
 12. **Behaviour:** Stage 7 moves controls, adds entry points and performs the

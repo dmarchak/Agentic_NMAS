@@ -395,7 +395,7 @@ named as such.
 | Approvals tab: drift check (interval, enabled, Check now) | Settings > Checks, together with the drift timer that was on the Agent tab (D7) |
 | Monitoring: Integrations cards | Settings > Integrations (D17: the status bar summarises, Settings details) |
 | Monitoring: Oxidized freshness | Needs attention (rows) and the device Overview (per device); authorisations under History |
-| Monitoring: legacy collectors (OOB IP, snippets, SNMP poll, traps, NetFlow) | Settings > Checks > Collectors (D19). SNMP Quick Poll moves to the device page's Monitoring. The snippets move to the manual |
+| Monitoring: legacy collectors (OOB IP, snippets, SNMP poll, traps, NetFlow) | **Removed** (decision 5, and the plan's 7.3-e retirement): traps and syslog live in Grafana and Loki. SNMP Quick Poll goes with them (feature audit: CUT) |
 | Configure tab: the forms | The device page's Intent editor, form mode (plan 1c, the parallel track 7.9) |
 | Configure tab: Ansible Wizard | Removed with Ansible (7.8) |
 | Git tab | History > Commits |
@@ -630,7 +630,16 @@ search.**
 - **Revisit it when** a question in section 2's set needs more than four clicks after the
   redesign, or when questions that cross objects appear ("where is this address used").
 
-## 9. The stack: a design layer over Bootstrap
+## 9. The stack: REOPENED, decided after the mockups
+
+**Superseded 2026-09-29** by the operator's principle: the frontend decides and the backend
+serves it, and tests are a cost to weigh, never a veto (NSOT_STAGE7_PLAN section 1g). The
+mockups are designed first for the best experience, unconstrained by the stack. The
+assessment of whether the current stack builds each screen WELL follows them, with an
+alternative named and costed wherever it would not. The first reasoning is kept below,
+because its costs are still costs.
+
+### 9a. The first reasoning: a design layer over Bootstrap
 
 **What gets built:**
 - `static/css/nmas.css`: the tokens, the type scale and the component classes;
@@ -702,7 +711,18 @@ rather than the old tabs.
 
 ## 12. Decision points for the operator
 
-The brief's recommendations. Each is small, and each changes what is built.
+**Decided 2026-09-29.** The decisions and the measurements behind 3 and 5 are recorded in
+NSOT_STAGE7_PLAN section 1g:
+1. The hybrid sidebar: accepted.
+2. Pause: removed.
+3. Drag-reorder: to be removed in favour of sortable columns, reported to the operator
+   before removal. Nothing depends on list order today. The redesign's selection would have
+   made list order the deploy batch's rollout order, so that order is drawn and settable in
+   the batch deploy preview instead.
+4. Typed confirmation for Retire only: agreed.
+5. The legacy trap and NetFlow views: removed.
+
+The recommendations as they were put:
 
 1. **The sidebar: H, the hybrid (section 2).** Accepting it renames Fleet, Versions and
    Source of truth in plan §1 and restates acceptance item 10.
