@@ -883,7 +883,26 @@ def _member(inst: dict, inv) -> dict:
             "device_from": source, "device_note": note, "state": inst.get("state"),
             "fingerprint": inst.get("fingerprint"), "starts_at": inst.get("starts_at"),
             "onset": _iso(inst["onset"]), "onset_basis": inst["onset_basis"],
-            "silenced_by": inst.get("silenced_by") or []}
+            "silenced_by": inst.get("silenced_by") or [],
+            "silences": inst.get("silences") or []}
+
+
+def silence_words(silences: list) -> str:
+    """"silenced in Grafana by X until T ("comment")", one clause per
+    silence. An unresolved one is named by its id and said to be unresolved:
+    who and until when are never guessed."""
+    parts = []
+    for s in silences or []:
+        if s.get("unresolved"):
+            parts.append(f"silenced in Grafana by silence {s.get('id')}, whose author and end "
+                         "Grafana's silence list did not return")
+            continue
+        text = f"silenced in Grafana by {s.get('created_by') or 'an unnamed account'}"
+        text += f" until {s.get('ends_at') or 'an unrecorded time'}"
+        if s.get("comment"):
+            text += f" (\"{s['comment']}\")"
+        parts.append(text)
+    return "; ".join(parts)
 
 
 def grafana_source(cached=None) -> dict:
@@ -958,6 +977,17 @@ def grafana_source(cached=None) -> dict:
                        "of each other; whether they share a cause is not decided here")
             action = {"label": "Read the members together: one cause may explain them, "
                                "or none", "known": False}
+        # A silence set in Grafana hides nothing here (the operator,
+        # 2026-09-30): the row keeps its level and says who silenced it and
+        # until when, so a silence is a visible decision, never a quiet one.
+        silenced = [m for m in members if m["silences"]]
+        if silenced:
+            what += (" (silenced in Grafana)" if len(silenced) == len(members) else
+                     f" ({len(silenced)} of {len(members)} silenced in Grafana)")
+            cause += ". " + "; ".join(
+                (f"{m['rule']}" + (f" on {m['device']}" if m["device"] else "") + ": "
+                 if len(members) > 1 else "") + silence_words(m["silences"])
+                for m in silenced)
         level = "danger" if any(m["kind"] == "condition" for m in members) else "unknown"
         add(f"incident:{first.get('rule_uid') or first.get('rule')}:{_iso(first['onset']) or 'untimed'}",
             what, cause, action, level, devices=devices, since=first["onset"],

@@ -130,17 +130,17 @@ class TestTheRead:
             if path == self.fail:
                 return {"ok": False, "error": "HTTP 403"}
             body = {G.RULER: load("ruler"), G.RULES_VIEW: load("rules_view"),
-                    G.ALERTMANAGER: load("alertmanager")}[path]
+                    G.ALERTMANAGER: load("alertmanager"), G.SILENCES: load("silences")}[path]
 
             class Resp:
                 def json(self):
                     return copy.deepcopy(body)
             return {"ok": True, "response": Resp()}
 
-    def test_it_reads_the_three_endpoints_it_names(self):
+    def test_it_reads_the_four_endpoints_it_names(self):
         f = self.Fake()
         v = G.read(f)
-        assert f.asked == [G.RULER, G.RULES_VIEW, G.ALERTMANAGER]
+        assert f.asked == [G.RULER, G.RULES_VIEW, G.ALERTMANAGER, G.SILENCES]
         assert set(G.READER.endpoints) == set(f.asked) and v["counts"]["rules"] == 16
 
     def test_a_refusal_names_the_endpoint_and_is_a_failed_attempt(self, tmp_path, monkeypatch):
@@ -285,3 +285,112 @@ class TestThePanelDrawsMembers:
         assert html.count("<li>NMAS heartbeat missing:") == 9
         assert "from the rule&#39;s device label" in html or "from the rule's device label" in html
         assert "minus the rule" in html and "[object Object]" not in html
+
+
+# ---------------------------------------------------------------------------
+# Silences set in Grafana: who and until when (the operator, 2026-09-30)
+# ---------------------------------------------------------------------------
+#
+# The REAL silence list, read 2026-09-30 through the app's integration, was
+# empty (tests/fixtures/grafana/silences.json), so no real silence object has
+# been captured yet. The one below is the Alertmanager v2 API's
+# `gettableSilence` shape (id, status.state, createdBy, comment, startsAt,
+# endsAt, matchers), PROVISIONAL until the staged capture (NSOT_STAGE7_PLAN,
+# "Staged runs": the operator silences the syslog test alert and
+# `nmas-capture-grafana-alerts` records it). That capture replaces this
+# object with a real one; until then these tests say which shape they assume.
+
+SILENCE_ID = "8f1c2d3e-0000-4000-8000-000000000001"
+SILENCE = {"id": SILENCE_ID, "status": {"state": "active"}, "updatedAt": "2026-09-30T10:00:00Z",
+           "createdBy": "operator@example.com", "comment": "send log 2 test <b>",
+           "startsAt": "2026-09-30T10:00:00Z", "endsAt": "2026-09-30T10:15:00Z",
+           "matchers": [{"name": "alertname", "value": "Critical syslog received",
+                         "isRegex": False, "isEqual": True}]}
+
+
+def silenced_syslog(ids=(SILENCE_ID,)):
+    """Edit: the real `Critical syslog received` instance set Alerting for s4
+    (the device from the line, as the rule's regexp extracts it), and the
+    Alertmanager entry carrying its labels, suppressed by `ids`."""
+    view = load("rules_view")
+    inst = rule(view, "Critical syslog received")["alerts"][0]
+    inst["state"], inst["activeAt"] = "Alerting", "2026-09-30T09:59:00Z"
+    inst["labels"]["device"] = "s4"
+    am = [{"fingerprint": "f9", "startsAt": "2026-09-30T09:59:30Z",
+           "labels": dict(inst["labels"]),
+           "status": {"state": "suppressed", "silencedBy": list(ids)}}]
+    return view, am
+
+
+class TestSilences:
+    def test_the_real_silence_list_was_read_and_was_empty(self):
+        assert load("silences") == [], "the capture of 2026-09-30: nothing silenced"
+
+    def test_a_silenced_instance_carries_who_until_when_and_why(self):
+        view, am = silenced_syslog()
+        v = G.parse(load("ruler"), view, am, READ_AT, silences=[SILENCE])
+        (i,) = v["instances"]
+        (s,) = i["silences"]
+        assert s["created_by"] == "operator@example.com" and s["ends_at"] == "2026-09-30T10:15:00Z"
+        assert s["comment"] == "send log 2 test <b>" and s["state"] == "active"
+        assert s["matchers"] == ["alertname=Critical syslog received"]
+        assert i["silenced_by"] == [SILENCE_ID] and v["counts"]["silenced"] == 1
+        assert v["silences"] == [s] and v["silences_read"] is True
+
+    def test_an_id_the_list_does_not_hold_is_kept_and_unresolved_never_dropped(self):
+        view, am = silenced_syslog(ids=["gone"])
+        v = G.parse(load("ruler"), view, am, READ_AT, silences=[SILENCE])
+        assert v["instances"][0]["silences"] == [{"id": "gone", "unresolved": True}]
+
+    def test_a_list_not_read_leaves_every_silence_unresolved_and_says_so(self):
+        view, am = silenced_syslog()
+        v = G.parse(load("ruler"), view, am, READ_AT)
+        assert v["instances"][0]["silences"] == [{"id": SILENCE_ID, "unresolved": True}]
+        assert v["silences_read"] is False
+
+    def test_an_expired_silence_decides_nothing(self):
+        expired = dict(SILENCE, id="old", status={"state": "expired"})
+        pending = dict(SILENCE, id="later", status={"state": "pending"})
+        v = G.parse(load("ruler"), load("rules_view"), [], READ_AT,
+                    silences=[SILENCE, expired, pending])
+        assert sorted(s["id"] for s in v["silences"]) == sorted([SILENCE_ID, "later"])
+
+    def test_a_negative_and_regex_matcher_is_written_as_grafana_means_it(self):
+        s = G._silence(dict(SILENCE, matchers=[
+            {"name": "device", "value": "s.*", "isRegex": True, "isEqual": True},
+            {"name": "severity", "value": "info", "isRegex": False, "isEqual": False}]))
+        assert s["matchers"] == ["device=~s.*", "severity!=info"]
+
+
+class TestASilenceStaysARow:
+    def test_the_row_keeps_its_level_and_says_who_silenced_it_until_when(self, inventory):
+        view, am = silenced_syslog()
+        (row,) = A.grafana_source(cached=cached(
+            G.parse(load("ruler"), view, am, READ_AT, silences=[SILENCE])))["rows"]
+        assert row["level"] == "danger", "a silence hides nothing here"
+        assert row["what"].endswith("(silenced in Grafana)")
+        assert ("silenced in Grafana by operator@example.com until 2026-09-30T10:15:00Z"
+                in row["cause"])
+        assert row["operands"]["members"][0]["silences"][0]["created_by"] == "operator@example.com"
+
+    def test_an_unresolved_silence_is_named_by_its_id(self, inventory):
+        view, am = silenced_syslog(ids=["gone"])
+        (row,) = A.grafana_source(cached=cached(
+            G.parse(load("ruler"), view, am, READ_AT, silences=[])))["rows"]
+        assert "silence gone, whose author and end" in row["cause"]
+
+    def test_an_unsilenced_alert_says_nothing_about_silences(self, inventory):
+        """The control: the words appear only when a silence does."""
+        view, am = silenced_syslog(ids=[])
+        (row,) = A.grafana_source(cached=cached(
+            G.parse(load("ruler"), view, am, READ_AT, silences=[SILENCE])))["rows"]
+        assert "silenced" not in row["what"] and "silenced" not in row["cause"]
+
+    def test_the_shipped_panel_draws_it_and_escapes_the_comment(self, inventory, monkeypatch):
+        view, am = silenced_syslog()
+        value = G.parse(load("ruler"), view, am, READ_AT, silences=[SILENCE])
+        monkeypatch.setattr(A, "SOURCES", (lambda: A.grafana_source(cached=cached(value)),))
+        from tests.test_needs_attention import _panel
+        html = _panel(A.needs_attention())
+        assert "<strong>silenced in Grafana</strong> by operator@example.com until 2026-09-30" in html
+        assert "send log 2 test &lt;b&gt;" in html and "test <b>" not in html

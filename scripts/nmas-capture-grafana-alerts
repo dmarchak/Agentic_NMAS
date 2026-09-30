@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""What does Grafana ACTUALLY answer? Capture the three endpoints the alert
+"""What does Grafana ACTUALLY answer? Capture the four endpoints the alert
 reader reads, read-only, as fixtures.
 
     nmas-capture-grafana-alerts --out tests/fixtures/grafana
 
-Writes `ruler.json`, `rules_view.json` and `alertmanager.json` into --out
+Writes `ruler.json`, `rules_view.json`, `alertmanager.json` and
+`silences.json` into --out
 (never into the store), each exactly as Grafana answered, and prints the time
 of the capture. It only GETs, through the configured Grafana integration.
 
@@ -33,7 +34,7 @@ import time  # noqa: E402
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--out", required=True, help="the directory to write the three captures")
+    ap.add_argument("--out", required=True, help="the directory to write the four captures")
     args = ap.parse_args(argv)
 
     from modules.integrations.grafana import GrafanaIntegration
@@ -42,7 +43,7 @@ def main(argv=None) -> int:
     g = GrafanaIntegration()
     answers = {}
     for name, path in (("ruler", G.RULER), ("rules_view", G.RULES_VIEW),
-                       ("alertmanager", G.ALERTMANAGER)):
+                       ("alertmanager", G.ALERTMANAGER), ("silences", G.SILENCES)):
         got = g._get(path)
         if not got.get("ok"):
             print(f"REFUSED: {path} answered {got.get('error') or 'nothing'}; nothing written",

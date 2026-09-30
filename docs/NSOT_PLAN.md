@@ -3633,6 +3633,19 @@ than one that never fires**: "it has alerted 9 times" would have satisfied anyon
   real); on the host, probe 5 turned into a job: each rule's own query asked of its datasource over a window,
   its extreme against its own threshold, and a job-health row for a rule that cannot cross it;
 - the hand-built folder retired rule by rule as each is replaced, never edited in place again;
+- **every generated rule a PROVISIONED FILE** (measured 2026-09-30, NSOT_GUI_BRIEF 15.3): on
+  Grafana 13.2.0 Open Source an Editor holds `alert.rules:write` on `folders:*` from the role
+  itself, so no folder permission keeps a rule out of a direct-login Editor's reach, while
+  Grafana refuses a UI or API edit of a file-provisioned rule for every role. The heartbeat
+  group is provisioned so already (`provenance: file`); a rule the ruler reports without it
+  is a Needs attention row;
+- **Prometheus's scrape targets, generated from the inventory beside the rules** (C229; the
+  operator, 2026-09-30: agreed earlier and never written into this scope, which is how the
+  connector classification came to claim it). Per network (P.8), as file-based service
+  discovery on the Prometheus host, so a device onboarded is scraped and a retired one is
+  not with nobody editing a file there. Tested the way the rules are: every inventory
+  device has a target, every target names an inventory device, and a device Prometheus does
+  not scrape is a Needs attention row;
 - the evidence it must reproduce (C168): the two incidents the old rules missed (09-22 23:41, every
   telemetry source silent for about 20 minutes; 09-28 08:51, r1 and r3), each rule's history read
   uncapped (a capped read made "never alerted" out of a rule that had).

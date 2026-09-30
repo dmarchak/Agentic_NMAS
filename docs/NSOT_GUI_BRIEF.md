@@ -693,7 +693,53 @@ rather than the old tabs.
   - every sidebar destination and every info link resolves to an existing manual anchor
     (floor: the eight sidebar items);
   - a planted link to a missing anchor fails;
-  - a stage is not closed until the screens it changed are documented (plan §10, item 15).
+  - a stage is not closed until the screens it changed are documented (plan §10, item 15);
+  - every operation has its "How it works" section (section 10a), with a floor.
+
+### 10a. How it works: the tool teaches what it does (the operator, 2026-09-30)
+
+This is a lab, so the tool should teach what it is doing, not only do it. The footprint in
+the interface stays small, and it is built on what this brief already has: the manual, the
+info links, and the steps the code already declares.
+
+- **Every operation gets a "How it works" section in the manual.**
+  - **The operations:** Save All, re-apply a baseline, deploy, restore, capture, rotate,
+    persist, seed, adopt, onboard, and a Mode B removal.
+  - **What each section says:** what happens, in what order, what is read, what is sent,
+    what is recorded, and why each step exists.
+  - **Written for someone learning,** in plain language, one step per paragraph.
+- **One source, two places.** The info link beside an operation opens THAT SAME manual
+  section in the side help panel (section 3.7). Never a second copy of the words: two
+  copies drift apart, as the plan's gate list did.
+- **While an operation runs, its steps are shown, with the current one highlighted.**
+  - **The steps are GENERATED from the steps the code runs**, never a hand-written list.
+    The definitions exist already: persist's preview draws "what persist does, in order"
+    from the module, and adopt's `APPLY_STEPS`, rotation's states and phase two's steps are
+    each a declared sequence.
+  - **The current step comes from the operation's own progress note** (the in-flight
+    panel's `op_progress`, C99), so the stepper and the in-flight panel say the same thing.
+  - **Each step carries its elapsed time** once it has run longer than a few seconds, and
+    what it is waiting on. This fixes the persist run where four minutes showed only
+    "persisting" (C218).
+  - **A step list with no declared source is refused** by the manual check below, so a
+    stepper can never be a drawing of what somebody thought the code did.
+- **Diagrams for the ideas that are hard to hold in words.** The operator learns best
+  visually. The first three:
+  1. **The onboarding flow:** the ZTP bootstrap, Verify, seeding intent, the first deploy.
+  2. **What a baseline contains:** every golden and every device's intent, at one commit,
+     and the tag that names it.
+  3. **How intent, golden and the device relate:** what should be, what was recorded, what
+     is; which operation moves which (deploy moves the device toward intent, capture moves
+     the golden toward the device, seed moves intent from the golden).
+
+  Diagrams are SVG in `docs/manual/`, drawn with the design tokens, with a text description
+  beside each (accessibility, section 7.1).
+- **The check, extended:**
+  - every operation in a declared list has a "How it works" section, floor eleven;
+  - every step an operation's code declares is named in its section;
+  - an info link opens an anchor that exists;
+  - a stepper's steps come from a declared code source (planted: a hand-written list
+    fails).
 
 ## 11. What the mockups (step 3) will show
 
@@ -802,6 +848,24 @@ Neighbours · Ask the device.
 
 On a phone the tab strip scrolls sideways (section 7.2).
 
+**Signed off, with one rule (the operator, 2026-09-30): a tab with nothing to show for THIS
+device is not drawn.** The DHCP lease's reasoning, applied to every tab:
+- **NetBox**, for a device NetBox does not hold: no tab. The Overview's facts say "not in
+  NetBox" in one line.
+- **Neighbours**, on a device with none: no tab. The Overview says "no CDP or LLDP
+  neighbours seen" with the time of the read.
+- **Logs**, for a device Loki holds nothing from in the range: the tab stays, because "no
+  lines in 24 hours" is itself a finding about a device that should be sending heartbeats.
+- **Monitoring**, for a device Prometheus does not scrape: no tab. The Overview says "not
+  scraped by Prometheus", which after C229's fix inside P.7 is a defect, and is a Needs
+  attention row.
+- **Intent, History, Ask the device:** always there, because every managed device has them.
+
+**So most devices show five or six tabs, and eight is the ceiling, not the norm.** Whether a
+tab is drawn is decided from the readers' stored values (never a live read on page load,
+plan §0a), and the fold is stated in the Overview, so a missing tab never reads as a
+missing feature.
+
 ### 14.2 The screens
 
 **Monitoring (Grafana and Prometheus): both, for different jobs.** The operator asked for
@@ -829,6 +893,25 @@ both, with costs.
       permissions cannot create silences or edit rules, so question 3 below holds inside
       the embed too. That is confirmed on the host's Grafana version before the embed is
       accepted.
+  - **Corrected by the operator (2026-09-30): restrict who can ASSERT AN IDENTITY, never who
+    can reach Grafana.** The operator creates and edits dashboards, and does it in Grafana
+    directly. So:
+    - **Grafana stays reachable for a direct login,** with its own authentication.
+    - **`auth.proxy`'s address allowlist names the NMAS host only.** The trusted header is
+      honoured from the NMAS and ignored from anywhere else.
+    - **The hard, verified condition:** a request carrying the header from any address other
+      than the NMAS is NOT authenticated by it. Job health checks it keeps holding (section
+      15.3).
+    - **The app shows dashboards read-only, as Viewer. Dashboard AUTHORING happens in Grafana
+      directly, never through the NMAS.** On the installed version the role that edits
+      dashboards can also silence and edit rules (measured, section 15.3), so authoring
+      through the app would reopen silencing.
+    - **The proxied users are their own users.** `auth.proxy` logs in an EXISTING user with
+      that user's role, so the NMAS asserts a name in its own namespace (`nmas:<email>`),
+      never a direct-login name: those carry Editor or Admin (the ruler shows rules last
+      edited by accounts named `admin` and `nmas-automation`), and asserting one would give
+      the embed that role. A new name is created as Viewer.
+    - The full design, with what job health checks, is section 15.3.
   - **What that removes:** the frame is same-origin, so plan §3's blockers 2 to 4 go (the
     loopback address, a second Access application, `frame-src`). Blocker 1 stays:
     `allow_embedding` must be on, which is the operator's, as root on the host.
@@ -863,6 +946,19 @@ both, with costs.
 - reservations: those in the NMAS's own fragment, which are editable (section 15), and those
   in Kea's main config, shown **marked and read-only**;
 - ZTP reservations marked as such.
+- **Where the NMAS may write reservations (the operator, 2026-09-30): a per-network setting,
+  after P.8, listing the subnets.** A subnet not on the list shows its reservations and
+  offers no Add. The checks, per subnet kind:
+  - **The ZTP segment:** D4's posture checks (no route or resolver option at any level, and
+    nothing answering broadcast DNS), unchanged and scoped to that segment only.
+  - **Every other listed subnet:**
+    - the address is inside the subnet;
+    - it clashes with no pool range and no other reservation (by address, and by MAC);
+    - it is not a managed device's management address, unless the reservation is FOR that
+      device (matched by the device's recorded MAC).
+  - **Every write:** the existing writer's candidate test (`kea-dhcp4 -t`), reload and
+    read-back naming both operands, restore on failure; previewed, confirmed and recorded as
+    the person.
 - **Lease history per device:** Kea's API returns current leases only, so history is the
   reader's own record. Each read's leases are kept with a bounded retention, stating that it
   is observed, not Kea's. (Kea's legal-log hook would be the alternative; whether the host's
@@ -920,18 +1016,19 @@ are marked **Corrected**.
 | Loki | Deleting logs | Not in the app | Q3 (hides a signal), Q2 (evidence) | - |
 | Loki | Editing alert rules | Not in the app | Q2, Q3 | Rules are Grafana's, generated by P.7 |
 | Prometheus | PromQL queries, charts | **Freely** | passes all five | Q5: range cap, minimum step, series limit, timeout |
-| Prometheus | Scrape targets | Not in the app | Q2 (they decide what evidence exists) | **Corrected:** nothing generates them today. They are Prometheus's own config on its host, hand-maintained, and retire only warns about a target still scraping an address. A generator from the inventory, beside P.7's rules, is registered as C229 |
-| Grafana | Dashboards; alert state, including silences | **Freely** | passes all five | Embedded as Viewer (section 14.2) |
+| Prometheus | Scrape targets | Not in the app | Q2 (they decide what evidence exists) | **Corrected:** nothing generates them today. They are Prometheus's own config on its host, hand-maintained, and retire only warns about a target still scraping an address (C229). **Decided 2026-09-30: P.7 generates them from the inventory beside the alert rules**, so a new device is scraped and a retired one is not, with nobody editing a file on the Prometheus host |
+| Grafana | Dashboards; alert state, including silences | **Freely** | passes all five | Embedded as Viewer (section 14.2), through `auth.proxy` whose allowlist names only the NMAS (15.3) |
+| Grafana | Creating and editing dashboards | Not in the app: **in Grafana directly**, by a direct login | Q3: on 13.2.0 the role that edits dashboards also silences and edits rules (15.3) | Grafana's own authentication |
 | Grafana | Silencing, acknowledging to hide | Not in the app | Q3 | - |
-| Grafana | Editing alert rules | Not in the app | Q2, Q3 (C168: the hand-built ones were wrong) | Generated only by P.7's generators |
-| Grafana | A silence set INSIDE Grafana | Shown, never hidden | Q3 | See 15.2: the alert stays on screen as active, marked "silenced in Grafana", with who and until when |
+| Grafana | Editing alert rules | Not in the app | Q2, Q3 (C168: the hand-built ones were wrong) | Generated only by P.7's generators, **as file-provisioned rules**: Grafana refuses a UI or API edit of those for every role (the heartbeat rules are provisioned so today, measured). A folder permission cannot do this on 13.2.0 (15.3) |
+| Grafana | A silence set INSIDE Grafana | Shown, never hidden | Q3 | The alert stays on screen as active, marked "silenced in Grafana", with who and until when: **built 2026-09-30** (15.2) |
 | Kea | Subnets, pools, utilisation, leases, lookups by MAC, address or hostname | **Freely** | passes all five | Q5: paged reads |
-| Kea | Add, edit, remove a reservation | **With gates** | Q1 (it decides a device's address) | The existing writer: its own fragment file only (`<?include?>`), a candidate tested with `kea-dhcp4 -t`, reload, a read-back naming both operands, restore on failure. The D4 posture check on the ZTP segment. Preview, confirm and result, recorded as the person |
+| Kea | Add, edit, remove a reservation | **With gates**, on the subnets a per-network setting lists (after P.8) | Q1 (it decides a device's address) | The existing writer: its own fragment file only (`<?include?>`), a candidate tested with `kea-dhcp4 -t`, reload, a read-back naming both operands, restore on failure. The D4 posture checks on the ZTP segment only; elsewhere, inside the subnet, no clash with a pool or reservation, and never a managed device's management address unless the reservation is for that device (14.2). Preview, confirm and result, recorded as the person |
 | Kea | Reservations in Kea's main config | Shown, marked, read-only | Q2 | - |
 | Kea | Editing Kea's main config (subnets, pools, options) | Not in the app | Q1 (the network's design) | - |
 | Kea | Releasing a lease (`lease4-del`) | Not in the app | Q1 (a device in the inventory loses its management address) | - |
 | NetBox | Browsing and searching everything | **Freely** | passes all five | Q4: `local_context_data` masked (C95). Q5: paged |
-| NetBox | ANY edit, or an "edit in NetBox" link out | Not in the app | Q2: the NMAS is NetBox's only writer, through deploys, onboarding and imports | A change made directly in NetBox is DRIFT (15.2) |
+| NetBox | ANY edit, or an "edit in NetBox" link out | Not in the app | Q2: the NMAS is NetBox's only writer, through deploys, onboarding and imports | A change made directly in NetBox is DRIFT, **measured exactly** once the NMAS has its own account (C100, decided 2026-09-30, 15.2) |
 | Oxidized | Config versions and diffs | **Freely** | Q4 applies | Masked, reveal gate to unmask |
 | Oxidized | "Fetch now" (queue the node with oxidized-web's `node/next/<name>`; its method is checked against the host's version when built) | **With gates** | Q1: it reads the device and changes nothing. Q2: Oxidized writes its own new version, which is its evidence, written by it | A verified person, recorded (who, when, which node); bounded to one node per request |
 | Oxidized | Editing its copies | Not in the app | Q2 | - |
@@ -969,6 +1066,16 @@ are marked **Corrected**.
   - the reader reads each referenced silence;
   - the row reads "silenced in Grafana by <createdBy> until <endsAt>: <comment>";
   - a test from a real captured silence.
+- **BUILT 2026-09-30** (the operator: build it now, so the capture tests it):
+  - the reader reads the silence LIST (`api/v2/silences`, one request per cycle rather than
+    one per id), and puts each silence's author, end, comment, state and matchers on the
+    instances it suppresses;
+  - an id the list does not hold is kept and drawn as unresolved, never dropped;
+  - the Needs attention row KEEPS its level, its title ends "(silenced in Grafana)", and its
+    cause names who and until when;
+  - the silence list read on the host was **empty**, so the test's silence object is the
+    Alertmanager v2 API's documented shape, provisional until the operator's staged capture
+    (plan, "Staged runs": the syslog test alert, `send log 2`, silenced briefly).
 
 **NetBox drift: what is measurable today.**
 - **The modification record** holds every write the NMAS made, with its before-state.
@@ -994,6 +1101,25 @@ are marked **Corrected**.
   The screen draws either one the same way. The first is buildable now; the second is the
   clean end.
 
+  **Decided (the operator, 2026-09-30): EXACT, never approximate.** A drift signal that cries
+  wolf is how the drift checker was lost for 24 days, and guessing from timing will. So C100
+  is done now: the NMAS gets its own NetBox account and token (the one-time steps are
+  [SERVICE_ACCOUNTS.md](SERVICE_ACCOUNTS.md)). Then:
+  - **drift is any change-log entry made by an account other than the NMAS's**, from the
+    switch-over onwards (every earlier entry was made by one account for both, so it cannot
+    be classified and is not);
+  - **the NMAS's account name is ASKED of NetBox** (`api/authentication-check/`, measured on
+    4.6.9), never stored in a setting that could go stale;
+  - **each entry is a Needs attention row** naming the object, the fields that changed with
+    both values (masked, C95), who changed it and when. Its one action: accept it as the new
+    record (recorded with who and why), or, where the next import would overwrite the field
+    from the golden, say so and offer the import's preview;
+  - **the reader reads the change log whole** (paged to the end, a partial answer refused,
+    rule 5 of the reader pattern), and NetBox's retention (`CHANGELOG_RETENTION`, 90 days by
+    default) is the window it states;
+  - **what it also buys:** the change log finally tells the NMAS's writes from the
+    operator's, which adopt's records and C149's attribution both want.
+
 **Kea: is anything beyond reservations worth doing?**
 - **Reads:** yes. Pool utilisation (`statistic-get-all`), and lease lookups by MAC, address
   and hostname (`lease4-get-by-hw-address` is already used by onboarding).
@@ -1005,13 +1131,86 @@ are marked **Corrected**.
   the D4 posture check (no route or resolver options) belongs to the ZTP segment only. A
   reservation for a host on another subnet takes the writer's test, reload, read-back and
   restore, without D4's ZTP-specific conditions. Which subnets the NMAS's fragment may hold
-  is a setting, per network (P.8).
+  is a setting, per network (P.8). **Decided 2026-09-30, with the checks for the other
+  subnets: section 14.2's DHCP list.**
 
 **Containerlab node status:** no reader exists. The NMAS host has no SSH path to the lab host
 by design (host commands are the operator's). The shape that fits:
 - the lab host's own timer runs `containerlab inspect --format json`;
 - it sends the result to the NMAS, as the clab sync already talks to it;
 - a reader keeps it with its age.
+
+### 15.3 Grafana: what the installed version allows, measured (2026-09-30)
+
+Read-only, through the NMAS's own Grafana integration on the host: `api/health`,
+`api/frontend/settings`, `api/access-control/user/permissions` for the NMAS's token,
+`api/folders` and the silence list.
+
+**The installed version:** Grafana **13.2.0, Open Source**. `auth.proxy` is off,
+anonymous access is off, and the login form is on.
+
+**The NMAS's own token has an Editor's permissions (C230).** 75 permissions, including:
+- `alert.silences:create` and `:write`;
+- `alert.rules:create`, `:write` and `:delete`;
+- `dashboards:create`, `:write` and `:delete`;
+- `folders:create`, `:write` and `:delete`.
+
+There are no user, team or data-source-write permissions, which is the Editor's shape, not
+the Admin's. The reader only reads, so the token should be a Viewer's. The switch is one of
+the operator's one-time steps ([SERVICE_ACCOUNTS.md](SERVICE_ACCOUNTS.md)).
+
+**Can folder permissions keep alert rules away from a direct-login Editor? No, not on this
+version.** The scopes say why:
+- `dashboards:*` and `folders:*` are granted ONLY per folder (`folders:uid:<x>`, from each
+  folder's permissions), so a folder permission does govern dashboards.
+- `alert.rules:*` and `alert.silences:*` are granted per folder AND on `folders:*`. The
+  wildcard comes from the Editor role itself, not from any folder's permissions, so taking
+  a folder's Edit away from the Editor role leaves every rule and silence permission in
+  place.
+- Changing what a basic role holds needs custom roles, which are Enterprise, not Open
+  Source.
+
+**What does keep rules out of reach: file provisioning.** Grafana refuses a UI or API edit
+of a file-provisioned rule for every role. The nine heartbeat rules are provisioned that way
+today (the ruler reports `provenance: file`). The seven hand-built ones are not, and were
+last edited by accounts named `admin` and `nmas-automation`.
+- **So P.7 generates every rule as a provisioned file**, and a rule the ruler reports
+  without `provenance: file` is a Needs attention row.
+- **Silences cannot be kept from an Editor on Open Source,** which is why a silence set in
+  Grafana is shown, marked, with who and until when (15.2).
+
+**The Viewer role's permissions on 13.2.0: not measured yet.** No Viewer credential exists.
+When the operator's Viewer token for the NMAS exists,
+`scripts/nmas-integration-accounts` prints its whole permission list: that list IS the
+Viewer role on the installed version. It also names every create, write or delete it holds,
+expected none. Until that has run, "Viewer cannot silence" is Grafana's documentation, not a
+measurement.
+
+**The `auth.proxy` design, for the embed (built after P.8):**
+- **`grafana.ini`, the operator's, as root on the host:**
+  - `[auth.proxy]`: `enabled = true`, `header_name = X-NMAS-Grafana-User`,
+    `header_property = username`, `auto_sign_up = true`, `whitelist = <nmas-host>`;
+  - `[users]`: `auto_assign_org_role = Viewer`;
+  - `[server]`: `root_url` under the NMAS's `/grafana/`, and `serve_from_sub_path = true`;
+  - `[security]`: `allow_embedding = true`.
+- **The allowlist is the peer address Grafana sees.** Whether anything sits between the
+  NMAS and Grafana (a reverse proxy on the monitoring host, which would make ITS address the
+  peer) is measured when this is built, never assumed.
+- **The NMAS proxy:** it strips any client-sent copy of the header, and sets
+  `nmas:<verified email>`. That is a name in the NMAS's own namespace, so `auto_sign_up`
+  creates a new Viewer and never logs in a direct-login account with its own role.
+- **What job health checks, every cycle:**
+  1. **The header from an address the allowlist does not name is NOT authenticated.** A
+     canary request carries the header from a second source address. Which address can
+     reach Grafana and is not on the allowlist is measured at build: the NMAS host has more
+     than one address, and failing that the lab host's timer sends the canary.
+  2. **A proxied identity holds no write.** The canary name's own permission list, asked
+     through the proxy, contains no create, write or delete on alerts or dashboards. This
+     is the Viewer role, re-verified on whatever version is running.
+  3. **The NMAS's own token holds no write** (after C230's switch).
+  4. **Before an embed is served to a person,** that person's proxied identity is asked the
+     same question, and an embed is refused, naming the permission, if an administrator has
+     raised the role inside Grafana since.
 
 ## 16. The findability questions, extended
 

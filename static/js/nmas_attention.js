@@ -148,8 +148,24 @@
       + (m.device ? ' on <strong>' + esc(m.device) + '</strong>' : '')
       + ': device ' + esc(m.device_note) + '; onset ' + when(m.onset)
       + ' (' + esc(m.onset_basis) + ')'
-      + ((m.silenced_by || []).length ? '; silenced by ' + m.silenced_by.map(esc).join(', ') : '')
+      + silencesHtml(m)
       + '</li>';
+  }
+
+  /* A silence set in Grafana, with who and until when (the operator,
+     2026-09-30); an id the silence list did not return is named as that. */
+  function silencesHtml(m) {
+    var list = (m.silences || []).length ? m.silences
+      : (m.silenced_by || []).map(function (i) { return { id: i, unresolved: true }; });
+    return list.map(function (s) {
+      if (s.unresolved) {
+        return '; <strong>silenced in Grafana</strong> by silence ' + esc(s.id)
+          + ', whose author and end Grafana did not return';
+      }
+      return '; <strong>silenced in Grafana</strong> by ' + esc(s.created_by || 'an unnamed account')
+        + ' until ' + when(s.ends_at)
+        + (s.comment ? ' (&ldquo;' + esc(s.comment) + '&rdquo;)' : '');
+    }).join('');
   }
 
   function operandValue(v) {

@@ -300,6 +300,21 @@ re-decide the destinations.
   documented (acceptance item 15). A check, with a floor, fails when a
   sidebar destination has no manual section, so a new screen without
   documentation fails the suite.
+- **It TEACHES (the operator, 2026-09-30; brief section 10a):** this is a lab,
+  so the tool explains what it is doing.
+  - Every operation (Save All, re-apply a baseline, deploy, restore, capture,
+    rotate, persist, seed, adopt, onboard, a Mode B removal) has a "How it
+    works" section: what happens in order, what is read, sent and recorded,
+    and why each step exists, in plain language.
+  - The info link beside an operation opens that same section in the side
+    panel: one source, two places.
+  - A running operation shows its steps with the current one highlighted,
+    generated from the steps the code declares, never a hand-written list
+    (C218's four silent minutes).
+  - Diagrams: the onboarding flow, what a baseline contains, and how intent,
+    golden and the device relate.
+  - The check: every operation has its section (floor eleven), and every step
+    its code declares is named there.
 
 **Where it lands in the order:** before the Device page's screen, the first
 big screen.
@@ -349,9 +364,66 @@ against the code, and two claims were corrected:
 - **Oxidized's `router.db`:** the NMAS already writes it, through rotation's persistence
   chain.
 
+**Step (a) signed off, with corrections (the operator, 2026-09-30; brief sections 10a, 14,
+15.2, 15.3):**
+- **The OBSERVE heading and the device tabs: approved, with one rule.** A tab with nothing
+  to show for THIS device is not drawn; the Overview states the empty state in a line
+  (NetBox for a device NetBox does not hold, Neighbours with none, Monitoring for a device
+  Prometheus does not scrape). Eight tabs is the ceiling, not the norm.
+- **NetBox drift is EXACT, so C100 is done now:** the NMAS gets its own NetBox account.
+  The one-time steps are [SERVICE_ACCOUNTS.md](SERVICE_ACCOUNTS.md); the drift reader is
+  built after the switch-over, and any change-log entry by another account is a Needs
+  attention row naming the object and what changed.
+- **Reservations beyond the ZTP subnet: yes, on a per-network list of subnets (after
+  P.8).** D4's checks stay scoped to the ZTP segment. Elsewhere: inside the subnet, no clash
+  with a pool or another reservation, and never a managed device's management address
+  unless the reservation is for that device. Lease history is the NMAS's own observed record.
+- **Grafana, corrected: restrict who can ASSERT AN IDENTITY, never who can reach Grafana.**
+  `auth.proxy`'s allowlist names the NMAS only; Grafana stays reachable for a direct login;
+  job health checks that the header from any other address authenticates nothing. The app
+  shows dashboards as Viewer, and dashboard authoring happens in Grafana directly.
+  **Measured on 13.2.0 Open Source** (brief 15.3): the Editor role holds rule and silence
+  permissions on `folders:*`, so folder permissions cannot keep rules from a direct-login
+  Editor. File provisioning can (P.7 generates every rule so). The NMAS's own token has an
+  Editor's permissions (C230); the Viewer role itself is measured once the Viewer token
+  exists.
+- **C229 is P.7's:** P.7 generates the scrape targets from the inventory beside the rules
+  (NSOT_PLAN P.7).
+- **The silence fetch is BUILT** (who and until when, on every silenced instance; the row
+  keeps its level), and the capture that tests it is the first staged run below.
+- **"How it works" (brief section 10a):** every operation gets a step-by-step explanation
+  in the manual. The info link opens that same section in the side panel, a running
+  operation shows its steps generated from the code with the current one highlighted,
+  diagrams cover the ideas, and the manual check has a floor.
+
+**Staged runs: the operator's, at the next lab session.** Each is written out, so the
+session needs no reconstruction:
+1. **The silenced-alert capture** (the operator, 2026-09-30; after this commit is deployed,
+   because the capture script gains the silence list):
+   1. On a managed device, trigger the syslog test alert: `send log 2 NMAS silence capture`.
+   2. Wait until Grafana shows **Critical syslog received** firing for that device (its
+      evaluation is 60 s, plus the rule's own wait), and until Needs attention shows its
+      row.
+   3. In Grafana: Alerting > Silences > **New silence**. Matchers
+      `alertname = Critical syslog received` and `device = <that device>`; duration 15 min;
+      comment `NMAS silence capture`.
+   4. Within 60 s, Needs attention's row must end "(silenced in Grafana)", keep its level,
+      and say "silenced in Grafana by <you> until <the end>".
+   5. On the NMAS host: `scripts/nmas-capture-grafana-alerts --out /tmp/grafana-silenced`
+      (read-only; never into the checkout).
+   6. In Grafana, **Expire** the silence, then capture again into `/tmp/grafana-expired`.
+      That gives the second real shape, an expired silence.
+   7. After that, the test's provisional silence object is replaced by the captured one
+      (a minimal edit, the fixture rule), and the fixture README records it.
+2. **The NetBox account switch-over:** [SERVICE_ACCOUNTS.md](SERVICE_ACCOUNTS.md) part 1,
+   closing C100 when 1.6 passes. Note the switch time: drift is measured from it.
+3. **The Grafana Viewer token:** SERVICE_ACCOUNTS.md part 2, closing C230; its printed
+   permission list becomes the measured Viewer role in brief 15.3.
+
 **The order from here (the operator, 2026-09-29), each step waiting for sign-off:**
 1. the brief updated with the integration screens, the rule and its classification, and the
-   extended findability questions (done: sections 13 to 16);
+   extended findability questions (done: sections 13 to 16; signed off with corrections
+   2026-09-30, above);
 2. mockups of the new screens at desktop and phone width: fleet-wide Monitoring, DHCP with
    reservation management, the NetBox browser, Logs with the Loki query screen, a Prometheus
    query screen, and the device page's service sections;

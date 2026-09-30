@@ -1,8 +1,9 @@
 """The Grafana alert reader: the first reader job (modules/reader_job.py).
 
-What it stores is what Grafana SAID, from three endpoints, each named on the
+What it stores is what Grafana SAID, from four endpoints, each named on the
 result (rule 4): the rules' configuration (the ruler), their evaluated state
-(the rules view) and the instances being alerted on (the Alertmanager). It
+(the rules view), the instances being alerted on (the Alertmanager) and the
+silences on them (the Alertmanager's silence list). It
 decides nothing about what a person should do; Needs attention does that
 from the cache (rule 1). The rules this reader keeps, in addition to the
 pattern's, each from a finding on 2026-09-28:
@@ -45,6 +46,16 @@ pattern's, each from a finding on 2026-09-28:
   whose totals count more rules than it lists, or a rule whose totals count
   more instances than it lists, is a partial answer, and the read is refused.
 
+- **A silenced alert stays a row, and says who silenced it and until when**
+  (the operator, 2026-09-30). The Alertmanager's alert list carries only
+  the silence's id (`status.silencedBy`), so the reader also reads the
+  silence list (`api/v2/silences`) and puts, on each silenced instance, the
+  silence's author, end, comment and state. An id the list does not hold
+  is kept and said to be unresolved, never dropped. Measured on Grafana
+  13.2.0: an Editor can silence in every folder (the role grants
+  `alert.silences:create` on `folders:*`), so a silence set in Grafana is
+  normal, and the app's job is to show it, never to hide the alert.
+
 History (`api/v1/rules/history`) is NOT read here: it is capped at 100 rows
 and a claim about all time needs a window that covers all time (rule 6).
 It is 8.6's, read uncapped by splitting the window.
@@ -61,6 +72,7 @@ log = logging.getLogger(__name__)
 RULER = "api/ruler/grafana/api/v1/rules"
 RULES_VIEW = "api/prometheus/grafana/api/v1/rules"
 ALERTMANAGER = "api/alertmanager/grafana/api/v2/alerts"
+SILENCES = "api/alertmanager/grafana/api/v2/silences"
 
 #: The ONE definition of "which device" in a syslog line: the origin-id after
 #: the IOS sequence number (``719: s4: %SYS-5-...``). The stream's host label
@@ -157,9 +169,33 @@ def _kind(state: str) -> str:
     return "unknown_state"
 
 
-def parse(ruler: dict, view: dict, alerts: list, read_at: float) -> dict:
-    """The stored value, from the three answers. Pure, so a test drives it
-    with the captured answers and a changed piece."""
+def _silence(s: dict) -> dict:
+    """One silence as the reader keeps it: who, until when, why, and what it
+    matches. The matchers are kept as text so a person can see what else
+    the silence covers."""
+    matchers = []
+    for m in s.get("matchers") or []:
+        op = ("=~" if m.get("isRegex") else "=") if m.get("isEqual", True) else \
+             ("!~" if m.get("isRegex") else "!=")
+        matchers.append(f"{m.get('name')}{op}{m.get('value')}")
+    return {"id": s.get("id"), "created_by": s.get("createdBy") or "",
+            "comment": s.get("comment") or "", "starts_at": s.get("startsAt"),
+            "ends_at": s.get("endsAt"), "state": (s.get("status") or {}).get("state"),
+            "matchers": matchers}
+
+
+def _silences_on(ids, by_id: dict) -> list:
+    """The silences an instance names, each resolved from the silence list or
+    said to be unresolved (the id is kept, the details are not guessed)."""
+    return [by_id.get(i) or {"id": i, "unresolved": True} for i in ids or []]
+
+
+def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None) -> dict:
+    """The stored value, from the four answers. Pure, so a test drives it
+    with the captured answers and a changed piece. ``silences`` is the
+    silence list; ``None`` means it was not read, which leaves every silence
+    an instance names unresolved rather than absent."""
+    silence_by_id = {s.get("id"): _silence(s) for s in silences or [] if s.get("id")}
     config = {}
     for folder, groups in (ruler or {}).items():
         for grp in groups or []:
@@ -229,7 +265,7 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float) -> dict:
                     "window_seconds": int(labels.get("window_seconds") or 0) or None,
                     "window_basis": labels.get("window_basis"),
                     "fingerprint": None, "starts_at": None, "silenced_by": [],
-                    **_instance_device(labels, source)})
+                    "silences": [], **_instance_device(labels, source)})
 
     # The Alertmanager's instances carry what the rules view lacks: the label
     # fingerprint and `startsAt` (8.6's instance identity). Joined on the
@@ -245,8 +281,9 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float) -> dict:
     for am in alerts or []:
         labels = _public(am.get("labels"))
         status = am.get("status") or {}
+        ids = list(status.get("silencedBy") or [])
         extra = {"fingerprint": am.get("fingerprint"), "starts_at": am.get("startsAt"),
-                 "silenced_by": list(status.get("silencedBy") or [])}
+                 "silenced_by": ids, "silences": _silences_on(ids, silence_by_id)}
         inst = by_identity.get(_identity(labels))
         if inst is not None:
             inst.update(extra)
@@ -267,9 +304,15 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float) -> dict:
             "window_basis": labels.get("window_basis"),
             **extra, **_instance_device(labels, source)})
 
+    counts["silenced"] = sum(1 for i in instances if i.get("silenced_by"))
     return {"rules": rules, "instances": instances, "counts": counts,
             "stalled_groups": stalled, "alertmanager_only": unmatched,
-            "configured_rules": len(config)}
+            "configured_rules": len(config),
+            # Every silence in force or waiting to start, whether or not an
+            # alert it matches is firing now: an expired one decides nothing.
+            "silences": [s for s in silence_by_id.values()
+                         if s.get("state") in ("active", "pending")],
+            "silences_read": silences is not None}
 
 
 def read(client=None) -> dict:
@@ -279,7 +322,7 @@ def read(client=None) -> dict:
 
     g = client or GrafanaIntegration()
     answers = {}
-    for path in (RULER, RULES_VIEW, ALERTMANAGER):
+    for path in (RULER, RULES_VIEW, ALERTMANAGER, SILENCES):
         got = g._get(path)
         if not got.get("ok"):
             raise ConnectionError(f"{path}: {got.get('error') or 'no answer'}")
@@ -287,13 +330,15 @@ def read(client=None) -> dict:
             answers[path] = got["response"].json()
         except ValueError as exc:
             raise ValueError(f"{path}: the answer is not JSON ({exc})") from exc
-    return parse(answers[RULER], answers[RULES_VIEW], answers[ALERTMANAGER], time.time())
+    return parse(answers[RULER], answers[RULES_VIEW], answers[ALERTMANAGER], time.time(),
+                 silences=answers[SILENCES])
 
 
 READER = reader_job.register(reader_job.Reader(
     name="grafana-alerts",
-    what="Grafana's alert rules and instances, read for Needs attention and 8.6's triage",
-    endpoints=(RULER, RULES_VIEW, ALERTMANAGER),
+    what="Grafana's alert rules and instances, and the silences on them, read for Needs "
+         "attention and 8.6's triage",
+    endpoints=(RULER, RULES_VIEW, ALERTMANAGER, SILENCES),
     interval_seconds=60,
     interval_basis=("both rule groups evaluate every 60 s (measured 2026-09-28), so a "
                     "faster read sees nothing new"),
