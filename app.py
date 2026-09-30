@@ -4221,6 +4221,14 @@ def _start_background_daemons():
     except Exception as _e:
         app.logger.error("Reader jobs did not start: %s", _e)
 
+    # Prometheus's generated SNMP targets, kept current with the inventory
+    # (C232): regenerated when it changes, and a backstop for other processes.
+    try:
+        from modules import prometheus_targets as _prometheus_targets
+        _prometheus_targets.start_keeper()
+    except Exception as _e:
+        app.logger.error("Prometheus targets keeper did not start: %s", _e)
+
     # Start SNMP trap receiver and NetFlow collector using per-list config
     try:
         from modules.collector_config import get_snmp_trap_port, get_netflow_port

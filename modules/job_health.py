@@ -895,7 +895,10 @@ def sync_owner_rows(run=None, get=None) -> list:
 
 #: A declared not-applicable setting is a recorded decision, not a fault. It
 #: is still counted in the headline, so it cannot vanish from view.
-OK_STATES = ("ok", "not_applicable", "departed")
+#: `settling`: a change not yet taken up where it is being taken up (the
+#: generated Prometheus targets, C232), dated with when to ask again. Nothing
+#: for a person to do; the next read says whether it settled or differs.
+OK_STATES = ("ok", "not_applicable", "departed", "settling")
 
 
 def ztp_responder_rows(run=None, get=None) -> list:

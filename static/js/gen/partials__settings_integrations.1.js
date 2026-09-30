@@ -7,7 +7,9 @@ const INTEGRATION_SPEC = {
     {key: 'prometheus_username', label: 'Username', type: 'text'},
     {key: 'prometheus_password', label: 'Password', type: 'secret'},
     {key: 'prometheus_bearer_token', label: 'Bearer token', type: 'secret'},
-    {key: 'prometheus_verify_tls', label: 'Verify TLS', type: 'switch'}]},
+    {key: 'prometheus_verify_tls', label: 'Verify TLS', type: 'switch'},
+    {key: 'prometheus_targets_dir', label: 'Targets directory', type: 'text',
+     help: 'Where the NMAS writes the SNMP targets, labelled device and role, whenever the inventory changes (e.g. /etc/prometheus/nmas). Empty: it writes nothing. The one-time install is docs/PROMETHEUS_TARGETS.md.'}]},
   grafana: {icon: '📊', fields: [
     {key: 'grafana_url', label: 'Base URL', type: 'url'},
     {key: 'grafana_token', label: 'API token', type: 'secret'},

@@ -86,15 +86,36 @@ r6; the targets carry that as it is (C225).
    ```
 
    `--check` prints `MATCHES` when every SNMP job scrapes exactly the generated
-   targets. Within a scrape interval (30 s), `rcn-lab1-snmp`'s `device` variable
-   lists the devices.
+   targets. It reads what Prometheus has LOADED as well as what it has
+   discovered, so it tells three things apart (measured on the install,
+   2026-09-30, when a check seconds after the reload blamed the config):
+   `NOT LOADED` (the loaded config does not read the files: the edit, or its
+   reload, did not take), `NOT YET DISCOVERED` (exit 3: inside one scrape
+   interval of the reload or of a write, with the time to ask again), and
+   `DIFFERS` (the same difference past that interval). Within a scrape
+   interval (30 s), `rcn-lab1-snmp`'s `device` variable lists the devices.
+
+6. Name the directory in Settings > Integrations > Prometheus, **Targets
+   directory**: `/etc/prometheus/nmas`. From then on the NMAS writes the files
+   itself.
 
 ## After the install
 
-Prometheus re-reads a `file_sd` file when it changes: no reload. When the
-inventory moves (a device onboarded, adopted or retired), job health's
-`prometheus-targets` row reads `mismatch`, names the device, and gives the
-command: `scripts/nmas-prometheus-targets --write /etc/prometheus/nmas`.
+The NMAS regenerates the files whenever the inventory changes: every write
+of a list's `devices.csv` (onboarding's promotion, adopt, retire, a role
+edit, Add and Delete) and every NetBox inventory refresh wakes it, and a
+backstop every 300 s catches a change made by another process (a CLI on the
+host) and the IP SLA file, which follows the committed goldens. Prometheus
+re-reads a changed `file_sd` file with no reload. Nobody runs a command.
+
+Each run is recorded in `data/prometheus_targets_sync.json`, and job
+health's `prometheus-targets` row is the check that it happened: it compares
+the files on disk with what the inventory generates now, and Prometheus with
+the files. A regeneration that failed is a row naming its error (usually the
+directory's owner or mode, step 1); files behind a recent run read
+`settling` with the time they will be current; files behind with no run for
+longer than the backstop mean the keeper is not running. With no directory
+named, nothing is written and the row's action is the Settings field.
 
 ## What it does not do
 

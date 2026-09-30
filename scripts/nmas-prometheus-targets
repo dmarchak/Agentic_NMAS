@@ -15,8 +15,16 @@ no reload.
 
 The dry run and `--check` write nothing. `--write` writes only files whose
 content moved, each 0644, atomically. `--check` asks the running Prometheus
-(read-only). Exit 0: written, or matching; 1: `--check` found a difference
-(named); 2: something could not be done (named, and never read as "fine").
+(read-only), and says which of three a difference is: the edit not LOADED
+(the config Prometheus runs does not read the files), a change not yet
+DISCOVERED (inside one scrape interval of the reload or the write: ask again
+at the time named), or a difference past that. Exit 0: written, or
+matching; 1: `--check` found the edit not loaded, or a difference; 2:
+something could not be done (named, and never read as "fine"); 3: not yet
+discovered, nothing wrong yet.
+
+The NMAS writes the files itself when `prometheus_targets_dir` is set
+(Settings > Integrations > Prometheus); `--write` is for the one-time install.
 """
 
 import sys
@@ -36,6 +44,46 @@ def _print_plan(generated: dict) -> None:
         print(f"  {name}: {len(groups)} target(s){': ' + names if names else ''}")
     for note in generated["notes"]:
         print(f"  note: {note}")
+
+
+def _report_check(r: dict) -> int:
+    """Three states, never one sentence for two (the operator, 2026-09-30):
+    the edit not LOADED, a change Prometheus has not DISCOVERED yet, and a
+    difference past one scrape interval."""
+    cfg = r["config"]
+    if cfg["read"]:
+        print(f"loaded config: loaded {cfg.get('loaded_at') or 'at an unread time'}"
+              + ("; its LAST RELOAD FAILED, so it runs the config loaded then"
+                 if cfg.get("reload_ok") is False else ""))
+    else:
+        print(f"loaded config: COULD NOT BE READ ({cfg['error']}); a static target cannot "
+              "be told from a change not yet discovered")
+    disk = r.get("disk") or {}
+    if disk.get("read"):
+        print(f"files in {disk['dir']}: "
+              + ("current" if not disk["differs"] else "NOT CURRENT: " + "; ".join(disk["differs"])))
+    if r["ok"]:
+        print(f"MATCHES: {len(r['pools'])} SNMP job(s) scrape exactly the generated targets")
+        return 0
+    if r["static"]:
+        print("NOT LOADED: the config Prometheus has loaded does not read the generated files:")
+        for pool in r["static"]:
+            for line in r["by_pool"][pool]["lines"]:
+                print(f"  {line}")
+        print("  (docs/PROMETHEUS_TARGETS.md: the one-time install, then a reload)")
+    if r["drift"]:
+        print("DIFFERS (past one scrape interval):")
+        for line in r["drift"]:
+            print(f"  {line}")
+    if r["settling"]:
+        print("NOT YET DISCOVERED (nothing is wrong yet):")
+        for s in r["settling"]:
+            print(f"  {s['because']}")
+    for name in r["unread"]:
+        print(f"  (no SNMP job reads {name})")
+    if r["static"] or r["drift"]:
+        return 1
+    return 3
 
 
 def main(argv=None) -> int:
@@ -66,17 +114,7 @@ def main(argv=None) -> int:
         if r["state"] == "unknown":
             print(f"COULD NOT ASK Prometheus: {r['error']}", file=sys.stderr)
             return 2
-        if r["ok"]:
-            print(f"MATCHES: {len(r['pools'])} SNMP job(s) scrape exactly the generated targets")
-            return 0
-        print("DIFFERS:")
-        for pool in r["static"]:
-            print(f"  {pool}: still reads its static targets (docs/PROMETHEUS_TARGETS.md)")
-        for line in r["drift"]:
-            print(f"  {line}")
-        for name in r["unread"]:
-            print(f"  (no SNMP job reads {name})")
-        return 1
+        return _report_check(r)
 
     if args.write:
         try:

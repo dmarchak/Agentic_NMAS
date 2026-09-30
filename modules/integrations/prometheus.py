@@ -10,7 +10,8 @@ class PrometheusIntegration(IntegrationClient):
     label = "Prometheus"
     url_key = "prometheus_url"
     secret_keys = ("prometheus_password", "prometheus_bearer_token")
-    plain_keys = ("prometheus_auth_mode", "prometheus_username", "prometheus_verify_tls")
+    plain_keys = ("prometheus_auth_mode", "prometheus_username", "prometheus_verify_tls",
+                  "prometheus_targets_dir")
 
     def _auth_headers(self) -> dict:
         mode = get_setting("prometheus_auth_mode", "none")

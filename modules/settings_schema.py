@@ -145,6 +145,9 @@ DEFAULTS: dict = {
     "prometheus_password":     "",
     "prometheus_bearer_token": "",
     "prometheus_verify_tls":   True,
+    # Where the NMAS writes the generated SNMP targets (C232). Empty: the app
+    # writes nothing (the behaviour before the setting); the install names it.
+    "prometheus_targets_dir":  "",
 
     # ── Grafana ─────────────────────────────────────────────────────────────
     "grafana_url":            "",
@@ -649,6 +652,7 @@ SCHEMA: dict = {
         "prometheus_url": _STR,
         "prometheus_auth_mode": {"enum": ["none", "basic", "bearer"]},
         "prometheus_verify_tls": _BOOL,
+        "prometheus_targets_dir": _STR,
 
         "grafana_url": _STR,
         "grafana_embed_mode": {"enum": ["link", "iframe"]},

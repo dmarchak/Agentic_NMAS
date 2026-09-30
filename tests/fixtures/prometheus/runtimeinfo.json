@@ -1,0 +1,1 @@
+{"status":"success","data":{"startTime":"2026-09-19T05:20:19.368806573Z","CWD":"/","reloadConfigSuccess":true,"lastConfigTime":"2026-09-30T17:31:27Z","corruptionCount":0,"goroutineCount":87,"GOMAXPROCS":4,"GOMEMLIMIT":9223372036854775807,"GOGC":"","GODEBUG":"","storageRetention":"90d or 100GiB"}}

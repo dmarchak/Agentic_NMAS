@@ -164,6 +164,11 @@ def refresh_list(list_name: str, block: bool = True) -> dict:
     _record_stale_devices(list_name, devices, previous_ips)
     _record_renames(list_name, devices)
     _record_platforms(list_name)
+    try:
+        from modules import prometheus_targets
+        prometheus_targets.inventory_changed(f"{list_name}: the NetBox inventory was refreshed")
+    except Exception as exc:                   # noqa: BLE001
+        log.error("prometheus targets: the inventory change could not be sent: %s", exc)
 
     log.info("inventory: refreshed '%s' — %d device(s), %d skipped, %d warning(s)",
              list_name, len(devices), len(skipped), len(warnings))

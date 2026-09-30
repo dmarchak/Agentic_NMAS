@@ -268,6 +268,13 @@ def _write_csv_atomic(path: str, rows: list, fieldnames: list,
     writer.writerows(rows)
     with devices_csv_lock(path):
         write_atomic(path, buf.getvalue(), newline="")
+    # The inventory moved: Prometheus's generated targets follow it (C232).
+    try:
+        from modules import prometheus_targets
+        prometheus_targets.inventory_changed(
+            f"{os.path.basename(os.path.dirname(path)) or path}: devices.csv was written")
+    except Exception as exc:                   # noqa: BLE001
+        logger.error("prometheus targets: the inventory change could not be sent: %s", exc)
 
 
 def delete_device(ip: str, filename: str | None = None) -> None:
