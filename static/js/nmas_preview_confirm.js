@@ -525,7 +525,9 @@
   /* The operations a next step may open, by the key the server names, and
      the words on their button. Opened by the one listener each operation's
      client installs (`data-nmas-open`); the server never names code. */
-  var NEXT_OPENS = {breakglass_export: 'Export the break-glass record…'};
+  var NEXT_OPENS = {breakglass_export: 'Export the break-glass record…',
+                    profile_apply: 'Apply monitoring profile…'};
+  var NEXT_CLASS = {breakglass_export: 'btn-outline-danger'};
 
   /* A result's next step, drawn apart (C219): never under "What did not
      happen", which is for things that did not occur. */
@@ -535,8 +537,9 @@
     return '<div class="alert alert-info py-2 px-3 small" data-pr-next><strong>Next:</strong> '
       + esc(n.text)
       + (NEXT_OPENS[n.open]
-         ? ' <button type="button" class="btn btn-sm btn-outline-danger ms-1" data-nmas-open="'
-           + esc(n.open) + '" data-nmas-list="' + esc(args.list || '') + '">'
+         ? ' <button type="button" class="btn btn-sm ' + (NEXT_CLASS[n.open] || 'btn-outline-primary')
+           + ' ms-1" data-nmas-open="' + esc(n.open) + '" data-nmas-list="' + esc(args.list || '')
+           + '" data-nmas-device="' + esc((args.devices || []).join(',')) + '">'
            + esc(NEXT_OPENS[n.open]) + '</button>'
          : '')
       + '</div>';

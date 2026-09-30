@@ -138,6 +138,7 @@ DECLARED = {
     # Intent, templates and deploys.
     "retire.apply": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
     "templatize.seed_apply": ("intent", "remote"),
+    "templatize.profile_propose_apply": ("intent", "remote"),
     "templatize.edit_committed": ("intent", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
@@ -252,6 +253,8 @@ DECLARED = {
                                         "nothing"),
     "templatize.seed_preview": Nothing("parses committed goldens from git and computes the "
                                        "intent a seed would commit; writes nothing"),
+    "templatize.profile_propose_preview": Nothing("computes the network's monitoring profile "
+                                                  "from committed intent; writes nothing"),
     "templatize.bulk_preview": Nothing("previews a bulk intent change; the apply commits"),
     "templatize.report": Nothing("round-trip coverage computed from goldens; writes nothing"),
     "netbox_safety.preview_import": Nothing("a NetBox dry run: reads, and issues a one-shot token"),

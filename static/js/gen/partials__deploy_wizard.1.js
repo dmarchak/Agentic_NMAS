@@ -1,12 +1,30 @@
 let _deployModal = null, _deployPlan = null;
+// P.9 step (b): 'profile' scopes the plan to the network's monitoring
+// profile's lines; the list, when the opener names one, is carried to the
+// plan and the apply (a write never derives its list).
+let _deployScope = '', _deployList = '';
+
+// The body every plan and apply request carries besides its own fields.
+function _deployCommon() {
+  const c = {};
+  if (_deployScope) c.scope = _deployScope;
+  if (_deployList) c.list_name = _deployList;
+  return c;
+}
 
 function _dEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-async function openDeployPlan(hostnames) {
+async function openDeployPlan(hostnames, opts) {
+  opts = opts || {};
+  _deployScope = opts.scope || '';
+  _deployList = opts.list || '';
   if (!_deployModal) _deployModal = new bootstrap.Modal(document.getElementById('deployPlanModal'));
+  document.getElementById('deployPlanTitle').textContent =
+    _deployScope === 'profile' ? 'Apply monitoring profile' : 'Deploy from template';
+  document.getElementById('deployApplyBtn').classList.remove('d-none');
   const body = document.getElementById('deployPlanBody');
   body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div>'
     + '<div class="small text-muted mt-2">Building the plan from captured configs…</div></div>';
@@ -16,7 +34,7 @@ async function openDeployPlan(hostnames) {
   try {
     const r = await fetch('/deploy/plan', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({devices: hostnames}),
+      body: JSON.stringify(Object.assign(_deployCommon(), {devices: hostnames})),
     });
     const d = await r.json();
     if (!d.ok) { body.innerHTML = `<div class="alert alert-danger mb-0">${_dEsc(d.error)}</div>`; return; }
@@ -77,8 +95,8 @@ async function _reauthoriseDevice(device) {
   try {
     const r = await fetch('/deploy/plan', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({devices: (_deployPlan.devices || []).map(x => x.device), authorise,
-                            remove}),
+      body: JSON.stringify(Object.assign(_deployCommon(), {
+        devices: (_deployPlan.devices || []).map(x => x.device), authorise, remove})),
     });
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); return; }
@@ -96,7 +114,9 @@ function _updateDeploySummary() {
   const boxes = [...document.querySelectorAll('#deployPlanBody input[data-pc-select]:checked')];
   const btn = document.getElementById('deployApplyBtn');
   const state = previewConfirmButton((_deployPlan || {}).preview, boxes.length,
-                                     'Deploy confirmed devices');
+                                     _deployScope === 'profile'
+                                       ? 'Apply the profile to confirmed devices'
+                                       : 'Deploy confirmed devices');
   btn.disabled = state.disabled;
   btn.textContent = state.text;
   document.getElementById('deployPlanSummary').innerHTML = boxes.length
@@ -145,7 +165,8 @@ async function applyDeploy() {
   try {
     const r = await fetch('/deploy/apply', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmations, command_hashes: commandHashes, authorise, remove}),
+      body: JSON.stringify(Object.assign(_deployCommon(), {
+        confirmations, command_hashes: commandHashes, authorise, remove})),
     });
     const d = await r.json();
     if (!d.ok) { showToast(d.error, 'danger'); btn.disabled = false; return; }
@@ -154,7 +175,8 @@ async function applyDeploy() {
     body.innerHTML = `<div class="alert alert-danger mb-0">${_dEsc(e.message)}</div>`;
   } finally {
     inFlightBusy(false);
-    btn.textContent = 'Deploy confirmed devices';
+    btn.textContent = _deployScope === 'profile' ? 'Apply the profile to confirmed devices'
+                                                 : 'Deploy confirmed devices';
   }
 }
 
@@ -166,7 +188,37 @@ async function applyDeploy() {
 function _renderDeployResult(report) {
   const body = document.getElementById('deployPlanBody');
   document.getElementById('deployApplyBtn').classList.add('d-none');
-  body.innerHTML = previewConfirmResultHtml(report.result, {repreview: 'openDeployPlan'});
+  body.innerHTML = previewConfirmResultHtml(report.result, {repreview: '_deployRepreview'});
   showToast((report.result && report.result.happened && report.result.happened.summary) || 'Deploy finished',
             previewConfirmResultLevel(report.result));
+}
+
+// "Preview again" keeps what the plan was: scoped to the profile stays scoped.
+function _deployRepreview(hostnames) {
+  openDeployPlan(hostnames, {scope: _deployScope, list: _deployList});
+}
+
+// APPLY MONITORING PROFILE (P.9 step b): the deploy plan scoped to the
+// network's monitoring profile's lines. Opened by any element carrying
+// data-nmas-open="profile_apply" (Needs attention's "not monitored" row, the
+// Device page), and by the URL ?open=profile_apply&device=<name>&list=<list>
+// the redesigned pages link to, since they do not carry this wizard yet.
+// *device*: one name, or several separated by commas (a proposal's result
+// opens it for every device that inherits).
+function openProfileApply(device, listName) {
+  const devices = String(device || '').split(',').map(s => s.trim()).filter(Boolean);
+  openDeployPlan(devices, {scope: 'profile', list: listName || ''});
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('click', e => {
+    const b = e.target && e.target.closest && e.target.closest('[data-nmas-open="profile_apply"]');
+    if (b) openProfileApply(b.dataset.nmasDevice, b.dataset.nmasList);
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('open') === 'profile_apply' && q.get('device')) {
+      openProfileApply(q.get('device'), q.get('list') || '');
+    }
+  });
 }

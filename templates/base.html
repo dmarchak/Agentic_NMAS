@@ -17,6 +17,7 @@
   <!-- Capture as golden (7.1 step 4): an operation, previewed and confirmed. -->
   <script src="{{ url_for('static', filename='js/nmas_capture.js') }}"></script>
   <script src="{{ url_for('static', filename='js/nmas_seed.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/nmas_profile.js') }}"></script>
   <script src="{{ url_for('static', filename='js/nmas_retire.js') }}"></script>
   <script src="{{ url_for('static', filename='js/nmas_persist.js') }}"></script>
   <script src="{{ url_for('static', filename='js/nmas_rotate.js') }}"></script>
@@ -852,6 +853,10 @@
     {% endif %}
     {% endwith %}
   </div>
+
+  {# The deploy plan (Phase 3c), on every page: the Device page and Needs
+     attention open it scoped to the monitoring profile (P.9 step b). #}
+  {% include 'partials/deploy_wizard.html' %}
 
   <!-- Bootstrap JS -->
   <script src="/static/js/bootstrap.bundle.min.js"></script>

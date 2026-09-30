@@ -139,6 +139,16 @@
     if (a.open === 'app_update') {
       html += ' <a class="btn btn-sm btn-outline-primary py-0 ms-1" data-nmas-update href="/v2/update">Update…</a>';
     }
+    // The monitoring profile (P.9 step b): apply it, or propose it first.
+    if (a.open === 'profile_apply') {
+      html += ' <button type="button" class="btn btn-sm btn-outline-primary py-0 ms-1" '
+        + 'data-nmas-open="profile_apply" data-nmas-device="' + esc(a.device || '') + '" '
+        + 'data-nmas-list="' + esc(a.list || '') + '">Preview…</button>';
+    }
+    if (a.open === 'profile_propose') {
+      html += ' <button type="button" class="btn btn-sm btn-outline-primary py-0 ms-1" '
+        + 'data-nmas-open="profile_propose" data-nmas-list="' + esc(a.list || '') + '">Propose…</button>';
+    }
     if (a.command) html += (a.open ? ' or on the host' : '') + ': <code>' + esc(a.command) + '</code>';
     if (a.reference) html += ' (' + esc(a.reference) + ')';
     return html;

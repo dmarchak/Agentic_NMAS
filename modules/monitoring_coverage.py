@@ -48,9 +48,47 @@ WORDS = {"snmp": "SNMP", "syslog": "syslog", "heartbeat": "the syslog heartbeat"
 LACK = {"snmp": "SNMP community", "syslog": "`logging host`",
         "heartbeat": "NMAS-HEARTBEAT applet"}
 
-PROFILE_ACTION = {"label": "Apply the monitoring profile (planned: NSOT_PLAN P.9, not built "
-                           "yet; until it exists nothing configures this from the NMAS)",
-                  "reference": "docs/NSOT_PLAN.md"}
+#: The monitoring profile's section that supplies each integration (P.9): the
+#: heartbeat is part of the syslog block.
+SECTION_OF = {"snmp": "snmp", "syslog": "syslog", "heartbeat": "syslog", "telemetry": "telemetry"}
+
+
+def profile_view(ref, dev) -> dict:
+    """What the list's committed monitoring profile says about one device:
+    ``{"profile": bool, "applies": {section}, "excluded": {section: reason},
+    "error": str}``. An unreadable profile is an error, never "no profile"."""
+    from modules.nsot import hostvars, profile as _p
+    from modules.nsot.platform import platform_for_device
+
+    host = (dev.get("hostname") or "").strip()
+    try:
+        doc = _p.read_committed(ref.repo_dir)
+        intent = hostvars.read_committed(ref.repo_dir, host)
+    except Exception as exc:                            # noqa: BLE001
+        return {"profile": False, "applies": set(), "excluded": {},
+                "error": f"{type(exc).__name__}: {exc}"}
+    applies = (set(_p.sections_for(doc, platform_for_device(dev),
+                                   (dev.get("role") or "").strip(), intent))
+               if doc else set())
+    return {"profile": bool(doc), "applies": applies, "excluded": _p.excluded(intent or {}),
+            "error": ""}
+
+
+def action_for(ref, host: str, missing: list, view: dict) -> dict:
+    """The row's ONE action: apply the profile where it covers what is
+    missing, otherwise propose it; an unreadable profile says so."""
+    need = sorted({SECTION_OF[k] for k in missing})
+    if view.get("error"):
+        return {"label": (f"Find why {ref.name}'s monitoring profile cannot be read "
+                          f"({view['error']})"), "known": False}
+    if set(need) <= set(view.get("applies") or ()):
+        return {"label": f"Apply the monitoring profile to {host}", "open": "profile_apply",
+                "device": host, "list": ref.name}
+    lack = [s for s in need if s not in (view.get("applies") or ())]
+    return {"label": (f"Propose {ref.name}'s monitoring profile, then apply it to {host}: "
+                      + ("the network has none yet" if not view.get("profile") else
+                         f"it has no {', '.join(lack)} section for {host}")),
+            "open": "profile_propose", "list": ref.name}
 
 
 def configured(golden_text: str) -> dict:
@@ -117,7 +155,8 @@ def _epoch(iso):
         return None
 
 
-def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True) -> list:
+def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True,
+         profile=None) -> list:
     """One job-health row per device missing an expected integration; none
     when the device is covered or nothing is expected. *devices*: (ref, row)
     pairs, default every list; *golden*: (ref, hostname) -> text, ``""`` for
@@ -129,7 +168,11 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
     the act that ended its monitoring. For syslog and the heartbeat nothing
     acts, so it is when this check first saw the gap, kept in
     `data/monitoring_coverage.json` while the gap stands and dropped when it
-    closes; the row says which it is."""
+    closes; the row says which it is.
+
+    *profile*: (ref, row) -> `profile_view()`'s answer, default the list's
+    committed profile. It decides the row's action (apply, or propose first)
+    and drops a section the device's intent excludes with a reason."""
     import time as _time
 
     from modules import prometheus_targets as P
@@ -168,6 +211,12 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
         missing = [k for k in ("snmp", "syslog", "heartbeat") if k in want and not have[k]]
         if not missing:
             continue
+        # A section the device's intent EXCLUDES, with its stated reason, is a
+        # decision, not a gap: no row for it (MONITORING_PROFILE.md 3).
+        view = (profile or profile_view)(ref, dev)
+        missing = [k for k in missing if SECTION_OF[k] not in (view.get("excluded") or {})]
+        if not missing:
+            continue
         firsts, basis = [], []
         for k in missing:
             key = f"{ref.name}/{host}/{k}"
@@ -190,7 +239,7 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
             detail = "; ".join(f"{host} is not monitored by {WORDS[k]}: its configuration has no "
                                f"{LACK[k]} (the network uses {want[k]})" for k in missing)
         out.append({"unit": unit, "what": what, "state": "not_monitored", "device": host,
-                    "max_age_minutes": 0, "missing": missing, "action": dict(PROFILE_ACTION),
+                    "max_age_minutes": 0, "missing": missing, "action": action_for(ref, host, missing, view),
                     "since": min(firsts), "since_basis": "; ".join(basis),
                     "headline": headline, "detail": detail + " (" + "; ".join(basis) + ")"})
     if record and seen != state:

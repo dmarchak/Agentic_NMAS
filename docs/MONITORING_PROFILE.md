@@ -1,4 +1,4 @@
-# The monitoring profile (NSOT_PLAN P.9): designed 2026-09-30, DECIDED the same day; step (a) built
+# The monitoring profile (NSOT_PLAN P.9): designed 2026-09-30, DECIDED the same day; steps (a) and (b) built
 
 The operator's requirement (2026-09-30): every device, new and existing, carries the
 configuration its integrations need (SNMP, syslog, the heartbeat, NTP, LLDP and CDP, the

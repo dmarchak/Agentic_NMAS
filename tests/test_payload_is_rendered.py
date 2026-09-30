@@ -468,8 +468,7 @@ UNDRAWN = {
         ("complete", "the conjunction of two gates drawn by name (template "
                      "reproduces the device; every line modelled or acknowledged)"),
         ("deployable_count", "the summary sentence recomputes it from the "
-                             "devices the preview draws"),
-        ("list", LIST)],
+                             "devices the preview draws")],
     "POST /golden/restore/preview": [
         ("add intent_restored inventory_size mode partial ref un_onboarding",
          "structured forms of claims the drawn `summary` sentence makes (C23's "
@@ -712,7 +711,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 108  # +1: C188 step 2's job result carries `list`, as the POST did
+UNDRAWN_CEILING = 107  # -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

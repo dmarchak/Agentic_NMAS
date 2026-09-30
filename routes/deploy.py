@@ -285,6 +285,55 @@ def _split_profile(repo: str, hostname: str, artifact, captured: str, to_add: li
     return result
 
 
+def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captured: str,
+                   device: dict) -> dict:
+    """APPLY MONITORING PROFILE (P.9 step b): the intended config scoped to
+    the network's profile, and the groups a person reads. Computed from the
+    truthful renders at plan, at apply and on the path that connects; never
+    from anything the browser sends. Raises `ScopeRefused` (or
+    `ProfileRefused` for a profile that cannot be read), naming why."""
+    from modules.nsot import hostvars, profile as _profile, profile_apply
+    from modules.nsot.deploy import render_for_deploy
+
+    repo = _repo_for(list_name)
+    doc = _profile.read_committed(repo)
+    if not doc:
+        raise profile_apply.ScopeRefused(
+            f"{list_name} has no committed monitoring profile, so there is nothing to apply: "
+            "propose the network's profile first")
+    own = hostvars.read_committed(repo, hostname)
+    if own is None:
+        raise profile_apply.ScopeRefused(f"{hostname} has no committed intent")
+    role = ((device or {}).get("role") or "").strip()
+    sections = _profile.sections_for(doc, artifact.platform, role, own)
+    if not sections:
+        excluded = _profile.excluded(own)
+        raise profile_apply.ScopeRefused(
+            f"no section of {list_name}'s monitoring profile applies to {hostname} "
+            f"(platform {artifact.platform}, role {role or 'none'}"
+            + (f"; its intent excludes {', '.join(sorted(excluded))}" if excluded else "") + ")")
+    root = getattr(artifact, "template_root", "") or None
+    name = (artifact.template or "base.j2").split("/")[-1]
+
+    def render(intent):
+        return render_for_deploy(hostvars.hydrate_secrets(intent, hostname, list_name),
+                                 artifact.platform, template_root=root, template_name=name)
+
+    own_render = render(own)
+    out = profile_apply.scoped(intended, own_render, captured)
+
+    def render_with(secs):
+        one = {"version": doc.get("version"),
+               "sections": {k: doc["sections"][k] for k in secs}}
+        return render(_profile.effective(own, one, artifact.platform, role))
+
+    out["by_section"] = {k: [{"chain": list(c), "line": l} for c, l in rows]
+                         for k, rows in profile_apply.by_section(sections, render_with,
+                                                                 own_render).items()}
+    out["sources"] = {k: (doc["sections"][k].get("source") or "") for k in sections}
+    return out
+
+
 @bp.route("/plan", methods=["POST"])
 def plan():
     """Per-device diff and deployability. Reads captured configs only."""
@@ -305,6 +354,14 @@ def plan():
     remove = data.get("remove") or {}
     if not hostnames:
         return jsonify({"ok": False, "error": "No devices selected"}), 400
+    # P.9 step (b): "profile" sends only the network's monitoring profile's
+    # lines. Anything else is refused by name, never read as the whole intent.
+    from modules.nsot import profile as _profile, profile_apply
+    scope = (data.get("scope") or "").strip()
+    if scope not in ("", profile_apply.SCOPE):
+        return jsonify({"ok": False, "error": (
+            f"unknown deploy scope {scope!r}: the plan sends the device's whole intent, or "
+            f"with scope {profile_apply.SCOPE!r} only its monitoring profile's lines")}), 400
 
     devices = []
     for hostname in hostnames:
@@ -333,9 +390,17 @@ def plan():
             # Lines left on the device that a shared setting key hides from the
             # residue (C201): named, never offered for removal.
             entry["shares_key"] = diff["shares_key"]
+            # Scoped to the profile, the program is built from the scoped
+            # intended config: the profile's missing lines and nothing else.
+            intended = prepared["config"]
+            if scope:
+                sc = _profile_scope(list_name, hostname, artifact, intended, captured, _device)
+                intended = sc.pop("config")
+                entry["scope"] = scope
+                entry["profile_scope"] = sc
             # The exact program, not a description of it. What the operator
             # confirms is this list, byte for byte.
-            full = _program(prepared["config"], captured, selected, _device,
+            full = _program(intended, captured, selected, _device,
                             entry.get("platform", ""))
             commands = full["commands"]
             entry["commands"] = commands
@@ -348,6 +413,13 @@ def plan():
             entry["removable"] = removable(
                 prepared["config"], captured, mgmt_ip=(_device or {}).get("ip", ""),
                 dialect=entry.get("platform", ""))
+            if scope:
+                # The device's lines of the same measured kind as the
+                # profile's: superseded, offered for removal, never removed
+                # unless ticked (MONITORING_PROFILE.md 5).
+                sc = entry["profile_scope"]
+                sc["superseded"] = profile_apply.superseded(
+                    sc["to_send"] + sc["in_place"], entry["removable"])
             if full["refused"]:
                 # A removal the person asked for and will not get: the device is
                 # not confirmable with it, and the reason says which and why.
@@ -377,11 +449,14 @@ def plan():
                 except NotAuthorised as exc:
                     entry["authorisation_ok"] = False
                     entry["authorisation_error"] = str(exc)
-            # Every pushed line, attributed — before anyone confirms.
-            entry["attribution"] = _attribute_additions(
-                _repo_for(list_name), hostname, artifact, captured,
-                diff["to_add"])
-        except DeployRefused as exc:
+            # Every pushed line, attributed — before anyone confirms. A
+            # profile-scoped plan's lines are the profile's by construction,
+            # and its groups say so (`profile_scope`).
+            if not scope:
+                entry["attribution"] = _attribute_additions(
+                    _repo_for(list_name), hostname, artifact, captured,
+                    diff["to_add"])
+        except (DeployRefused, profile_apply.ScopeRefused, _profile.ProfileRefused) as exc:
             entry["to_add"] = []
             entry["removal_warnings"] = []
             entry["refused"] = str(exc)
@@ -404,9 +479,9 @@ def plan():
     # program (C77): the preview carried a secret the program adds, and
     # residue, verbatim.
     return jsonify(mask_payload({
-        "ok": True, "list": list_name, "devices": devices,
+        "ok": True, "list": list_name, "devices": devices, "scope": scope,
         "deployable_count": sum(1 for d in devices if d.get("deployable")),
-        "preview": deploy_preview(devices, request)}))
+        "preview": deploy_preview(devices, request, scope=scope)}))
 
 
 @bp.route("/apply", methods=["POST"])
@@ -436,6 +511,10 @@ def apply():
     command_hashes = data.get("command_hashes") or {}
     authorise = data.get("authorise") or {}
     remove = data.get("remove") or {}                      # Mode B, as at plan
+    from modules.nsot import profile as _profile, profile_apply
+    scope = (data.get("scope") or "").strip()              # P.9 step (b), as at plan
+    if scope not in ("", profile_apply.SCOPE):
+        return jsonify({"ok": False, "error": f"unknown deploy scope {scope!r}: nothing sent"}), 400
 
     artifacts, fresh_captures, device_rows = [], {}, {}
     refused = []
@@ -456,7 +535,11 @@ def apply():
         expected = command_hashes.get(hostname)
         if expected is not None:
             try:
-                full = _program(prepare_device(artifact)["config"], captured,
+                intended = prepare_device(artifact)["config"]
+                if scope:
+                    intended = _profile_scope(list_name, hostname, artifact, intended,
+                                              captured, device)["config"]
+                full = _program(intended, captured,
                                 remove.get(hostname) or [], device,
                                 getattr(artifact, "platform", ""))
                 if full["refused"]:
@@ -466,7 +549,7 @@ def apply():
                 device_auth = authorise.get(hostname) or []
                 assert_authorised(recomputed, device_auth, full["keys"])
                 now = command_fingerprint(recomputed, device_auth, full["ids"])
-            except NotAuthorised as exc:
+            except (NotAuthorised, profile_apply.ScopeRefused, _profile.ProfileRefused) as exc:
                 refused.append({"device": hostname, "outcome": "refused",
                                 "reason": str(exc)})
                 continue
@@ -520,6 +603,13 @@ def apply():
                               else "intent_or_template")})
                 continue
 
+        if scope and expected is None:
+            # A scoped apply is only ever a program a person confirmed: with no
+            # command hash there is nothing to hold the scope to.
+            refused.append({"device": hostname, "outcome": "refused",
+                            "reason": ("applying the monitoring profile needs the command hash "
+                                       "the preview showed. Nothing was sent.")})
+            continue
         artifacts.append(artifact)
         device_rows[hostname] = device
         # Phase 3c reads a FRESH capture inside the pipeline (stage 4). Here the
@@ -539,15 +629,16 @@ def apply():
     try:
         batch = plan_batch(artifacts, confirmations, fresh_captures)
 
+        extra = {**({"remove": remove} if remove else {}), **({"scope": scope} if scope else {})}
         report = run_batch(batch,
                            lambda entry: _deploy_one(entry, list_name, device_rows,
-                                                     authorise,
-                                                     **({"remove": remove} if remove else {})),
+                                                     authorise, **extra),
                            CircuitBreaker())
         if refused:
             _merge_refusals(report, refused)
 
-        report["golden"] = _commit_batch_golden(list_name, report)
+        report["golden"] = _commit_batch_golden(
+            list_name, report, **({"label": "after the monitoring profile was applied"} if scope else {}))
         report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
                                              command_hashes)
     finally:
@@ -803,7 +894,8 @@ def _program(intended: str, captured: str, selected: list, device: dict,
 
 
 def _deploy_one(entry, list_name: str, device_rows: dict,
-                authorise: dict = None, source_ref: str = "", remove: dict = None) -> dict:
+                authorise: dict = None, source_ref: str = "", remove: dict = None,
+                scope: str = "") -> dict:
     """Run the pipeline for a single device. The only path that connects."""
     import threading
 
@@ -827,7 +919,17 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     # one line while 83 were sent.
     captured = entry.get("fresh") or ""
     from modules.nsot import authorisation as _auth
-    full = _program(prepared["config"], captured, (remove or {}).get(hostname) or [],
+    intended = prepared["config"]
+    if scope:
+        # The profile's lines only, computed AGAIN here: this is the path that
+        # connects, and it holds the truthful renders (P.9 step b).
+        try:
+            intended = _profile_scope(list_name, hostname, artifact, intended, captured,
+                                      device)["config"]
+        except Exception as exc:                # noqa: BLE001
+            return {"device": hostname, "outcome": FAILED, "stage": "scope",
+                    "reason": f"the monitoring profile could not be scoped: {exc}"}
+    full = _program(intended, captured, (remove or {}).get(hostname) or [],
                     device, getattr(artifact, "platform", ""))
     if full["refused"]:
         return {"device": hostname, "outcome": FAILED, "stage": "removal",

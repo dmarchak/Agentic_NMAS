@@ -225,8 +225,8 @@ class TestTheWizardSendsTheAuthorisationItsHashCovers:
         fn = _lift(self.SRC, "_reauthoriseDevice")
         assert "fetch('/deploy/plan'" in fn
         assert "input[type=checkbox][data-auth-device]" in fn
-        assert "input[type=checkbox][data-remove-id]" in fn and "authorise,\n" in fn
-        assert "remove})," in fn, "a removal tick re-plans like an authorisation"
+        assert "input[type=checkbox][data-remove-id]" in fn and "authorise, remove})" in fn
+        assert "_deployCommon()" in fn, "the re-plan carries the plan's scope and list (P.9 b)"
         assert "input[data-auth-reason]" in fn and "reason:" in fn, "each line carries its reason"
         assert "_renderDeployPlan(d)" in fn
         assert "kept[b.dataset.device] === b.dataset.commandHash" in fn

@@ -195,6 +195,12 @@ def test_every_render_of_intent_merges_the_profile_first():
         ("routes/deploy.py", "_attribute_additions"),
         # The device's OWN intent rendered alone, which is the measurement.
         ("routes/deploy.py", "_split_profile"),
+        # P.9 (b), the scoped deploy: the device's own intent rendered alone is
+        # the baseline, and each profile section is merged through
+        # `profile.effective()` in `render_with`; the scoped program is the
+        # difference. `render` is its nested renderer, used by both.
+        ("routes/deploy.py", "_profile_scope"),
+        ("routes/deploy.py", "render"),
     }
     found, bad = [], []
     for rel in ("routes/deploy.py", "routes/templatize.py", "modules/nsot/intent_match.py",

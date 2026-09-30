@@ -29,6 +29,7 @@ time, and drawing it as passed would be a claim nothing established. So is
 neither a pass nor "not applicable", and saying either would be a claim.
 """
 
+import json
 import logging
 
 log = logging.getLogger(__name__)
@@ -261,8 +262,68 @@ def _removal_words(rm: dict) -> str:
     return ", ".join(parts)
 
 
-def deploy_preview(devices: list, request) -> dict:
-    """The deploy plan's per-device entries, as the six parts."""
+#: What each profile section is, in words, for the scoped plan's groups.
+PROFILE_SECTION_WORDS = {"snmp": "SNMP", "syslog": "syslog and the heartbeat", "ntp": "NTP",
+                         "lldp": "LLDP", "cdp": "CDP", "telemetry": "model-driven telemetry",
+                         "ip_sla": "IP SLA"}
+
+
+def _profile_scope_parts(name: str, sc: dict) -> tuple:
+    """The scoped plan's notes (drawn inside the program) and its what-not
+    items: each section's lines to send with the connector it comes from,
+    the lines already in place, the lines held back, the superseded lines."""
+    def _text(rows):
+        return [" > ".join(list(r.get("chain") or []) + [r["line"].strip()]) for r in rows]
+
+    send = {(tuple(r["chain"]), r["line"]) for r in sc.get("to_send") or []}
+    notes = []
+    for section, rows in (sc.get("by_section") or {}).items():
+        mine = [r for r in rows if (tuple(r["chain"]), r["line"]) in send]
+        if not mine:
+            continue
+        src = (sc.get("sources") or {}).get(section) or ""
+        notes.append({"title": (f"From the profile's {PROFILE_SECTION_WORDS.get(section, section)} "
+                                f"section" + (f" (derived from {src})" if src else "")
+                                + f": will be sent ({len(mine)} line(s))"),
+                      "lines": _text(mine)})
+    in_sections = {(tuple(x["chain"]), x["line"])
+                   for rows in (sc.get("by_section") or {}).values() for x in rows}
+    placed = [r for r in sc.get("to_send") or []
+              if (tuple(r["chain"]), r["line"]) not in in_sections]
+    if placed:
+        # A line the whole profile adds that no section ALONE adds (two
+        # sections combining): still the profile's, and still sent.
+        notes.append({"title": f"From the profile, across sections: will be sent ({len(placed)})",
+                      "lines": _text(placed)})
+    if sc.get("in_place"):
+        notes.append({"title": (f"Already in place: {len(sc['in_place'])} of the profile's line(s) "
+                                "are on the device's stored capture, so none is sent"),
+                      "lines": _text(sc["in_place"])})
+    extra = []
+    if sc.get("held_back"):
+        extra.append({"target": name, "kind": "held_back",
+                      "text": ("Held back: this device's OWN intent would add these lines, and "
+                               "applying the profile does not send them. Deploy them from a "
+                               "plan of its intent."),
+                      "lines": _text(sc["held_back"])})
+    if sc.get("superseded"):
+        extra.append({"target": name, "kind": "superseded",
+                      "text": ("Superseded by the profile: the device holds another line of the "
+                               "same kind as one the profile supplies. It stays unless you tick "
+                               "it for removal (Mode B) with a stated reason; a kind not measured "
+                               "on this platform cannot be ticked, and says why."),
+                      "lines": [t + (f"   (cannot be removed: {r['why_not']})" if r.get("why_not")
+                                     else "") for t, r in zip(_text(sc["superseded"]),
+                                                              sc["superseded"])]})
+    return notes, extra
+
+
+def deploy_preview(devices: list, request, scope: str = "") -> dict:
+    """The deploy plan's per-device entries, as the six parts. With *scope*
+    ``profile`` (P.9 step b) it is "Apply monitoring profile": the profile's
+    lines grouped by section, what is already in place, what the device's own
+    intent would add and this action holds back, and what the profile
+    supersedes on the device."""
     targets, what_not = [], []
     for d in devices:
         name = d.get("device", "?")
@@ -278,9 +339,15 @@ def deploy_preview(devices: list, request) -> dict:
         elif failed:
             none = f"Nothing is sent to this device: {failed}"
         else:
-            none = "Nothing will be sent: the device already has every line."
+            none = ("Nothing will be sent: the device already has every line the profile "
+                    "supplies." if d.get("profile_scope") else
+                    "Nothing will be sent: the device already has every line.")
         notes = []
         a = d.get("attribution")
+        sc = d.get("profile_scope")
+        if sc:
+            notes, extra = _profile_scope_parts(name, sc)
+            what_not.extend(extra)
         if a and (d.get("to_add") or []):
             notes.append({"title": "Where the added lines come from"
                                    + ("" if a.get("attributable", True)
@@ -374,11 +441,16 @@ def deploy_preview(devices: list, request) -> dict:
     removing_any = any(((d.get("removals") or {}).get("removed")) for d in devices)
     return build(
         action="deploy",
-        summary=(f"Deploy to the devices you tick, "
-                 + ("merge-only plus the removals you selected" if removing_any
-                    else "merge-only")
-                 + f": {ready} of {n} can be "
-                 "deployed now, and for each, exactly the program shown is sent, in order."),
+        summary=((f"Apply the network's monitoring profile to the devices you tick: only the "
+                  f"profile's lines are sent, "
+                  + ("plus the removals you selected" if removing_any else "merge-only")
+                  + f". {ready} of {n} can receive it now, and for each, exactly the program "
+                  "shown is sent, in order.") if scope else
+                 (f"Deploy to the devices you tick, "
+                  + ("merge-only plus the removals you selected" if removing_any
+                     else "merge-only")
+                  + f": {ready} of {n} can be "
+                  "deployed now, and for each, exactly the program shown is sent, in order.")),
         targets=targets, what_not=what_not,
         nothing_left_out=("Nothing: every planned device can be sent, and no line on "
                           "any device lies outside intent."),
@@ -600,7 +672,7 @@ class ResultIncomplete(ValueError):
 #: function name from the server: the client maps each to its one opener
 #: (`data-nmas-open`), so a result can offer the next operation without the
 #: server naming code to run.
-NEXT_OPENS = ("breakglass_export",)
+NEXT_OPENS = ("breakglass_export", "profile_apply")
 
 
 def build_result(*, action: str, level: str, summary: str, targets: list,
@@ -1940,6 +2012,158 @@ def seed_preview(entries: list, *, request) -> dict:
                               "text": "Intent is what the device SHOULD be. Seeding takes it "
                                       "from what the device IS, once; from then on a change is "
                                       "an edit to intent, deployed from a plan."}]})
+
+
+# ---------------------------------------------------------------------------
+# Propose the network's monitoring profile (P.9 step b; modules/nsot/
+# profile_propose.py): a document derived from what the fleet's committed
+# intent agrees on, committed as the verified person. Nothing is sent to any
+# device: a device receives it when a person applies it (the scoped deploy).
+# ---------------------------------------------------------------------------
+
+PROFILE_PROPOSE_TITLES = {"program": "What will be committed as the network's monitoring profile",
+                          "what": "What will be proposed"}
+PROFILE_PROPOSE_RESULT_TITLES = {"sent": "What was committed as the profile",
+                                 "checks": "What the proposal was built from",
+                                 "happened": "What was proposed"}
+PROFILE_PROPOSE_WORDS = {
+    "committed": "committed: the network's monitoring profile is recorded",
+    "nothing": "nothing to commit: the proposal equals the committed profile",
+    "moved": "refused: the proposal changed since the preview, nothing was committed",
+    "failed": "failed: the commit did not happen",
+}
+
+
+def _section_words(name: str) -> str:
+    return PROFILE_SECTION_WORDS.get(name, name)
+
+
+def profile_propose_preview(p: dict, diff: list, *, request) -> dict:
+    """*p*: `profile_propose.public(propose(...))`; *diff*: `document_diff()`."""
+    from modules.nsot.profile_propose import DERIVED
+
+    proposed = [s for s in p["sections"] if s.get("proposed")]
+    not_proposed = [s for s in p["sections"] if not s.get("proposed")]
+    what_not = [{"target": p["list"], "kind": "scope",
+                 "text": ("Nothing is sent to any device. A device receives the profile when a "
+                          "person applies it to that device (Apply monitoring profile, a deploy "
+                          "scoped to the profile's lines), previewed and confirmed there."),
+                 "lines": []}]
+    for s in not_proposed:
+        what_not.append({"target": p["list"], "kind": "not_proposed",
+                         "text": f"Not proposed, {_section_words(s['section'])}: {s.get('why', '')}",
+                         "lines": [f"held by {', '.join(v['devices'])}: "
+                                   + json.dumps(v["value"], sort_keys=True)
+                                   for v in s.get("variants") or []]})
+    for sk in p.get("skipped") or []:
+        what_not.append({"target": sk["device"], "kind": "not_read",
+                         "text": f"Not read: {sk['why']}", "lines": []})
+    notes = [{"title": (f"{_section_words(s['section'])}: held alike by "
+                        f"{', '.join(s.get('holders') or [])}"
+                        + (f"; applies to {', '.join(s['platforms'])} only"
+                           if s.get("platforms") else "")
+                        + f"; basis: {DERIVED[s['section']][0]}"),
+              "lines": ([f"inherited by {', '.join(s['inherit'])}"] if s.get("inherit")
+                        else ["no device lacks it"])
+                       + [f"secret {ref}: {why}" for ref, why in (s.get("secrets") or {}).items()]}
+             for s in proposed]
+    for e in p.get("effect") or []:
+        notes.append({"title": f"{e['device']}'s effective intent changes",
+                      "lines": [f"gains the {_section_words(x)} section" for x in e["inherits"]]
+                      or ["its effective intent changes"]})
+    ok = p["changed"] and bool(proposed)
+    target = {
+        "name": p["list"],
+        "state": "proposable" if ok else "nothing",
+        "selectable": ok,
+        "select_data": {"hash": p["hash"], "list": p["list"]},
+        "program": {"lines": diff if ok else [],
+                    "caption": ("The profile document to commit, against what is committed now. "
+                                "Nothing is sent to any device"),
+                    "unit": "line(s) of the document, none sent",
+                    "none": ("Nothing to commit: the proposal equals the committed profile."
+                             if not p["changed"] else
+                             "Nothing to commit: no section is agreed across the fleet."),
+                    "notes": notes},
+        "operands": [
+            {"name": "proposal hash", "value": p["hash"]},
+            {"name": "devices read", "value": str(p["devices_read"])},
+            {"name": "sections proposed",
+             "value": ", ".join(_section_words(s["section"]) for s in proposed) or "none"},
+            {"name": "committed profile now",
+             "value": ("blob " + p["profile_blob"][:12]) if p["profile_blob"] else "none"}],
+        "gates": [
+            gate("at least one section agreed across the fleet", "pass" if proposed else "fail",
+                 f"{len(proposed)} of {len(p['sections'])} section(s)"),
+            gate("the proposal differs from the committed profile",
+                 "pass" if p["changed"] else "fail",
+                 "a new document" if p["changed"] else "it equals what is committed"),
+            gate("intent, stored values and the profile unchanged since this preview", "at_apply",
+                 "the proposal is computed again at apply, and a different hash refuses it")],
+    }
+    return build(
+        action="profile_propose",
+        summary=(f"Commit {p['list']}'s monitoring profile: {len(proposed)} section(s) the "
+                 f"fleet's committed intent agrees on, read from {p['devices_read']} device(s), "
+                 "in one commit."),
+        targets=[target], what_not=what_not,
+        nothing_left_out="Nothing: every section is proposed and every device was read.",
+        confirm=confirm_part(request, "approve"), titles=PROFILE_PROPOSE_TITLES,
+        explain={"confirm": [{"concept": "confirm-by-hash",
+                              "text": "You are confirming this document. The proposal is "
+                                      "computed again at apply; if intent, a stored value or the "
+                                      "committed profile moved, nothing is committed."}],
+                 "program": [{"concept": "intent",
+                              "text": "The profile is intent the network shares: a device "
+                                      "inherits a section it lacks, and its own value wins "
+                                      "where it has one."}]})
+
+
+def profile_propose_result(out: dict) -> dict:
+    """*out*: `profile_propose.apply()`'s answer."""
+    p = out.get("proposal") or {}
+    outcome = out.get("outcome", "failed")
+    done = outcome == "committed"
+    proposed = [s for s in p.get("sections") or [] if s.get("proposed")]
+    inherit = sorted({h for s in proposed for h in s.get("inherit") or []})
+    target = {
+        "name": p.get("list", ""), "outcome": outcome,
+        "words": PROFILE_PROPOSE_WORDS.get(outcome, outcome), "reason": out.get("reason", ""),
+        "sent": {"lines": [f"{_section_words(s['section'])}: held by "
+                           f"{', '.join(s.get('holders') or [])}" for s in proposed] if done else [],
+                 "caption": "Committed as the profile. Nothing was sent to any device",
+                 "none": "Nothing was committed."},
+        "checks": ({"ran": True, "ok": True,
+                    "statements": [f"devices read: {p.get('devices_read', 0)}",
+                                   "secrets stored under the network's key: "
+                                   + (", ".join(out.get("secrets_stored") or []) or "none")],
+                    "issues": []}
+                   if done else {"ran": False, "why": out.get("reason") or "nothing was committed"}),
+    }
+    did_not = [] if done else [{"target": p.get("list", ""), "kind": outcome,
+                                "text": target["words"] + (f": {out['reason']}"
+                                                           if out.get("reason") else ""),
+                                "lines": []}]
+    commit = out.get("commit") or ""
+    level = "success" if done else ("nothing" if outcome == "nothing" else "failed")
+    return build_result(
+        action="profile_propose", level=level,
+        summary=(f"{p.get('list', '')}'s monitoring profile committed: {len(proposed)} section(s)."
+                 if done else target["words"].capitalize() + "."),
+        targets=[target], did_not=did_not,
+        nothing_left_out="Nothing: the profile was committed as previewed.",
+        record={"commit": commit, "tags": [], "baseline": "",
+                "statement": (f"Profile commit {commit[:12]} (`Source: profile`) records the "
+                              "network's monitoring profile." if commit else
+                              "No profile commit: nothing was proposed.")},
+        not_watched=("A profile is intent. Nothing was sent, so no device changed; a device "
+                     "receives it when a person applies it."),
+        titles=PROFILE_PROPOSE_RESULT_TITLES,
+        next_step=({"text": (f"Apply it to {', '.join(inherit)}: a deploy scoped to the "
+                             "profile's lines, previewed and confirmed per device."),
+                    "open": "profile_apply", "args": {"list": p.get("list", ""),
+                                                      "devices": inherit}}
+                   if done and inherit else None))
 
 
 def seed_result(outcomes: list, save: dict) -> dict:

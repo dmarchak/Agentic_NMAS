@@ -3963,7 +3963,7 @@ per-list rules and targets, and 7.3 embeds per-list monitoring. The
 NetBox question in (1) is the operator's to answer first, because six keys and
 the inventory adapter move with it.
 
-### P.9 — The monitoring profile (DESIGNED and DECIDED 2026-09-30; step (a), the model, BUILT the same day; NEXT: (b), r6 first)
+### P.9 — The monitoring profile (DESIGNED and DECIDED 2026-09-30; steps (a) and (b) BUILT the same day; NEXT: the operator's r6 run, then (c))
 
 The operator's requirement (2026-09-30), after r6 was called "unreachable" by an SNMP alert
 when its configuration simply has no SNMP: every device, new and existing, carries what its
@@ -3989,6 +3989,33 @@ integrations need, derived from the connectors the network uses, with ONE owner.
 - **Order, proposed:** (a) the model, (b) existing devices with r6 first, (c) new devices,
   (d) the screens inside step 4. It needs P.8 only for the connector settings to be per network.
 - **Step (a) BUILT 2026-09-30:** `modules/nsot/profile.py` (the document, its reader at HEAD and at a ref, its one commit, the one merge `effective()`, overrides, one owner at seed `strip_inherited()`, the profile-scoped secret), wired into the deploy plan and apply, the plan's attribution (`from_profile`, drawn apart in the preview), `intent_match`, the intent editor, bulk intent and restore validation (the profile as at the ref). A scan requires every render of intent to merge the profile. Acceptance on r2's real intent: a profile holding what the device holds changes no plan; a line it supplies and the device lacks is sent and attributed to the profile. Not yet: the proposal from connectors, seed calling `strip_inherited`, and the screens.
+- **Step (b) BUILT 2026-09-30, awaiting the operator's run on r6:**
+  - **PROPOSE** (`modules/nsot/profile_propose.py`; routes `/templatize/profile/propose/preview`
+    and `/apply`; client `static/js/nmas_profile.js`): a profile derived from what the fleet's
+    committed intent agrees on.
+    - A section is proposed only where its connector is configured.
+    - Two versions are never reconciled by the tool: each is named with its devices.
+    - A secret must be one value across the holders, compared in memory and never shown.
+    - The proposal is confirmed by hash and committed as the verified person
+      (`Source: profile`).
+    - The result's next step opens the apply for the devices that inherit.
+    - `GET /templatize/profile` reads the record back.
+  - **APPLY** (`/deploy/plan` and `/deploy/apply` with `scope: profile`,
+    `modules/nsot/profile_apply.py`): the deploy scoped to the profile's lines.
+    - The preview groups what each section sends, what is already in place, what the
+      device's own intent would add and this holds back, and what it supersedes (removable
+      through Mode B with a reason).
+    - The scope is recomputed at apply and on the path that connects.
+  - **Needs attention:** the "not monitored" row's action is Apply where the profile covers
+    the gap, else Propose; an excluded section is no row.
+  - **Found by its own tests:** the proposal's effect called a section a device already held
+    "gained". Fixed: only a section its own intent lacks is inherited.
+  - **The operator's acceptance on the host:**
+    1. Propose on the lab's network;
+    2. Apply to r6 from its row;
+    3. r6's SNMP warning clears once its next golden carries SNMP, and it becomes a
+       Prometheus target.
+  - r6's intent is still never hand-edited.
 - **Built ahead of it, 2026-09-30:** a device is an SNMP target only when its committed golden
   configures SNMP, and a device missing an integration the network uses is a Needs attention row
   (`modules/monitoring_coverage.py`) whose action names this item. r6's intent is not hand-edited

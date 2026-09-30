@@ -35,6 +35,10 @@ class _Ref:
     name = "Default"
 
 
+#: What `profile_view()` answers for a network with no committed profile.
+NO_PROFILE = lambda ref, dev: {"profile": False, "applies": set(), "excluded": {}, "error": ""}  # noqa: E731
+
+
 def _settings(prometheus="", loki=""):
     vals = {"prometheus_url": prometheus, "loki_url": loki}
     return lambda k, d=None: vals.get(k, d)
@@ -88,7 +92,8 @@ class TestTheRows:
     def test_r6_reads_not_monitored_by_snmp_in_the_operators_words(self):
         from modules.monitoring_coverage import rows
 
-        (row,) = rows(_devs("r2", "r6"), _golden({"r2": R2, "r6": NO_SNMP}), _settings(prometheus="http://p"))
+        (row,) = rows(_devs("r2", "r6"), _golden({"r2": R2, "r6": NO_SNMP}), _settings(prometheus="http://p"),
+                      profile=NO_PROFILE)
         assert row["state"] == "not_monitored" and row["device"] == "r6" and row["missing"] == ["snmp"]
         assert row["headline"] == "r6 is not monitored by SNMP"
         assert row["detail"].startswith("r6 is not monitored by SNMP: its configuration has no SNMP "
@@ -96,8 +101,10 @@ class TestTheRows:
         # The check's name is a question, never a claim beside the headline.
         assert row["what"].startswith("whether r6's committed configuration has what")
         assert "is configured for every" not in row["what"]
-        assert row["action"]["label"].startswith("Apply the monitoring profile")
-        assert "not built yet" in row["action"]["label"]
+        # P.9 (b): with no profile, the action is to propose one first.
+        assert row["action"] == {
+            "label": "Propose Default's monitoring profile, then apply it to r6: the network "
+                     "has none yet", "open": "profile_propose", "list": "Default"}
 
     def test_every_missing_integration_is_named_on_one_row(self):
         from modules.monitoring_coverage import rows
@@ -130,12 +137,14 @@ class TestItIsDrawn:
         from modules import attention
         from modules.monitoring_coverage import rows
 
-        (row,) = rows(_devs("r6"), _golden({"r6": NO_SNMP}), _settings(prometheus="http://p"))
+        (row,) = rows(_devs("r6"), _golden({"r6": NO_SNMP}), _settings(prometheus="http://p"),
+                      profile=NO_PROFILE)
         got = attention.job_health_source(health=lambda: {"jobs": [row]})["rows"]
         assert len(got) == 1
         assert got[0]["what"] == "r6 is not monitored by SNMP" and got[0]["level"] == "warning"
         assert got[0]["devices"] == ["r6"]
-        assert got[0]["action"]["label"].startswith("Apply the monitoring profile")
+        assert got[0]["action"]["label"].startswith("Propose Default's monitoring profile")
+        assert got[0]["action"]["open"] == "profile_propose"
 
     def test_job_health_carries_the_rows(self, monkeypatch):
         from modules import job_health
@@ -144,6 +153,51 @@ class TestItIsDrawn:
                             lambda: [{"unit": "monitoring:r6", "state": "not_monitored", "max_age_minutes": 0}])
         assert job_health.monitoring_rows() == [{"unit": "monitoring:r6", "state": "not_monitored",
                                                   "max_age_minutes": 0}]
+
+
+class TestTheActionIsTheProfile:
+    """P.9 (b): the row's one action is to APPLY the network's profile where it
+    covers what is missing, otherwise to PROPOSE it first; an unreadable
+    profile says so, and a section the device's intent excludes is no row."""
+
+    @staticmethod
+    def _row(view):
+        from modules.monitoring_coverage import rows
+        got = rows(_devs("r6"), _golden({"r6": NO_SNMP}), _settings(prometheus="http://p"),
+                   profile=lambda ref, dev: view)
+        return got[0] if got else None
+
+    def test_a_profile_that_covers_it_is_applied(self):
+        row = self._row({"profile": True, "applies": {"snmp", "syslog"}, "excluded": {}, "error": ""})
+        assert row["action"] == {"label": "Apply the monitoring profile to r6", "open": "profile_apply",
+                                 "device": "r6", "list": "Default"}
+
+    def test_a_profile_without_the_section_is_proposed_naming_it(self):
+        row = self._row({"profile": True, "applies": {"syslog"}, "excluded": {}, "error": ""})
+        assert row["action"]["open"] == "profile_propose"
+        assert row["action"]["label"].endswith("it has no snmp section for r6")
+
+    def test_an_unreadable_profile_is_said_never_read_as_none(self):
+        row = self._row({"profile": False, "applies": set(), "excluded": {}, "error": "ValueError: bad"})
+        assert row["action"] == {"label": "Find why Default's monitoring profile cannot be read "
+                                          "(ValueError: bad)", "known": False}
+
+    def test_an_excluded_section_is_a_decision_not_a_gap(self):
+        assert self._row({"profile": True, "applies": set(), "error": "",
+                          "excluded": {"snmp": "monitored by the carrier"}}) is None
+
+    def test_the_default_view_reads_the_lists_own_repository(self, tmp_path):
+        """The shipped `profile_view` against a real ref's repository: no
+        profile committed is "no profile", never an error (the stashed code
+        read `repo_dir` off a ref that had none, and every row said so)."""
+        import subprocess
+        from modules.monitoring_coverage import profile_view
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+
+        class Ref:
+            name, repo_dir = "Default", str(tmp_path)
+        view = profile_view(Ref, {"hostname": "r6", "platform": "cisco_iosxe"})
+        assert view == {"profile": False, "applies": set(), "excluded": {}, "error": ""}
 
 
 class TestSince:

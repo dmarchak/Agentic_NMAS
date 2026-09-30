@@ -80,6 +80,10 @@ RESULT_COMPONENT = {
     "rotate.apply": ("static/js/nmas_rotate.js", "runApply", "jobs.jobs_health"),
     "templatize.seed_apply": ("static/js/nmas_seed.js", "previewSeed",
                               "templatize.read_committed"),
+    # The monitoring profile's proposal (P.9 step b): its record is the profile
+    # commit, read back by the committed-profile reader the modal offers.
+    "templatize.profile_propose_apply": ("static/js/nmas_profile.js", "previewProfilePropose",
+                                         "templatize.profile_read"),
     # Revert and retry (7.3): drawn by the component. A revert's record is
     # the intent commit it wrote, which the intent editor reads back from
     # HEAD; a retry's is the retry log, served by its reader.

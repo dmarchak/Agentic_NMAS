@@ -416,6 +416,14 @@ class TestTheReceiptCarriesTheIds:
         assert rm["id"] == "abc123abc123" and "OLDCOMMUNITY" not in rm["line"]
 
 
+def _shared_wizard_state(src):
+    """The wizard's scope state and `_deployCommon`, SHIPPED (P.9 step b): every
+    plan and apply request carries them."""
+    start = src.index("function _deployCommon(")
+    end = src.index("\n}\n", start) + 2
+    return "var _deployScope = '', _deployList = '';\n" + src[start:end] + "\n"
+
+
 class TestTheWizardSendsTheIdsItsHashCovers:
     """The shipped `applyDeploy`, EXECUTED: the request it sends carries the
     removal IDs from the RENDERED plan's payload. A source check that the
@@ -433,7 +441,7 @@ class TestTheWizardSendsTheIdsItsHashCovers:
         fn = (src[start:end].replace("async function", "function")
               .replace("await fetch(", "fetch(").replace("await r.json()", "r.json()"))
         assert "await" not in fn, "only the asynchrony is stripped"
-        stubs = """
+        stubs = _shared_wizard_state(src) + """
         var sent = null;
         var _deployPlan = {devices: [{device: 's4', authorised: [%s],
                                       removals: {ids: ['2d7f42a57dbd']}}]};
@@ -493,7 +501,7 @@ class TestOneTickOneSentence:
         fn = (src[start:end].replace("async function", "function")
               .replace("await fetch(", "fetch(").replace("await r.json()", "r.json()"))
         assert "await" not in fn
-        stubs = """
+        stubs = _shared_wizard_state(src) + """
         var sent = null;
         var _deployPlan = {devices: [{device: 's4'}]};
         var reason = {value: 'the uplink was retired last week',

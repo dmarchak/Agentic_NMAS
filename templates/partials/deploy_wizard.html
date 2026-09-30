@@ -4,13 +4,11 @@
    do not tick is not touched, and every device in a batch appears in the
    result — deployed, skipped, refused, failed or unattempted. #}
 
-<div id="deployWizard" class="mb-3" data-list-name="{{ current_list }}"></div>
-
 <div class="modal fade" id="deployPlanModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Deploy from template</h5>
+        <h5 class="modal-title" id="deployPlanTitle">Deploy from template</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" id="deployPlanBody"></div>

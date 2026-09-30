@@ -156,6 +156,87 @@ def seed_apply():
 
 
 # ---------------------------------------------------------------------------
+# The network's monitoring profile (P.9 step b; modules/nsot/profile_propose.py)
+# ---------------------------------------------------------------------------
+#
+# PROPOSE: a profile derived from what the fleet's committed intent agrees on,
+# previewed, confirmed by hash, committed as the verified person. Nothing is
+# sent to a device; APPLY is the deploy plan scoped to the profile
+# (`/deploy/plan` with `scope: profile`).
+
+@bp.route("/profile/propose/preview", methods=["POST"])
+def profile_propose_preview():
+    """The proposal for a list, computed now. Reads git and the credential
+    store in memory only: no session, no write, no secret value returned."""
+    from modules.nsot import profile as _p
+    from modules.nsot import profile_propose as pp
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import profile_propose_preview as _parts
+
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)        # a read may derive its list
+    try:
+        p = pp.public(pp.propose(list_name))
+    except _p.ProfileRefused as exc:
+        return jsonify({"ok": False, "error": (f"{list_name}'s committed monitoring profile "
+                                               f"cannot be read, so nothing is proposed: {exc}")}), 409
+    return jsonify(mask_payload({"ok": True, "list": list_name,
+                                 "preview": _parts(p, pp.document_diff(p), request=request)}))
+
+
+@bp.route("/profile/propose/apply", methods=["POST"])
+def profile_propose_apply():
+    """Recompute, refuse a proposal that moved, commit as the verified person.
+    The list is CARRIED from the preview, never derived: this ends in a
+    commit."""
+    from modules.nsot import profile as _p
+    from modules.nsot import profile_propose as pp
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import profile_propose_result
+
+    data = request.get_json(silent=True) or {}
+    list_name = (data.get("list_name") or "").strip()
+    if not list_name:
+        return jsonify({"ok": False, "error": (
+            "No list named: a profile commits into one list's repository, so the list comes "
+            "from the preview that was confirmed. Nothing was committed.")}), 400
+    confirmed = (data.get("hash") or "").strip()
+    if not confirmed:
+        return jsonify({"ok": False, "error": "Nothing confirmed: nothing committed"}), 400
+    try:
+        out = pp.apply(list_name, confirmed, request_actor())
+    except _p.ProfileRefused as exc:
+        return jsonify({"ok": False, "error": f"nothing committed: {exc}"}), 409
+    return jsonify(mask_payload({"ok": True, "list": list_name,
+                                 "result": profile_propose_result(out)}))
+
+
+@bp.route("/profile", methods=["GET"])
+def profile_read():
+    """The list's COMMITTED monitoring profile and its last commit: the record
+    a proposal's result is read back from. Masked on the way out; the
+    document holds secret references, never values."""
+    from modules.nsot import profile as _p
+    from modules.nsot import repo as R
+    from modules.outbound import mask_payload
+
+    list_name = _active_list()
+    repo = _repo_for(list_name)
+    try:
+        doc = _p.read_committed(repo)
+    except _p.ProfileRefused as exc:
+        return jsonify({"ok": False, "list": list_name,
+                        "error": f"the committed profile cannot be read: {exc}"}), 409
+    rc, out, _err = R.git_raw(repo, "log", "-1", "--format=%H%x1f%an%x1f%cI%x1f%s", "--",
+                              _p.PROFILE_REL)
+    parts = out.strip().split("\x1f") if rc == 0 and out.strip() else []
+    return jsonify(mask_payload({
+        "ok": True, "list": list_name, "profile": doc,
+        "commit": (dict(zip(("sha", "author", "at", "subject"), parts)) if len(parts) == 4
+                   else None)}))
+
+
+# ---------------------------------------------------------------------------
 # Committed intent
 # ---------------------------------------------------------------------------
 

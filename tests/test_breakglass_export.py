@@ -225,6 +225,7 @@ class TestTheThreeEntryPointsAndOneClient:
     def test_the_rotate_result_offers_it_in_its_next_step(self):
         js = (lift(shipped("nmas_preview_confirm.js"), "esc") + "\n"
               + "var NEXT_OPENS = {breakglass_export: 'Export the break-glass record…'};\n"
+              + "var NEXT_CLASS = {breakglass_export: 'btn-outline-danger'};\n"
               + lift(shipped("nmas_preview_confirm.js"), "nextHtml"))
         html = self._run(js + "\nnextHtml({text: 'Export again', open: 'breakglass_export', "
                               "args: {list: 'Lab'}})")
