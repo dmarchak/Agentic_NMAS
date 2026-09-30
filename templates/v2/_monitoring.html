@@ -84,8 +84,18 @@
   <div class="notice notice-muted">{{ icon('info', 16) }}<div>Whether the variable lists {{ m.device_value }} could not be asked: {{ vs.error }}. The panels below still try.</div></div>
   {%- endif %}
   {%- if m.folded %}
-  <p class="limits folded" title="{{ m.folded.titles|join(', ') }}">Telemetry panels hidden ({{ m.folded.titles|length }}): {{ m.folded.why }}.</p>
-  {%- elif m.streams_unknown %}
+  {#- ONE line for every panel that does not apply to this device; the panels' own
+      explanations, unchanged, one level down (the operator, 2026-09-30). -#}
+  <details class="limits folded" id="folded-panels">
+    <summary>{{ m.folded.line }} <span class="muted">· details</span></summary>
+    <ul class="plain-list">
+      {%- for f in m.folded.panels %}
+      <li data-folded="{{ f.id }}"><strong>{{ f.title }}</strong> ({{ f.short }}): {{ f.detail }} <span class="muted">{{ f.basis }}</span></li>
+      {%- endfor %}
+    </ul>
+  </details>
+  {%- endif %}
+  {%- if m.streams_unknown %}
   <p class="limits">Telemetry panels are shown: whether this device streams is not known, since {{ m.streams_unknown }}.</p>
   {%- endif %}
   <div class="panels" data-refresh="30">

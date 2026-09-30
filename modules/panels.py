@@ -12,6 +12,7 @@ the others out.
 """
 
 import re
+from typing import NamedTuple
 
 #: The ranges offered as one click, and the words for them.
 PRESETS = {"15m": 900, "1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
@@ -115,27 +116,161 @@ def split_device_panels(dashboard: dict, variable: str) -> tuple:
     return drawn, left_out
 
 
-def layout(drawn: list) -> list:
+def metrics_of(panel: dict) -> list:
+    """Every metric name the panel's queries read."""
+    return [n for t in panel.get("targets") or [] for n in _METRIC.findall(t.get("expr") or "")]
+
+
+# ---------------------------------------------------------------------------
+# A panel that does not apply to THIS device folds (the operator, 2026-09-30).
+# One rule for "nothing to show here": no source, not collected on this
+# platform, or withheld by the panel's own condition. A panel that SHOULD
+# show data and does not (a stopped stream, an erroring query, an empty
+# answer where the device should report) never folds: it stays in place and
+# says what is wrong. So every fold is DECLARED, never inferred from an empty
+# answer.
+# ---------------------------------------------------------------------------
+
+class PlatformFold(NamedTuple):
+    """A panel that reads ONLY these metrics is not applicable to a device
+    whose model matches: measured, with its basis."""
+    metrics: frozenset
+    models: "re.Pattern"
+    short: str
+    basis: str
+
+
+PLATFORM_FOLDS = (
+    PlatformFold(
+        frozenset({"cempMemPoolUsed", "cempMemPoolFree"}), re.compile(r"^vios", re.I),
+        "not reported by vIOS",
+        "measured on s3 by the operator, 2026-09-30: vIOS answers No Such Object for the "
+        "memory tables (docs/PROMETHEUS_TARGETS.md); staged run 6 asks the older family, and "
+        "this rule goes if it answers"),
+)
+
+
+def platform_fold(panel: dict, model: str):
+    """The declared rule that makes *panel* not applicable to a device of
+    *model*, or None. The panel must read nothing BUT the rule's metrics, so a
+    panel with another source is never folded by it; an unknown model folds
+    nothing."""
+    names = set(metrics_of(panel))
+    if not names or not model:
+        return None
+    return next((r for r in PLATFORM_FOLDS if names <= r.metrics and r.models.search(model)),
+                None)
+
+
+#: A panel whose single query is `<value> and on(<labels>) (<condition>)`
+#: withholds its value where its own condition does not hold: "Up for" is
+#: shown only where the device's clock keeps real time.
+_GUARD = re.compile(r"^(?P<value>.+?)\s+and\s+on\s*\([^()]*\)\s*\((?P<cond>.+)\)\s*$", re.S)
+
+#: What a guard's condition is about, in the fold line's words; a guard not
+#: named here reads "withheld by its own condition".
+GUARD_WORDS = ((re.compile(r"deriv\(\s*sysUpTime"), "slow clock"),)
+
+
+def _balanced(text: str) -> bool:
+    depth = 0
+    for ch in text:
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+def guard_of(panel: dict):
+    """``{"value", "cond", "short"}`` when the panel's one query is guarded at
+    its top level, else None."""
+    targets = [t for t in panel.get("targets") or [] if (t.get("expr") or "").strip()]
+    if len(targets) != 1:
+        return None
+    m = _GUARD.match(targets[0]["expr"].strip())
+    if not m or not _balanced(m.group("value")) or not _balanced(m.group("cond")):
+        return None
+    short = next((w for rx, w in GUARD_WORDS if rx.search(m.group("cond"))),
+                 "withheld by its own condition")
+    return {"value": m.group("value").strip(), "cond": m.group("cond").strip(), "short": short,
+            "expr": targets[0]["expr"], "target": targets[0]}
+
+
+def guard_request(panel: dict, dashboard: dict, values: dict, default_ds: dict) -> dict:
+    """ONE request asking both halves of a guarded panel now: the value alone
+    (`V`) and the panel's own query (`F`)."""
+    g = guard_of(panel)
+    t = g["target"]
+    probe = {"type": "stat", "targets": [dict(t, refId="V", expr=g["value"], instant=True),
+                                         dict(t, refId="F", expr=g["expr"], instant=True)]}
+    return build_request(probe, dashboard, values, 3600, default_ds)
+
+
+def has_data(answer: dict, ref: str) -> bool:
+    return any(s["ref"] == ref and any(v is not None for v in s["values"])
+               for s in frames_to_series(answer, {}))
+
+
+def withheld(answer: dict) -> bool:
+    """The guard held the value back: the value exists and the guarded query
+    returned nothing. Both empty is NOT withheld: the device should report
+    and does not, which is the panel's to show."""
+    return has_data(answer, "V") and not has_data(answer, "F")
+
+
+def layout(drawn: list, folded=()) -> list:
     """The drawn panels placed as the dashboard places them: in (y, x) order,
     each with its gridPos column start (x, 0-23), width (w, 1-24) and height
     (h, in Grafana's 30 px units), and the heading of each Grafana row before
     its first drawn panel. Nothing is invented: rearranging the dashboard in
-    Grafana rearranges the page (the operator, 2026-09-30)."""
+    Grafana rearranges the page (the operator, 2026-09-30).
+
+    *folded*: the ids of panels that do not apply to this device. A line (the
+    panels sharing a `y`) that lost one CLOSES UP: its remaining panels keep
+    the dashboard's order, pack to the line's left edge and share the width
+    the whole line took, in proportion to their own widths, so a fold never
+    leaves a hole that reads as a panel failing to load. A line that lost
+    nothing keeps its exact gridPos. A row whose panels all fold is gone,
+    heading and all, because a heading is drawn only before a drawn panel."""
     def pos(p):
         g = p.get("gridPos") or {}
         return int(g.get("y") or 0), int(g.get("x") or 0)
 
-    out, row = [], None
-    for p in sorted(drawn, key=pos):
+    def geom(p):
         g = p.get("gridPos") or {}
+        x = min(max(int(g.get("x") or 0), 0), 23)
+        return x, min(max(int(g.get("w") or 24), 1), 24 - x), max(int(g.get("h") or 8), 3)
+
+    folded = set(folded or ())
+    lines = {}
+    for p in drawn:
+        lines.setdefault(((p.get("row") or ""), pos(p)[0]), []).append(p)
+    place = {}
+    for members in lines.values():
+        members.sort(key=pos)
+        kept = [p for p in members if p.get("id") not in folded]
+        if len(kept) == len(members) or not kept:
+            for p in kept:
+                place[id(p)] = geom(p)[:2]
+            continue
+        start = min(geom(p)[0] for p in members)
+        span = max(geom(p)[0] + geom(p)[1] for p in members) - start
+        weights = [geom(p)[1] for p in kept]
+        widths = [max(1, span * w // sum(weights)) for w in weights]
+        widths[-1] += span - sum(widths)                # the rounding lands on the last
+        x = start
+        for p, w in zip(kept, widths):
+            place[id(p)] = (x, w)
+            x += w
+
+    out, row = [], None
+    for p in sorted((p for p in drawn if p.get("id") not in folded), key=pos):
         if (p.get("row") or "") != row:
             row = p.get("row") or ""
             if row:
                 out.append({"kind": "row", "title": row})
-        x = min(max(int(g.get("x") or 0), 0), 23)
-        w = min(max(int(g.get("w") or 24), 1), 24 - x)
-        out.append({"kind": "panel", "panel": p, "x": x, "w": w,
-                    "h": max(int(g.get("h") or 8), 3)})
+        x, w = place[id(p)]
+        out.append({"kind": "panel", "panel": p, "x": x, "w": w, "h": geom(p)[2]})
     return out
 
 

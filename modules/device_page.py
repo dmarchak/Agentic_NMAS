@@ -324,7 +324,7 @@ def _dashboard(stored: dict, uid: str, client=None) -> tuple:
 
 
 def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=None,
-               streams: tuple = (None, "")) -> dict:
+               streams: tuple = (None, ""), model: tuple = ("", "")) -> dict:
     """Everything the Monitoring tab draws, or the state that replaces it:
     no dashboard set, the dashboards not read yet, the configured UID gone,
     no such variable, the variable listing nothing, or the panels."""
@@ -376,22 +376,94 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
     out["variable_state"] = device_variable_state(dash, cfg["variable"], device_value, fill,
                                                   datasources, client=client)
     drawn, left_out = panels.split_device_panels(dash, cfg["variable"])
-    # PANELS FOLD FOR A DEVICE WITHOUT THEIR SOURCE (the operator, 2026-09-30):
-    # a panel reading only telemetry, on a device whose configuration has no
-    # subscription, folds away under ONE line saying why. Never split the
-    # dashboard in two (two owners of the same panels would drift).
-    if streams[0] is False:
-        folded = [p for p in drawn if panels.telemetry_only(p)]
-        if folded:
-            drawn = [p for p in drawn if not panels.telemetry_only(p)]
-            out["folded"] = {"titles": [p.get("title") or "" for p in folded],
-                             "why": f"{streams[1]}; these figures come from SNMP"}
-    elif streams[0] is None and streams[1]:
+    if streams[0] is None and streams[1]:
         out["streams_unknown"] = streams[1]
-    out.update(device_value=device_value, drawn=drawn, left_out=left_out,
-               layout=panels.layout(drawn),
+    folds = fold_panels(drawn, dev, dash, fill, datasources, streams=streams, model=model,
+                        client=client)
+    if folds:
+        out["folded"] = fold_summary(dev.get("hostname", ""), folds)
+    out.update(device_value=device_value, drawn=[p for p in drawn if p.get("id") not in
+                                                 {f["id"] for f in folds}],
+               left_out=left_out, layout=panels.layout(drawn, [f["id"] for f in folds]),
                seconds=seconds, step=panels.step_for(seconds), range_words=panels.describe(seconds))
     return out
+
+
+def fold_panels(drawn: list, dev: dict, dash: dict, fill: dict, datasources: list,
+                streams: tuple = (None, ""), model: tuple = ("", ""), client=None) -> list:
+    """The panels that do NOT APPLY to this device, each with why (the
+    operator, 2026-09-30: one rule for "nothing to show here"). Three
+    reasons, each declared, never inferred from an empty answer:
+
+    - no source: a panel reading only telemetry, on a device whose COMMITTED
+      configuration has no subscription (`streams_telemetry`);
+    - not collected on this platform: a measured rule (`panels.PLATFORM_FOLDS`)
+      matching the model the device's own golden names;
+    - withheld: the panel's own guard holds its value back, decided by asking
+      Grafana for both halves now (`panels.withheld`).
+
+    A panel that SHOULD show data and does not never folds: a router whose
+    stream stopped, an unknown model, a guard whose value is itself missing,
+    or a Grafana that could not be asked. Each stays in place with its own
+    words. The explanation is the panel's own sentence (its noValue),
+    unchanged: it moves out of the grid, it is not rewritten."""
+    host = dev.get("hostname", "")
+    model_name, model_from = (model or ("", ""))[:2]
+    out = []
+
+    def fold(p, short, kind, basis):
+        out.append({"id": p.get("id"), "title": p.get("title") or "", "short": short,
+                    "kind": kind, "detail": p.get("no_value") or short, "basis": basis})
+
+    for p in drawn:
+        if streams[0] is False and panels.telemetry_only(p):
+            fold(p, "not streamed", "no_source", streams[1])
+            continue
+        rule = panels.platform_fold(p, model_name)
+        if rule is not None:
+            fold(p, rule.short, "platform",
+                 f"{host}'s model is {model_name} ({model_from}); {rule.basis}")
+    guarded = [p for p in drawn if p.get("id") not in {f["id"] for f in out}
+               and panels.guard_of(p)]
+    if guarded:
+        if client is None:
+            from modules.integrations.grafana import GrafanaIntegration
+            client = GrafanaIntegration()
+        default_ds = panels.default_datasource(datasources, "prometheus")
+        for p in guarded:
+            try:
+                got = client.query(panels.guard_request(p, dash, fill, default_ds))
+            except Exception as exc:                    # noqa: BLE001
+                log.info("device page: %s's guard for %s could not be asked (%s)",
+                         p.get("title"), host, type(exc).__name__)
+                continue
+            if got.get("ok") and panels.withheld(got.get("body") or {}):
+                g = panels.guard_of(p)
+                fold(p, g["short"], "withheld",
+                     f"its own condition ({g['cond']}) does not hold for {host} now, while its "
+                     "value does: the dashboard withholds it by design")
+    where = {p.get("id"): ((p.get("gridPos") or {}).get("y") or 0, (p.get("gridPos") or {}).get("x") or 0)
+             for p in drawn}
+    return sorted(out, key=lambda f: where.get(f["id"], (0, 0)))
+
+
+def fold_summary(host: str, folds: list) -> dict:
+    """ONE line above the panels: the count and each reason with its panels,
+    in the dashboard's order; the full explanations one level down."""
+    groups = []
+    for f in folds:
+        g = next((g for g in groups if g["short"] == f["short"]), None)
+        if g is None:
+            groups.append({"short": f["short"], "titles": [f["title"]]})
+        else:
+            g["titles"].append(f["title"])
+    parts = [(" and ".join(g["titles"]) if len(g["titles"]) < 3 else
+              ", ".join(g["titles"][:-1]) + " and " + g["titles"][-1]) + f" ({g['short']})"
+             for g in groups]
+    n = len(folds)
+    return {"count": n, "panels": folds, "groups": groups,
+            "titles": [f["title"] for f in folds],
+            "line": f"{n} panel{'' if n == 1 else 's'} hidden for {host}: " + ", ".join(parts)}
 
 
 def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,

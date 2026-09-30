@@ -69,9 +69,11 @@ def _overview_ctx(ref, dev):
 
 
 def _monitoring_ctx(ref, dev):
+    hw = device_page.hardware(ref, dev)
     return {"device": dev, "m": device_page.monitoring(
         dev, chosen_uid=request.args.get("dashboard", ""), range_text=request.args.get("range", "1h"),
-        streams=device_page.streams_telemetry(ref, dev))}
+        streams=device_page.streams_telemetry(ref, dev),
+        model=(hw.get("model") or "", hw.get("model_from") or ""))}
 
 
 @bp.route("/device/<name>", methods=["GET"])

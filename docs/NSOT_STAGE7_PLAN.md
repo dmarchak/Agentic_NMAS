@@ -458,8 +458,11 @@ session needs no reconstruction:
    from the NMAS host, with the community read as in run 5:
    `snmpget -v2c -c "$C" -On -t 5 10.255.1.23 1.3.6.1.4.1.9.2.1.8.0` (OLD-CISCO-SYSTEM-MIB
    `freeMem`, the family of the `cisco_old_cpu` module the switches already use).
-   - If it answers, `freeMem` goes into the vIOS module, and the memory panel draws it for vIOS.
-   - If not, the panel's sentence stands: memory isn't available over SNMP on vIOS.
+   - If it answers, `freeMem` goes into the vIOS module, the memory panel draws it for vIOS, and
+     the memory rule in `panels.PLATFORM_FOLDS` is removed, so the panel stops folding on vIOS.
+   - If not, the panel keeps folding on vIOS (2026-09-30: a panel that does not apply to the
+     device folds into one line above the panels, its sentence unchanged: memory isn't
+     available over SNMP on vIOS).
 7. **Does re-delivering lost timer ticks fix a slow vIOS clock** (the operator, 2026-09-30; C9,
    C93)? On a THROWAWAY vIOS in its own lab, **never s3**, and nothing changes on s3 outside a
    planned redeploy. The hypothesis: under nested virtualisation a timer interrupt is expensive,
