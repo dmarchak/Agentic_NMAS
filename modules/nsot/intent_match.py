@@ -57,11 +57,10 @@ def intent_match(repo: str, list_name: str, hostname: str, config_text: str,
         from modules.nsot import profile as _profile
         effective = _profile.effective_for(repo, list_name, hostname, committed, platform)
         intent = hostvars.hydrate_secrets(effective, hostname, list_name)
-        template = templates_repo.template_for_device(repo, hostname, platform)
+        src = templates_repo.render_source(repo, hostname, platform)
         stored = "\n".join(normalize.strip_for_repo(config_text or ""))
-        artifact = build_artifact(hostname, stored, platform, template=template,
-                                  host_vars=intent,
-                                  template_root=templates_repo.templates_dir(repo))
+        artifact = build_artifact(hostname, stored, platform, template=src["template"],
+                                  host_vars=intent, template_root=src["root"])
     except Exception as exc:                   # noqa: BLE001
         log.warning("intent_match: %s: could not render committed intent: %s", hostname, exc)
         return _unknown(f"committed intent could not be rendered: {exc}")

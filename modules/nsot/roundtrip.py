@@ -483,14 +483,20 @@ def _count_unmodeled(host_vars: dict) -> int:
 
 
 def validate_device(running_config: str, platform: str,
-                    secret_lookup=None) -> dict:
-    """Extract → render → compare, in one call. The 3a deliverable."""
+                    secret_lookup=None, template_root: str = TEMPLATE_ROOT,
+                    template_name: str = "base.j2") -> dict:
+    """Extract → render → compare, in one call. The 3a deliverable.
+
+    *template_root* and *template_name* are the device's, from
+    `templates_repo.render_source()` (C239); every caller in the program
+    passes them."""
     from modules.nsot.parsers import get_parser
 
     host_vars = get_parser(platform).parse(running_config)
     parser_platform = host_vars.get("platform", platform)
     try:
-        rendered = render(host_vars, parser_platform, secret_lookup)
+        rendered = render(host_vars, parser_platform, secret_lookup,
+                          template_root=template_root, template_name=template_name)
     except Exception as exc:                  # noqa: BLE001
         log.exception("roundtrip: render failed for %s", host_vars.get("hostname"))
         return {"ok": False, "error": f"render failed: {exc}",

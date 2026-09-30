@@ -252,16 +252,33 @@ def _platform_slug(platform: str) -> str:
     return cls.platform if cls else (platform or "cisco_ios")
 
 
-def render_with_template(repo: str, host_vars: dict, rel_path: str,
-                         secret_lookup=None) -> str:
-    """Render *host_vars* through a template from the repo's library."""
+def render_source(repo: str, device: str, platform: str) -> dict:
+    """THE one answer to "which template renders this device" (C239):
+    ``{"root", "template", "name", "from"}``, the device's BOUND template in
+    this network's library. Every render of a device's intent or capture takes
+    its root and name from here, and a scan fails on one that does not.
+
+    C239: the deploy plan rendered through the network's library while the
+    intent editor's previews, bulk intent and the template preview rendered
+    through the BUILT-IN seeds, and restore validation through the built-in
+    `base.j2` whatever the device was bound to. So a template edited in the
+    library was what deployed and not what the editor showed.
+
+    A network whose library does not hold the bound template (never seeded)
+    renders through the built-in seeds, and says so: ``from`` is
+    ``"built-in"`` with ``why``. A deploy then refuses on approval, which is
+    asked of the library alone."""
     from modules.nsot import roundtrip
 
+    rel = template_for_device(repo, device, platform)
     root = templates_dir(repo)
-    platform_dir = os.path.dirname(rel_path) or host_vars.get("platform", "")
-    name = os.path.basename(rel_path)
-    return roundtrip.render(host_vars, platform_dir, secret_lookup,
-                            template_root=root, template_name=name)
+    name = os.path.basename(rel)
+    if os.path.isfile(os.path.join(root, rel)):
+        return {"root": root, "template": rel, "name": name, "from": "library"}
+    log.warning("templates: %s is not in %s's library; rendering %s through the built-in seeds",
+                rel, repo, device)
+    return {"root": roundtrip.TEMPLATE_ROOT, "template": rel, "name": name, "from": "built-in",
+            "why": f"{rel} is not in this network's template library"}
 
 
 # ---------------------------------------------------------------------------

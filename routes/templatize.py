@@ -65,7 +65,11 @@ def report():
             if not config:
                 continue
             device = devices.get(ip, {})
-            result = validate_device(config, _platform_for(device))
+            platform = _platform_for(device)
+            from modules.nsot import templates_repo
+            src = templates_repo.render_source(_repo_for(list_name), entry.get("hostname", ""), platform)
+            result = validate_device(config, platform, template_root=src["root"],
+                                     template_name=src["name"])
             if result.get("error"):
                 errors.append({"hostname": entry.get("hostname", ip),
                                "error": result["error"]})

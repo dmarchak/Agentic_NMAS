@@ -378,7 +378,13 @@ def validate_restored_intent(repo: str, hostname: str, intent: dict,
 
     try:
         live = hostvars.hydrate_secrets(intent, hostname, list_name)
-        rendered = roundtrip.render(live, live.get("platform", platform))
+        # Through the device's BOUND template in the network's library, as
+        # the deploy renders it (C239): this rendered the built-in base.j2
+        # whatever the device was bound to.
+        from modules.nsot import templates_repo
+        src = templates_repo.render_source(repo, hostname, live.get("platform", platform))
+        rendered = roundtrip.render(live, live.get("platform", platform),
+                                    template_root=src["root"], template_name=src["name"])
     except Exception as exc:                  # noqa: BLE001
         gaps.append(f"this ref's intent does not render through the current "
                     f"template: {exc}")

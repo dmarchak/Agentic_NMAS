@@ -138,9 +138,15 @@ def artifact_for(hostname, capture, repo, platform, template, host_vars=None):
     from modules.nsot import approval
     from modules.nsot.render_artifact import build_artifact
 
-    approved = approval.is_approved(repo, template)
-    return build_artifact(hostname, capture, platform, template=template,
-                          template_approved=approved, host_vars=host_vars)
+    from modules.nsot import templates_repo
+
+    # The network's own library, through the one resolver (C239): this path
+    # rendered the BUILT-IN seeds while deploy rendered the library.
+    src = templates_repo.render_source(repo, hostname, platform)
+    approved = approval.is_approved(repo, src["template"])
+    return build_artifact(hostname, capture, platform, template=src["template"],
+                          template_approved=approved, host_vars=host_vars,
+                          template_root=src["root"])
 
 
 def _untracked_templates(repo: str) -> tuple:

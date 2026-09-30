@@ -120,7 +120,10 @@ def entry_for(list_name: str, device: dict) -> dict:
                           "no committed golden: capture it first (Capture as golden), "
                           "then seed its intent from that")}
     base["golden"] = (record.get("commit") or "")[:12]
-    result = validate_device(record["text"], platform)
+    from modules.nsot import templates_repo
+    src = templates_repo.render_source(repo, host, platform)
+    result = validate_device(record["text"], platform,
+                             template_root=src["root"], template_name=src["name"])
     if result.get("error"):
         return {**base, "error": f"the {platform} parser could not read its golden: {result['error']}"}
     host_vars = result["host_vars"]

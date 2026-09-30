@@ -113,7 +113,9 @@ def _artifact_for(list_name: str, hostname: str):
     from modules.nsot.platform import platform_for_device
     platform = platform_for_device(device)
 
-    template = templates_repo.template_for_device(repo, hostname, platform)
+    # The one resolver (C239): the bound template in the network's library.
+    source = templates_repo.render_source(repo, hostname, platform)
+    template = source["template"]
 
     committed = hostvars.read_committed(repo, hostname)
     # A committed intent that is only onboarding's bootstrap is bootstrap too,
@@ -144,7 +146,7 @@ def _artifact_for(list_name: str, hostname: str):
     common = dict(template=template, template_approved=approved,
                   host_vars=intent, bootstrap=bootstrap,
                   bootstrap_reason=hostvars.BOOTSTRAP_ONLY_REASON if seed_only else "",
-                  template_root=templates_repo.templates_dir(repo))
+                  template_root=source["root"])
     artifact = build_artifact(hostname, captured, platform, **common)
 
     # A standing rolled-back note blocks only while the program a fresh plan
