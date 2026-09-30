@@ -101,13 +101,19 @@ def scan(path: str, text: str, *, exempt=None, denylist=None):
     return found
 
 
-def published_files():
-    out = subprocess.run(["git", "-C", ROOT, "ls-files"], capture_output=True, text=True,
+def published_files(root: str = ROOT):
+    """Every file that IS or WILL BE published: tracked, staged, and untracked
+    but not ignored. "Tracked" alone stood in for "about to be published", and
+    a file created in the commit being tested is exactly where they differ: CI
+    run #199 failed on `publication_exemptions.py`, new in cdebad8, which the
+    local suite never read because it ran before `git add` (2026-09-29)."""
+    out = subprocess.run(["git", "-C", root, "ls-files", "--cached", "--others",
+                          "--exclude-standard"], capture_output=True, text=True,
                          check=True).stdout.split()
     texts = {}
-    for rel in out:
+    for rel in dict.fromkeys(out):
         try:
-            with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+            with open(os.path.join(root, rel), encoding="utf-8") as fh:
                 texts[rel] = fh.read()
         except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
             continue
@@ -173,6 +179,29 @@ class TestThePublishedFiles:
                    if (p, line_key(l)) in exempt
                    and any(re.search(rf"\b{re.escape(a)}\b", l) for a in real)]
         assert not excused, excused
+
+
+class TestThePopulationIsWhatWillBePublished:
+    """The control for the population itself, in a repository of its own."""
+
+    def test_an_untracked_file_is_read_and_an_ignored_one_is_not(self, tmp_path):
+        repo = str(tmp_path)
+        run = lambda *a: subprocess.run(["git", "-C", repo, *a], check=True,  # noqa: E731
+                                        capture_output=True)
+        run("init", "-q")
+        (tmp_path / "clean.md").write_text("nothing personal\n")
+        (tmp_path / ".gitignore").write_text("local.txt\n")
+        run("add", "clean.md", ".gitignore")
+        planted = "Actor: " + "someone.real" + "@mail-provider.net\n"
+        (tmp_path / "new_in_this_commit.md").write_text(planted)     # untracked
+        (tmp_path / "staged.md").write_text(planted)
+        run("add", "staged.md")                                         # staged, uncommitted
+        (tmp_path / "local.txt").write_text(planted)                   # ignored: never published
+        texts = published_files(repo)
+        assert {"clean.md", "new_in_this_commit.md", "staged.md"} <= set(texts)
+        assert "local.txt" not in texts
+        found = {p for p, t in texts.items() for f in scan(p, t) if f[2] == "email"}
+        assert found == {"new_in_this_commit.md", "staged.md"}
 
 
 class TestTheScanCanFail:

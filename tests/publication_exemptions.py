@@ -20,7 +20,7 @@ REASONS = {
     "EXAMPLE": "an example address in a form placeholder, a parser comment or an AI prompt example; not the homelab",
     "INVENTED": "an invented test address (new tests use documentation addresses instead)",
     "INVENTED_PATH": "an invented home directory in a test, naming no person",
-    "SSH_FORM": "git's SSH URL form (git@github.com:owner/repo), GitHub's account, not a person's address",
+    "SSH_FORM": "git's SSH URL form (the git user at GitHub's host, then owner/repo), GitHub's account, not a person's address",
     "VENDOR": "Cisco's own call-home address, printed by IOS-XE in the captured config",
 }
 
