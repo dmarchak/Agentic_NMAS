@@ -55,6 +55,21 @@ UP_BOUND_S = 120
 #: so a page still waiting says the updater has not reported.
 UPDATER_TIMEOUT_S = 15 * 60
 
+#: The stepper, in order: the page's two steps (the request written, the
+#: updater started), the UPDATER's own step keys (deploy/update/nmas-update
+#: STEPS, which its record names while it runs; a test holds the two equal),
+#: and the end state.
+STEPS = (("request", "Request written"), ("started", "Updater started"),
+         ("checkout", "Checkout checked: no local changes"), ("fetch", "Fetched origin"),
+         ("ci", "CI re-checked for the target"), ("move", "Checkout moved to <target>"),
+         ("restart", "Restarting the app"), ("wait", "Waiting for the new version"),
+         ("running", "Running <target>"))
+
+#: The ONE lock a terminal deploy and the updater both take (C242): whoever
+#: holds it moves the checkout; the other refuses by name. In the checkout's
+#: data/, so the service user can create it and root opens it read-only.
+LOCK = os.path.join(config.DATA_DIR, "update", "lock")
+
 OUTCOME_WORDS = {
     "updated": "updated",
     "refused": "refused: nothing was changed",
@@ -95,6 +110,28 @@ def history(limit: int = 10) -> dict:
         return {"state": "ok", "rows": [json.loads(l) for l in lines[-limit:] if l.strip()][::-1]}
     except (OSError, ValueError) as exc:
         return {"state": "unreadable", "rows": [], "error": f"{type(exc).__name__}: {exc}"}
+
+
+def lock_holder() -> str:
+    """"" when nothing holds the shared lock (C242), else who might: a
+    terminal deploy or the updater. Asked without creating anything: no lock
+    file means nobody has ever taken it, so nobody holds it now."""
+    import fcntl
+
+    try:
+        fd = os.open(LOCK, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        return f"the lock could not be opened ({exc.strerror}), so whether one runs is unknown"
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return ""
+    except BlockingIOError:
+        return "a terminal deploy (nmas-deploy) or the updater is moving the checkout now"
+    finally:
+        os.close(fd)
 
 
 def pending() -> list:
@@ -245,7 +282,8 @@ def _stored(cached=None) -> dict:
             "why": got.get("why") or "", "state": got.get("state")}
 
 
-def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=None) -> dict:
+def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=None,
+         holder=None) -> dict:
     """What the Update preview draws, with its gates and its hash."""
     from modules.readers import app_pushed
     from routes import health
@@ -285,9 +323,12 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
           "writable": "DANGER: " + "; ".join(install.get("writable") or []),
           "inactive": "nmas-update.path is not active"}.get(install["state"], install["state"]))
     running_now = (last.get("value") or {}).get("outcome") == "running"
-    gate("no update is waiting or running", not pend and not running_now,
+    held = lock_holder() if holder is None else holder
+    gate("no update or terminal deploy is waiting or running",
+         not pend and not running_now and not held,
          ("the updater is running: " + str((last.get("value") or {}).get("step") or "")
-          if running_now else f"{len(pend)} request(s) not taken yet" if pend else "none"))
+          if running_now else f"{len(pend)} request(s) not taken yet" if pend
+          else held or "none"))
     steps = v.get("host_steps") or []
     facts = {"running": running, "target": v.get("tip") or "", "behind": v.get("behind"),
              "commits": v.get("commits") or [], "commits_cut": bool(v.get("commits_cut")),

@@ -58,11 +58,20 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
    The 120 s comes from 120 restarts in the host's deploy audit: median 2.1 s,
    p90 10.2 s, and the slowest normal ones 17.5, 19.1 and 38.9 s. One took
    574.7 s and is not explained.
-7. **The page waits on facts**: `/health`'s commit and the updater's record,
-   never a timer. It says "the app is restarting" while nothing answers. A
-   finished update reloads the page, and the page then draws **The last
-   update**: updated, refused, rolled back, or ROLLBACK FAILED, with why. About
-   shows it too.
+7. **Every stage is visible, and the page waits on facts** (`/health`'s commit
+   and the updater's record, never a timer). On click the button disables and
+   reads "Sending the request…"; a refusal is shown on the page with its reason;
+   once accepted, a STEPPER follows the updater's own steps (request written,
+   updater started, checkout checked, fetched, CI re-checked, checkout moved,
+   restarting, waiting for the new version with its seconds, running the
+   target), each named by the key the updater's record carries, and a failed
+   step says why. A finished update reloads the page, which then draws **The
+   last update**: updated, refused, rolled back, or ROLLBACK FAILED, with why.
+   About shows it too.
+   **The first real run (2026-09-30) did nothing and said nothing** (C243): the
+   component read its attributes from the button instead of its root, so the
+   button was disabled while looking clickable. Real-browser tests now click
+   the shipped button (`tests/browser.py`, where Firefox runs).
 
    If the last update did not happen, the Needs attention row names it as its
    cause, and a failed rollback is a danger row.
@@ -117,6 +126,11 @@ health keeps asking. Its `updater` row is:
 
 ## Re-install
 
+**Required after the release that repaired the button (C243):** it changed
+both copies (`deploy/update/nmas-update` takes the shared lock and reports step
+keys; `scripts/nmas-deploy` takes the lock). Run the commands below once, after
+deploying it from the terminal.
+
 The installed updater and gate are COPIES, and they are what runs. When a
 release changes `deploy/update/nmas-update`, `scripts/nmas-deploy` or either
 unit:
@@ -150,5 +164,22 @@ the box is the person's statement, and it is recorded in the request.
 - It does not update itself (see Re-install).
 - It rolls back only a version that does not come up within 120 s. A defect
   found later is fixed by the next release.
-- `nmas-deploy` stays the host-side path. It and the updater do not lock each
-  other, so running both at once is the operator's to avoid.
+- `nmas-deploy` stays the host-side path. **It and the updater take ONE lock**
+  (`data/update/lock`, C242): whichever holds it moves the checkout, and the
+  other refuses by name (`nmas-deploy` exits 9). The Update preview shows a
+  held lock as a failed check.
+
+## Checking for an update
+
+Help > About always offers **Check again**, which asks origin and CI now (the
+reader otherwise asks every 300 s), so right after a push there is always a way
+to ask. What it shows is stated as of when it was asked ("was the tip when last
+asked"), never as a fact about now.
+
+## A console message that is not a defect
+
+Cloudflare's Web Analytics injects a beacon script into every page served
+through the tunnel, and the pages' Content-Security-Policy blocks it, which the
+browser console reports as a CSP violation. It is the policy working. The
+policy is not widened for it; Web Analytics is turned off for the hostname in
+Cloudflare instead (the operator, 2026-09-30).

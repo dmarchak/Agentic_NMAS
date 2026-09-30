@@ -39,3 +39,9 @@
 {%- endmacro %}
 
 {% set STATE_KIND = {'ok': 'ok', 'warn': 'warn', 'danger': 'danger', 'unknown': 'muted'} %}
+
+{#- "Check again": ask origin and CI now (routes/update.check). Its x-data and
+    its attributes sit on one element, the component's $root. -#}
+{% macro check_again() -%}
+<span class="check-again" x-data="check" data-url="{{ url_for('update.check') }}"><button type="button" class="btn btn-small" x-on:click="run" x-bind:disabled="busy" x-text="label">Check again</button><span class="muted" x-text="said"></span></span>
+{%- endmacro %}

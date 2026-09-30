@@ -38,6 +38,8 @@ Exit codes. Each means one thing; none is "probably fine":
   6  cannot restart from here (sudo needs a password, and there is no
      terminal to type it in): refused BEFORE the checkout moved, so no mixed
      version exists. Run it in a terminal on the host
+  9  the Update button's updater is moving the checkout now (C242: both take
+     data/update/lock): refused, nothing moved. Run it again when it ends
 
 "No run found" is exit 2, never a pass. That is the fail-open shape of the
 old Jenkins ci_gate, which was skipped silently whenever it could not ask
@@ -71,6 +73,11 @@ WORKFLOW_PATH = ".github/workflows/ci.yml"
 OK, CI_REFUSED, COULD_NOT_ASK, OFFLINE_FAILED, LOCAL_REFUSED, UNHEALTHY = 0, 1, 2, 3, 4, 5
 CANNOT_RESTART = 6
 CI_PENDING, CI_CANCELLED = 7, 8
+LOCKED = 9
+
+#: The ONE lock this and the Update button's updater both take (C242): whoever
+#: holds it moves the checkout, and the other refuses by name.
+LOCK_REL = os.path.join("data", "update", "lock")
 
 #: --wait (the operator, 2026-09-28): 35 "still running" refusals across 19
 #: waits in 28 hours, a retry loop where the waiting itself was ~33 minutes.
@@ -556,6 +563,36 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
         audit(repo, row)
         return code
 
+    lock = take_lock(repo)
+    if lock is None:
+        return finish(LOCKED, "the Update button's updater is moving the checkout now "
+                              f"({LOCK_REL} is held): refused, nothing moved. Run nmas-deploy "
+                              "again when it has finished (Help > About shows the last update)")
+    try:
+        return _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit,
+                       ready)
+    finally:
+        os.close(lock)
+
+
+def take_lock(repo):
+    """The shared lock's descriptor, held; None when someone else holds it."""
+    import fcntl
+    path = os.path.join(repo, LOCK_REL)
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        return None
+    return fd
+
+
+def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit, ready):
     dirty = git(repo, "status", "--porcelain", "--untracked-files=no")
     if dirty:
         return finish(LOCAL_REFUSED, "local changes present, refused:\n" + dirty)

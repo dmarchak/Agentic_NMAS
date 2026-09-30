@@ -1,53 +1,90 @@
 /* The Update button's page (modules/update_op.py; docs/UPDATE.md).
  *
- * Confirm posts the preview's hash; the app writes a request and the
- * root-owned updater does the rest. The page then waits on FACTS, never a
- * timer: /health's commit, and the updater's own record (/update/status). A
- * terminal outcome reloads the page, which draws "The last update".
+ * Every stage is visible (the operator, 2026-09-30, after the first real run
+ * failed without a word):
+ *   click     the button disables and reads "Sending the request…";
+ *   refused   the reason, on the page, and the button back;
+ *   accepted  a STEPPER drawn from the updater's own steps (its record names
+ *             the step it is on), with the seconds on the step running;
+ *   outcome   the last step done or failed with its reason, then a reload
+ *             that draws "The last update".
+ * It waits on FACTS, never a timer: /health's commit and the updater's record.
  *
- * ES5, Alpine's CSP build (getters and argument-free methods only). The
- * waiting logic is `waitState`, PURE, executed in duktape by
- * tests/test_update_button.py.
+ * WIRING, the first run's defect: a component's data-* attributes are read
+ * from `$root` (the x-data element). `$el` is the element carrying the
+ * directive, so the button's `x-bind:disabled` read `data-selectable` from the
+ * button, found nothing, and disabled it: a click that did nothing and said
+ * nothing. tests/test_update_button.py holds the rule for every v2 component
+ * and clicks the shipped button in a real browser where one is available.
+ *
+ * ES5, Alpine's CSP build (getters and argument-free methods only). The logic
+ * is `stepStates`, PURE, executed in duktape by the tests.
  */
 (function (root) {
   'use strict';
 
   var TERMINAL = ['updated', 'refused', 'rolled_back', 'rollback_failed', 'failed'];
 
-  /* PURE. What the waiting page says and whether it reloads, from what it
-     last read. *health*: /health's body or null (the app is restarting);
+  /* PURE. Each step's state (done, current, failed, pending) and its note,
+     from what the page last read. *keys*: the stepper's steps in order, from
+     'request' to 'running'; *health*: /health's body or null (restarting);
      *status*: /update/status's body or null; *id*: the request made here. */
-  function waitState(target, id, health, status, elapsedS, timeoutS) {
+  function stepStates(keys, target, id, health, status, elapsedS, timeoutS) {
     var s = Math.round(elapsedS);
     var o = status && status.outcome && status.outcome.state === 'ok' ? status.outcome.value : null;
-    var mine = o && o.id === id;
-    if (mine && TERMINAL.indexOf(o.outcome) >= 0) {
-      var words = (status.outcome_words && status.outcome_words[o.outcome]) || o.outcome;
-      return {reload: true, stop: true, words: 'The updater finished: ' + words + '. Reloading…'};
+    var mine = !!(o && o.id === id);
+    var words = (status && status.outcome_words) || {};
+    var st = {};
+    var i;
+    for (i = 0; i < keys.length; i++) st[keys[i]] = {state: 'pending', note: ''};
+    st.request = {state: 'done', note: ''};
+    function upTo(key, state, note) {
+      var k = keys.indexOf(key);
+      for (var j = 0; j < keys.length; j++) {
+        if (j < k) st[keys[j]] = {state: 'done', note: ''};
+      }
+      if (k >= 0) st[key] = {state: state, note: note || ''};
     }
-    if (health && health.commit === target) {
-      return {reload: true, stop: true,
-              words: 'The app runs ' + String(target).slice(0, 10) + ' now. Reloading…'};
+    var short = String(target || '').slice(0, 10);
+    if (health && health.commit === target && (!mine || o.outcome !== 'rolled_back')) {
+      upTo('running', 'done', 'running ' + short);
+      return {steps: st, done: true, reload: true, failed: false,
+              words: 'Updated: the app runs ' + short + '. Reloading…'};
+    }
+    if (mine && TERMINAL.indexOf(o.outcome) >= 0) {
+      var at = o.step && keys.indexOf(o.step) >= 0 ? o.step : 'started';
+      if (o.outcome === 'updated') {
+        upTo('running', 'done', 'running ' + short);
+        return {steps: st, done: true, reload: true, failed: false,
+                words: 'Updated: the app runs ' + short + '. Reloading…'};
+      }
+      upTo(at, 'failed', o.reason || '');
+      return {steps: st, done: true, reload: false, failed: true,
+              words: 'The update ' + (words[o.outcome] || o.outcome) + ': ' + (o.reason || 'no reason recorded')};
     }
     if (s >= timeoutS) {
-      return {reload: false, stop: true,
-              words: 'The updater has not reported in ' + Math.round(timeoutS / 60) + ' min, its '
-                + 'unit\'s own limit. On the host: journalctl -u nmas-update.service -n 50'};
+      upTo(mine && o.step ? o.step : 'started', 'failed',
+           'no word from the updater in ' + Math.round(timeoutS / 60) + ' min, its unit\'s own limit');
+      return {steps: st, done: true, reload: false, failed: true,
+              words: 'The updater has not reported. On the host: journalctl -u nmas-update.service -n 50'};
     }
     if (mine && o.outcome === 'running') {
-      return {reload: false, stop: false,
-              words: 'The updater is ' + (o.step || 'running') + ' (' + s + ' s)…'};
+      var step = keys.indexOf(o.step) >= 0 ? o.step : 'started';
+      upTo(step, 'current', step === 'wait' || step === 'restart' ? s + ' s' : '');
+      if (!health && (step === 'restart' || step === 'wait')) {
+        st[step].note = 'the app is restarting, ' + s + ' s';
+      }
+      return {steps: st, done: false, reload: false, failed: false, words: ''};
     }
     if (!health) {
-      return {reload: false, stop: false,
-              words: 'The app is restarting; waiting for it to answer (' + s + ' s)…'};
+      upTo('wait', 'current', 'the app is restarting, ' + s + ' s');
+      return {steps: st, done: false, reload: false, failed: false, words: ''};
     }
     var queued = status && status.pending && status.pending.length;
-    return {reload: false, stop: false,
-            words: (queued ? 'Requested; waiting for the updater to take it'
-                    : 'Waiting for the updater') + ' (' + s + ' s)…'
-              + (queued && s >= 60 ? ' It has not started in a minute: is nmas-update.path '
-                 + 'active on the host (Job health says)?' : '')};
+    upTo('started', 'current', queued && s >= 60
+      ? 'not started in a minute: is nmas-update.path active on the host (Job health says)?'
+      : (queued ? 'the request is waiting for the updater, ' + s + ' s' : s + ' s'));
+    return {steps: st, done: false, reload: false, failed: false, words: ''};
   }
 
   function getJson(url) {
@@ -56,69 +93,121 @@
       .then(function (b) { return b; }, function () { return null; });
   }
 
+  /* Draw a stepStates() answer into the server-rendered stepper. */
+  function drawSteps(list, states) {
+    var items = list.querySelectorAll('[data-step]');
+    for (var i = 0; i < items.length; i++) {
+      var s = states[items[i].getAttribute('data-step')] || {state: 'pending', note: ''};
+      items[i].className = 'step step-' + s.state;
+      items[i].setAttribute('aria-current', s.state === 'current' ? 'step' : 'false');
+      var note = items[i].querySelector('.step-note');
+      if (note) note.textContent = s.note ? ' · ' + s.note : '';
+    }
+  }
+
   function register() {
     var A = root.Alpine;
     A.data('update', function () {
       return {
-        phase: 'idle', words: '', started: 0,
-        get idle() { return this.phase === 'idle'; },
-        get waiting() { return this.phase !== 'idle'; },
-        get blocked() { return this.$el.getAttribute('data-selectable') !== 'yes'; },
+        phase: 'idle', words: '', refusal: '', started: 0,
+        // Read from $root, the x-data element: see the header.
+        get blocked() {
+          return this.$root.getAttribute('data-selectable') !== 'yes' || this.phase === 'asking';
+        },
+        get buttonText() {
+          return this.phase === 'asking' ? 'Sending the request…' : this.$root.getAttribute('data-label');
+        },
+        get showButton() { return this.phase === 'idle' || this.phase === 'asking'; },
+        get running() { return this.phase === 'running' || this.phase === 'done'; },
+        get refused() { return this.refusal !== ''; },
         confirm: function () {
-          var self = this, el = this.$el;
-          var boxes = root.document.querySelectorAll('input[data-host-step]');
+          var self = this, el = this.$root;
+          var boxes = el.querySelectorAll('input[data-host-step]');
           var ack = [];
           for (var i = 0; i < boxes.length; i++) {
             if (boxes[i].checked) ack.push(boxes[i].getAttribute('data-host-step'));
           }
           self.phase = 'asking';
-          self.words = 'Asking the updater…';
+          self.refusal = '';
+          // HOLD the panel: the request's own answer announces app_version,
+          // and a re-fetch would replace this component and wipe what it
+          // shows (found by the real-browser test, 2026-09-30).
+          el.setAttribute('data-update-hold', 'yes');
           root.fetch(el.getAttribute('data-apply-url'), {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
+            method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
             body: JSON.stringify({hash: el.getAttribute('data-hash'), acknowledged: ack})
-          }).then(function (r) { return r.json().then(function (b) { return [r.status, b]; }); })
-            .then(function (got) {
-              if (got[0] !== 202) {
-                self.words = 'Not requested: ' + ((got[1] && got[1].error) || ('HTTP ' + got[0]));
-                return;
-              }
-              self.phase = 'waiting';
-              self.started = Date.now();
-              self.poll(el.getAttribute('data-target'), got[1].id);
-            }, function (e) { self.words = 'Not requested: ' + e.message; });
+          }).then(function (r) {
+            return r.json().then(function (b) { return [r.status, b]; },
+                                 function () { return [r.status, null]; });
+          }).then(function (got) {
+            if (got[0] !== 202) {
+              self.phase = 'idle';
+              self.refusal = 'Not requested: ' + ((got[1] && got[1].error) || ('the server answered HTTP ' + got[0]));
+              return;
+            }
+            self.phase = 'running';
+            self.started = Date.now();
+            self.poll(got[1].id);
+          }, function (e) {
+            self.phase = 'idle';
+            self.refusal = 'Not requested: the request did not reach the app (' + e.message + ')';
+          });
         },
-        poll: function (target, id) {
-          var self = this, el = this.$el;
+        poll: function (id) {
+          var self = this, el = this.$root;
           var timeout = parseInt(el.getAttribute('data-timeout'), 10) || 900;
+          var list = el.querySelector('[data-stepper]');
+          var keys = [];
+          var items = list.querySelectorAll('[data-step]');
+          for (var i = 0; i < items.length; i++) keys.push(items[i].getAttribute('data-step'));
           Promise.all([getJson(el.getAttribute('data-health-url')),
                        getJson(el.getAttribute('data-status-url'))]).then(function (got) {
-            var st = waitState(target, id, got[0], got[1], (Date.now() - self.started) / 1000,
-                               timeout);
-            self.words = st.words;
-            if (st.reload) { root.setTimeout(function () { root.location.reload(); }, 1200); }
-            else if (!st.stop) { root.setTimeout(function () { self.poll(target, id); }, 2000); }
+            var r = stepStates(keys, el.getAttribute('data-target'), id, got[0], got[1],
+                               (Date.now() - self.started) / 1000, timeout);
+            drawSteps(list, r.steps);
+            self.words = r.words;
+            if (r.done) self.phase = 'done';
+            if (r.reload) { root.setTimeout(function () { root.location.reload(); }, 1500); }
+            else if (!r.done) { root.setTimeout(function () { self.poll(id); }, 2000); }
           });
         }
       };
     });
     // "Check again": ask origin and CI now instead of at the reader's next run.
+    // Its attributes are on the element that carries x-data AND x-on.
     A.data('check', function () {
       return {
-        busy: false,
+        busy: false, said: '',
         get label() { return this.busy ? 'Checking…' : 'Check again'; },
         run: function () {
           var self = this;
           self.busy = true;
-          root.fetch(this.$el.getAttribute('data-url'), {method: 'POST'})
-            .then(function () { root.setTimeout(function () { self.busy = false; }, 5000); },
-                  function () { self.busy = false; });
+          root.fetch(this.$root.getAttribute('data-url'), {method: 'POST', headers: {'Accept': 'application/json'}})
+            .then(function (r) {
+              return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
+            })
+            .then(function (got) {
+              var b = got[1] || {};
+              self.said = got[0] < 300 ? (b.message || 'asking now') : ('Not asked: ' + (b.error || ('HTTP ' + got[0])));
+              root.setTimeout(function () { self.busy = false; }, 5000);
+            }, function (e) { self.busy = false; self.said = 'Not asked: ' + e.message; });
         }
       };
     });
   }
 
+  /* A panel holding an update in flight, its stepper or its refusal is never
+     swapped out from under the person reading it. */
+  function holdSwap(e) {
+    var target = e.detail && e.detail.target;
+    if (target && target.querySelector && target.querySelector('[data-update-hold="yes"]')) {
+      e.detail.shouldSwap = false;
+    }
+  }
+
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('alpine:init', register);
+    root.document.addEventListener('htmx:beforeSwap', holdSwap);
   }
-  root.NMAS_UPDATE = {waitState: waitState, TERMINAL: TERMINAL};
+  root.NMAS_UPDATE = {stepStates: stepStates, TERMINAL: TERMINAL};
 })(typeof window !== 'undefined' ? window : this);

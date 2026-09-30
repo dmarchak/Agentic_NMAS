@@ -174,24 +174,28 @@ def read(running=None, root=ROOT, git=_git, previous=None, verdict=None) -> dict
 
 
 def words(v: dict) -> str:
-    """The one sentence, for About and the row alike."""
+    """The one sentence, for About and the row alike. In the PAST tense, as
+    of the last ask (the operator, 2026-09-30): a stored answer is what was
+    known when it was asked, never a statement about now. About said "the
+    running commit b27c786ac0 is the tip" four minutes after 19910bf was
+    pushed. The time of the ask is drawn beside it."""
     run, tip = str(v.get("running") or "")[:10], str(v.get("tip") or "")[:10]
     state = v.get("state")
     if state == "at_tip":
-        return f"the running commit {run} is the tip of origin/{BRANCH}"
+        return f"the running commit {run} was the tip of origin/{BRANCH} when last asked"
     if state == "behind":
         n = v.get("behind")
-        return (f"the host runs {n if n is not None else 'an unknown number of'} commit"
-                f"{'' if n == 1 else 's'} behind what is pushed: running {run}, "
-                f"origin/{BRANCH} is {tip}")
+        return (f"when last asked, the host ran {n if n is not None else 'an unknown number of'} "
+                f"commit{'' if n == 1 else 's'} behind what was pushed: running {run}, "
+                f"origin/{BRANCH} was {tip}")
     if state == "behind_unfetched":
-        return (f"the host runs {run} and origin/{BRANCH} is {tip}, a commit this checkout "
-                "has not fetched, so how far behind is unknown"
+        return (f"when last asked, the host ran {run} and origin/{BRANCH} was {tip}, a commit this "
+                "checkout had not fetched, so how far behind was unknown"
                 + (f" (the fetch failed: {v['fetch_error']})" if v.get("fetch_error")
                    else " until it is fetched"))
     if state == "not_on_remote":
-        return (f"the running commit {run} is not on origin/{BRANCH} ({tip}): a local commit, "
-                "or a remote rewritten under it")
+        return (f"when last asked, the running commit {run} was not on origin/{BRANCH} ({tip}): "
+                "a local commit, or a remote rewritten under it")
     return f"unknown state {state!r}"
 
 

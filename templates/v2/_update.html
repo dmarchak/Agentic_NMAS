@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, check_again -%}
 {#- The Update operation (modules/update_op.py): the last outcome, the preview
     in its parts, and the confirm, which then waits on /health. Re-fetched when
     the `app-pushed` reader announces. -#}
@@ -32,10 +32,10 @@
     {%- elif f.target %}Update from <span class="mono">{{ f.running[:10] }}</span> to <span class="mono">{{ f.target[:10] }}</span>
     {%- else %}Not compared yet{% endif -%}
   </h2>{% if f.value_at %}<span class="muted">asked {{ stamp(f.value_at) }}</span>{% endif %}
-    <button type="button" class="btn btn-small" x-data="check" x-on:click="run" x-bind:disabled="busy" x-text="label" data-url="{{ url_for('update.check') }}">Check again</button>
+    {{ check_again() }}
   </div>
   {%- if f.state == 'at_tip' %}
-  <p>The running commit, <span class="mono">{{ f.running[:10] }}</span>, is the tip of origin/main. Nothing is waiting.</p>
+  <p>The running commit, <span class="mono">{{ f.running[:10] }}</span>, was the tip of origin/main when last asked{% if f.value_at %}, {{ stamp(f.value_at) }}{% endif %}. Nothing was waiting then; <em>Check again</em> asks now.</p>
   {%- else %}
   <dl class="facts">
     <div><dt>What</dt><dd>{% if f.behind is not none %}{{ f.behind }} commit{{ '' if f.behind == 1 else 's' }}{% else %}an unknown number of commits{% endif %} pushed and not running{% if f.behind_since %} <span class="muted">· ahead since {{ stamp(f.behind_since) }} ({{ f.behind_since_basis }})</span>{% endif %}</dd></div>
@@ -69,11 +69,22 @@
   <div class="confirm" x-data="update" data-hash="{{ p.hash }}" data-target="{{ f.target }}"
        data-apply-url="{{ url_for('update.apply') }}" data-status-url="{{ url_for('update.status') }}"
        data-health-url="{{ url_for('health.health') }}" data-timeout="{{ updater_timeout_s }}"
-       data-selectable="{{ 'yes' if p.selectable and confirm.may else 'no' }}">
+       data-selectable="{{ 'yes' if p.selectable and confirm.may else 'no' }}"
+       data-label="Update to {{ f.target[:10] or '?' }}">
     <p>{{ confirm.statement }}</p>
     {%- if not p.selectable %}<p class="muted" id="update-why-not">Not now: {{ p.why_not }}</p>{% endif %}
-    <button type="button" class="btn btn-primary" x-on:click="confirm" x-bind:disabled="blocked" x-show="idle">Update to {{ f.target[:10] or '?' }}</button>
-    <p class="wait" x-show="waiting" x-text="words" role="status" aria-live="polite"></p>
+    {#- Every stage visible: the button says it is sending, a refusal is shown
+        with its reason, and once accepted the stepper follows the updater's own
+        steps (its record names the step it is on). -#}
+    <button type="button" class="btn btn-primary" id="update-confirm" x-on:click="confirm"
+            x-bind:disabled="blocked" x-show="showButton" x-text="buttonText">Update to {{ f.target[:10] or '?' }}</button>
+    <div class="notice notice-danger" x-show="refused" x-cloak role="alert"><p x-text="refusal"></p></div>
+    <ol class="stepper" data-stepper x-show="running" x-cloak aria-label="Update progress">
+      {%- for key, words in steps %}
+      <li class="step step-pending" data-step="{{ key }}"><span class="step-mark" aria-hidden="true"></span><span class="step-words">{{ words|replace('<target>', f.target[:10]) }}</span><span class="step-note"></span></li>
+      {%- endfor %}
+    </ol>
+    <p class="wait" x-show="running" x-text="words" role="status" aria-live="polite"></p>
   </div>
   {%- endif %}
 </section>

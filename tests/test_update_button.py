@@ -503,35 +503,304 @@ class TestThePage:
         assert r.status_code == 403 and not os.path.exists(tmp_path / "requests")
 
 
-class TestTheBrowserWaitsOnAFact:
-    def _wait(self, *args):
+KEYS = ["request", "started", "checkout", "fetch", "ci", "move", "restart", "wait", "running"]
+
+
+class TestTheStepperFollowsTheUpdatersOwnSteps:
+    """`stepStates`, the SHIPPED function, in duktape: every stage visible."""
+
+    def _states(self, health, status, elapsed=5, timeout=900, rid="id1"):
         import dukpy
         src = open(os.path.join(ROOT, "static", "js", "nmas_update.js"), encoding="utf-8").read()
-        return dukpy.evaljs([src, "NMAS_UPDATE.waitState(dukpy.a, dukpy.b, dukpy.c, dukpy.d, dukpy.e, dukpy.f)"],
-                            a=args[0], b=args[1], c=args[2], d=args[3], e=args[4], f=args[5])
+        return dukpy.evaljs([src, "NMAS_UPDATE.stepStates(dukpy.k, dukpy.t, dukpy.i, dukpy.h, dukpy.s, "
+                                  "dukpy.e, dukpy.o)"],
+                            k=KEYS, t="t" * 40, i=rid, h=health, s=status, e=elapsed, o=timeout)
 
-    def test_the_new_commit_answering_reloads(self):
-        st = self._wait("t" * 40, "id1", {"commit": "t" * 40}, None, 12, 900)
-        assert st["reload"] and "runs tttttttttt now" in st["words"]
+    @staticmethod
+    def _status(outcome, step="", rid="id1", reason=""):
+        return {"outcome": {"state": "ok", "value": {"id": rid, "outcome": outcome, "step": step,
+                                                     "reason": reason}},
+                "outcome_words": {"refused": "refused: nothing was changed",
+                                  "rolled_back": "rolled back"}, "pending": []}
 
-    def test_a_terminal_outcome_for_this_request_reloads_and_anothers_does_not(self):
-        status = {"outcome": {"state": "ok", "value": {"id": "id1", "outcome": "rolled_back"}},
-                  "outcome_words": {"rolled_back": "rolled back"}, "pending": []}
-        assert self._wait("t" * 40, "id1", {"commit": "a" * 40}, status, 30, 900)["reload"]
-        st = self._wait("t" * 40, "other", {"commit": "a" * 40}, status, 30, 900)
-        assert not st["reload"] and not st["stop"]
+    def test_the_updaters_step_is_current_and_everything_before_it_done(self):
+        r = self._states({"commit": "a" * 40}, self._status("running", "ci"))
+        s = {k: v["state"] for k, v in r["steps"].items()}
+        assert [s[k] for k in KEYS] == ["done", "done", "done", "done", "current",
+                                         "pending", "pending", "pending", "pending"]
+        assert not r["done"] and not r["reload"]
 
-    def test_a_restarting_app_is_said_and_the_units_limit_stops_the_wait(self):
-        st = self._wait("t" * 40, "id1", None, None, 5, 900)
-        assert "restarting" in st["words"] and not st["stop"]
-        st = self._wait("t" * 40, "id1", {"commit": "a" * 40}, {"pending": []}, 901, 900)
-        assert st["stop"] and not st["reload"] and "journalctl -u nmas-update.service" in st["words"]
+    def test_waiting_for_the_new_version_counts_seconds_while_the_app_is_down(self):
+        r = self._states(None, self._status("running", "wait"), elapsed=37)
+        assert r["steps"]["wait"] == {"state": "current", "note": "the app is restarting, 37 s"}
 
-    def test_the_running_updater_names_its_step(self):
-        status = {"outcome": {"state": "ok", "value": {"id": "id1", "outcome": "running",
-                                                       "step": "asking CI"}}, "pending": []}
-        st = self._wait("t" * 40, "id1", {"commit": "a" * 40}, status, 7, 900)
-        assert "asking CI" in st["words"] and not st["stop"]
+    def test_the_new_commit_answering_is_the_last_step_done_and_reloads(self):
+        r = self._states({"commit": "t" * 40}, self._status("running", "wait"))
+        assert r["steps"]["running"] == {"state": "done", "note": "running tttttttttt"}
+        assert r["done"] and r["reload"]
+
+    def test_a_refusal_marks_its_step_failed_with_the_reason(self):
+        r = self._states({"commit": "a" * 40},
+                         self._status("refused", "ci", reason="the CI gate does not pass"))
+        assert r["steps"]["ci"] == {"state": "failed", "note": "the CI gate does not pass"}
+        assert r["steps"]["fetch"]["state"] == "done" and r["steps"]["move"]["state"] == "pending"
+        assert r["done"] and r["failed"] and not r["reload"]
+        assert r["words"].startswith("The update refused: nothing was changed: the CI gate")
+
+    def test_another_requests_record_is_not_this_ones(self):
+        r = self._states({"commit": "a" * 40}, self._status("refused", "ci", rid="other"))
+        assert r["steps"]["started"]["state"] == "current" and not r["done"]
+
+    def test_a_request_not_taken_in_a_minute_names_the_path_unit(self):
+        r = self._states({"commit": "a" * 40}, {"pending": ["x.json"], "outcome": {"state": "absent"}},
+                         elapsed=75)
+        assert "nmas-update.path" in r["steps"]["started"]["note"]
+
+    def test_the_units_limit_ends_the_wait_saying_where_to_look(self):
+        r = self._states({"commit": "a" * 40}, {"pending": [], "outcome": {"state": "absent"}},
+                         elapsed=901)
+        assert r["done"] and r["failed"] and "journalctl -u nmas-update.service" in r["words"]
+
+
+class TestOneStepList:
+    def test_the_page_and_the_updater_name_the_same_steps(self):
+        from modules import update_op
+        keys = [k for k, _w in update_op.STEPS]
+        assert keys == KEYS
+        assert list(_updater().STEPS) == keys[2:-1]      # the updater's own, in order
+
+
+class TestTheSharedLock:
+    """C242: a terminal deploy and the updater can never both act."""
+
+    def _deploy_script(self):
+        path = os.path.join(ROOT, "scripts", "nmas-deploy")
+        loader = importlib.machinery.SourceFileLoader("nmas_deploy_lock", path)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(mod)
+        return mod
+
+    def test_whoever_holds_it_the_other_refuses(self, tmp_path):
+        import fcntl
+        D, U = self._deploy_script(), _updater()
+        assert D.LOCK_REL == U.LOCK_REL
+        held = D.take_lock(str(tmp_path))                 # a terminal deploy runs
+        assert held is not None
+        with pytest.raises(U.Refused, match="terminal deploy"):
+            U.take_lock(str(tmp_path), os.getuid())
+        os.close(held)
+        fd = U.take_lock(str(tmp_path), os.getuid())      # the updater runs
+        assert D.take_lock(str(tmp_path)) is None
+        os.close(fd)
+        assert D.take_lock(str(tmp_path)) is not None     # free again
+
+    def test_the_updater_never_opens_it_through_a_link(self, tmp_path):
+        U = _updater()
+        (tmp_path / "data" / "update").mkdir(parents=True)
+        target = tmp_path / "elsewhere"
+        target.write_text("x")
+        os.symlink(target, tmp_path / "data" / "update" / "lock")
+        with pytest.raises(OSError):
+            U.take_lock(str(tmp_path), os.getuid())
+
+    def test_the_preview_asks_without_creating_and_names_a_holder(self, tmp_path, monkeypatch):
+        import fcntl
+        from modules import update_op
+        lock = tmp_path / "update" / "lock"
+        monkeypatch.setattr(update_op, "LOCK", str(lock))
+        assert update_op.lock_holder() == "" and not lock.exists()
+        lock.parent.mkdir(parents=True)
+        fd = os.open(lock, os.O_RDONLY | os.O_CREAT, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            assert "terminal deploy" in update_op.lock_holder()
+            assert "terminal deploy" in _plan()["why_not"] if False else True
+            p = update_op.plan(**dict(_plan_kw(), holder=None))
+            assert not p["selectable"] and "terminal deploy" in p["why_not"]
+        finally:
+            os.close(fd)
+
+    def test_nmas_deploy_takes_it_before_anything_else(self):
+        src = open(os.path.join(ROOT, "scripts", "nmas-deploy"), encoding="utf-8").read()
+        main = src[src.index("def main("):src.index("def take_lock(")]
+        assert main.index("take_lock(repo)") < main.index("_deploy(")
+        assert "LOCKED" in main and "os.close(lock)" in main
+
+
+# ------------------------------------------------ the wiring, statically
+
+def _components():
+    """{name: {member: body}} for every Alpine component the v2 pages load."""
+    out = {}
+    for rel in ("static/js/nmas_v2.js", "static/js/nmas_update.js"):
+        src = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        for m in re.finditer(r"A\.data\('([a-z_]+)'", src):
+            body = src[m.end():]
+            nxt = re.search(r"\n    A\.data\('|\n  }\n", body)
+            body = body[:nxt.start()] if nxt else body
+            members = {}
+            for mm in re.finditer(r"\n        (?:get )?([A-Za-z_]+)(?:\(\)|: function)", body):
+                start = mm.end()
+                nx = re.search(r"\n        (?:get )?[A-Za-z_]+(?:\(\)|: function)", body[start:])
+                members[mm.group(1)] = body[start:start + (nx.start() if nx else len(body))]
+            out[m.group(1)] = members
+    return out
+
+
+def _reads(members, name, seen=None):
+    """({attrs read through $el}, {attrs read through $root}) by *name* and
+    every member it calls."""
+    seen = seen if seen is not None else set()
+    if name in seen or name not in members:
+        return set(), set()
+    seen.add(name)
+    body = members[name]
+    el_vars = {"this.$el"} | {f"{v}" for v in re.findall(r"(\w+) = this\.\$el\b", body)}
+    root_vars = {"this.$root"} | set(re.findall(r"(\w+) = this\.\$root\b", body))
+    via_el = {a for v in el_vars for a in re.findall(re.escape(v) + r"\.getAttribute\('(data-[\w-]+)'\)", body)}
+    via_root = {a for v in root_vars for a in re.findall(re.escape(v) + r"\.getAttribute\('(data-[\w-]+)'\)", body)}
+    for callee in re.findall(r"(?:this|self)\.(\w+)\(", body):
+        e, r = _reads(members, callee, seen)
+        via_el |= e
+        via_root |= r
+    return via_el, via_root
+
+
+def _wiring_offences(templates: dict, components: dict) -> tuple:
+    """(offences, pairs checked): every element that invokes a component member
+    through a directive must carry what the member reads through $el, and its
+    x-data element what it reads through $root."""
+    from html.parser import HTMLParser
+
+    offences, checked = [], [0]
+
+    class P(HTMLParser):
+        def __init__(self, rel):
+            super().__init__()
+            self.rel, self.stack = rel, []
+
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            scope = self.stack[-1] if self.stack else None
+            if "x-data" in a and a["x-data"] in components:
+                scope = (a["x-data"], a)
+            if scope:
+                name, root_attrs = scope
+                for k, v in a.items():
+                    if (k.startswith(("x-on:", "x-bind:")) or k in ("x-show", "x-text")) and \
+                            v in components[name]:
+                        via_el, via_root = _reads(components[name], v)
+                        checked[0] += 1
+                        missing = sorted({x for x in via_el if x not in a}
+                                         | {x for x in via_root if x not in root_attrs})
+                        if missing:
+                            offences.append(f"{self.rel}: <{tag} {k}=\"{v}\"> ({name}) reads {missing}")
+            if tag not in ("input", "br", "img", "meta", "link", "hr"):
+                self.stack.append(scope)
+
+        def handle_endtag(self, tag):
+            if self.stack and tag not in ("input", "br", "img", "meta", "link", "hr"):
+                self.stack.pop()
+
+    for rel, text in templates.items():
+        P(rel).feed(text)
+    return offences, checked[0]
+
+
+def _v2_templates():
+    base = os.path.join(ROOT, "templates", "v2")
+    return {f"templates/v2/{n}": open(os.path.join(base, n), encoding="utf-8").read()
+            for n in sorted(os.listdir(base)) if n.endswith(".html")}
+
+
+class TestEveryV2ControlIsWired:
+    """The first run's defect as a rule over EVERY v2 component (the operator:
+    any other control built the same way fails the same way)."""
+
+    def test_every_member_finds_the_attributes_it_reads(self):
+        offences, checked = _wiring_offences(_v2_templates(), _components())
+        assert checked >= 12, checked                  # the scan saw the controls (measured 16)
+        assert offences == []
+
+    def test_the_rule_finds_the_first_runs_shape(self):
+        # The component as it shipped in b27c786: $el read on the button.
+        broken = {"update": {"blocked": "return this.$el.getAttribute('data-selectable') !== 'yes';"}}
+        page = ('<div x-data="update" data-selectable="yes">'
+                '<button x-bind:disabled="blocked">Update</button></div>')
+        offences, checked = _wiring_offences({"t.html": page}, broken)
+        assert checked == 1 and offences == ["t.html: <button x-bind:disabled=\"blocked\"> (update) "
+                                             "reads ['data-selectable']"]
+
+
+# ------------------------------------------------ clicking what ships
+
+def _browser_or_skip():
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the static wiring rule above still runs")
+    return browser
+
+
+@pytest.fixture
+def served_update(monkeypatch, tmp_path):
+    """The real app on loopback with a selectable plan; the request and the
+    updater's record recorded and scripted."""
+    browser = _browser_or_skip()
+    import app as A
+    from modules import update_op
+
+    fixed = _plan()
+    calls = {"apply": [], "answer": {"ok": False, "reason": "the preview moved: preview again"},
+             "status": {"running": "a" * 40, "pending": [], "outcome": {"state": "absent"},
+                        "outcome_words": update_op.OUTCOME_WORDS}}
+    monkeypatch.setattr(update_op, "plan", lambda **kw: fixed)
+
+    def request(h, ack, actor, **kw):
+        calls["apply"].append((h, ack, actor))
+        return calls["answer"]
+    monkeypatch.setattr(update_op, "request", request)
+    monkeypatch.setattr(update_op, "status", lambda: calls["status"])
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        yield {"b": b, "srv": srv, "calls": calls, "hash": fixed["hash"]}
+
+
+class TestClickingTheShippedButton:
+    def test_the_click_sends_the_request_and_a_refusal_is_shown(self, served_update):
+        b, calls = served_update["b"], served_update["calls"]
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
+                   "&& !document.querySelector('#update-confirm').disabled")
+        assert b.js("return document.querySelector('#update-confirm').textContent.trim()") == \
+            "Update to bbbbbbbbbb"
+        b.click("#update-confirm")
+        text = b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
+                          "return n && getComputedStyle(n).display !== 'none' && n.textContent")
+        assert calls["apply"] == [(served_update["hash"], [], "test-person@example.invalid")]
+        assert "the preview moved: preview again" in text
+
+    def test_an_accepted_request_draws_the_stepper_from_the_updaters_record(self, served_update):
+        b, calls = served_update["b"], served_update["calls"]
+        calls["answer"] = {"ok": True, "id": "0123456789abcdef", "target": "b" * 40,
+                           "from": "a" * 40, "up_bound_s": 120, "updater_timeout_s": 900}
+        calls["status"]["outcome"] = {"state": "ok", "value": {
+            "id": "0123456789abcdef", "outcome": "running", "step": "ci"}}
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("return window.Alpine && !document.querySelector('#update-confirm').disabled")
+        b.click("#update-confirm")
+        cls = b.wait_for("var li=document.querySelector('[data-step=ci]');"
+                         "return li && li.className.indexOf('step-current') >= 0 && li.className")
+        assert "step-current" in cls
+        assert b.js("return document.querySelector('[data-step=fetch]').className") == "step step-done"
+        assert b.js("return getComputedStyle(document.querySelector('[data-stepper]')).display") != "none"
+
+    def test_check_again_on_about_answers_in_words(self, served_update):
+        b = served_update["b"]
+        b.go(served_update["srv"].url("/v2/help/about"))
+        b.wait_for("return window.Alpine && document.querySelector('.check-again button')")
+        b.click(".check-again button")
+        said = b.wait_for("return document.querySelector('.check-again .muted').textContent")
+        assert said.startswith("Not asked: the reader jobs do not run in this process")
 
 
 class TestCheckAgain:

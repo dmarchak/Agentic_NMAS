@@ -55,7 +55,16 @@ import time
 
 GATE_PATH = "/usr/local/lib/nmas-update/nmas-deploy"
 STATE_DIR = "/var/lib/nmas-update"
-LOCK_PATH = "/run/nmas-update.lock"
+#: The steps this updater reports, in order, by KEY: its record names the one
+#: it is on, and the Update page draws its stepper from them
+#: (modules/update_op.STEPS holds the same keys; a test holds them equal).
+STEPS = ("checkout", "fetch", "ci", "move", "restart", "wait")
+
+#: The ONE lock a terminal deploy (`nmas-deploy`) and this updater both take
+#: (C242): whoever holds it moves the checkout, and the other refuses by name.
+#: In the checkout's data/, where the service user creates it; root opens it
+#: read-only and never through a link.
+LOCK_REL = os.path.join("data", "update", "lock")
 
 #: How long the new version has to come up before it is rolled back. From
 #: 120 restarts in the host's deploy audit (2026-09-30): restart issued to
@@ -241,12 +250,12 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
     rec = {"id": req["id"], "from": head_req, "to": target, "requested_by": req["requested_by"],
            "requested_at": req["requested_at"], "started_at": iso(clock())}
 
-    report("checking the checkout")
+    report("checkout")
     dirty = git(repo, "status", "--porcelain", "--untracked-files=no")
     if dirty:
         raise Refused("the checkout has local changes, so nothing was moved: "
                       + "; ".join(dirty.splitlines()[:5]))
-    report("fetching origin")
+    report("fetch")
     git(repo, "fetch", "--quiet", "origin")
     head = git(repo, "rev-parse", "HEAD")
     tip = git(repo, "rev-parse", "origin/main")
@@ -260,7 +269,7 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
         git(repo, "merge-base", "--is-ancestor", head, target)
     except RuntimeError:
         raise Refused(f"{target[:10]} is not a fast-forward of {head[:10]}. Nothing was moved")
-    report("asking CI")
+    report("ci")
     gate.git = git                      # the gate's git, as the service user
     code, sentence = gate.ci_verdict(repo, target)
     rec["ci"] = sentence
@@ -275,19 +284,19 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
 
     before = unit()
     rec["pid_before"] = before["MainPID"]
-    report(f"moving the checkout to {target[:10]}")
+    report("move")
     git(repo, "merge", "--ff-only", "--quiet", target)
     try:
-        report("restarting the app")
+        report("restart")
         restart()
-        report("waiting for the new version")
+        report("wait")
         ok, seen, reason = gate.wait_for_running(target, before["MainPID"], health, unit,
                                                  clock, sleep, timeout=UP_BOUND_S)
     except Exception as exc:                             # noqa: BLE001
         ok, seen, reason = False, None, f"the restart raised {type(exc).__name__}: {exc}"
     rec["pid_after"] = ((seen or {}).get("unit") or {}).get("MainPID")
     if ok:
-        return dict(rec, outcome="updated", ended_at=iso(clock()),
+        return dict(rec, outcome="updated", step="wait", ended_at=iso(clock()),
                     reason=f"running {target[:10]} as pid {rec['pid_after']}")
     return rollback(rec, reason, repo=repo, head=head, gate=gate, git=git, restart=restart,
                     unit=unit, health=health, clock=clock, sleep=sleep, report=report)
@@ -297,7 +306,7 @@ def rollback(rec: dict, reason: str, *, repo, head, gate, git, restart, unit, he
              sleep, report) -> dict:
     """The new version did not come up: put back the commit it ran, restart,
     and confirm THAT by identity too."""
-    report(f"rolling back to {head[:10]}")
+    report("wait")
     failed = f"{rec['to'][:10]} did not come up within {UP_BOUND_S} s: {reason}"
     try:
         git(repo, "reset", "--hard", "--quiet", head)
@@ -308,15 +317,38 @@ def rollback(rec: dict, reason: str, *, repo, head, gate, git, restart, unit, he
     except Exception as exc:                             # noqa: BLE001
         ok, why = False, f"{type(exc).__name__}: {exc}"
     if ok:
-        return dict(rec, outcome="rolled_back", ended_at=iso(clock()),
+        return dict(rec, outcome="rolled_back", step="wait", ended_at=iso(clock()),
                     reason=f"{failed}. Rolled back: {head[:10]} runs again")
-    return dict(rec, outcome="rollback_failed", ended_at=iso(clock()),
+    return dict(rec, outcome="rollback_failed", step="wait", ended_at=iso(clock()),
                 reason=f"{failed}. The rollback to {head[:10]} did not come up either: {why}")
 
 
 # ---------------------------------------------------------------------------
 # Where the app reads the outcome
 # ---------------------------------------------------------------------------
+
+def take_lock(repo: str, uid: int):
+    """The shared lock's descriptor, held, or raise `Refused` naming who holds
+    it. Created by root only when absent (O_EXCL, never through a link) and
+    handed to the service user; otherwise opened read-only, never through a
+    link, and only if it is a regular file."""
+    path = os.path.join(repo, LOCK_REL)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        fd = os.open(path, os.O_RDONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+        os.fchown(fd, uid, -1)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise Refused(f"{LOCK_REL} is not a regular file: nothing was moved")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        raise Refused("a terminal deploy (nmas-deploy) is moving the checkout now, so nothing was "
+                      "moved; request the update again when it has finished")
+    return fd
+
 
 def write_state(rec: dict, state_dir: str = STATE_DIR, history: bool = True) -> None:
     os.makedirs(state_dir, mode=0o755, exist_ok=True)
@@ -341,8 +373,6 @@ def main(env=None) -> int:
         print("nmas-update: NMAS_UPDATE_REPO and NMAS_UPDATE_USER must be set by the unit",
               file=sys.stderr)
         return 78
-    lock = open(LOCK_PATH, "w")
-    fcntl.flock(lock, fcntl.LOCK_EX)
     uid = pwd.getpwnam(user).pw_uid
     req, notes = take_requests(os.path.join(repo, "data", "update", "requests"), uid)
     if req is None:
@@ -359,12 +389,17 @@ def main(env=None) -> int:
     os.environ["NMAS_HEALTH_URL"] = env.get("NMAS_UPDATE_HEALTH",
                                             "http://127.0.0.1:5000/health")
 
+    last = {"step": "started"}
+
     def report(step):
+        last["step"] = step
         write_state({"outcome": "running", "id": req["id"], "to": req["target"],
                      "from": req["from"], "requested_by": req["requested_by"], "step": step,
                      "at": iso()}, history=False)
 
+    report("started")
     try:
+        take_lock(repo, uid)            # held until this process exits
         gate = load_gate()
         git = user_git_for(repo, user)
         rec = update(req, repo=repo, gate=gate, git=git,
@@ -375,11 +410,11 @@ def main(env=None) -> int:
                      report=report)
     except Refused as exc:
         rec = {"id": req["id"], "from": req["from"], "to": req["target"],
-               "requested_by": req["requested_by"], "outcome": "refused",
+               "requested_by": req["requested_by"], "outcome": "refused", "step": last["step"],
                "reason": str(exc), "ended_at": iso()}
     except Exception as exc:                             # noqa: BLE001
         rec = {"id": req["id"], "from": req["from"], "to": req["target"],
-               "requested_by": req["requested_by"], "outcome": "failed",
+               "requested_by": req["requested_by"], "outcome": "failed", "step": last["step"],
                "reason": f"the updater raised {type(exc).__name__}: {exc}", "ended_at": iso()}
     if notes:
         rec["notes"] = notes

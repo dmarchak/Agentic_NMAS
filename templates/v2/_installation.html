@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, check_again -%}
 {#- About this installation (routes/v2.installation): each fact from its one source. -#}
 {%- set CI_KIND = {'verified': 'ok', 'failed': 'danger', 'cancelled': 'warn', 'pending': 'warn', 'could_not_ask': 'muted', 'not_judged': 'muted', 'unknown': 'muted'} -%}
 {%- set PUSHED_KIND = {'at_tip': 'ok', 'behind': 'warn', 'behind_unfetched': 'warn', 'not_on_remote': 'warn'} -%}
@@ -16,9 +16,14 @@
       {%- if inst.ci.value_at %}<span class="muted"> · judged {{ stamp(inst.ci.value_at) }}</span>{% endif -%}
     </dd></div>
     <div><dt>Pushed</dt><dd>
-      {{ badge({'at_tip': 'at the tip', 'behind': 'behind', 'behind_unfetched': 'behind', 'not_on_remote': 'not pushed'}.get(inst.pushed.state, inst.pushed.state), PUSHED_KIND.get(inst.pushed.state, 'muted')) }} {{ inst.pushed.words }}
-      {%- if inst.pushed.value_at %}<span class="muted"> · asked {{ stamp(inst.pushed.value_at) }}</span>{% endif -%}
-      {%- if inst.pushed.state in ('behind', 'behind_unfetched') %} <a class="btn btn-small btn-primary" id="about-update" href="{{ url_for('v2.update') }}">Update…</a>{% endif -%}
+      {#- What was known and WHEN (the operator, 2026-09-30): a stored answer,
+          never stated as a fact about now, and a check always offered. -#}
+      {{ badge({'at_tip': 'up to date', 'behind': 'behind', 'behind_unfetched': 'behind', 'not_on_remote': 'not pushed'}.get(inst.pushed.state, inst.pushed.state), PUSHED_KIND.get(inst.pushed.state, 'muted')) }}
+      {%- if inst.pushed.state == 'at_tip' and inst.pushed.value_at %} Up to date as of {{ stamp(inst.pushed.value_at) }}: {% else %} {% endif %}{{ inst.pushed.words }}
+      {%- if inst.pushed.value_at and inst.pushed.state != 'at_tip' %}<span class="muted"> · asked {{ stamp(inst.pushed.value_at) }}</span>{% endif %}
+      <span class="fact-actions">{{ check_again() }}
+      {%- if inst.pushed.state in ('behind', 'behind_unfetched') %}<a class="btn btn-small btn-outline" id="about-update" href="{{ url_for('v2.update') }}">Update…</a>{% endif -%}
+      </span>
     </dd></div>
     <div><dt>Last update</dt><dd>
       {%- if inst.last_update.state == 'ok' and inst.last_update.value %}{{ inst.last_update.words }}{% if inst.last_update.value.ended_at %} <span class="muted">· {{ stamp(inst.last_update.value.ended_at) }}</span>{% endif %}

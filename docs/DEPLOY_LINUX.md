@@ -276,6 +276,14 @@ sudo journalctl -u nmas -f
 
 `NMAS_HEADLESS=1` is what stops the app trying to open a browser at startup.
 
+## A CSP violation in the browser console is not a defect
+
+Cloudflare's Web Analytics, when enabled for the hostname, injects a beacon
+script into every page. The Content-Security-Policy blocks it (as it should:
+the pages load scripts only from the host), and the console reports that.
+Turn Web Analytics off for the hostname in Cloudflare rather than widening the
+policy (docs/UPDATE.md, 2026-09-30).
+
 ## Binding and exposure
 
 **The app has no authentication layer.** It is built for a trusted lab or

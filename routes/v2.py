@@ -138,6 +138,7 @@ def _update_ctx() -> dict:
     return {"p": mask_payload(p), "hist": update_op.history(5),
             "confirm": confirm_part(request, "confirm"),
             "words": update_op.OUTCOME_WORDS, "up_bound_s": update_op.UP_BOUND_S,
+            "steps": update_op.STEPS,
             "updater_timeout_s": update_op.UPDATER_TIMEOUT_S}
 
 

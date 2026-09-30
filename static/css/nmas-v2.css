@@ -390,3 +390,23 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .confirm { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; }
 .confirm p { margin: 0 0 8px; }
 .wait { font-weight: 500; }
+
+/* A disabled control LOOKS disabled (the Update button's first run: a button
+   disabled by a wiring defect looked clickable and did nothing). */
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.fact-actions { display: inline-flex; align-items: center; gap: 8px; margin-left: 8px; vertical-align: middle; }
+.check-again { display: inline-flex; align-items: center; gap: 8px; }
+
+/* The Update page's stepper: each step of the updater's own record. */
+.stepper { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; }
+.stepper .step { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--ink-2); }
+.stepper .step-mark { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); flex: none; }
+.stepper .step-done { color: var(--ink); }
+.stepper .step-done .step-mark { background: var(--ok); border-color: var(--ok); }
+.stepper .step-current { color: var(--ink); font-weight: 600; }
+.stepper .step-current .step-mark { border-color: var(--accent); background: var(--accent-soft); }
+.stepper .step-failed { color: var(--danger); font-weight: 600; }
+.stepper .step-failed .step-mark { background: var(--danger); border-color: var(--danger); }
+.stepper .step-note { font-weight: 400; color: var(--ink-2); }
+
+.check-again .muted:empty { display: none; }

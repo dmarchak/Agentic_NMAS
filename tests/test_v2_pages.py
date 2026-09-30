@@ -61,14 +61,14 @@ class TestTheAppPushedReader:
 
         v = P.judge(str(repos["work"]), repos["shas"][2])
         assert v["state"] == "at_tip" and v["behind"] == 0
-        assert "is the tip of origin/main" in P.words(v)
+        assert "was the tip of origin/main when last asked" in P.words(v)
 
     def test_behind_is_counted_when_the_tip_is_here(self, repos):
         from modules.readers import app_pushed as P
 
         v = P.judge(str(repos["work"]), repos["shas"][0])
         assert v["state"] == "behind" and v["behind"] == 2
-        assert P.words(v).startswith("the host runs 2 commits behind what is pushed")
+        assert P.words(v).startswith("when last asked, the host ran 2 commits behind what was pushed")
 
     def test_a_tip_this_checkout_has_not_fetched_is_said_never_counted(self, repos, tmp_path):
         from modules.readers import app_pushed as P
@@ -81,7 +81,7 @@ class TestTheAppPushedReader:
         _git(other, "push", "-q", "origin", "HEAD:main")
         v = P.judge(str(repos["work"]), repos["shas"][2])
         assert v["state"] == "behind_unfetched" and v["behind"] is None
-        assert "has not fetched" in P.words(v) and "unknown until it is fetched" in P.words(v)
+        assert "had not fetched" in P.words(v) and "unknown until it is fetched" in P.words(v)
 
     def test_a_local_commit_is_not_on_the_remote(self, repos):
         from modules.readers import app_pushed as P
@@ -90,7 +90,7 @@ class TestTheAppPushedReader:
         _git(repos["work"], "commit", "-qam", "local only")
         local = _git(repos["work"], "rev-parse", "HEAD")
         v = P.judge(str(repos["work"]), local)
-        assert v["state"] == "not_on_remote" and "is not on origin/main" in P.words(v)
+        assert v["state"] == "not_on_remote" and "was not on origin/main" in P.words(v)
 
     def test_a_remote_that_cannot_be_asked_raises_never_up_to_date(self, repos):
         from modules.readers import app_pushed as P
@@ -125,13 +125,13 @@ class TestThePushedRow:
     def test_quiet_at_the_tip(self, monkeypatch):
         r = self._source({"running": "a" * 40, "tip": "a" * 40, "state": "at_tip", "behind": 0},
                          monkeypatch=monkeypatch)
-        assert r["rows"] == [] and "is the tip of origin/main" in r["checked"]
+        assert r["rows"] == [] and "was the tip of origin/main when last asked" in r["checked"]
 
     def test_behind_is_a_warning_whose_action_is_the_update_button(self, monkeypatch):
         r = self._source({"running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 2,
                           "branch": "main"}, monkeypatch=monkeypatch)
         (row,) = r["rows"]
-        assert row["level"] == "warning" and row["what"].startswith("The host runs 2 commits behind")
+        assert row["level"] == "warning" and row["what"].startswith("When last asked, the host ran 2 commits behind")
         # The operator, 2026-09-30: the app knows it is behind, so its action
         # is the Update operation, never a terminal command.
         assert row["action"]["open"] == "app_update" and "command" not in row["action"]
@@ -259,7 +259,8 @@ class TestHelpAbout:
             {"running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 2}))
         text = _text(_client().get("/v2/help/about").get_data(as_text=True))
         assert "aaaaaaaaaa" in text and "run 412 passed" in text
-        assert "the host runs 2 commits behind what is pushed" in text
+        assert "when last asked, the host ran 2 commits behind what was pushed" in text
+        assert "Check again" in text               # always offered (the operator, 2026-09-30)
         assert "the checkout's commit" in text and "Who you are" in text
         assert "the top bar carries no commit" in text
 
