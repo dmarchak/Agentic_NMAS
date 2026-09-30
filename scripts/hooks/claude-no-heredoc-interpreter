@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook: refuse a Bash command that feeds a heredoc or a
+here-string into an interpreter.
+
+Wired in `.claude/settings.json` (matcher `Bash`). Claude Code passes the tool
+call as JSON on stdin; exit 2 refuses the call and the message on stderr goes
+back to the agent; exit 0 lets it run.
+
+**Why it exists** (the operator, 2026-09-30). Document text sent to `python3`
+through a shell heredoc was the agent's habit, and it slipped three times, each
+right after saying it would stop, so memory was not the fix. The hazard is
+structural: a heredoc body is ended by the first line equal to its delimiter, so
+text that contains that line (a runbook's own heredocs) ends it early and the
+rest runs as shell. That happened on 2026-09-25 (CLAUDE.md, "Never pass document
+text through a shell heredoc"). The file tools carry text with no delimiter at
+all.
+
+**What is refused:** a `<<` heredoc or `<<<` here-string in a pipeline that
+names an interpreter anywhere (`python3 - <<EOF`, `cat <<EOF | python3`,
+`ssh host python3 - <<EOF`, `bash -c 'python3 -' <<EOF`). **What is not:** a
+heredoc into anything else (`cat > file <<EOF`, a commit message built with
+`$(cat <<EOF)`), and an interpreter reading a FILE (`python3 x.py`,
+`python3 - < x.py`). Words inside a heredoc's body are never read, so a message
+that mentions python is not refused.
+
+An input the hook cannot read is NOT treated as allowed-and-fine silently: it
+exits 1, which Claude Code shows as a hook error and lets the call run, because
+a broken hook must not stop every command.
+"""
+
+import json
+import re
+import shlex
+import sys
+
+INTERPRETER = re.compile(
+    r"^(python[0-9.]*|pypy[0-9.]*|node(js)?|deno|bun|perl[0-9.]*|ruby[0-9.]*|php[0-9.]*"
+    r"|lua[0-9.]*|Rscript|tclsh|osascript|pwsh|powershell|(ba|z|da|k|fi)?sh)$")
+HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+HERESTRING = "<<<"
+SEPARATORS = {";", "&&", "||", "&", ";;"}
+
+MESSAGE = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-heredoc-interpreter): "
+    "this command feeds a heredoc or here-string into an interpreter ({names}). "
+    "Write the script or the text with the Write tool, then run the file "
+    "(`python3 <file>`) or redirect it (`python3 - < <file>`). Document text goes "
+    "through Edit or Write, never a shell heredoc (CLAUDE.md).")
+
+
+def strip_bodies(command: str) -> list:
+    """The command's lines with every heredoc body removed: a body runs from the
+    line after its operator to the line equal to its delimiter (leading tabs
+    allowed for `<<-`)."""
+    kept, pending = [], []
+    for line in command.split("\n"):
+        if pending:
+            if line.lstrip("\t") == pending[0]:
+                pending.pop(0)
+            continue
+        kept.append(line)
+        pending.extend(m.group(2) for m in HEREDOC.finditer(line))
+    return kept
+
+
+def _words(token: str) -> list:
+    """Each word a token can hide: a quoted `bash -c 'cd x && python3 -'` is one
+    token holding several commands."""
+    return [w.strip("'\"`$(){}") for w in re.split(r"[\s;&|]+", token) if w]
+
+
+def _segments(line: str) -> list:
+    """The and-or list's members on one line, each a list of tokens with its
+    pipes kept (a heredoc into `cat` piped to `python3` is one segment)."""
+    try:
+        lex = shlex.shlex(line, posix=True, punctuation_chars=";&|<>()")
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:                      # an unclosed quote: split crudely
+        tokens = re.findall(r"<<<|<<-?|&&|\|\||[;&|]|[^\s;&|]+", line)
+    segs, cur = [], []
+    for t in tokens:
+        if t in SEPARATORS:
+            segs.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    segs.append(cur)
+    return segs
+
+
+def interpreters_fed(command: str) -> list:
+    """The interpreter names in any pipeline that a heredoc or here-string
+    feeds, in order; empty when nothing is refused."""
+    lines = strip_bodies(command)
+    # A trailing backslash continues the logical line.
+    logical, buf = [], ""
+    for line in lines:
+        if line.endswith("\\"):
+            buf += line[:-1] + " "
+            continue
+        logical.append(buf + line)
+        buf = ""
+    if buf:
+        logical.append(buf)
+    found = []
+    for line in logical:
+        if "<<" not in line:
+            continue
+        for seg in _segments(line):
+            joined = " ".join(seg)
+            if not (HEREDOC.search(joined) or HERESTRING in seg
+                    or any(t.startswith("<<") for t in seg)):
+                continue
+            for token in seg:
+                for word in _words(token):
+                    base = word.rsplit("/", 1)[-1]
+                    if INTERPRETER.match(base) and base not in found:
+                        found.append(base)
+    return found
+
+
+def main() -> int:
+    try:
+        call = json.load(sys.stdin)
+        tool = call.get("tool_name")
+        command = (call.get("tool_input") or {}).get("command", "")
+    except (ValueError, AttributeError) as exc:
+        print(f"claude-no-heredoc-interpreter: could not read the hook input ({exc}); "
+              "the command was NOT checked", file=sys.stderr)
+        return 1
+    if tool != "Bash" or not isinstance(command, str):
+        return 0
+    names = interpreters_fed(command)
+    if names:
+        print(MESSAGE.format(names=", ".join(names)), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
