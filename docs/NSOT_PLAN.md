@@ -5501,18 +5501,13 @@ chooses).
 7. **API tokens** replace Cloudflare service tokens: scoped to a role on a network, hashed,
    shown once, expiring. The AI agent becomes an identity with its role (VIEWER plus
    `author`), the enforcement point Stage 8.3 needs.
-8. **Nothing in front** (C248):
-   - a production server (gunicorn, one gevent worker) replacing Werkzeug's development
-     server;
-   - HTTPS through Caddy on the host, with the same Caddyfile Stage 10's container ships:
-     an internal CA first, own certificate optional;
-   - the app bound to loopback behind it;
-   - the client address read from that one hop only (the pinned no-ProxyFix test
-     rewritten to pin exactly that);
+8. **Nothing in front** (C248). The production server, HTTPS, the loopback bind and
+   the one trusted proxy hop are **9.S's** (gunicorn behind nginx, done FIRST). This step
+   keeps the app's own half:
    - a CSRF token on every state-changing request;
    - Socket.IO restricted to the configured origin;
-   - rate limits on sign-in, tokens and gated POSTs;
-   - HSTS and `X-Frame-Options`;
+   - the app's OWN rate limits on sign-in, tokens and gated POSTs (nginx's are defence
+     in depth, never the only layer);
    - trap and NetFlow sources allowlisted;
    - a test listing every place that assumed something in front, exact both ways.
 9. **The operator's lab moves to Authentik** (the operator's host steps; NSOT_STAGE10_PLAN
@@ -5547,6 +5542,7 @@ table) and 7.1 (69 commits, an operation made whole across the app), which are t
 closest finished stages. Checked against actuals when it closes.
 
 **Depends on:**
+- 9.S (HTTPS and the serving stack, which sessions and Secure cookies need);
 - P.8 (a network role is scoped to what P.8 makes a network);
 - Stage 7's v2 screens (the user screen, controls drawn from `may`);
 - Stage 8.3 for the agent's role (step 7 provides the enforcement point either way).
@@ -5571,6 +5567,202 @@ The design is [NSOT_STAGE10_PLAN.md](NSOT_STAGE10_PLAN.md) section 12.
 - **Then:**
   - the second vendor (Arista EOS, cEOS) opens Stage 10;
   - the AI authoring pipeline is Stage 8's 8.10, run after this and P.10's sandbox.
+
+#### 9.S — A production serving stack: gunicorn behind nginx (SCOPED 2026-09-30, the operator; not built)
+
+**Why.** Every request is served by Werkzeug, Flask's development server
+(`socketio.run(..., allow_unsafe_werkzeug=True)`, app.py). It is one process
+and not hardened. That is survivable behind the operator's Cloudflare setup,
+and not for software others expose on their own networks (Stage 10's
+principle). **C189's cause, measured 2026-09-30 (via LAN, read-only):** the host
+has no `simple-websocket`, so Flask-SocketIO's threading mode cannot serve a
+WebSocket and the live channel stays on long-polling.
+
+**1. Gunicorn, and the catch: the background work runs IN the web process.**
+Measured 2026-09-30:
+- **32 thread-start sites in 17 files.**
+- **Started with the app, about 19 long-lived threads:**
+  - the session reaper;
+  - the event monitor;
+  - the agent loop (6 thread sites in `agent_runner`);
+  - the drift checker;
+  - the Socket.IO heartbeat;
+  - **11 reader threads:** app-pushed, baseline-usability, ci-verdict,
+    freshness, grafana-alerts, grafana-dashboards, integrations, job-health,
+    netbox-secrets, reachability, remote-publication;
+  - the Prometheus targets keeper;
+  - the SNMP trap receiver (UDP 1162);
+  - the NetFlow receiver (UDP 9996).
+- **Started by requests:**
+  - capture and rotation jobs (`capture_job`'s registry);
+  - the NetBox import and removal (`routes/netbox_safety.py`, 2);
+  - the remote push (`routes/remote.py`);
+  - the post-commit push and archive hooks (`hooks.py`, 2);
+  - bulk operations (2);
+  - the inventory refresh;
+  - the terminal (retiring in 7.8);
+  - Check again's run on request (`reader_job.request_run`).
+- **In-memory state a second process would not share:**
+  - `capture_job`'s registry (a job's result is read by id);
+  - the reachability status (`device_status_cache`);
+  - `reader_job`'s request registry and announcement times;
+  - the SSH session pool and C97's per-device session budget;
+  - the NetBox progress registry (C137);
+  - the agent's pause event;
+  - the Socket.IO connections the emitter announces to.
+- **Already safe across processes**, because they are files with `flock`:
+  - device holds (C98);
+  - `filestore.PathLock` stores (C158);
+  - the settings lock (C20);
+  - the credential store (C157).
+
+**Three phases (the operator, 2026-09-30, amended the same day for SCALE).**
+- **Phase 1, today:** Werkzeug's development server, one process.
+- **Phase 2, this item, the INTERIM step: ONE gunicorn worker with the threaded worker
+  class (`gthread`).**
+  - Flask-SocketIO stays in threading mode, with `simple-websocket` added to the lock,
+    so WebSockets work.
+  - **Not gevent or eventlet:** every device read here is a blocking Netmiko/Paramiko
+    session on a thread. Monkey-patching a threaded program changes every one of them,
+    and eventlet is in maintenance.
+  - **One process:** every background job runs exactly once and every in-memory
+    registry stays whole, which is what the program assumes today.
+  - **Gunicorn adds:** a supervised worker, graceful restarts, and worker timeouts, in
+    place of the development server.
+- **Phase 3, the TARGET architecture for enterprise use: a web tier and a worker tier.**
+  It is **Stage 10's item 10.W**, done BEFORE the release and aimed by 9.S's load test
+  (step 6 below), never deferred as optional. **Why several gunicorn workers alone are not
+  the answer:**
+  - page loads are already cheap by design (the reader pattern: no per-device work per
+    request), so more web workers help MANY USERS;
+  - they do nothing for a large FLEET, whose cost is DEVICE WORK (reads, reachability,
+    deploys, drift, rotation), which runs in background jobs.
+
+**2. Nginx in front.**
+- **TLS termination.** This is how "HTTPS built in" is delivered (it replaces
+  the Caddy of NSOT_STAGE10_PLAN.md 4.1):
+  - a certificate generated on first run;
+  - or the installer's own;
+  - ACME where the install is reachable for it. Nginx has no ACME client, so
+    ACME is a companion (certbot on a timer, the HTTP-01 webroot or DNS-01),
+    and the docs say so.
+- **Limits:**
+  - request size (`client_max_body_size`, from the largest legitimate upload,
+    measured);
+  - timeouts for slow clients;
+  - **`limit_req` on sign-in and token endpoints.**
+  - `proxy_read_timeout` is derived from the LONGEST MEASURED synchronous
+    request, not guessed. The deploy apply waits out settle windows and BGP's
+    hold time (up to 180 s more, C178), inside one request.
+- **Security headers:** HSTS, `X-Content-Type-Options`, `Referrer-Policy`,
+  `X-Frame-Options`.
+  - **The CSP stays the app's:** it is per route (the v2 pages' strict policy),
+    and nginx must never add a second.
+- **Static assets served by nginx directly, with the app's existing rules:**
+  - a versioned URL (the `?v=` `url_defaults` adds) is `public, max-age=30d,
+    immutable`;
+  - an unversioned one is `no-cache`;
+  - HTML stays the app's (`no-cache` plus an ETag).
+
+  A test compares nginx's rule with the app's, so the two owners cannot drift.
+- **WebSocket proxying** (`Upgrade` and `Connection` headers, a long read
+  timeout): closes C189, with `simple-websocket` in the lock.
+- **The app binds 127.0.0.1** (an internal network in the release); only nginx
+  faces the network.
+- **Trusted-proxy headers, handled explicitly, never trusted by default:**
+  - the app reads `X-Forwarded-For` and `X-Forwarded-Proto` ONLY when the peer
+    is nginx's own address, one hop;
+  - an installer's own reverse proxy in front of nginx is named in nginx's
+    `set_real_ip_from`, and nothing else is believed;
+  - the pinned no-ProxyFix test is rewritten to pin exactly this, including a
+    forged header from anywhere else being ignored.
+
+**3. Stated honestly: nginx is defence in depth, not the app's security.** It
+can rate-limit sign-in and add headers. It cannot fix a missing permission
+check. Both layers are required: 9.I's own rate limits, CSRF tokens and gates
+stay in the app.
+
+**4. What it touches, each named:**
+- **How the app starts:** `flask-app.service`'s `ExecStart` becomes gunicorn,
+  a host step, and nginx is installed and configured, another. In the release,
+  containers.
+- **The identity check after a restart (a CATCH):**
+  - under gunicorn, systemd's `MainPID` is gunicorn's MASTER, and `/health`
+    answers from a WORKER, another pid;
+  - `nmas-deploy`'s `wait_for_running` and the updater (its root-owned copy of
+    the same gate) decide "restarted" by the answering pid equalling
+    `MainPID`, so both would refuse every restart;
+  - `/health` also reports its parent pid, the identity rule becomes "answered
+    by MainPID or a child of it", and both root-owned copies are re-installed:
+    a `Host-Step:`.
+- **The deploy gate's running-commit check:** unchanged. `/health` still
+  reports the loaded commit, asked on loopback directly, not through nginx.
+- **The Update button's updater:** its restart and `/health` confirmation, as
+  above.
+- **The cache-header logic** (`app.py`'s `after_request`): shared with nginx's
+  static rule, as above.
+- **The CSP:** unchanged, the app's alone.
+- **The identity layer's peer (a CATCH):**
+  - behind nginx every request's `REMOTE_ADDR` is 127.0.0.1;
+  - the trusted-peer check (`cf_access_trusted_peers`, the replay defence)
+    would then trust nothing or everything;
+  - `identity.peer_address()` takes the client address from nginx's header,
+    only when the peer is nginx.
+- **Secure cookies and `url_for(_external=True)`:** they read
+  `X-Forwarded-Proto` from nginx.
+- **The log:** Werkzeug's access lines in `logs/device_manager.log` are
+  evidence this project uses (they proved Check again's clicks reached the app,
+  C244). Gunicorn's access log keeps that line.
+- **The UDP listeners (traps, NetFlow) and the ZTP responder:** not behind
+  nginx. In phase 2 they run once, in the one worker; in phase 3 (10.W) they move to the
+  worker tier.
+
+**6. MEASURE BEFORE THE REVAMP: a load test with a few hundred simulated devices**, the
+last step of this item. It aims phase 3 (10.W) at where time actually goes, never at an
+assumed bottleneck.
+- **What it extends:** the existing scale work (`tests/fixtures/fleet_scale.py`,
+  `scripts/nmas-scale-report`).
+- **The simulator, on loopback (the suite's confinement allows it):**
+  - an SSH simulator answering as IOS or IOS-XE devices from the REAL captured outputs in
+    `tests/fixtures/operational/`, with a configurable connect latency and per-command
+    time, including a slow device at the measured worst (s3's 13.7 s connect, C205);
+  - FakeNetBox;
+  - real git repositories holding hundreds of goldens.
+- **Runs at 300 and 900 devices** (two points, so linear and worse-than-linear growth can
+  be told apart), through the real code paths, recording wall time per step and where
+  it goes. The steps:
+  - a fleet capture (Save All);
+  - a drift run;
+  - one reachability cycle;
+  - each reader's run;
+  - a NetBox import;
+  - a deploy batch;
+  - a restore preview;
+  - the git operations (a commit of N goldens, a history per device);
+  - page loads with 1, 10 and 50 simultaneous users.
+- **The numbers already measured, which it starts from:**
+  - **at 900 simulated devices, one operation on every device:** 0.73 ms to read the
+    inventory, 0.3 s to read every golden, **7.2 s for a `git log` on every device**, and
+    **225 s for an SSH round trip to every device, one after another**;
+  - the page: 647 KB fixed plus 2,239 bytes per device;
+  - Save All on the real nine: **101 s** reading one device after another, **40.9 s** all
+    at once (C188);
+  - the slowest measured connect: 13.7 s (s3, C205).
+- **Its report is the first input of 10.W**, stated in 10.W's plan before any of the split
+  is built.
+
+**5. Placement: Stage 9, BEFORE 9.I's sign-in work**, so the operator's lab
+runs this way and is tested before Stage 10's release depends on it.
+- 9.I's sessions and rate limits need HTTPS, which this delivers. 9.I's step 8
+  keeps the app-side hardening (CSRF, the Socket.IO origin, the in-front
+  inventory test), and its TLS and production-server parts are this item's.
+- **In Stage 10's Compose file:** an nginx container, the web tier and the worker tier
+  (10.W), with Redis (and a database where 10.W places state).
+- **Size:** 25 to 45 commits, estimated from P.3's 20 (a change across the
+  app's entry points), plus two host steps and the identity catches. Checked
+  when it closes.
+- **Depends on:** nothing unbuilt. It closes C189, and makes 9.I's HTTPS
+  possible.
 
 ---
 
@@ -5626,9 +5818,11 @@ one install's transport, not the design.
    - Disabled controls say what they need.
    - Every action records the role and scope held (`Actor-Role:`).
 5. **Secure with nothing in front:**
-   - HTTPS through a bundled Caddy (an internal CA, the installer's own certificate, or
-     ACME);
-   - a production server;
+   - gunicorn behind nginx (Stage 9's 9.S): nginx terminates TLS (a certificate generated
+     on first run, the installer's own, or ACME through a certbot companion), limits,
+     headers, static assets, WebSockets; one gthread worker as the interim (phase 2), and
+     the web tier and worker tier (10.W, phase 3) before the release, aimed by a load test
+     of a few hundred simulated devices;
    - CSRF tokens, the Socket.IO origin, rate limits, headers, trap source allowlists;
    - a test listing everything that assumed something in front (C248).
 6. **A first-run wizard over the existing Settings screens,** locked to a one-time setup
@@ -5672,6 +5866,7 @@ one install's transport, not the design.
       a release blocker.
 
 **The Stage 9 part:**
+- **9.S** (gunicorn behind nginx, first; it closes C189);
 - **9.I** (identity, roles, running with nothing in front), in which the operator's lab
   moves to Authentik via OIDC: one login across NMAS, Grafana and NetBox, the tunnel kept
   as transport, and no `auth.proxy` (it does not exist in the code: NMAS draws Grafana's
@@ -5679,12 +5874,66 @@ one install's transport, not the design.
 - **9.P** (the platform layer).
 
 **Size, estimated from finished stages of the same kind, checked when each closes:**
+- 9.S: 25 to 45 commits, plus its load test;
+- 10.W, the web/worker split: 80 to 160 commits (no finished stage of its kind; aimed and
+  re-sized by the load test);
 - 9.I: 90 to 150 commits;
 - 9.P: 60 to 110;
 - 8.10: 30 to 60;
 - Stage 10 proper, with the second vendor: 110 to 210, plus the acceptance run's findings.
 
 No finished stage is of Stage 10's kind, so its range is the widest.
+
+**10.W — The web tier and the worker tier: the target architecture for scale (SCOPED
+2026-09-30, the operator; not built; done BEFORE the release, aimed by 9.S's load test).**
+- **Why:** page loads are cheap by design, and a large fleet's cost is device work, which
+  runs in background jobs.
+
+**(1) A WEB TIER holding no background job:** many gunicorn workers, or several
+containers, for many users. It serves pages and fragments from the stores and ENQUEUES
+work; it never opens a device session.
+
+**(2) A WORKER TIER running device work through a JOB QUEUE:**
+- **What moves into the queue:**
+  - captures, deploy and restore applies, rotations, persists, retirements, adoptions,
+    onboarding's phase 2;
+  - NetBox imports and removals;
+  - drift runs, the reachability probes and the readers' reads;
+  - the post-commit push.
+- **The pool grows with the fleet.**
+- **The per-device rules keep their owners:**
+  - C97's session limit per device;
+  - C98's one-operation-per-device hold;
+  - a deploy batch stays SEQUENTIAL inside itself (its circuit breaker), while different
+    devices' work runs at once;
+  - a job's result is read by id from any web process.
+- **Recommendation:** a small queue on Redis (RQ or Dramatiq), not Celery's weight, unless
+  the load test says otherwise.
+
+**(3) SHARED STATE both tiers use.** Today's files with `flock` are safe across processes
+on ONE host (the C157 and C158 hardening), not across hosts.
+
+| State | Today | Moves to |
+|---|---|---|
+| The job queue, job results (`capture_job`'s registry) | threads and memory | Redis |
+| The announcement channel (C58) | the web process's Socket.IO emitter | Redis pub/sub (Flask-SocketIO's `message_queue`), so a worker's announcement reaches a browser on any web process |
+| Device holds (C98) and the session budget (C97) | `flock`; in-process counts | Redis locks and counters with LEASES, so a holder that dies releases them, as the kernel does today |
+| Reader values (`data/readers/*.json`), reachability status | files; memory | Redis (re-derivable, rule 10), or the database where a value must survive Redis |
+| Audit trails and records (receipts, reveal, terminal, inventory edits, onboarding runs, rotation audit, update requests, the NetBox created, modified and removal records, break-glass exports) | append-only JSONL and JSON files | **a database** (PostgreSQL): many writers across hosts, and records are what must never be lost |
+| Settings, the credential store, the inventory (`devices.csv`, `source.json`) | JSON and CSV files, `flock` | the database (secrets still encrypted with the Fernet key, which both tiers mount as a secret) |
+| **The record: goldens, intent, templates, bindings, approvals, the monitoring profile, the manifest, tags and baselines** | **git, per list** | **STAYS IN GIT.** Versioned, pushed to the remote, restorable. The worker tier is its one WRITER (one queue lane per list's repository); the web tier reads committed state from reader values and the worker's answers, never from a shared network file system, where `flock` is unreliable |
+
+**Its first step is 9.S's load-test report**, stated here before anything is built, so the
+split targets the measured time (device I/O, git, NetBox, the readers).
+
+**Supported shapes, stated:**
+- one host running both tiers (the default install; the files' `flock` keeps working for
+  what stays in files);
+- several hosts once the state above has moved.
+
+**Size:** 80 to 160 commits. No finished stage is of its kind; the load test re-sizes it.
+
+**Depends on:** 9.S (phase 2, and the load test).
 
 **Depends on:**
 - Stage 9 (9.I and 9.P first for this purpose, and the required list);

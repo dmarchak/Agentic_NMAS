@@ -46,6 +46,13 @@ optional convenience, after the container route works.
 - **The ZTP TFTP responder** is the same image with a different command. It needs different
   networking (1.4), so it runs as its own service in the Compose file. It is not a second
   image.
+- **nginx**, the official image, not built here: the only container facing the network
+  (4.1).
+- **The web tier and the worker tier (10.W, the target architecture):** the web container
+  runs gunicorn with many workers and holds no background job; the worker container runs
+  device work from a job queue; Redis carries the queue and the announcements, and a
+  database holds the state 10.W moves out of files. One image, three commands (web,
+  worker, the ZTP responder).
 
 **The VM image** is a small Linux system with Docker and the same Compose file
 preinstalled, for people who do not want to install Docker. It holds the same containers
@@ -100,7 +107,7 @@ loses anything. Measured, today's `data/` and its neighbours:
 
 | Feature | Port | Docker networking | What it means for someone's network |
 |---|---|---|---|
-| Web, Socket.IO | 443 (and 80 for the redirect and ACME) | published through the bundled TLS proxy (4.1) | The only port a browser needs |
+| Web, Socket.IO | 443 (and 80 for the redirect and ACME) | published by the nginx container (4.1); the web container is on the Compose network only | The only port a browser needs |
 | SSH to devices | outbound 22 | bridge (outbound NAT) | The container reaches the management network through the host's routing; nothing to open |
 | SNMP polls, NetBox, Grafana, Prometheus, Loki, Oxidized, Kea's control agent | outbound | bridge | Same |
 | SNMP traps | UDP 1162 (per-list port) | published | Devices send traps to the HOST's address |
@@ -416,19 +423,23 @@ A later role change never rewrites what was held.
 
 ## 4. Secure without anything in front
 
-### 4.1 HTTPS built in
+### 4.1 HTTPS built in: gunicorn behind nginx (Stage 9's 9.S)
 
-**Recommendation: a bundled Caddy container is the TLS endpoint**, part of the product
-(not something the installer supplies). It publishes 443 and 80, and forwards to the app
-on the Compose network only; the app's own port is never published. Its three modes:
-- **first run (default):** a certificate from Caddy's internal CA, whose root the wizard
-  offers to download;
+**The operator's decision (2026-09-30): nginx, in front of gunicorn**, part of the product
+(not something the installer supplies), designed and first run in the operator's lab as
+Stage 9's item 9.S ([NSOT_PLAN.md](NSOT_PLAN.md)). This replaces the Caddy first written
+here. The nginx container publishes 443 and 80; the web container is on the Compose
+network only. TLS in three modes:
+- **first run (default):** a certificate generated on first run (a self-signed CA whose
+  root the wizard offers to download);
 - **own certificate:** the installer supplies a certificate and key (a volume);
-- **ACME:** where the install has a public name, or a DNS provider for the DNS-01
-  challenge.
+- **ACME:** where the install has a public name, through a certbot companion (nginx has no
+  ACME client of its own), HTTP-01 or DNS-01.
 
-**The alternative** is the app's server holding the certificate itself: no second
-container, but ACME would be hand-built.
+Nginx also carries the request limits, sign-in rate limiting, the security headers (the
+CSP stays the app's), the static assets under the app's cache rules, and WebSocket
+proxying (C189). **It is defence in depth, never the app's security**: the app keeps its
+own rate limits, CSRF tokens and gates.
 
 **The one change to a pinned rule:** today no `X-Forwarded-For` is read and no ProxyFix
 is installed (pinned by tests). Behind the bundled proxy the app must read the client
@@ -439,8 +450,8 @@ test is rewritten to pin that, including a forged header from anywhere else bein
 
 | Today | Where | Recommendation |
 |---|---|---|
-| Werkzeug's development server (`allow_unsafe_werkzeug=True`) | app.py:4253 | A production server: gunicorn with one gevent worker (Flask-SocketIO's supported shape); the threading async mode revisited with it |
-| Bound to 0.0.0.0 by default | config.py:450 | The app binds the Compose network only; the proxy is the one listener |
+| Werkzeug's development server (`allow_unsafe_werkzeug=True`) | app.py:4253 | Phase 2 (9.S): gunicorn with ONE `gthread` worker, since about 19 background threads run in the web process. Phase 3 (10.W, before the release): a web tier with no background work, and a worker tier running device work from a queue |
+| Bound to 0.0.0.0 by default | config.py:450 | The app binds loopback (the Compose network in the release); nginx is the one listener |
 | No CSRF protection on any route | (absent) | A CSRF token for every state-changing request from a session (the header form fits the fetch/htmx pages), plus `SameSite=Lax` cookies. **C248 records whether this is live exposure behind Access today** |
 | Socket.IO accepts any origin | app.py:141 | The configured origin only |
 | No rate limiting | (absent) | Sign-in, token use and every gated POST rate-limited per identity and per address |
@@ -691,6 +702,7 @@ exists).
 
 **Estimated from finished stages of the same kind** (the project's rule; an unfinished
 stage's numbers only show the part that went to plan):
+- **9.S** (gunicorn behind nginx): 25 to 45 commits, from P.3's 20, plus two host steps.
 - **9.I** is closest to P.3 (a gate over every endpoint: 20 commits, 13 h 41 min to
   complete) and 7.1 (an operation made whole across the app: 69 commits, 20 h 41 min).
   It is several of each: providers, sessions, roles over 120 endpoints, the records,
