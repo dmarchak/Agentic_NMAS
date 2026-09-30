@@ -974,7 +974,8 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
      until the row was where it looks. **So C117's onboard, seed, deploy loop is sound as
      designed**, with the approval as an explicit step and C216 decided first if the
      acceptance is to show a heartbeat.
-  2. **ADOPT, for brownfield: scoped, not built.** Onboarding's phase 2 without phase 1:
+  2. **ADOPT, for brownfield: BEING BUILT (2026-09-29). Step 1, the account, is built:** `modules/nsot/adopt.add_tool_account()` adds the tool's account (`nmas` by default, never the supplied name) with rotation's staging, push, fresh-login verify and record, reached through the SUPPLIED credential on a held session; an account by that name already on the device is refused as somebody's; a failed verify removes only what was added (`no username <tool>`, read back gone); a failed record keeps the staged copy and says it is the only one. Found building it: `nmas-rotation-recover` cannot settle an adoption's staged copy (it needs an inventory row an adopting device does not have), so adopt's apply carries its own recovery. Remaining: the apply (identity, the supplied credential staged, verify, capture, the account, persist with running against startup previewed, golden, NetBox and its adoption record, promote), the Device page's screen, and the real run. The scope as decided:
+     Onboarding's phase 2 without phase 1:
      the person supplies list, address, platform and the device's CURRENT credential;
      the tool stages that credential exactly as phase 1 stages the bootstrap one (the
      device override, keyed on the address), verifies (reaching it is the
