@@ -366,8 +366,25 @@ class TestPanelData:
         assert lab["fake"].queries[-1]["from"] == "now-3600s"
 
     def test_the_table_is_rows_from_the_instant_answer(self, lab):
+        """Drawn as Grafana draws it: the panel's own `organize` step drops
+        the columns it excludes and renames the rest (Value is State), and the
+        State column carries the panel's value mapping (1 up, 2 down)."""
         code, p = self._panel(lab, 3)
-        assert code == 200 and p["type"] == "table" and p["rows"] and "value" in p["columns"]
+        assert code == 200 and p["type"] == "table" and p["rows"]
+        assert p["columns"] == ["Description", "Interface", "State"]
+        state = p["column_mappings"][2]
+        assert state[0]["type"] == "value" and state[0]["options"]["1"]["text"] == "up"
+        assert p["column_mappings"][:2] == [[], []]
+
+    def test_a_panel_with_no_organize_step_keeps_its_columns(self):
+        from modules import panels
+
+        panel = {"type": "table", "targets": [{"refId": "A"}]}
+        answer = {"results": {"A": {"frames": [{"schema": {"fields": [
+            {"name": "Time"}, {"name": "Value", "labels": {"ifName": "Gi1", "device": "r3"}}]},
+            "data": {"values": [[1], [1]]}}]}}}
+        p = panels.render_payload(panel, answer, 3600)
+        assert p["columns"][-1] == "value" and p["column_mappings"][-1] == []
 
     def test_an_empty_answer_is_an_empty_series_list_the_page_names(self, lab):
         lab["fake"].answers = {"rate(ifHCInOctets": _fixture("dsquery", "empty_device.json")["answer"]}
@@ -695,3 +712,50 @@ class TestTheSelectorSaysWhyItOffersOne:
         assert "Not offered: 4 dashboards that cannot show a single device" in text
         assert text.count("no variable named device") == 4
         assert "Node Exporter Full" in text
+
+
+class TestValueMappings:
+    """The operator (2026-09-30): "Yes" and "up" instead of 1, in the app,
+    for every dashboard. Grafana's value, range and special kinds, from the
+    REAL mappings in rcn-lab1-snmp (panel 104's defaults; panel 3's override
+    on its renamed State field)."""
+
+    REAL = [{"options": {"1": {"color": "green", "index": 0, "text": "Up"},
+                         "2": {"color": "red", "index": 1, "text": "Down"},
+                         "7": {"color": "yellow", "index": 2, "text": "Lower Layer Down"}},
+             "type": "value"}]
+
+    def _map(self, values, mappings):
+        return json.loads(_eval("nmas_panels.js", "NMAS_PANELS",
+                                f"mapValue ? {json.dumps(values)}.map(function (v) {{ "
+                                f"return window.NMAS_PANELS.mapValue(v, {json.dumps(mappings)}); }}) : 0"))
+
+    def test_the_real_value_mapping(self):
+        assert self._map([1, 2, 7, "1", 1.0, 5], self.REAL) == [
+            {"text": "Up", "kind": "ok"}, {"text": "Down", "kind": "danger"},
+            {"text": "Lower Layer Down", "kind": "warn"}, {"text": "Up", "kind": "ok"},
+            {"text": "Up", "kind": "ok"}, None]
+
+    def test_range_and_special_and_none(self):
+        m = [{"type": "range", "options": {"from": 0, "to": 0.5, "result": {"text": "No", "color": "red"}}},
+             {"type": "range", "options": {"from": 0.5, "to": None, "result": {"text": "Yes", "color": "green"}}},
+             {"type": "special", "options": {"match": "null", "result": {"text": "no data", "color": "text"}}}]
+        assert self._map([0, 1, None], m) == [{"text": "No", "kind": "danger"}, {"text": "Yes", "kind": "ok"},
+                                              {"text": "no data", "kind": ""}]
+        assert self._map([1], []) == [None]
+
+    def test_the_reader_keeps_the_real_mappings_and_the_organize_step(self):
+        from modules.readers import grafana_dashboards as G
+
+        dash = _fixture("dashboards", "rcn-lab1-snmp.json")
+        got = {p["id"]: p for p in G._panels(dash) if p.get("type") != "row"}
+        assert got[104]["mappings"] == self.REAL
+        assert got[3]["field_mappings"]["State"][0]["options"]["2"]["text"] == "down"
+        assert got[3]["organize"]["rename"] == {"Value": "State", "ifAlias": "Description", "ifName": "Interface"}
+        assert "device" in got[3]["organize"]["exclude"]
+
+    def test_the_drawing_uses_them(self):
+        src = _js("nmas_panels.js")
+        assert "mapValue(p.value, p.mappings)" in src                         # a stat
+        assert "mapValue(p.rows[i][j], (p.column_mappings || [])[j])" in src  # a table cell
+        assert "mapValue(v, p.mappings)" in src                               # a stepped axis

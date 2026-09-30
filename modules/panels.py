@@ -256,15 +256,33 @@ def render_payload(panel: dict, answer: dict, seconds: int) -> dict:
            "unit": panel.get("unit") or "", "range": describe(seconds), "step": step_for(seconds),
            "series_total": len(series), "series_shown": len(shown),
            "note": (f"{len(series)} series: the first {MAX_SERIES} are drawn" if len(series) > MAX_SERIES else "")}
+    # VALUE MAPPINGS travel with the payload and are applied where the value
+    # is drawn: a stat's value, a table's column, a stepped series' axis.
+    mappings = list(panel.get("mappings") or [])
     if panel.get("type") == "table":
         keys = sorted({k for s in shown for k in s["labels"] if k not in ("__name__", "instance", "job")})
-        out["columns"] = keys + ["value"]
-        out["rows"] = [[s["labels"].get(k, "") for k in keys] + [s["values"][-1] if s["values"] else None]
+        # The panel's own `organize` step, as Grafana applies it: columns it
+        # excludes are dropped and those it renames drawn by their new name.
+        # Grafana calls the value column `Value`; with no organize step it
+        # keeps the name it always had here.
+        org = panel.get("organize") or {}
+        exclude, rename = set(org.get("exclude") or []), dict(org.get("rename") or {})
+        src = [k for k in keys if k not in exclude] + ["Value"]
+        names = [rename.get(k, k) for k in src]
+        if not org:
+            names[-1] = "value"
+        fields = panel.get("field_mappings") or {}
+        out["columns"] = names
+        out["rows"] = [[s["labels"].get(k, "") for k in src[:-1]] + [s["values"][-1] if s["values"] else None]
                        for s in shown]
+        out["column_mappings"] = [fields.get(n) or fields.get(k) or (mappings if k == "Value" else [])
+                                  for k, n in zip(src, names)]
     elif panel.get("type") in ("stat", "gauge", "bargauge"):
         last = [s["values"][-1] for s in shown if s["values"] and s["values"][-1] is not None]
         out["value"] = last[0] if len(last) == 1 else (sum(last) if last else None)
         out["thresholds"] = panel.get("thresholds") or []
+        out["mappings"] = mappings
     else:
         out["series"] = [{"label": s["label"], "times": s["times"], "values": s["values"]} for s in shown]
+        out["mappings"] = mappings
     return out

@@ -75,6 +75,15 @@
   /* PURE: which kind a stat's value is, from Grafana's threshold steps: the
      last step whose value the number reaches (the first step's null is the
      base). Named colours map onto the page's three kinds. */
+  /* PURE: a Grafana colour name as a kind the page draws. */
+  function colourKind(colour) {
+    colour = String(colour || '').toLowerCase();
+    if (colour.indexOf('green') >= 0) return 'ok';
+    if (colour.indexOf('red') >= 0) return 'danger';
+    if (colour.indexOf('orange') >= 0 || colour.indexOf('yellow') >= 0) return 'warn';
+    return '';
+  }
+
   function thresholdKind(value, steps) {
     if (value === null || value === undefined || !steps || !steps.length) return '';
     var colour = '';
@@ -82,11 +91,35 @@
       var s = steps[i];
       if (s.value === null || s.value === undefined || value >= s.value) colour = s.color || '';
     }
-    colour = String(colour).toLowerCase();
-    if (colour.indexOf('green') >= 0) return 'ok';
-    if (colour.indexOf('red') >= 0) return 'danger';
-    if (colour.indexOf('orange') >= 0 || colour.indexOf('yellow') >= 0) return 'warn';
-    return '';
+    return colourKind(colour);
+  }
+
+  /* PURE: a value through the panel's VALUE MAPPINGS (Grafana's value, range
+   * and special kinds), as {text, kind}, or null when none applies. The
+   * operator (2026-09-30): "Yes" and "up", never a bare 1. */
+  function mapValue(v, mappings) {
+    if (!mappings || !mappings.length) return null;
+    var isNull = v === null || v === undefined || v === '';
+    var n = isNull ? NaN : Number(v);
+    for (var i = 0; i < mappings.length; i++) {
+      var m = mappings[i] || {}, o = m.options || {}, r = null;
+      if (m.type === 'value' && !isNull) {
+        r = o[String(v)] || (n === n ? o[String(n)] : null);
+      } else if (m.type === 'range' && n === n) {
+        var from = o.from === null || o.from === undefined ? -Infinity : Number(o.from);
+        var to = o.to === null || o.to === undefined ? Infinity : Number(o.to);
+        if (n >= from && n <= to) r = o.result;
+      } else if (m.type === 'special') {
+        var match = o.match;
+        if ((match === 'null' && isNull) || (match === 'nan' && !isNull && n !== n)
+            || (match === 'null+nan' && (isNull || n !== n))) r = o.result;
+      }
+      if (r && (r.text !== undefined && r.text !== null && r.text !== '' || r.color)) {
+        return {text: (r.text === undefined || r.text === null || r.text === '') ? String(v) : String(r.text),
+                kind: colourKind(r.color)};
+      }
+    }
+    return null;
   }
 
   /* PURE: a chart's height in pixels from the panel's gridPos h (Grafana's
@@ -155,7 +188,9 @@
       scales: {x: {time: true}},
       axes: [{stroke: pal.axis, grid: {stroke: pal.grid}, ticks: {stroke: pal.ticks}},
              {stroke: pal.axis, grid: {stroke: pal.grid}, ticks: {stroke: pal.ticks}, size: 64,
-              values: function (u, vals) { return vals.map(function (v) { return formatValue(v, unit); }); }}],
+              values: function (u, vals) {
+                return vals.map(function (v) { var m = mapValue(v, p.mappings); return m ? m.text : formatValue(v, unit); });
+              }}],
       series: [{}]
     };
     for (var i = 0; i < p.series.length; i++) {
@@ -180,8 +215,10 @@
 
   function drawStat(body, p, unit) {
     var box = el('div', 'stat');
-    var kind = thresholdKind(p.value, p.thresholds);
-    box.appendChild(el('span', 'stat-value' + (kind ? ' stat-' + kind : ''), formatValue(p.value, unit)));
+    var mapped = mapValue(p.value, p.mappings);
+    var kind = mapped && mapped.kind ? mapped.kind : thresholdKind(p.value, p.thresholds);
+    box.appendChild(el('span', 'stat-value' + (kind ? ' stat-' + kind : ''),
+                       mapped ? mapped.text : formatValue(p.value, unit)));
     body.appendChild(box);
   }
 
@@ -196,7 +233,12 @@
       tr = el('tr');
       for (j = 0; j < p.rows[i].length; j++) {
         var last = j === p.rows[i].length - 1;
-        tr.appendChild(el('td', last ? 'mono' : '', last ? formatValue(p.rows[i][j], unit) : p.rows[i][j]));
+        var mapped = mapValue(p.rows[i][j], (p.column_mappings || [])[j]);
+        if (mapped) {
+          tr.appendChild(el('td', mapped.kind ? 'stat-' + mapped.kind : '', mapped.text));
+        } else {
+          tr.appendChild(el('td', last ? 'mono' : '', last ? formatValue(p.rows[i][j], unit) : p.rows[i][j]));
+        }
       }
       tb.appendChild(tr);
     }
@@ -307,7 +349,7 @@
     });
   }
 
-  root.NMAS_PANELS = {palette: palette, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
+  root.NMAS_PANELS = {palette: palette, mapValue: mapValue, colourKind: colourKind, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
                       chartHeight: chartHeight,
                       footWords: footWords, emptyWords: emptyWords, scan: scan};
 })(typeof window !== 'undefined' ? window : this);

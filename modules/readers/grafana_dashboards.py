@@ -28,6 +28,30 @@ SEARCH_LIMIT = 500
 INTERVAL_SECONDS = 300
 
 
+def _field_mappings(p: dict) -> dict:
+    """``{field name: mappings}`` from the panel's `byName` overrides."""
+    out = {}
+    for o in ((p.get("fieldConfig") or {}).get("overrides") or []):
+        m = o.get("matcher") or {}
+        if m.get("id") != "byName" or not m.get("options"):
+            continue
+        for prop in o.get("properties") or []:
+            if prop.get("id") == "mappings" and prop.get("value"):
+                out[str(m["options"])] = prop["value"]
+    return out
+
+
+def _organize(p: dict) -> dict:
+    """The panel's `organize` transformation: ``{exclude: [...], rename: {...}}``,
+    or ``{}`` when it has none."""
+    for t in p.get("transformations") or []:
+        if t.get("id") == "organize":
+            opt = t.get("options") or {}
+            return {"exclude": sorted(k for k, v in (opt.get("excludeByName") or {}).items() if v),
+                    "rename": dict(opt.get("renameByName") or {})}
+    return {}
+
+
 def _panels(model: dict) -> list:
     """Every panel, rows included, in the dashboard's order, each trimmed to
     what a renderer reads: type, title, grid position, targets, unit, and the
@@ -49,6 +73,13 @@ def _panels(model: dict) -> list:
                          "instant": bool(t.get("instant")), "format": t.get("format") or ""}
                         for t in p.get("targets") or []],
             "transformations": len(p.get("transformations") or []),
+            # VALUE MAPPINGS (the operator, 2026-09-30: "Yes"/"up" instead of 1):
+            # the panel's own, and each field override's by the field's name.
+            "mappings": defaults.get("mappings") or [],
+            "field_mappings": _field_mappings(p),
+            # The one transformation drawn natively: `organize` (drop and rename
+            # columns). Any other is counted above and not applied.
+            "organize": _organize(p),
         })
 
     for p in model.get("panels") or []:
