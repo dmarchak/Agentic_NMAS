@@ -224,7 +224,8 @@ def _scrub(result: dict, values) -> dict:
 
 
 def _add_tool_account(list_name, hostname, device, *, repo, tool_username, actor,
-                      open_session, verify, record) -> dict:
+                      open_session, verify, record, convert_owner=None,
+                      owner_verify=None) -> dict:
     from modules.nsot import credential_rotation as CR
     from modules.nsot import device_ops
 
@@ -338,6 +339,15 @@ def _add_tool_account(list_name, hostname, device, *, repo, tool_username, actor
         _step("verify", True, f"a fresh login as '{tool_username}' succeeded; the device "
                               "holds a type-9 secret")
         result["new_hash"] = new_hash
+
+        # ---- the owner's account, ONLY when the person chose it ------------
+        # After the tool's own account is proven, so the device has a second
+        # way in before somebody else's account is touched; on the SAME held
+        # session, which stays authenticated while that account is replaced.
+        if convert_owner:
+            result["owner"] = _convert_owner(session, device, convert_owner,
+                                             owner_verify or verify, tool_username, password,
+                                             open_session)
     finally:
         try:
             session.disconnect()
@@ -399,6 +409,114 @@ def _remove_added(result, _step, session, tool_username, repo, hostname, why) ->
                             f"{hostname} --list <its list>)")
         _step("remove_added", False, result["reason"])
     return result
+
+
+#: The owner's account, converted. States, most serious last.
+OWNER_CONVERTED = "converted"
+OWNER_RESTORED = "conversion_failed_restored"
+OWNER_AT_RISK = "owner_account_at_risk"
+
+
+def _convert_owner(session, device, owner: dict, verify, tool_username: str,
+                   tool_password: str, open_session) -> dict:
+    """Re-send the owner's account as a SECRET with the SAME password (the
+    operator's opt-in, 2026-09-29): the owner keeps logging in with the
+    password they know, the device stores a salted hash, and the golden then
+    holds that hash like the rest of the fleet.
+
+    Rotation's program, unchanged: a `password` entry cannot take a secret on
+    IOS-XE, so it is deleted and set in one round trip (the two-command form,
+    measured on IOS-XE 17.06 and vIOS-L2 15.2), on the held session, which IOS
+    does not drop when the username goes. Then a FRESH login as the owner
+    with the same password, and the stored form read back.
+
+    A failure is the most serious outcome adopt can have, because the account
+    is somebody else's: the original line goes back on the held session and is
+    proven by a fresh login; if that cannot be proven, once more over a fresh
+    session as the tool's own account (proven a moment ago). Only when both
+    fail is the owner's account at risk, and the result says so first.
+    ``{"state", "detail"}``; never a value."""
+    from modules.nsot import credential_rotation as CR
+
+    name, pw = owner["username"], owner["password"]
+    program = CR.rotation_commands(name, owner.get("privilege"), pw,
+                                   current_kind=owner.get("kind", ""))
+    for line in owner_program_masked(owner):
+        log.info("adopt: converting the owner's account: %s", line)
+    why = ""
+    try:
+        CR.push_rotation(session, program)
+    except Exception as exc:                   # noqa: BLE001
+        why = f"the device refused the conversion: {exc}"[:200]
+    if not why:
+        check = verify(device, name, pw)
+        stored = CR.captured_hash(check.get("config", ""), name) if check.get("ok") else ""
+        if check.get("ok") and stored.startswith("9 "):
+            return {"state": OWNER_CONVERTED, "detail": (
+                f"'{name}' re-sent as a secret with the same password; a fresh login as "
+                f"'{name}' with it succeeded, and the device holds a type-9 secret")}
+        why = (f"a fresh login as '{name}' with its password failed after the conversion "
+               f"({check.get('error') or 'refused'})" if not check.get("ok") else
+               f"the device stored '{(stored or '?').split()[0]}', not a type-9 secret")
+
+    # ---- put the owner's line back exactly as it was --------------------
+    restore = CR.revert_commands(name, owner["line"], current_kind="secret")
+
+    def _restored_by(sess):
+        try:
+            CR.push_rotation(sess, restore)
+        except Exception as exc:               # noqa: BLE001
+            return False, f"{type(exc).__name__}: {exc}"[:160]
+        again = verify(device, name, pw)
+        return bool(again.get("ok")), again.get("error", "")
+
+    ok, err = _restored_by(session)
+    how = "on the held session"
+    if not ok:
+        try:
+            from modules.device import fernet
+
+            tool_dev = dict(device, username=tool_username,
+                            password=fernet.encrypt(tool_password.encode()).decode(),
+                            secret=fernet.encrypt(tool_password.encode()).decode())
+            fresh = (open_session or CR.open_original_session)(tool_dev)
+            try:
+                ok, err = _restored_by(fresh)
+                how = f"over a fresh session as '{tool_username}'"
+            finally:
+                try:
+                    fresh.disconnect()
+                except Exception:              # noqa: BLE001
+                    pass
+        except Exception as exc:               # noqa: BLE001
+            err = f"{err}; the tool's own session could not be opened: {exc}"[:240]
+    if ok:
+        return {"state": OWNER_RESTORED, "detail": (
+            f"converting '{name}' failed ({why}); its original line was put back {how} "
+            f"and a fresh login with its password succeeded, so '{name}' is as it was")}
+    return {"state": OWNER_AT_RISK, "detail": (
+        f"DANGER: '{name}', somebody else's account, may not accept its password: the "
+        f"conversion failed ({why}) and putting its original line back could not be "
+        f"proven ({err or 'the login still failed'}). The tool's own account "
+        f"'{tool_username}' logs in and is recorded. Restore '{name}' with its owner, on "
+        f"the device's console: its line was `{_form(owner['line'])}`, and the owner "
+        "holds the value")}
+
+
+def owner_program_masked(owner: dict) -> list:
+    """The conversion as confirmed: rotation's program with the owner's OWN
+    password shown as that, never as generated."""
+    from modules.nsot import credential_rotation as CR
+
+    return CR.rotation_commands(owner["username"], owner.get("privilege"),
+                                "<its same password>", current_kind=owner.get("kind", ""))
+
+
+def _form(line: str) -> str:
+    """A credential line's FORM, its value replaced (never a second copy)."""
+    from modules.nsot.onboard import _credential_form
+
+    return _credential_form(line)
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +588,8 @@ def is_adoption_staged(repo: str, hostname: str) -> bool:
 #: The apply's steps, in order. Promotion is LAST, as in onboarding's phase 2:
 #: the inventory row is the claim "this device is managed", and it is made
 #: only when everything before it held.
-APPLY_STEPS = ("confirm", "account", "persist", "golden", "netbox", "promote")
+APPLY_STEPS = ("confirm", "account", "owner_account", "persist", "golden", "netbox",
+               "promote")
 
 #: What adopt does NOT do, stated at the confirm (a commit records its
 #: non-actions; so does a preview).
@@ -575,9 +694,15 @@ def _masked(lines) -> list:
 
 def plan(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
          supplied_username: str, supplied_password: str, supplied_enable: str = "",
-         tool_username: str = TOOL_ACCOUNT_DEFAULT, actor: str = "", read=None,
-         netbox_existing=None, netbox_preview=None) -> dict:
+         tool_username: str = TOOL_ACCOUNT_DEFAULT, actor: str = "",
+         convert_supplied: bool = False, read=None, netbox_existing=None,
+         netbox_preview=None) -> dict:
     """Everything the apply would do, what it will not, and each gate.
+
+    *convert_supplied* is the person's opt-in to re-send the SUPPLIED account
+    as a secret with the same password; off, adopt changes no account it did
+    not add, and a supplied account stored reversibly is refused with the
+    opt-in offered (``offer``).
 
     READS the device with the supplied credential (a preview of a device the
     tool has no record of has nothing else to read) and sends nothing. The
@@ -591,7 +716,8 @@ def plan(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
         out = _plan(list_name, hostname, mgmt_ip=mgmt_ip, platform=platform,
                     supplied_username=supplied_username, supplied_password=supplied_password,
                     supplied_enable=supplied_enable, tool_username=tool_username, actor=actor,
-                    read=read, netbox_existing=netbox_existing, netbox_preview=netbox_preview)
+                    convert_supplied=convert_supplied, read=read,
+                    netbox_existing=netbox_existing, netbox_preview=netbox_preview)
     _scrub_plan(out, (supplied_password, supplied_enable))
     return out
 
@@ -606,7 +732,7 @@ def _scrub_plan(out: dict, values) -> None:
 
 def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied_password,
           supplied_enable, tool_username, read, netbox_existing, netbox_preview,
-          actor="") -> dict:
+          actor="", convert_supplied=False) -> dict:
     import json
 
     from modules import credentials
@@ -731,8 +857,14 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
                                                       "the name it has")))
     verdict = local_login_verdict(seen.get("aaa", ""), seen.get("vty", ""))
     gate("local_login", verdict["ok"], verdict["reason"])
-    gate("supplied_not_recorded", *_supplied_in_config(running, supplied_username,
-                                                       supplied_password, supplied_enable))
+    cred = _credential_gate(running, supplied_username, supplied_password, supplied_enable,
+                            convert_supplied)
+    gate("no_reversible_credential", cred["ok"], cred["detail"])
+    if cred["offer"]:
+        out["offer"] = cred["offer"]
+    if cred["convert"]:
+        out["_convert"] = cred["convert"]
+        out["convert"] = {"account": supplied_username, "sentence": cred["detail"]}
 
     present = account_lines(running, tool_username)
     held = credentials.resolve(mgmt_ip) if credentials.has_device_override(mgmt_ip) else {}
@@ -798,45 +930,136 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
 
     out["capture_hash"], out["startup_hash"] = _hash(running), _hash(startup)
     if not any(g["state"] == "fail" for g in out["gates"]):
+        if out.get("_convert"):
+            conv = out["_convert"]
+            out["program"] = out["program"] + owner_program_masked(conv)
         out["fingerprint"] = _hash(json.dumps(
             {"list": ref.name, "device": hostname, "ip": mgmt_ip, "platform": platform,
              "tool": tool_username, "resume": out["resume"],
+             "convert_owner": bool(out.get("_convert")),
              "capture": out["capture_hash"], "startup": out["startup_hash"]},
             sort_keys=True))
     return done()
 
 
-def _supplied_in_config(running: str, username: str, password: str, enable: str) -> tuple:
-    """``(ok, detail)``: would the device's first GOLDEN carry the supplied
-    credential? A golden is the device's config VERBATIM (masking is outbound,
-    never at rest), so a supplied account stored as `password 0` puts the value
-    into the repository and its remote, and `password 7` a reversible encoding
-    of it. Measured on the text itself (the value in a credential slot, so a
-    password equal to the account's name is not "found" in the username), plus
-    the reversible type by shape. Refused, never masked: a golden that is not
-    the device's config is a claim about it."""
+#: The opt-in's words, the operator's (2026-09-29). Offered only for the
+#: SUPPLIED account: it is the one password the tool holds.
+CONVERT_LABEL = "Store this account as a secret — same password; the device hashes it"
+
+
+def reversible_credentials(running: str) -> list:
+    """Every LOCAL credential the running config holds in a reversible form:
+    ``username <name> ... password 0|7 <value>`` and ``enable password``.
+    ``[{"kind": "account"|"enable", "name", "form", "line"}]``. A golden records
+    the configuration verbatim and is pushed to its remote, so each of these
+    would put a password (type 0) or a reversible encoding of one (type 7)
+    there. SNMP communities are the named, accepted exception (the operator,
+    2026-09-29) and are not listed."""
     import re
 
-    found = []
-    for v in (password, enable):
-        if v and re.search(rf"\b(?:password|secret)\s+(?:0\s+)?{re.escape(v)}(?:\s|$)",
-                           running, re.M):
-            found.append("the value itself is in the running config, in clear")
-            break
-    for line in account_lines(running, username):
-        if re.search(r"\bpassword\s+7\s", line):
-            found.append(f"'{username}' is stored as `password 7`, a reversible encoding")
-    if enable and any(re.match(r"enable password\s+7\s", l.strip())
-                      for l in running.splitlines()):
-        found.append("the enable password is stored as `password 7`, a reversible encoding")
-    if found:
-        return False, (
-            "the device's first golden would carry the supplied credential ("
-            + "; ".join(found) + "): the golden records the configuration verbatim, in a "
-            "repository that is pushed to its remote. Adopt changes no account it did not "
-            f"add, so change '{username}' to a `secret` on the device first")
-    return True, ("the supplied credential is stored as a one-way hash (or not at all), so "
-                  "the golden holds no copy of it")
+    out = []
+    for raw in (running or "").splitlines():
+        line = raw.rstrip()
+        m = re.match(r"^username (\S+)\b.*?\bpassword\s+(?:(\d+)\s+)?\S+", line)
+        if m and " secret " not in f" {line} ":
+            out.append({"kind": "account", "name": m.group(1),
+                        "form": f"password {m.group(2) or '0'}", "line": line})
+            continue
+        m = re.match(r"^enable password\s+(?:level\s+\d+\s+)?(?:(\d+)\s+)?\S+", line)
+        if m:
+            out.append({"kind": "enable", "name": "enable",
+                        "form": f"password {m.group(1) or '0'}", "line": line})
+    return out
+
+
+def _convertible(line: str) -> tuple:
+    """``(privilege, reason)``: can the owner's line be re-sent as a secret with
+    nothing else lost? Only ``username <name> [privilege N] password <t> <v>``:
+    the setter carries the privilege and the secret, so any other attribute
+    (a view, an autocommand, one-time) would be dropped by the delete. Refused
+    by name rather than guessed at."""
+    words = line.split()
+    rest, privilege = words[2:], None
+    if rest[:1] == ["privilege"] and len(rest) >= 2:
+        privilege, rest = rest[1], rest[2:]
+    if rest[:1] == ["password"] and len(rest) in (2, 3):
+        return privilege, ""
+    return None, (f"its line carries more than a privilege and a password "
+                  f"(`{_form(line)}`), and re-sending it as a secret would drop the rest")
+
+
+def _credential_gate(running: str, username: str, password: str, enable: str,
+                     convert: bool) -> dict:
+    """Would the device's first GOLDEN carry a reversible credential?
+    ``{"ok", "detail", "convert", "offer"}``.
+
+    * another account's, or an enable password: refused and NAMED (form, never
+      value). The tool does not know those passwords, so it cannot store them
+      as secrets;
+    * the supplied account's, not chosen: refused, and the opt-in OFFERED;
+    * the supplied account's, chosen: passes, and ``convert`` carries what the
+      apply re-sends (the password, in this call's memory only);
+    * the supplied value in clear in any other credential slot: refused.
+    Refused, never masked: a golden that is not the device's config is a claim
+    about it."""
+    import re
+
+    rev = reversible_credentials(running)
+    mine = [r for r in rev if r["kind"] == "account" and r["name"] == username]
+    theirs = [r for r in rev if r not in mine]
+    others = [l for l in (running or "").splitlines()
+              if l.rstrip() not in {r["line"] for r in mine}]
+    clear = any(v and re.search(rf"\b(?:password|secret)\s+(?:0\s+)?{re.escape(v)}(?:\s|$)",
+                                l) for v in (password, enable) for l in others)
+    why = ("the golden records the configuration verbatim, in a repository pushed to its "
+           "remote, so nothing was sent")
+    out = {"ok": False, "detail": "", "convert": None, "offer": None}
+    if theirs:
+        named = "; ".join(("the enable password" if r["kind"] == "enable"
+                           else f"account '{r['name']}'") + f" (`{r['form']}`)" for r in theirs)
+        out["detail"] = (f"the device's first golden would carry {len(theirs)} credential(s) "
+                         f"in a reversible form: {named}. The tool does not know these "
+                         "passwords, so it cannot store them as secrets; they would have to "
+                         f"be secrets on the device before it is adopted: {why}")
+        return out
+    if clear:
+        out["detail"] = ("the supplied password appears in clear in another credential line, "
+                         f"which the golden would carry: {why}")
+        return out
+    if mine:
+        line = mine[0]["line"]
+        if not convert:
+            out["offer"] = {"key": "convert_supplied", "label": CONVERT_LABEL,
+                            "account": username, "from": mine[0]["form"]}
+            out["detail"] = (f"'{username}' is stored as `{mine[0]['form']}`, which the "
+                             f"first golden would carry ({why}). Choose \"{CONVERT_LABEL}\" "
+                             "to have adopt re-send it with the same password")
+            return out
+        # EVERY line the account has, not only the reversible one: the delete
+        # removes "all username related configurations with same name"
+        # (IOS-XE's own prompt, measured on r2), an autocommand line included.
+        all_lines = account_lines(running, username)
+        privilege, refusal = _convertible(line) if len(all_lines) == 1 else (
+            None, f"it has {len(all_lines)} lines, and the delete the conversion needs "
+                  "removes them all")
+        if refusal:
+            out["detail"] = f"'{username}' cannot be stored as a secret: {refusal}"
+            return out
+        from modules.nsot.credential_rotation import entry_kind
+
+        out["convert"] = {"username": username, "password": password, "line": line,
+                          "privilege": privilege, "kind": entry_kind(line)}
+        out.update(ok=True, detail=(
+            f"'{username}' will be re-sent as a secret with the same password: its owner "
+            f"keeps logging in with the password they know, the stored form changes from "
+            f"`{mine[0]['form']}` to a salted hash the device makes, and the golden holds "
+            "that hash. Proven on a fresh login with the same password; put back as it was "
+            "if that fails"))
+        return out
+    out.update(ok=True, detail=(
+        "no local credential is stored in a reversible form, so the golden holds none"
+        + ("; nothing to convert" if convert else "")))
+    return out
 
 
 def _exists(path: str) -> bool:
@@ -854,7 +1077,8 @@ def public(plan_out: dict) -> dict:
 def apply(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
           supplied_username: str, supplied_password: str, supplied_enable: str = "",
           tool_username: str = TOOL_ACCOUNT_DEFAULT, confirmed_fingerprint: str,
-          actor: str, reason: str = "", **collab) -> dict:
+          actor: str, reason: str = "", convert_supplied: bool = False,
+          **collab) -> dict:
     """Adopt, holding the device throughout. **`ok` means all of it**, decided
     from the steps; a stop names every step that did not run and why, and a
     re-run RESUMES (an account this adoption added and recorded is proven,
@@ -873,7 +1097,7 @@ def apply(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
                          supplied_password=supplied_password,
                          supplied_enable=supplied_enable, tool_username=tool_username,
                          confirmed_fingerprint=confirmed_fingerprint, actor=actor,
-                         reason=reason, **collab)
+                         reason=reason, convert_supplied=convert_supplied, **collab)
     except device_ops.DeviceBusy as exc:
         out = {"ok": False, "device": hostname, "list": list_name, "state": "refused",
                "reason": str(exc), "remaining": [],
@@ -893,7 +1117,7 @@ def apply(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
 
 def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied_password,
            supplied_enable, tool_username, confirmed_fingerprint, actor, reason,
-           read=None, netbox_existing=None, netbox_preview=None, open_session=None,
+           convert_supplied=False, read=None, netbox_existing=None, netbox_preview=None, open_session=None,
            verify=None, record=None, persist=None, capture=None, netbox=None,
            promote=None, record_adoption=None) -> dict:
     from modules import credentials
@@ -938,7 +1162,8 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
     p = _plan(list_name, hostname, mgmt_ip=mgmt_ip, platform=platform,
               supplied_username=supplied_username, supplied_password=supplied_password,
               supplied_enable=supplied_enable, tool_username=tool_username, read=read,
-              netbox_existing=netbox_existing, netbox_preview=netbox_preview, actor=actor)
+              netbox_existing=netbox_existing, netbox_preview=netbox_preview, actor=actor,
+              convert_supplied=convert_supplied)
     where["repo"] = p.get("repo")
     if p["blocking"]:
         return _stop("confirm", "refused, and nothing was sent: " + "; ".join(p["blocking"]))
@@ -955,6 +1180,11 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
         held = credentials.resolve(mgmt_ip) or {}
         return held.get("username", ""), held.get("password", "")
 
+    # The owner logs in with ITS password, and enables with the supplied enable
+    # secret when one was given (a privilege-1 account needs it).
+    owner_verify = verify or (lambda dev, u, w: CR.verify_with_retry(
+        dev, u, w, secret=supplied_enable or w))
+    owner = None
     if p["resume"]:
         user, pw = _tool()
         check = (verify or (lambda dev, u, w: CR.verify_with_retry(dev, u, w, secret=w)))(
@@ -968,7 +1198,8 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
     else:
         added = _add_tool_account(list_name, hostname, device, repo=repo,
                                   tool_username=tool_username, actor=actor,
-                                  open_session=open_session, verify=verify, record=record)
+                                  open_session=open_session, verify=verify, record=record,
+                                  convert_owner=p.get("_convert"), owner_verify=owner_verify)
         result["account"] = {"state": added["state"], "steps": added["steps"]}
         if added["state"] != ADDED:
             _step("account", False, added["reason"])
@@ -978,6 +1209,34 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
             return _stop("account", why)
         _step("account", True, added["reason"])
         user, pw = _tool()
+        owner = added.get("owner")
+
+    # ---- the owner's account: converted only when the person chose it ----
+    if p.get("_convert") and p["resume"]:
+        # A resumed run has no held session from the account step: open one
+        # with the supplied credential, for the conversion alone.
+        try:
+            held = (open_session or CR.open_original_session)(device)
+        except Exception as exc:               # noqa: BLE001
+            _step("owner_account", False, f"could not log in as '{supplied_username}': {exc}")
+            return _stop("owner_account", "the conversion could not start: nothing was sent")
+        try:
+            owner = _convert_owner(held, device, p["_convert"], owner_verify, user, pw,
+                                   open_session)
+        finally:
+            try:
+                held.disconnect()
+            except Exception:                  # noqa: BLE001
+                pass
+    result["owner_account"] = owner
+    if not p.get("_convert"):
+        _step("owner_account", True, f"'{supplied_username}' not changed")
+    elif not _step("owner_account", owner and owner["state"] == OWNER_CONVERTED,
+                   (owner or {}).get("detail", "the conversion did not run")):
+        if owner and owner["state"] == OWNER_AT_RISK:
+            result["state"] = OWNER_AT_RISK
+        return _stop("owner_account", (owner or {}).get("detail", "")
+                     + ". Nothing further was done")
     if not (user and pw):
         return _stop("persist", f"the tool's credential for {mgmt_ip} could not be read back "
                                 "from the store it was recorded in")

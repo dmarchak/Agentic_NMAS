@@ -2507,11 +2507,16 @@ The landing page drew every section 1a source from stored or cached values, each
    - **`listref.resolve()` derives an unknown list**, so adopt refuses with `exists()` first, the write-path rule (C51).
    - **Harness seams.** The suite's shared store carried one test's recorded override into the next, and a second binding of the list-directory helper created a real list directory. Both were fixed in the test.
 4. **How they were resolved.** The message corrected in the same step; recovery placed in the apply. Controls: the delete-then-set program, the absence check removed and the undo removed each fail their tests.
-   - **Step 2's supplied credential:** refused at the preview until the operator decides, and the refusal says what to change on the device.
+   - **Step 2's supplied credential: decided by the operator the same evening, and built.**
+     - Every local credential the golden would carry reversibly (`username … password 0|7`, `enable password`) is refused by name; SNMP communities are the accepted exception.
+     - The SUPPLIED account alone may be converted, by a named opt-in: it is re-sent as a secret with the same password, using rotation's program on the held session after the tool's own account is proven. A fresh login as the owner follows, and if that fails the original line is put back and proven.
+     - "Telling the person to change it by hand" was rejected because it sends them to a console.
+     - Building it found one more defect: the delete the conversion needs removes EVERY line of the account, an autocommand included. So an account with more than one line is refused.
+     - The no-copy test's scan had read only the data directory, never the list's repository, whose objects are compressed. It now also reads the list's files and the whole history as text, with a control that finds a committed clear golden.
    - **C225:** registered.
    - **The plan's wording:** corrected.
    - **Controls:** the gate removed, adopted objects written as created, resume removed, job health's branch removed, the importer honouring text outside a dry run, and the fingerprint not compared. Each fails exactly its own test.
-5. **Numbers.** Estimate at scoping: about 6 to 10 hours and 12 to 20 commits, most of it the real run's findings [NSOT_STAGE7_PLAN.md]. So far three commits (step 1, the settled points, step 2) and 60 tests in two files.
+5. **Numbers.** Estimate at scoping: about 6 to 10 hours and 12 to 20 commits, most of it the real run's findings [NSOT_STAGE7_PLAN.md]. So far four commits (step 1, the settled points, step 2, the reversible-credential decision) and 74 tests in two files.
 6. **Where it left the product.** Not yet: the preview and the apply exist and are reachable from no screen. Their routes and client come with the screen, in the redesign.
 
 #### 7.3 — The break-glass export from the browser

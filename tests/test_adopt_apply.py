@@ -31,6 +31,7 @@ LIST, HOST, IP = "Lab", "r2", "192.0.2.50"
 SUPPLIED_PW = "Supplied-Owner-Pass-7391"
 REAL_ADMIN = "username admin privilege 15 password 0 admin"
 HASHED_ADMIN = "username admin privilege 15 secret 9 $9$ownersalt$ownerhashvalue"
+CLEAR_ADMIN = f"username admin privilege 15 password 0 {SUPPLIED_PW}"
 EXISTING = [("dcim/devices", 7, "r2"), ("dcim/interfaces", 90, "GigabitEthernet1"),
             ("ipam/ip-addresses", 50, "192.0.2.50/24")]
 
@@ -54,21 +55,51 @@ def _section(text, head):
 
 
 class Router:
+    """Answers as IOS-XE 17.06 does where it matters here (measured, rotation's
+    record): a secret over a PASSWORD entry is refused, so only the
+    delete-then-set program converts one. *store_as* makes the device store a
+    different password for an account (a conversion whose fresh login then
+    fails); *refuse* makes it refuse any line containing one of its words."""
+
     def __init__(self, running):
+        self.load(running)
+        self.passwords = {"admin": SUPPLIED_PW}
+        self.sent, self.saves, self.store_as, self.refuse = [], 0, {}, ()
+
+    def load(self, running):
         self.running = running.splitlines()
         self.startup = list(self.running)
-        self.passwords = {"admin": SUPPLIED_PW}
-        self.sent, self.saves = [], 0
 
     def text(self):
         return "\n".join(self.running)
 
+    def _at(self):
+        return next((i for i, l in enumerate(self.running) if l.startswith("username ")),
+                    len(self.running))
+
     def apply(self, line):
         self.sent.append(line)
-        m = re.match(r"username (\S+) privilege 15 algorithm-type scrypt secret (\S+)", line)
+        if any(word in line for word in self.refuse):
+            return "% Invalid input detected at '^' marker."
+        m = re.match(r"no username (\S+)$", line)
         if m:
-            at = next(i for i, l in enumerate(self.running) if l.startswith("username admin"))
-            self.running.insert(at + 1, f"username {m.group(1)} privilege 15 secret 9 $9$s$h")
+            self.running = [l for l in self.running if not l.startswith(f"username {m.group(1)} ")]
+            self.passwords.pop(m.group(1), None)
+            return ""
+        m = re.match(r"username (\S+) privilege (\d+) algorithm-type scrypt secret (\S+)", line)
+        if m:
+            user = m.group(1)
+            if any(l.startswith(f"username {user} ") and " password " in l
+                   for l in self.running):
+                return "ERROR: Can not have both a user password and a user secret."
+            self.running = [l for l in self.running if not l.startswith(f"username {user} ")]
+            self.running.insert(self._at(), f"username {user} privilege {m.group(2)} "
+                                            f"secret 9 $9$s{len(self.sent)}$h")
+            self.passwords[user] = self.store_as.get(user, m.group(3))
+            return ""
+        m = re.match(r"username (\S+) .*\bpassword 0 (\S+)$", line)
+        if m:                                   # an original line put back
+            self.running.insert(self._at(), line)
             self.passwords[m.group(1)] = m.group(2)
         return ""
 
@@ -220,20 +251,64 @@ class TestThePreview:
         lab["router"].startup = ["startup-config is not present"]
         assert _plan(lab)["persist"]["state"] == "no_startup"
 
-    def test_a_supplied_account_stored_in_clear_is_refused(self, lab):
-        """vrnetlab's own `password 0 admin`: the golden would carry it."""
-        router = Router(_config(admin=f"username admin privilege 15 password 0 {SUPPLIED_PW}"))
-        out = _plan(lab, read=router.reads)
+    def test_a_supplied_account_stored_in_clear_is_refused_and_the_opt_in_offered(self, lab):
+        """vrnetlab's own `password 0`: the golden would carry it. Refused by
+        default, with the operator's opt-in offered by its own words."""
+        lab["router"].load(_config(admin=CLEAR_ADMIN))
+        out = _plan(lab)
         assert not out["fingerprint"]
-        assert any("first golden would carry the supplied credential" in b
-                   for b in out["blocking"])
+        assert any("'admin' is stored as `password 0`" in b for b in out["blocking"])
+        assert out["offer"] == {"key": "convert_supplied", "label": A.CONVERT_LABEL,
+                                "account": "admin", "from": "password 0"}
         assert SUPPLIED_PW not in json.dumps(A.public(out))
 
+    def test_chosen_the_conversion_is_in_the_program_and_the_fingerprint(self, lab):
+        lab["router"].load(_config(admin=CLEAR_ADMIN))
+        out = _plan(lab, convert_supplied=True)
+        assert out["blocking"] == [] and out["fingerprint"]
+        assert out["program"] == A.masked_program("nmas") + [
+            "no username admin",
+            "username admin privilege 15 algorithm-type scrypt secret <its same password>"]
+        assert "keeps logging in with the password they know" in out["convert"]["sentence"]
+        assert SUPPLIED_PW not in json.dumps(A.public(out))
+        assert lab["router"].sent == [], "a preview sends nothing"
+
+    @pytest.mark.parametrize("line,named", [
+        ("username backup privilege 1 password 7 0822455D0A16", "account 'backup' (`password 7`)"),
+        ("username ops privilege 5 password 0 Opspass-4471", "account 'ops' (`password 0`)"),
+        ("enable password 0 Enable-Clear-5512", "the enable password (`password 0`)"),
+        ("enable password 7 0822455D0A16", "the enable password (`password 7`)"),
+    ])
+    def test_every_other_reversible_credential_is_refused_by_name_with_no_offer(
+            self, lab, line, named):
+        lab["router"].running.append(line)
+        out = _plan(lab, convert_supplied=True)
+        refusal = next(b for b in out["blocking"] if "reversible form" in b)
+        assert named in refusal and "does not know these passwords" in refusal
+        assert "offer" not in out and not out["fingerprint"]
+        value = line.split()[-1]
+        assert value not in json.dumps(A.public(out)), "the form is named, never the value"
+
+    def test_snmp_communities_are_the_accepted_exception(self):
+        text = _config()
+        assert re.search(r"^snmp-server community ", text, re.M), "the exception is exercised"
+        assert A.reversible_credentials(text) == []
+
     def test_a_password_equal_to_the_account_name_is_not_found_in_the_username(self):
-        ok, _ = A._supplied_in_config(_config(), "admin", "admin", "")
-        assert ok, "the value in a credential slot, never in the username"
-        ok, why = A._supplied_in_config(_config(REAL_ADMIN), "admin", "admin", "")
-        assert not ok and "in clear" in why
+        assert A._credential_gate(_config(), "admin", "admin", "", False)["ok"], \
+            "the value in a credential slot, never in the username"
+        out = A._credential_gate(_config(REAL_ADMIN), "admin", "admin", "", False)
+        assert not out["ok"] and out["offer"]
+
+    def test_the_supplied_value_in_clear_elsewhere_is_refused(self):
+        text = _config() + f"\ninterface Dialer1\n ppp chap password 0 {SUPPLIED_PW}"
+        out = A._credential_gate(text, "admin", SUPPLIED_PW, "", True)
+        assert not out["ok"] and "appears in clear" in out["detail"]
+
+    def test_a_line_with_more_than_a_password_is_not_converted(self):
+        text = _config(admin=CLEAR_ADMIN) + "\nusername admin autocommand show version"
+        out = A._credential_gate(text, "admin", SUPPLIED_PW, "", True)
+        assert not out["ok"] and "cannot be stored as a secret" in out["detail"]
 
     @pytest.mark.parametrize("case,words", [
         ("unknown_list", "no device list named"),
@@ -374,27 +449,123 @@ class TestTheApply:
         assert out["state"] == "refused" and lab["router"].sent == []
 
 
+class TestTheOwnersAccountConverted:
+    """The operator's opt-in: the supplied account re-sent as a secret with the
+    SAME password, proven on a fresh login, and put back when that fails."""
+
+    def _convert(self, lab, **kw):
+        lab["router"].load(_config(admin=CLEAR_ADMIN))
+        fp = _plan(lab, convert_supplied=True)["fingerprint"]
+        assert fp
+        return _apply(lab, fingerprint=fp, convert_supplied=True, **kw)
+
+    def test_converted_the_owner_logs_in_with_the_same_password_and_the_golden_holds_a_hash(
+            self, lab):
+        out = self._convert(lab)
+        assert out["ok"], out
+        router = lab["router"]
+        assert router.passwords["admin"] == SUPPLIED_PW, "the same password"
+        line, = [l for l in router.running if l.startswith("username admin ")]
+        assert " secret 9 " in line and " password " not in line
+        sent = [l for l in router.sent if l.strip()]
+        assert sent.index("no username admin") > next(
+            i for i, l in enumerate(sent) if l.startswith("username nmas")), \
+            "the tool's own account is proven before the owner's is touched"
+        golden = _git("show", "HEAD:golden/r2.cfg")
+        assert SUPPLIED_PW not in golden and "password 0" not in golden
+        step = next(s for s in out["steps"] if s["step"] == "owner_account")
+        assert step["ok"] and "re-sent as a secret with the same password" in step["detail"]
+        from modules.nsot import onboard
+        row = onboard.read_runs(_repo())["rows"][0]
+        assert any(s["step"] == "owner_account" and "re-sent as a secret" in s["detail"]
+                   for s in row["steps"]), "named in the receipt"
+
+    def test_not_chosen_the_owner_is_not_changed_and_says_so(self, lab):
+        out = _adopt_fully(lab)
+        step = next(s for s in out["steps"] if s["step"] == "owner_account")
+        assert step["ok"] and step["detail"] == "'admin' not changed"
+        assert "no username admin" not in lab["router"].sent
+
+    def test_a_failed_login_after_the_conversion_puts_the_original_line_back(self, lab):
+        lab["router"].store_as = {"admin": "Not-The-Owners-Password-1"}
+        out = self._convert(lab)
+        assert not out["ok"] and "original line was put back on the held session" in \
+            out["reason"]
+        assert CLEAR_ADMIN in lab["router"].running and \
+            lab["router"].passwords["admin"] == SUPPLIED_PW, "as it was"
+        assert [r["step"] for r in out["remaining"]][:1] == ["persist"]
+        from modules import credentials
+        assert credentials.resolve(IP)["username"] == "nmas", \
+            "the tool's account stays recorded: a second way in"
+
+    def test_a_restore_that_cannot_be_proven_is_the_most_serious_outcome(self, lab):
+        lab["router"].store_as = {"admin": "Not-The-Owners-Password-1"}
+        lab["router"].refuse = ("password 0",)            # the original line is refused
+        out = self._convert(lab)
+        assert out["state"] == A.OWNER_AT_RISK and out["reason"].startswith("DANGER")
+        assert "username admin privilege 15 password 0 <value>" in out["reason"]
+        assert SUPPLIED_PW not in json.dumps(out)
+        tool_session_restore = [l for l in lab["router"].sent if "password 0" in l]
+        assert len(tool_session_restore) == 2, "held session, then the tool's own session"
+
+
+def _stores_holding_the_supplied_value() -> list:
+    """Every file adoption could have written: the store (DATA_DIR) and the
+    list (its working files, staging included), read raw and as Fernet tokens;
+    and the repository's WHOLE history as text, since git's objects are
+    compressed and a byte scan of `.git` cannot see a committed value."""
+    from modules import config
+    from modules.device import fernet
+    from modules.nsot.listref import resolve
+    list_dir = resolve(LIST).data_dir
+    paths = [os.path.join(d, f) for root in (config.DATA_DIR, list_dir)
+             for d, _, fs in os.walk(root) if os.sep + ".git" not in d + os.sep for f in fs]
+    assert len(paths) > 10 and any(p.startswith(list_dir) for p in paths), \
+        "the scan read the store AND the list adoption wrote"
+    hits = []
+    for path in paths:
+        data = open(path, "rb").read()
+        if SUPPLIED_PW.encode() in data:
+            hits.append(path)
+        for token in re.findall(rb"gAAAAA[A-Za-z0-9_\-=]+", data):
+            try:
+                if fernet.decrypt(token).decode() == SUPPLIED_PW:
+                    hits.append(path)
+            except Exception:                  # noqa: BLE001
+                pass
+    history = _git("log", "-p", "--all")
+    assert "golden/r2.cfg" in history, "the history read holds the golden"
+    if SUPPLIED_PW in history:
+        hits.append("git history")
+    return hits
+
+
 class TestTheSuppliedCredentialIsNeverWritten:
     def test_after_a_full_adoption_no_file_log_or_result_holds_it(self, lab, caplog):
-        from modules import config
-        from modules.device import fernet
         with caplog.at_level("DEBUG"):
             out = _adopt_fully(lab)
         assert SUPPLIED_PW not in json.dumps(out) and SUPPLIED_PW not in caplog.text
-        hits = []
-        paths = [os.path.join(d, f) for d, _, fs in os.walk(config.DATA_DIR) for f in fs]
-        assert len(paths) > 10, "the scan read the store adoption wrote"
-        for path in paths:
-            data = open(path, "rb").read()
-            if SUPPLIED_PW.encode() in data:
-                hits.append(path)
-            for token in re.findall(rb"gAAAAA[A-Za-z0-9_\-=]+", data):
-                try:
-                    if fernet.decrypt(token).decode() == SUPPLIED_PW:
-                        hits.append(path)
-                except Exception:              # noqa: BLE001
-                    pass
-        assert hits == []
+        assert _stores_holding_the_supplied_value() == []
+
+    def test_after_the_conversion_neither(self, lab, caplog):
+        """The supplied password is SENT to the device here, as it must be; it
+        is logged masked and lands in no file and no commit."""
+        with caplog.at_level("DEBUG"):
+            out = TestTheOwnersAccountConverted()._convert(lab)
+        assert out["ok"], out
+        assert SUPPLIED_PW not in json.dumps(out) and SUPPLIED_PW not in caplog.text
+        assert _stores_holding_the_supplied_value() == []
+
+    def test_the_control_a_committed_copy_is_seen(self, lab):
+        """Without the conversion, a device whose golden WOULD carry it: forced
+        past the gate, the scan finds the value in the history."""
+        _adopt_fully(lab)
+        from modules.nsot.repo import GoldenItem, save_golden
+        save_golden(LIST, [GoldenItem(HOST, _config(admin=CLEAR_ADMIN), mgmt_ip=IP,
+                                      platform="cisco_iosxe")],
+                    source="adopt", actor="op@example.com", message="control")
+        hits = _stores_holding_the_supplied_value()
+        assert "git history" in hits and any(h.endswith("golden/r2.cfg") for h in hits), hits
 
 
 class TestItsOwnRecovery:

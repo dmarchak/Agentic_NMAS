@@ -1098,12 +1098,30 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
        beside the staged password (address, driver, account; no secret). Job health names that
        command for an adoption's staged file, and the rotation's for a rotation's.
      - **Found building it:**
-       - **Decision pending (the operator's).** The golden records the device's config
-         verbatim, so a supplied account stored as `password 0` (vrnetlab's own `admin`/`admin`)
-         or `password 7` would put the supplied credential into the repository and its remote.
-         Meanwhile the preview REFUSES such a device before anything is sent, naming why and
-         saying to change that account to a `secret` on the device first. The real run's
-         throwaway boots exactly that line.
+       - **Reversible credentials and the golden: DECIDED (the operator, 2026-09-29) and
+         built.** The golden records the device's config verbatim, so a local credential
+         stored as `password 0` or `password 7` would reach the repository and its remote.
+         Every such credential is checked, not only the supplied one: other accounts and an
+         `enable password` are refused BY NAME (form, never value), with no conversion offered,
+         because the tool does not know those passwords. SNMP communities are the named,
+         accepted exception. The SUPPLIED account is refused by default, and the preview offers
+         a named opt-in: "Store this account as a secret — same password; the device hashes
+         it". Chosen, it is bound into the confirm, drawn in the program, and recorded in the
+         receipt as its own step.
+         - **How the conversion runs.** It uses rotation's program: delete-then-set for a
+           `password` entry, because IOS-XE 17.06 refuses a secret over one (measured). It
+           runs on the held supplied session, AFTER the tool's own account is proven, so a
+           second way in exists first. A fresh login as the owner with the SAME password
+           follows, and the stored form is read back.
+         - **If that fails**, the original line goes back and is proven: on the held session,
+           then once more as the tool. If neither can be proven, the result leads with DANGER
+           and names the line's form.
+         - **An account with more than one line is refused.** The delete removes every line
+           for the account ("all username related configurations with same name"), an
+           autocommand line included. Found by the test.
+         - **Adopt never changes the supplied account unless the person ticks this.** The
+           person does not need a console for it, and the real run's vrnetlab `admin`/`admin`
+           exercises it on a real device.
        - C225: onboarding's NetBox record calls every device a router.
 
      Remaining: the screen (routes, the preview-confirm adapter and the Device page's client,
