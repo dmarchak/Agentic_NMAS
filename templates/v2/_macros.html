@@ -41,7 +41,13 @@
 {% set STATE_KIND = {'ok': 'ok', 'warn': 'warn', 'danger': 'danger', 'unknown': 'muted'} %}
 
 {#- "Check again": ask origin and CI now (routes/update.check). Its x-data and
-    its attributes sit on one element, the component's $root. -#}
-{% macro check_again() -%}
-<span class="check-again" x-data="check" data-url="{{ url_for('update.check') }}"><button type="button" class="btn btn-small" x-on:click="run" x-bind:disabled="busy" x-text="label">Check again</button><span class="muted" x-text="said"></span></span>
+    its attributes sit on one element, the component's $root. *c* is
+    routes/v2.check_state(): busy while a run on request is owed an answer
+    (drawn from the server, so a panel re-drawn mid-run stays busy), "Checked
+    just now" once it answered this person, a failed last attempt said. -#}
+{% macro check_again(c=None) -%}
+{%- set c = c or {} -%}
+<span class="check-again" x-data="check" data-url="{{ url_for('update.check') }}" data-running-for="{{ c.running_for if c.running_for is not none else '' }}" data-bound="{{ c.bound_seconds or '' }}" data-bound-basis="{{ c.bound_basis or '' }}" data-answered-ago="{{ c.answered_ago if c.answered_ago is not none else '' }}" data-fresh="{{ c.fresh_seconds or 60 }}"><button type="button" class="btn btn-small" x-on:click="run" x-bind:disabled="busy" x-text="label">{{ 'Checking…' if c.running_for is not none else ('Checked just now' if c.answered_ago is not none else 'Check again') }}</button><span class="muted" x-text="said"></span><span class="check-late" x-text="late"></span>
+{%- if c.failed %}<span class="check-failed">The last check ({{ c.failed.words }}, {{ stamp(c.failed.at) }}) failed: {{ c.failed.error }}. What is shown is the answer before it.</span>{% endif -%}
+</span>
 {%- endmacro %}

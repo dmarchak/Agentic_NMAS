@@ -90,6 +90,22 @@ produced it.
     must never let the first stand for the second. State both where a person
     reads the value.
 
+13. **A stored answer says what CAUSED it, and a run a person asked for is
+    answered to that person** (the operator, 2026-09-30, on About's Check
+    again). Every run records its trigger (`scheduled`, `request` with the
+    person, `after_commit`) on the attempt and on the value, and the last
+    `RUNS_KEPT` runs are kept with their time and duration, so "did my click
+    run, and how long did it take" is answered from the store, and each run
+    on request is logged at INFO with both. A run on request ALWAYS announces:
+    `announce_if` saves pages a redraw nobody waits for, and a person pressing
+    a button is waiting. It did not: the check found nothing new, announced
+    nothing, and the button, which had reported only that the REQUEST was
+    accepted, reverted on a 5 s timer while the text still said "asking".
+    `request_run()` starts one at a time per reader; `request_in_flight()` says
+    a run is still owed an answer until the store holds it, so a page drawn
+    mid-run stays busy; `answer_bound()` is how long a page waits before
+    saying the answer is late, 2.5x the slowest recorded run.
+
 Nothing here starts a thread at import (C36): `start()` is called from the
 app's `_start_background_daemons()`, and only there.
 """
@@ -296,13 +312,20 @@ def announce_via_page(keys, name: str, ok: bool) -> None:
     invalidation.announce(keys, f"reader:{name}", ok)
 
 
-def run_once(reader: Reader, announce=None, clock=time.time) -> dict:
+RUNS_KEPT = 20
+SCHEDULED = {"kind": "scheduled"}
+
+
+def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = None) -> dict:
     """Read, store, announce. Returns the stored document.
 
     A read that raises is a failed ATTEMPT: recorded with its error, the last
     good value kept (rule 3). A store that cannot be written raises, because
     nothing else can record it; the stale row then says the reader stopped
-    (rule 7)."""
+    (rule 7). *trigger* is what caused this run (rule 13): the schedule when
+    omitted."""
+    trigger = dict(trigger or SCHEDULED)
+    requested = trigger.get("kind") == "request"
     started = clock()
     t0 = time.monotonic()
     value, error = None, ""
@@ -333,9 +356,12 @@ def run_once(reader: Reader, announce=None, clock=time.time) -> dict:
             "interval_basis": reader.interval_basis,
             "stale_after_seconds": page_promise(reader),
             "last_attempt": {"at": _iso(started), "ok": not error, "took_ms": took,
+                             "trigger": trigger,
                              **({"error": _redacted(error)} if error else {})},
             "last_good": before.get("last_good"),
             "failing_since": None,
+            "runs": ((before.get("runs") or [])[-(RUNS_KEPT - 1):]
+                     + [{"at": _iso(started), "ok": not error, "took_ms": took, "trigger": trigger}]),
         }
         if replaced:
             doc["replaced_unreadable"] = {"at": _iso(started), "why": replaced}
@@ -348,11 +374,17 @@ def run_once(reader: Reader, announce=None, clock=time.time) -> dict:
                       reader.name, doc["last_attempt"]["error"],
                       (doc["last_good"] or {}).get("value_at", "never"))
         else:
-            doc["last_good"] = {"value": value, "value_at": _iso(started), "took_ms": took}
+            doc["last_good"] = {"value": value, "value_at": _iso(started), "took_ms": took,
+                                "trigger": trigger}
         _filestore.write_atomic(path, json.dumps(doc, indent=1, sort_keys=True))
+    if requested:
+        # Rule 13: "did my click run, and how long did it take" in the log too.
+        log.info("reader %s: run %s on request by %s took %d ms: %s", reader.name,
+                 trigger.get("run", "?"), trigger.get("by") or "nobody identified", took,
+                 "ok" if not error else "failed, " + doc["last_attempt"]["error"])
 
     should = True
-    if announce is not None and not error and reader.announce_if is not None:
+    if announce is not None and not error and reader.announce_if is not None and not requested:
         try:
             moved = bool(reader.announce_if(previous_value, value))
         except Exception:                               # noqa: BLE001
@@ -474,6 +506,86 @@ def running(name: str) -> bool:
     a CLI, a test or another process does not, and asks nothing on demand."""
     t = _threads.get(name)
     return t is not None and t.is_alive()
+
+
+# ---------------------------------------------------------------------------
+# A run a person asked for (rule 13)
+# ---------------------------------------------------------------------------
+
+_REQUESTS: dict = {}
+_REQUESTS_LOCK = threading.Lock()
+
+
+def request_run(reader: Reader, by: str, announce=None, clock=time.time) -> dict:
+    """Run *reader* once now, on its own thread, for *by*. One at a time per
+    reader: a second request while one runs gets that run back
+    (``started: False``), so its page waits for the same answer."""
+    import uuid
+
+    with _REQUESTS_LOCK:
+        current = _REQUESTS.get(reader.name)
+        if current is not None and not current["done"]:
+            return {**current, "started": False}
+        entry = {"run": uuid.uuid4().hex[:12], "by": by or "", "since": clock(), "done": False}
+        _REQUESTS[reader.name] = entry
+
+    def _go():
+        try:
+            run_once(reader, announce=announce, clock=clock,
+                     trigger={"kind": "request", "by": entry["by"], "run": entry["run"]})
+        except Exception:                               # noqa: BLE001
+            log.exception("reader %s: run %s on request by %s raised; nothing was stored",
+                          reader.name, entry["run"], entry["by"] or "nobody identified")
+        finally:
+            entry["done"] = True
+
+    threading.Thread(target=_go, name=f"request:{reader.name}", daemon=True).start()
+    return {**entry, "started": True}
+
+
+def request_in_flight(name: str) -> dict:
+    """The run on request still owed an answer, or None. Owed until the store
+    holds it: its thread marks it done only after announcing, and a page
+    re-fetched on that announcement must already read it as answered."""
+    entry = _REQUESTS.get(name)
+    if entry is None or entry["done"]:
+        return None
+    doc = read_cached(name).get("doc") or {}
+    if ((doc.get("last_attempt") or {}).get("trigger") or {}).get("run") == entry["run"]:
+        return None
+    return dict(entry)
+
+
+def answer_bound(name: str) -> dict:
+    """How long a page waits for an answer on request before saying it is
+    late: 2.5x the slowest run this reader recorded (bounds from measurement).
+    ``seconds`` is None when no run has been timed here, and ``basis`` says so."""
+    doc = read_cached(name).get("doc") or {}
+    took = [r.get("took_ms") for r in (doc.get("runs") or []) if isinstance(r.get("took_ms"), int)]
+    if not took and isinstance((doc.get("last_attempt") or {}).get("took_ms"), int):
+        took = [doc["last_attempt"]["took_ms"]]
+    if not took:
+        return {"seconds": None, "basis": "no run of this check has been timed here yet"}
+    slowest = max(took)
+    return {"seconds": max(1, -(-int(slowest * 2.5) // 1000)),
+            "basis": (f"2.5x the slowest of its last {len(took)} run(s), "
+                      f"{slowest / 1000:.1f} s")}
+
+
+def trigger_words(trigger: dict, viewer: str = "") -> str:
+    """What caused a stored answer, in words, for the person *viewer*."""
+    trigger = trigger or {}
+    kind = trigger.get("kind")
+    if kind == "request":
+        by = trigger.get("by") or ""
+        if by and by == viewer:
+            return "checked on your request"
+        return f"checked on request by {by}" if by else "checked on request by somebody not identified"
+    if kind == "scheduled":
+        return "the scheduled check"
+    if kind == "after_commit":
+        return "re-read after a commit"
+    return "what started it was not recorded" if not kind else f"started by {kind}"
 
 
 def stop() -> None:

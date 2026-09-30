@@ -174,7 +174,29 @@ the box is the person's statement, and it is recorded in the request.
 Help > About always offers **Check again**, which asks origin and CI now (the
 reader otherwise asks every 300 s), so right after a push there is always a way
 to ask. What it shows is stated as of when it was asked ("was the tip when last
-asked"), never as a fact about now.
+asked"), never as a fact about now, and says what CAUSED the answer: "Up to
+date as of just now (checked on your request)", or "(the scheduled check)".
+
+The button stays on **Checking…** until the answer arrives, and then reads
+**Checked just now**. The answer is announced to the page even when nothing
+changed. If no answer arrives within 2.5 times the slowest recorded run of the
+check (1.1 s measured on the host, so 3 s), the page says so rather than
+reverting silently. A failed check is shown beside the answer from before it.
+
+Each run is recorded with its trigger and duration: the reader's store keeps
+the last 20 (`data/readers/app-pushed.json`, `runs`). A run on request is
+logged in `logs/device_manager.log`:
+
+```
+reader app-pushed: run <id> on request by <person> took <N> ms: ok
+```
+
+**Found on the first check after the repair (C244, 2026-09-30):**
+- the button reverted after 5 s because the request had been accepted, not
+  because the check had finished;
+- the reader announced only a changed answer, so a check that found nothing
+  new reached no page;
+- nothing recorded whether a click had run the check.
 
 ## A console message that is not a defect
 

@@ -74,6 +74,43 @@ def _subject(commit: str) -> str:
         return ""
 
 
+CHECKED_JUST_NOW_S = 60
+
+
+def check_state(name: str = "app-pushed") -> dict:
+    """What Check again draws (reader_job rule 13), for the person looking: a
+    run on request still owed an answer and for how long it has run, how long
+    the page waits before calling the answer late, what caused the stored
+    answer, whether it answered THIS person's request and how long ago, and a
+    last attempt that failed. Ages, never epochs: the browser's clock is not
+    the host's."""
+    import time
+
+    from modules import identity, reader_job
+
+    who = identity.viewer()
+    me = who.actor if who.is_identified else ""
+    doc = reader_job.read_cached(name).get("doc") or {}
+    good = doc.get("last_good") or {}
+    attempt = doc.get("last_attempt") or {}
+    trig = good.get("trigger") or {}
+    now = time.time()
+    flight = reader_job.request_in_flight(name)
+    bound = reader_job.answer_bound(name)
+    at = reader_job._parse_iso(good.get("value_at"))           # noqa: SLF001
+    mine = trig.get("kind") == "request" and bool(me) and trig.get("by") == me
+    failed = None
+    if attempt and not attempt.get("ok"):
+        failed = {"at": attempt.get("at"), "error": attempt.get("error") or "no reason recorded",
+                  "words": reader_job.trigger_words(attempt.get("trigger"), me)}
+    return {"running_for": round(now - flight["since"], 1) if flight else None,
+            "bound_seconds": bound["seconds"], "bound_basis": bound["basis"],
+            "trigger_words": reader_job.trigger_words(trig, me) if good else "",
+            "answered_ago": round(now - at, 1) if (mine and at is not None
+                                                   and now - at < CHECKED_JUST_NOW_S) else None,
+            "fresh_seconds": CHECKED_JUST_NOW_S, "failed": failed}
+
+
 def installation() -> dict:
     """About this installation: the running commit, its CI verdict, whether it
     is what is pushed, and who is looking. Each from its one source."""
@@ -104,7 +141,7 @@ def installation() -> dict:
     return {"running": facts.get("running") or "", "subject": _subject(facts.get("running")),
             "started_at": facts.get("started_at"), "pid": os.getpid(),
             "version": facts.get("version") or {}, "ci": facts.get("ci") or {}, "pushed": pushed,
-            "last_update": last}
+            "last_update": last, "check": check_state()}
 
 
 @bp.route("/help/about", methods=["GET"])
@@ -138,7 +175,7 @@ def _update_ctx() -> dict:
     return {"p": mask_payload(p), "hist": update_op.history(5),
             "confirm": confirm_part(request, "confirm"),
             "words": update_op.OUTCOME_WORDS, "up_bound_s": update_op.UP_BOUND_S,
-            "steps": update_op.STEPS,
+            "steps": update_op.STEPS, "check": check_state(),
             "updater_timeout_s": update_op.UPDATER_TIMEOUT_S}
 
 

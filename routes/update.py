@@ -6,13 +6,15 @@ calls.
                        root-owned updater acts on (gate `confirm`, a person);
 - GET  /update/status  what runs, what waits, what the updater last said: the
                        waiting page reads it beside /health;
-- POST /update/check   runs the `app-pushed` reader now, on a thread, so a
-                       person need not wait for its next run after a push; the
-                       page hears `app_version` when it finishes.
+- POST /update/check   runs the `app-pushed` reader now, on a thread, as the
+                       person's request (reader_job rule 13), so a person need
+                       not wait for its next run after a push; the answer is
+                       announced even when nothing changed, and the reply names
+                       the run and how long the page waits before calling it late.
 """
 
 import logging
-import threading
+import time
 
 from flask import Blueprint, jsonify, request
 
@@ -44,9 +46,6 @@ def status():
     return jsonify(dict(update_op.status(), ok=True))
 
 
-_checking = threading.Lock()
-
-
 @bp.route("/check", methods=["POST"])
 def check():
     """Run the reader now, once; a second press while it runs is told so."""
@@ -57,19 +56,19 @@ def check():
         return jsonify({"ok": False, "error": (
             "the reader jobs do not run in this process, so nothing was asked; the app's "
             f"own reader asks every {app_pushed.INTERVAL_SECONDS} s")}), 409
-    if not _checking.acquire(blocking=False):
-        return jsonify({"ok": True, "started": False,
-                        "message": "a check is already running; the page updates when it ends"})
+    from modules import identity
 
-    def _run():
-        try:
-            # Announced like the reader's own runs, so the page hears the answer.
-            reader_job.run_once(app_pushed.READER, announce=reader_job.announce_via_page)
-        except Exception:                                   # noqa: BLE001
-            log.exception("update: the on-demand check raised")
-        finally:
-            _checking.release()
-
-    threading.Thread(target=_run, name="update-check", daemon=True).start()
-    return jsonify({"ok": True, "started": True,
-                    "message": "asking origin and CI now; the page updates when the answer arrives"}), 202
+    who = identity.viewer()
+    # Recorded as the person's request (reader_job rule 13), announced even
+    # when the answer did not change, because this person is waiting on it.
+    got = reader_job.request_run(app_pushed.READER, who.actor if who.is_identified else "",
+                                 announce=reader_job.announce_via_page)
+    bound = reader_job.answer_bound(app_pushed.READER.name)
+    # An age, never an epoch: the browser's clock is not the host's.
+    body = {"ok": True, "started": got["started"], "run": got["run"],
+            "running_for": round(time.time() - got["since"], 1),
+            "bound_seconds": bound["seconds"], "bound_basis": bound["basis"],
+            "message": ("asking origin and CI now; this stays busy until the answer arrives"
+                        if got["started"] else
+                        "a check is already running; this waits for its answer")}
+    return jsonify(body), (202 if got["started"] else 200)

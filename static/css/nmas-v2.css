@@ -409,4 +409,6 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .stepper .step-failed .step-mark { background: var(--danger); border-color: var(--danger); }
 .stepper .step-note { font-weight: 400; color: var(--ink-2); }
 
-.check-again .muted:empty { display: none; }
+.check-again .muted:empty, .check-again .check-late:empty { display: none; }
+/* A check that answered late, or a last attempt that failed: said in words. */
+.check-again .check-late, .check-again .check-failed { color: var(--warn); }

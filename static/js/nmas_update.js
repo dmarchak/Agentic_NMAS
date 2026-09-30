@@ -87,6 +87,23 @@
     return {steps: st, done: false, reload: false, failed: false, words: ''};
   }
 
+  /* Check again's words, PURE (executed in duktape by the tests). */
+  function checkLabel(busy, fresh) {
+    return busy ? 'Checking…' : (fresh ? 'Checked just now' : 'Check again');
+  }
+  function checkFreshLeft(ago, freshS) {
+    return ago >= 0 && freshS > 0 ? freshS - ago : 0;
+  }
+  function checkWaitingWords(bound, basis) {
+    return 'asking origin and CI now; this stays busy until the answer arrives'
+      + (bound > 0 ? '' : ' (' + (basis || 'no run timed yet') + ', so no time limit is set)');
+  }
+  function checkLateWords(bound, basis) {
+    return 'No answer after ' + bound + ' s, longer than this check has taken here ('
+      + basis + '). It may still be running: this line changes when it answers, '
+      + 'and if it does not, the app log names the run ("on request by").';
+  }
+
   function getJson(url) {
     return root.fetch(url, {headers: {'Accept': 'application/json'}, cache: 'no-store'})
       .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; })
@@ -175,21 +192,60 @@
     });
     // "Check again": ask origin and CI now instead of at the reader's next run.
     // Its attributes are on the element that carries x-data AND x-on.
+    //
+    // BUSY UNTIL THE ANSWER ARRIVES (the operator, 2026-09-30): it once
+    // reverted on a 5 s timer after the REQUEST was accepted, while the text
+    // still said "asking". The answer arrives as the reader's announcement,
+    // which re-draws the panel holding this component; the server draws it
+    // busy while the run is owed an answer and "Checked just now" once it
+    // answered this person. Nothing here ends the wait except that re-draw, or
+    // the bound (2.5x the slowest recorded run), which SAYS the answer is late.
     A.data('check', function () {
       return {
-        busy: false, said: '',
-        get label() { return this.busy ? 'Checking…' : 'Check again'; },
+        busy: false, fresh: false, said: '', late: '',
+        init: function () {
+          var el = this.$root, self = this;
+          var running = parseFloat(el.getAttribute('data-running-for'));
+          if (running >= 0) self.wait(running, el.getAttribute('data-bound'), el.getAttribute('data-bound-basis'));
+          var ago = parseFloat(el.getAttribute('data-answered-ago'));
+          var left = checkFreshLeft(ago, parseFloat(el.getAttribute('data-fresh')));
+          if (left > 0) {
+            self.fresh = true;
+            root.setTimeout(function () { self.fresh = false; }, left * 1000);
+          }
+        },
+        get label() { return checkLabel(this.busy, this.fresh); },
+        wait: function (runningFor, bound, basis) {
+          var self = this, b = parseFloat(bound);
+          self.busy = true;
+          self.late = '';
+          self.said = checkWaitingWords(b, basis);
+          if (!(b > 0)) return;
+          root.setTimeout(function () {
+            if (!self.busy) return;
+            self.busy = false;
+            self.said = '';
+            self.late = checkLateWords(b, basis);
+          }, Math.max(0, b - runningFor) * 1000);
+        },
         run: function () {
           var self = this;
           self.busy = true;
+          self.fresh = false;
+          self.late = '';
+          self.said = 'Sending the request…';
           root.fetch(this.$root.getAttribute('data-url'), {method: 'POST', headers: {'Accept': 'application/json'}})
             .then(function (r) {
               return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
             })
             .then(function (got) {
               var b = got[1] || {};
-              self.said = got[0] < 300 ? (b.message || 'asking now') : ('Not asked: ' + (b.error || ('HTTP ' + got[0])));
-              root.setTimeout(function () { self.busy = false; }, 5000);
+              if (got[0] < 300 && b.ok) {
+                self.wait(b.running_for || 0, b.bound_seconds, b.bound_basis);
+              } else {
+                self.busy = false;
+                self.said = 'Not asked: ' + (b.error || ('HTTP ' + got[0]));
+              }
             }, function (e) { self.busy = false; self.said = 'Not asked: ' + e.message; });
         }
       };
@@ -209,5 +265,7 @@
     root.document.addEventListener('alpine:init', register);
     root.document.addEventListener('htmx:beforeSwap', holdSwap);
   }
-  root.NMAS_UPDATE = {stepStates: stepStates, TERMINAL: TERMINAL};
+  root.NMAS_UPDATE = {stepStates: stepStates, TERMINAL: TERMINAL, checkLabel: checkLabel,
+                      checkFreshLeft: checkFreshLeft, checkWaitingWords: checkWaitingWords,
+                      checkLateWords: checkLateWords};
 })(typeof window !== 'undefined' ? window : this);

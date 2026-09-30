@@ -242,7 +242,8 @@ def changed(previous: dict, value: dict) -> bool:
 def refresh_hook(context: dict) -> dict:
     """A post-commit hook, registered after the push: re-read at once, so a
     commit or a push is reflected without waiting for the next cycle."""
-    reader_job.run_once(READER, announce=reader_job.announce_via_page)
+    reader_job.run_once(READER, announce=reader_job.announce_via_page,
+                        trigger={"kind": "after_commit"})
     return {"ok": True, "message": "publication state re-read"}
 
 

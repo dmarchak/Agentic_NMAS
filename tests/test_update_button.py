@@ -803,16 +803,295 @@ class TestClickingTheShippedButton:
         assert said.startswith("Not asked: the reader jobs do not run in this process")
 
 
+def _record_runs(took_ms):
+    """Put measured runs in the reader's store: the page's bound is 2.5x the slowest."""
+    from modules import reader_job
+    path = reader_job.store_path("app-pushed")
+    doc = reader_job.read_cached("app-pushed")["doc"]
+    doc["runs"] = [{"took_ms": took_ms}]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(doc, f)
+
+
+BUTTON = "document.querySelector('#installation .check-again button')"
+
+
+@pytest.fixture
+def served_about(scripted_reader):
+    browser = _browser_or_skip()
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        yield {"b": b, "srv": srv, **scripted_reader}
+
+
+class TestCheckAgainInARealBrowser:
+    """The operator's two problems, clicked: busy until the ANSWER, and the
+    answer saying it came from this person's request."""
+
+    def test_it_stays_busy_until_the_answer_arrives_through_a_redraw(self, served_about):
+        from modules import reader_job
+        s, b = served_about, served_about["b"]
+        reader_job.run_once(s["reader"])                  # a scheduled answer to start from
+        _record_runs(4000)                                # a bound (10 s) this test never reaches
+        s["hold"].clear()
+        b.go(s["srv"].url("/v2/help/about"))
+        b.wait_for(f"return window.Alpine && {BUTTON} && {BUTTON}.textContent === 'Check again'")
+        assert "(the scheduled check)" in b.js("return document.querySelector('#installation').textContent")
+        b.click("#installation .check-again button")
+        b.wait_for(f"return {BUTTON}.disabled && {BUTTON}.textContent === 'Checking…'")
+        # Another reader re-draws the panel mid-run: the new one is still busy.
+        b.js("document.querySelector('#installation').setAttribute('data-old', '1');"
+             "htmx.trigger(document.body, 'nmas:job_health'); return 1")
+        b.wait_for("var s = document.querySelector('#installation'); return s && !s.hasAttribute('data-old')")
+        b.wait_for(f"return window.Alpine && {BUTTON}.disabled && {BUTTON}.textContent === 'Checking…'")
+        s["hold"].set()
+        assert _wait_until(lambda: s["announced"]), "the answer was not announced"
+        b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")   # the page's relay
+        b.wait_for(f"return {BUTTON}.textContent === 'Checked just now' && !{BUTTON}.disabled")
+        text = b.js("return document.querySelector('#installation').textContent")
+        assert "(checked on your request)" in text and "Up to date as of" in text
+
+    def test_an_answer_later_than_the_bound_is_said_on_the_page(self, served_about):
+        from modules import reader_job
+        s, b = served_about, served_about["b"]
+        reader_job.run_once(s["reader"])
+        _record_runs(200)                                 # 2.5x 0.2 s: a 1 s bound
+        s["hold"].clear()
+        b.go(s["srv"].url("/v2/help/about"))
+        b.wait_for(f"return window.Alpine && {BUTTON} && {BUTTON}.textContent === 'Check again'")
+        b.click("#installation .check-again button")
+        late = b.wait_for("return document.querySelector('#installation .check-late').textContent")
+        assert late.startswith("No answer after 1 s, longer than this check has taken here "
+                               "(2.5x the slowest of its last 1 run(s), 0.2 s)")
+        assert b.js(f"return {BUTTON}.textContent") == "Check again"
+
+
+RUNNING = "a" * 40
+AT_TIP = {"running": RUNNING, "tip": RUNNING, "state": "at_tip"}
+
+
+@pytest.fixture
+def scripted_reader(monkeypatch):
+    """The `app-pushed` reader with a scripted read (held until released),
+    the readers declared running, the app's commit fixed, and every
+    announcement recorded instead of sent."""
+    import dataclasses
+    import threading
+
+    from modules import reader_job
+    from modules.readers import app_pushed
+    from routes import health
+
+    hold = threading.Event()
+    hold.set()
+    state = {"hold": hold, "value": dict(AT_TIP), "announced": []}
+
+    def read():
+        assert hold.wait(20), "the test never released the read"
+        v = state["value"]
+        return dict(v) if isinstance(v, dict) else v
+
+    fake = dataclasses.replace(app_pushed.READER, read=read)
+    monkeypatch.setattr(app_pushed, "READER", fake)
+    monkeypatch.setattr(reader_job, "running", lambda name: True)
+    monkeypatch.setattr(reader_job, "announce_via_page",
+                        lambda keys, name, ok: state["announced"].append((tuple(keys), name, ok)))
+    real = health.version_facts
+    monkeypatch.setattr(health, "version_facts", lambda: {**real(), "running": RUNNING})
+    monkeypatch.setattr(reader_job, "_REQUESTS", {})
+    monkeypatch.setattr(reader_job, "_LAST_ANNOUNCED", {})
+    if os.path.exists(reader_job.store_path(fake.name)):     # the shared test store
+        os.remove(reader_job.store_path(fake.name))
+    state["reader"] = fake
+    yield state
+    hold.set()                                   # never leave a held read behind
+
+
+def _wait_until(pred, bound=10):
+    import time
+    end = time.monotonic() + bound
+    while time.monotonic() < end:
+        if pred():
+            return True
+        time.sleep(0.02)
+    return False
+
+
 class TestCheckAgain:
+    """The operator, 2026-09-30: Check again reverted on a 5 s timer after the
+    REQUEST was accepted while the text still said "asking", and nothing could
+    say whether the click had run the check. Measured on the host: both clicks
+    answered 202, the run logged nothing on success, the store kept only the
+    last (scheduled) run, and the reader announces only a CHANGED answer, so a
+    check that found nothing new told no page (reader_job rule 13)."""
+
     def test_it_runs_the_reader_only_where_the_readers_run(self, monkeypatch):
-        import threading
+        import app as A
+        from modules import reader_job
+        started = []
+        monkeypatch.setattr(reader_job, "request_run", lambda *a, **k: started.append(a))
+        r = A.app.test_client().post("/update/check", json={})
+        assert r.status_code == 409 and "do not run in this process" in r.get_json()["error"]
+        assert started == []
+
+    def test_a_click_is_recorded_as_the_persons_request_with_its_duration(self, scripted_reader,
+                                                                         caplog):
+        import logging
 
         import app as A
         from modules import reader_job
-        ran = threading.Event()
-        monkeypatch.setattr(reader_job, "run_once", lambda reader, announce=None: ran.set())
+        from tests.conftest import TEST_PERSON
+        caplog.set_level(logging.INFO, logger="modules.reader_job")
         r = A.app.test_client().post("/update/check", json={})
-        assert r.status_code == 409 and "do not run in this process" in r.get_json()["error"]
-        monkeypatch.setattr(reader_job, "running", lambda name: True)
-        r = A.app.test_client().post("/update/check", json={})
-        assert r.status_code == 202 and ran.wait(5)
+        body = r.get_json()
+        assert r.status_code == 202 and body["started"] and body["run"]
+        assert _wait_until(lambda: reader_job.request_in_flight("app-pushed") is None
+                           and reader_job._REQUESTS["app-pushed"]["done"])
+        doc = reader_job.read_cached("app-pushed")["doc"]
+        want = {"kind": "request", "by": TEST_PERSON, "run": body["run"]}
+        assert doc["last_attempt"]["trigger"] == want
+        assert doc["last_good"]["trigger"] == want
+        assert doc["runs"][-1]["trigger"] == want and isinstance(doc["runs"][-1]["took_ms"], int)
+        logged = [m for m in caplog.messages if body["run"] in m]
+        assert logged and f"on request by {TEST_PERSON} took" in logged[0] and logged[0].endswith("ok")
+
+    def test_an_unchanged_answer_on_request_is_still_announced(self, scripted_reader):
+        """The defect: announce_if skipped it, and the page never heard."""
+        from modules import reader_job
+        from modules.readers import app_pushed
+        reader_job.run_once(scripted_reader["reader"], announce=reader_job.announce_via_page)
+        reader_job.run_once(scripted_reader["reader"], announce=reader_job.announce_via_page)
+        assert len(scripted_reader["announced"]) == 1   # the control: unchanged, not due, skipped
+        got = reader_job.request_run(scripted_reader["reader"], "p@example.invalid",
+                                     announce=reader_job.announce_via_page)
+        assert _wait_until(lambda: reader_job._REQUESTS[app_pushed.READER.name]["done"])
+        assert got["started"] and len(scripted_reader["announced"]) == 2
+        assert scripted_reader["announced"][-1] == (("app_version",), "app-pushed", True)
+
+    def test_one_run_at_a_time_and_a_second_press_waits_for_the_same(self, scripted_reader):
+        import app as A
+        from modules import reader_job
+        scripted_reader["hold"].clear()
+        c = A.app.test_client()
+        first = c.post("/update/check", json={})
+        second = c.post("/update/check", json={})
+        assert first.status_code == 202 and second.status_code == 200
+        assert second.get_json()["run"] == first.get_json()["run"]
+        assert "waits for its answer" in second.get_json()["message"]
+        assert reader_job.request_in_flight("app-pushed")["run"] == first.get_json()["run"]
+        scripted_reader["hold"].set()
+        assert _wait_until(lambda: reader_job.request_in_flight("app-pushed") is None)
+
+    def test_the_run_is_answered_once_the_store_holds_it_before_its_thread_ends(self,
+                                                                                scripted_reader):
+        """The re-fetch the announcement causes must already read it as answered."""
+        from modules import reader_job
+        reader_job._REQUESTS["app-pushed"] = {"run": "r1", "by": "", "since": 0, "done": False}
+        assert reader_job.request_in_flight("app-pushed")["run"] == "r1"
+        reader_job.run_once(scripted_reader["reader"],
+                            trigger={"kind": "request", "by": "", "run": "r1"})
+        assert reader_job.request_in_flight("app-pushed") is None
+
+    def test_the_bound_is_measured_from_the_recorded_runs(self, scripted_reader):
+        from modules import reader_job
+        assert reader_job.answer_bound("app-pushed")["seconds"] is None
+        assert "no run" in reader_job.answer_bound("app-pushed")["basis"]
+        path = reader_job.store_path("app-pushed")
+        reader_job.run_once(scripted_reader["reader"])
+        doc = reader_job.read_cached("app-pushed")["doc"]
+        doc["runs"] = [{"took_ms": 1117}, {"took_ms": 400}]          # the host's, 2026-09-30
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        got = reader_job.answer_bound("app-pushed")
+        assert got["seconds"] == 3 and "slowest of its last 2 run(s), 1.1 s" in got["basis"]
+
+    def test_runs_are_kept_to_the_bound(self, scripted_reader):
+        from modules import reader_job
+        for _ in range(reader_job.RUNS_KEPT + 3):
+            reader_job.run_once(scripted_reader["reader"])
+        runs = reader_job.read_cached("app-pushed")["doc"]["runs"]
+        assert len(runs) == reader_job.RUNS_KEPT
+        assert all(r["trigger"] == {"kind": "scheduled"} for r in runs)
+
+    @pytest.mark.parametrize("trigger,viewer,words", [
+        ({"kind": "request", "by": "me@example.invalid"}, "me@example.invalid", "checked on your request"),
+        ({"kind": "request", "by": "you@example.invalid"}, "me@example.invalid",
+         "checked on request by you@example.invalid"),
+        ({"kind": "request", "by": ""}, "", "checked on request by somebody not identified"),
+        ({"kind": "scheduled"}, "me@example.invalid", "the scheduled check"),
+        ({"kind": "after_commit"}, "", "re-read after a commit"),
+        ({}, "", "what started it was not recorded"),
+    ])
+    def test_what_caused_an_answer_in_words(self, trigger, viewer, words):
+        from modules import reader_job
+        assert reader_job.trigger_words(trigger, viewer) == words
+
+    def test_about_says_what_caused_the_answer_and_draws_busy_mid_run(self, scripted_reader):
+        import app as A
+        from modules import reader_job
+        c = A.app.test_client()
+        reader_job.run_once(scripted_reader["reader"])
+        page = c.get("/v2/help/installation").get_data(as_text=True)
+        assert "(the scheduled check):" in page and 'data-running-for=""' in page
+        scripted_reader["hold"].clear()
+        c.post("/update/check", json={})
+        page = c.get("/v2/help/installation").get_data(as_text=True)
+        assert re.search(r'data-running-for="\d', page), "a panel re-drawn mid-run is not busy"
+        assert "Checking…</button>" in page
+        scripted_reader["hold"].set()
+        assert _wait_until(lambda: reader_job.request_in_flight("app-pushed") is None)
+        page = c.get("/v2/help/installation").get_data(as_text=True)
+        assert "Up to date as of" in page and "(checked on your request):" in page
+        assert "Checked just now</button>" in page and re.search(r'data-answered-ago="\d', page)
+        assert 'data-running-for=""' in page
+
+    def test_a_failed_check_is_said_beside_the_answer_before_it(self, scripted_reader):
+        import app as A
+        from modules import reader_job
+        reader_job.run_once(scripted_reader["reader"])
+        scripted_reader["value"] = "not a mapping"
+        reader_job.run_once(scripted_reader["reader"],
+                            trigger={"kind": "request", "by": "test-person@example.invalid", "run": "x"})
+        page = A.app.test_client().get("/v2/help/installation").get_data(as_text=True)
+        assert "The last check (checked on your request," in page
+        assert "failed: the read returned str, not a mapping" in page
+        assert "What is shown is the answer before it" in page
+
+    def test_the_update_page_says_it_too(self, scripted_reader):
+        import app as A
+        from modules import reader_job
+        reader_job.run_once(scripted_reader["reader"])
+        page = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
+        assert "(the scheduled check)" in page and 'x-data="check"' in page
+
+    def test_the_commit_hook_records_its_trigger(self, monkeypatch):
+        from modules import reader_job
+        from modules.readers import remote_publication
+        seen = []
+        monkeypatch.setattr(reader_job, "run_once", lambda r, announce=None, trigger=None: seen.append(trigger))
+        remote_publication.refresh_hook({})
+        assert seen == [{"kind": "after_commit"}]
+
+    @pytest.mark.parametrize("call,want", [
+        ("checkLabel(true, true)", "Checking…"),
+        ("checkLabel(false, true)", "Checked just now"),
+        ("checkLabel(false, false)", "Check again"),
+        ("checkFreshLeft(12, 60)", 48),
+        ("checkFreshLeft(NaN, 60)", 0),
+        ("checkWaitingWords(3, 'b')", "asking origin and CI now; this stays busy until the answer arrives"),
+        ("checkWaitingWords(NaN, 'no run of this check has been timed here yet')",
+         "asking origin and CI now; this stays busy until the answer arrives (no run of this "
+         "check has been timed here yet, so no time limit is set)"),
+    ])
+    def test_the_shipped_words(self, call, want):
+        import dukpy
+        src = open(os.path.join(ROOT, "static/js/nmas_update.js"), encoding="utf-8").read()
+        assert dukpy.evaljs([src, "NMAS_UPDATE." + call]) == want
+
+    def test_the_late_words_name_the_bound_and_its_basis(self):
+        import dukpy
+        src = open(os.path.join(ROOT, "static/js/nmas_update.js"), encoding="utf-8").read()
+        got = dukpy.evaljs([src, "NMAS_UPDATE.checkLateWords(3, '2.5x the slowest of its last "
+                                 "20 run(s), 1.1 s')"])
+        assert got.startswith("No answer after 3 s, longer than this check has taken here "
+                              "(2.5x the slowest of its last 20 run(s), 1.1 s)")
