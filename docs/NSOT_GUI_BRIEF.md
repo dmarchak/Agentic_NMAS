@@ -734,3 +734,307 @@ The recommendations as they were put:
 4. **Typed confirmation for Retire:** the one action to get it.
 5. **The legacy collectors (SNMP traps, NetFlow buffers):** kept under Settings > Checks
    until Grafana's views replace them, or removed now with the other legacy blocks.
+
+## 13. The mockup review, decided (the operator, 2026-09-29)
+
+- **Impression:** much cleaner and more appealing than today's GUI. **The mobile layout is a
+  first-class requirement,** not an afterthought.
+- **The first-click test is skipped:** the twenty-question counts (section 2) stand as the
+  evidence for the hybrid sidebar. The questions are kept as an **acceptance check on the
+  BUILT screens.**
+- **Drag-reorder is removed** in favour of sortable columns. The batch deploy preview shows
+  and sets the rollout order.
+- **Fonts: IBM Plex,** bundled locally so the tool works air-gapped (the SIL Open Font
+  License allows it). This replaces section 6's system font stack.
+- **The legacy in-app collector, its views and SNMP Quick Poll are removed.** The app still
+  SHOWS traps and syslog, read from Loki, and alerts from Grafana. Those stay the one place
+  such data originates: the app reads and displays, and never collects or stores it.
+
+## 14. The app as the one place: every integrated service
+
+**The requirement (the operator, 2026-09-29):** a person should almost never need to open
+Grafana, Kea, NetBox, Loki, Prometheus or Oxidized directly. That means fully realised
+screens, not status cards.
+- **Each device page shows its slice of every service.**
+- **Each service has one fleet-wide screen.**
+- **Every read follows the reader pattern** (plan §0a: no per-device work per request) and
+  the live-data contract (7.2).
+- **Masking and redaction apply to everything shown** (section 15, question 4).
+- **Order: these screens come AFTER P.8,** because each network can have its own Grafana,
+  Kea and NetBox scope (C173).
+
+### 14.1 The sidebar, extended
+
+A second heading, **OBSERVE**, holds the fleet-wide service screens. It stays one level deep,
+and each item is named by the noun a person arrives with (section 2's rule):
+
+```
+Needs attention
+Devices
+History
+OBSERVE
+  Monitoring   charts, alerts, the PromQL query, hosts and the lab
+  Logs         syslog and traps from Loki, the LogQL query
+  DHCP         subnets, pools, leases, reservations
+SOURCE OF TRUTH
+  Templates
+  NetBox       the browser, then import and remove
+  Credentials
+────────────
+Help
+Settings
+```
+
+**Where each service lives:**
+- **Oxidized has no item of its own:** its config versions are History's (fleet) and the
+  device page's (one device), always labelled as Oxidized's copies.
+- **Proxmox and the containerlab nodes** are Monitoring > Hosts. They are status, not a
+  destination.
+
+**The device page's tabs become:** Overview · Intent · History · Monitoring · Logs · NetBox ·
+Neighbours · Ask the device.
+- **Monitoring:** this device's charts and alerts.
+- **Logs:** its syslog and traps.
+- **NetBox:** its record, with interfaces, addresses and cables linked into the browser.
+- **The DHCP lease** is one line of the Overview's facts: the address, its reservation, the
+  lease's expiry. A device takes an address from DHCP or does not, and a tab for one line
+  would be a tab that is usually empty.
+
+On a phone the tab strip scrolls sideways (section 7.2).
+
+### 14.2 The screens
+
+**Monitoring (Grafana and Prometheus): both, for different jobs.** The operator asked for
+both, with costs.
+- **Native charts, drawn in the design system:** the key ones only.
+  - **Which:** reachability, CPU, memory, interface throughput and errors, and heartbeat
+    arrivals.
+  - **How:** drawn from bounded PromQL range queries through the NMAS's Prometheus client.
+  - **Why:** they work at phone width, match the look, and carry the live-data contract's
+    age stamp.
+  - **Cost:**
+    - a vendored time-series library (uPlot, MIT, about 45 KB, fast at thousands of
+      points), hash-pinned (C123);
+    - one bounded read route per chart family;
+    - defining the chart set, which is ours to own.
+  - They never try to be Grafana: a chart links to its Grafana dashboard on desktop.
+- **Full Grafana dashboards, embedded, for desktop deep dives.**
+  - **The route (the operator's preference): Grafana under the NMAS's own origin:**
+    - a reverse proxy at `/grafana/`, with Grafana's `root_url` and `serve_from_sub_path`
+      set;
+    - `auth.proxy` enabled, trusting ONLY a header the NMAS proxy sets from the verified
+      identity. The proxy strips any client-supplied copy, because an unverified header is
+      the forgery `modules/identity.py` exists to refuse;
+    - users auto-created with the **Viewer** role, which by Grafana's default role
+      permissions cannot create silences or edit rules, so question 3 below holds inside
+      the embed too. That is confirmed on the host's Grafana version before the embed is
+      accepted.
+  - **What that removes:** the frame is same-origin, so plan §3's blockers 2 to 4 go (the
+    loopback address, a second Access application, `frame-src`). Blocker 1 stays:
+    `allow_embedding` must be on, which is the operator's, as root on the host.
+  - **Cost:**
+    - the proxy, including Grafana Live's websocket;
+    - header hygiene, with a test that a client-supplied identity header never reaches
+      Grafana;
+    - the settings on the host.
+  - **At phone width the embed is not offered:** the native charts are the phone's
+    monitoring.
+- **Alerts:** every firing instance with its rule, device, onset and state, and its silence
+  (question 3 below). Needs attention stays the place a person is told; this is the full
+  list.
+- **Query:** a PromQL box, results as a chart and a table, bounded (question 5).
+- **Hosts:** Proxmox VMs (the existing read-only client) and containerlab nodes, whose status
+  needs a new read-only reader (section 15.2).
+
+**Logs (Loki):**
+- **Fleet-wide:** time range, device, severity, facility, traps or syslog, and text.
+- **Per device:** selected by the device's OWN origin-id, never rsyslog's hostname (C13,
+  C166).
+- **A LogQL query screen.**
+- **Bounded:** a range cap, a line limit and a timeout.
+- **Masked:** a log line can quote a config line or a credential, so the same redaction
+  applies, and unmasking is the reveal gate.
+- **Traps are shown as Loki stores them.** Which stream and labels the trap pipeline writes
+  is measured when this is built, never assumed.
+
+**DHCP (Kea):**
+- subnets and pools, with their utilisation (Kea's `statistic-get-all`, a read);
+- active leases, filterable by address, MAC and hostname;
+- reservations: those in the NMAS's own fragment, which are editable (section 15), and those
+  in Kea's main config, shown **marked and read-only**;
+- ZTP reservations marked as such.
+- **Lease history per device:** Kea's API returns current leases only, so history is the
+  reader's own record. Each read's leases are kept with a bounded retention, stating that it
+  is observed, not Kea's. (Kea's legal-log hook would be the alternative; whether the host's
+  Kea ships it is unmeasured.)
+
+**NetBox, a browser:**
+- sites, devices, interfaces, prefixes, VRFs, VLANs, IP addresses and cables, each linked to
+  the others;
+- filtered and paged on the server;
+- `local_context_data` masked (C95, C139);
+- no edit and no link out (question 2);
+- the import and remove previews stay, as this item's tabs.
+
+**Oxidized:**
+- **Config versions and diffs, per device**, beside the golden history, labelled "Oxidized's
+  copy, fetched at T".
+- **Diffs against the golden are the freshness signal made visible.**
+- **Measured when built:** oxidized-web lists versions only when Oxidized's output is git.
+- **"Fetch now"** (section 15.2).
+
+**Also integrated, and placed:**
+- **The topology service:** Devices > Topology.
+- **The NSoT git remote:** History's header.
+- **The S3 archive:** History > Repository, its listing read-only.
+
+The Anthropic API and Cloudflare Access have no screens: the assistant panel, and identity
+in the top bar.
+
+## 15. What each connector may do: a rule, not a list
+
+**The five questions (the operator, 2026-09-29).** Every capability is judged by what it
+could change, never by which service it belongs to:
+1. **Does it change the network or a device?** Then only through the NMAS's own operations
+   and their gates.
+2. **Does it change something the NMAS treats as its RECORD or EVIDENCE?** That covers
+   NetBox, goldens, Oxidized's copies, stored logs and metrics, alert rules and audit
+   trails. They are never edited directly: written only by the NMAS's operations, or
+   generated from the inventory.
+3. **Does it HIDE a signal the safeguards depend on?** Silencing an alert, disabling a rule
+   and deleting logs are NOT ALLOWED.
+4. **Can it REVEAL a secret?** Then the reveal gate and redaction apply, even to a read:
+   query results can carry config lines.
+5. **Can it OVERLOAD the service?** Then it is bounded: time ranges, row limits, timeouts.
+
+**A capability that passes all five is added freely,** and generously.
+
+### 15.1 The classification
+
+Checked against the code and the services on 2026-09-29. Corrections to the agreed version
+are marked **Corrected**.
+
+| Service | Capability | In the app? | Decided by | Gate or bound |
+|---|---|---|---|---|
+| Loki | LogQL queries; per-device and fleet logs and traps | **Freely** | passes all five | Q4: masked, reveal gate to unmask. Q5: range cap, line limit, timeout |
+| Loki | Deleting logs | Not in the app | Q3 (hides a signal), Q2 (evidence) | - |
+| Loki | Editing alert rules | Not in the app | Q2, Q3 | Rules are Grafana's, generated by P.7 |
+| Prometheus | PromQL queries, charts | **Freely** | passes all five | Q5: range cap, minimum step, series limit, timeout |
+| Prometheus | Scrape targets | Not in the app | Q2 (they decide what evidence exists) | **Corrected:** nothing generates them today. They are Prometheus's own config on its host, hand-maintained, and retire only warns about a target still scraping an address. A generator from the inventory, beside P.7's rules, is registered as C229 |
+| Grafana | Dashboards; alert state, including silences | **Freely** | passes all five | Embedded as Viewer (section 14.2) |
+| Grafana | Silencing, acknowledging to hide | Not in the app | Q3 | - |
+| Grafana | Editing alert rules | Not in the app | Q2, Q3 (C168: the hand-built ones were wrong) | Generated only by P.7's generators |
+| Grafana | A silence set INSIDE Grafana | Shown, never hidden | Q3 | See 15.2: the alert stays on screen as active, marked "silenced in Grafana", with who and until when |
+| Kea | Subnets, pools, utilisation, leases, lookups by MAC, address or hostname | **Freely** | passes all five | Q5: paged reads |
+| Kea | Add, edit, remove a reservation | **With gates** | Q1 (it decides a device's address) | The existing writer: its own fragment file only (`<?include?>`), a candidate tested with `kea-dhcp4 -t`, reload, a read-back naming both operands, restore on failure. The D4 posture check on the ZTP segment. Preview, confirm and result, recorded as the person |
+| Kea | Reservations in Kea's main config | Shown, marked, read-only | Q2 | - |
+| Kea | Editing Kea's main config (subnets, pools, options) | Not in the app | Q1 (the network's design) | - |
+| Kea | Releasing a lease (`lease4-del`) | Not in the app | Q1 (a device in the inventory loses its management address) | - |
+| NetBox | Browsing and searching everything | **Freely** | passes all five | Q4: `local_context_data` masked (C95). Q5: paged |
+| NetBox | ANY edit, or an "edit in NetBox" link out | Not in the app | Q2: the NMAS is NetBox's only writer, through deploys, onboarding and imports | A change made directly in NetBox is DRIFT (15.2) |
+| Oxidized | Config versions and diffs | **Freely** | Q4 applies | Masked, reveal gate to unmask |
+| Oxidized | "Fetch now" (queue the node with oxidized-web's `node/next/<name>`; its method is checked against the host's version when built) | **With gates** | Q1: it reads the device and changes nothing. Q2: Oxidized writes its own new version, which is its evidence, written by it | A verified person, recorded (who, when, which node); bounded to one node per request |
+| Oxidized | Editing its copies | Not in the app | Q2 | - |
+| Oxidized | Its device list (`router.db`, which holds credentials) | Not in the app **as an edit** | Q2, Q4 | **Corrected:** the NMAS already WRITES it, through an operation. Rotation's persistence chain updates a device's credential there with the `nmas-oxidized-cred` helper, then reloads Oxidized. That fits question 2 (written only by the NMAS's operations), and it stays the only writer |
+| Proxmox | VM status, backups (read-only token, four paths) | **Freely** | passes all five | - |
+| Containerlab | Node status | **Freely** | passes all five | Needs a new read-only reader (15.2) |
+| Proxmox, containerlab | Deploying or destroying VMs or nodes | Not in the app | Q1 (the physical world) | - |
+| Topology service | The map, its status | **Freely** | passes all five | - |
+| NSoT git remote | History, push state | **Freely** | passes all five | - |
+| NSoT git remote | Push | **With gates** | Q2 (publishes the record) | `publish_remote`, a person. Never force-pushed |
+| S3 archive | Listing | **Freely** | passes all five | - |
+| S3 archive | Deleting an archive | Not in the app | Q2, Q3 | Written only by the post-commit archive hook |
+| Anthropic API | Sending context to the model | Outbound only | Q4 | Redaction at the provider boundary (`modules/redact.py`) |
+| Jenkins | (none) | - | - | Removed in P.4: nothing left to classify |
+
+### 15.2 What the checks found
+
+**Grafana silences: what the API returns, and what the reader does today.**
+- **What the API returns.** The reader asks Grafana's Alertmanager
+  (`api/alertmanager/grafana/api/v2/alerts`) with no filter. That API's defaults return
+  active, silenced and inhibited alerts alike, and a silenced one carries
+  `status.state: "suppressed"` and `status.silencedBy: [<silence id>, …]`.
+- **What the reader keeps.** The silence IDs, per instance.
+- **What the screen draws.** The instance stays a Needs attention row, and its member line
+  reads "silenced by <id>". Silencing does not remove it, because Grafana's rules view still
+  reports the alert as firing: a silence stops notifications, not the alert.
+- **The gaps:**
+  - **The row shows the silence's ID, never who set it or until when.** Those come from the
+    silence itself (`api/v2/silence/<id>`: `createdBy`, `endsAt`, `comment`), which the
+    reader does not read.
+  - **The recorded fixture holds no silenced alert,** so this path has never met real
+    output. Capturing one needs a silence to exist, which is a write to Grafana: the
+    operator's.
+- **To build:**
+  - the reader reads each referenced silence;
+  - the row reads "silenced in Grafana by <createdBy> until <endsAt>: <comment>";
+  - a test from a real captured silence.
+
+**NetBox drift: what is measurable today.**
+- **The modification record** holds every write the NMAS made, with its before-state.
+- **The census** compares object identity per type against a baseline, so it sees objects
+  created or destroyed. It does not see an edit, because an in-place change alters neither
+  id nor display.
+- **The secret-storage reader** sees credentials in a stored context.
+- **What none of them does:** see a person's EDIT made directly in NetBox. NetBox's own
+  change log does record every edit, with user, time, object and before/after, and
+  `nmas-netbox-untagged` already reads it. But **C100: the NMAS's token belongs to the
+  operator's own account**, so the change log cannot tell the NMAS's edits from a person's
+  by user.
+- **Two ways to build the drift signal:**
+  1. **Approximate, available today:** a change-log entry for an object the NMAS never
+     recorded writing (no modification or created entry for that object within seconds of
+     the change) is a write the NMAS did not make. Named on Needs attention with the object
+     and what changed. It can misattribute a person's edit made in the same seconds as one
+     of the NMAS's.
+  2. **Exact:** give the NMAS its own NetBox account and token (C100, and 6.2's
+     per-consumer accounts). Then any change-log entry by another user is drift, by
+     construction.
+
+  The screen draws either one the same way. The first is buildable now; the second is the
+  clean end.
+
+**Kea: is anything beyond reservations worth doing?**
+- **Reads:** yes. Pool utilisation (`statistic-get-all`), and lease lookups by MAC, address
+  and hostname (`lease4-get-by-hw-address` is already used by onboarding).
+- **Writes:** none. Subnets, pools and options are the network's design and live in Kea's
+  main config (question 1). Releasing a lease can cut a managed device off (question 1).
+  Clearing a stale lease for a host outside the inventory has one real use and the same
+  risk if the host is misidentified: not worth it.
+- **Reservation management needs one widening.** Today's writer serves ZTP onboarding, and
+  the D4 posture check (no route or resolver options) belongs to the ZTP segment only. A
+  reservation for a host on another subnet takes the writer's test, reload, read-back and
+  restore, without D4's ZTP-specific conditions. Which subnets the NMAS's fragment may hold
+  is a setting, per network (P.8).
+
+**Containerlab node status:** no reader exists. The NMAS host has no SSH path to the lab host
+by design (host commands are the operator's). The shape that fits:
+- the lab host's own timer runs `containerlab inspect --format json`;
+- it sends the result to the NMAS, as the clab sync already talks to it;
+- a reader keeps it with its age.
+
+## 16. The findability questions, extended
+
+Paths in the extended sidebar (14.1), counted as in section 2.2 (clicks from the landing
+page; scent is the first click's label).
+
+| # | The question | Path | Clicks | Scent |
+|---|---|---|---|---|
+| 21 | Show r3's CPU for the last day | Devices > r3 > Monitoring (the jump box: r3 > Monitoring) | 3 (2) | ✓ |
+| 22 | What lease does h1 have? (a host, not a managed device) | DHCP > filter h1 | 2 | ✓ |
+| 23 | Which prefixes are in the core VRF? | NetBox > Prefixes > filter VRF core | 3 | ✓ |
+| 24 | Show the traps s2 sent today | Logs > filter s2, traps | 3 | ✓ |
+| 25 | Is any alert firing, and which? | a Needs attention row each (0); the full list: Monitoring > Alerts | 0 (2) | ✓ |
+| 26 | Reserve an address for a new host | DHCP > Reservations > Add reservation… | 3 | ✓ |
+| 27 | What did Oxidized last fetch for r4, and does it differ from the golden? | Devices > r4 > History (Oxidized's copies beside the goldens) | 3 (2) | ✓ |
+| 28 | Run a LogQL query | Logs > Query | 2 | ✓ |
+| 29 | Run a PromQL query | Monitoring > Query | 2 | ✓ |
+| 30 | Which cable connects r1 to s1? | NetBox > Cables > filter r1 | 3 | ✓ |
+| 31 | Is the containerlab VM up? | Monitoring > Hosts | 2 | ~ ("Monitoring" for a host's status) |
+| 32 | Who silenced the heartbeat alert, and until when? | its Needs attention row (0); Monitoring > Alerts | 0 (2) | ✓ |
+
+**All thirty-two questions are the acceptance check on the built screens** (section 13):
+- each built screen is walked with the questions it answers;
+- the clicks are counted;
+- any path longer than this brief's count is a finding, recorded before the screen is
+  accepted.

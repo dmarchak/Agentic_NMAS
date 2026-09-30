@@ -318,7 +318,47 @@ big screen.
 - the research, [NSOT_GUI_RESEARCH.md](NSOT_GUI_RESEARCH.md): signed off 2026-09-29;
 - the brief, [NSOT_GUI_BRIEF.md](NSOT_GUI_BRIEF.md): received 2026-09-29, its five decision
   points decided the same day (below);
-- the mockups: next.
+- the mockups of the landing page, the device list and the Device page, at desktop and phone
+  width: reviewed 2026-09-29.
+
+**The mockup review (the operator, 2026-09-29; brief section 13):**
+- **Impression:** much cleaner and more appealing than today's GUI.
+- **Mobile is a first-class requirement.**
+- **The first-click test is skipped:** the twenty-question counts stand as the sidebar's
+  evidence, and the questions become an acceptance check on the BUILT screens.
+- **Drag-reorder is removed;** the batch deploy preview shows and sets the rollout order.
+- **IBM Plex is bundled locally.**
+- **The legacy collector, its views and SNMP Quick Poll are removed.** The app still SHOWS
+  traps and syslog from Loki and alerts from Grafana, reading and displaying and never
+  collecting or storing.
+
+**THE APP IS THE ONE PLACE FOR EVERY INTEGRATED SERVICE** (the operator, 2026-09-29; brief
+section 14). A person should almost never need to open Grafana, Kea, NetBox, Loki,
+Prometheus or Oxidized directly: fully realised screens, not status cards.
+- **Each device page shows its slice of every service,** and each service has one fleet-wide
+  screen.
+- **They come AFTER P.8,** because each network can have its own service scope.
+- **Reads follow the reader pattern and the live-data contract,** and masking applies to
+  everything shown.
+
+**What each connector may do is a RULE, five questions (brief section 15):** does it change
+the network, change the record or evidence, hide a signal, reveal a secret, or overload the
+service? What passes all five is added freely and generously. The classification was checked
+against the code, and two claims were corrected:
+- **Prometheus's scrape targets:** nothing generates them today (C229).
+- **Oxidized's `router.db`:** the NMAS already writes it, through rotation's persistence
+  chain.
+
+**The order from here (the operator, 2026-09-29), each step waiting for sign-off:**
+1. the brief updated with the integration screens, the rule and its classification, and the
+   extended findability questions (done: sections 13 to 16);
+2. mockups of the new screens at desktop and phone width: fleet-wide Monitoring, DHCP with
+   reservation management, the NetBox browser, Logs with the Loki query screen, a Prometheus
+   query screen, and the device page's service sections;
+3. the stack costing, accounting for those screens: htmx plus Alpine over the current pages,
+   against a full framework, honestly;
+4. then build, starting with the landing page, the sidebar and the Device page. The
+   integration screens follow P.8.
 
 **THE FRONTEND DECIDES; THE BACKEND SERVES IT** (the operator, 2026-09-29, governing the
 rest of the redesign). A person's opinion of this program rests almost entirely on whether it
@@ -2459,7 +2499,11 @@ read through one function, and P.8 moves it without the reader changing.
     (section 1, NSOT_GUI_BRIEF.md section 2), and a test pins it. In order:
     Needs attention, Devices, History, then the heading Source of truth over
     Templates, NetBox and Credentials, with Help and Settings at the bottom.
-    The operator's first-click test on the mockups passes before building.
+    The brief (section 14.1) proposes an OBSERVE heading over Monitoring,
+    Logs and DHCP for the integrated services, awaiting sign-off. **The
+    brief's thirty-two findability questions are walked on the BUILT screens**
+    (the first-click test on the mockups was skipped by the operator,
+    2026-09-29), and a path longer than the brief's count is a finding.
 11. **Scale:** nothing renders the whole inventory, and `test_scale.py` pins
     the page cost at 900 devices.
 12. **Behaviour:** Stage 7 moves controls, adds entry points and performs the
