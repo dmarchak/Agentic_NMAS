@@ -6,9 +6,14 @@ user" is asked of the user running this, as the app asks it. It prints job
 health's own row (`modules/update_op.install_rows()`, the same function) and
 each installed file.
 
+It also runs the INSTALLED updater's own self-test (C246): every program it
+runs, by the absolute path it runs it by, exists, is a regular file root owns
+and nobody else can write. The first real run died on `runuser`, which the
+ownership checks could not see.
+
 Exit 0: ok. 1: installed and differing from this release's copy (it works;
-re-install when convenient). 2: not installed, not watching, or writable by
-someone other than root (the danger). 3: could not check.
+re-install when convenient). 2: not installed, cannot run, not watching, or
+writable by someone other than root (the danger). 3: could not check.
 """
 
 import os
@@ -36,6 +41,10 @@ def main() -> int:
         match = {True: ", matches this release", False: ", DIFFERS from this release"}.get(
             f.get("matches_release"), "")
         print(f"  {f['path']}: {problems}{match}")
+    if "cannot_run" in state:
+        print("  self-test: " + ("ok, every program it runs is present and root's"
+                                 if not state["cannot_run"] else
+                                 "CANNOT RUN: " + "; ".join(state["cannot_run"])))
     if "path_active" in state:
         print(f"  nmas-update.path active: {state['path_active']}")
     return {"ok": 0, "differs": 1}.get(state["state"], 2)

@@ -45,6 +45,14 @@
       }
       if (k >= 0) st[key] = {state: state, note: note || ''};
     }
+    // After a failure every later step is NOT REACHED, never a bare pending
+    // line: the first real run listed 'Running 4e40bd05b4' under a failure at
+    // step 3 with nothing saying it never happened (C246).
+    function failAt(key, note) {
+      upTo(key, 'failed', 'failed: ' + (note || 'no reason recorded'));
+      var k = keys.indexOf(key);
+      for (var j = k + 1; j < keys.length; j++) st[keys[j]] = {state: 'not_reached', note: 'not reached'};
+    }
     var short = String(target || '').slice(0, 10);
     if (health && health.commit === target && (!mine || o.outcome !== 'rolled_back')) {
       upTo('running', 'done', 'running ' + short);
@@ -58,12 +66,12 @@
         return {steps: st, done: true, reload: true, failed: false,
                 words: 'Updated: the app runs ' + short + '. Reloading…'};
       }
-      upTo(at, 'failed', o.reason || '');
+      failAt(at, o.reason || '');
       return {steps: st, done: true, reload: false, failed: true,
               words: 'The update ' + (words[o.outcome] || o.outcome) + ': ' + (o.reason || 'no reason recorded')};
     }
     if (s >= timeoutS) {
-      upTo(mine && o.step ? o.step : 'started', 'failed',
+      failAt(mine && o.step ? o.step : 'started',
            'no word from the updater in ' + Math.round(timeoutS / 60) + ' min, its unit\'s own limit');
       return {steps: st, done: true, reload: false, failed: true,
               words: 'The updater has not reported. On the host: journalctl -u nmas-update.service -n 50'};

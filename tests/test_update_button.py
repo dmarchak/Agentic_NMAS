@@ -17,6 +17,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 import time
 import types
 
@@ -218,13 +219,217 @@ class TestTheRequestIsARequestNeverAnInstruction:
 
 class TestRootNeverRunsTheRepository:
     def test_every_git_the_updater_runs_goes_through_runuser(self):
+        """This test once asserted `["runuser", "-u"]`: it pinned the bare name
+        the first real run died on (C246). Now by the table's entries."""
         tree = ast.parse(open(UPDATER, encoding="utf-8").read())
         lists = [n for n in ast.walk(tree) if isinstance(n, ast.List)
-                 and any(isinstance(e, ast.Constant) and e.value == "git" for e in n.elts)]
+                 and any(_binary(e) == "git" for e in n.elts)]
         assert lists, "the scan found no git invocation at all"
         for n in lists:
-            words = [e.value for e in n.elts if isinstance(e, ast.Constant)]
-            assert words[:2] == ["runuser", "-u"], words
+            assert _binary(n.elts[0]) == "runuser"
+            assert isinstance(n.elts[1], ast.Constant) and n.elts[1].value == "-u"
+
+
+def _root_files_read_as_root():
+    """Inside the confined runner (a user namespace) root's files read as
+    another uid, so a check of real root-owned files cannot run there."""
+    if os.stat("/usr").st_uid != 0:
+        pytest.skip("root's files read as another uid here (the confined runner's user "
+                    "namespace); this runs under plain pytest, in CI and on the host")
+
+
+def _binary(node):
+    """The BINARIES key an argv element names (`BINARIES["git"]`), or None."""
+    if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
+            and node.value.id == "BINARIES" and isinstance(node.slice, ast.Constant)):
+        return node.slice.value
+    return None
+
+
+def _exec_sites(src):
+    """Every call in *src* that starts a program: (the call, its argv node)."""
+    execs = {"run", "Popen", "call", "check_call", "check_output", "execv", "execvp",
+             "execvpe", "spawnv", "system"}
+    out = []
+    for n in ast.walk(ast.parse(src)):
+        if isinstance(n, ast.Call):
+            f = n.func
+            name = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
+            if name in execs and n.args:
+                out.append((n, n.args[0]))
+    return out
+
+
+class TestEveryProgramByAbsolutePath:
+    """C246: the first real run died at the checkout step on
+    `FileNotFoundError: runuser`: its git environment set PATH=/usr/bin:/bin
+    and runuser is /usr/sbin/runuser. A root process runs every program by
+    ABSOLUTE path, from one table, and checks the table before it acts."""
+
+    def test_every_program_the_updater_starts_comes_from_the_table(self):
+        src = open(UPDATER, encoding="utf-8").read()
+        sites = _exec_sites(src)
+        assert len(sites) >= 2, sites                      # git (runuser) and the restart
+        for call, argv in sites:
+            assert isinstance(argv, ast.List), ast.unparse(call)
+            assert _binary(argv.elts[0]) is not None, f"by name: {ast.unparse(call)}"
+
+    def test_the_table_is_absolute_and_names_what_the_host_has(self):
+        U = _updater()
+        assert set(U.BINARIES) == {"runuser", "git", "systemctl"}
+        assert all(os.path.isabs(p) for p in U.BINARIES.values())
+        # Measured on the host (via LAN), 2026-09-30: each root:root 755.
+        assert U.BINARIES["runuser"] == "/usr/sbin/runuser"
+
+    def test_the_gate_is_handed_the_absolute_systemctl(self):
+        src = open(UPDATER, encoding="utf-8").read()
+        assert 'gate.unit_state(service, systemctl=BINARIES["systemctl"])' in src
+        D = TestTheSharedLock()._deploy_script()
+        seen = []
+        D.subprocess = types.SimpleNamespace(run=lambda argv, **k: seen.append(argv) or
+                                             types.SimpleNamespace(stdout="MainPID=7\n"))
+        assert D.unit_state("x.service", systemctl="/usr/bin/systemctl")["MainPID"] == 7
+        assert seen[0][0] == "/usr/bin/systemctl"
+
+    def test_the_updaters_git_command_resolves_as_it_will_run(self, repos):
+        """The gap that let C246 through: every test handed the updater a git of
+        its own and never ran `user_git_for`'s command. Here it runs for real,
+        in the environment the updater gives it, dropping ONLY the switch of
+        user (runuser needs root): the program is resolved exactly as exec
+        resolves it, from that environment's PATH."""
+        import shutil
+        U = _updater()
+        me = __import__("pwd").getpwuid(os.getuid()).pw_name
+        ran = []
+
+        def run(argv, env=None, **kw):
+            for prog in (argv[0], argv[4]):                # runuser, then git
+                assert shutil.which(prog, path=env["PATH"]) == prog, \
+                    f"{prog} does not resolve with PATH={env['PATH']}"
+            ran.append(argv)
+            return subprocess.run(argv[4:], env=env, **kw)
+        git = U.user_git_for(str(repos["work"]), me, run=run)
+        assert git(str(repos["work"]), "rev-parse", "HEAD") == repos["shas"][0]
+        assert ran[0][:4] == ["/usr/sbin/runuser", "-u", me, "--"]
+
+    def test_the_first_runs_command_would_have_failed_here(self):
+        """The control, with the shipped argv: `runuser` by name in the git
+        environment's PATH is not found, as on the host."""
+        import shutil
+        assert shutil.which("runuser", path="/usr/bin:/bin") is None
+        assert shutil.which("/usr/sbin/runuser", path="/usr/bin:/bin") == "/usr/sbin/runuser"
+
+    def test_the_self_test_passes_on_this_machine_for_the_real_table(self):
+        """Real files, not stubs: the table's programs exist here, root's."""
+        _root_files_read_as_root()
+        assert _updater().self_test() == []
+
+    def test_the_self_test_names_each_problem(self, tmp_path):
+        _root_files_read_as_root()
+        U = _updater()
+        mine = tmp_path / "prog"
+        mine.write_text("#!/bin/sh\n")
+        mine.chmod(0o775)
+        got = U.self_test({"runuser": "runuser", "gone": str(tmp_path / "nope"),
+                           "mine": str(mine), "git": "/usr/bin/git"})
+        text = "; ".join(got)
+        assert "runuser: 'runuser' is not an absolute path" in text
+        assert f"gone: {tmp_path / 'nope'}: No such file or directory" in text
+        assert "mine:" in text and "not owned by root" in text and "lets others write it" in text
+        assert not any(p.startswith("git:") for p in got)       # the control: a real one passes
+
+    def test_a_self_test_that_fails_refuses_before_anything_moves(self, monkeypatch, repos, tmp_path):
+        U, got = _main(monkeypatch, repos, tmp_path, self_test=lambda: ["runuser: /usr/sbin/runuser: gone"])
+        assert got["outcome"] == "refused" and got["step"] == "started"
+        assert "cannot run here, so nothing was moved: runuser" in got["reason"]
+        assert got["calls"] == []                                # no lock, no gate, no git
+        assert _g(repos["work"], "rev-parse", "HEAD") == repos["shas"][0]
+
+
+def _main(monkeypatch, repos, tmp_path, self_test=lambda: [], fail_at=None, refuse=False):
+    """Drive the REAL `main()` as the unit does, the service user being the
+    test's own: only what needs root (the gate's root-owned copy, running git
+    as another user) and the update itself are stood in for. *fail_at*: the
+    step the update raises (or refuses) at."""
+    U = _updater()
+    me = __import__("pwd").getpwuid(os.getuid()).pw_name
+    reqdir = repos["work"] / "data" / "update" / "requests"
+    reqdir.mkdir(parents=True, exist_ok=True)
+    req = _request(repos)
+    (reqdir / f"{req['id']}.json").write_text(json.dumps(req))
+    calls, states = [], []
+    monkeypatch.setattr(U, "self_test", self_test)
+    gate = _gate()
+    gate._health = lambda: (200, {})
+    gate.unit_state = lambda service, systemctl: {"MainPID": 100}
+    monkeypatch.setattr(U, "load_gate", lambda *a: calls.append("gate") or gate)
+    monkeypatch.setattr(U, "user_git_for", lambda repo, user: calls.append("git") or _local_git)
+    monkeypatch.setattr(U, "write_state", lambda rec, **kw: states.append(rec))
+
+    def update(req, *, report, **kw):
+        calls.append("update")
+        for step in U.STEPS:
+            report(step)
+            if step == fail_at:
+                if refuse:
+                    raise U.Refused(f"refused at {step}")
+                raise FileNotFoundError(2, "No such file or directory", "runuser")
+        return {"outcome": "updated", "id": req["id"], "step": "wait"}
+    monkeypatch.setattr(U, "update", update)
+    rc = U.main({"NMAS_UPDATE_REPO": str(repos["work"]), "NMAS_UPDATE_USER": me})
+    return U, dict(states[-1], rc=rc, calls=calls)
+
+
+def _lock_is_free(repo):
+    import fcntl
+    fd = os.open(os.path.join(repo, "data", "update", "lock"), os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except BlockingIOError:
+        return False
+    finally:
+        os.close(fd)
+
+
+class TestTheLockIsReleasedOnEveryPath:
+    """The operator's item 4: the lock is a FLOCK on a descriptor, so the
+    file's presence means nothing (the host's 0-byte `data/update/lock`, mtime
+    21:48, blocks nobody); only a HELD lock blocks. `main()` releases it on
+    every path, and the kernel does if the process dies."""
+
+    @pytest.mark.parametrize("step", ["checkout", "fetch", "ci", "move", "restart", "wait"])
+    @pytest.mark.parametrize("refuse", [False, True])
+    def test_a_failure_at_every_step_leaves_it_released(self, monkeypatch, repos, tmp_path, step, refuse):
+        U, got = _main(monkeypatch, repos, tmp_path, fail_at=step, refuse=refuse)
+        assert got["outcome"] == ("refused" if refuse else "failed") and got["step"] == step
+        assert _lock_is_free(str(repos["work"]))
+        assert "No such file or directory: 'runuser'" in got["reason"] or refuse
+
+    def test_a_finished_update_leaves_it_released(self, monkeypatch, repos, tmp_path):
+        U, got = _main(monkeypatch, repos, tmp_path)
+        assert got["outcome"] == "updated", got.get("reason")
+        assert _lock_is_free(str(repos["work"]))
+
+    def test_the_files_presence_blocks_nothing(self, repos):
+        """The host's state after the failed run: the file there, nobody holding it."""
+        lock = repos["work"] / "data" / "update" / "lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_bytes(b"")
+        D = TestTheSharedLock()._deploy_script()
+        fd = D.take_lock(str(repos["work"]))
+        assert fd is not None
+        os.close(fd)
+        os.close(_updater().take_lock(str(repos["work"]), os.getuid()))
+
+    def test_a_process_that_dies_holding_it_releases_it(self, repos):
+        lock = repos["work"] / "data" / "update" / "lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        code = ("import fcntl, os, sys; fd = os.open(sys.argv[1], os.O_RDONLY | os.O_CREAT, 0o644); "
+                "fcntl.flock(fd, fcntl.LOCK_EX); print('held', flush=True); os.kill(os.getpid(), 9)")
+        out = subprocess.run([sys.executable, "-c", code, str(lock)], capture_output=True, text=True)
+        assert out.stdout.strip() == "held" and out.returncode == -9
+        assert _lock_is_free(str(repos["work"]))
 
     def test_the_updater_imports_nothing_from_the_repository(self):
         tree = ast.parse(open(UPDATER, encoding="utf-8").read())
@@ -410,6 +615,66 @@ class TestTheInstallCheck:
         monkeypatch.setattr(update_op.os, "access", lambda p, m: str(p) == str(f))
         assert update_op.install_state(root=str(tmp_path), installed=inst, active=True)["state"] == "writable"
 
+    def _as_root(self, monkeypatch, update_op, f):
+        real_stat = os.stat
+
+        def as_root(path, *a, **k):
+            st = real_stat(path, *a, **k)
+            if str(path) != str(f):
+                return st
+            return os.stat_result((stat.S_IFREG | 0o755, st.st_ino, st.st_dev, 1, 0, 0,
+                                   st.st_size, 0, 0, 0))
+        monkeypatch.setattr(update_op.os, "stat", as_root)
+        monkeypatch.setattr(update_op.os, "access", lambda p, m: False)
+
+    def test_an_updater_that_cannot_run_is_danger_before_anyone_clicks(self, tmp_path, monkeypatch):
+        """C246: ownership and modes passed while runuser could not be found.
+        The check now runs the INSTALLED copy's own self-test."""
+        from modules import attention, update_op
+        f = tmp_path / "nmas-update"
+        f.write_text(open(UPDATER, encoding="utf-8").read().replace(
+            '"/usr/sbin/runuser"', f'"{tmp_path}/no-runuser"'))
+        self._as_root(monkeypatch, update_op, f)
+        inst = (("the updater", str(f), "deploy/update/nmas-update"),)
+        s = update_op.install_state(installed=inst, active=True)
+        assert s["state"] == "cannot_run"
+        # Only runuser moved; inside the confined runner the real git and
+        # systemctl also read as not root's, so this names the one it moved.
+        assert f"runuser: {tmp_path}/no-runuser: No such file or directory" in s["cannot_run"]
+        (row,) = update_op.install_rows(s)
+        assert row["state"] == "cannot_run" and "CANNOT RUN" in row["detail"]
+        assert row["action"]["reference"] == "docs/UPDATE.md"
+        assert attention._JOB_STATES["cannot_run"][1] == "danger"
+        kw = dict(_plan_kw(), install=s)                        # and the preview refuses it
+        p = update_op.plan(**kw)
+        assert not p["selectable"] and "it would fail before moving anything:" in p["why_not"]
+        assert "no-runuser: No such file or directory" in p["why_not"]
+
+    def test_the_installed_copy_that_predates_the_self_test_cannot_run(self, tmp_path, monkeypatch):
+        from modules import update_op
+        f = tmp_path / "nmas-update"
+        f.write_text("STEPS = ()\n")                           # the shape of 58ae274's copy
+        self._as_root(monkeypatch, update_op, f)
+        s = update_op.install_state(installed=(("the updater", str(f), "deploy/update/nmas-update"),),
+                                    active=True)
+        assert s["state"] == "cannot_run" and "has no self-test" in s["cannot_run"][0]
+
+    def test_this_releases_updater_passes_its_own_self_test_as_installed(self, tmp_path, monkeypatch):
+        """The control: the release's own updater, installed, can run."""
+        _root_files_read_as_root()
+        from modules import update_op
+        f = tmp_path / "nmas-update"
+        f.write_text(open(UPDATER, encoding="utf-8").read())
+        self._as_root(monkeypatch, update_op, f)
+        s = update_op.install_state(root=ROOT, installed=(("the updater", str(f),
+                                                           "deploy/update/nmas-update"),),
+                                    active=True)
+        assert s["cannot_run"] == [] and s["state"] == "ok"
+
+    def test_the_check_command_prints_the_self_test(self):
+        src = open(os.path.join(ROOT, "scripts", "nmas-update-check"), encoding="utf-8").read()
+        assert "self-test: " in src and "CANNOT RUN" in src
+
     def test_job_health_carries_the_row(self):
         from modules import job_health
         rows = job_health.health(updater=[{"unit": "updater", "state": "ok"}], version=[],
@@ -542,10 +807,39 @@ class TestTheStepperFollowsTheUpdatersOwnSteps:
     def test_a_refusal_marks_its_step_failed_with_the_reason(self):
         r = self._states({"commit": "a" * 40},
                          self._status("refused", "ci", reason="the CI gate does not pass"))
-        assert r["steps"]["ci"] == {"state": "failed", "note": "the CI gate does not pass"}
-        assert r["steps"]["fetch"]["state"] == "done" and r["steps"]["move"]["state"] == "pending"
+        assert r["steps"]["ci"] == {"state": "failed", "note": "failed: the CI gate does not pass"}
+        assert r["steps"]["fetch"]["state"] == "done"
+        assert r["steps"]["move"] == {"state": "not_reached", "note": "not reached"}
         assert r["done"] and r["failed"] and not r["reload"]
         assert r["words"].startswith("The update refused: nothing was changed: the CI gate")
+
+    def test_the_first_real_runs_failure_is_three_states_never_a_bare_list(self):
+        """The host, 2026-09-30 (C246): failed at step 3, and steps 4 to 9 were
+        listed ending 'Running 4e40bd05b4' with nothing saying they never ran."""
+        reason = "the updater raised FileNotFoundError: [Errno 2] No such file or directory: 'runuser'"
+        r = self._states({"commit": "a" * 40}, self._status("failed", "checkout", reason=reason))
+        s = {k: v["state"] for k, v in r["steps"].items()}
+        assert [s[k] for k in KEYS] == ["done", "done", "failed"] + ["not_reached"] * 6
+        assert r["steps"]["checkout"]["note"] == "failed: " + reason
+        assert all(r["steps"][k]["note"] == "not reached" for k in KEYS[3:])
+        assert r["failed"] and not r["reload"]
+
+    @pytest.mark.parametrize("outcome,step", [("rolled_back", "wait"), ("refused", "started")])
+    def test_every_failed_ending_marks_what_came_after_not_reached(self, outcome, step):
+        r = self._states({"commit": "a" * 40}, self._status(outcome, step, reason="why"))
+        after = KEYS[KEYS.index(step) + 1:]
+        assert after and all(r["steps"][k]["state"] == "not_reached" for k in after)
+
+    def test_the_units_limit_marks_the_rest_not_reached(self):
+        r = self._states({"commit": "a" * 40}, {"pending": [], "outcome": {"state": "absent"}},
+                         elapsed=901)
+        assert r["steps"]["started"]["state"] == "failed"
+        assert all(r["steps"][k]["state"] == "not_reached" for k in KEYS[2:])
+
+    def test_not_reached_is_drawn_apart_from_pending_and_done(self):
+        css = open(os.path.join(ROOT, "static", "css", "nmas-v2.css"), encoding="utf-8").read()
+        rules = re.findall(r"\.stepper \.step-not_reached[^{]*\{([^}]*)\}", css)
+        assert any("line-through" in r for r in rules) and any("dashed" in r for r in rules)
 
     def test_another_requests_record_is_not_this_ones(self):
         r = self._states({"commit": "a" * 40}, self._status("refused", "ci", rid="other"))

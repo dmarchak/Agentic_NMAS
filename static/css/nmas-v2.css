@@ -408,6 +408,11 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .stepper .step-failed { color: var(--danger); font-weight: 600; }
 .stepper .step-failed .step-mark { background: var(--danger); border-color: var(--danger); }
 .stepper .step-note { font-weight: 400; color: var(--ink-2); }
+/* After a failure: never reached, and drawn so nobody reads it as done (C246). */
+.stepper .step-not_reached { color: var(--ink-2); }
+.stepper .step-not_reached .step-words { text-decoration: line-through; }
+.stepper .step-not_reached .step-mark { border-style: dashed; background: none; }
+.stepper .step-failed .step-note { color: var(--danger); font-weight: 600; }
 
 .check-again .muted:empty, .check-again .check-late:empty { display: none; }
 /* A check that answered late, or a last attempt that failed: said in words. */

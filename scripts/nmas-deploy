@@ -480,11 +480,13 @@ def parse_iso(text):
         return None
 
 
-def unit_state(service=SERVICE):
+def unit_state(service=SERVICE, systemctl="systemctl"):
     """{"MainPID": int, "start": str} from systemd. The start is
     ExecMainStartTimestamp at MICROSECOND resolution, for the record only:
-    identity is decided by the pid, never by comparing times."""
-    out = subprocess.run(["systemctl", "show", service, "-p", "MainPID",
+    identity is decided by the pid, never by comparing times. *systemctl* is
+    the program: by name from a login shell, and by ABSOLUTE path from the
+    root-owned updater, which never resolves a program by name (C246)."""
+    out = subprocess.run([systemctl, "show", service, "-p", "MainPID",
                           "-p", "ExecMainStartTimestamp", "--timestamp=us"],
                          capture_output=True, text=True).stdout
     props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)

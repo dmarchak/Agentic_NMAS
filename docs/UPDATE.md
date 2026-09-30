@@ -46,9 +46,19 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
 
    So the most anything that can write the request can achieve is running a
    commit CI already passed.
-5. **Git runs as the service user** (`runuser`, with that user's home). Only
-   the restart runs as root. Nothing from the checkout is ever executed as
-   root.
+5. **Git runs as the service user** (`/usr/sbin/runuser`, with that user's
+   home). Only the restart runs as root. Nothing from the checkout is ever
+   executed as root.
+
+   **Every program the updater runs is named by its absolute path**, from one
+   table (`BINARIES`: `/usr/sbin/runuser`, `/usr/bin/git`,
+   `/usr/bin/systemctl`). A minimal PATH is right for a root process; resolving
+   a program by name is what broke the second real run (C246).
+
+   **The updater tests itself before every update.** Its self-test checks that
+   each of those programs exists, is a regular file owned by root that only
+   root can write, and is executable. If the self-test fails, the update is
+   refused at "Updater started" and nothing moves.
 6. **Success is decided by identity**, as `nmas-deploy` decides it: systemd's
    MainPID changed, `/health` answers from that pid, and it reports the target
    commit. **A version that does not come up within 120 s is rolled back**: the
@@ -64,14 +74,22 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
    once accepted, a STEPPER follows the updater's own steps (request written,
    updater started, checkout checked, fetched, CI re-checked, checkout moved,
    restarting, waiting for the new version with its seconds, running the
-   target), each named by the key the updater's record carries, and a failed
-   step says why. A finished update reloads the page, which then draws **The
+   target), each named by the key the updater's record carries.
+
+   After a failure the stepper shows three states, never a bare list:
+   - the completed steps are **done**;
+   - the failed step reads "failed:" and its reason;
+   - every later step is **not reached**, struck through and marked apart. A finished update reloads the page, which then draws **The
    last update**: updated, refused, rolled back, or ROLLBACK FAILED, with why.
    About shows it too.
    **The first real run (2026-09-30) did nothing and said nothing** (C243): the
    component read its attributes from the button instead of its root, so the
    button was disabled while looking clickable. Real-browser tests now click
    the shipped button (`tests/browser.py`, where Firefox runs).
+
+   **The second real run (the same day) failed safely at the checkout step**
+   (C246): `FileNotFoundError: runuser`. Nothing was moved, the request was
+   consumed and the lock was released.
 
    If the last update did not happen, the Needs attention row names it as its
    cause, and a failed rollback is a danger row.
@@ -113,12 +131,21 @@ scripts/nmas-update-check                          # as the service user, never 
 Expected:
 - every file and directory reads `root:root` with `755` or `644`;
 - the path unit reads `active`;
-- `nmas-update-check` exits 0, printing `updater: ok`.
+- `nmas-update-check` exits 0, printing `updater: ok` and
+  `self-test: ok, every program it runs is present and root's`.
+
+The self-test is the INSTALLED updater's own. It runs only after the check has
+found the file root-owned and writable by nobody else, and it checks the same
+absolute paths the updater runs. Ownership and modes alone could not have
+caught C246.
 
 `nmas-update-check` prints job health's own row (the same function). Job
 health keeps asking. Its `updater` row is:
 - **danger** (`writable`) if any of those files, or its directory, is not
   root-owned or can be written by the service user;
+- **danger** (`cannot_run`) if its self-test fails: a program it runs is
+  missing, not root's, or writable by someone else, or the installed copy
+  predates the self-test;
 - **danger** if the path unit is not watching;
 - **not installed** while it is absent;
 - a warning (`differs`) when this release's copy has moved on from the
@@ -126,10 +153,19 @@ health keeps asking. Its `updater` row is:
 
 ## Re-install
 
-**Required after the release that repaired the button (C243):** it changed
-both copies (`deploy/update/nmas-update` takes the shared lock and reports step
-keys; `scripts/nmas-deploy` takes the lock). Run the commands below once, after
-deploying it from the terminal.
+**Required after the release that runs every program by absolute path
+(C246):** it changes both copies. `deploy/update/nmas-update` gains the absolute
+paths and the self-test, and `scripts/nmas-deploy` gains `unit_state`'s program
+argument. The button cannot deliver this release, because the installed updater
+is the one that fails. Deploy it from the terminal, then run the commands below
+once.
+
+`nmas-update-check` must then print `self-test: ok`. The copy installed before
+this release has no self-test, so the check reads `cannot_run` until it is
+re-installed.
+
+(The same was required after the release that repaired the button, C243, for
+the shared lock.)
 
 The installed updater and gate are COPIES, and they are what runs. When a
 release changes `deploy/update/nmas-update`, `scripts/nmas-deploy` or either
@@ -168,6 +204,11 @@ the box is the person's statement, and it is recorded in the request.
   (`data/update/lock`, C242): whichever holds it moves the checkout, and the
   other refuses by name (`nmas-deploy` exits 9). The Update preview shows a
   held lock as a failed check.
+
+  The lock is a `flock` on an open file, never the file's presence. The file
+  stays after every run (0 bytes) and blocks nobody. Each holder releases the
+  lock on every path, and the kernel releases it if the holder dies. Tests
+  cover a failure at every step, refused and failed, and a killed holder.
 
 ## Checking for an update
 

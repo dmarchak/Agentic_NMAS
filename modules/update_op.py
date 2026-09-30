@@ -151,8 +151,8 @@ def _sha(path: str) -> str:
         return hashlib.sha256(fh.read()).hexdigest()
 
 
-def install_state(root: str = ROOT, installed=INSTALLED, active=None) -> dict:
-    """``{"state": ok|not_installed|writable|differs|inactive, "files": [...], ...}``.
+def install_state(root: str = ROOT, installed=INSTALLED, active=None, self_test=None) -> dict:
+    """``{"state": ok|not_installed|writable|cannot_run|differs|inactive, "files": [...], ...}``.
 
     WRITABLE is asked of THIS process (`os.access`): the app runs as the
     service user, so "not writable by the service user" is measured, not
@@ -203,6 +203,20 @@ def install_state(root: str = ROOT, installed=INSTALLED, active=None) -> dict:
         return dict(out, state="writable")
     if missing:
         return dict(out, state="not_installed")
+    # CAN it run (C246)? Owned and unwritable said nothing about whether the
+    # programs it runs exist: the first real run died on `runuser`. The
+    # INSTALLED copy's own self-test, reached only now that it is known to be
+    # root-owned and writable by nobody else.
+    if self_test is None:
+        updater = next((p for _n, p, src in installed if src == "deploy/update/nmas-update"), None)
+        self_test = (lambda: installed_self_test(updater)) if updater else (lambda: [])
+    try:
+        cannot = [str(p) for p in self_test()]
+    except Exception as exc:                              # noqa: BLE001
+        cannot = [f"its self-test raised {type(exc).__name__}: {exc}"]
+    out["cannot_run"] = cannot
+    if cannot:
+        return dict(out, state="cannot_run")
     if active is None:
         active = _path_active()
     out["path_active"] = active
@@ -211,6 +225,25 @@ def install_state(root: str = ROOT, installed=INSTALLED, active=None) -> dict:
     if differs:
         return dict(out, state="differs")
     return dict(out, state="ok")
+
+
+def installed_self_test(path: str) -> list:
+    """The INSTALLED updater's own `self_test()` (C246): every program it runs,
+    by the absolute path it runs it by, exists and is root's. Loaded from the
+    root-owned copy, never the repository's, because the copy is what runs; a
+    copy with no self-test predates the fix and cannot be trusted to run."""
+    import importlib.machinery
+    import importlib.util
+
+    loader = importlib.machinery.SourceFileLoader("nmas_update_installed", path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    fn = getattr(mod, "self_test", None)
+    if fn is None:
+        return ["the installed updater has no self-test: it predates the release that runs "
+                "every program by absolute path (C246), and its first run died on `runuser`; "
+                "re-install it"]
+    return fn()
 
 
 def _path_active():
@@ -244,6 +277,7 @@ def install_rows(state: dict = None) -> list:
     if st == "ok":
         return [{"unit": "updater", "what": what, "state": "ok", "max_age_minutes": 0,
                  "detail": "installed, root-owned, not writable by the service user, "
+                           "every program it runs present and root's (its self-test), "
                            "matching this release, and the path unit is watching"}]
     if st == "writable":
         return [{"unit": "updater", "what": what, "state": "writable", "max_age_minutes": 0,
@@ -251,6 +285,11 @@ def install_rows(state: dict = None) -> list:
                                      "writable only by root, then re-install from this release "
                                      "(docs/UPDATE.md)", "reference": "docs/UPDATE.md"},
                  "detail": "RUN AS ROOT and writable by someone else: " + "; ".join(s["writable"])}]
+    if st == "cannot_run":
+        return [{"unit": "updater", "what": what, "state": "cannot_run", "max_age_minutes": 0,
+                 "action": dict(REINSTALL_ACTION),
+                 "detail": ("the updater CANNOT RUN: a request would fail before moving "
+                            "anything (its self-test, C246): " + "; ".join(s["cannot_run"]))}]
     if st == "not_installed":
         return [{"unit": "updater", "what": what, "state": "not_installed", "max_age_minutes": 0,
                  "action": dict(INSTALL_ACTION),
@@ -316,11 +355,13 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
     gate("the checkout has no local changes", changes == [],
          "clean" if changes == [] else ("could not be read" if changes is None
                                         else "; ".join(changes)))
-    gate("the updater is installed, root-owned, and the path unit is watching",
+    gate("the updater is installed, root-owned, can run, and the path unit is watching",
          install["state"] in ("ok", "differs"),
          {"ok": "yes", "differs": "yes; " + "; ".join(install.get("differs") or []),
           "not_installed": "not installed (docs/UPDATE.md)",
           "writable": "DANGER: " + "; ".join(install.get("writable") or []),
+          "cannot_run": "it would fail before moving anything: "
+                        + "; ".join(install.get("cannot_run") or []),
           "inactive": "nmas-update.path is not active"}.get(install["state"], install["state"]))
     running_now = (last.get("value") or {}).get("outcome") == "running"
     held = lock_holder() if holder is None else holder

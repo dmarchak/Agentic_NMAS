@@ -55,6 +55,20 @@ import time
 
 GATE_PATH = "/usr/local/lib/nmas-update/nmas-deploy"
 STATE_DIR = "/var/lib/nmas-update"
+
+#: EVERY program this updater runs, by ABSOLUTE path, never by name (C246).
+#: Its first real run (2026-09-30) died at the checkout step on
+#: `FileNotFoundError: runuser`: the git environment set PATH=/usr/bin:/bin,
+#: and runuser is /usr/sbin/runuser. A minimal PATH is right for a root
+#: process; resolving by name is what broke. Measured on the host the same
+#: day: all three root:root 755. `self_test()` checks them before every run,
+#: and job health runs the INSTALLED copy's self-test (scripts/nmas-update-check).
+#: A test holds every exec in this file to this table.
+BINARIES = {
+    "runuser": "/usr/sbin/runuser",
+    "git": "/usr/bin/git",
+    "systemctl": "/usr/bin/systemctl",
+}
 #: The steps this updater reports, in order, by KEY: its record names the one
 #: it is on, and the Update page draws its stepper from them
 #: (modules/update_op.STEPS holds the same keys; a test holds them equal).
@@ -207,12 +221,50 @@ def user_git_for(repo: str, user: str, run=subprocess.run):
            "GIT_TERMINAL_PROMPT": "0", "GIT_SSH_COMMAND": "ssh -o BatchMode=yes"}
 
     def git(_repo, *args, check=True):
-        out = run(["runuser", "-u", user, "--", "git", "-C", repo, *args],
+        out = run([BINARIES["runuser"], "-u", user, "--", BINARIES["git"], "-C", repo, *args],
                   capture_output=True, text=True, env=env, timeout=120)
         if check and out.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)}: {out.stderr.strip()[:300]}")
         return out.stdout.strip()
     return git
+
+
+def self_test(binaries: dict = None) -> list:
+    """Can this updater run here? Every program it runs, as it will run it: an
+    absolute path to a regular file, owned by root, that nobody else can write
+    and its owner can execute (C246). Returns the problems; empty means it
+    can. Run before every update, and by the app's install check against the
+    INSTALLED copy, so the check is the updater's own."""
+    binaries = BINARIES if binaries is None else binaries
+    problems = []
+    for name, path in sorted(binaries.items()):
+        if not os.path.isabs(path):
+            problems.append(f"{name}: {path!r} is not an absolute path")
+            continue
+        real = os.path.realpath(path)
+        shown = path if real == path else f"{path} (-> {real})"
+        try:
+            st = os.stat(real)
+        except OSError as exc:
+            problems.append(f"{name}: {shown}: {exc.strerror}")
+            continue
+        bad = []
+        if not stat.S_ISREG(st.st_mode):
+            bad.append("not a regular file")
+        if st.st_uid != 0:
+            bad.append("not owned by root")
+        if st.st_mode & 0o022:
+            bad.append(f"mode {stat.S_IMODE(st.st_mode):04o} lets others write it")
+        if not st.st_mode & 0o100:
+            bad.append("not executable")
+        if bad:
+            problems.append(f"{name}: {shown}: " + ", ".join(bad))
+    return problems
+
+
+def restart_service(service: str, run=subprocess.run):
+    return run([BINARIES["systemctl"], "restart", service],
+               check=True, capture_output=True, text=True, timeout=120)
 
 
 def load_gate(path: str = GATE_PATH):
@@ -398,16 +450,20 @@ def main(env=None) -> int:
                      "at": iso()}, history=False)
 
     report("started")
+    lock = None
     try:
-        take_lock(repo, uid)            # held until this process exits
+        problems = self_test()
+        if problems:
+            raise Refused("the updater cannot run here, so nothing was moved: "
+                          + "; ".join(problems) + ". Re-install it from the release that "
+                          "fixes it (docs/UPDATE.md)")
+        lock = take_lock(repo, uid)
         gate = load_gate()
         git = user_git_for(repo, user)
         rec = update(req, repo=repo, gate=gate, git=git,
-                     restart=lambda: subprocess.run(["systemctl", "restart", service],
-                                                    check=True, capture_output=True,
-                                                    text=True, timeout=120),
-                     unit=lambda: gate.unit_state(service), health=gate._health,
-                     report=report)
+                     restart=lambda: restart_service(service),
+                     unit=lambda: gate.unit_state(service, systemctl=BINARIES["systemctl"]),
+                     health=gate._health, report=report)
     except Refused as exc:
         rec = {"id": req["id"], "from": req["from"], "to": req["target"],
                "requested_by": req["requested_by"], "outcome": "refused", "step": last["step"],
@@ -416,6 +472,12 @@ def main(env=None) -> int:
         rec = {"id": req["id"], "from": req["from"], "to": req["target"],
                "requested_by": req["requested_by"], "outcome": "failed", "step": last["step"],
                "reason": f"the updater raised {type(exc).__name__}: {exc}", "ended_at": iso()}
+    finally:
+        # The lock is a flock on the descriptor, never the file's presence:
+        # released here on every path (and by the kernel if this process
+        # dies), so a failed update never blocks the next one or a deploy.
+        if lock is not None:
+            os.close(lock)
     if notes:
         rec["notes"] = notes
     write_state(rec)
