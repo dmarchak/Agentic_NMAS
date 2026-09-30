@@ -460,6 +460,31 @@ session needs no reconstruction:
    `freeMem`, the family of the `cisco_old_cpu` module the switches already use).
    - If it answers, `freeMem` goes into the vIOS module, and the memory panel draws it for vIOS.
    - If not, the panel's sentence stands: memory isn't available over SNMP on vIOS.
+7. **Does re-delivering lost timer ticks fix a slow vIOS clock** (the operator, 2026-09-30; C9,
+   C93)? On a THROWAWAY vIOS in its own lab, **never s3**, and nothing changes on s3 outside a
+   planned redeploy. The hypothesis: under nested virtualisation a timer interrupt is expensive,
+   classic IOS counts those interrupts to keep time, and QEMU drops the ones the guest could not
+   take in time.
+   1. **The positive control first.** Boot the throwaway unchanged (its own copy of the vIOS
+      launch script bound into the node, never `~/labs/lab/patches/`; its own management subnet,
+      declared in `RESERVED_MGMT_SUBNETS`) and measure its clock rate. Without SNMP: `show clock`
+      twice, ten minutes apart by the lab host's clock, rate = device seconds / real seconds. At
+      idle, then under one defined load (the same load in every variant, for example a
+      `ping ... repeat` from the device itself), with `vmstat 5` on the lab host beside it. **If
+      the unchanged throwaway keeps time, stop**: the experiment cannot show anything, and s3's
+      slowness is its workload.
+   2. **One change per boot**, each checked AT THE CONSUMER before it counts (the qemu command
+      line read from `/proc/<pid>/cmdline` inside the container, never the staged file):
+      - `-rtc base=utc,driftfix=slew` (the RTC's lost-tick policy);
+      - `-global kvm-pit.lost_tick_policy=delay` (the in-kernel PIT's). If the node's command
+        line shows it is already in force by default, this variant is already measured by step 1
+        and is skipped, saying so.
+   3. **Record** each variant's rate at idle and under load, with the lab host's idle and steal.
+   4. **If a variant brings the rate near 1.00**, it becomes a change to the lab's vIOS launch
+      script, applied at the next PLANNED redeploy of the switches, and the clock rate is read
+      again after it. If none does, the explanation in C93 stays "most likely" and the switches
+      stay chronic entries.
+   Teardown: `containerlab destroy` of the throwaway lab; nothing else was touched.
 
 **The Services mockups reviewed (the operator, 2026-09-30; brief 9b, 14.2, 15.1):**
 - **Every Grafana panel, rendered from the dashboard's own JSON model,** never a chosen few:

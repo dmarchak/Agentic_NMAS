@@ -612,7 +612,7 @@
       "id": 10,
       "type": "stat",
       "title": "Device clock rate",
-      "description": "How fast the device's own clock runs against real time, over the last hour (100% keeps time). The emulated vIOS switches run slow (C9); NTP corrects the time of day, not this rate. Red below 70%, amber below 90%.",
+      "description": "How fast the device's own clock runs against real time, over the last hour (100% keeps time). The emulated vIOS switches run slow (C9, C93); NTP corrects the time of day, not this rate. A routing protocol fails when a device's hellos arrive slower than its neighbour's dead timer: below 33% for BGP's defaults, 25% for OSPF's, 17% for RIP's. Red below 50% (BGP's limit with a 1.5x margin, the strictest protocol in the fleet), amber below 90%. The alert itself is per device, from the protocols that device runs (NSOT_PLAN P.7).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -636,7 +636,7 @@
               },
               {
                 "color": "orange",
-                "value": 0.7
+                "value": 0.5
               },
               {
                 "color": "green",

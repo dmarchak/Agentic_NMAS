@@ -220,6 +220,13 @@ person arrives with three different questions.
   in its words, its operands, and ONE action.
 - **The evidence behind a disclosure:** what was checked, each source's age against its
   promise.
+- **Long-standing issues fold under the one line** (the operator, 2026-09-30; NSOT_PLAN P.7's
+  two tiers): "Nothing needs attention · 1 long-standing issue", or beside the rows. Opened, each
+  entry says what, which device, measured stable since when, its cause, and a link to its
+  register finding and fix plan. It is shown once, never as a row competing with acute ones, and
+  it disappears when the finding closes. An entry whose measurement leaves its recorded band says
+  so and points at the acute alert. Monitoring conditions reach this page only as Grafana alert
+  rules (acute) or these declared entries (chronic), never from a panel's colour.
 - **Its home for conditions that today are notices elsewhere:**
   - devices with no golden (was "Capture devices with no golden");
   - pending renames (was "Sync device names to repo");

@@ -128,6 +128,15 @@ class TestTheOperatorsRules:
         assert "cpmCPUTotal1minRev" in platform["targets"][0]["expr"] and platform["gridPos"]["y"] >= 52
         assert "busy-polls" in platform["description"]
 
+    def test_the_clock_rates_colours_follow_the_protocol_timers(self):
+        """Red where a protocol would drop (BGP's 60/180 fails below 1/3; with
+        the 1.5x margin, 0.5), amber below 0.9, so s3 at 0.58 is amber, not red
+        (the operator's tiers, 2026-09-30)."""
+        by = {p["title"]: p for p in _content()}
+        steps = by["Device clock rate"]["fieldConfig"]["defaults"]["thresholds"]["steps"]
+        assert [(s["value"], s["color"]) for s in steps] == [(None, "red"), (0.5, "orange"), (0.9, "green")]
+        assert "P.7" in by["Device clock rate"]["description"]
+
     def test_two_way_is_never_counted_wrong(self):
         """The operator's catch: two-way (state 4) is expected between
         DROTHERs, so the wrong-state count excludes it."""

@@ -195,11 +195,15 @@ def build() -> dict:
                       "reliably however slowly the device's clock runs. Amber from 1.")
     panel("stat", "Device clock rate", (10, 5, 5, 4),
           [{"expr": f"deriv(sysUpTime{{{D}}}[1h]) / 100", "legendFormat": "via SNMP (sysUpTime against real time)"}],
-          unit="percentunit", th=thresholds((None, "red"), (0.7, "orange"), (0.9, "green")),
+          unit="percentunit", th=thresholds((None, "red"), (0.5, "orange"), (0.9, "green")),
           no_value="Not a target: no SNMP, or less than an hour of history.",
           description="How fast the device's own clock runs against real time, over the last hour "
-                      "(100% keeps time). The emulated vIOS switches run slow (C9); NTP corrects the "
-                      "time of day, not this rate. Red below 70%, amber below 90%.")
+                      "(100% keeps time). The emulated vIOS switches run slow (C9, C93); NTP corrects "
+                      "the time of day, not this rate. A routing protocol fails when a device's hellos "
+                      "arrive slower than its neighbour's dead timer: below 33% for BGP's defaults, "
+                      "25% for OSPF's, 17% for RIP's. Red below 50% (BGP's limit with a 1.5x margin, "
+                      "the strictest protocol in the fleet), amber below 90%. The alert itself is per "
+                      "device, from the protocols that device runs (NSOT_PLAN P.7).")
     panel("stat", "Telemetry stream", (15, 5, 5, 4),
           [{"expr": f"time() - max by (device) (timestamp({TI}in_octets{{{D}}}))",
             "legendFormat": "via gRPC telemetry (the interface subscription)"}],
