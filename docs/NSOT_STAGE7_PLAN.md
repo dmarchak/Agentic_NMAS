@@ -426,7 +426,9 @@ session needs no reconstruction:
    2026-09-30, above);
 2. mockups of the new screens at desktop and phone width: fleet-wide Monitoring, DHCP with
    reservation management, the NetBox browser, Logs with the Loki query screen, a Prometheus
-   query screen, and the device page's service sections;
+   query screen, and the device page's service sections (delivered 2026-09-30 for review:
+   nineteen boards on the mockup canvas's second page, "Services", with one info link open as
+   the side help panel and one running stepper, and a device whose empty tabs fold);
 3. the stack costing, accounting for those screens: htmx plus Alpine over the current pages,
    against a full framework, honestly;
 4. then build, starting with the landing page, the sidebar and the Device page. The
