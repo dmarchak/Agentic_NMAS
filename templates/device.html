@@ -666,8 +666,8 @@
 }
 </style>
 
-<link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
-<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+{# Bootstrap's CSS and bundle come from base.html, ONCE: a second bundle here
+   registered every data-API handler twice. #}
 
 <!-- xterm.js for the Terminal tab -->
 {# Vendored, pinned, from registry-verified tarballs (C123; static/js/vendor/MANIFEST.json).

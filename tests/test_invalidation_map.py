@@ -431,7 +431,7 @@ class TestTheDeviceListRedraws:
 
         monkeypatch.setattr(D, "load_saved_devices", lambda *a, **k: [])
         body = client.get("/devices/regions").get_json()
-        assert "No devices saved yet" in body["table_html"]
+        assert "No devices in this list yet" in body["table_html"]
         assert "deviceSearch" not in body["toolbar_html"]
 
     def test_the_index_and_the_route_render_the_same_rows(self, client, one_device,
@@ -453,7 +453,7 @@ class TestTheDeviceListRedraws:
         end = src.index("async function refreshDeviceRegions(")
         out = dukpy.evaljs(src[start:end] + """
           var els = {deviceToolbarRegion: {innerHTML: 'old'},
-                     deviceTableRegion: {innerHTML: 'No devices saved yet'},
+                     deviceTableRegion: {innerHTML: 'No devices in this list yet'},
                      deviceListSelect: {options: [
                        {value: dukpy['list'], textContent: 'x (0 devices)'}]}};
           var doc = {getElementById: function (id) { return els[id] || null; }};
