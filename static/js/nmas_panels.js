@@ -276,7 +276,9 @@
     var empty = p.series ? p.series.length === 0 : (p.rows ? p.rows.length === 0 : p.value === null);
     if (p.errors && p.errors.length) body.appendChild(el('p', 'panel-error', p.errors.join('; ')));
     if (empty) {
-      body.appendChild(el('p', 'panel-note', emptyWords(p)));
+      // A stopped stream on a device that should stream is the failure,
+      // drawn as one (the operator: visible and red), never neutral.
+      body.appendChild(el('p', p.no_value_kind === 'danger' ? 'panel-error' : 'panel-note', emptyWords(p)));
     } else if (p.rows) {
       drawTable(body, p, unit);
     } else if (p.series) {

@@ -136,6 +136,32 @@ def read(client=None) -> dict:
             "read_at": time.time()}
 
 
+def read_one(uid: str, client=None) -> dict:
+    """ONE dashboard, asked LIVE: ``{"state": "found", "dashboard": {...}}``,
+    ``{"state": "absent"}`` when Grafana answers 404, or
+    ``{"state": "unknown", "error"}`` when it could not be asked.
+
+    Rule 11 (the operator, 2026-09-30): a stored list is for DISPLAY;
+    concluding that a configured UID does not exist is a CHECK. After the
+    operator imported nmas-device, the device page said Grafana held no such
+    dashboard while Grafana listed it: the stored list predated the import.
+    So a miss in the stored list is asked of Grafana before anything says the
+    dashboard is gone."""
+    from modules.integrations.grafana import GrafanaIntegration
+
+    g = client or GrafanaIntegration()
+    got = g._get(f"api/dashboards/uid/{uid}")
+    if not got.get("ok"):
+        if got.get("status") == 404:
+            return {"state": "absent", "asked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        return {"state": "unknown", "error": got.get("error") or "no answer", "asked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    model = (got["response"].json() or {}).get("dashboard") or {}
+    return {"state": "found", "asked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "dashboard": {"uid": uid, "title": model.get("title") or uid, "folder": "",
+                          "variables": _variables(model), "panels": _panels(model),
+                          "refresh": model.get("refresh") or ""}}
+
+
 def datasources(frontend: dict) -> list:
     """The data sources, from Grafana's front-end settings (which any signed-in
     role reads, so a Viewer token can): uid, type, name, and which is the

@@ -54,6 +54,10 @@ class FakeGrafana:
         self.fail_query = fail_query
         self.queries = []
         self.gets = []
+        # Rule 11: a dashboard Grafana holds that the STORED list predates
+        # (the operator's import of nmas-device), and Grafana unreachable.
+        self.extra = {}
+        self.dashboards_down = False
 
     def _get(self, path, **params):
         self.gets.append((path, params))
@@ -61,12 +65,17 @@ class FakeGrafana:
             return {"ok": True, "response": _Resp(_fixture("dashboards", "search.json"))}
         if path.startswith("api/dashboards/uid/"):
             uid = path.rsplit("/", 1)[-1]
-            if uid == "rcn-lab1-snmp":
+            if self.dashboards_down:
+                return {"ok": False, "error": "Could not connect to the Grafana URL"}
+            titles = {d["uid"]: d["title"] for d in _fixture("dashboards", "search.json")}
+            if uid in self.extra:
+                model = self.extra[uid]
+            elif uid == "rcn-lab1-snmp":
                 model = _fixture("dashboards", "rcn-lab1-snmp.json")
+            elif uid in titles:
+                model = {"title": titles[uid], "panels": [], "templating": {"list": []}}
             else:
-                title = next(d["title"] for d in _fixture("dashboards", "search.json")
-                             if d["uid"] == uid)
-                model = {"title": title, "panels": [], "templating": {"list": []}}
+                return {"ok": False, "error": "HTTP 404", "status": 404}          # as Grafana answers
             return {"ok": True, "response": _Resp({"dashboard": model})}
         if path == "api/frontend/settings":
             ds = _fixture("dashboards", "datasources.json")
@@ -153,6 +162,11 @@ def lab(tmp_path, monkeypatch):
 def _get(lab, url):
     r = lab["client"].get(url)
     return r, r.get_data(as_text=True)
+
+
+def _get_json(lab, url):
+    r = lab["client"].get(url)
+    return r.status_code, r.get_json()
 
 
 def _text(html):
@@ -304,10 +318,33 @@ class TestMonitoringStates:
         assert "No device dashboard is set for this network" in html
         assert "Device dashboard UID" in html
 
-    def test_a_uid_grafana_does_not_hold_is_named(self, lab):
+    def test_a_uid_grafana_does_not_hold_is_named_on_its_live_answer(self, lab):
         lab["settings"]["grafana_device_dashboard_uid"] = "gone-uid"
         _, html = _get(lab, "/v2/device/r3/monitoring")
         assert "Grafana holds no dashboard with UID" in html and "gone-uid" in html
+        assert "asked now" in html
+        assert ("api/dashboards/uid/gone-uid", {}) in lab["fake"].gets          # it was ASKED
+
+    def test_a_uid_the_stored_list_predates_is_drawn_never_called_gone(self, lab):
+        """The operator's case (2026-09-30): nmas-device imported after the
+        stored list was read. Grafana is asked, and the dashboard is drawn."""
+        model = dict(_fixture("dashboards", "rcn-lab1-snmp.json"), title="NMAS device", uid="nmas-device")
+        lab["fake"].extra["nmas-device"] = model
+        lab["settings"]["grafana_device_dashboard_uid"] = "nmas-device"
+        _, html = _get(lab, "/v2/device/r3/monitoring")
+        assert "Grafana holds no dashboard" not in html
+        assert "data-panel-src" in html and "Read from Grafana now" in html and "predates" in html
+        code, body = _get_json(lab, "/v2/device/r3/panel/nmas-device/2")
+        assert code == 200 and body.get("ok"), body
+
+    def test_grafana_unreachable_is_not_confirmed_never_gone(self, lab):
+        lab["fake"].dashboards_down = True
+        lab["settings"]["grafana_device_dashboard_uid"] = "maybe-uid"
+        _, html = _get(lab, "/v2/device/r3/monitoring")
+        assert "Grafana holds no dashboard" not in html
+        assert "could not be asked now" in html and "Whether it exists is not known" in html
+        code, body = _get_json(lab, "/v2/device/r3/panel/maybe-uid/2")
+        assert code == 503 and "could not be asked now" in body["error"]
 
     def test_dashboards_not_read_yet_is_its_own_state(self, lab):
         _unstore("grafana-dashboards")

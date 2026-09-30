@@ -68,9 +68,10 @@ def _overview_ctx(ref, dev):
             "hw": device_page.hardware(ref, dev)}
 
 
-def _monitoring_ctx(dev):
+def _monitoring_ctx(ref, dev):
     return {"device": dev, "m": device_page.monitoring(
-        dev, chosen_uid=request.args.get("dashboard", ""), range_text=request.args.get("range", "1h"))}
+        dev, chosen_uid=request.args.get("dashboard", ""), range_text=request.args.get("range", "1h"),
+        streams=device_page.streams_telemetry(ref, dev))}
 
 
 @bp.route("/device/<name>", methods=["GET"])
@@ -85,7 +86,7 @@ def device(name):
     ctx = {"device": dev, "list_name": ref.name, "tabs": TABS, "built": BUILT, "tab": tab,
            "answer": device_page.answering(dev), "who": _who(),
            "hw": device_page.hardware(ref, dev)}
-    ctx.update(_overview_ctx(ref, dev) if tab == "overview" else _monitoring_ctx(dev))
+    ctx.update(_overview_ctx(ref, dev) if tab == "overview" else _monitoring_ctx(ref, dev))
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -103,8 +104,8 @@ def monitoring(name):
     found, refusal = _device_or_404(name)
     if refusal is not None:
         return refusal
-    _ref, dev = found
-    return _strict(render_template("v2/_monitoring.html", **_monitoring_ctx(dev)))
+    ref, dev = found
+    return _strict(render_template("v2/_monitoring.html", **_monitoring_ctx(ref, dev)))
 
 
 @bp.route("/device/<name>/status", methods=["GET"])
@@ -122,10 +123,11 @@ def panel(name, uid, panel_id):
     """One device panel's data, for the browser to draw. Only a panel of that
     dashboard that selects the device, with the dashboard's own query."""
     try:
-        _ref, dev = device_page.find_device(name)
+        ref, dev = device_page.find_device(name)
     except device_page.NoSuchDevice as exc:
         return jsonify({"ok": False, "error": str(exc)}), 404
-    payload, code = device_page.panel_data(dev, uid, panel_id, request.args.get("range", "1h"))
+    payload, code = device_page.panel_data(dev, uid, panel_id, request.args.get("range", "1h"),
+                                           streams=device_page.streams_telemetry(ref, dev))
     return jsonify(payload), code
 
 

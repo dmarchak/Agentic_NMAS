@@ -184,8 +184,10 @@ answers:
    docker restart snmp-exporter
    ```
 
-2. Three jobs in `prometheus.yml`, each shaped like `cisco_ipsla` (the same `auth:
-   [public_v2]` and the same three relabel rules, with its own module and file):
+2. Three jobs in `prometheus.yml`. **Made by COPYING the `cisco_ipsla` job** (the operator,
+   2026-09-30): the same timing, auth and relabel rules, changing only the name, the module and
+   the file. Copying, rather than writing a job from the sketch below, keeps the settings that
+   already work identical:
 
    ```yaml
      - job_name: ospf
@@ -206,24 +208,29 @@ answers:
 and stuck in exstart, exchange or loading, plus a BGP peer that is configured up and not
 established. It draws each neighbour's state, with two-way in neutral text.
 
-### Telemetry: the label fix is the operator's host step
+### Telemetry: the label fix, installed by the operator
 
-The `telemetry_mdt` series name the device `source`, not `device`. The cleanest fix is one
-rule on that job in `prometheus.yml`, which COPIES `source` into `device` (so `source` keeps
-working), and every panel then selects a device one way:
+**Installed 2026-09-30:** ospf 6 targets up, ospfv3 4 and bgp 2; the telemetry series carry
+`device` r1 to r4; and `--check` reads MATCHES for 7 jobs.
+
+The `telemetry_mdt` series named the device `source`, not `device`. The rule installed on that
+job fills `device` from `source` ONLY WHERE `device` IS ABSENT, so every panel selects a device
+one way and nothing that already has a `device` is overwritten:
 
 ```yaml
   - job_name: telemetry_mdt
     ...
     metric_relabel_configs:
-      - source_labels: [source]
-        regex: '(.+)'
+      - source_labels: [device, source]
+        separator: ';'
+        regex: ';(.+)'
         target_label: device
         replacement: '$1'
 ```
 
-It touches only series that HAVE a `source` (the Cisco ones). Telegraf's own host metrics
-(`diskio_*`, whose `device` is a disk name) have none, so they are left alone. The Telegraf
+The joined value is `<device>;<source>`, and `;(.+)` matches only when `device` is empty.
+Telegraf's own host metrics (`diskio_*`, whose `device` is a disk name) keep their `device`,
+and a Cisco series keeps `source` beside the new `device`. The Telegraf
 equivalent (a `[[processors.rename]]` of the tag) would do it at the source, but it is a
 second config to own; the relabel sits beside the other scrape edits.
 
@@ -240,11 +247,25 @@ alone would keep what the devices send.
 | r3 | 11 | 55 | 15 | 62 |
 | r4 | 8 | 54 | 15 | 64 |
 
-The telemetry model's figure is most likely the IOS processes' (`show processes cpu`) and
-SNMP's the whole route processor (`show processes cpu platform`). That attribution is not
-measured; one router's two commands settle it. So the dashboard never merges them:
-- the glance value is SNMP's on every device, so it means the same thing on every platform;
-- CPU over time draws both lines, each named.
+**Measured on r3 by the operator, 2026-09-30:**
+- `show processes cpu` read 2/6/15% (5 s, 1 min, 5 min): IOS's own CPU, which matches
+  telemetry's 8 to 11%.
+- `show processes cpu platform` read 40/41/70%, with `ucode_pkt_PQF0` alone at 90/91/93%. That
+  is the virtual router's packet-forwarding engine, which busy-polls whether or not packets
+  arrive, and it is what holds SNMP's `cpmCPUTotal` at 52 to 55% on every router, idle or not.
+
+So at a glance the dashboard shows **IOS CPU**, IOS's control-plane CPU and the figure that says
+a router is under strain: from telemetry on IOS-XE, and from SNMP's `cpuAvgBusy1` on vIOS,
+which is already IOS's own (nothing polls there). Both carry the same label, so the two compare.
+The platform figure is one level down, with a note that a high flat line is normal on a
+virtual router.
+
+**Memory:** vIOS implements none of the modern memory tables (measured by the operator on s3:
+CISCO-MEMORY-POOL-MIB and CISCO-PROCESS-MIB's `cpmCPUMemoryUsed` are all No Such Object; r3
+answers all three). So on a vIOS device the memory panel says "Memory isn't available over
+SNMP on vIOS", never an empty chart, until staged run 6 measures the old family's `freeMem`.
+On the routers the memory figure is SNMP's: no telemetry memory subscription exists yet (the
+monitoring profile's telemetry section is where one would be added).
 
 Traffic, errors and discards are the same counters from either collector, so telemetry is
 primary there and SNMP the fallback, per device, with the source named on every series.

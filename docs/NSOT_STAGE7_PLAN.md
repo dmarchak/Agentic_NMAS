@@ -452,6 +452,14 @@ session needs no reconstruction:
    3. Hand over `/tmp/routing-oids.txt`. It holds OIDs, addresses and state numbers, no
       community. "No Such Object" for a table means that device does not implement it,
       which is the answer, not a failure.
+   DONE 2026-09-30: OSPF-MIB on both platforms, OSPFV3-MIB on IOS-XE only, cbgpPeer2Table
+   for BGP (it sees r3's IPv6 peer).
+6. **Does vIOS report memory in the old Cisco family** (the operator, 2026-09-30)? Read-only
+   from the NMAS host, with the community read as in run 5:
+   `snmpget -v2c -c "$C" -On -t 5 10.255.1.23 1.3.6.1.4.1.9.2.1.8.0` (OLD-CISCO-SYSTEM-MIB
+   `freeMem`, the family of the `cisco_old_cpu` module the switches already use).
+   - If it answers, `freeMem` goes into the vIOS module, and the memory panel draws it for vIOS.
+   - If not, the panel's sentence stands: memory isn't available over SNMP on vIOS.
 
 **The Services mockups reviewed (the operator, 2026-09-30; brief 9b, 14.2, 15.1):**
 - **Every Grafana panel, rendered from the dashboard's own JSON model,** never a chosen few:

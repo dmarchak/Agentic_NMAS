@@ -113,15 +113,20 @@ class TestTheOperatorsRules:
             expr = by[title]["targets"][0]["expr"]
             assert '"via", "gRPC telemetry"' in expr and "unless on(device)" in expr, title
 
-    def test_cpu_draws_both_sources_named_never_merged(self):
-        """Measured 2026-09-30: about 54% over SNMP against 9% over telemetry on
-        every router. Two measurements, so never `or`-ed into one."""
+    def test_cpu_at_a_glance_is_ios_cpu_and_the_platform_figure_is_one_level_down(self):
+        """The operator's measurement on r3 (2026-09-30): IOS's own CPU 2-15%,
+        the platform 40-70% with the forwarding engine busy-polling at 90%+.
+        At a glance and over time: IOS CPU, telemetry on IOS-XE and SNMP's
+        busy figure on vIOS, one label. The platform figure: the detail row."""
         by = {p["title"]: p for p in _content()}
-        glance = by["CPU, 1-minute average"]["targets"]
-        assert len(glance) == 1 and "gRPC" not in glance[0]["expr"]
-        over_time = by["CPU over time"]["targets"]
-        assert len(over_time) == 2 and all("unless" not in t["expr"] for t in over_time)
-        assert {t["legendFormat"].split(" (")[0] for t in over_time} == {"device CPU", "IOS processes"}
+        for title in ("IOS CPU, 1-minute average", "IOS CPU over time"):
+            (t,) = by[title]["targets"]
+            assert f"{'Cisco_IOS_XE_process_cpu_oper'}:cpu_usage_cpu_utilization_one_minute" in t["expr"]
+            assert "cpuAvgBusy1" in t["expr"] and "unless on(device)" in t["expr"]
+            assert "cpmCPUTotal" not in t["expr"] and t["legendFormat"] == "IOS CPU (via {{via}})"
+        platform = by["Platform CPU (the whole route processor)"]
+        assert "cpmCPUTotal1minRev" in platform["targets"][0]["expr"] and platform["gridPos"]["y"] >= 52
+        assert "busy-polls" in platform["description"]
 
     def test_two_way_is_never_counted_wrong(self):
         """The operator's catch: two-way (state 4) is expected between

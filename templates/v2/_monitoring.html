@@ -60,13 +60,19 @@
   Name one by UID in Settings &gt; Integrations &gt; Grafana (Device dashboard UID), or choose one above for this view.</div></div>
 {%- elif m.state == 'uid_gone' %}
 <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>Grafana holds no dashboard with UID <span class="mono">{{ m.uid }}</span>.</strong>
-  The setting names a dashboard that was deleted or never existed; choose one above, or correct the setting.</div></div>
+  Grafana's own answer, asked now {{ stamp(m.live.asked_at) }}: the setting names a dashboard that was deleted or never existed. Choose one above, or correct the setting.</div></div>
+{%- elif m.state == 'uid_unconfirmed' %}
+<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Dashboard <span class="mono">{{ m.uid }}</span> is not in the stored list, and Grafana could not be asked now.</strong>
+  {{ m.live.error }}. Whether it exists is not known: the stored list {% if m.value_at %}was read {{ stamp(m.value_at) }} and {% endif %}may predate it.</div></div>
 {%- elif m.state == 'no_variable' %}
 <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>No panels for {{ dev_name }}: {{ m.dashboard.title }} cannot be filtered to one device.</strong>
   It has no variable named <span class="mono">{{ m.settings.variable }}</span> (its variables: {{ m.variables|join(', ') or 'none' }}), so its panels would show the whole fleet under {{ dev_name }}'s name. None are drawn.</div></div>
 {%- elif m.state == 'range_refused' %}
 <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>That range is refused.</strong> {{ m.why }}</div></div>
 {%- else %}
+  {%- if m.live and m.live.state == 'found' %}
+  <p class="limits">Read from Grafana now: the stored dashboard list {% if m.value_at %}(read {{ stamp(m.value_at) }}) {% endif %}predates <span class="mono">{{ m.dashboard.uid }}</span>, and picks it up at its next read.</p>
+  {%- endif %}
   {%- set vs = m.variable_state or {} %}
   {%- if vs.state == 'none' %}
   <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>The dashboard's <span class="mono">{{ m.settings.variable }}</span> variable lists no devices at all,</strong> so these panels will be empty.
@@ -76,6 +82,11 @@
   <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Prometheus holds no series for {{ m.device_value }}</strong> under the <span class="mono">{{ vs.label }}</span> label ({{ vs.count }} other values are listed).</div></div>
   {%- elif vs.state == 'could_not_ask' %}
   <div class="notice notice-muted">{{ icon('info', 16) }}<div>Whether the variable lists {{ m.device_value }} could not be asked: {{ vs.error }}. The panels below still try.</div></div>
+  {%- endif %}
+  {%- if m.folded %}
+  <p class="limits folded" title="{{ m.folded.titles|join(', ') }}">Telemetry panels hidden ({{ m.folded.titles|length }}): {{ m.folded.why }}.</p>
+  {%- elif m.streams_unknown %}
+  <p class="limits">Telemetry panels are shown: whether this device streams is not known, since {{ m.streams_unknown }}.</p>
   {%- endif %}
   <div class="panels" data-refresh="30">
     {% for item in m.layout %}

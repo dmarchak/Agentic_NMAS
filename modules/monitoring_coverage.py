@@ -36,6 +36,10 @@ CHECKS = {
     "snmp": re.compile(r"^snmp-server community \S+", re.M),
     "syslog": re.compile(r"^logging host \S+", re.M),
     "heartbeat": re.compile(r"^event manager applet NMAS-HEARTBEAT\b", re.M),
+    # Model-driven telemetry: a subscription in the committed configuration.
+    # Decides whether the device page folds a device's telemetry panels
+    # (the operator, 2026-09-30); never whether series happen to exist now.
+    "telemetry": re.compile(r"^telemetry ietf subscription \d+", re.M),
 }
 
 #: The words for each, in a sentence "r6 is not monitored by <words>".

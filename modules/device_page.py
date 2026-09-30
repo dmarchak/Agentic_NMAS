@@ -288,7 +288,43 @@ def device_variable_state(dashboard: dict, variable: str, value: str, values_fil
     return {"state": "listed", "query": q, "label": label, "count": len(values)}
 
 
-def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=None) -> dict:
+def streams_telemetry(ref, dev: dict) -> tuple:
+    """``(True | False | None, why)``: does this device stream model-driven
+    telemetry, decided from its COMMITTED configuration (a subscription),
+    never from whether series exist right now: a router whose stream just
+    stopped must show the failure, not hide its panels (the operator,
+    2026-09-30). None when the configuration could not be read."""
+    from modules import prometheus_targets as P
+    from modules.monitoring_coverage import configured
+
+    host = dev.get("hostname", "")
+    try:
+        text = P.read_golden(ref, host)
+    except Exception as exc:                            # noqa: BLE001
+        return None, f"{host}'s committed configuration could not be read ({type(exc).__name__})"
+    if not text:
+        return False, f"{host} has no committed configuration"
+    if configured(text)["telemetry"]:
+        return True, f"{host}'s configuration subscribes model-driven telemetry"
+    return False, f"{host} doesn't stream model-driven telemetry (its configuration has no subscription)"
+
+
+def _dashboard(stored: dict, uid: str, client=None) -> tuple:
+    """``(dashboard | None, live)``: from the stored list, or, on a miss, from
+    Grafana asked now (`grafana_dashboards.read_one`). *live* is ``{}`` when
+    the stored list held it."""
+    if uid in stored:
+        return stored[uid], {}
+    from modules.readers import grafana_dashboards
+    try:
+        live = grafana_dashboards.read_one(uid, client=client)
+    except Exception as exc:                            # noqa: BLE001
+        live = {"state": "unknown", "error": f"{type(exc).__name__}: {exc}"}
+    return (live.get("dashboard") if live.get("state") == "found" else None), live
+
+
+def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=None,
+               streams: tuple = (None, "")) -> dict:
     """Everything the Monitoring tab draws, or the state that replaces it:
     no dashboard set, the dashboards not read yet, the configured UID gone,
     no such variable, the variable listing nothing, or the panels."""
@@ -315,10 +351,15 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
     if not uid:
         out.update(state="not_set")
         return out
-    dash = dashboards.get(uid)
+    dash, live = _dashboard(dashboards, uid, client)
     if dash is None:
-        out.update(state="uid_gone", uid=uid)
+        # Said only on Grafana's LIVE answer (rule 11): "gone" when it
+        # answered 404, "not confirmed" when it could not be asked.
+        out.update(state="uid_gone" if live.get("state") == "absent" else "uid_unconfirmed",
+                   uid=uid, live=live)
         return out
+    if live:
+        out["live"] = live
     out.update(dashboard={"uid": uid, "title": dash["title"]}, is_default=(uid == cfg["uid"]))
     if not panels.variable_of(dash, cfg["variable"]):
         out.update(state="no_variable",
@@ -335,13 +376,26 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
     out["variable_state"] = device_variable_state(dash, cfg["variable"], device_value, fill,
                                                   datasources, client=client)
     drawn, left_out = panels.split_device_panels(dash, cfg["variable"])
+    # PANELS FOLD FOR A DEVICE WITHOUT THEIR SOURCE (the operator, 2026-09-30):
+    # a panel reading only telemetry, on a device whose configuration has no
+    # subscription, folds away under ONE line saying why. Never split the
+    # dashboard in two (two owners of the same panels would drift).
+    if streams[0] is False:
+        folded = [p for p in drawn if panels.telemetry_only(p)]
+        if folded:
+            drawn = [p for p in drawn if not panels.telemetry_only(p)]
+            out["folded"] = {"titles": [p.get("title") or "" for p in folded],
+                             "why": f"{streams[1]}; these figures come from SNMP"}
+    elif streams[0] is None and streams[1]:
+        out["streams_unknown"] = streams[1]
     out.update(device_value=device_value, drawn=drawn, left_out=left_out,
                layout=panels.layout(drawn),
                seconds=seconds, step=panels.step_for(seconds), range_words=panels.describe(seconds))
     return out
 
 
-def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None) -> tuple:
+def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
+               streams: tuple = (None, "")) -> tuple:
     """(payload, http status) for one panel, drawn by the browser. Only a panel
     the dashboard holds AND that selects the device; the query is the
     dashboard's, never the browser's."""
@@ -349,9 +403,12 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None)
     value, _at, why = _cached("grafana-dashboards")
     if value is None:
         return {"ok": False, "error": f"the dashboards are not read yet: {why}"}, 503
-    dash = (value.get("dashboards") or {}).get(uid)
+    dash, live = _dashboard(value.get("dashboards") or {}, uid, client)
     if dash is None:
-        return {"ok": False, "error": f"Grafana holds no dashboard with UID {uid}"}, 404
+        if live.get("state") == "absent":
+            return {"ok": False, "error": f"Grafana answered, asked now: no dashboard with UID {uid}"}, 404
+        return {"ok": False, "error": (f"{uid} is not in the stored dashboard list, and Grafana could "
+                                       f"not be asked now: {live.get('error')}")}, 503
     drawn, _ = panels.split_device_panels(dash, cfg["variable"])
     panel = next((p for p in drawn if p.get("id") == panel_id), None)
     if panel is None:
@@ -374,4 +431,13 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None)
     payload = panels.render_payload(panel, got["body"], seconds)
     payload["errors"] = errors
     payload["read_at"] = _iso(time.time())
+    # A STOPPED STREAM STAYS VISIBLE AND RED: a telemetry-only panel with
+    # nothing to draw, on a device whose configuration subscribes, is the
+    # failure itself, never a neutral "no data".
+    empty = (payload.get("value") is None if "value" in payload
+             else not (payload.get("series") or payload.get("rows")))
+    if streams[0] is True and panels.telemetry_only(panel) and empty:
+        payload["no_value"] = (f"No stream: {streams[1]}, and nothing arrived for this panel in "
+                               "the last 5 minutes")
+        payload["no_value_kind"] = "danger"
     return payload, 200

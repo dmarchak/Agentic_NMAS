@@ -119,7 +119,10 @@ def build() -> dict:
     _panels.clear()
     _id[0] = 0
     cpu_t = f"max by (device) ({TC}one_minute{{{D}}})"
-    cpu_s = f"max by (device) (cpmCPUTotal1minRev{{{D}}} or cpuAvgBusy1{{{D}}})"
+    # IOS's own CPU: telemetry on IOS-XE; on vIOS the old CISCO MIB's busy
+    # figure, which IS IOS's (no forwarding engine polls there).
+    cpu_s = f"max by (device) (cpuAvgBusy1{{{D}}})"
+    platform_cpu = f"max by (device) (cpmCPUTotal1minRev{{{D}}})"
     wrong_states = (f"count(({{__name__=~\"ospfNbrState|ospfv3NbrState\", {D}}} < 4) "
                     f"or ({{__name__=~\"ospfNbrState|ospfv3NbrState\", {D}}} > 4 < 8) "
                     f"or (cbgpPeer2State{{{D}}} != 6 and on(device, cbgpPeer2RemoteAddr) "
@@ -134,26 +137,29 @@ def build() -> dict:
           unit="none", maps=mapping({1: ("Yes", "green"), 0: ("No", "red")}),
           no_value="Not a target: its configuration has no SNMP. Needs attention says what to do.",
           description="Whether this device answered the last SNMP scrape (30 s).")
-    # CPU IS THE ONE PLACE TELEMETRY IS NOT PRIMARY (measured 2026-09-30): on
-    # all four routers the telemetry model's one-minute figure read 8 to 11%
-    # while SNMP's cpmCPUTotal1minRev read 52 to 55%. Two MEASUREMENTS, not
-    # one from two collectors, so picking telemetry where it streams would
-    # change what the number means between a router and a switch. The glance
-    # value is SNMP's on every device; CPU over time draws both, each named.
-    panel("stat", "CPU, 1-minute average", (4, 1, 4, 4),
-          [{"expr": via(cpu_s, "SNMP"), "legendFormat": "via {{via}} (CISCO-PROCESS-MIB)"}],
+    # CPU AT A GLANCE IS IOS'S OWN (the operator's measurement on r3,
+    # 2026-09-30): `show processes cpu` read 2/6/15% while `show processes cpu
+    # platform` read 40/41/70%, with ucode_pkt_PQF0 alone at 90%+. That is the
+    # virtual router's forwarding engine, which busy-polls whether or not
+    # packets arrive, and it holds SNMP's platform figure at 52-55% on every
+    # router, idle or not. IOS's control-plane CPU is the number that says a
+    # router is under strain: telemetry's on IOS-XE (8-11%, matching), and on
+    # vIOS SNMP's busy figure, which is already IOS's. One label on both, so
+    # they compare. The platform figure is one level down, with its note.
+    panel("stat", "IOS CPU, 1-minute average", (4, 1, 4, 4),
+          [{"expr": pick(cpu_t, cpu_s), "legendFormat": "IOS CPU (via {{via}})"}],
           unit="percent", th=thresholds((None, "green"), (70, "orange"), (90, "red")),
-          no_value="No CPU reading over SNMP.",
-          description="The device's 1-minute CPU average over SNMP, the same measurement on every "
-                      "platform. On IOS-XE the telemetry model reports a different, much lower "
-                      "figure (the IOS processes' own); CPU over time draws both. Amber from 70%, "
-                      "red from 90%.")
+          no_value="No IOS CPU reading. On IOS-XE it comes from telemetry, and this router is not "
+                   "streaming; its platform CPU is one level down.",
+          description="IOS's own control-plane CPU over the last minute: from gRPC telemetry on "
+                      "IOS-XE, from SNMP on vIOS (the caption says which). The same measurement on "
+                      "both. Amber from 70%, red from 90%.")
     mem_used = f'sum by (device) (cempMemPoolUsed{{{D}, cempMemPoolIndex="1"}})'
     mem_free = f'sum by (device) (cempMemPoolFree{{{D}, cempMemPoolIndex="1"}})'
     panel("stat", "Memory used", (8, 1, 4, 4),
           [{"expr": via(f"100 * {mem_used} / ({mem_used} + {mem_free})", "SNMP"), "legendFormat": "via {{via}}"}],
           unit="percent", th=thresholds((None, "green"), (80, "orange"), (90, "red")),
-          no_value="Not collected on this platform: vIOS reports no memory pool over SNMP.",
+          no_value="Memory isn't available over SNMP on vIOS.",
           description="The processor memory pool in use. Amber from 80%, red from 90%.")
     panel("stat", "Interfaces down that should be up", (12, 1, 4, 4),
           [{"expr": via(f"sum by (device) ((ifOperStatus{{{D}}} != bool 1) * on(device, ifIndex) "
@@ -277,14 +283,11 @@ def build() -> dict:
           [{"expr": f"sum by (device) (rttMonLatestRttOperSense{{{D}}} != bool 1)", "legendFormat": "via SNMP"}],
           unit="none", th=GREEN_ZERO_RED, no_value="No IP SLA operation on this device.",
           description="Operations whose latest result is not ok. Red from 1.")
-    panel("timeseries", "CPU over time", (12, 36, 12, 7),
-          [{"expr": via(cpu_s, "SNMP"), "legendFormat": "device CPU (via SNMP, CISCO-PROCESS-MIB)"},
-           {"expr": via(cpu_t, "gRPC telemetry"), "legendFormat": "IOS processes (via gRPC telemetry)"}],
-          unit="percent", no_value="No CPU reading from telemetry or SNMP.",
-          description="The 1-minute CPU average over the chosen range, from both sources where a "
-                      "device streams. They measure different things (measured 2026-09-30: about 54% "
-                      "over SNMP against 9% over telemetry on every router), so they are drawn as two "
-                      "named lines, never merged.")
+    panel("timeseries", "IOS CPU over time", (12, 36, 12, 7),
+          [{"expr": pick(cpu_t, cpu_s), "legendFormat": "IOS CPU (via {{via}})"}],
+          unit="percent", no_value="No IOS CPU reading from telemetry or SNMP.",
+          description="IOS's own control-plane CPU over the chosen range, from the same source as "
+                      "the value at a glance.")
 
     # ---- interfaces ---------------------------------------------------------
     row("Interfaces", 43)
@@ -320,6 +323,14 @@ def build() -> dict:
             "legendFormat": "{{job}} (via SNMP)"}],
           unit="s", no_value="Not a target: no SNMP.",
           description="How long one SNMP read of this device takes, per job; its limit is 30 s.")
+    panel("timeseries", "Platform CPU (the whole route processor)", (0, 66, 12, 6),
+          [{"expr": via(platform_cpu, "SNMP"), "legendFormat": "platform CPU (via SNMP, CISCO-PROCESS-MIB)"}],
+          unit="percent",
+          no_value="vIOS reports no platform figure apart from IOS's; IOS CPU is at a glance.",
+          description="The route processor's whole CPU, forwarding engine included. On a virtual "
+                      "router the forwarding engine busy-polls continuously whether or not packets "
+                      "arrive (measured on r3: ucode_pkt_PQF0 alone at 90% and more), so a high flat "
+                      "line is normal here; IOS CPU at a glance is the figure that shows strain.")
 
     return {
         "__inputs": [

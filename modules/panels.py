@@ -80,6 +80,22 @@ def uses_variable(expr: str, name: str) -> bool:
     return bool(re.search(r"\$(?:\{%s(?::[^}]*)?\}|%s\b)" % (re.escape(name), re.escape(name)), expr or ""))
 
 
+#: A metric name in a query: an identifier followed by its selector. PromQL
+#: functions are followed by `(`, so they are not matched; a Loki stream
+#: selector starts with `{` and names no metric.
+_METRIC = re.compile(r"([A-Za-z_][A-Za-z0-9_:]*)\s*\{")
+#: The model-driven telemetry series (Telegraf's Cisco IOS-XE plugin).
+TELEMETRY_METRIC = re.compile(r"^Cisco_IOS_XE_[A-Za-z0-9_]+:")
+
+
+def telemetry_only(panel: dict) -> bool:
+    """Does this panel read ONLY model-driven telemetry? True when every
+    target names a metric and every metric it names is a telemetry one. A
+    panel with an SNMP fallback (`telemetry or (snmp unless ...)`) is not."""
+    names = [n for t in panel.get("targets") or [] for n in _METRIC.findall(t.get("expr") or "")]
+    return bool(names) and all(TELEMETRY_METRIC.match(n) for n in names)
+
+
 def split_device_panels(dashboard: dict, variable: str) -> tuple:
     """(drawn, left_out): the panels a device page draws, those whose query
     references the device variable, and every other panel with why it was

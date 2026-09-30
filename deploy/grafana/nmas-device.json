@@ -177,8 +177,8 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "CPU, 1-minute average",
-      "description": "The device's 1-minute CPU average over SNMP, the same measurement on every platform. On IOS-XE the telemetry model reports a different, much lower figure (the IOS processes' own); CPU over time draws both. Amber from 70%, red from 90%.",
+      "title": "IOS CPU, 1-minute average",
+      "description": "IOS's own control-plane CPU over the last minute: from gRPC telemetry on IOS-XE, from SNMP on vIOS (the caption says which). The same measurement on both. Amber from 70%, red from 90%.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -192,7 +192,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "noValue": "No CPU reading over SNMP.",
+          "noValue": "No IOS CPU reading. On IOS-XE it comes from telemetry, and this router is not streaming; its platform CPU is one level down.",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -224,8 +224,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "label_replace(max by (device) (cpmCPUTotal1minRev{device=\"$device\"} or cpuAvgBusy1{device=\"$device\"}), \"via\", \"SNMP\", \"\", \"\")",
-          "legendFormat": "via {{via}} (CISCO-PROCESS-MIB)"
+          "expr": "label_replace(max by (device) (Cisco_IOS_XE_process_cpu_oper:cpu_usage_cpu_utilization_one_minute{device=\"$device\"}), \"via\", \"gRPC telemetry\", \"\", \"\") or (label_replace(max by (device) (cpuAvgBusy1{device=\"$device\"}), \"via\", \"SNMP\", \"\", \"\") unless on(device) max by (device) (Cisco_IOS_XE_process_cpu_oper:cpu_usage_cpu_utilization_one_minute{device=\"$device\"}))",
+          "legendFormat": "IOS CPU (via {{via}})"
         }
       ],
       "options": {
@@ -259,7 +259,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "noValue": "Not collected on this platform: vIOS reports no memory pool over SNMP.",
+          "noValue": "Memory isn't available over SNMP on vIOS.",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1457,8 +1457,8 @@
     {
       "id": 26,
       "type": "timeseries",
-      "title": "CPU over time",
-      "description": "The 1-minute CPU average over the chosen range, from both sources where a device streams. They measure different things (measured 2026-09-30: about 54% over SNMP against 9% over telemetry on every router), so they are drawn as two named lines, never merged.",
+      "title": "IOS CPU over time",
+      "description": "IOS's own control-plane CPU over the chosen range, from the same source as the value at a glance.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1472,7 +1472,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "noValue": "No CPU reading from telemetry or SNMP."
+          "noValue": "No IOS CPU reading from telemetry or SNMP."
         },
         "overrides": []
       },
@@ -1484,18 +1484,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "label_replace(max by (device) (cpmCPUTotal1minRev{device=\"$device\"} or cpuAvgBusy1{device=\"$device\"}), \"via\", \"SNMP\", \"\", \"\")",
-          "legendFormat": "device CPU (via SNMP, CISCO-PROCESS-MIB)"
-        },
-        {
-          "refId": "B",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(max by (device) (Cisco_IOS_XE_process_cpu_oper:cpu_usage_cpu_utilization_one_minute{device=\"$device\"}), \"via\", \"gRPC telemetry\", \"\", \"\")",
-          "legendFormat": "IOS processes (via gRPC telemetry)"
+          "expr": "label_replace(max by (device) (Cisco_IOS_XE_process_cpu_oper:cpu_usage_cpu_utilization_one_minute{device=\"$device\"}), \"via\", \"gRPC telemetry\", \"\", \"\") or (label_replace(max by (device) (cpuAvgBusy1{device=\"$device\"}), \"via\", \"SNMP\", \"\", \"\") unless on(device) max by (device) (Cisco_IOS_XE_process_cpu_oper:cpu_usage_cpu_utilization_one_minute{device=\"$device\"}))",
+          "legendFormat": "IOS CPU (via {{via}})"
         }
       ],
       "options": {
@@ -1805,6 +1795,51 @@
           "editorMode": "code",
           "expr": "max by (device, job) (snmp_scrape_duration_seconds{device=\"$device\"})",
           "legendFormat": "{{job}} (via SNMP)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 34,
+      "type": "timeseries",
+      "title": "Platform CPU (the whole route processor)",
+      "description": "The route processor's whole CPU, forwarding engine included. On a virtual router the forwarding engine busy-polls continuously whether or not packets arrive (measured on r3: ucode_pkt_PQF0 alone at 90% and more), so a high flat line is normal here; IOS CPU at a glance is the figure that shows strain.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 66
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "vIOS reports no platform figure apart from IOS's; IOS CPU is at a glance."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(max by (device) (cpmCPUTotal1minRev{device=\"$device\"}), \"via\", \"SNMP\", \"\", \"\")",
+          "legendFormat": "platform CPU (via SNMP, CISCO-PROCESS-MIB)"
         }
       ],
       "options": {
