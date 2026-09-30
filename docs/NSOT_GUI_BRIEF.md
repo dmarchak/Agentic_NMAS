@@ -474,6 +474,19 @@ For each group in the research's Appendix A: the home it keeps, and what goes.
 - Menu items are grouped, and destructive ones sit last, below a divider.
 - An item that does not apply is disabled with its reason on the item, never hidden.
 - A danger-coloured button appears only inside a confirm.
+- **A control that starts work shows it is busy ON ITSELF, and the result updates in place**
+  (the operator, 2026-09-30, on About's Check again, the rule for every v2 control):
+  - The button's own label says it is working ("Checking…"), and it stays disabled until the
+    work reports back, never on a timer.
+  - Nothing is narrated beside the control while it runs.
+  - The result is the confirmation: the row's timestamp reads "just now".
+  - The row carries no provenance ("checked on your request") unless it changes what the
+    person should do. The cause and the duration stay recorded (the store's run history, the
+    log line) and are on hover (the timestamp's title) for diagnosis.
+  - Words appear beside a control only when the person must act: a refusal, a failure, or an
+    answer later than its bound.
+  - A multi-step operation's progress display (the Update page's stepper) is its result drawn
+    in place, not narration.
 - **Typed confirmation, for Retire only:** type the device's name before the preview's
   confirm enables. It is the one action that takes a device out of management (R §6).
   Everything else keeps the preview's hash-bound confirm, which is already stronger than a

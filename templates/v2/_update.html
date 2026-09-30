@@ -31,7 +31,7 @@
     {%- if f.state == 'at_tip' %}Nothing to update
     {%- elif f.target %}Update from <span class="mono">{{ f.running[:10] }}</span> to <span class="mono">{{ f.target[:10] }}</span>
     {%- else %}Not compared yet{% endif -%}
-  </h2>{% if f.value_at %}<span class="muted">asked {{ stamp(f.value_at) }}{% if check and check.trigger_words %} ({{ check.trigger_words }}){% endif %}</span>{% endif %}
+  </h2>{% if f.value_at %}<span class="muted">asked {{ stamp(f.value_at, note=check.hover if check else '') }}</span>{% endif %}
     {{ check_again(check) }}
   </div>
   {%- if f.state == 'at_tip' %}

@@ -1093,21 +1093,26 @@ class TestClickingTheShippedButton:
         b.go(served_update["srv"].url("/v2/help/about"))
         b.wait_for("return window.Alpine && document.querySelector('.check-again button')")
         b.click(".check-again button")
-        said = b.wait_for("return document.querySelector('.check-again .muted').textContent")
+        said = b.wait_for("return document.querySelector('.check-again .check-late').textContent")
         assert said.startswith("Not asked: the reader jobs do not run in this process")
 
 
-def _record_runs(took_ms):
-    """Put measured runs in the reader's store: the page's bound is 2.5x the slowest."""
+def _record_runs(took_ms, value_at=None):
+    """Put measured runs in the reader's store: the page's bound is 2.5x the
+    slowest. *value_at* back-dates the stored answer."""
     from modules import reader_job
     path = reader_job.store_path("app-pushed")
     doc = reader_job.read_cached("app-pushed")["doc"]
     doc["runs"] = [{"took_ms": took_ms}]
+    if value_at:
+        doc["last_good"]["value_at"] = value_at
     with open(path, "w", encoding="utf-8") as f:
         json.dump(doc, f)
 
 
 BUTTON = "document.querySelector('#installation .check-again button')"
+CONTROL = "document.querySelector('#installation .check-again')"
+STAMP = "document.querySelector('#installation .check-again').closest('dd').querySelector('.stamp')"
 
 
 @pytest.fixture
@@ -1125,14 +1130,18 @@ class TestCheckAgainInARealBrowser:
     def test_it_stays_busy_until_the_answer_arrives_through_a_redraw(self, served_about):
         from modules import reader_job
         s, b = served_about, served_about["b"]
-        reader_job.run_once(s["reader"])                  # a scheduled answer to start from
-        _record_runs(4000)                                # a bound (10 s) this test never reaches
+        reader_job.run_once(s["reader"])                  # a scheduled answer to start from,
+        _record_runs(4000, "2026-09-30T10:00:00Z")        # hours old, and a 10 s bound
         s["hold"].clear()
         b.go(s["srv"].url("/v2/help/about"))
         b.wait_for(f"return window.Alpine && {BUTTON} && {BUTTON}.textContent === 'Check again'")
-        assert "(the scheduled check)" in b.js("return document.querySelector('#installation').textContent")
+        # The cause is on the timestamp's hover, never in the row.
+        assert "the scheduled check" not in b.js("return document.querySelector('#installation').textContent")
+        assert "the scheduled check" in b.js(f"return {STAMP}.title")
         b.click("#installation .check-again button")
         b.wait_for(f"return {BUTTON}.disabled && {BUTTON}.textContent === 'Checking…'")
+        # Busy ON ITSELF: nothing narrated beside the button.
+        assert b.js(f"return {CONTROL}.textContent") == "Checking…"
         # Another reader re-draws the panel mid-run: the new one is still busy.
         b.js("document.querySelector('#installation').setAttribute('data-old', '1');"
              "htmx.trigger(document.body, 'nmas:job_health'); return 1")
@@ -1141,9 +1150,14 @@ class TestCheckAgainInARealBrowser:
         s["hold"].set()
         assert _wait_until(lambda: s["announced"]), "the answer was not announced"
         b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")   # the page's relay
-        b.wait_for(f"return {BUTTON}.textContent === 'Checked just now' && !{BUTTON}.disabled")
+        b.wait_for(f"return {BUTTON}.textContent === 'Check again' && !{BUTTON}.disabled "
+                   f"&& {STAMP}.getAttribute('datetime') !== '2026-09-30T10:00:00Z'")
+        # The confirmation is the timestamp reading "just now", in place.
+        assert b.wait_for(f"return {STAMP}.textContent === 'just now' && {STAMP}.textContent")
+        assert b.js(f"return {CONTROL}.textContent") == "Check again"
         text = b.js("return document.querySelector('#installation').textContent")
-        assert "(checked on your request)" in text and "Up to date as of" in text
+        assert "Up to date as of just now" in text and "request" not in text
+        assert "checked on your request" in b.js(f"return {STAMP}.title")
 
     def test_an_answer_later_than_the_bound_is_said_on_the_page(self, served_about):
         from modules import reader_job
@@ -1209,6 +1223,11 @@ def _wait_until(pred, bound=10):
             return True
         time.sleep(0.02)
     return False
+
+
+def _without_attributes(html):
+    """What a person reads: the markup's text, every attribute (a title) removed."""
+    return re.sub(r'\s[\w:@.-]+="[^"]*"', "", html)
 
 
 class TestCheckAgain:
@@ -1320,13 +1339,17 @@ class TestCheckAgain:
         from modules import reader_job
         assert reader_job.trigger_words(trigger, viewer) == words
 
-    def test_about_says_what_caused_the_answer_and_draws_busy_mid_run(self, scripted_reader):
+    def test_about_draws_busy_mid_run_and_keeps_the_cause_off_the_row(self, scripted_reader):
+        """The operator, 2026-09-30: the row is the state, its timestamp and the
+        button; the run's cause and duration are on the timestamp's hover."""
         import app as A
         from modules import reader_job
         c = A.app.test_client()
         reader_job.run_once(scripted_reader["reader"])
         page = c.get("/v2/help/installation").get_data(as_text=True)
-        assert "(the scheduled check):" in page and 'data-running-for=""' in page
+        assert re.search(r'title="[^"]* · the scheduled check, \d+\.\d s"', page)
+        assert "scheduled check" not in _without_attributes(page)
+        assert 'data-running-for=""' in page
         scripted_reader["hold"].clear()
         c.post("/update/check", json={})
         page = c.get("/v2/help/installation").get_data(as_text=True)
@@ -1335,8 +1358,9 @@ class TestCheckAgain:
         scripted_reader["hold"].set()
         assert _wait_until(lambda: reader_job.request_in_flight("app-pushed") is None)
         page = c.get("/v2/help/installation").get_data(as_text=True)
-        assert "Up to date as of" in page and "(checked on your request):" in page
-        assert "Checked just now</button>" in page and re.search(r'data-answered-ago="\d', page)
+        assert "Up to date as of" in page and "Check again</button>" in page
+        assert re.search(r'title="[^"]* · checked on your request, \d+\.\d s"', page)
+        assert "request" not in _without_attributes(page)
         assert 'data-running-for=""' in page
 
     def test_a_failed_check_is_said_beside_the_answer_before_it(self, scripted_reader):
@@ -1347,7 +1371,7 @@ class TestCheckAgain:
         reader_job.run_once(scripted_reader["reader"],
                             trigger={"kind": "request", "by": "test-person@example.invalid", "run": "x"})
         page = A.app.test_client().get("/v2/help/installation").get_data(as_text=True)
-        assert "The last check (checked on your request," in page
+        assert "The last check, " in page and "checked on your request" not in _without_attributes(page)
         assert "failed: the read returned str, not a mapping" in page
         assert "What is shown is the answer before it" in page
 
@@ -1356,7 +1380,8 @@ class TestCheckAgain:
         from modules import reader_job
         reader_job.run_once(scripted_reader["reader"])
         page = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
-        assert "(the scheduled check)" in page and 'x-data="check"' in page
+        assert 'x-data="check"' in page and "scheduled check" not in _without_attributes(page)
+        assert re.search(r'title="[^"]* · the scheduled check', page)
 
     def test_the_commit_hook_records_its_trigger(self, monkeypatch):
         from modules import reader_job
@@ -1367,15 +1392,8 @@ class TestCheckAgain:
         assert seen == [{"kind": "after_commit"}]
 
     @pytest.mark.parametrize("call,want", [
-        ("checkLabel(true, true)", "Checking…"),
-        ("checkLabel(false, true)", "Checked just now"),
-        ("checkLabel(false, false)", "Check again"),
-        ("checkFreshLeft(12, 60)", 48),
-        ("checkFreshLeft(NaN, 60)", 0),
-        ("checkWaitingWords(3, 'b')", "asking origin and CI now; this stays busy until the answer arrives"),
-        ("checkWaitingWords(NaN, 'no run of this check has been timed here yet')",
-         "asking origin and CI now; this stays busy until the answer arrives (no run of this "
-         "check has been timed here yet, so no time limit is set)"),
+        ("checkLabel(true)", "Checking…"),
+        ("checkLabel(false)", "Check again"),
     ])
     def test_the_shipped_words(self, call, want):
         import dukpy

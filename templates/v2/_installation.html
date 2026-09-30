@@ -19,10 +19,10 @@
       {#- What was known and WHEN (the operator, 2026-09-30): a stored answer,
           never stated as a fact about now, and a check always offered. -#}
       {{ badge({'at_tip': 'up to date', 'behind': 'behind', 'behind_unfetched': 'behind', 'not_on_remote': 'not pushed'}.get(inst.pushed.state, inst.pushed.state), PUSHED_KIND.get(inst.pushed.state, 'muted')) }}
-      {#- And what CAUSED it (reader_job rule 13): the schedule, or whose request. -#}
-      {%- set why = ' (' ~ inst.check.trigger_words ~ ')' if inst.check and inst.check.trigger_words else '' -%}
-      {%- if inst.pushed.state == 'at_tip' and inst.pushed.value_at %} Up to date as of {{ stamp(inst.pushed.value_at) }}{{ why }}: {% else %} {% endif %}{{ inst.pushed.words }}
-      {%- if inst.pushed.value_at and inst.pushed.state != 'at_tip' %}<span class="muted"> · asked {{ stamp(inst.pushed.value_at) }}{{ why }}</span>{% endif %}
+      {#- What caused it and how long it took: on the timestamp's hover, never in the row. -#}
+      {%- set why = inst.check.hover if inst.check else '' -%}
+      {%- if inst.pushed.state == 'at_tip' and inst.pushed.value_at %} Up to date as of {{ stamp(inst.pushed.value_at, note=why) }}: {% else %} {% endif %}{{ inst.pushed.words }}
+      {%- if inst.pushed.value_at and inst.pushed.state != 'at_tip' %}<span class="muted"> · asked {{ stamp(inst.pushed.value_at, note=why) }}</span>{% endif %}
       <span class="fact-actions">{{ check_again(inst.check) }}
       {%- if inst.pushed.state in ('behind', 'behind_unfetched') %}<a class="btn btn-small btn-outline" id="about-update" href="{{ url_for('v2.update') }}">Update…</a>{% endif -%}
       </span>

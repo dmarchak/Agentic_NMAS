@@ -74,16 +74,23 @@ def _subject(commit: str) -> str:
         return ""
 
 
-CHECKED_JUST_NOW_S = 60
+def _run_words(run: dict, me: str) -> str:
+    """One run's cause and duration, for a hover: "checked on your request, 1.1 s"."""
+    from modules import reader_job
+
+    words = reader_job.trigger_words((run or {}).get("trigger"), me)
+    took = (run or {}).get("took_ms")
+    return f"{words}, {took / 1000:.1f} s" if isinstance(took, int) else words
 
 
 def check_state(name: str = "app-pushed") -> dict:
     """What Check again draws (reader_job rule 13), for the person looking: a
     run on request still owed an answer and for how long it has run, how long
-    the page waits before calling the answer late, what caused the stored
-    answer, whether it answered THIS person's request and how long ago, and a
-    last attempt that failed. Ages, never epochs: the browser's clock is not
-    the host's."""
+    the page waits before calling the answer late, and a last attempt that
+    failed. The stored answer's cause and duration are `hover`, for the
+    timestamp's title and never the row (the operator, 2026-09-30: the
+    timestamp changing to "just now" IS the confirmation). Ages, never epochs:
+    the browser's clock is not the host's."""
     import time
 
     from modules import identity, reader_job
@@ -93,22 +100,15 @@ def check_state(name: str = "app-pushed") -> dict:
     doc = reader_job.read_cached(name).get("doc") or {}
     good = doc.get("last_good") or {}
     attempt = doc.get("last_attempt") or {}
-    trig = good.get("trigger") or {}
-    now = time.time()
     flight = reader_job.request_in_flight(name)
     bound = reader_job.answer_bound(name)
-    at = reader_job._parse_iso(good.get("value_at"))           # noqa: SLF001
-    mine = trig.get("kind") == "request" and bool(me) and trig.get("by") == me
     failed = None
     if attempt and not attempt.get("ok"):
         failed = {"at": attempt.get("at"), "error": attempt.get("error") or "no reason recorded",
-                  "words": reader_job.trigger_words(attempt.get("trigger"), me)}
-    return {"running_for": round(now - flight["since"], 1) if flight else None,
+                  "words": _run_words(attempt, me)}
+    return {"running_for": round(time.time() - flight["since"], 1) if flight else None,
             "bound_seconds": bound["seconds"], "bound_basis": bound["basis"],
-            "trigger_words": reader_job.trigger_words(trig, me) if good else "",
-            "answered_ago": round(now - at, 1) if (mine and at is not None
-                                                   and now - at < CHECKED_JUST_NOW_S) else None,
-            "fresh_seconds": CHECKED_JUST_NOW_S, "failed": failed}
+            "hover": _run_words(good, me) if good else "", "failed": failed}
 
 
 def installation() -> dict:

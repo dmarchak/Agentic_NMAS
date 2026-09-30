@@ -96,15 +96,8 @@
   }
 
   /* Check again's words, PURE (executed in duktape by the tests). */
-  function checkLabel(busy, fresh) {
-    return busy ? 'Checking…' : (fresh ? 'Checked just now' : 'Check again');
-  }
-  function checkFreshLeft(ago, freshS) {
-    return ago >= 0 && freshS > 0 ? freshS - ago : 0;
-  }
-  function checkWaitingWords(bound, basis) {
-    return 'asking origin and CI now; this stays busy until the answer arrives'
-      + (bound > 0 ? '' : ' (' + (basis || 'no run timed yet') + ', so no time limit is set)');
+  function checkLabel(busy) {
+    return busy ? 'Checking…' : 'Check again';
   }
   function checkLateWords(bound, basis) {
     return 'No answer after ' + bound + ' s, longer than this check has taken here ('
@@ -201,47 +194,39 @@
     // "Check again": ask origin and CI now instead of at the reader's next run.
     // Its attributes are on the element that carries x-data AND x-on.
     //
-    // BUSY UNTIL THE ANSWER ARRIVES (the operator, 2026-09-30): it once
-    // reverted on a 5 s timer after the REQUEST was accepted, while the text
-    // still said "asking". The answer arrives as the reader's announcement,
-    // which re-draws the panel holding this component; the server draws it
-    // busy while the run is owed an answer and "Checked just now" once it
-    // answered this person. Nothing here ends the wait except that re-draw, or
-    // the bound (2.5x the slowest recorded run), which SAYS the answer is late.
+    // BUSY ON ITSELF, UNTIL THE ANSWER ARRIVES (the operator, 2026-09-30, the
+    // rule for every v2 control). The button reads "Checking…" and is
+    // disabled; nothing is narrated beside it. The answer arrives as the
+    // reader's announcement, which re-draws the panel holding this component,
+    // and the row's timestamp then reads "just now": that is the
+    // confirmation. The server draws the button busy while the run is owed an
+    // answer, so a re-draw mid-run stays busy. Words appear only when the
+    // person must act: a refusal, or no answer within the bound (2.5x the
+    // slowest recorded run).
     A.data('check', function () {
       return {
-        busy: false, fresh: false, said: '', late: '',
+        busy: false, said: '',
         init: function () {
-          var el = this.$root, self = this;
+          var el = this.$root;
           var running = parseFloat(el.getAttribute('data-running-for'));
-          if (running >= 0) self.wait(running, el.getAttribute('data-bound'), el.getAttribute('data-bound-basis'));
-          var ago = parseFloat(el.getAttribute('data-answered-ago'));
-          var left = checkFreshLeft(ago, parseFloat(el.getAttribute('data-fresh')));
-          if (left > 0) {
-            self.fresh = true;
-            root.setTimeout(function () { self.fresh = false; }, left * 1000);
-          }
+          if (running >= 0) this.wait(running, el.getAttribute('data-bound'), el.getAttribute('data-bound-basis'));
         },
-        get label() { return checkLabel(this.busy, this.fresh); },
+        get label() { return checkLabel(this.busy); },
         wait: function (runningFor, bound, basis) {
           var self = this, b = parseFloat(bound);
           self.busy = true;
-          self.late = '';
-          self.said = checkWaitingWords(b, basis);
+          self.said = '';
           if (!(b > 0)) return;
           root.setTimeout(function () {
             if (!self.busy) return;
             self.busy = false;
-            self.said = '';
-            self.late = checkLateWords(b, basis);
+            self.said = checkLateWords(b, basis);
           }, Math.max(0, b - runningFor) * 1000);
         },
         run: function () {
           var self = this;
           self.busy = true;
-          self.fresh = false;
-          self.late = '';
-          self.said = 'Sending the request…';
+          self.said = '';
           root.fetch(this.$root.getAttribute('data-url'), {method: 'POST', headers: {'Accept': 'application/json'}})
             .then(function (r) {
               return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
@@ -274,6 +259,5 @@
     root.document.addEventListener('htmx:beforeSwap', holdSwap);
   }
   root.NMAS_UPDATE = {stepStates: stepStates, TERMINAL: TERMINAL, checkLabel: checkLabel,
-                      checkFreshLeft: checkFreshLeft, checkWaitingWords: checkWaitingWords,
                       checkLateWords: checkLateWords};
 })(typeof window !== 'undefined' ? window : this);

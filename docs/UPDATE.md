@@ -215,18 +215,29 @@ the box is the person's statement, and it is recorded in the request.
 Help > About always offers **Check again**, which asks origin and CI now (the
 reader otherwise asks every 300 s), so right after a push there is always a way
 to ask. What it shows is stated as of when it was asked ("was the tip when last
-asked"), never as a fact about now, and says what CAUSED the answer: "Up to
-date as of just now (checked on your request)", or "(the scheduled check)".
+asked"), never as a fact about now.
 
-The button stays on **Checking…** until the answer arrives, and then reads
-**Checked just now**. The answer is announced to the page even when nothing
-changed. If no answer arrives within 2.5 times the slowest recorded run of the
-check (1.1 s measured on the host, so 3 s), the page says so rather than
-reverting silently. A failed check is shown beside the answer from before it.
+The row is the state, its timestamp and the button, nothing else (the
+operator, 2026-09-30):
+- while the check runs, the button reads **Checking…** and is disabled;
+- it stays that way until the answer arrives, which is announced to the page
+  even when nothing changed;
+- the answer updates the row in place, and its timestamp reads "just now".
+  That is the confirmation.
 
-Each run is recorded with its trigger and duration: the reader's store keeps
-the last 20 (`data/readers/app-pushed.json`, `runs`). A run on request is
-logged in `logs/device_manager.log`:
+Words appear only when the person must act:
+- a refusal ("Not asked: …");
+- a failed check, shown beside the answer from before it;
+- no answer within 2.5 times the slowest recorded run of the check (1.1 s
+  measured on the host, so 3 s).
+
+The Update page's Check again works the same way.
+
+**The record stays, off the screen.** What caused each answer and how long it
+took is on the timestamp's hover, for example "checked on your request, 1.1 s"
+or "the scheduled check, 1.1 s". The reader's store keeps the last 20 runs with
+their trigger and duration (`data/readers/app-pushed.json`, `runs`). A run on
+request is logged in `logs/device_manager.log`:
 
 ```
 reader app-pushed: run <id> on request by <person> took <N> ms: ok
