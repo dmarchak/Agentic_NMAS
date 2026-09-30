@@ -10,7 +10,7 @@
       <h1 class="mono">{{ device.hostname }}</h1>
       {% include "v2/_status.html" %}
     </div>
-    <p class="sub">{{ device.device_type or 'platform not recorded' }} · <span class="mono">{{ device.ip }}</span> · signs in as <span class="mono">{{ device.username or '?' }}</span> · network {{ list_name }}</p>
+    <p class="sub"><span title="{{ ('from ' ~ hw.model_from ~ (', commit ' ~ hw.model_commit if hw.model_commit else '')) if hw.model else hw.model_from }}">{{ hw.model or 'model not recorded' }}</span> · <span title="from {{ hw.platform_from or 'nowhere: no platform recorded' }}">{{ hw.platform or 'platform not recorded' }}</span> · <span class="mono">{{ device.ip }}</span> · signs in as <span class="mono">{{ device.username or '?' }}</span> · network {{ list_name }}</p>
   </div>
   <div class="page-actions">
     <a class="btn btn-primary" href="{{ url_for('manage_device', ip=device.ip) }}">Plan a deploy…</a>

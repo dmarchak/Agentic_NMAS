@@ -195,13 +195,13 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   width: 150px; background: var(--surface); }
 .limits { margin: -4px 0 0; font-size: 12px; color: var(--ink-2); }
 .panels { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 12px; }
-.panel { grid-column: span 12; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
   padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.gw-24, .gw-23, .gw-22, .gw-21, .gw-20, .gw-19, .gw-18 { grid-column: span 24; }
-.gw-17, .gw-16, .gw-15, .gw-14, .gw-13 { grid-column: span 16; }
-.gw-12, .gw-11, .gw-10 { grid-column: span 12; }
-.gw-9, .gw-8, .gw-7 { grid-column: span 8; }
-.gw-6, .gw-5, .gw-4, .gw-3, .gw-2, .gw-1 { grid-column: span 6; }
+/* Grafana's own layout: 24 columns, each panel at its gridPos x and w
+   (NSOT_GUI_BRIEF 14.2; the operator, 2026-09-30). */
+.gx-0 { grid-column-start: 1; } .gx-1 { grid-column-start: 2; } .gx-2 { grid-column-start: 3; } .gx-3 { grid-column-start: 4; } .gx-4 { grid-column-start: 5; } .gx-5 { grid-column-start: 6; } .gx-6 { grid-column-start: 7; } .gx-7 { grid-column-start: 8; } .gx-8 { grid-column-start: 9; } .gx-9 { grid-column-start: 10; } .gx-10 { grid-column-start: 11; } .gx-11 { grid-column-start: 12; } .gx-12 { grid-column-start: 13; } .gx-13 { grid-column-start: 14; } .gx-14 { grid-column-start: 15; } .gx-15 { grid-column-start: 16; } .gx-16 { grid-column-start: 17; } .gx-17 { grid-column-start: 18; } .gx-18 { grid-column-start: 19; } .gx-19 { grid-column-start: 20; } .gx-20 { grid-column-start: 21; } .gx-21 { grid-column-start: 22; } .gx-22 { grid-column-start: 23; } .gx-23 { grid-column-start: 24; }
+.gw-1 { grid-column-end: span 1; } .gw-2 { grid-column-end: span 2; } .gw-3 { grid-column-end: span 3; } .gw-4 { grid-column-end: span 4; } .gw-5 { grid-column-end: span 5; } .gw-6 { grid-column-end: span 6; } .gw-7 { grid-column-end: span 7; } .gw-8 { grid-column-end: span 8; } .gw-9 { grid-column-end: span 9; } .gw-10 { grid-column-end: span 10; } .gw-11 { grid-column-end: span 11; } .gw-12 { grid-column-end: span 12; } .gw-13 { grid-column-end: span 13; } .gw-14 { grid-column-end: span 14; } .gw-15 { grid-column-end: span 15; } .gw-16 { grid-column-end: span 16; } .gw-17 { grid-column-end: span 17; } .gw-18 { grid-column-end: span 18; } .gw-19 { grid-column-end: span 19; } .gw-20 { grid-column-end: span 20; } .gw-21 { grid-column-end: span 21; } .gw-22 { grid-column-end: span 22; } .gw-23 { grid-column-end: span 23; } .gw-24 { grid-column-end: span 24; }
+.panel-row { grid-column: 1 / -1; margin: 6px 0 -4px; font-size: 14px; font-weight: 600; }
 .panel-head { display: flex; align-items: center; gap: 8px; }
 .panel-head h3 { margin: 0; font-size: 13px; font-weight: 600; flex-grow: 1; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
@@ -247,7 +247,7 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   .page-actions .btn-primary { flex-grow: 1; justify-content: center; }
   .grid-2 { grid-template-columns: minmax(0, 1fr); }
   .facts > div { grid-template-columns: 110px minmax(0, 1fr); }
-  .panel, [class*="gw-"] { grid-column: span 24; }
+  .panels > .panel, .panels > .panel-row { grid-column: 1 / -1; }
   .toolbar > .grow { display: none; }
   .range-custom input { width: 120px; }
   .menu-wide { width: calc(100vw - 32px); }
@@ -257,3 +257,10 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   .strip-item { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; }
   .who { display: none; }
 }
+.who-none .avatar { background: var(--warn-soft); color: var(--warn); }
+.who-none .who-name { color: var(--warn); }
+.selector-why { font-size: 12px; color: var(--ink-2); }
+.menu-item.off { color: var(--ink-3); cursor: default; }
+.menu-item.off:hover { background: none; }
+.menu-why { display: block; font-size: 11px; color: var(--ink-3); }
+button.who { border: none; background: transparent; font: inherit; cursor: pointer; padding: 0; }

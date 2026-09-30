@@ -23,8 +23,16 @@
       {% else %}
       <p class="menu-note">None of Grafana's dashboards has that variable.</p>
       {% endfor %}
+      {% if m.not_offered %}
+      <div class="menu-rule"></div>
+      <p class="menu-note">Not offered: {{ m.not_offered|length }} dashboard{{ '' if m.not_offered|length == 1 else 's' }} that cannot show a single device.</p>
+      {% for d in m.not_offered %}
+      <div class="menu-item off" aria-disabled="true"><span class="grow">{{ d.title }}<span class="menu-why">{{ d.why }}</span></span><span class="mono muted">{{ d.uid }}</span></div>
+      {% endfor %}
+      {% endif %}
     </div>
   </div>
+  {% if m.total_dashboards %}<span class="selector-why">{{ m.offered|length }} of {{ m.total_dashboards }} dashboard{{ '' if m.total_dashboards == 1 else 's' }} can show a single device</span>{% endif %}
   {% if m.device_value %}<span class="chip">{{ icon('lock', 12) }}<span class="mono">{{ m.settings.variable }} = {{ m.device_value }}</span></span>{% endif %}
   <span class="grow"></span>
   <div class="seg" role="group" aria-label="Time range">
@@ -70,11 +78,15 @@
   <div class="notice notice-muted">{{ icon('info', 16) }}<div>Whether the variable lists {{ m.device_value }} could not be asked: {{ vs.error }}. The panels below still try.</div></div>
   {%- endif %}
   <div class="panels" data-refresh="30">
-    {% for p in m.drawn %}
-    <section class="panel gw-{{ (p.gridPos or {}).get('w', 24) }}" data-panel-src="{{ url_for('device_v2.panel', name=dev_name, uid=dash_uid, panel_id=p.id, range=cur_range) }}" data-panel-type="{{ p.type }}" data-panel-unit="{{ p.unit }}">
+    {% for item in m.layout %}
+    {% if item.kind == 'row' %}
+    <h2 class="panel-row">{{ item.title|replace('$' ~ m.settings.variable, m.device_value) }}</h2>
+    {% else %}{% set p = item.panel %}
+    <section class="panel gx-{{ item.x }} gw-{{ item.w }}" data-panel-h="{{ item.h }}" data-panel-src="{{ url_for('device_v2.panel', name=dev_name, uid=dash_uid, panel_id=p.id, range=cur_range) }}" data-panel-type="{{ p.type }}" data-panel-unit="{{ p.unit }}">
       <div class="panel-head"><h3>{{ p.title|replace('$' ~ m.settings.variable, m.device_value) }}</h3><span class="panel-type mono">{{ p.type }}</span></div>
       <div class="panel-body"><p class="panel-wait">Reading from Grafana…</p></div>
     </section>
+    {% endif %}
     {% endfor %}
   </div>
   {% if m.left_out %}

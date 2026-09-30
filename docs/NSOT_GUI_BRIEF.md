@@ -830,6 +830,25 @@ Monitoring says "No device dashboard is set" until `grafana_device_dashboard_uid
 `rcn-lab1-snmp`; after that, "the variable lists no devices at all" (C232) until either fix
 lands, and the panels answer empty.
 
+**OPTION A: APPROVED (the operator, 2026-09-30, after using the spike on desktop and phone: "it
+feels good", the deciding check).** The redesign is built in A. The review's fixes:
+- **Identity:** the page drew the operator as `unauthenticated` (C233). The chip read the
+  gate-only actor, and a GET page is never gated. Every v2 page and fragment now draws
+  `identity.viewer()`, the same `identify()` as `/identity/status`, tested with the refusal
+  cases. This had to hold before any gated action moves to v2.
+- **Model and platform** under the name, each with its source: the model from the committed
+  golden's own header (`Chassis type: C8000V`; a vIOS switch reports none, so its image line,
+  `vios_l2`, said as such); the platform from the inventory. NetBox is not read for it: its
+  import records `Unknown` for a model built from a golden.
+- **Layout:** each panel at its own `gridPos` (column, width, height) under its Grafana row
+  heading, collapsing to one column only at phone width. Nothing is invented. In
+  `rcn-lab1-snmp` every device panel is full width in Grafana too, and "Devices offline"
+  keeps its place beside the panel left out.
+- **The selector** says "1 of 5 dashboards can show a single device", and its menu lists the
+  others with why (no `device` variable).
+- **C232, at the source:** the scrape targets generated from the inventory with `device` and
+  `role` (docs/PROMETHEUS_TARGETS.md), pulled forward from P.7.
+
 ## 10. The manual
 
 - **Where it lives:** Markdown in `docs/manual/`, versioned with the code, in the same

@@ -99,6 +99,30 @@ def split_device_panels(dashboard: dict, variable: str) -> tuple:
     return drawn, left_out
 
 
+def layout(drawn: list) -> list:
+    """The drawn panels placed as the dashboard places them: in (y, x) order,
+    each with its gridPos column start (x, 0-23), width (w, 1-24) and height
+    (h, in Grafana's 30 px units), and the heading of each Grafana row before
+    its first drawn panel. Nothing is invented: rearranging the dashboard in
+    Grafana rearranges the page (the operator, 2026-09-30)."""
+    def pos(p):
+        g = p.get("gridPos") or {}
+        return int(g.get("y") or 0), int(g.get("x") or 0)
+
+    out, row = [], None
+    for p in sorted(drawn, key=pos):
+        g = p.get("gridPos") or {}
+        if (p.get("row") or "") != row:
+            row = p.get("row") or ""
+            if row:
+                out.append({"kind": "row", "title": row})
+        x = min(max(int(g.get("x") or 0), 0), 23)
+        w = min(max(int(g.get("w") or 24), 1), 24 - x)
+        out.append({"kind": "panel", "panel": p, "x": x, "w": w,
+                    "h": max(int(g.get("h") or 8), 3)})
+    return out
+
+
 def variable_of(dashboard: dict, name: str):
     for v in dashboard.get("variables") or []:
         if v.get("name") == name:

@@ -95,6 +95,62 @@ def records(ref, dev: dict) -> dict:
             "golden": _last_commit(ref.repo_dir, f"golden/{host}.cfg")}
 
 
+_CHASSIS = re.compile(r"^! Chassis type: *(\S.*?)\s*$", re.M)
+_UDI = re.compile(r"^license udi pid (\S+)", re.M)
+_IMAGE = re.compile(r"^! Cisco IOS Software, (\S+) Software", re.M)
+
+
+def model_from_golden(text: str) -> tuple:
+    """(model, basis) from a committed golden's own lines, or ("", why not).
+
+    The capture header carries the chassis (`! Chassis type: C8000V`); a vIOS
+    switch reports only `processor` there, so its image line names it
+    (`vios_l2`), said as such. NetBox is not asked: its import records
+    `Unknown` for a model it builds from a golden (`_parse_facts_from_config`),
+    so reading it back would name nothing."""
+    if not text:
+        return "", "no committed golden to read it from"
+    m = _CHASSIS.search(text)
+    if m and m.group(1).lower() != "processor":
+        return m.group(1), "the golden's Chassis type line"
+    m = _UDI.search(text)
+    if m:
+        return m.group(1), "the golden's license udi line"
+    m = _IMAGE.search(text)
+    if m:
+        return m.group(1), "the golden's image line (the device reports no chassis model)"
+    return "", "the golden names no model"
+
+
+def hardware(ref, dev: dict) -> dict:
+    """Platform and model, each with where it came from: the platform from the
+    inventory's `platform` column (else the manifest), the model from the
+    committed golden."""
+    from modules.nsot import manifest
+    from modules.nsot import repo as R
+
+    platform, platform_from = (dev.get("platform") or "").strip(), "the inventory"
+    entry = None
+    try:
+        _ident, entry = manifest.find_by_name(ref.repo_dir, dev.get("hostname"))
+    except Exception as exc:                     # noqa: BLE001
+        log.info("device page: manifest unreadable for %s (%s)", dev.get("hostname"),
+                 type(exc).__name__)
+    if not platform and entry and entry.get("platform"):
+        platform, platform_from = entry["platform"], "the manifest"
+    golden = {"text": None, "commit": ""}
+    if entry:
+        try:
+            golden = R.committed_golden_for(ref.repo_dir, entry)
+        except Exception as exc:                 # noqa: BLE001
+            log.info("device page: golden unreadable for %s (%s)", dev.get("hostname"),
+                     type(exc).__name__)
+    model, basis = model_from_golden(golden.get("text") or "")
+    return {"platform": platform, "platform_from": platform_from if platform else "",
+            "model": model, "model_from": basis,
+            "model_commit": (golden.get("commit") or "")[:7] if model else ""}
+
+
 def checks(ref, dev: dict) -> list:
     """The checks the Overview draws, each with its state, words, source and
     the time of the value it rests on. An unreadable source is its own row,
@@ -246,6 +302,15 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
     out["offered"] = [{"uid": d["uid"], "title": d["title"]}
                       for d in panels.dashboards_with_variable(dashboards, cfg["variable"])]
     out["total_dashboards"] = len(dashboards)
+    offered = {d["uid"] for d in out["offered"]}
+    # The rest, each with why: a one-option selector reads as broken unless it
+    # says the others exist and cannot show one device (the operator, 2026-09-30).
+    out["not_offered"] = sorted(
+        ({"uid": uid, "title": d.get("title") or uid,
+          "why": (f"no variable named {cfg['variable']}; its variables: "
+                  + (", ".join(v.get("name") or "?" for v in d.get("variables") or []) or "none"))}
+         for uid, d in dashboards.items() if uid not in offered),
+        key=lambda d: d["title"].lower())
     uid = chosen_uid or cfg["uid"]
     if not uid:
         out.update(state="not_set")
@@ -271,6 +336,7 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
                                                   datasources, client=client)
     drawn, left_out = panels.split_device_panels(dash, cfg["variable"])
     out.update(device_value=device_value, drawn=drawn, left_out=left_out,
+               layout=panels.layout(drawn),
                seconds=seconds, step=panels.step_for(seconds), range_words=panels.describe(seconds))
     return out
 

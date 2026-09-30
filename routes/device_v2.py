@@ -37,24 +37,35 @@ def _strict(resp, code=200):
     return r
 
 
-def _actor() -> str:
-    try:
-        from modules import identity
-        return identity.request_actor() or ""
-    except Exception:                                  # noqa: BLE001
-        return ""
+def _who() -> dict:
+    """The name chip: who is looking, through `identity.viewer()`, the same
+    `identify()` the gate and `/identity/status` call. Never `request_actor()`,
+    which answers only inside a gated request and so drew every person as
+    unauthenticated on a GET page (the operator, 2026-09-30)."""
+    from modules import identity
+
+    ident = identity.viewer()
+    if not ident.is_identified:
+        return {"identified": False, "name": "Not identified", "initials": "?",
+                "why": ident.reason or ident.outcome,
+                "note": "you can look; a gated action will refuse"}
+    name = (identity.service_label(ident.service_id) if ident.kind == "service"
+            else ident.actor)
+    return {"identified": True, "name": name, "kind": ident.kind,
+            "initials": (name or "?")[:2].upper(), "why": "", "note": ""}
 
 
 def _device_or_404(name):
     try:
         return device_page.find_device(name), None
     except device_page.NoSuchDevice as exc:
-        return None, _strict(render_template("v2/not_found.html", why=str(exc), actor=_actor()), 404)
+        return None, _strict(render_template("v2/not_found.html", why=str(exc), who=_who()), 404)
 
 
 def _overview_ctx(ref, dev):
     return {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev),
-            "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev)}
+            "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev),
+            "hw": device_page.hardware(ref, dev)}
 
 
 def _monitoring_ctx(dev):
@@ -72,7 +83,8 @@ def device(name):
     tab = request.args.get("tab", "overview")
     tab = tab if tab in BUILT else "overview"
     ctx = {"device": dev, "list_name": ref.name, "tabs": TABS, "built": BUILT, "tab": tab,
-           "answer": device_page.answering(dev), "actor": _actor()}
+           "answer": device_page.answering(dev), "who": _who(),
+           "hw": device_page.hardware(ref, dev)}
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else _monitoring_ctx(dev))
     return _strict(render_template("v2/device.html", **ctx))
 
@@ -115,6 +127,13 @@ def panel(name, uid, panel_id):
         return jsonify({"ok": False, "error": str(exc)}), 404
     payload, code = device_page.panel_data(dev, uid, panel_id, request.args.get("range", "1h"))
     return jsonify(payload), code
+
+
+@bp.route("/who", methods=["GET"])
+def who():
+    """The name chip on its own: a fragment resolving the viewer the same way
+    the page does, so a v2 fragment is shown to see the verified identity."""
+    return _strict(render_template("v2/_who.html", who=_who()))
 
 
 @bp.route("/strip", methods=["GET"])

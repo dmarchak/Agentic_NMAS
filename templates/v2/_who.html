@@ -1,0 +1,8 @@
+{#- The name chip: who is looking, from identity.viewer() (routes/device_v2._who).
+    Not identified, it is a button that asks again, so a person who has just signed in
+    to Access sees it without reloading the page. -#}
+{%- if who.identified -%}
+<span class="who" id="nmas-who" data-identified="yes" title="Signed in through Cloudflare Access as {{ who.name }}"><span class="avatar">{{ who.initials }}</span><span class="who-name">{{ who.name }}</span></span>
+{%- else -%}
+<button type="button" class="who who-none" id="nmas-who" data-identified="no" title="{{ who.why }}: {{ who.note }}. Click to check again." hx-get="{{ url_for('device_v2.who') }}" hx-swap="outerHTML"><span class="avatar">{{ who.initials }}</span><span class="who-name">{{ who.name }}</span></button>
+{%- endif -%}

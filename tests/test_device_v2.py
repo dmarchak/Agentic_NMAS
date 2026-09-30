@@ -64,7 +64,9 @@ class FakeGrafana:
             if uid == "rcn-lab1-snmp":
                 model = _fixture("dashboards", "rcn-lab1-snmp.json")
             else:
-                model = {"title": f"Dashboard {uid}", "panels": [], "templating": {"list": []}}
+                title = next(d["title"] for d in _fixture("dashboards", "search.json")
+                             if d["uid"] == uid)
+                model = {"title": title, "panels": [], "templating": {"list": []}}
             return {"ok": True, "response": _Resp({"dashboard": model})}
         if path == "api/frontend/settings":
             ds = _fixture("dashboards", "datasources.json")
@@ -499,3 +501,196 @@ class TestTheShippedScripts:
         code = re.sub(r"/\*.*?\*/|//[^\n]*", "", src, flags=re.S)
         assert "innerHTML" in src and "innerHTML" not in code and "insertAdjacentHTML" not in code
         assert "textContent" in src
+
+
+# ------------------------------------------------ the spike review's fixes
+
+TEAM = "example-team.cloudflareaccess.com"
+AUD = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+TUNNEL = "192.0.2.21"
+
+
+@pytest.fixture(scope="module")
+def signing_key():
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+@pytest.fixture
+def access(monkeypatch, signing_key):
+    """Cloudflare Access configured, verifying against a key this test holds:
+    the REAL `identify()` runs (the module's tests opt out of the harness's
+    stand-in person with `real_identity`)."""
+    from modules import identity
+
+    values = {"cf_access_team_domain": TEAM, "cf_access_aud": AUD,
+              "cf_access_trusted_peers": TUNNEL}
+    monkeypatch.setattr(identity, "_setting", lambda key, default=None: values.get(key, default))
+
+    class _Key:
+        key = signing_key.public_key()
+
+    class _Client:
+        def get_signing_key_from_jwt(self, token):
+            return _Key()
+
+    monkeypatch.setattr(identity, "_get_jwks_client", lambda: _Client())
+    return values
+
+
+def _assertion(key, email="operator@example.com"):
+    import jwt
+    now = int(time.time())
+    return jwt.encode({"type": "app", "aud": AUD, "iss": f"https://{TEAM}", "email": email,
+                       "iat": now, "exp": now + 600, "sub": "uuid-1"}, key, algorithm="RS256")
+
+
+@pytest.mark.real_identity
+class TestTheViewerIsTheVerifiedIdentity:
+    """The spike drew every person as `unauthenticated` (the operator,
+    2026-09-30): it read `request_actor()`, which answers only inside a GATED
+    request, and a GET page is never gated. Now the page and every fragment
+    draw `identity.viewer()`, the same `identify()` the gate and
+    `/identity/status` (today's pages) call."""
+
+    def _ask(self, lab, url, token=None, peer=TUNNEL):
+        headers = {"Cf-Access-Jwt-Assertion": token} if token else {}
+        r = lab["client"].get(url, headers=headers, environ_base={"REMOTE_ADDR": peer})
+        return r.get_data(as_text=True)
+
+    def test_the_page_and_a_fragment_draw_the_verified_person(self, lab, access, signing_key):
+        token = _assertion(signing_key)
+        for url in ("/v2/device/r3", "/v2/who"):
+            html = self._ask(lab, url, token)
+            assert 'data-identified="yes"' in html, url
+            assert "operator@example.com" in html and "unauthenticated" not in html, url
+
+    def test_it_agrees_with_the_path_todays_pages_use(self, lab, access, signing_key):
+        token = _assertion(signing_key, email="second@example.com")
+        status = lab["client"].get("/identity/status", headers={"Cf-Access-Jwt-Assertion": token},
+                                   environ_base={"REMOTE_ADDR": TUNNEL}).get_json()
+        assert status["is_identified"] and status["actor"] == "second@example.com"
+        assert status["actor"] in self._ask(lab, "/v2/who", token)
+
+    def test_no_assertion_is_refused_and_says_why(self, lab, access):
+        for url in ("/v2/device/r3", "/v2/who"):
+            html = html_mod.unescape(self._ask(lab, url))
+            assert 'data-identified="no"' in html and "Not identified" in html, url
+            assert "carried no Cf-Access-Jwt-Assertion header" in html, url
+
+    def test_a_valid_assertion_from_an_untrusted_peer_is_refused(self, lab, access, signing_key):
+        html = self._ask(lab, "/v2/who", _assertion(signing_key), peer="192.0.2.99")
+        assert 'data-identified="no"' in html and "operator@example.com" not in html
+
+    def test_the_old_path_would_have_drawn_unauthenticated(self, lab, access, signing_key):
+        """The control: on the same verified request, `request_actor()` still
+        answers `unauthenticated`, which is exactly what the chip showed."""
+        import app as A
+        from modules import identity
+
+        with A.app.test_request_context("/v2/who", headers={
+                "Cf-Access-Jwt-Assertion": _assertion(signing_key)},
+                environ_base={"REMOTE_ADDR": TUNNEL}):
+            assert identity.request_actor() == identity.UNAUTHENTICATED
+            assert identity.viewer().actor == "operator@example.com"
+
+    def test_no_v2_route_reads_the_gate_only_actor(self):
+        src = open(os.path.join(ROOT, "routes", "device_v2.py"), encoding="utf-8").read()
+        code = re.sub(r'""".*?"""', "", src, flags=re.S)
+        assert "request_actor(" not in code and "identity.viewer()" in code
+
+
+class TestTheModelAndPlatform:
+    def _golden(self, name):
+        return open(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", f"{name}.cfg"),
+                    encoding="utf-8").read()
+
+    def test_the_model_is_read_from_the_committed_golden_with_its_basis(self):
+        from modules import device_page as D
+
+        assert D.model_from_golden(self._golden("r2")) == ("C8000V", "the golden's Chassis type line")
+        model, basis = D.model_from_golden(self._golden("s1"))
+        assert model == "vios_l2" and "image line" in basis and "no chassis model" in basis
+        assert D.model_from_golden("hostname x\nlicense udi pid ISR4331/K9 sn X\n") == \
+            ("ISR4331/K9", "the golden's license udi line")
+        assert D.model_from_golden("hostname x\n")[0] == ""
+        assert D.model_from_golden("")[1] == "no committed golden to read it from"
+
+    def test_the_page_names_model_and_platform_and_where_each_came_from(self, lab, monkeypatch):
+        import modules.device as device_mod
+
+        rows = [dict(r, platform="cisco_iosxe") for r in device_mod.load_saved_devices("x")]
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: rows)
+        text = html_mod.unescape(_get(lab, "/v2/device/r3")[1])
+        assert "C8000V" in text and "cisco_iosxe" in text
+        assert "from the golden's Chassis type line" in text and "from the inventory" in text
+
+    def test_a_device_with_no_golden_says_so(self, lab):
+        text = html_mod.unescape(_get(lab, "/v2/device/r9/overview")[1])
+        assert "no committed golden to read it from" in text
+
+
+class TestThePanelsFollowTheDashboardsLayout:
+    def test_the_layout_is_the_dashboards_own_order_width_and_rows(self):
+        from modules import panels
+
+        dash = _fixture("dashboards", "rcn-lab1-snmp.json")
+        from modules.readers import grafana_dashboards as G
+        drawn, _ = panels.split_device_panels({"panels": G._panels(dash)}, "device")
+        items = panels.layout(drawn)
+        rows = [i["title"] for i in items if i["kind"] == "row"]
+        placed = [(i["panel"]["id"], i["x"], i["w"], i["h"]) for i in items if i["kind"] == "panel"]
+        assert rows == ["Fleet reachability", "$device"]
+        # 102 keeps its place beside 101, which is left out; the device panels
+        # are full width in Grafana too.
+        assert placed == [(102, 12, 12, 6), (2, 0, 24, 9), (3, 0, 24, 9), (4, 0, 24, 7)]
+
+    def test_rearranging_in_grafana_rearranges_the_page(self, lab):
+        """A minimal edit of the real model: throughput and errors side by side
+        at the top of the row, the rest where they were."""
+        from modules import reader_job
+
+        path = reader_job.store_path("grafana-dashboards")
+        doc = json.load(open(path, encoding="utf-8"))
+        for p in doc["last_good"]["value"]["dashboards"]["rcn-lab1-snmp"]["panels"]:
+            if p["id"] == 2:
+                p["gridPos"] = {"x": 0, "y": 8, "w": 12, "h": 9}
+            if p["id"] == 4:
+                p["gridPos"] = {"x": 12, "y": 8, "w": 12, "h": 9}
+            if p["id"] == 3:
+                p["gridPos"] = {"x": 0, "y": 17, "w": 24, "h": 15}
+        json.dump(doc, open(path, "w", encoding="utf-8"))
+        html = _get(lab, "/v2/device/r3/monitoring")[1]
+        order = [(int(i), x, w) for x, w, i in re.findall(
+            r'class="panel gx-(\d+) gw-(\d+)"[^>]*panel/rcn-lab1-snmp/(\d+)', html)]
+        assert order == [(102, "12", "12"), (2, "0", "12"), (4, "12", "12"), (3, "0", "24")]
+        assert '<h2 class="panel-row">r3</h2>' in html
+
+    def test_a_panel_overhanging_the_grid_is_clamped_never_wrapped(self):
+        from modules import panels
+
+        items = panels.layout([{"id": 1, "gridPos": {"x": 20, "y": 0, "w": 12, "h": 2}}])
+        assert (items[0]["x"], items[0]["w"], items[0]["h"]) == (20, 4, 3)
+
+    def test_the_chart_height_follows_gridpos_h(self):
+        out = json.loads(_eval("nmas_panels.js", "NMAS_PANELS",
+                               "chartHeight ? [15, 7, 2, null].map(function (h) "
+                               "{ return window.NMAS_PANELS.chartHeight(h); }) : 0"))
+        assert out == [380, 140, 120, 170]
+
+    def test_every_column_start_and_width_has_its_rule(self):
+        css = open(os.path.join(ROOT, "static", "css", "nmas-v2.css"), encoding="utf-8").read()
+        for i in range(24):
+            assert f".gx-{i} {{ grid-column-start: {i + 1}; }}" in css
+        for i in range(1, 25):
+            assert f".gw-{i} {{ grid-column-end: span {i}; }}" in css
+        assert ".panels > .panel, .panels > .panel-row { grid-column: 1 / -1; }" in css
+
+
+class TestTheSelectorSaysWhyItOffersOne:
+    def test_the_count_is_said_beside_it_and_the_rest_are_listed_with_why(self, lab):
+        text = html_mod.unescape(_text(_get(lab, "/v2/device/r3/monitoring")[1]))
+        assert "1 of 5 dashboards can show a single device" in text
+        assert "Not offered: 4 dashboards that cannot show a single device" in text
+        assert text.count("no variable named device") == 4
+        assert "Node Exporter Full" in text

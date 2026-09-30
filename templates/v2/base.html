@@ -52,7 +52,7 @@
     <span class="grow"></span>
     <span class="strip" id="nmas-strip" hx-get="{{ url_for('device_v2.strip') }}" hx-trigger="load, nmas:integration_health from:body" hx-swap="innerHTML"></span>
     <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Live</span></span>
-    <span class="who" title="{{ actor or 'not identified: you can look, not change' }}"><span class="avatar">{{ (actor or '?')[:2]|upper }}</span><span class="who-name">{{ actor or 'not identified' }}</span></span>
+    {% include "v2/_who.html" %}
   </header>
   <main id="main" class="main">
     {% block main %}{% endblock %}

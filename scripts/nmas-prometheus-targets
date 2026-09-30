@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Prometheus's SNMP scrape targets, generated from the inventory (C232, C229).
+
+    nmas-prometheus-targets                        # dry run: what would be written
+    nmas-prometheus-targets --write /etc/prometheus/nmas
+    nmas-prometheus-targets --check                # does the running Prometheus match?
+
+Every device of every list, labelled `device` (its hostname) and `role` (the
+inventory's, omitted where empty and said). Files, in the directory given:
+`nmas-snmp-<dialect>.json` per platform, `nmas-snmp-all.json` for fleet-wide
+jobs, `nmas-snmp-ipsla.json` for devices whose committed golden defines an IP
+SLA operation. The one-time install that points Prometheus's jobs at them is
+docs/PROMETHEUS_TARGETS.md; after it Prometheus re-reads a changed file with
+no reload.
+
+The dry run and `--check` write nothing. `--write` writes only files whose
+content moved, each 0644, atomically. `--check` asks the running Prometheus
+(read-only). Exit 0: written, or matching; 1: `--check` found a difference
+(named); 2: something could not be done (named, and never read as "fine").
+"""
+
+import sys
+
+ROOT = __import__("os").path.dirname(__import__("os").path.dirname(
+    __import__("os").path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+import argparse  # noqa: E402
+
+
+def _print_plan(generated: dict) -> None:
+    print(f"{generated['devices']} device(s) in the inventory")
+    for name, groups in sorted(generated["files"].items()):
+        names = ", ".join(g["labels"]["device"] + ("" if "role" in g["labels"]
+                                                   else " (no role)") for g in groups)
+        print(f"  {name}: {len(groups)} target(s){': ' + names if names else ''}")
+    for note in generated["notes"]:
+        print(f"  note: {note}")
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--write", metavar="DIR", help="write the files into DIR")
+    ap.add_argument("--check", action="store_true",
+                    help="compare the running Prometheus with what would be generated now")
+    args = ap.parse_args(argv)
+
+    from modules import prometheus_targets as P
+
+    try:
+        generated = P.generate()
+    except Exception as exc:                            # noqa: BLE001
+        print(f"COULD NOT READ THE INVENTORY: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    if not generated["devices"]:
+        print("REFUSED: the inventory holds no device with an address; writing would tell "
+              "Prometheus to scrape nothing", file=sys.stderr)
+        return 2
+    _print_plan(generated)
+
+    if args.check:
+        r = P.check(generated=generated)
+        if r["state"] == "not_configured":
+            print("COULD NOT ASK: Prometheus is not configured (prometheus_url)", file=sys.stderr)
+            return 2
+        if r["state"] == "unknown":
+            print(f"COULD NOT ASK Prometheus: {r['error']}", file=sys.stderr)
+            return 2
+        if r["ok"]:
+            print(f"MATCHES: {len(r['pools'])} SNMP job(s) scrape exactly the generated targets")
+            return 0
+        print("DIFFERS:")
+        for pool in r["static"]:
+            print(f"  {pool}: still reads its static targets (docs/PROMETHEUS_TARGETS.md)")
+        for line in r["drift"]:
+            print(f"  {line}")
+        for name in r["unread"]:
+            print(f"  (no SNMP job reads {name})")
+        return 1
+
+    if args.write:
+        try:
+            out = P.write(args.write, generated)
+        except Exception as exc:                        # noqa: BLE001
+            print(f"NOT WRITTEN: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
+        print(f"written to {args.write}: {', '.join(out['changed']) or 'nothing changed'}"
+              + (f"; unchanged: {', '.join(out['unchanged'])}" if out["unchanged"] else ""))
+        return 0
+    print("dry run: nothing written (--write DIR writes it)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

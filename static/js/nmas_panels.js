@@ -89,6 +89,14 @@
     return '';
   }
 
+  /* PURE: a chart's height in pixels from the panel's gridPos h (Grafana's
+     30 px rows, less the panel's title and legend), never below 120. */
+  function chartHeight(h) {
+    var n = parseInt(h, 10);
+    if (!(n > 0)) n = 8;
+    return Math.max(120, n * 30 - 70);
+  }
+
   /* PURE: the words under a panel: the range, the step and any cut. */
   function footWords(p) {
     var words = [p.range + ', step ' + p.step + ' s'];
@@ -124,7 +132,7 @@
     var stepped = p.type === 'state-timeline';
     var width = Math.max(200, body.clientWidth || section.clientWidth - 24);
     var opts = {
-      width: width, height: 180, legend: {show: false}, cursor: {drag: {x: false, y: false}},
+      width: width, height: chartHeight(section.getAttribute('data-panel-h')), legend: {show: false}, cursor: {drag: {x: false, y: false}},
       scales: {x: {time: true}},
       axes: [{stroke: '#4A5260', grid: {stroke: '#EEF0EC'}, ticks: {stroke: '#DADDE2'}},
              {stroke: '#4A5260', grid: {stroke: '#EEF0EC'}, ticks: {stroke: '#DADDE2'}, size: 64,
@@ -255,7 +263,10 @@
     var list = root.document.querySelectorAll('[data-panel-src]');
     for (var i = 0; i < list.length; i++) {
       var s = list[i], body = s.querySelector('.panel-body');
-      if (s.__nmasChart && body) s.__nmasChart.setSize({width: Math.max(200, body.clientWidth), height: 180});
+      if (s.__nmasChart && body) {
+        s.__nmasChart.setSize({width: Math.max(200, body.clientWidth),
+                               height: chartHeight(s.getAttribute('data-panel-h'))});
+      }
     }
   }
 
@@ -271,5 +282,6 @@
   }
 
   root.NMAS_PANELS = {formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
+                      chartHeight: chartHeight,
                       footWords: footWords, emptyWords: emptyWords, scan: scan};
 })(typeof window !== 'undefined' ? window : this);

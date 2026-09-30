@@ -440,6 +440,36 @@ def carried(ident):
         _CARRIED.ident = before
 
 
+def viewer(request=None) -> "Identity":
+    """Who is LOOKING at this request's page or fragment: the identity to draw.
+
+    `request_actor()` answers only inside a gated request, because the gate is
+    what puts the verified identity on ``flask.g``, and a GET page is never
+    gated. So the redesign's first page drew every person as
+    ``unauthenticated`` while today's pages, which ask ``/identity/status``,
+    drew them correctly (the operator, 2026-09-30). This is the same
+    `identify()` the gate and the status route call, once per request: the
+    gate's own result when it ran, else a verification made here and kept on
+    ``flask.g`` for the rest of the request. It draws; it authorises nothing
+    (the gate still decides every gated request itself)."""
+    try:
+        from flask import g, has_request_context
+        from flask import request as _request
+        if not has_request_context():
+            return Identity(outcome="no_request", reason="there is no request to ask about")
+        gated = getattr(g, "nmas_identity", None)
+        if gated is not None:
+            return gated
+        seen = getattr(g, "nmas_viewer", None)
+        if seen is None:
+            seen = identify(request or _request)
+            g.nmas_viewer = seen
+        return seen
+    except Exception as exc:                            # noqa: BLE001
+        log.warning("identity: could not resolve the viewer (%s)", type(exc).__name__)
+        return Identity(outcome="error", reason="the identity could not be resolved")
+
+
 def request_actor() -> str:
     """The VERIFIED actor of the current request, never one the client named.
 

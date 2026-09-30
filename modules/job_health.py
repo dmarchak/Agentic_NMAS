@@ -1247,10 +1247,23 @@ def reader_rows() -> list:
                  "detail": f"the readers could not be judged: {type(exc).__name__}: {exc}"}]
 
 
+def prometheus_target_rows() -> list:
+    """Does the running Prometheus scrape the inventory, labelled (C232)?
+    `modules.prometheus_targets` owns the comparison; no row while Prometheus
+    is not configured."""
+    try:
+        from modules import prometheus_targets
+        return prometheus_targets.health_rows()
+    except Exception as exc:                            # noqa: BLE001
+        return [{"unit": "prometheus-targets", "state": "unknown", "max_age_minutes": 0,
+                 "what": "Prometheus scrapes the inventory, labelled device and role",
+                 "detail": f"the check raised {type(exc).__name__}: {exc}"}]
+
+
 def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None, ztp=None, responder=None,
            startup=None, sessions=None, version=None, readers=None,
-           breakglass=None) -> dict:
+           breakglass=None, prometheus=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -1267,6 +1280,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += version_rows() if version is None else list(version)
     jobs += reader_rows() if readers is None else list(readers)
     jobs += breakglass_rows() if breakglass is None else list(breakglass)
+    jobs += prometheus_target_rows() if prometheus is None else list(prometheus)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     gone = sum(1 for j in jobs if j["state"] == "departed")

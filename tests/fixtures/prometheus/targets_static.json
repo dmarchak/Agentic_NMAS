@@ -1,0 +1,419 @@
+{
+ "activeTargets": [
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.11",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_8000v"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.11",
+    "job": "cisco_8000v"
+   },
+   "scrapePool": "cisco_8000v"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.12",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_8000v"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.12",
+    "job": "cisco_8000v"
+   },
+   "scrapePool": "cisco_8000v"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.13",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_8000v"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.13",
+    "job": "cisco_8000v"
+   },
+   "scrapePool": "cisco_8000v"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.14",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_8000v"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.14",
+    "job": "cisco_8000v"
+   },
+   "scrapePool": "cisco_8000v"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.15",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_8000v"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.15",
+    "job": "cisco_8000v"
+   },
+   "scrapePool": "cisco_8000v"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.11",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "cisco_ipsla",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "20s",
+    "job": "cisco_ipsla"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.11",
+    "job": "cisco_ipsla"
+   },
+   "scrapePool": "cisco_ipsla"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.12",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "cisco_ipsla",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "20s",
+    "job": "cisco_ipsla"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.12",
+    "job": "cisco_ipsla"
+   },
+   "scrapePool": "cisco_ipsla"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.13",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "cisco_ipsla",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "20s",
+    "job": "cisco_ipsla"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.13",
+    "job": "cisco_ipsla"
+   },
+   "scrapePool": "cisco_ipsla"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.14",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "cisco_ipsla",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "20s",
+    "job": "cisco_ipsla"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.14",
+    "job": "cisco_ipsla"
+   },
+   "scrapePool": "cisco_ipsla"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.23",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "cisco_ipsla",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "20s",
+    "job": "cisco_ipsla"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.23",
+    "job": "cisco_ipsla"
+   },
+   "scrapePool": "cisco_ipsla"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.21",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_vios_l2"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.21",
+    "job": "cisco_vios_l2"
+   },
+   "scrapePool": "cisco_vios_l2"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.22",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_vios_l2"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.22",
+    "job": "cisco_vios_l2"
+   },
+   "scrapePool": "cisco_vios_l2"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.23",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_vios_l2"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.23",
+    "job": "cisco_vios_l2"
+   },
+   "scrapePool": "cisco_vios_l2"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.24",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "if_mib",
+    "__scheme__": "http",
+    "__scrape_interval__": "30s",
+    "__scrape_timeout__": "30s",
+    "job": "cisco_vios_l2"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.24",
+    "job": "cisco_vios_l2"
+   },
+   "scrapePool": "cisco_vios_l2"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.11",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.11",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.12",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.12",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.13",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.13",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.14",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.14",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.15",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.15",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.21",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.21",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.22",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.22",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.23",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.23",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  },
+  {
+   "discoveredLabels": {
+    "__address__": "10.255.1.24",
+    "__metrics_path__": "/snmp",
+    "__param_auth": "public_v2",
+    "__param_module": "lldp",
+    "__scheme__": "http",
+    "__scrape_interval__": "1m",
+    "__scrape_timeout__": "30s",
+    "job": "lldp"
+   },
+   "health": "up",
+   "labels": {
+    "instance": "10.255.1.24",
+    "job": "lldp"
+   },
+   "scrapePool": "lldp"
+  }
+ ],
+ "captured": "2026-09-30, the NMAS host, GET /api/v1/targets?state=active, SNMP pools only (read-only)"
+}

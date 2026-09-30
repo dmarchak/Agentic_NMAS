@@ -2623,6 +2623,45 @@ The landing page drew every section 1a source from stored or cached values, each
    - The next Save All (the operator, 2026-09-29 morning): preview nine devices at once in 25.1 s (serial 102.7 s: connecting 50.9 s, reading 42.7 s), slowest s3 at a 13.7 s connect; the apply read 8 of 9 and took no baseline, s3's connect failing at 11.2 s (C204, C205).
 6. **Where it left the product.** Save All is 2.5 times faster to preview and 7.4 times faster to apply, and no request waits on a device. The varying reads are device-side execution (C94's question now), and a device that cannot be read says why and what to do.
 
+### 7.D — The GUI redesign (open)
+
+7.D is open. Commit times are the committer's local time (UTC-6); the operator's decisions are dated in UTC, which is why a decision can read 2026-09-30 beside a commit of 09-29.
+
+#### 7.D steps 1 to (c) — Research, brief, mockups and the stack costing
+
+*Backfilled 2026-09-30, at the spike's close. These steps each closed at the operator's sign-off and no entry was written then: the rule "an entry is written in the turn its sub-task closes" was not applied to design steps, which is the gap this paragraph names.*
+
+1. **What it was.** Redesigning the interface before building any more of it in the old layout: research on the existing pages, a design brief, mockups at desktop and phone width, and a costing of the stack against those mockups. The governing principle, the operator's: the frontend decides and the backend serves it; tests are a cost, never a veto [NSOT_STAGE7_PLAN 1g].
+2. **How it was implemented.** Documents and mockups, no product code: the plan's requirements (`cdb48f5`), the research (`62ce209`), the brief and its five decisions (`84afd4c`, `741a973`), the integrated services and connector classification (`fcfab3b`), the services mockups (`91ad104`), the stack costing (`d24a509`) and the review of mockup version 7 (`c994fc6`). The mockups live on a canvas outside the repository (31 boards at version 9).
+3. **Issues encountered.** C226, C227 and C228 (from the research's inventory: a dead Settings switch, Bootstrap loaded twice, a pointer to a removed button); C229 (the scrape targets hand-kept); C230 (the NMAS's Grafana token holds an Editor's permissions); C231 (the topology service's SVG served to the internet with no login); C100 advanced to its one-time steps. Beside them, the heredoc hook (`f46f0f6`), after a third slip.
+4. **How they were resolved.** C226 to C228 fixed the same turn (`29fa733`); C229 scheduled into P.7, then pulled forward (below); C230 and C231 registered; the silence fetch built (`6a2897c`).
+5. **Numbers.** Eight documentation commits from 18:55 to 22:15 on 09-29 (about 3 h 20 min), about 2,100 lines of brief and plan. Not recoverable: the time spent on the mockups separately from the documents.
+6. **Where it left the product.** Unchanged for a person: every decision recorded, nothing built.
+
+#### 7.D spike — The device page's Overview and Monitoring in option A
+
+*Closed 2026-09-30 by the operator's review on desktop and phone: "it feels good", so option A (Jinja, htmx, Alpine's CSP build, uPlot, no build step) is approved for the redesign.*
+
+1. **What it was.** One real screen built in the chosen stack before the rest of the redesign commits to it, judged first on what the operator judges (does it look like the mockup, do menus and live updates feel smooth, does it work on the phone) and then on page weight, the content security policy, lines of code and whether the tests catch a planted defect.
+2. **How it was implemented.** `/v2/device/<name>`, beside today's page. `routes/device_v2.py` renders Jinja pages and fragments under a strict policy (`csp.STRICT_POLICY`: no inline script or style). `modules/device_page.py` reads every fact from a record the app already keeps; `modules/panels.py` is the pure panel logic; the grafana-dashboards reader stores every dashboard's model. `static/js/nmas_panels.js` draws each panel natively over uPlot, and `static/js/nmas_v2.js` relays the existing socket's announcements to htmx events. Libraries vendored by `scripts/nmas-vendor`, each tarball's sha512 checked against the registry.
+3. **Issues encountered.**
+   - C232, found building it: `rcn-lab1-snmp`'s device panels can show no device, because no SNMP series carries a `device` label. Measured further at the review: this Prometheus never had one (its oldest sample, 2026-08-30, is its install).
+   - The review found four defects: the page drew the operator as `unauthenticated` (C233), the model was missing, the panels ignored the dashboard's layout, and a one-option selector read as broken.
+   - Measured beside them: the inventory's `role` column says `router` for the four switches (C225 extended), r6's golden has no SNMP community, and retired r5 is still scraped.
+4. **How they were resolved.**
+   - C233 fixed the same turn (`identity.viewer()`, one path with `/identity/status`).
+   - The model is read from the committed golden's own header, with its basis.
+   - The panels placed by their own `gridPos`, with the dashboard's row headings.
+   - The selector says "1 of 5 dashboards can show a single device" and lists the rest with why.
+   - C232 fixed at the source: the scrape targets generated from the inventory with `device` and `role`, pulled forward from P.7 by the operator, with a job-health row comparing the running Prometheus. Its install is the operator's one-time step.
+5. **Numbers.**
+   - The spike commit `3a476b2`: 50 files, about 1,830 lines of program and 500 of tests, 8,600 insertions with the vendored libraries.
+   - First load 192 KB compressed, 2 KB of it re-sent each load (today's `/`: 558 KB and 70 KB).
+   - Ten planted defects, each caught by the test aimed at it (one only after a direct test was added).
+   - No estimate was made, deliberately: no front-end build of this kind had finished to forecast from. This is the first, and the review fixes are its second commit.
+   - Not recoverable: the build's start time. The backend was written in a session summarised before the first commit.
+6. **Where it left the product.** Option A decided. One device page tab pair works in the new design with the operator's identity; the rest of the redesign builds on it. The device dashboards show data once the generated targets are installed.
+
 ## Part III. Side campaigns
 
 Threads that ran across stages rather than inside one: each started from one finding and followed its class. Their commits interleave with the stages', so each entry states the rule that selected them.
