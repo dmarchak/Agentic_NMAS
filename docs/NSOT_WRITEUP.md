@@ -2490,14 +2490,29 @@ The landing page drew every section 1a source from stored or cached values, each
 
 #### 7.3 — Adopt: bringing a device the tool did not build into management
 
-*Open: being built, 2026-09-29. Step 1 of about five is built.*
+*Open: being built, 2026-09-29. Steps 1 (the account) and 2 (the preview and the apply) are built; the screen and the real run remain.*
 
 1. **What it was.** A device the tool did not configure (brownfield) had no way in: onboarding assumes a device booted from the tool's own bootstrap. The operator decided the shape on 2026-09-29: onboarding's phase 2 without phase 1, reaching the device with the credential a person supplies, adding an account for the tool and never rotating the supplied one, no RW-community removal or other change, and a persist that first previews running against startup [NSOT_STAGE7_PLAN.md "ADOPT, for brownfield"].
 2. **How it was implemented (so far).** `modules/nsot/adopt.add_tool_account()` reuses rotation's pieces unchanged (staging before the push, the held session, the fresh-login verify, the record) with a different program and a different undo: one setter line for an account the device does not have, and `no username <tool>` read back gone if the verify fails. Rotation's orchestrator was left untouched, because it is built around one existing account (its preflight, recheck and revert all read that account's line).
+   Step 2 puts that account step inside a preview and an apply.
+   - **`plan()`** reads the device with the supplied credential and sends nothing. It draws each gate by name, persist as running against startup, and NetBox's existing objects plus the import's own dry run over the capture. A dry run may now be handed the text it previews; a real import still reads only what is committed.
+   - **`apply()`** holds the device and plans again, refusing a moved fingerprint. It then adds the account, persists with a read-back, mints the identity and commits the first golden (`Source: adopt`). It records what NetBox held BEFORE the import in a third record (`data/netbox_adopted.json`), never the created one, then imports and promotes last.
+   - **Resume:** a stopped run resumes on the tool's own record: its account is on the device, its credential is stored for the address, and a fresh login proves it.
+   - **Recovery:** the account step's staged password gets a sidecar (address, driver, account). `nmas-adopt-recover` settles it from that sidecar, and job health names that command for an adoption's staged file.
 3. **Issues encountered (so far).** `nmas-rotation-recover` cannot settle an adoption's staged password: it works from an inventory row, and a device being adopted has none. The first failed-record message pointed at it; it now says the staged copy is the only one and where it is, and the apply will carry adopt's own recovery. Settling the operator's two points before step 2 found a gap in the new test itself: its scan used `glob("**")`, which skips hidden directories, so a supplied password staged into `.nsot/staging/` was invisible to it. Its own control (staging the supplied password on purpose) passed, which is how it was found; `os.walk` reads every directory, and the control now fails on the seven paths that open a session. The suite's other recursive globs read source directories with no hidden entries, and the one scan of written stores uses `pathlib.rglob`, which includes them.
+   Step 2 found:
+   - **The supplied credential and the golden.** A golden is the device's config verbatim, so a device that stores the supplied account as `password 0` (vrnetlab's `admin`/`admin`) or `password 7` would put the supplied credential into the repository and its remote. That contradicts the operator's rule that it is never written, and it is a decision the rule did not cover.
+   - **C225.** Onboarding's NetBox record calls every device a router, and adopt widens that to any device.
+   - **The plan's own wording.** Its remaining list still said "the supplied credential staged".
+   - **`listref.resolve()` derives an unknown list**, so adopt refuses with `exists()` first, the write-path rule (C51).
+   - **Harness seams.** The suite's shared store carried one test's recorded override into the next, and a second binding of the list-directory helper created a real list directory. Both were fixed in the test.
 4. **How they were resolved.** The message corrected in the same step; recovery placed in the apply. Controls: the delete-then-set program, the absence check removed and the undo removed each fail their tests.
-5. **Numbers.** Estimate at scoping: about 6 to 10 hours and 12 to 20 commits, most of it the real run's findings [NSOT_STAGE7_PLAN.md]. So far one commit and 12 tests.
-6. **Where it left the product.** Not yet: the account step exists and is not reachable from any screen.
+   - **Step 2's supplied credential:** refused at the preview until the operator decides, and the refusal says what to change on the device.
+   - **C225:** registered.
+   - **The plan's wording:** corrected.
+   - **Controls:** the gate removed, adopted objects written as created, resume removed, job health's branch removed, the importer honouring text outside a dry run, and the fingerprint not compared. Each fails exactly its own test.
+5. **Numbers.** Estimate at scoping: about 6 to 10 hours and 12 to 20 commits, most of it the real run's findings [NSOT_STAGE7_PLAN.md]. So far three commits (step 1, the settled points, step 2) and 60 tests in two files.
+6. **Where it left the product.** Not yet: the preview and the apply exist and are reachable from no screen. Their routes and client come with the screen, in the redesign.
 
 #### 7.3 — The break-glass export from the browser
 

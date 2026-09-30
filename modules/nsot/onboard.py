@@ -1930,9 +1930,9 @@ def promote_device(repo: str, hostname: str, list_name: str, *,
         result["error"] = (f"'{hostname}' has no identity in this list's "
                            f"manifest — it was never onboarded")
         return result
-    if not entry.get("onboarded_at"):
-        result["error"] = (f"'{hostname}' is not a pending device — nothing "
-                           f"to promote")
+    if not (entry.get("onboarded_at") or entry.get("adopted_at")):
+        result["error"] = (f"'{hostname}' is neither being onboarded nor adopted — "
+                           f"nothing to promote")
         return result
 
     # THE BOOTSTRAP CREDENTIAL MUST NOT BE THE ONE THAT LANDS HERE.

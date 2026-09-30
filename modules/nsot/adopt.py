@@ -308,6 +308,8 @@ def _add_tool_account(list_name, hostname, device, *, repo, tool_username, actor
 
         # ---- generate, stage BEFORE the push, tell redaction --------------
         password = CR.generate_password(hostname)
+        write_sidecar(repo, hostname, device["ip"], device.get("device_type", ""),
+                      tool_username)
         CR.stage_plaintext(repo, hostname, password)
         _step("stage", True, "the new password encrypted, before the push")
         from modules.redact import invalidate_cache
@@ -319,7 +321,7 @@ def _add_tool_account(list_name, hostname, device, *, repo, tool_username, actor
         try:
             CR.push_rotation(session, add_program(tool_username, password))
         except Exception as exc:               # noqa: BLE001
-            CR.clear_staged(repo, hostname)
+            clear_staged(repo, hostname)
             result["reason"] = f"the device refused the new account: {exc}"[:240]
             _step("push", False, result["reason"])
             return result
@@ -346,10 +348,9 @@ def _add_tool_account(list_name, hostname, device, *, repo, tool_username, actor
     try:
         record(device["ip"], tool_username, password)
     except Exception as exc:                   # noqa: BLE001
-        # The staged copy is the ONLY copy of the new password: keep it (C106,
-        # C210's recovery reads it).
-        # NOT nmas-rotation-recover: it works from an inventory row, and a
-        # device being adopted has none yet, so it would stop and say so.
+        # The staged copy is the ONLY copy of the new password: keep it (C106).
+        # Settled by `nmas-adopt-recover`, NOT nmas-rotation-recover: that one
+        # works from an inventory row, and a device being adopted has none.
         import os
         staged_at = os.path.join(repo, CR.STAGING_REL, f"{hostname}.enc")
         result["state"] = ADDED_NOT_RECORDED
@@ -357,13 +358,15 @@ def _add_tool_account(list_name, hostname, device, *, repo, tool_username, actor
         result["reason"] = (f"'{tool_username}' was added and verified on the device, but "
                             f"recording it FAILED: {type(exc).__name__}: {exc}"[:240]
                             + f". The staged copy at {staged_at} is the ONLY copy of that "
-                              f"account's password: keep it. The supplied account "
-                              f"'{supplied}' still logs in, so the device is reachable")
+                              f"account's password: keep it, and settle it with "
+                              f"nmas-adopt-recover {hostname} --list {list_name}. The "
+                              f"supplied account '{supplied}' still logs in, so the device "
+                              f"is reachable")
         _step("record", False, result["reason"])
         return result
     _step("record", True, f"the tool now logs in as '{tool_username}'; the supplied "
                           f"account '{supplied}' is untouched and used by nothing")
-    CR.clear_staged(repo, hostname)
+    clear_staged(repo, hostname)
     result["state"] = ADDED
     result["reason"] = (f"'{tool_username}' added, verified and recorded; '{supplied}' was "
                         "not changed. Persistence not yet verified")
@@ -384,7 +387,7 @@ def _remove_added(result, _step, session, tool_username, repo, hostname, why) ->
     except Exception as exc:                   # noqa: BLE001
         gone, why = False, f"{why}; the removal raised {type(exc).__name__}: {exc}"
     if gone:
-        CR.clear_staged(repo, hostname)
+        clear_staged(repo, hostname)
         result["state"] = REVERTED
         result["reason"] = f"{why}. The added account was removed and read back gone"
         _step("remove_added", True, "removed, and read back gone")
@@ -392,6 +395,753 @@ def _remove_added(result, _step, session, tool_username, repo, hostname, why) ->
         result["state"] = REVERT_FAILED
         result["reason"] = (f"{why}. The added account could NOT be proven removed: the "
                             f"device may hold '{tool_username}' with a password only the "
-                            "staged copy has (kept for nmas-rotation-recover)")
+                            f"staged copy has (kept: settle it with nmas-adopt-recover "
+                            f"{hostname} --list <its list>)")
         _step("remove_added", False, result["reason"])
     return result
+
+
+# ---------------------------------------------------------------------------
+# The staged copy's sidecar: what recovery needs, never a secret
+# ---------------------------------------------------------------------------
+
+#: Beside the staged password, what settling it needs: the address, the driver
+#: and the account. A device being adopted has no inventory row, so without
+#: this the only copy of a password would be tied to an address nothing
+#: records. Gitignored staging, like the password beside it; no secret here.
+SIDECAR_REL = ".nsot/staging/adopt"
+
+
+def _sidecar_path(repo: str, hostname: str) -> str:
+    import os
+
+    return os.path.join(repo, SIDECAR_REL, f"{hostname}.json")
+
+
+def write_sidecar(repo: str, hostname: str, mgmt_ip: str, device_type: str,
+                  tool_username: str) -> None:
+    import json
+    import os
+    import time
+
+    from modules.config import open_secure
+
+    os.makedirs(os.path.dirname(_sidecar_path(repo, hostname)), exist_ok=True)
+    with open_secure(_sidecar_path(repo, hostname), "w", encoding="utf-8") as fh:
+        json.dump({"ip": mgmt_ip, "device_type": device_type, "tool": tool_username,
+                   "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, fh)
+
+
+def read_sidecar(repo: str, hostname: str):
+    import json
+
+    try:
+        with open(_sidecar_path(repo, hostname), encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def clear_staged(repo: str, hostname: str) -> None:
+    """The staged password and its sidecar go together, never one alone."""
+    import os
+
+    from modules.nsot import credential_rotation as CR
+
+    CR.clear_staged(repo, hostname)
+    try:
+        os.remove(_sidecar_path(repo, hostname))
+    except FileNotFoundError:
+        pass
+
+
+def is_adoption_staged(repo: str, hostname: str) -> bool:
+    """Was this staged password staged by an ADOPTION (so its recovery is
+    `nmas-adopt-recover`, not the rotation's)?"""
+    import os
+
+    return os.path.exists(_sidecar_path(repo, hostname))
+
+
+# ---------------------------------------------------------------------------
+# Step 2: the preview and the apply
+# ---------------------------------------------------------------------------
+
+#: The apply's steps, in order. Promotion is LAST, as in onboarding's phase 2:
+#: the inventory row is the claim "this device is managed", and it is made
+#: only when everything before it held.
+APPLY_STEPS = ("confirm", "account", "persist", "golden", "netbox", "promote")
+
+#: What adopt does NOT do, stated at the confirm (a commit records its
+#: non-actions; so does a preview).
+NOT_DOING = (
+    "The supplied account is not changed, rotated or stored: it is used to log in once, "
+    "for this operation, and is then used by nothing.",
+    "No read-write SNMP community is removed: onboarding removes one only because the "
+    "tool put it there, and on this device something real may use it.",
+    "Nothing else in the configuration is changed: the one line sent is the tool's account.",
+    "No intent is committed: seed it from the golden afterwards, on the Device page.",
+    "No NetBox object that exists now is made deletable: each is recorded as adopted, and "
+    "Remove deletes only what the tool created.",
+)
+
+def _read_device(device: dict, tool_username: str) -> dict:
+    """READS ONLY, over the supplied credential: the running and startup
+    configs, the authentication settings and the tool account's lines."""
+    from modules.nsot import credential_rotation as CR
+    from modules.nsot.onboard import _read_timeout
+
+    session = CR.open_original_session(device)
+    try:
+        t = _read_timeout()
+        return {"running": session.send_command("show running-config", read_timeout=t) or "",
+                "startup": session.send_command("show startup-config", read_timeout=t) or "",
+                "aaa": session.send_command("show running-config | include ^aaa",
+                                            read_timeout=60) or "",
+                "vty": session.send_command("show running-config | section ^line vty",
+                                            read_timeout=60) or ""}
+    finally:
+        try:
+            session.disconnect()
+        except Exception:                      # noqa: BLE001
+            pass
+
+
+def _netbox_existing(hostname: str) -> dict:
+    """What NetBox holds for *hostname* NOW: the device, its interfaces and its
+    addresses, by exact name. ``{"ok", "objects": [(endpoint, id, name)],
+    "error"}``. A failed read is ``ok: False``, never an empty list."""
+    try:
+        from modules.netbox_client import (_nb_first, _nb_get, _session_from_config,
+                                           get_netbox_config)
+
+        cfg = get_netbox_config()
+        if not cfg.get("url") or not cfg.get("token"):
+            return {"ok": False, "objects": [], "error": "NetBox is not configured"}
+        session, base = _session_from_config(cfg), cfg["url"]
+        dev = _nb_first(session, base, "dcim/devices/", name=hostname)
+        if dev is None:
+            return {"ok": True, "objects": [], "error": ""}
+        objects = [("dcim/devices", dev["id"], dev.get("name", hostname))]
+        objects += [("dcim/interfaces", i["id"], i.get("name", ""))
+                    for i in _nb_get(session, base, "dcim/interfaces/", device_id=dev["id"])]
+        objects += [("ipam/ip-addresses", a["id"], a.get("address", ""))
+                    for a in _nb_get(session, base, "ipam/ip-addresses/",
+                                     device_id=dev["id"])]
+        return {"ok": True, "objects": objects, "error": ""}
+    except Exception as exc:                   # noqa: BLE001
+        return {"ok": False, "objects": [],
+                "error": f"NetBox could not be read: {type(exc).__name__}: {exc}"[:240]}
+
+
+def _netbox_dry_run(list_name: str, hostname: str, mgmt_ip: str, platform: str,
+                    config: str, actor: str = "") -> dict:
+    """The import's own dry run over the capture being previewed (the one
+    place a caller's text is honoured, and only in a dry run)."""
+    try:
+        from modules.netbox_client import sync_list_to_netbox
+
+        out = sync_list_to_netbox(list_name, [{"hostname": hostname, "ip": mgmt_ip,
+                                               "platform": platform, "role": "router",
+                                               "preview_config": config}], dry_run=True,
+                                  actor=actor)
+    except Exception as exc:                   # noqa: BLE001
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:240]}
+    plan = out.get("plan") or {}
+    failed = out.get("failed") or []
+    if not out.get("ok") or failed:
+        return {"ok": False, "error": (out.get("error") or "; ".join(
+            f"{f.get('hostname', '?')}: {f.get('error', '?')}" for f in failed))[:240]}
+    return {"ok": True, "error": "", "create_count": plan.get("create_count", 0),
+            "update_count": plan.get("update_count", 0),
+            "creates_by_type": plan.get("creates_by_type", {}),
+            "updates_by_type": plan.get("updates_by_type", {})}
+
+
+def _hash(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256((text or "").encode()).hexdigest()[:16]
+
+
+def _masked(lines) -> list:
+    """Masked, and a comparison's `section :: line` read as a person reads it:
+    a global line alone, a nested one as `section > line`."""
+    from modules.redact import redact_text
+
+    return [redact_text(l[4:] if l.startswith(" :: ") else l.replace(" :: ", " > ", 1))
+            for l in lines]
+
+
+def plan(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
+         supplied_username: str, supplied_password: str, supplied_enable: str = "",
+         tool_username: str = TOOL_ACCOUNT_DEFAULT, actor: str = "", read=None,
+         netbox_existing=None, netbox_preview=None) -> dict:
+    """Everything the apply would do, what it will not, and each gate.
+
+    READS the device with the supplied credential (a preview of a device the
+    tool has no record of has nothing else to read) and sends nothing. The
+    supplied credential is held for this call only. ``fingerprint`` is set
+    only when nothing blocks; the apply recomputes it from the device as it
+    is then and refuses when it moved."""
+    from modules import redact
+
+    with redact.transient_secret(supplied_password, "adopt:supplied"), \
+            redact.transient_secret(supplied_enable, "adopt:supplied-enable"):
+        out = _plan(list_name, hostname, mgmt_ip=mgmt_ip, platform=platform,
+                    supplied_username=supplied_username, supplied_password=supplied_password,
+                    supplied_enable=supplied_enable, tool_username=tool_username, actor=actor,
+                    read=read, netbox_existing=netbox_existing, netbox_preview=netbox_preview)
+    _scrub_plan(out, (supplied_password, supplied_enable))
+    return out
+
+
+def _scrub_plan(out: dict, values) -> None:
+    values = [v for v in values if v]
+    for g in out.get("gates", []):
+        for v in values:
+            g["detail"] = g["detail"].replace(v, "<supplied credential>")
+    out["blocking"] = [g["detail"] for g in out.get("gates", []) if g["state"] == "fail"]
+
+
+def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied_password,
+          supplied_enable, tool_username, read, netbox_existing, netbox_preview,
+          actor="") -> dict:
+    import json
+
+    from modules import credentials
+    from modules.device import fernet, load_saved_devices
+    from modules.netbox_guard import writes_allowed
+    from modules.nsot import credential_rotation as CR
+    from modules.nsot import manifest as _m
+    from modules.nsot import onboard
+    from modules.nsot.listref import UnknownList, exists, resolve
+    from modules.nsot.roundtrip import configs_equivalent
+
+    out = {"device": hostname, "list": list_name, "mgmt_ip": mgmt_ip, "platform": platform,
+           "tool_account": tool_username, "supplied_account": supplied_username,
+           "gates": [], "blocking": [], "resume": False, "program": [],
+           "not_doing": list(NOT_DOING), "fingerprint": "", "persist": {}, "netbox": {},
+           "rw_kept": [], "_capture": ""}
+
+    def gate(name, ok, detail):
+        out["gates"].append({"name": name, "state": "pass" if ok else "fail",
+                             "detail": detail})
+        return ok
+
+    def done():
+        out["blocking"] = [g["detail"] for g in out["gates"] if g["state"] == "fail"]
+        return out
+
+    # ---- what can be refused without the device ---------------------------
+    # A WRITE never derives its list (C51): `resolve()` derives an unknown
+    # name, which would bring a list into existence by adopting into it.
+    try:
+        if not exists(list_name):
+            raise UnknownList("not registered and not on disk")
+        ref = resolve(list_name)
+    except UnknownList as exc:
+        gate("list", False, f"no device list named {list_name!r} ({exc})")
+        return done()
+    out["repo"] = ref.repo_dir
+    gate("list", True, f"list {ref.name!r}")
+    if not _NAME.match(hostname or ""):
+        gate("name", False, f"{hostname!r} is not a device name the tool will record")
+        return done()
+    if not mgmt_ip:
+        gate("address", False, "no management address")
+        return done()
+    try:
+        from modules.nsot.platform import netmiko_type_for_dialect
+
+        device_type = netmiko_type_for_dialect(platform)
+    except Exception as exc:                   # noqa: BLE001
+        gate("platform", False, f"no driver for platform {platform!r}: {exc}")
+        return done()
+    out["device_type"] = device_type
+    gate("platform", True, f"{platform} (driver {device_type})")
+    if not _NAME.match(tool_username or "") or tool_username == supplied_username:
+        gate("tool_account", False, (
+            f"the tool's account must be a valid name that is not the supplied one "
+            f"('{supplied_username}'): adding it would otherwise REPLACE the supplied "
+            "account's credential, which adopt never does"))
+        return done()
+
+    rows = load_saved_devices(ref.csv_path) if _exists(ref.csv_path) else []
+    clash = [r for r in rows if (r.get("hostname") or "").lower() == hostname.lower()
+             or (r.get("ip") or "") == mgmt_ip]
+    gate("not_managed", not clash, (
+        f"already in the inventory as {clash[0].get('hostname')} at {clash[0].get('ip')}: "
+        "a managed device is not adopted again" if clash else
+        f"neither {hostname} nor {mgmt_ip} is in the inventory"))
+    _ident, entry = _m.find_by_name(ref.repo_dir, hostname)
+    resumable = bool(entry and entry.get("adopted_at") and not entry.get("verified_at")
+                     and entry.get("mgmt_ip") == mgmt_ip)
+    if entry and not resumable:
+        gate("name_free", False, (
+            f"{hostname!r} is already in this list's manifest"
+            + (" (being onboarded)" if entry.get("onboarded_at") else "")
+            + ": one name, one device"))
+    else:
+        by_ip = _m.find_by_ip(ref.repo_dir, mgmt_ip)[1]
+        if by_ip and (by_ip.get("name") or "").lower() != hostname.lower():
+            gate("name_free", False, f"{mgmt_ip} is already recorded as {by_ip.get('name')}")
+        else:
+            gate("name_free", True, "an adoption in progress resumes" if resumable
+                 else f"{hostname} is not in this list's manifest")
+    if CR.staged_plaintext(ref.repo_dir, hostname) is not None:
+        gate("nothing_staged", False, (
+            f"a password for the tool's account on {hostname} is staged from an earlier "
+            f"run and never settled: nmas-adopt-recover {hostname} --list {ref.name} "
+            "first, so its only copy is not lost"))
+    if not writes_allowed():
+        gate("netbox_writes", False, (
+            "NetBox writes are off, and adopting records the device there before it joins "
+            "the inventory; enable them in Settings -> Integrations, or nothing is sent"))
+    if out["gates"] and any(g["state"] == "fail" for g in out["gates"]):
+        return done()
+
+    # ---- the device, read with the supplied credential ---------------------
+    device = {"ip": mgmt_ip, "hostname": hostname, "device_type": device_type,
+              "username": supplied_username,
+              "password": fernet.encrypt((supplied_password or "").encode()).decode(),
+              "secret": (fernet.encrypt(supplied_enable.encode()).decode()
+                         if supplied_enable else "")}
+    out["_device"] = device
+    try:
+        seen = (read or _read_device)(device, tool_username)
+    except Exception as exc:                   # noqa: BLE001
+        gate("supplied_login", False, (f"could not log in and read with the supplied "
+                                       f"credential for '{supplied_username}': "
+                                       f"{type(exc).__name__}: {exc}"[:240]))
+        return done()
+    running = seen.get("running", "")
+    if len(running.splitlines()) < 10:
+        gate("supplied_login", False, (f"the running config read was {len(running.splitlines())}"
+                                       " lines: a failed read, not a configuration"))
+        return done()
+    gate("supplied_login", True, f"logged in as '{supplied_username}' and read the device")
+    out["_capture"] = running
+
+    named = next((l.split(None, 1)[1].strip() for l in running.splitlines()
+                  if l.startswith("hostname ")), "")
+    gate("hostname", named.lower() == hostname.lower(), (
+        f"the device calls itself {named!r}" + ("" if named.lower() == hostname.lower()
+                                                 else f", not {hostname!r}: adopt it under "
+                                                      "the name it has")))
+    verdict = local_login_verdict(seen.get("aaa", ""), seen.get("vty", ""))
+    gate("local_login", verdict["ok"], verdict["reason"])
+    gate("supplied_not_recorded", *_supplied_in_config(running, supplied_username,
+                                                       supplied_password, supplied_enable))
+
+    present = account_lines(running, tool_username)
+    held = credentials.resolve(mgmt_ip) if credentials.has_device_override(mgmt_ip) else {}
+    ours = bool(held.get("ok")) and held.get("username") == tool_username
+    # RESUMED on the tool's OWN record: the account is on the device and the
+    # credential store holds it for this address (the adoption's record step
+    # wrote it, and nothing else writes the tool's account for an address the
+    # inventory lacks). The apply proves it on a fresh login before relying on
+    # it. Not on the manifest: the identity is minted at the golden, after the
+    # persist a run may have stopped at.
+    if present and ours:
+        out["resume"] = True
+        gate("account", True, (f"'{tool_username}' was added and recorded by an earlier "
+                               "adoption: the apply proves it on a fresh login and adds "
+                               "nothing"))
+    elif present:
+        gate("account", False, (f"the device already has an account named '{tool_username}',"
+                                " which the tool did not record adding; adopt changes no "
+                                "account it did not add. Name another tool account"))
+    elif ours:
+        gate("account", False, (f"the credential store holds '{tool_username}' for "
+                                 f"{mgmt_ip}, and the device has no such account: settle "
+                                 "that record before adopting"))
+    else:
+        out["program"] = masked_program(tool_username)
+        gate("account", True, f"'{tool_username}' will be added, privilege {TOOL_PRIVILEGE}")
+
+    # ---- persist: what saving makes the boot config (C184's rule) ----------
+    startup = seen.get("startup", "")
+    if "startup-config is not present" in startup or not startup.strip():
+        out["persist"] = {"state": "no_startup", "only_running": [], "only_startup": [],
+                          "sentence": ("the device has NO startup config: saving makes its "
+                                       "whole running config, with the tool's account, the "
+                                       "configuration it boots")}
+    else:
+        eq = configs_equivalent(startup, running)
+        only_run, only_start = eq.get("only_right", []), eq.get("only_left", [])
+        out["persist"] = {
+            "state": "same" if eq.get("equal") else "differs",
+            "only_running": _masked(only_run), "only_startup": _masked(only_start),
+            "sentence": ("the running and startup configs are the same: saving adds only the "
+                         "tool's account to what the device boots" if eq.get("equal") else
+                         f"saving makes the RUNNING config the boot config: "
+                         f"{len(only_run)} line(s) only the running config has become "
+                         f"permanent, and {len(only_start)} line(s) only the startup config "
+                         "has are gone at the next reload")}
+    out["rw_kept"] = _masked(onboard.rw_communities(running))
+
+    # ---- NetBox: what exists (to be recorded as adopted) and what changes ---
+    existing = (netbox_existing or _netbox_existing)(hostname)
+    if gate("netbox_read", existing.get("ok"), existing.get("error") or (
+            f"{len(existing.get('objects') or [])} object(s) exist for {hostname} and will "
+            "be recorded as adopted, never as created")):
+        out["netbox"]["existing"] = [{"endpoint": ep, "id": i, "name": n}
+                                     for ep, i, n in existing["objects"]]
+    dry = (netbox_preview or _netbox_dry_run)(list_name, hostname, mgmt_ip, platform, running,
+                                              actor=actor or "preview")
+    if gate("netbox_preview", dry.get("ok"), dry.get("error") or (
+            f"the import would create {dry.get('create_count', 0)} and update "
+            f"{dry.get('update_count', 0)} object(s)")):
+        out["netbox"]["dry_run"] = {k: dry.get(k) for k in (
+            "create_count", "update_count", "creates_by_type", "updates_by_type")}
+
+    out["capture_hash"], out["startup_hash"] = _hash(running), _hash(startup)
+    if not any(g["state"] == "fail" for g in out["gates"]):
+        out["fingerprint"] = _hash(json.dumps(
+            {"list": ref.name, "device": hostname, "ip": mgmt_ip, "platform": platform,
+             "tool": tool_username, "resume": out["resume"],
+             "capture": out["capture_hash"], "startup": out["startup_hash"]},
+            sort_keys=True))
+    return done()
+
+
+def _supplied_in_config(running: str, username: str, password: str, enable: str) -> tuple:
+    """``(ok, detail)``: would the device's first GOLDEN carry the supplied
+    credential? A golden is the device's config VERBATIM (masking is outbound,
+    never at rest), so a supplied account stored as `password 0` puts the value
+    into the repository and its remote, and `password 7` a reversible encoding
+    of it. Measured on the text itself (the value in a credential slot, so a
+    password equal to the account's name is not "found" in the username), plus
+    the reversible type by shape. Refused, never masked: a golden that is not
+    the device's config is a claim about it."""
+    import re
+
+    found = []
+    for v in (password, enable):
+        if v and re.search(rf"\b(?:password|secret)\s+(?:0\s+)?{re.escape(v)}(?:\s|$)",
+                           running, re.M):
+            found.append("the value itself is in the running config, in clear")
+            break
+    for line in account_lines(running, username):
+        if re.search(r"\bpassword\s+7\s", line):
+            found.append(f"'{username}' is stored as `password 7`, a reversible encoding")
+    if enable and any(re.match(r"enable password\s+7\s", l.strip())
+                      for l in running.splitlines()):
+        found.append("the enable password is stored as `password 7`, a reversible encoding")
+    if found:
+        return False, (
+            "the device's first golden would carry the supplied credential ("
+            + "; ".join(found) + "): the golden records the configuration verbatim, in a "
+            "repository that is pushed to its remote. Adopt changes no account it did not "
+            f"add, so change '{username}' to a `secret` on the device first")
+    return True, ("the supplied credential is stored as a one-way hash (or not at all), so "
+                  "the golden holds no copy of it")
+
+
+def _exists(path: str) -> bool:
+    import os
+
+    return os.path.exists(path)
+
+
+def public(plan_out: dict) -> dict:
+    """The plan without what never leaves this module: the device dict (it
+    carries the supplied credential, encrypted) and the raw capture."""
+    return {k: v for k, v in plan_out.items() if not k.startswith("_")}
+
+
+def apply(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
+          supplied_username: str, supplied_password: str, supplied_enable: str = "",
+          tool_username: str = TOOL_ACCOUNT_DEFAULT, confirmed_fingerprint: str,
+          actor: str, reason: str = "", **collab) -> dict:
+    """Adopt, holding the device throughout. **`ok` means all of it**, decided
+    from the steps; a stop names every step that did not run and why, and a
+    re-run RESUMES (an account this adoption added and recorded is proven,
+    never added twice). The supplied credential is never written: held in
+    this call, redacted from every log line, scrubbed from the result."""
+    from modules import redact
+    from modules.nsot import device_ops
+
+    try:
+        with device_ops.hold(list_name, hostname, "adopt", actor or "unknown",
+                             detail="adopt", ip=mgmt_ip), \
+                redact.transient_secret(supplied_password, "adopt:supplied"), \
+                redact.transient_secret(supplied_enable, "adopt:supplied-enable"):
+            out = _apply(list_name, hostname, mgmt_ip=mgmt_ip, platform=platform,
+                         supplied_username=supplied_username,
+                         supplied_password=supplied_password,
+                         supplied_enable=supplied_enable, tool_username=tool_username,
+                         confirmed_fingerprint=confirmed_fingerprint, actor=actor,
+                         reason=reason, **collab)
+    except device_ops.DeviceBusy as exc:
+        out = {"ok": False, "device": hostname, "list": list_name, "state": "refused",
+               "reason": str(exc), "remaining": [],
+               "steps": [{"step": s, "ok": False, "detail": "did not run"}
+                         for s in APPLY_STEPS]}
+    values = [v for v in (supplied_password, supplied_enable) if v]
+    for key in ("reason",):
+        for v in values:
+            out[key] = (out.get(key) or "").replace(v, "<supplied credential>")
+    for row in out.get("steps", []) + out.get("remaining", []):
+        for field in ("detail", "why"):
+            for v in values:
+                if row.get(field):
+                    row[field] = row[field].replace(v, "<supplied credential>")
+    return out
+
+
+def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied_password,
+           supplied_enable, tool_username, confirmed_fingerprint, actor, reason,
+           read=None, netbox_existing=None, netbox_preview=None, open_session=None,
+           verify=None, record=None, persist=None, capture=None, netbox=None,
+           promote=None, record_adoption=None) -> dict:
+    from modules import credentials
+    from modules.netbox_guard import get_created, record_adopted
+    from modules.nsot import credential_rotation as CR
+    from modules.nsot import device_ops
+    from modules.nsot import manifest as _m
+    from modules.nsot import onboard
+    from modules.nsot.repo import GoldenItem, adopt_identity, save_golden
+
+    result = {"ok": False, "device": hostname, "list": list_name, "state": "stopped",
+              "steps": [], "remaining": [], "reason": "", "tool_account": tool_username,
+              "supplied_account": supplied_username, "actor": actor}
+
+    where = {}
+
+    def _step(name, ok, detail=""):
+        result["steps"].append({"step": name, "ok": bool(ok), "detail": detail})
+        device_ops.note(name)
+        return bool(ok)
+
+    def _finish():
+        result["ok"] = (bool(result["steps"]) and all(r["ok"] for r in result["steps"])
+                        and len(result["steps"]) == len(APPLY_STEPS))
+        repo = where.get("repo")
+        if repo:
+            rec = onboard.record_run(repo, "adopt", list_name, hostname, actor, result)
+            result["run_record"] = {"ok": rec["ok"], "error": rec["error"]}
+        return result
+
+    def _stop(name, why):
+        log.warning("adopt: %s stopped at %s: %s", hostname, name, why)
+        result["reason"] = why
+        ran = {r["step"] for r in result["steps"]}
+        for s in APPLY_STEPS:
+            if s not in ran:
+                result["steps"].append({"step": s, "ok": False, "detail": "did not run"})
+                result["remaining"].append({"step": s, "why": why})
+        return _finish()
+
+    # ---- confirm: the plan again, from the device as it is NOW -------------
+    p = _plan(list_name, hostname, mgmt_ip=mgmt_ip, platform=platform,
+              supplied_username=supplied_username, supplied_password=supplied_password,
+              supplied_enable=supplied_enable, tool_username=tool_username, read=read,
+              netbox_existing=netbox_existing, netbox_preview=netbox_preview, actor=actor)
+    where["repo"] = p.get("repo")
+    if p["blocking"]:
+        return _stop("confirm", "refused, and nothing was sent: " + "; ".join(p["blocking"]))
+    if p["fingerprint"] != confirmed_fingerprint:
+        return _stop("confirm", (
+            f"the device or the plan moved since the preview (confirmed "
+            f"{confirmed_fingerprint or '(none)'}, now {p['fingerprint']}): nothing was "
+            "sent. Preview again and confirm what it shows"))
+    repo, device, device_type = p["repo"], p["_device"], p["device_type"]
+    _step("confirm", True, f"the device is as previewed ({p['fingerprint']})")
+
+    # ---- account ------------------------------------------------------------
+    def _tool():
+        held = credentials.resolve(mgmt_ip) or {}
+        return held.get("username", ""), held.get("password", "")
+
+    if p["resume"]:
+        user, pw = _tool()
+        check = (verify or (lambda dev, u, w: CR.verify_with_retry(dev, u, w, secret=w)))(
+            device, user, pw)
+        if not _step("account", check.get("ok"), (
+                f"'{user}' logs in on a fresh session: added by an earlier run, nothing sent"
+                if check.get("ok") else check.get("error") or "the recorded account did "
+                "not log in")):
+            return _stop("account", (f"the tool's recorded account '{tool_username}' did not "
+                                     f"log in: {check.get('error') or 'refused'}"))
+    else:
+        added = _add_tool_account(list_name, hostname, device, repo=repo,
+                                  tool_username=tool_username, actor=actor,
+                                  open_session=open_session, verify=verify, record=record)
+        result["account"] = {"state": added["state"], "steps": added["steps"]}
+        if added["state"] != ADDED:
+            _step("account", False, added["reason"])
+            why = added["reason"]
+            if added["state"] in (ADDED_NOT_RECORDED, REVERT_FAILED):
+                result["recover"] = f"nmas-adopt-recover {hostname} --list {list_name}"
+            return _stop("account", why)
+        _step("account", True, added["reason"])
+        user, pw = _tool()
+    if not (user and pw):
+        return _stop("persist", f"the tool's credential for {mgmt_ip} could not be read back "
+                                "from the store it was recorded in")
+
+    # ---- persist, on the device, read back ----------------------------------
+    pers = (persist or onboard.persist_on_device)(mgmt_ip, user, pw, pw, device_type)
+    result["persist"] = pers
+    onboard._record_native_persist(hostname, pers, actor, via="adopt")
+    if not _step("persist", pers.get("ok"), pers.get("detail", "")):
+        return _stop("persist", (
+            f"{pers.get('detail') or 'the save could not be confirmed'}. The tool's account "
+            "is in the RUNNING config only: do not reload the device. Run adopt again to "
+            "resume; it proves the account and saves again"))
+
+    # ---- golden: the identity, then the device's first record --------------
+    cap = (capture or onboard.capture_config)(mgmt_ip, user, pw, pw, device_type)
+    if not cap.get("ok"):
+        _step("golden", False, cap.get("error", ""))
+        return _stop("golden", cap.get("error") or "the device could not be read")
+    identity, _entry = _m.find_by_name(repo, hostname)
+    if not identity:
+        identity = adopt_identity(repo, GoldenItem(hostname, "", mgmt_ip))
+    _m.upsert_device(repo, identity, hostname, mgmt_ip=mgmt_ip, platform=platform,
+                     adopted=True)
+    try:
+        saved = save_golden(list_name, [GoldenItem(hostname, cap["config"], mgmt_ip=mgmt_ip,
+                                                   platform=platform)],
+                            source="adopt", actor=actor or "nmas", allow_new=False,
+                            message=f"adopt: {hostname} first capture")
+    except Exception as exc:                   # noqa: BLE001
+        saved = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    result["golden"] = saved
+    if not _step("golden", saved.get("ok"), saved.get("error") or saved.get("commit", "")):
+        return _stop("golden", saved.get("error") or "the golden was not saved")
+
+    # ---- NetBox: what existed is recorded as ADOPTED, before the import ----
+    existing = (netbox_existing or _netbox_existing)(hostname)
+    if not existing.get("ok"):
+        _step("netbox", False, existing.get("error", ""))
+        return _stop("netbox", "NetBox could not be read before the import, and what "
+                               "existed must be recorded first: " + existing.get("error", ""))
+    authority = f"Adopt by {actor or 'unknown'}"
+    nb = (netbox or onboard.create_netbox_record)(repo, hostname, list_name, actor=actor,
+                                                  authority=authority)
+    result["netbox"] = nb
+    if not nb.get("ok"):
+        _step("netbox", False, nb.get("reason", ""))
+        return _stop("netbox", nb.get("reason") or "the NetBox record failed")
+    made = {(ep.strip("/"), e.get("id")) for ep, rows in (get_created(list_name) or {}).items()
+            for e in rows or []}
+    adopted = [o for o in existing["objects"] if (o[0], o[1]) not in made]
+    rec = (record_adoption or record_adopted)(
+        list_name, hostname, adopted, actor=actor, reason=reason or "adopted into management",
+        authority=authority)
+    result["adopted"] = [{"endpoint": ep, "id": i, "name": n} for ep, i, n in adopted]
+    if not _step("netbox", rec.get("ok"), (
+            f"{len(nb.get('created') or [])} created (tagged, recorded as created); "
+            f"{len(adopted)} that existed recorded as adopted, never deletable"
+            if rec.get("ok") else rec.get("error", ""))):
+        return _stop("netbox", ("the import landed and the adoption record could not be "
+                                f"written: {rec.get('error')}. Run adopt again: the import "
+                                "changes nothing twice and the record is taken again"))
+    if nb.get("device_id") is not None:
+        _m.upsert_device(repo, identity, hostname, netbox_id=nb["device_id"])
+
+    # ---- promote, LAST --------------------------------------------------------
+    prom = (promote or onboard.promote_device)(repo, hostname, list_name, actor=actor,
+                                               device_type=device_type, username=user,
+                                               password=pw, secret="")
+    result["promote"] = prom
+    if not _step("promote", prom.get("ok"), prom.get("error", "") or "in the inventory"):
+        return _stop("promote", prom.get("error") or "promotion failed")
+
+    result["state"] = "adopted"
+    result["reason"] = (f"{hostname} adopted: the tool logs in as '{tool_username}', and "
+                        f"'{supplied_username}' was not changed and is used by nothing")
+    result["next"] = {"label": (f"Export the break-glass record: it holds no entry for "
+                                f"{hostname} until you do"),
+                      "open": "breakglass_export", "list": list_name}
+    result["then"] = "Seed its intent from the golden, on its Device page"
+    return _finish()
+
+
+# ---------------------------------------------------------------------------
+# Recovery: a tool password an adoption staged and never settled
+# ---------------------------------------------------------------------------
+
+NOTHING_STAGED = "nothing_staged"
+RECOVERED = "recovered"
+STAGED_REFUSED = "staged_refused"
+RECOVERY_INCONCLUSIVE = "inconclusive"
+
+
+def recover_tool_account(list_name: str, hostname: str, *, actor: str,
+                         verify=None, record=None) -> dict:
+    """Settle a password an adoption staged, by ASKING the device (C210's
+    rule, for a device with no inventory row: the sidecar holds its address).
+
+    * accepted on a fresh login: the device holds it. Record it; clear the
+      staged file only once the record is written;
+    * refused: the account is absent or holds another password. The file is
+      KEPT, and the result says what a person checks, since only they hold a
+      login that can look;
+    * the device could not be asked: nothing changes.
+
+    Holds the device (C98). Never prints or returns a credential."""
+    from modules import credentials
+    from modules.nsot import credential_rotation as CR
+    from modules.nsot import device_ops
+    from modules.nsot.listref import UnknownList, exists, resolve
+
+    out = {"device": hostname, "list": list_name, "state": NOTHING_STAGED, "reason": ""}
+    try:
+        if not exists(list_name):
+            raise UnknownList("not registered and not on disk")
+        ref = resolve(list_name)
+    except UnknownList as exc:
+        out.update(state=RECOVERY_INCONCLUSIVE, reason=f"no device list named {list_name!r} "
+                                                       f"({exc})")
+        return out
+    staged = CR.staged_plaintext(ref.repo_dir, hostname)
+    if staged is None:
+        out["reason"] = f"no tool password is staged for {hostname}: nothing to recover"
+        return out
+    side = read_sidecar(ref.repo_dir, hostname)
+    if not side or not side.get("ip"):
+        out.update(state=RECOVERY_INCONCLUSIVE, reason=(
+            f"a password is staged for {hostname} and nothing records the address it "
+            "belongs to (not an adoption's, or its sidecar is gone): the file is kept"))
+        return out
+    tool = side.get("tool") or TOOL_ACCOUNT_DEFAULT
+    dev = {"ip": side["ip"], "hostname": hostname, "device_type": side.get("device_type", "")}
+    verify = verify or (lambda d, u, w: CR.verify_with_retry(d, u, w, secret=w))
+    record = record or (lambda ip, u, w: credentials.set_device_override(ip, u, w, ""))
+    try:
+        with device_ops.hold(list_name, hostname, "recover", actor or "unknown",
+                             ip=side["ip"]):
+            check = verify(dev, tool, staged)
+            if check.get("ok"):
+                try:
+                    record(side["ip"], tool, staged)
+                except Exception as exc:       # noqa: BLE001
+                    out.update(state=RECOVERY_INCONCLUSIVE, reason=(
+                        f"the device accepts the staged password for '{tool}', and "
+                        f"recording it FAILED ({type(exc).__name__}): the staged file is "
+                        "kept, and is the only copy"))
+                    return out
+                clear_staged(ref.repo_dir, hostname)
+                out.update(state=RECOVERED, reason=(
+                    f"the device accepts the staged password for '{tool}': it is recorded, "
+                    "and the staged file cleared. Run adopt again to finish; it proves the "
+                    "account and adds nothing"))
+            elif not check.get("attempted", True):
+                out.update(state=RECOVERY_INCONCLUSIVE, reason=(
+                    f"the device could not be asked ({check.get('error', 'no reason')}): "
+                    "nothing was changed and the staged file is kept"))
+            else:
+                out.update(state=STAGED_REFUSED, reason=(
+                    f"the device refuses the staged password for '{tool}': the account is "
+                    "absent or holds another password. The staged file is kept. With a login "
+                    f"of your own, check `show running-config | include ^username {tool}`: "
+                    "if there is no such account, the adoption never added one and the "
+                    "staged file can be deleted"))
+    except device_ops.DeviceBusy as exc:
+        out.update(state=RECOVERY_INCONCLUSIVE,
+                   reason=f"{exc}; nothing was asked and the staged file is kept")
+    return out

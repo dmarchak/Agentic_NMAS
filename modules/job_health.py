@@ -814,12 +814,31 @@ def staged_rotation_rows(lists=None, holder=None) -> list:
         return [{"unit": "rotation-staged", "what": _ROTATION_WHAT, "state": "unknown",
                  "max_age_minutes": 0,
                  "detail": f"the device lists could not be read ({exc})"}]
+    from modules.nsot import adopt as _adopt
+
     for item in entries:
         repo = os.path.join(LISTS_DIR, item["filename"], "config_repo")
         for s in cr.staged_devices(repo):
             if holder(item["name"], s["device"]):
                 continue
             since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(s["since"]))
+            # AN ADOPTION'S staged password names ITS recovery: the rotation's
+            # works from an inventory row, which a device being adopted lacks,
+            # so naming it would send a person to a command that stops.
+            if _adopt.is_adoption_staged(repo, s["device"]):
+                rows.append({
+                    "unit": f"rotation-staged:{item['name']}/{s['device']}",
+                    "what": _ROTATION_WHAT, "device": s["device"], "list": item["name"],
+                    "state": "not_recorded", "max_age_minutes": 0,
+                    "detail": (f"an adoption of {s['device']} staged a password for the "
+                               f"tool's own account at {since} and never cleared it: the "
+                               "device may hold that account while the tool holds no "
+                               "credential for it, and the staged file is its only copy"),
+                    "action": {"label": "Ask the device whether it holds the tool's account "
+                                        "with the staged password, and record it if it does",
+                               "command": f"nmas-adopt-recover {s['device']} "
+                                          f"--list {item['name']}"}})
+                continue
             rows.append({
                 "unit": f"rotation-staged:{item['name']}/{s['device']}", "what": _ROTATION_WHAT,
                 "device": s["device"], "list": item["name"], "state": "not_recorded",

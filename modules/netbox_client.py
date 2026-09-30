@@ -2845,7 +2845,15 @@ def _scan_device_from_golden(dev: dict) -> dict:
     # role for everything.
     app_role = (dev.get("role") or "router").strip().lower()
 
-    record = _golden_record(ip)
+    # A PREVIEW OF A DEVICE WITH NO GOLDEN YET (adopt, 7.3): the caller hands
+    # the capture it previews. Honoured in a DRY RUN only, so a real import
+    # still builds every object from what is COMMITTED (C104), never from a
+    # text a caller supplied.
+    from modules import netbox_guard as _guard
+    if dev.get("preview_config") is not None and _guard.is_dry_run():
+        record = {"text": dev["preview_config"], "refused": ""}
+    else:
+        record = _golden_record(ip)
     golden = record["text"]
     if not golden:
         return {

@@ -67,6 +67,14 @@ _MODIFIED_FILE = os.path.join(DATA_DIR, "netbox_modified.json")
 #: and ids only; a NetBox object name is not a secret. Append-only, 0600.
 _REMOVALS_FILE = os.path.join(DATA_DIR, "netbox_removals.jsonl")
 
+#: What NMAS ADOPTED: per-device objects that EXISTED in NetBox before an
+#: adoption (7.3), made by a person. A third record, never merged into the
+#: created one: that record is half of Remove's `tagged AND created`, so an
+#: adopted object written there would become deletable, the one claim an
+#: adoption must never make (the operator, 2026-09-27: a record answers ONE
+#: question). Names and ids only, 0600.
+_ADOPTED_FILE = os.path.join(DATA_DIR, "netbox_adopted.json")
+
 #: A before-value that could not be read. **Not** ``None`` and not absent: a
 #: field NetBox did not return and a field that was genuinely null are
 #: different facts, and the second is a real before-value.
@@ -91,6 +99,7 @@ _MAX_VALUE_BYTES = 200
 #: process only. Callables, so a test that re-points a path locks that file.
 _created_lock = _filestore.PathLock(lambda: _CREATED_IDS_FILE)
 _modified_lock = _filestore.PathLock(lambda: _MODIFIED_FILE)
+_adopted_lock = _filestore.PathLock(lambda: _ADOPTED_FILE)
 
 # Per-thread dry-run state: sync runs on a background thread, so this must not
 # be global. None = writes execute normally.
@@ -778,6 +787,57 @@ def recorded_objects(list_name: str) -> tuple:
         for row in rows or []:
             held.append((endpoint, row.get("id"), row.get("name", "")))
     return held, ""
+
+
+def record_adopted(list_name: str, hostname: str, objects, *, actor: str, reason: str,
+                   authority: str) -> dict:
+    """Record the objects that EXISTED before *hostname* was adopted:
+    ``objects`` is ``[(endpoint, id, name), ...]``. ``{"ok", "count", "error"}``.
+
+    WHO, WHEN, WHY and ON WHAT BASIS, beside each (the created record's
+    fields, plus the reason). Never touches the created record, so nothing
+    here can make an object deletable. Unreadable is not empty: refused,
+    and the damaged file kept (C158)."""
+    import time as _time
+
+    stamp = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+    try:
+        with _adopted_lock:
+            data = _filestore.read_json_for_write(_ADOPTED_FILE)
+            bucket = data.setdefault(list_slug(list_name), {})
+            added = 0
+            for endpoint, obj_id, name in objects or ():
+                if obj_id is None:
+                    continue
+                rows = bucket.setdefault(endpoint.strip("/"), [])
+                if any(r.get("id") == obj_id for r in rows):
+                    continue
+                rows.append({"id": obj_id, "name": name, "device": hostname, "at": stamp,
+                             "actor": actor or "unattributed", "reason": reason,
+                             "authority": authority or "undeclared"})
+                added += 1
+            if not _write_json_atomic(_ADOPTED_FILE, data):
+                return {"ok": False, "count": 0,
+                        "error": f"{os.path.basename(_ADOPTED_FILE)} could not be written"}
+    except _filestore.StoreUnreadable as exc:
+        return {"ok": False, "count": 0, "error": str(exc)}
+    return {"ok": True, "count": added, "error": ""}
+
+
+def get_adopted(list_name: str) -> tuple:
+    """``(entries, reason)``: ``[(endpoint, id, name, device), ...]`` adopted for
+    *list_name*; *reason* non-empty when the record exists and cannot be read
+    (not the same as "nothing adopted")."""
+    if not os.path.exists(_ADOPTED_FILE):
+        return [], ""
+    try:
+        with open(_ADOPTED_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        return [], f"the adoption record could not be read ({type(exc).__name__})"
+    return [(ep, r.get("id"), r.get("name", ""), r.get("device", ""))
+            for ep, rows in (data.get(list_slug(list_name)) or {}).items()
+            for r in rows or []], ""
 
 
 def forget_created(list_name: str, endpoint: str = "", obj_id: int = None) -> None:

@@ -1068,7 +1068,46 @@ import/remove, whose import outcome draws C8's fields; bulk intent.
      until the row was where it looks. **So C117's onboard, seed, deploy loop is sound as
      designed**, with the approval as an explicit step and C216 decided first if the
      acceptance is to show a heartbeat.
-  2. **ADOPT, for brownfield: BEING BUILT (2026-09-29). Step 1, the account, is built:** `modules/nsot/adopt.add_tool_account()` adds the tool's account (`nmas` by default, never the supplied name) with rotation's staging, push, fresh-login verify and record, reached through the SUPPLIED credential on a held session; an account by that name already on the device is refused as somebody's; a failed verify removes only what was added (`no username <tool>`, read back gone); a failed record keeps the staged copy and says it is the only one. Found building it: `nmas-rotation-recover` cannot settle an adoption's staged copy (it needs an inventory row an adopting device does not have), so adopt's apply carries its own recovery. **Settled before step 2 (the operator, 2026-09-29):** the SUPPLIED credential is never written anywhere (memory only, redacted and scrubbed; staging is for the tool's own credential), and a device whose SSH logins would never consult a local account (TACACS+ or RADIUS first, or a line password) is refused before anything is sent, naming the method list and what it would take; and the result's next action is the break-glass export, with job health naming the device missing from the record until then. Remaining: the apply (identity, the supplied credential staged, verify, capture, the account, persist with running against startup previewed, golden, NetBox and its adoption record, promote), the Device page's screen, and the real run. The scope as decided:
+  2. **ADOPT, for brownfield: BEING BUILT (2026-09-29). Step 1, the account, is built:** `modules/nsot/adopt.add_tool_account()` adds the tool's account (`nmas` by default, never the supplied name) with rotation's staging, push, fresh-login verify and record, reached through the SUPPLIED credential on a held session; an account by that name already on the device is refused as somebody's; a failed verify removes only what was added (`no username <tool>`, read back gone); a failed record keeps the staged copy and says it is the only one. Found building it: `nmas-rotation-recover` cannot settle an adoption's staged copy (it needs an inventory row an adopting device does not have), so adopt's apply carries its own recovery. **Settled before step 2 (the operator, 2026-09-29):** the SUPPLIED credential is never written anywhere (memory only, redacted and scrubbed; staging is for the tool's own credential), and a device whose SSH logins would never consult a local account (TACACS+ or RADIUS first, or a line password) is refused before anything is sent, naming the method list and what it would take; and the result's next action is the break-glass export, with job health naming the device missing from the record until then. **Step 2, the preview and the apply, is built (2026-09-29):**
+     - **`adopt.plan()`** reads the device with the supplied credential and sends nothing. It
+       states every gate by name:
+       - the list, which is refused if unknown (never derived, C51);
+       - the name and address, which must be in no inventory and no manifest;
+       - the platform, and the device's own hostname;
+       - local login, and whether the account is absent;
+       - nothing staged, and NetBox writes on.
+
+       It also shows persist as running against startup (the lines saving makes permanent and
+       the lines it loses), the RW communities kept, and NetBox's objects that exist now (to be
+       recorded as adopted). NetBox's changes come from the import's own dry run over the
+       capture: the importer honours a supplied text in a DRY RUN only, and a real import
+       still builds from what is committed. The fingerprint binds the list, device, address,
+       platform, tool account, and the running and startup hashes.
+     - **`adopt.apply()`** holds the device and plans again from the device as it is, refusing
+       a moved fingerprint and naming both values. Then: the account, persist (read back), the
+       identity and first golden (`Source: adopt`), NetBox, and promotion last. Before the
+       import it reads what NetBox holds and records those objects in
+       `data/netbox_adopted.json` (a third record: who, when, why, on what basis), never in
+       the created record, so Remove cannot reach them. The result's next action opens the
+       break-glass export. Job health's existing break-glass row already names a device the
+       last export lacks ("has no entry for it"), now pinned for an adopted one. The run is
+       recorded with onboarding's, kind `adopt`.
+     - **A stopped adoption RESUMES:** the tool's account on the device, its credential in the
+       store for that address, and a fresh login prove it, so a re-run adds nothing.
+     - **Its own recovery:** `nmas-adopt-recover`, from a sidecar the account step writes
+       beside the staged password (address, driver, account; no secret). Job health names that
+       command for an adoption's staged file, and the rotation's for a rotation's.
+     - **Found building it:**
+       - **Decision pending (the operator's).** The golden records the device's config
+         verbatim, so a supplied account stored as `password 0` (vrnetlab's own `admin`/`admin`)
+         or `password 7` would put the supplied credential into the repository and its remote.
+         Meanwhile the preview REFUSES such a device before anything is sent, naming why and
+         saying to change that account to a `secret` on the device first. The real run's
+         throwaway boots exactly that line.
+       - C225: onboarding's NetBox record calls every device a router.
+
+     Remaining: the screen (routes, the preview-confirm adapter and the Device page's client,
+     built in the redesign, section 1g) and the real run. The scope as decided:
      Onboarding's phase 2 without phase 1:
      the person supplies list, address, platform and the device's CURRENT credential;
      the tool stages that credential exactly as phase 1 stages the bootstrap one (the

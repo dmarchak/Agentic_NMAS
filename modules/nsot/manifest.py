@@ -118,7 +118,7 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
                   pending: bool = False, clab_lab: str = "",
                   address_source: str = "", mgmt_mac: str = "",
                   reserved_address: str = "",
-                  mgmt_prefix_len: int = 0) -> dict:
+                  mgmt_prefix_len: int = 0, adopted: bool = False) -> dict:
     """Record or update a device. Returns its manifest entry.
 
     *pending* marks a device **onboarded but never reached**: it stamps
@@ -169,6 +169,14 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
             if value:
                 entry[key] = value
         entry.setdefault("pending_rename", None)
+        # ADOPTED (7.3): a device the tool did not build, taken into management.
+        # Stamped once, like `onboarded_at`, and deliberately NOT that key: a
+        # pending ONBOARDING is offered Verify (which rotates) and Abandon
+        # (which removes what onboarding made), and neither is right for a
+        # device somebody else built. `verified_at` stays the one exit.
+        if adopted and not entry.get("adopted_at"):
+            entry["adopted_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            entry.setdefault("verified_at", None)
         if pending and not entry.get("onboarded_at"):
             entry["onboarded_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                                   time.gmtime())
