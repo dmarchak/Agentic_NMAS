@@ -294,3 +294,42 @@ class TestThePolicy:
         assert r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
         assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", html)
         assert not re.search(r"\sstyle=", html) and not re.search(r"\son[a-z]+=", html)
+
+
+# ------------------------------------------------------------- the toast rule
+
+TOAST_CALL = re.compile(r"\b(?:show)?[Tt]oast\w*\s*\(")
+
+
+def _v2_population():
+    """Every v2 template, and every script the v2 frame loads (read from
+    base.html's own tags, so a script added there is scanned)."""
+    tdir = os.path.join(ROOT, "templates", "v2")
+    files = {os.path.join(tdir, n) for n in os.listdir(tdir) if n.endswith(".html")}
+    base = open(os.path.join(tdir, "base.html"), encoding="utf-8").read()
+    for rel in re.findall(r"filename='(js/[^']+\.js)'", base):
+        if "/vendor/" not in rel:
+            files.add(os.path.join(ROOT, "static", rel))
+    return sorted(files)
+
+
+class TestTheToastRule:
+    """The operator, 2026-09-30 (NSOT_GUI_BRIEF section 6): a toast only
+    ANNOUNCES a result the person might miss and links to one that stays; it
+    never holds a result, never duplicates one drawn in place, and a failure
+    is never toast-only (C84). The v2 screens make no toast call at all, so
+    the first one must arrive with this rule in view."""
+
+    def test_no_v2_screen_holds_a_result_in_a_toast(self):
+        files = _v2_population()
+        assert sum(f.endswith(".js") for f in files) >= 4      # the frame's own scripts
+        assert sum(f.endswith(".html") for f in files) >= 8
+        found = [f"{os.path.relpath(f, ROOT)}: {m.group(0)}" for f in files
+                 for m in TOAST_CALL.finditer(open(f, encoding="utf-8").read())]
+        assert found == []
+
+    def test_the_scan_finds_a_toast(self):
+        """The control: today's pages' own call, and a planted one, are found."""
+        assert TOAST_CALL.search("showToast('Saved', 'success');")
+        assert TOAST_CALL.search("NMAS.toast (msg)")
+        assert not TOAST_CALL.search("the toast rule, written in a comment")

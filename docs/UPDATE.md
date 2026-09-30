@@ -190,8 +190,31 @@ scripts/nmas-update-check
 A commit whose code needs a person on the host before it can run (a new unit,
 a package, a sudoers change) carries a `Host-Step: <what to do>` trailer, one
 per step. The preview lists each with a box. The updater refuses the release
-until the person has said each is done. The tool cannot verify a host step:
+until the person has said each is done. The tool cannot verify most host steps:
 the box is the person's statement, and it is recorded in the request.
+
+**A terminal deploy says the same, LAST on screen** (the operator, 2026-09-30:
+08dbee5 needed the updater re-installed, `nmas-deploy` finished without a word,
+and the updater stayed broken until job health caught it).
+- After every deploy that leaves the checkout at the target, `nmas-deploy`
+  prints each `Host-Step:` trailer of the commits it just deployed.
+- **A step naming the updater is checked:** `nmas-deploy` runs
+  `scripts/nmas-update-check`, and prints "Done", or "STILL NEEDED" with the
+  exact commands.
+- **Any other step** says it is not checkable from here, so confirm it by hand.
+- **The updater's check runs on every deploy** where an updater is installed, so
+  a step from an EARLIER release that is still undone is caught on the next
+  deploy ("HOST STEP OUTSTANDING from an earlier release").
+- A refusal before anything moved lists no steps.
+
+**The exact commands have one owner:** `modules/update_op.py`'s
+`REINSTALL_COMMANDS` and `INSTALL_COMMANDS`, each line held equal to this
+document's by a test.
+- Job health's `updater` row shows them on Needs attention with a copy button,
+  this document as the detail.
+- `nmas-update-check` prints them last.
+- The row says when the condition began: the later of this release starting and
+  the installed copy being written.
 
 ## What it does not do
 

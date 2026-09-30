@@ -3,8 +3,10 @@
 
 Run it AS THE SERVICE USER, never with sudo: "not writable by the service
 user" is asked of the user running this, as the app asks it. It prints job
-health's own row (`modules/update_op.install_rows()`, the same function) and
-each installed file.
+health's own row (`modules/update_op.install_rows()`, the same function), each
+installed file, and, when anything is outstanding, the EXACT commands that fix it
+(`nmas-deploy` prints this after every deploy, so a host step is never left in a
+document).
 
 It also runs the INSTALLED updater's own self-test (C246): every program it
 runs, by the absolute path it runs it by, exists, is a regular file root owns
@@ -47,6 +49,15 @@ def main() -> int:
                                  "CANNOT RUN: " + "; ".join(state["cannot_run"])))
     if "path_active" in state:
         print(f"  nmas-update.path active: {state['path_active']}")
+    # The exact commands, LAST, from the row's one owner (update_op): nmas-deploy
+    # relays this output after a deploy, so the step is on screen, not in a doc.
+    action = row.get("action") or {}
+    if action.get("command"):
+        print(f"\n{action['label']}")
+        for line in action["command"].splitlines():
+            print(f"    {line}")
+        if action.get("reference"):
+            print(f"  ({action['reference']})")
     return {"ok": 0, "differs": 1}.get(state["state"], 2)
 
 

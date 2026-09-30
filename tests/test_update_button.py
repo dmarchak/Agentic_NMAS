@@ -573,7 +573,7 @@ class TestTheInstallCheck:
         from modules import update_op
         s = update_op.install_state(installed=(("x", str(tmp_path / "nope"), None),))
         (row,) = update_op.install_rows(s)
-        assert row["state"] == "not_installed" and row["action"]["reference"] == "docs/UPDATE.md"
+        assert row["state"] == "not_installed" and row["action"]["reference"].startswith("docs/UPDATE.md")
 
     def test_a_file_the_service_user_can_write_is_danger(self, tmp_path):
         from modules import attention, update_op
@@ -609,7 +609,7 @@ class TestTheInstallCheck:
         (tmp_path / "src").write_text("a newer release\n")
         s = update_op.install_state(root=str(tmp_path), installed=inst, active=True)
         assert s["state"] == "differs" and "differs from this release's src" in s["differs"][0]
-        assert update_op.install_rows(s)[0]["action"]["reference"] == "docs/UPDATE.md"
+        assert update_op.install_rows(s)[0]["action"]["reference"].startswith("docs/UPDATE.md")
         assert update_op.install_state(root=str(tmp_path), installed=inst, active=False)["state"] == "inactive"
         # The control: the same file the service user CAN write is danger, whoever owns it.
         monkeypatch.setattr(update_op.os, "access", lambda p, m: str(p) == str(f))
@@ -643,7 +643,7 @@ class TestTheInstallCheck:
         assert f"runuser: {tmp_path}/no-runuser: No such file or directory" in s["cannot_run"]
         (row,) = update_op.install_rows(s)
         assert row["state"] == "cannot_run" and "CANNOT RUN" in row["detail"]
-        assert row["action"]["reference"] == "docs/UPDATE.md"
+        assert row["action"]["reference"].startswith("docs/UPDATE.md")
         assert attention._JOB_STATES["cannot_run"][1] == "danger"
         kw = dict(_plan_kw(), install=s)                        # and the preview refuses it
         p = update_op.plan(**kw)
@@ -670,6 +670,62 @@ class TestTheInstallCheck:
                                                            "deploy/update/nmas-update"),),
                                     active=True)
         assert s["cannot_run"] == [] and s["state"] == "ok"
+
+    @pytest.mark.parametrize("state,commands", [("cannot_run", "REINSTALL_COMMANDS"),
+                                                ("differs", "REINSTALL_COMMANDS"),
+                                                ("not_installed", "INSTALL_COMMANDS")])
+    def test_the_row_carries_the_exact_commands_not_a_document(self, state, commands):
+        """The operator, 2026-09-30: "Re-install … (docs/UPDATE.md, 'Re-install')"
+        sent them looking. A one-time root step shows its commands, copyable."""
+        from modules import update_op
+        s = {"state": state, "cannot_run": ["runuser: gone"], "differs": ["the updater differs"],
+             "missing": ["the updater"]}
+        (row,) = update_op.install_rows(s)
+        cmd = row["action"]["command"]
+        assert cmd.splitlines()[0] == f"cd {update_op.ROOT}"
+        assert cmd.splitlines()[1:] == list(getattr(update_op, commands))
+        assert row["action"]["reference"].startswith("docs/UPDATE.md, ")
+
+    def test_every_command_is_the_documents_own(self):
+        """One owner, and the document says the same: each line appears in UPDATE.md."""
+        from modules import update_op
+        doc = open(os.path.join(ROOT, "docs", "UPDATE.md"), encoding="utf-8").read()
+        lines = set(update_op.REINSTALL_COMMANDS) | set(update_op.INSTALL_COMMANDS)
+        assert len(lines) >= 10
+        missing = [l for l in lines if l not in doc]
+        assert missing == []
+
+    def test_the_row_says_since_when(self, tmp_path):
+        """The operator: "since not recorded" on the cannot_run row. The later of
+        this release starting and the installed copy being written."""
+        from modules import update_op
+        f = tmp_path / "nmas-update"
+        f.write_text("x")
+        os.utime(f, (1000.0, 1000.0))
+        assert update_op.condition_since(str(f), started=2000.0) == (
+            2000.0, "when this release started running")
+        os.utime(f, (3000.0, 3000.0))
+        assert update_op.condition_since(str(f), started=2000.0) == (
+            3000.0, "when the installed copy was written")
+        assert update_op.condition_since(str(tmp_path / "gone"), started=2000.0)[0] == 2000.0
+        (row,) = update_op.install_rows({"state": "cannot_run", "cannot_run": ["x"]})
+        assert isinstance(row["since"], float) and "It began when" in row["detail"]
+
+    def test_the_check_command_prints_the_commands_last(self, monkeypatch, capsys):
+        from modules import update_op
+        path = os.path.join(ROOT, "scripts", "nmas-update-check")
+        loader = importlib.machinery.SourceFileLoader("nmas_update_check_under_test", path)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(mod)
+        monkeypatch.setattr(update_op, "install_state", lambda: {
+            "state": "cannot_run", "cannot_run": ["runuser: /usr/sbin/runuser: gone"],
+            "files": [], "missing": [], "writable": [], "differs": []})
+        monkeypatch.setattr(os, "geteuid", lambda: 1000)
+        assert mod.main() == 2
+        out = capsys.readouterr().out.rstrip().splitlines()
+        assert out[0].startswith("updater: cannot_run: the updater CANNOT RUN")
+        assert "    sudo systemctl daemon-reload" in out
+        assert out[-1] == '  (docs/UPDATE.md, "Re-install")'
 
     def test_the_check_command_prints_the_self_test(self):
         src = open(os.path.join(ROOT, "scripts", "nmas-update-check"), encoding="utf-8").read()

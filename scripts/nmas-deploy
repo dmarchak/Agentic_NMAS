@@ -533,7 +533,7 @@ def wait_for_running(target, pid_before, health, unit, clock, sleep, timeout=90,
 
 
 def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
-         clock=time.time, sleep=time.sleep, unit=unit_state, ready=None) -> int:
+         clock=time.time, sleep=time.sleep, unit=unit_state, ready=None, host_check=None) -> int:
     # In the order it happened: over SSH stdout was block-buffered and the
     # verdict (stderr) printed first, above the lines that led to it.
     if hasattr(sys.stdout, "reconfigure"):
@@ -571,10 +571,87 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                               f"({LOCK_REL} is held): refused, nothing moved. Run nmas-deploy "
                               "again when it has finished (Help > About shows the last update)")
     try:
-        return _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit,
+        code = _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit,
                        ready)
     finally:
         os.close(lock)
+    # LAST on screen: the host steps, when the checkout is at the target (a
+    # refusal before anything moved has no steps to take).
+    if row.get("to") and git(repo, "rev-parse", "HEAD") == row["to"]:
+        report = host_step_report(repo, row.get("from"), row["to"], host_check)
+        if report:
+            print("\n" + report)
+    return code
+
+
+# ---------------------------------------------------------------------------
+# Host steps: what a person must still do on this host, said LAST
+# ---------------------------------------------------------------------------
+
+HOST_STEP = re.compile(r"^Host-Step:\s*(.+?)\s*$", re.M)
+#: A step naming the updater is checked by the updater's own install check.
+UPDATER_STEP = re.compile(r"\bupdater\b", re.I)
+INSTALLED_UPDATER = "/usr/local/sbin/nmas-update"
+
+
+def host_steps(repo, head, target):
+    """[{sha, step}] from the `Host-Step:` trailers of head..target, oldest first."""
+    if not head or not target or head == target:
+        return []
+    text = git(repo, "log", "--reverse", "--format=%H%x1f%B%x1e", f"{head}..{target}")
+    out = []
+    for chunk in text.split("\x1e"):
+        sha, _sep, body = chunk.strip().partition("\x1f")
+        out += [{"sha": sha, "step": s} for s in HOST_STEP.findall(body)]
+    return out
+
+
+def updater_check(repo, run=subprocess.run):
+    """(exit code, output) of the checkout's `scripts/nmas-update-check`, the
+    updater's install check (ownership, the self-test, this release's copy),
+    which prints the exact commands when anything is outstanding. None when no
+    updater is installed on this host: there is nothing to check."""
+    if not os.path.exists(INSTALLED_UPDATER):
+        return None
+    try:
+        out = run([sys.executable, os.path.join(repo, "scripts", "nmas-update-check")],
+                  capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 3, f"could not run nmas-update-check: {exc}"
+    return out.returncode, (out.stdout + out.stderr).strip()
+
+
+def host_step_report(repo, head, target, check=None):
+    """The block printed LAST after a deploy (the operator, 2026-09-30: 08dbee5
+    needed the updater re-installed, the terminal deploy said nothing, and the
+    updater stayed broken until job health caught it). Every `Host-Step:`
+    trailer in the commits just deployed, with where it can be checked whether
+    it is still outstanding; and the updater's check on every deploy, since a
+    step from an EARLIER release can still be outstanding. "" when there is
+    nothing to say."""
+    steps = host_steps(repo, head, target)
+    checked = (check or updater_check)(repo)
+    outstanding = checked is not None and checked[0] != 0
+    lines = []
+    if steps:
+        lines.append(f"HOST STEPS in the commits just deployed ({len(steps)}): each is yours "
+                     "to do on this host.")
+    for i, s in enumerate(steps, 1):
+        lines.append(f"  {i}. {s['sha'][:10]}: {s['step']}")
+        if UPDATER_STEP.search(s["step"]):
+            if checked is None:
+                lines.append("     No updater is installed on this host: nothing to re-install.")
+            elif outstanding:
+                lines.append("     STILL NEEDED. The updater's check says:")
+                lines += ["       " + l for l in checked[1].splitlines()]
+            else:
+                lines.append("     Done: nmas-update-check reads ok.")
+        else:
+            lines.append("     Not checkable from here: confirm it is done by hand.")
+    if outstanding and not any(UPDATER_STEP.search(s["step"]) for s in steps):
+        lines.append("HOST STEP OUTSTANDING from an earlier release: the updater's check says:")
+        lines += ["  " + l for l in checked[1].splitlines()]
+    return "\n".join(lines)
 
 
 def take_lock(repo):

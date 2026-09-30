@@ -257,10 +257,65 @@ def _path_active():
     return out.stdout.strip() == "active"
 
 
-INSTALL_ACTION = {"label": "Install the updater on the host (a one-time step: docs/UPDATE.md)",
-                  "reference": "docs/UPDATE.md"}
-REINSTALL_ACTION = {"label": "Re-install the updater's root-owned copies from this release "
-                             "(docs/UPDATE.md, \"Re-install\")", "reference": "docs/UPDATE.md"}
+INSTALL_ACTION = {"label": "Install the updater, once, on the host, in this checkout as the "
+                           "service user (sudo asks for the password):",
+                  "reference": "docs/UPDATE.md, \"The one-time install\""}
+REINSTALL_ACTION = {"label": "Re-install the updater's root-owned copies from this release, on "
+                             "the host, in this checkout as the service user:",
+                    "reference": "docs/UPDATE.md, \"Re-install\""}
+
+#: The exact commands, ONE owner: the row shows them with a copy button, and
+#: `nmas-update-check` (so `nmas-deploy`'s last lines) prints them. A root step
+#: is the one-time exception to "no console command on a row" (the operator,
+#: 2026-09-30: a row pointing at a document made them go looking). A test holds
+#: each line equal to docs/UPDATE.md's own.
+REINSTALL_COMMANDS = (
+    "sudo install -o root -g root -m 0755 deploy/update/nmas-update /usr/local/sbin/nmas-update",
+    "sudo install -o root -g root -m 0644 scripts/nmas-deploy /usr/local/lib/nmas-update/nmas-deploy",
+    "scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-update.path "
+    "deploy/systemd/nmas-update.service",
+    "sudo install -o root -g root -m 0644 /tmp/nmas-units/nmas-update.path "
+    "/tmp/nmas-units/nmas-update.service /etc/systemd/system/",
+    "sudo systemctl daemon-reload",
+    "scripts/nmas-update-check",
+)
+INSTALL_COMMANDS = (
+    "scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-update.path "
+    "deploy/systemd/nmas-update.service",
+    "sudo install -o root -g root -m 0755 deploy/update/nmas-update /usr/local/sbin/nmas-update",
+    "sudo install -d -o root -g root -m 0755 /usr/local/lib/nmas-update",
+    "sudo install -o root -g root -m 0644 scripts/nmas-deploy /usr/local/lib/nmas-update/nmas-deploy",
+    "sudo install -o root -g root -m 0644 /tmp/nmas-units/nmas-update.path "
+    "/tmp/nmas-units/nmas-update.service /etc/systemd/system/",
+    "sudo install -d -o root -g root -m 0755 /var/lib/nmas-update",
+    "install -d -m 0700 data/update/requests data/update/staging",
+    "sudo systemctl daemon-reload",
+    "sudo systemctl enable --now nmas-update.path",
+    "scripts/nmas-update-check",
+)
+
+
+def commands_for(commands: tuple, root: str = ROOT) -> str:
+    """The commands as one block to paste, starting in this checkout."""
+    return "\n".join((f"cd {root}",) + tuple(commands))
+
+
+def condition_since(installed: str = INSTALLED[0][1], started: float = None) -> tuple:
+    """(epoch, basis) of when the installed updater and the RUNNING release
+    began to disagree (the operator, 2026-09-30: the row read "since not
+    recorded"). It cannot be earlier than either of two measured moments, and
+    it is the later one: this release starting to run, or the installed copy
+    being written. Asked of the app process, whose start is the release's."""
+    if started is None:
+        from routes import health
+        started = health._STARTED                           # noqa: SLF001
+    try:
+        written = os.stat(installed).st_mtime
+    except OSError:
+        written = None
+    if written is not None and written > started:
+        return written, "when the installed copy was written"
+    return started, "when this release started running"
 
 
 def install_rows(state: dict = None) -> list:
@@ -285,14 +340,17 @@ def install_rows(state: dict = None) -> list:
                                      "writable only by root, then re-install from this release "
                                      "(docs/UPDATE.md)", "reference": "docs/UPDATE.md"},
                  "detail": "RUN AS ROOT and writable by someone else: " + "; ".join(s["writable"])}]
+    since, basis = condition_since() if st in ("cannot_run", "differs") else (None, "")
     if st == "cannot_run":
         return [{"unit": "updater", "what": what, "state": "cannot_run", "max_age_minutes": 0,
-                 "action": dict(REINSTALL_ACTION),
+                 "since": since, "since_basis": basis,
+                 "action": dict(REINSTALL_ACTION, command=commands_for(REINSTALL_COMMANDS)),
                  "detail": ("the updater CANNOT RUN: a request would fail before moving "
-                            "anything (its self-test, C246): " + "; ".join(s["cannot_run"]))}]
+                            "anything (its self-test, C246): " + "; ".join(s["cannot_run"])
+                            + f". It began {basis}")}]
     if st == "not_installed":
         return [{"unit": "updater", "what": what, "state": "not_installed", "max_age_minutes": 0,
-                 "action": dict(INSTALL_ACTION),
+                 "action": dict(INSTALL_ACTION, command=commands_for(INSTALL_COMMANDS)),
                  "detail": ("the Update button cannot act until it is installed; missing: "
                             + ", ".join(s["missing"]))}]
     if st == "inactive":
@@ -303,9 +361,10 @@ def install_rows(state: dict = None) -> list:
                             if s.get("path_active") is False else
                             "whether nmas-update.path is active could not be asked")}]
     return [{"unit": "updater", "what": what, "state": "differs", "max_age_minutes": 0,
-             "action": dict(REINSTALL_ACTION),
+             "since": since, "since_basis": basis,
+             "action": dict(REINSTALL_ACTION, command=commands_for(REINSTALL_COMMANDS)),
              "detail": "; ".join(s["differs"]) + ". The installed copy still works; it is "
-                                                 "the one that runs"}]
+                                                 f"the one that runs. It began {basis}"}]
 
 
 # ---------------------------------------------------------------------------

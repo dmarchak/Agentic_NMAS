@@ -89,7 +89,7 @@ def _fetch_from_real_origin(world):
 
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
-         wait=False):
+         wait=False, host_check=None):
     mod = _script()
     calls = []
 
@@ -163,7 +163,7 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
                     + (["--wait"] if wait else []),
                     get=get, run=lambda *a, **k: Out(), restart=restart,
                     health=fake_health, clock=clock, sleep=sleep, unit=unit,
-                    ready=lambda: ready)
+                    ready=lambda: ready, host_check=host_check or (lambda repo: None))
     return code, restarted, calls
 
 
@@ -841,3 +841,66 @@ class TestTheVerdictIsOfTheSetOfRuns:
         assert pending[0] == 7 and pending[1].startswith("PENDING") and "Wait" in pending[1]
         assert cancelled[0] == 8 and cancelled[1].startswith("CANCELLED")
         assert "newer commit" in cancelled[1]
+
+
+FAILING_CHECK = (2, "updater: cannot_run: the updater CANNOT RUN: runuser: gone. It began when "
+                    "this release started running\n\nRe-install the updater's root-owned copies "
+                    "from this release, on the host, in this checkout as the service user:\n"
+                    "    cd /srv/checkout\n    sudo systemctl daemon-reload")
+
+
+class TestTheHostStepsAreSaidLast:
+    """The operator, 2026-09-30: 08dbee5 needed the updater re-installed, the
+    terminal deploy said nothing, and the updater stayed broken until job
+    health caught it. Every deploy now ends with each `Host-Step:` of the
+    commits it deployed, checked where it can be, and the updater's own check."""
+
+    def _last_block(self, capsys):
+        out = capsys.readouterr().out
+        return out[out.rindex("\n\n") + 2:] if "\n\n" in out else ""
+
+    def test_each_step_is_printed_last_and_an_uncheckable_one_says_so(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"},
+                            "change\n\nHost-Step: install python3-foo on the host")
+        code, _, _ = _run(world, {sha: _run_entry(sha)})
+        block = self._last_block(capsys)
+        assert code == 0 and block.startswith("HOST STEPS in the commits just deployed (1)")
+        assert f"1. {sha[:10]}: install python3-foo on the host" in block
+        assert "Not checkable from here: confirm it is done by hand." in block
+
+    def test_an_updater_step_still_needed_prints_the_check_and_its_commands(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"}, "change\n\nHost-Step: re-install the "
+                                                   "updater's root-owned copies from this release")
+        code, _, _ = _run(world, {sha: _run_entry(sha)}, host_check=lambda repo: FAILING_CHECK)
+        block = self._last_block(capsys)
+        assert code == 0 and "STILL NEEDED. The updater's check says:" in block
+        assert block.rstrip().endswith("sudo systemctl daemon-reload")
+
+    def test_an_updater_step_done_says_done(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"}, "change\n\nHost-Step: re-install the updater")
+        _run(world, {sha: _run_entry(sha)}, host_check=lambda repo: (0, "updater: ok"))
+        assert "Done: nmas-update-check reads ok." in self._last_block(capsys)
+
+    def test_an_earlier_releases_step_is_caught_on_a_later_deploy(self, world, capsys):
+        """The operator's af8630a: deployed after 08dbee5 with its step undone."""
+        sha = world.advance({"app.py": "v = 2\n"})
+        _run(world, {sha: _run_entry(sha)}, host_check=lambda repo: FAILING_CHECK)
+        block = self._last_block(capsys)
+        assert block.startswith("HOST STEP OUTSTANDING from an earlier release")
+        assert "CANNOT RUN" in block
+
+    def test_nothing_to_say_says_nothing(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"})
+        _run(world, {sha: _run_entry(sha)}, host_check=lambda repo: (0, "updater: ok"))
+        assert "HOST STEP" not in capsys.readouterr().out
+
+    def test_a_refusal_before_anything_moved_lists_no_steps(self, world, capsys):
+        sha = world.advance({"app.py": "v = 2\n"}, "change\n\nHost-Step: install python3-foo")
+        code, _, _ = _run(world, {sha: _run_entry(sha, "failure")},
+                          host_check=lambda repo: FAILING_CHECK)
+        assert code == 1 and "HOST STEP" not in capsys.readouterr().out
+
+    def test_the_updater_check_asks_only_where_an_updater_is_installed(self, tmp_path):
+        mod = _script()
+        mod.INSTALLED_UPDATER = str(tmp_path / "absent")
+        assert mod.updater_check(str(tmp_path), run=lambda *a, **k: 1 / 0) is None

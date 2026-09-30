@@ -350,6 +350,8 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-label { font-weight: 500; }
 .att-label.muted { font-weight: 400; }
 .cmd { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+/* A multi-line command (a one-time root step) keeps its lines. */
+.cmd code { white-space: pre-wrap; }
 .cmd code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line-2);
   border-radius: 4px; padding: 2px 6px; overflow-wrap: anywhere; }
 .att-clear { display: flex; align-items: center; gap: 8px; margin: 0; background: var(--surface); border: 1px solid var(--line);

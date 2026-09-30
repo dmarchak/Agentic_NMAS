@@ -487,6 +487,17 @@ For each group in the research's Appendix A: the home it keeps, and what goes.
     answer later than its bound.
   - A multi-step operation's progress display (the Update page's stepper) is its result drawn
     in place, not narration.
+- **A toast only ANNOUNCES; it never holds a result** (the operator, 2026-09-30):
+  - A toast is for a result the person might miss: something finishing where they are not
+    looking.
+  - It always links to a result that stays (the in-flight panel's finished row, a receipt,
+    the page the result is drawn on).
+  - A toast never duplicates something already visible in place.
+  - **A failure is never toast-only** (C84): it is drawn where the person can read it again.
+  - Measured 2026-09-30: the v2 screens make no toast call at all. The 138 `showToast` calls
+    are in 21 of today's scripts, which the redesign replaces; C121's declared-green scan
+    governs those until then. A test holds the v2 screens to this rule, so the first v2
+    toast must arrive with its link.
 - **Typed confirmation, for Retire only:** type the device's name before the preview's
   confirm enables. It is the one action that takes a device out of management (R §6).
   Everything else keeps the preview's hash-bound confirm, which is already stronger than a
