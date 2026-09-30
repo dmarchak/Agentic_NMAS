@@ -158,6 +158,31 @@
         }
       };
     });
+    // The theme menu (the operator, 2026-09-30): System, Light or Dark, kept
+    // per browser by nmas_theme.js. Getters and argument-free methods only,
+    // as Alpine's CSP build evaluates.
+    A.data('theme', function () {
+      var T = root.NMAS_THEME;
+      function words(c) { return c === 'dark' ? 'Dark' : (c === 'light' ? 'Light' : 'System'); }
+      return {
+        isOpen: false,
+        choice: T ? T.get() : 'system',
+        get expanded() { return this.isOpen ? 'true' : 'false'; },
+        get label() { return 'Theme: ' + words(this.choice); },
+        get systemClass() { return this.choice === 'system' ? 'menu-item on' : 'menu-item'; },
+        get lightClass() { return this.choice === 'light' ? 'menu-item on' : 'menu-item'; },
+        get darkClass() { return this.choice === 'dark' ? 'menu-item on' : 'menu-item'; },
+        get systemChecked() { return this.choice === 'system' ? 'true' : 'false'; },
+        get lightChecked() { return this.choice === 'light' ? 'true' : 'false'; },
+        get darkChecked() { return this.choice === 'dark' ? 'true' : 'false'; },
+        toggle: function () { this.isOpen = !this.isOpen; },
+        close: function () { this.isOpen = false; },
+        pick: function (c) { this.choice = T ? T.set(c) : c; this.isOpen = false; },
+        chooseSystem: function () { this.pick('system'); },
+        chooseLight: function () { this.pick('light'); },
+        chooseDark: function () { this.pick('dark'); }
+      };
+    });
     A.data('menu', function () {
       return {
         isOpen: false,

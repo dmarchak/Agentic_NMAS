@@ -127,20 +127,39 @@
     return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
   }
 
+  /* The chart's colours are the page's tokens (nmas-v2.css), so a chart is
+   * drawn in the theme on screen; the constants are the light theme's, for a
+   * page with no stylesheet (and the duktape tests). */
+  function token(name, fallback) {
+    try {
+      var v = root.getComputedStyle(root.document.documentElement).getPropertyValue(name);
+      v = v && String(v).replace(/^\s+|\s+$/g, '');
+      return v || fallback;
+    } catch (e) { return fallback; }
+  }
+
+  function palette() {
+    var series = [];
+    for (var i = 0; i < COLOURS.length; i++) series.push(token('--series-' + i, COLOURS[i]));
+    return {series: series, axis: token('--ink-2', '#4A5260'), grid: token('--line-2', '#EEF0EC'),
+            ticks: token('--line', '#DADDE2')};
+  }
+
   function drawSeries(section, body, p) {
+    var pal = palette();
     var unit = section.getAttribute('data-panel-unit') || p.unit || '';
     var stepped = p.type === 'state-timeline';
     var width = Math.max(200, body.clientWidth || section.clientWidth - 24);
     var opts = {
       width: width, height: chartHeight(section.getAttribute('data-panel-h')), legend: {show: false}, cursor: {drag: {x: false, y: false}},
       scales: {x: {time: true}},
-      axes: [{stroke: '#4A5260', grid: {stroke: '#EEF0EC'}, ticks: {stroke: '#DADDE2'}},
-             {stroke: '#4A5260', grid: {stroke: '#EEF0EC'}, ticks: {stroke: '#DADDE2'}, size: 64,
+      axes: [{stroke: pal.axis, grid: {stroke: pal.grid}, ticks: {stroke: pal.ticks}},
+             {stroke: pal.axis, grid: {stroke: pal.grid}, ticks: {stroke: pal.ticks}, size: 64,
               values: function (u, vals) { return vals.map(function (v) { return formatValue(v, unit); }); }}],
       series: [{}]
     };
     for (var i = 0; i < p.series.length; i++) {
-      var s = {label: p.series[i].label, stroke: COLOURS[i % COLOURS.length], width: 1.5, spanGaps: false};
+      var s = {label: p.series[i].label, stroke: pal.series[i % pal.series.length], width: 1.5, spanGaps: false};
       if (stepped && root.uPlot.paths && root.uPlot.paths.stepped) s.paths = root.uPlot.paths.stepped({align: 1});
       opts.series.push(s);
     }
@@ -190,6 +209,7 @@
     var body = section.querySelector('.panel-body');
     var unit = section.getAttribute('data-panel-unit') || p.unit || '';
     if (section.__nmasChart) { section.__nmasChart.destroy(); section.__nmasChart = null; }
+    section.__nmasLast = p;
     clear(body);
     var empty = p.series ? p.series.length === 0 : (p.rows ? p.rows.length === 0 : p.value === null);
     if (p.errors && p.errors.length) body.appendChild(el('p', 'panel-error', p.errors.join('; ')));
@@ -274,6 +294,12 @@
     root.document.addEventListener('DOMContentLoaded', function () { scan(); schedule(); });
     root.document.addEventListener('htmx:afterSettle', function (e) { scan(e.target); schedule(); });
     root.document.addEventListener('visibilitychange', refreshVisible);
+    // A theme change redraws each drawn panel from its last answer, in the
+    // new colours: nothing is fetched again.
+    root.document.addEventListener('nmas:theme', function () {
+      var list = root.document.querySelectorAll('[data-panel-src]');
+      for (var i = 0; i < list.length; i++) if (list[i].__nmasLast) draw(list[i], list[i].__nmasLast);
+    });
     var pending = null;
     root.addEventListener('resize', function () {
       if (pending) root.clearTimeout(pending);
@@ -281,7 +307,7 @@
     });
   }
 
-  root.NMAS_PANELS = {formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
+  root.NMAS_PANELS = {palette: palette, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
                       chartHeight: chartHeight,
                       footWords: footWords, emptyWords: emptyWords, scan: scan};
 })(typeof window !== 'undefined' ? window : this);

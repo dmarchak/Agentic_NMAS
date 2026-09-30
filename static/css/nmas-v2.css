@@ -27,6 +27,57 @@
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
   --r: 6px; --r-card: 8px;
   --shadow: 0 8px 24px rgba(20, 32, 43, 0.18);
+  --on-accent: #FFFFFF; --on-danger: #FFFFFF;
+  --warn-line: #F2D3A8; --danger-line: #F3C2BC;
+  --scrim: rgba(20, 32, 43, 0.4);
+  --series-0: #1E5E8C; --series-1: #D97706; --series-2: #0B6B45;
+  --series-3: #6B4C9A; --series-4: #4A5260; --series-5: #0E7490;
+  color-scheme: light;
+}
+
+/* DARK (the operator, 2026-09-30). The same tokens, a second set: taken when
+   the browser prefers dark and the person has not chosen Light, or when they
+   chose Dark (`data-theme` on <html>, set by nmas_theme.js before the first
+   paint). Every colour on a v2 page is a token, so this block is the whole
+   theme; a status keeps its meaning by hue and is lightened to hold its
+   contrast on the dark ground. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0F1419; --surface: #161C23; --surface-2: #1B222A; --hover: #222B35;
+    --ink: #E6EAEE; --ink-2: #A9B3BE; --ink-3: #6E7A87;
+    --line: #2E3843; --line-2: #232C35;
+    --accent: #5AA2D8; --accent-ink: #8CC2EA; --accent-soft: #17324A;
+    --ok: #4CC38A; --ok-soft: #11301F;
+    --warn: #F0A450; --warn-mark: #F59E0B; --warn-soft: #362410;
+    --danger: #F2766B; --danger-soft: #3A1815;
+    --muted-soft: #252D36;
+    --side: #0A0F14; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #1B2B39; --side-rule: #22303D;
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+    --on-accent: #0A0F14; --on-danger: #0A0F14;
+    --warn-line: #6B4715; --danger-line: #6E2B25;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --series-0: #5AA2D8; --series-1: #F59E0B; --series-2: #4CC38A;
+    --series-3: #A98BD8; --series-4: #A9B3BE; --series-5: #2BB3CF;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0F1419; --surface: #161C23; --surface-2: #1B222A; --hover: #222B35;
+  --ink: #E6EAEE; --ink-2: #A9B3BE; --ink-3: #6E7A87;
+  --line: #2E3843; --line-2: #232C35;
+  --accent: #5AA2D8; --accent-ink: #8CC2EA; --accent-soft: #17324A;
+  --ok: #4CC38A; --ok-soft: #11301F;
+  --warn: #F0A450; --warn-mark: #F59E0B; --warn-soft: #362410;
+  --danger: #F2766B; --danger-soft: #3A1815;
+  --muted-soft: #252D36;
+  --side: #0A0F14; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #1B2B39; --side-rule: #22303D;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --on-accent: #0A0F14; --on-danger: #0A0F14;
+  --warn-line: #6B4715; --danger-line: #6E2B25;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --series-0: #5AA2D8; --series-1: #F59E0B; --series-2: #4CC38A;
+  --series-3: #A98BD8; --series-4: #A9B3BE; --series-5: #2BB3CF;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -49,7 +100,7 @@ a { color: var(--accent); }
 .sidebar { width: 248px; flex-shrink: 0; background: var(--side); color: var(--side-ink); display: flex; flex-direction: column;
   padding: 20px 12px; gap: 2px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px 10px; }
-.brand-mark { width: 30px; height: 30px; border-radius: 7px; background: var(--accent); color: #FFF; display: flex;
+.brand-mark { width: 30px; height: 30px; border-radius: 7px; background: var(--accent); color: var(--on-accent); display: flex;
   align-items: center; justify-content: center; font-weight: 600; }
 .brand-words { display: flex; flex-direction: column; flex-grow: 1; }
 .brand-name { color: #FFF; font-weight: 600; font-size: 15px; }
@@ -62,7 +113,7 @@ a { color: var(--accent); }
 .nav-rule { height: 1px; background: var(--side-rule); margin: 8px 6px; }
 .sidebar .grow { min-height: 12px; }
 .spike-note { font-size: 11px; color: var(--side-ink-2); padding: 0 10px; margin: 0 0 6px; }
-.count { background: var(--danger); color: #FFF; border-radius: 10px; font-size: 11px; font-weight: 600; padding: 1px 7px; }
+.count { background: var(--danger); color: var(--on-danger); border-radius: 10px; font-size: 11px; font-weight: 600; padding: 1px 7px; }
 .count-zero { background: var(--side-on); color: var(--side-ink-2); }
 .count-unknown { background: var(--warn-mark); }
 .drawer-close, .menu-btn { display: none; }
@@ -110,7 +161,7 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   color: var(--ink); border-radius: var(--r); padding: 8px 14px; font: inherit; font-size: 14px; font-weight: 500;
   text-decoration: none; cursor: pointer; white-space: nowrap; }
 .btn:hover { background: var(--hover); }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #FFF; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn-primary:hover { background: var(--accent-ink); }
 .btn-outline { border-color: var(--accent); color: var(--accent); }
 .btn-small { padding: 5px 10px; font-size: 13px; }
@@ -178,9 +229,9 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .notice { display: flex; gap: 10px; align-items: flex-start; border-radius: var(--r-card); padding: 10px 14px; font-size: 13px;
   border: 1px solid var(--line); background: var(--surface); }
 .notice p { margin: 0; }
-.notice-warn { background: var(--warn-soft); border-color: #F2D3A8; }
+.notice-warn { background: var(--warn-soft); border-color: var(--warn-line); }
 .notice-warn > .ico { color: var(--warn-mark); }
-.notice-danger { background: var(--danger-soft); border-color: #F3C2BC; }
+.notice-danger { background: var(--danger-soft); border-color: var(--danger-line); }
 .notice-danger > .ico { color: var(--danger); }
 .notice-muted { background: var(--surface-2); color: var(--ink-2); }
 
@@ -213,8 +264,8 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .panel-foot { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .swatch { width: 10px; height: 3px; border-radius: 2px; background: var(--accent); }
-.swatch.s0 { background: #1E5E8C; } .swatch.s1 { background: #D97706; } .swatch.s2 { background: #0B6B45; }
-.swatch.s3 { background: #6B4C9A; } .swatch.s4 { background: #4A5260; } .swatch.s5 { background: #0E7490; }
+.swatch.s0 { background: var(--series-0); } .swatch.s1 { background: var(--series-1); } .swatch.s2 { background: var(--series-2); }
+.swatch.s3 { background: var(--series-3); } .swatch.s4 { background: var(--series-4); } .swatch.s5 { background: var(--series-5); }
 .stat { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 0; }
 .stat-value { font-size: 30px; font-weight: 600; font-family: var(--mono); }
 .stat-ok { color: var(--ok); } .stat-warn { color: var(--warn-mark); } .stat-danger { color: var(--danger); }
@@ -231,7 +282,7 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   .sidebar { position: fixed; left: 0; top: 0; bottom: 0; height: auto; z-index: 40; transform: translateX(-100%);
     transition: transform 180ms ease; width: 280px; }
   .sidebar.open { transform: translateX(0); }
-  .scrim { display: block; position: fixed; inset: 0; background: rgba(20, 32, 43, 0.4); z-index: 30; }
+  .scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 30; }
   .drawer-close, .menu-btn { display: inline-flex; }
   .topbar { padding: 0 12px; gap: 10px; height: 52px; background: var(--side); color: #FFF; border-bottom: none; }
   .net-label, .who-name, .live-word, .jump kbd { display: none; }
@@ -261,6 +312,11 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .who-none .who-name { color: var(--warn); }
 .selector-why { font-size: 12px; color: var(--ink-2); }
 .menu-item.off { color: var(--ink-3); cursor: default; }
+/* the theme menu (the operator, 2026-09-30) */
+button.menu-item { border: none; background: none; font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.menu-item .tick { width: 14px; visibility: hidden; }
+.menu-item.on .tick { visibility: visible; }
+.theme-menu { min-width: 200px; }
 .menu-item.off:hover { background: none; }
 .menu-why { display: block; font-size: 11px; color: var(--ink-3); }
 button.who { border: none; background: transparent; font: inherit; cursor: pointer; padding: 0; }

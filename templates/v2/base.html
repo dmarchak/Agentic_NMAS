@@ -6,6 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="htmx-config" content='{"allowEval": false, "allowScriptTags": false, "includeIndicatorStyles": false, "historyCacheSize": 0}'>
 <title>{% block title %}NMAS{% endblock %}</title>
+<meta name="color-scheme" content="light dark">
+<script src="{{ url_for('static', filename='js/nmas_theme.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/nmas-v2.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/uplot/uPlot.min.css') }}">
 <script defer src="{{ url_for('static', filename='js/vendor/htmx.org/htmx.min.js') }}"></script>
@@ -52,6 +54,15 @@
     <span class="grow"></span>
     <span class="strip" id="nmas-strip" hx-get="{{ url_for('device_v2.strip') }}" hx-trigger="load, nmas:integration_health from:body" hx-swap="innerHTML"></span>
     <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Live</span></span>
+    <div class="menu-wrap theme" x-data="theme" x-on:keydown.escape="close" x-on:click.outside="close">
+      <button type="button" class="icon-btn" aria-haspopup="true" x-bind:aria-expanded="expanded" x-bind:aria-label="label" x-bind:title="label" x-on:click="toggle">{{ icon('theme', 18) }}</button>
+      <div class="menu theme-menu" role="menu" aria-label="Theme" x-show="isOpen" x-cloak>
+        <p class="menu-note">Kept in this browser only.</p>
+        <button type="button" role="menuitemradio" x-bind:class="systemClass" x-bind:aria-checked="systemChecked" x-on:click="chooseSystem">{{ icon('tick', 14, 'tick') }}<span class="grow">System</span><span class="muted small">follows this device</span></button>
+        <button type="button" role="menuitemradio" x-bind:class="lightClass" x-bind:aria-checked="lightChecked" x-on:click="chooseLight">{{ icon('tick', 14, 'tick') }}<span class="grow">Light</span></button>
+        <button type="button" role="menuitemradio" x-bind:class="darkClass" x-bind:aria-checked="darkChecked" x-on:click="chooseDark">{{ icon('tick', 14, 'tick') }}<span class="grow">Dark</span></button>
+      </div>
+    </div>
     {% include "v2/_who.html" %}
   </header>
   <main id="main" class="main">
