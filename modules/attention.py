@@ -1194,8 +1194,12 @@ def ci_source(cached=None) -> dict:
         rows.append(row(source="ci", key=commit[:10], level=level,
                         what=f"The running commit {commit[:10]}: {words}",
                         cause=v.get("sentence") or "no sentence recorded",
-                        action={"label": "Read nmas-deploy's sentence above: it names the run and "
-                                         "what it found", "known": False}))
+                        action=({"label": "Deploy a commit CI passed (nmas-deploy refuses one it "
+                                          "did not; a person's step)",
+                                 "command": "scripts/nmas-deploy --wait"}
+                                if v["state"] in ("failed", "cancelled") else
+                                {"label": "Read nmas-deploy's sentence above: it names the run "
+                                          "and what it found", "known": False})))
     return source_result("ci", "Running commit's CI", read_at=started, took_ms=took, rows=rows,
                          value_at=value_at, stale_after_seconds=promise, reader="ci-verdict",
                          checked=f"{commit[:10]}: {v.get('state')}")
@@ -1317,6 +1321,56 @@ def netbox_secrets_source(cached=None) -> dict:
 # Source: history committed and not on its remote (C223)
 # ---------------------------------------------------------------------------
 
+_PUSHED_LEVEL = {"behind": "warning", "behind_unfetched": "warning", "not_on_remote": "warning"}
+
+
+def pushed_source(cached=None) -> dict:
+    """The host running something other than what is pushed (the operator,
+    2026-09-30: the commit left the top bar, so when it is wrong it is here),
+    from the `app-pushed` reader: this process's commit against origin/main,
+    asked by `git ls-remote`. Quiet at the tip; a row when behind or off it."""
+    from modules import reader_job
+    from modules.readers import app_pushed
+    from routes import health
+
+    started = time.time()
+    got = reader_job.read_cached("app-pushed") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    label = "Running commit against origin/main"
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("pushed", label, read_at=started, took_ms=took,
+                             error=f"not compared yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    running = str(v.get("running") or "")
+    if running != str(health._COMMIT or ""):
+        return source_result("pushed", label, read_at=started, took_ms=took,
+                             value_at=value_at, stale_after_seconds=promise,
+                             checked=f"the stored comparison is for {running[:10]}, not the running "
+                                     f"{str(health._COMMIT)[:10]}: not compared yet")
+    rows = []
+    if v.get("state") in _PUSHED_LEVEL:
+        sentence = app_pushed.words(v)
+        action = ({"label": "Deploy what is pushed (nmas-deploy fetches, waits for CI and "
+                            "restarts; a person's step)", "command": "scripts/nmas-deploy --wait"}
+                  if v["state"] != "not_on_remote" else
+                  {"label": "The host should run only pushed commits: find where this one came "
+                            "from before deploying over it", "known": False})
+        rows.append(row(source="pushed", key=running[:10], level=_PUSHED_LEVEL[v["state"]],
+                        what=sentence[0].upper() + sentence[1:],
+                        cause=f"origin/{v.get('branch') or 'main'} was asked with git ls-remote; "
+                              "the host moves only when a person deploys",
+                        action=action))
+    return source_result("pushed", label, read_at=started, took_ms=took, rows=rows,
+                         value_at=value_at, stale_after_seconds=promise, reader="app-pushed",
+                         checked=app_pushed.words(v))
+
+
 def remote_source(cached=None) -> dict:
     """A list whose commits are not on its remote, from the `remote-publication`
     reader: HEAD against the remote's own branch, asked by `git ls-remote`,
@@ -1392,7 +1446,7 @@ def remote_source(cached=None) -> dict:
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
-           reachability_source, netbox_secrets_source, remote_source)
+           reachability_source, netbox_secrets_source, remote_source, pushed_source)
 
 
 def _attach(rows: list) -> list:

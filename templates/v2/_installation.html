@@ -1,0 +1,31 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- About this installation (routes/v2.installation): each fact from its one source. -#}
+{%- set CI_KIND = {'verified': 'ok', 'failed': 'danger', 'cancelled': 'warn', 'pending': 'warn', 'could_not_ask': 'muted', 'not_judged': 'muted', 'unknown': 'muted'} -%}
+{%- set PUSHED_KIND = {'at_tip': 'ok', 'behind': 'warn', 'behind_unfetched': 'warn', 'not_on_remote': 'warn'} -%}
+<section class="card" id="installation" hx-get="{{ url_for('v2.installation_card') }}" hx-swap="outerHTML"
+         hx-trigger="nmas:ci_verdict from:body, nmas:app_version from:body, nmas:job_health from:body">
+  <div class="card-head"><h2>About this installation</h2></div>
+  <dl class="facts">
+    <div><dt>Running commit</dt><dd>
+      {%- if inst.running %}<span class="mono">{{ inst.running[:10] }}</span>{% if inst.subject %} · {{ inst.subject }}{% endif %}
+      <span class="muted"> · loaded {{ stamp(inst.started_at) }} by process {{ inst.pid }}</span>
+      {%- else %}unknown <span class="muted">· the loaded commit could not be read</span>{% endif -%}
+    </dd></div>
+    <div><dt>CI verdict</dt><dd>
+      {{ badge(inst.ci.state or 'unknown', CI_KIND.get(inst.ci.state, 'muted')) }} {{ inst.ci.sentence or '' }}
+      {%- if inst.ci.value_at %}<span class="muted"> · judged {{ stamp(inst.ci.value_at) }}</span>{% endif -%}
+    </dd></div>
+    <div><dt>Pushed</dt><dd>
+      {{ badge({'at_tip': 'at the tip', 'behind': 'behind', 'behind_unfetched': 'behind', 'not_on_remote': 'not pushed'}.get(inst.pushed.state, inst.pushed.state), PUSHED_KIND.get(inst.pushed.state, 'muted')) }} {{ inst.pushed.words }}
+      {%- if inst.pushed.value_at %}<span class="muted"> · asked {{ stamp(inst.pushed.value_at) }}</span>{% endif -%}
+    </dd></div>
+    <div><dt>Checkout</dt><dd>
+      {{ badge({'ok': 'the same commit', 'mixed_version': 'MIXED VERSION'}.get(inst.version.state, inst.version.state or 'unknown'), 'ok' if inst.version.state == 'ok' else ('danger' if inst.version.state == 'mixed_version' else 'muted')) }} {{ inst.version.detail or '' }}
+    </dd></div>
+    <div><dt>Who you are</dt><dd>
+      {%- if who.identified %}{{ who.name }} <span class="muted">· verified by Cloudflare Access</span>
+      {%- else %}Not identified <span class="muted">· {{ who.why }}</span>{% endif -%}
+    </dd></div>
+  </dl>
+  <p class="card-foot">Quiet when fine: the top bar carries no commit. A commit CI did not pass, a host behind what is pushed, or a mixed version is a row on <a href="{{ url_for('v2.landing') }}">Needs attention</a> instead.</p>
+</section>

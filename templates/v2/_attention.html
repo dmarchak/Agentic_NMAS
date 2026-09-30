@@ -1,0 +1,69 @@
+{%- from "v2/_macros.html" import icon, stamp -%}
+{#- Needs attention's list: attention.needs_attention(), masked (routes/v2._attention).
+    Re-fetched when any reader it draws from announces (nmas_v2.js relays each key). -#}
+{%- set LEVEL_WORDS = {'danger': 'Critical', 'warning': 'Warning', 'unknown': 'Unknown'} -%}
+{%- set rows = a.rows or [] -%}
+{%- set sources = a.sources or [] -%}
+<div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
+     hx-trigger="nmas:job_health from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:integration_health from:body, nmas:ci_verdict from:body, nmas:app_version from:body, nmas:reachability from:body, nmas:netbox from:body, nmas:remote from:body, nmas:baselines from:body, nmas:drift from:body">
+  <p class="att-summary">
+    {%- if rows %}<strong>{{ rows|length }} item{{ '' if rows|length == 1 else 's' }}</strong>
+    {%- else %}<strong>Nothing needs attention</strong>{% endif %}
+    · {{ sources|length }} source{{ '' if sources|length == 1 else 's' }} checked
+    {%- if a.unreadable %} · <span class="warn-text">{{ a.unreadable|length }} could not be read: {{ a.unreadable|join(', ') }}</span>{% endif -%}
+  </p>
+  {%- if rows %}
+  <div class="att-list">
+    {%- for r in rows %}
+    <article class="att att-{{ r.level }}" data-attention-row="{{ r.id }}">
+      <div class="att-level">{{ LEVEL_WORDS.get(r.level, r.level) }}</div>
+      <h2 class="att-what">{{ r.what }}</h2>
+      <p class="att-cause">{{ r.cause }}</p>
+      {%- set ops = (r.operands or {}) %}
+      {%- if ops %}
+      <dl class="att-ops">
+        {%- for k, v in ops.items() if k != 'members' %}<div><dt>{{ k }}</dt><dd>{{ v if v is string else (v|join(', ') if v is iterable and v is not mapping else v) }}</dd></div>{% endfor %}
+      </dl>
+      {%- if ops.members %}
+      <ul class="att-members">
+        {%- for m in ops.members %}<li>{{ m.rule }} ({{ m.kind }}){% if m.device %} on <strong>{{ m.device }}</strong>{% endif %}{% if m.device_note %}: {{ m.device_note }}{% endif %}</li>{% endfor %}
+      </ul>
+      {%- endif %}
+      {%- endif %}
+      {%- for x in r.attached or [] %}<p class="att-also">Also: {{ x.what }} ({{ x.source }})</p>{% endfor %}
+      <p class="att-meta">
+        {%- if r.devices %}{{ r.devices|join(', ') }} · {% endif -%}
+        since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %} · {{ r.source }}
+      </p>
+      <div class="att-action">
+        {%- for d in (r.devices or [])[:3] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d) }}">Open {{ d }}</a>{% endfor %}
+        <span class="att-label{% if r.action.known == false %} muted{% endif %}">{{ r.action.label }}</span>
+        {%- if r.action.command %}
+        <span class="cmd"><code>{{ r.action.command }}</code><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ r.action.command }}" x-on:click="copy" x-text="label">Copy</button></span>
+        {%- endif %}
+        {%- if r.action.reference %}<span class="muted">({{ r.action.reference }})</span>{% endif %}
+        {%- if r.action.open %}<a class="btn btn-small" href="{{ url_for('index') }}">Open on today's page</a>{% endif %}
+      </div>
+    </article>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  <p class="att-clear">{{ icon('check', 16) }} Every source answered and none reports anything a person must do.</p>
+  {%- endif %}
+  <details class="evidence">
+    <summary>What was checked · {{ sources|length }} sources</summary>
+    <table class="table">
+      <thead><tr><th>Source</th><th>What it found</th><th>Value from</th><th>Rows</th></tr></thead>
+      <tbody>
+      {%- for s in sources %}
+        <tr class="{{ 'row-warn' if s.state != 'read' else '' }}">
+          <td>{{ s.label }}</td>
+          <td>{{ s.checked or ('could not be read' if s.state != 'read' else '') }}</td>
+          <td>{% if s.value_at %}{{ stamp(s.value_at) }}{% else %}<span class="muted">not recorded</span>{% endif %}<span class="muted small"> · read in {{ s.took_ms }} ms</span></td>
+          <td>{{ s.count }}</td>
+        </tr>
+      {%- endfor %}
+      </tbody>
+    </table>
+  </details>
+</div>

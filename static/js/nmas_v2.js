@@ -14,7 +14,8 @@
 
   /* The data keys a v2 fragment can listen for (modules/invalidation.py's
      vocabulary; the readers that announce them). */
-  var KEYS = ['reachability', 'integration_health', 'alerts', 'freshness', 'drift', 'dashboards'];
+  var KEYS = ['reachability', 'integration_health', 'alerts', 'freshness', 'drift', 'dashboards',
+              'job_health', 'ci_verdict', 'app_version', 'netbox', 'remote', 'baselines'];
 
   /* PURE: an age in words, from two times in milliseconds. */
   function ageWords(thenMs, nowMs) {
@@ -75,6 +76,12 @@
   function relayFreshness() { relay('freshness'); }
   function relayDrift() { relay('drift'); }
   function relayDashboards() { relay('dashboards'); }
+  function relayJobHealth() { relay('job_health'); }
+  function relayCiVerdict() { relay('ci_verdict'); }
+  function relayAppVersion() { relay('app_version'); }
+  function relayNetbox() { relay('netbox'); }
+  function relayRemote() { relay('remote'); }
+  function relayBaselines() { relay('baselines'); }
 
   function wireAnnouncements() {
     var NMAS = root.NMAS;
@@ -85,6 +92,12 @@
     NMAS.subscribe('freshness', 'v2Freshness', relayFreshness);
     NMAS.subscribe('drift', 'v2Drift', relayDrift);
     NMAS.subscribe('dashboards', 'v2Dashboards', relayDashboards);
+    NMAS.subscribe('job_health', 'v2JobHealth', relayJobHealth);
+    NMAS.subscribe('ci_verdict', 'v2CiVerdict', relayCiVerdict);
+    NMAS.subscribe('app_version', 'v2AppVersion', relayAppVersion);
+    NMAS.subscribe('netbox', 'v2Netbox', relayNetbox);
+    NMAS.subscribe('remote', 'v2Remote', relayRemote);
+    NMAS.subscribe('baselines', 'v2Baselines', relayBaselines);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
@@ -102,6 +115,18 @@
     tab.setAttribute('aria-selected', 'true');
   }
 
+  /* No clipboard (an http page, an old browser): select the command beside
+     the button, so a person copies it by hand, never nothing. */
+  function selectText(button) {
+    var code = button && button.parentNode ? button.parentNode.querySelector('code') : null;
+    if (!code || !root.getSelection || !root.document.createRange) return;
+    var range = root.document.createRange();
+    range.selectNodeContents(code);
+    var sel = root.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   function registerAlpine() {
     var A = root.Alpine;
     A.data('frame', function () {
@@ -115,6 +140,21 @@
           var box = form.querySelector('input[name="name"]');
           var target = jumpTarget(form.getAttribute('data-base'), box && box.value);
           if (target) root.location.assign(target);
+        }
+      };
+    });
+    A.data('copy', function () {
+      return {
+        copied: false,
+        get label() { return this.copied ? 'Copied' : 'Copy'; },
+        copy: function () {
+          var self = this, text = this.$el.getAttribute('data-copy') || '';
+          var done = function () { self.copied = true; root.setTimeout(function () { self.copied = false; }, 1500); };
+          if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) {
+            root.navigator.clipboard.writeText(text).then(done, function () { selectText(self.$el); });
+          } else {
+            selectText(self.$el);
+          }
         }
       };
     });

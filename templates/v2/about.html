@@ -1,0 +1,23 @@
+{%- extends "v2/base.html" -%}
+{% block title %}About · Help · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Help</h1>
+    <p class="sub">The manual, and what this installation is running.</p>
+  </div>
+</div>
+<div class="help-grid">
+  <nav class="helpnav" aria-label="Help">
+    <p class="helpnav-head">Getting started</p>
+    {% for label in ['Onboard a device', 'Deploy a change', 'Restore'] %}<span class="helpnav-item off" aria-disabled="true" title="The manual comes with the redesign (brief section 10)">{{ label }}</span>{% endfor %}
+    <p class="helpnav-head">How it works</p>
+    <span class="helpnav-item off" aria-disabled="true" title="The manual comes with the redesign (brief section 10)">Screens</span>
+    <p class="helpnav-head">About</p>
+    <a class="helpnav-item on" aria-current="page" href="{{ url_for('v2.about') }}">About this installation</a>
+  </nav>
+  <div class="help-body">
+    {% include "v2/_installation.html" %}
+  </div>
+</div>
+{% endblock %}

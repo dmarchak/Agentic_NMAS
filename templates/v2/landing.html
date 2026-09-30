@@ -1,0 +1,30 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import stamp, badge -%}
+{% block title %}Needs attention · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Needs attention</h1>
+    <p class="sub">What is wrong, and what needs a person. Each item names its cause and the one action that addresses it.</p>
+  </div>
+</div>
+{% include "v2/_attention.html" %}
+<section class="card">
+  <div class="card-head"><h2>Recent changes</h2></div>
+  {%- if recent.state == 'unreadable' %}
+  <p class="warn-text">The receipts of {{ recent.list }} could not be read. This is not the same as no changes.</p>
+  {%- elif not recent.rows %}
+  <p class="muted">No deploy or restore recorded for {{ recent.list }} yet.</p>
+  {%- else %}
+  <ul class="recent">
+    {%- for r in recent.rows %}
+    <li>
+      <span class="grow"><strong>{{ r.action|capitalize }} {{ r.device }}</strong> · {{ r.outcome }}{% if r.program_lines %} · {{ r.program_lines }} line{{ '' if r.program_lines == 1 else 's' }}{% endif %}{% if r.reason %}<span class="muted"> · {{ r.reason }}</span>{% endif %}</span>
+      <span class="muted small">{{ stamp(r.at) }}{% if r.actor %}, by {{ r.actor }}{% endif %}</span>
+    </li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  <p class="card-foot">Deploys and restores, from their receipts. A capture's record is its commit, in the golden history.</p>
+</section>
+{% endblock %}

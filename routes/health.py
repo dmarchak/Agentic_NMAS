@@ -49,9 +49,11 @@ _COMMIT, _COMMIT_ERROR = _commit_loaded()
 _STARTED = time.time()
 
 
-@bp.route("/health/version", methods=["GET"])
-def version():
-    """The status bar's version item, COMPOSED from answers that each have
+def version_facts() -> dict:
+    """What `/health/version` serves, for any page that draws it (Help >
+    About in the redesign): ONE composition, never a second.
+
+    The status bar's version item, COMPOSED from answers that each have
     one implementation, never computed here (the operator, 2026-09-28):
     what is running is `_COMMIT` (what `/health` serves `nmas-deploy`);
     whether it is the checkout's commit is job health's running-version row
@@ -89,7 +91,13 @@ def version():
     else:
         body["ci"] = dict(cmeta, state=ci.get("state"), sentence=ci.get("sentence"),
                           commit=ci.get("commit"))
-    return jsonify(body)
+    return body
+
+
+@bp.route("/health/version", methods=["GET"])
+def version():
+    """The status bar's version item: `version_facts()`, as JSON."""
+    return jsonify(version_facts())
 
 
 @bp.route("/health", methods=["GET"])

@@ -465,7 +465,9 @@ session needs no reconstruction:
   on look, smoothness and the phone, then on the technical measures. **BUILT 2026-09-30** at
   `/v2/device/<name>`; its measures are in NSOT_GUI_BRIEF 9b. **Option A APPROVED
   (2026-09-30)** after the operator used it on desktop and phone; the review's fixes are in the
-  brief (9b). Step 4 (build) proceeds in A.
+  brief (9b). Step 4 (build) proceeds in A: the landing page (Needs attention) and Help >
+  About built the same day, with the commit out of the top bar and a Needs attention row when
+  the host runs behind what is pushed (the `app-pushed` reader).
 
 **The order from here (the operator, 2026-09-29), each step waiting for sign-off:**
 1. the brief updated with the integration screens, the rule and its classification, and the

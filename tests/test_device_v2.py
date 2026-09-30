@@ -479,8 +479,9 @@ class TestTheShippedScripts:
         keys = json.loads(_eval("nmas_v2.js", "NMAS_V2", "KEYS"))
         assert keys and set(keys) <= set(invalidation.VOCABULARY)
         heard = " ".join(_get(lab, u)[1] for u in ("/v2/device/r3", "/v2/device/r3/overview",
-                                                    "/v2/device/r3/monitoring"))
-        assert len(keys) == 6
+                                                    "/v2/device/r3/monitoring", "/v2/attention",
+                                                    "/v2/help/installation"))
+        assert len(keys) == 12
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")
