@@ -665,6 +665,129 @@ Nothing studied requires what Bootstrap lacks.
 sidebar item. That is the same work 7.x does screen by screen, now done in the new frame
 rather than the old tabs.
 
+### 9b. The costing, after the mockups (step c, 2026-09-30)
+
+**The question** (the operator): does the current stack build the mockups WELL, not merely
+possibly? And if not, what does the alternative cost, honestly? Three options, judged
+against the screens the mockups actually hold.
+
+**What was measured first (2026-09-30):**
+- **Front end today:** 41 script files, 9,552 lines, plus 8,406 lines of templates. 67 test
+  files read or EXECUTE the shipped JavaScript, most of them in duktape, which runs
+  ECMAScript 5.1 only.
+- **The Content-Security-Policy** (`modules/csp.py`): `script-src 'self' 'unsafe-inline'`,
+  with no `unsafe-eval`. Inline handlers keep `unsafe-inline` there (about 300 to migrate).
+- **Node:** absent on the laptop and in CI. On the host, node 18.19.1 from apt, with no npm.
+- **Vendoring:** every front-end library is hash-pinned in `static/js/vendor/MANIFEST.json`
+  and checked against its registry (C123). Nothing loads from a CDN.
+
+**The screens, sorted by what they demand of a stack:**
+- **Server-shaped (the large majority):** Needs attention, Devices, History, the NetBox
+  browser, the DHCP lists, Templates, Credentials, Settings, the manual and its side panel,
+  every preview-confirm-result, the running stepper, and the device page's tabs other than
+  Monitoring. These are lists, filters, paged tables, forms and fragments that change when
+  the server announces something (the live-data contract).
+- **Client-shaped (two islands):**
+  - **the native panel renderer:** uPlot charts, stat, gauge, bar gauge, table and logs
+    panels, the variables bar, units, thresholds and overrides, lazy rendering for a
+    124-panel dashboard;
+  - **the query builder:** a form whose state produces query text live, with templates and
+    saved queries.
+
+**Option A: server-rendered Jinja components, htmx for fragments, Alpine for local state,
+and two ES-module islands. No build step.**
+- **How each screen is built:**
+  - **Server-shaped screens:** a Jinja macro per component rule (section 6). htmx swaps
+    fragments, and a filter or a page is a URL. A panel re-fetches its fragment when the
+    socket announces its key: `nmas_invalidation.js` stays, and dispatches a DOM event htmx
+    listens for. The side help panel is an htmx fetch of a manual section.
+  - **The stepper:** a server fragment, re-rendered on each progress announcement, so its
+    steps come from the code's own list by construction, with no client model to drift.
+  - **Menus, tabs, disclosure, the selection bar:** Alpine.
+  - **The islands:** vanilla ES modules over uPlot. The builder is an Alpine component with
+    a small query model.
+- **What it adds:** htmx, Alpine (its CSP build), uPlot and the IBM Plex fonts, each
+  vendored and hash-pinned.
+- **The honest costs:**
+  1. **CSP:** Alpine's standard build evaluates expressions with `new Function`, which
+     needs `unsafe-eval`. Its CSP build does not, and restricts attributes to names
+     registered with `Alpine.data`, so it is more verbose. htmx is configured with
+     `allowEval: false` and without `hx-on`. The other side: because every page is rebuilt,
+     the inline handlers go page by page, so `script-src` can finally drop
+     `unsafe-inline`. That is a security gain the current pages cannot reach cheaply.
+  2. **The mechanised checks change readers.** The payload-to-render, results-drawn,
+     invalidation and concepts checks read JavaScript renderers today. With rendering on the
+     server they read HTML fragments from the test client instead. That is stronger (the
+     test sees what the browser gets, with no duktape stub), but each check's reader is
+     rewritten, and its floors and controls re-proven. That is the largest cost in A.
+  3. **The islands need a modern engine to test.** Duktape cannot run ES2015 modules or
+     uPlot. Node goes into CI and onto the laptop; the host has it. The islands' pure parts
+     are tested in node: unit formatting, threshold colours, variable interpolation, and the
+     builder's model-to-text. Drawing is the library's, and is judged by a person.
+  4. **Bootstrap:** the mockups' design system does not need it, and its CSS fights the
+     tokens. It is retired page by page, with Alpine and the `<dialog>` element in place of
+     its modals and dropdowns. CLAUDE.md's "Bootstrap 5 only" convention is rewritten when
+     this is decided.
+- **The islands' size, from the measured dashboards:**
+  - **The panel renderer:** seven panel types, dashboard variables (319 of 343 queries use
+    one), units, thresholds and overrides, the `gridPos` layout and its phone collapse, lazy
+    rendering, and the embedded fallback. A few thousand lines of JavaScript, plus a Python
+    route that builds each `api/ds/query` request from the stored dashboard model (the
+    browser names a dashboard and a panel, never a raw query, on this path), with its bounds.
+  - **The dashboard models:** a reader job, as every outside read is.
+  - **The builder:** smaller, because it never parses hand-written PromQL back into controls.
+    It says which parts it no longer understands.
+
+**Option B: a single-page framework (React, Vue or Svelte) with a build step.**
+- **What it buys:** a component model on the client, client-side navigation without a
+  round trip, and a larger ecosystem of components.
+- **What it costs:**
+  1. **A toolchain none of the three machines has:** npm, a lockfile and a bundler on the
+     laptop and in CI. Then either the host builds (it has no npm) or built bundles are
+     committed.
+  2. **A dependency tree the vendoring discipline cannot hold.** Each library today is a
+     named, hash-pinned file checked against its registry. A bundler's dev tree is hundreds
+     of packages. It needs its own audit posture, which this project does not have.
+  3. **Every screen rewritten as components,** and the back end made JSON-only where it
+     renders pages today.
+  4. **The guarantees rebuilt in a second test stack.** The 67 test files that read or
+     execute the shipped pages are retired. The mechanised checks built on them (payload to
+     render, reachability, requests resolve, results drawn, concepts taught) are rebuilt for
+     components, or lost. They are where C55, C85, C121 and others were caught.
+- **What it does better, for these mockups:** tab changes without a round trip (htmx's
+  partial swap is one LAN request), and richer client state in the two islands. The islands
+  are the same work in either option, because uPlot is imperative and the renderer is its
+  own logic either way.
+
+**Option C: server rendering, with the islands as Preact and htm ES modules, no build step.**
+Like A, but the islands get a component model with no bundler (both vendored, about 10 KB).
+It is worth choosing only if the builder's state outgrows an Alpine component. The spike
+below decides.
+
+**Recommendation: A**, with C held for the islands if the spike shows the builder needs it.
+- **The large majority of the screens are server-shaped,** which A does best: fewer moving
+  parts, fragments the tests can read directly, and the live-data contract already built.
+- **The two client-heavy screens are islands in every option,** so a framework would buy
+  little where it matters and cost the most where the project's guarantees live.
+- **A is also the route to `script-src` without `unsafe-inline`.**
+- **"Rather rewire than ship a compromise" does not argue for B here:** nothing in the
+  mockups is built worse by A.
+
+**What the recommendation rests on, stated so it can be checked: a spike before commitment.**
+Build the device page's Overview and its Monitoring tab in A, rendering `rcn-lab1-snmp`'s
+three device panels natively. Measure:
+- page weight, and time to interactive through the tunnel and on a phone;
+- that the CSP holds with no `unsafe-eval`;
+- how many lines each part took;
+- that a fragment test and a node test each catch a planted defect.
+
+If A builds it badly, the spike says where, and B or C is costed against that screen rather
+than argued in general.
+
+**No time forecast yet, deliberately.** A forecast is made from a finished stage of the same
+kind (NSOT_WRITEUP's rule), and no front-end rebuild has finished here. The spike is the
+first measurement, and the forecast follows from it.
+
 ## 10. The manual
 
 - **Where it lives:** Markdown in `docs/manual/`, versioned with the code, in the same
@@ -870,18 +993,82 @@ missing feature.
 
 **Monitoring (Grafana and Prometheus): both, for different jobs.** The operator asked for
 both, with costs.
-- **Native charts, drawn in the design system:** the key ones only.
-  - **Which:** reachability, CPU, memory, interface throughput and errors, and heartbeat
-    arrivals.
-  - **How:** drawn from bounded PromQL range queries through the NMAS's Prometheus client.
-  - **Why:** they work at phone width, match the look, and carry the live-data contract's
-    age stamp.
-  - **Cost:**
-    - a vendored time-series library (uPlot, MIT, about 45 KB, fast at thousands of
-      points), hash-pinned (C123);
-    - one bounded read route per chart family;
-    - defining the chart set, which is ours to own.
-  - They never try to be Grafana: a chart links to its Grafana dashboard on desktop.
+- **Native panels: EVERY panel of every dashboard, rendered from the dashboard's own
+  definition** (the operator, 2026-09-30, replacing "the key ones only"). Nothing is
+  hand-drawn and no chart set is chosen by us. The app reads each dashboard's JSON model from
+  Grafana (`api/dashboards/uid/<uid>`) and renders every panel from it, so a panel added in
+  Grafana appears in the app with no code change.
+  - **Measured on the host (2026-09-30, read-only):** 5 dashboards, 170 panels.
+    | Panel type | Panels | Drawn |
+    |---|---|---|
+    | timeseries | 125 | natively (uPlot) |
+    | stat | 19 | natively |
+    | gauge | 7 | natively |
+    | bargauge | 6 | natively |
+    | table | 3 | natively |
+    | logs | 3 | natively, by the Logs component (masked, question 4) |
+    | alertlist | 1 | natively, by the Alerts component |
+    | state-timeline | 1 | embedded, labelled |
+    | text | 1 | embedded, labelled (a text panel can hold HTML; rendering it in the app's origin is a script-injection surface) |
+    So 168 of 170 draw natively, and the two that do not fall back to that one panel
+    embedded (`/grafana/d-solo/...`), labelled "shown by Grafana: this panel type has no
+    native renderer".
+  - **The queries run through Grafana, never around it.** Each panel's targets go to
+    Grafana's own query endpoint (`api/ds/query`) with the Viewer token, exactly as
+    Grafana's front end runs them. So a panel's data source, its UID and its query need no
+    second configuration in the NMAS, and C167 (`prometheus_url` empty) stops mattering.
+    Measured: the data-source proxy answers the token for all three sources (Loki, and
+    two Prometheus instances, one of them Thanos). The usual bounds apply per query: range
+    cap, minimum step, series and point limits, a timeout.
+  - **What the renderer must handle, from the same measurement:**
+    - **dashboard variables:** 319 of the 343 queries use a `$variable` (data source,
+      query, ad hoc and text-box variables). A query variable is resolved by its own
+      query, and the variables bar is drawn above the panels. This is the largest part;
+    - **units and thresholds:** 141 panels carry thresholds and 55 carry field overrides,
+      which decide colours and units. Read and applied, never ignored, or a stat reads the
+      wrong colour;
+    - **transformations:** 1 panel. Declared unsupported and embedded, until a second
+      panel needs one;
+    - **layout:** each panel's grid position (`gridPos`) and its rows, collapsed or not.
+      At phone width the grid becomes one column in the same order.
+  - **Why native at all, when the embed shows every panel:** it works at phone width,
+    matches the design, carries the live-data contract's age stamp, masks log lines, and
+    is the ONE renderer the device page's Monitoring tab reuses (the same dashboards,
+    filtered by the device variable).
+  - **Cost:** costed in section 9b, as a real renderer.
+- **WHICH dashboards: two roles, two settings, by UID** (the operator, 2026-09-30: never
+  specified until then).
+  - **What each piece of work used, stated because it was asked.** The inventory probe read
+    all five dashboards (the 170 panels above). No fixture holds a dashboard. The first
+    Services mockups drew no dashboard at all: their charts were chosen by hand, which
+    is what this section replaces. The revised mockups draw Monitoring from
+    `rcn-lab-overview`'s real panels and the device page from `rcn-lab1-snmp`'s, read on
+    the host.
+  - **The FLEET dashboard, for the Monitoring page.** A per-network setting names the
+    default by UID (for Default: `rcn-lab-overview`, "RCN Lab — Monitoring, Telemetry,
+    Alerting and Data Lake"). The page carries a selector listing every dashboard Grafana
+    holds, from its search API (`api/search?type=dash-db`, five today). Choosing one
+    changes the VIEW, never the default.
+  - **The DEVICE dashboard, for the device page's Monitoring section.** A dashboard with a
+    device template variable, named by UID (for Default: `rcn-lab1-snmp`, "RCN Lab 1 -
+    SNMP per device"), and a second setting naming the VARIABLE the app sets (for Default:
+    `device`, whose values come from `label_values(ifOperStatus{role=~"$role"}, device)`).
+    - **Only panels whose queries use the variable are drawn** (3 of `rcn-lab1-snmp`'s 8:
+      throughput, interface state, errors and discards). A panel that does not select one
+      device shows the fleet, and drawing it under one device's name would be a wrong thing
+      that looks right. The count left out is stated, and they are on Monitoring.
+    - **A device dashboard with no such variable** draws no panels and says so on the
+      device page, naming the dashboard, the variable it lacks, and Settings. It never
+      falls back to the whole fleet.
+    - **A device the variable's values do not list** (Prometheus has never seen it) is its
+      own state: "Prometheus holds no series for r7", never an empty chart.
+  - **By UID, never by title**, so a rename in Grafana breaks nothing. A configured UID that
+    Grafana no longer holds is a **Needs attention row** naming the setting, the UID and the
+    dashboards it does hold, never a blank panel.
+  - **Both are per-network settings after P.8**, since another lab's Grafana has its own
+    dashboards. They replace `grafana_device_dashboard_url` (today a link template with
+    `{hostname}`, read only by the integration card's link), which is kept in the schema
+    as keys always are and read by nothing once the device dashboard is set.
 - **Full Grafana dashboards, embedded, for desktop deep dives.**
   - **The route (the operator's preference): Grafana under the NMAS's own origin:**
     - a reverse proxy at `/grafana/`, with Grafana's `root_url` and `serve_from_sub_path`
@@ -920,12 +1107,43 @@ both, with costs.
     - header hygiene, with a test that a client-supplied identity header never reaches
       Grafana;
     - the settings on the host.
-  - **At phone width the embed is not offered:** the native charts are the phone's
-    monitoring.
+  - **At phone width the embed is not offered:** the native panels are the phone's
+    monitoring, and a panel that only embeds says so in its place.
 - **Alerts:** every firing instance with its rule, device, onset and state, and its silence
   (question 3 below). Needs attention stays the place a person is told; this is the full
   list.
-- **Query:** a PromQL box, results as a chart and a table, bounded (question 5).
+  - **A "How to fix" column, now (the operator, 2026-09-30).** Every rule P.7 generates
+    declares its own remedy in its annotations (`description`, and `runbook_url` where a
+    manual page exists), written with the rule by its generator: the same principle as
+    Needs attention's action field. The reader already reads the ruler, so the column
+    costs a field. A rule with no declared remedy says **"no remedy declared for this
+    rule"**, never an invented one; today that is every hand-built rule, and it is drawn
+    so.
+  - **"Investigate", at Stage 8 (8.6).** An action on each alert, and automatic
+    investigation of a new incident, with the AI's notes in the alert's row. The notes are
+    labelled AI-generated and list the queries the agent ran; its tools are read-only (it
+    suggests, never acts); a note never hides, dismisses or downgrades the alert; one
+    investigation per incident, grouped as the reader groups them. **It sits behind Stage
+    8's first real tool run**: the agent has never called a tool. The mockup draws the
+    column as Stage 8's, empty.
+- **Query, for PromQL and LogQL (the operator, 2026-09-30):**
+  - **A builder for a person who does not know the syntax,** populated from the real names:
+    metric names, label names and label values from Prometheus's metadata API (755 metric
+    names, measured) and Loki's (labels `filename`, `host`, `job`, `service_name`,
+    measured), both read through Grafana's data-source proxy.
+    - **Loki has no `device` label** (the stream's `host` is the collector, C166), so the
+      builder's "device" is the ONE origin-id filter (`ORIGIN_ID_PATTERN`), never a label it
+      does not have.
+  - **Templates for common questions:** "CPU of device X", "interface errors on device X",
+    "syslog severity 0 to 2 from device X", "which devices stopped heartbeating".
+  - **The query is SHOWN as it is built,** beside the controls, updating on each choice, so a
+    person learns the syntax by watching it form; it can be edited by hand at any point, and
+    the builder then says which parts it no longer understands rather than silently
+    discarding them.
+  - **Saved queries,** per network after P.8, runnable in one click and pinnable to a device
+    page (they appear in that device's Monitoring or Logs tab).
+  - **Both pass all five questions:** a query reads; masking applies to log lines; every
+    query is bounded (range, step, series and line limits, a timeout).
 - **Hosts:** Proxmox VMs (the existing read-only client) and containerlab nodes, whose status
   needs a new read-only reader (section 15.2).
 
@@ -933,7 +1151,8 @@ both, with costs.
 - **Fleet-wide:** time range, device, severity, facility, traps or syslog, and text.
 - **Per device:** selected by the device's OWN origin-id, never rsyslog's hostname (C13,
   C166).
-- **A LogQL query screen.**
+- **A LogQL query screen, with the builder** (the Query item under Monitoring, above): the
+  same builder and saved queries, for LogQL.
 - **Bounded:** a range cap, a line limit and a timeout.
 - **Masked:** a log line can quote a config line or a credential, so the same redaction
   applies, and unmasking is the reveal gate.
@@ -961,8 +1180,70 @@ both, with costs.
     the person.
 - **Lease history per device:** Kea's API returns current leases only, so history is the
   reader's own record. Each read's leases are kept with a bounded retention, stating that it
-  is observed, not Kea's. (Kea's legal-log hook would be the alternative; whether the host's
-  Kea ships it is unmeasured.)
+  is observed, not Kea's. (Kea's legal-log hook would be the alternative, and the host's
+  package does not ship it: measured 2026-09-30, the hooks directory holds bootp,
+  flex_option, ha, lease_cmds, mysql_cb, pgsql_cb, run_script and stat_cmds.)
+
+**IPv6 alongside IPv4, everywhere (the operator, 2026-09-30).** The first mockup drew IPv4
+alone, and that was a gap: VLAN 30 is IPv6-only and Kea's DHCPv6 is running. Measured on the
+host the same day: kea-dhcp6 2.4.1 serves `2001:db8:10::/64`, `2001:db8:20::/64` and
+`2001:db8:30::/64`, each with a pool and relayed, and listens on the management interface.
+- Subnets, pools, utilisation and leases are drawn for both families in one list, each
+  labelled IPv4 or IPv6; a filter narrows to one.
+- **Reservations by DUID for IPv6** (a client's DHCPv6 identity), by MAC for IPv4. The
+  checks are the same per family: inside the subnet, no clash with a pool or another
+  reservation, never a managed device's address unless the reservation is for it.
+- **The ZTP segment has no IPv6 subnet today** (measured), so ZTP stays IPv4, and the
+  screen says so rather than offering an IPv6 ZTP reservation.
+
+**Creating and editing POOLS: yes, with gates (the operator, 2026-09-30).** A pool changes
+the network's addressing, so under question 1 it goes through preview, confirm and result,
+recorded as the person, never a plain form.
+- **The checks:**
+  - the pool is inside its subnet;
+  - it overlaps no existing pool, no reservation, and no statically assigned address (read
+    from NetBox's IP addresses and every managed device's golden: a range someone
+    configured by hand on an interface is the case a DHCP server cannot see);
+  - **NEVER a pool on the ZTP segment.** That segment deliberately has none, so only a
+    device the tool reserved gets an address there (D4). The screen offers no Add there,
+    and the writer refuses it by name if asked anyway;
+  - the subnet is on the network's list of subnets the tool may write (the same setting as
+    reservations, after P.8).
+- **Where the tool's pools live: its own fragment file, as reservations do.** Pools already
+  in Kea's main config stay visible, marked, and read-only.
+- **How Kea's include mechanism supports that** (measured and read, 2026-09-30):
+  - **What is there today:** the reservation fragment is included as a VALUE:
+    `"reservations": <?include "/etc/kea/nmas/reservations-255.json"?>` in
+    `kea-dhcp4.conf`. Nothing else in either config uses an include; `kea-dhcp6.conf` uses
+    none.
+  - **What the include is:** Kea's `<?include "path"?>` is a TEXTUAL inclusion done before
+    parsing. It can stand wherever the included text makes valid JSON: as a whole value (a
+    subnet's `"pools": <?include ...?>`), or spliced into a list beside elements written
+    in the main file.
+  - **The API route is closed on this package:** no `subnet_cmds` hook (so no
+    `subnet4-delta-add`), no `host_cmds`, and no config backend configured
+    (`config-control` absent). So a pool is written the way a reservation is: the candidate
+    tested with `kea-dhcp4 -t` / `kea-dhcp6 -t` before the live fragment is touched, then
+    `config-reload`, then a read-back of the running config naming both operands, and the old
+    fragment restored on failure.
+  - **Two shapes, and the choice waits on a measurement:**
+    1. **A tool-owned subnet's pools as a whole value** (`"pools": <?include
+       "nmas/pools-<family>-<id>.json"?>`). Safe to parse, and the file is the whole list.
+       But it means the subnet has no main-config pools, so a subnet with existing pools
+       must have them moved into the fragment once, by the operator, as the reservation
+       include was put in once.
+    2. **Tool pools spliced beside main-config pools** (`"pools": [ {...}, <?include ...?> ]`).
+       Keeps main-config pools where they are, and depends on how Kea's parser treats the
+       join: an empty fragment leaves a trailing comma.
+- **What to measure first:**
+  - whether kea-dhcp4 and kea-dhcp6 2.4.1 accept a trailing comma inside a list, and an
+    empty spliced fragment: a candidate file tested with `kea-dhcp4 -t` and `-t` for v6,
+    never the live config;
+  - which subnets carry main-config pools the operator would rather keep in the main file
+    (today: 10, 20 on v4; 10, 20, 30 on v6);
+  - `kea-dhcp6 -t` under AppArmor with a `0644` fragment, as D1 measured for v4 (a confined
+    root process is held to the mode bits);
+  - that `config-reload` on dhcp6 picks a changed fragment up, as M5 measured for v4.
 
 **NetBox, a browser:**
 - sites, devices, interfaces, prefixes, VRFs, VLANs, IP addresses and cables, each linked to
@@ -1016,6 +1297,9 @@ are marked **Corrected**.
 | Loki | Deleting logs | Not in the app | Q3 (hides a signal), Q2 (evidence) | - |
 | Loki | Editing alert rules | Not in the app | Q2, Q3 | Rules are Grafana's, generated by P.7 |
 | Prometheus | PromQL queries, charts | **Freely** | passes all five | Q5: range cap, minimum step, series limit, timeout |
+| Prometheus, Loki | The query builder, its templates, saved queries (per network, pinnable to a device page) | **Freely** | passes all five (the operator, 2026-09-30) | Names from the metadata APIs through Grafana's data-source proxy; the same bounds; log lines masked |
+| Grafana | Every dashboard panel, rendered natively from its JSON model | **Freely** | passes all five | Queries through Grafana's `api/ds/query` as Viewer, bounded; an unrenderable type embedded, labelled |
+| Grafana | A rule's declared remedy ("How to fix") | **Freely** | passes all five | Written only by P.7's generator; none declared says so |
 | Prometheus | Scrape targets | Not in the app | Q2 (they decide what evidence exists) | **Corrected:** nothing generates them today. They are Prometheus's own config on its host, hand-maintained, and retire only warns about a target still scraping an address (C229). **Decided 2026-09-30: P.7 generates them from the inventory beside the alert rules**, so a new device is scraped and a retired one is not, with nobody editing a file on the Prometheus host |
 | Grafana | Dashboards; alert state, including silences | **Freely** | passes all five | Embedded as Viewer (section 14.2), through `auth.proxy` whose allowlist names only the NMAS (15.3) |
 | Grafana | Creating and editing dashboards | Not in the app: **in Grafana directly**, by a direct login | Q3: on 13.2.0 the role that edits dashboards also silences and edits rules (15.3) | Grafana's own authentication |
@@ -1025,7 +1309,10 @@ are marked **Corrected**.
 | Kea | Subnets, pools, utilisation, leases, lookups by MAC, address or hostname | **Freely** | passes all five | Q5: paged reads |
 | Kea | Add, edit, remove a reservation | **With gates**, on the subnets a per-network setting lists (after P.8) | Q1 (it decides a device's address) | The existing writer: its own fragment file only (`<?include?>`), a candidate tested with `kea-dhcp4 -t`, reload, a read-back naming both operands, restore on failure. The D4 posture checks on the ZTP segment only; elsewhere, inside the subnet, no clash with a pool or reservation, and never a managed device's management address unless the reservation is for that device (14.2). Preview, confirm and result, recorded as the person |
 | Kea | Reservations in Kea's main config | Shown, marked, read-only | Q2 | - |
-| Kea | Editing Kea's main config (subnets, pools, options) | Not in the app | Q1 (the network's design) | - |
+| Kea | IPv6: subnets, pools, leases, reservations by DUID | As IPv4, row by row | the same questions as each IPv4 row | Added 2026-09-30: kea-dhcp6 serves three subnets (measured) |
+| Kea | Creating and editing POOLS | **With gates** (moved 2026-09-30 from "not in the app") | Q1: it changes the network's addressing, so it takes the gates, not a refusal | The tool's own fragment file only; inside the subnet; no overlap with a pool, a reservation or a statically assigned address; **never on the ZTP segment** (D4); a subnet on the network's list; candidate tested (`kea-dhcp4 -t` / `kea-dhcp6 -t`), reload, read-back, restore on failure; preview, confirm and result, recorded as the person (14.2) |
+| Kea | Pools already in Kea's main config | Shown, marked, read-only | Q2 | - |
+| Kea | Editing Kea's main config (subnets, options) | Not in the app | Q1 (the network's design) | Pools moved out of this row, above |
 | Kea | Releasing a lease (`lease4-del`) | Not in the app | Q1 (a device in the inventory loses its management address) | - |
 | NetBox | Browsing and searching everything | **Freely** | passes all five | Q4: `local_context_data` masked (C95). Q5: paged |
 | NetBox | ANY edit, or an "edit in NetBox" link out | Not in the app | Q2: the NMAS is NetBox's only writer, through deploys, onboarding and imports | A change made directly in NetBox is DRIFT, **measured exactly** once the NMAS has its own account (C100, decided 2026-09-30, 15.2) |

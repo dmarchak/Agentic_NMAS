@@ -3646,6 +3646,11 @@ than one that never fires**: "it has alerted 9 times" would have satisfied anyon
   not with nobody editing a file there. Tested the way the rules are: every inventory
   device has a target, every target names an inventory device, and a device Prometheus does
   not scrape is a Needs attention row;
+- **every generated rule declares its REMEDY** (the operator, 2026-09-30), in the rule's own
+  annotations (`description`, `runbook_url` where a manual page exists), written with the rule
+  by its generator: the same principle as Needs attention's action field. The Alerts screen
+  draws it as a "How to fix" column. A rule with no declared remedy says "no remedy declared
+  for this rule", never an invented one, and the generator's test refuses a kind without one;
 - the evidence it must reproduce (C168): the two incidents the old rules missed (09-22 23:41, every
   telemetry source silent for about 20 minutes; 09-28 08:51, r1 and r3), each rule's history read
   uncapped (a capped read made "never alerted" out of a rule that had).
@@ -3669,6 +3674,19 @@ falls against 7.2 and 7.3 is the operator's to decide; nothing in 7.2 depends on
 **DECIDED 2026-09-28 (the operator), closing every ambiguity below: 71 keys per
 network, 47 global, 11 read by nothing, none ambiguous; and one per-list key
 to add, the NetBox scope.**
+
+**ADDED 2026-09-30 (the operator, from the GUI's services review; NSOT_GUI_BRIEF 14.2),
+per network, each new:**
+- `grafana_fleet_dashboard_uid`: the Monitoring page's default dashboard, by UID (Default:
+  `rcn-lab-overview`). The page's selector changes the view, never this;
+- `grafana_device_dashboard_uid` and `grafana_device_variable`: the device page's
+  dashboard, by UID, and the template variable the app sets (Default: `rcn-lab1-snmp`,
+  `device`). They supersede `grafana_device_dashboard_url`, kept and read by nothing;
+- `kea_writable_subnets`: the subnets where the tool may write reservations and pools, by
+  family (the ZTP segment keeps D4's checks, and is never offered a pool);
+- saved queries (PromQL and LogQL), per network, pinnable to a device page.
+A configured dashboard UID that Grafana no longer holds is a Needs attention row naming the
+setting and the UID, never a blank panel.
 
 **CORRECTED the same day (the operator): the NetBox CONNECTION is global, the
 SCOPE is per list.** "One NetBox per network" answered the instance question,
@@ -4534,6 +4552,24 @@ is nobody's.**
 The *proposed* numbers (hold-down, cap) are starting points, to be set from
 8.4's first real runs, the way the heartbeat windows came from measured
 arrivals. Not built.
+
+**Investigate, on each alert (the operator, 2026-09-30; NSOT_GUI_BRIEF 14.2).** The
+Alerts screen and each Needs attention incident get an "Investigate" action, and a
+new incident is investigated automatically. The AI's notes sit in the alert's row.
+Conditions, each a requirement of the build:
+- **The notes are labelled AI-generated**, and list every query and read the agent
+  ran, so a person can repeat any of them.
+- **Its tools are READ-ONLY**: it investigates and suggests, and never acts. A fix it
+  suggests is an ordinary plan a person previews and confirms (the 8.7 rule).
+- **Notes never hide, dismiss or downgrade the alert**: the row keeps its level,
+  and a note cannot close it.
+- **Cost is bounded**: one investigation per INCIDENT, grouped as the reader already
+  groups them (on the onset), never one per member, with a per-day cap stated on
+  the screen.
+- **It sits behind Stage 8's first real tool run.** The agent has never called a
+  tool in production (27 recorded runs, zero tool calls), so this is not "wire the
+  tools to alerts": it is their first run, and it comes after the allowlist is real
+  in code (8.3).
 
 **8.7 The agent closing drift. DECIDED 2026-09-27: PROPOSE-ONLY. NOT YET,
 rather than never: the second class is named, not granted, and the

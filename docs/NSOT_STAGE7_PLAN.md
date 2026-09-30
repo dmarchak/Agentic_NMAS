@@ -420,6 +420,30 @@ session needs no reconstruction:
 3. **The Grafana Viewer token:** SERVICE_ACCOUNTS.md part 2, closing C230; its printed
    permission list becomes the measured Viewer role in brief 15.3.
 
+**The Services mockups reviewed (the operator, 2026-09-30; brief 9b, 14.2, 15.1):**
+- **Every Grafana panel, rendered from the dashboard's own JSON model,** never a chosen few:
+  a panel added in Grafana appears with no code change, and a type with no native renderer
+  falls back to that one panel embedded, labelled. Measured: 168 of the 170 panels in the
+  five dashboards draw natively.
+- **Which dashboard: two roles, by UID, per network (P.8).** The fleet dashboard is the
+  Monitoring page's default (Default: `rcn-lab-overview`), with a selector over every
+  dashboard Grafana holds. The device dashboard has a device variable (Default:
+  `rcn-lab1-snmp`, `device`); only panels selecting the device are drawn, and a dashboard
+  with no such variable says so. A missing UID is a Needs attention row.
+- **Alerts get a fix:** now, a "How to fix" column from each rule's own declared remedy (P.7
+  declares one per rule; none declared says so); at Stage 8, an Investigate action with
+  read-only tools and labelled notes (NSOT_PLAN 8.6).
+- **A query builder and saved queries** for PromQL and LogQL, showing the query as it forms.
+- **DHCP in IPv4 and IPv6**, reservations by DUID, and pools created through a previewed
+  writer in the tool's own fragment, never on the ZTP segment. Measured first: Kea 2.4.1
+  with no subnet or host command hooks, so pools go through the file, as reservations do.
+- **The heredoc habit is closed structurally:** a PreToolUse hook refuses a heredoc fed
+  into an interpreter (`f46f0f6`).
+- **Step (c), the stack costing, is brief 9b:** Option A (server-rendered Jinja, htmx,
+  Alpine's CSP build, and two ES-module islands, no build step) is recommended. It rests on
+  a spike: the device page's Overview and Monitoring tab, built in A and measured, before
+  any commitment.
+
 **The order from here (the operator, 2026-09-29), each step waiting for sign-off:**
 1. the brief updated with the integration screens, the rule and its classification, and the
    extended findability questions (done: sections 13 to 16; signed off with corrections
@@ -430,7 +454,8 @@ session needs no reconstruction:
    nineteen boards on the mockup canvas's second page, "Services", with one info link open as
    the side help panel and one running stepper, and a device whose empty tabs fold);
 3. the stack costing, accounting for those screens: htmx plus Alpine over the current pages,
-   against a full framework, honestly;
+   against a full framework, honestly (delivered 2026-09-30 for review: brief 9b, with the
+   mockups revised the same day for the services review);
 4. then build, starting with the landing page, the sidebar and the Device page. The
    integration screens follow P.8.
 
