@@ -419,6 +419,22 @@ session needs no reconstruction:
    closing C100 when 1.6 passes. Note the switch time: drift is measured from it.
 3. **The Grafana Viewer token:** SERVICE_ACCOUNTS.md part 2, closing C230; its printed
    permission list becomes the measured Viewer role in brief 15.3.
+4. **The monitoring profile's removal shapes** (the operator, 2026-09-30; P.9, after the
+   commit adding `global.ntp-server` and `global.snmp-server-host` is deployed). `logging
+   host` and `snmp-server community` are measured exact on both platforms already, so only
+   these two. Each run changes the RUNNING config only, never saves, holds the device, and
+   stops with NOT RESTORED as its first line if the device does not return to its start.
+   1. On the NMAS host, from the checkout, the dry run (connects to nothing):
+      `scripts/nmas-removal-probe --shape global.ntp-server --shape global.snmp-server-host`
+   2. IOS-XE, on r2: `scripts/nmas-removal-probe --list Default --device r2 --shape
+      global.ntp-server --shape global.snmp-server-host --apply --actor <operator> --out
+      /tmp/removal-r2.json`. Exit 0 is measured, whatever the verdicts; exit 2 is NOT
+      RESTORED: stop and read its first line.
+   3. IOS, on s4: the same with `--device s4 --out /tmp/removal-s4.json`.
+   4. Hand over both files. They hold no secret (the scratch names start `NMASPROBE`, the
+      addresses are documentation addresses). Their verdicts go into
+      `modules/nsot/removal_measured.json`, and a shape measured anything but `exact` stays
+      refused, with its reason drawn beside the line.
 
 **The Services mockups reviewed (the operator, 2026-09-30; brief 9b, 14.2, 15.1):**
 - **Every Grafana panel, rendered from the dashboard's own JSON model,** never a chosen few:

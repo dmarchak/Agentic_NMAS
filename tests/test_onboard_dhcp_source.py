@@ -136,7 +136,7 @@ class TestThePreconditionRefusesAtPlanTime:
                             lambda *a: (False, True))
         base = dict(hostname="bp-dhcp-a", platform="cisco_iosxe",
                     list_name="probe", secret="Secret123",
-                    manager_interface="Gi2", mgmt_interface="Gi1")
+                    manager_interface="Gi2", mgmt_interface="Gi1", role="router")
         base.update(kw)
         return build_plan(**base)
 
@@ -900,7 +900,7 @@ class TestADhcpPlanCarriesNoStaticAddress:
 
         base = dict(hostname="bp-dhcp-a", platform="cisco_iosxe",
                     list_name="probe", secret="S", manager_interface="Gi2",
-                    mgmt_interface="Gi1", kea=_Kea())
+                    mgmt_interface="Gi1", kea=_Kea(), role="router")
         base.update(kw)
         return build_plan(**base)
 

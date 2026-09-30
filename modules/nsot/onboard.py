@@ -97,6 +97,12 @@ class OnboardPlan:
     address_source: str = "static"
     #: DHCP only. The reservation is checked against Kea **at plan time**.
     mgmt_mac: str = ""
+    #: The device's ROLE (C225), asked: router, switch or firewall. It was
+    #: `"router"` for every device, a switch included. `role_problem` is why
+    #: it cannot be recorded, computed at plan time with the network's own
+    #: suggestion, and a blocking reason.
+    role: str = ""
+    role_problem: str = ""
     #: What Kea said: ``reserved`` / ``not_reserved`` / ``unknown``.
     reservation_state: str = ""
     reservation_address: str = ""
@@ -189,6 +195,9 @@ class OnboardPlan:
         that surfaces three problems is worth three runs that surface one.
         """
         reasons = []
+
+        if self.role_problem:
+            reasons.append(self.role_problem)
 
         if not _NAME.match(self.hostname or ""):
             reasons.append(
@@ -451,6 +460,7 @@ class OnboardPlan:
             "address_claim":     self.address_claim,
             "manager_interface": self.manager_interface,
             "manager_gateway":   self.manager_gateway,
+            "role":              self.role,
             "reservation_address": self.reservation_address,
             "ztp_server":        self.ztp_server,
             "ztp_subnet_id":     self.ztp_subnet_id,
@@ -562,7 +572,8 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
                netbox_plan=(), cred_source: str = "",
                mgmt_mask: str = "", manager_interface: str = "",
                manager_gateway: str = "", address_source: str = "static",
-               mgmt_mac: str = "", kea=None, ztp_check=None) -> OnboardPlan:
+               mgmt_mac: str = "", kea=None, ztp_check=None,
+               role: str = "") -> OnboardPlan:
     """The only constructor. Always validates; never writes anything.
 
     *secret* is the one-time bootstrap credential (4C.2). It reaches the
@@ -665,6 +676,8 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     return OnboardPlan(
         unmet_preconditions=tuple(unmet_preconditions(netbox_plan)),
         hostname=hostname, platform=platform, list_name=list_name,
+        role=(role or "").strip().lower(),
+        role_problem=_role_problem(role, list_name, platform),
         source_kind=source_kind, mgmt_ip=mgmt_ip, mgmt_mask=mgmt_mask,
         address_source=address_source, mgmt_mac=mgmt_mac,
         reservation_state=reservation["state"],
@@ -684,6 +697,12 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
         unsendable=tuple(unsendable), unchecked=tuple(unchecked),
         render_error=render_error,
     )
+
+
+def _role_problem(role: str, list_name: str, platform: str) -> str:
+    from modules.inventory_edit import role_problem
+
+    return role_problem(role, list_name, platform)
 
 
 def syslog_baseline() -> tuple:
@@ -1315,7 +1334,11 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
               # at verification; absent, NetBox keeps its host-route last
               # resort, which is honest about not knowing.
               "prefix_len": (entry or {}).get("mgmt_prefix_len") or 0,
-              "platform": (entry or {}).get("platform", ""), "role": "router"}
+              "platform": (entry or {}).get("platform", ""),
+              # The chosen role (C225). A device recorded before the role was
+              # asked has none, and NetBox takes the importer's own default;
+              # the role edit corrects the inventory, and the next import NetBox.
+              "role": (entry or {}).get("role", "")}
     result = sync(list_name, [device], actor=actor, authority=authority) or {}
 
     if result.get("blocked"):
@@ -1422,7 +1445,8 @@ def commit_step(plan, *, actor: str) -> str:
                            pending=True,
                            address_source=plan.address_source,
                            mgmt_mac=plan.mgmt_mac,
-                           reserved_address=plan.reservation_address)
+                           reserved_address=plan.reservation_address,
+                           role=plan.role)
     # THE BOOTSTRAP PARAMETERS ARE COMMITTED AS INTENT.
     #
     # Phase 1's entire product is a config the operator boots the node with,
@@ -1991,6 +2015,9 @@ def promote_device(repo: str, hostname: str, list_name: str, *,
                         "secret": fernet.encrypt((secret or "").encode()).decode(),
                         "device_uid": identity,
                         "platform": entry.get("platform", ""),
+                        # The role chosen at onboarding or adopt (C225); empty
+                        # for a device recorded before it was asked.
+                        "role": entry.get("role", ""),
                     })
                     write_devices_csv(rows + [row], csv_path)
                     result["csv_row"] = True

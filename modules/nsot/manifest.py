@@ -118,7 +118,8 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
                   pending: bool = False, clab_lab: str = "",
                   address_source: str = "", mgmt_mac: str = "",
                   reserved_address: str = "",
-                  mgmt_prefix_len: int = 0, adopted: bool = False) -> dict:
+                  mgmt_prefix_len: int = 0, adopted: bool = False,
+                  role: str = "") -> dict:
     """Record or update a device. Returns its manifest entry.
 
     *pending* marks a device **onboarded but never reached**: it stamps
@@ -165,7 +166,11 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
                            # unknown; NetBox then keeps its /32 last resort,
                            # which is honest about not knowing rather than
                            # wrong about the network.
-                           ("mgmt_prefix_len", mgmt_prefix_len)):
+                           ("mgmt_prefix_len", mgmt_prefix_len),
+                           # The role the person chose at onboarding or adopt
+                           # (C225): promotion writes it into the inventory
+                           # row and the NetBox record takes it from here.
+                           ("role", role)):
             if value:
                 entry[key] = value
         entry.setdefault("pending_rename", None)

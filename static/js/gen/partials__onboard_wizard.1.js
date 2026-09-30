@@ -40,6 +40,7 @@ const ONBOARD_FIELDS = {
   list_name:         'obList',
   hostname:          'obHostname',
   platform:          'obPlatform',
+  role:              'obRole',
   mgmt_ip:           'obMgmtIp',
   mgmt_mask:         'obMgmtMask',
   manager_interface: 'obMgrIntf',

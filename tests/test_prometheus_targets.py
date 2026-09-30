@@ -399,7 +399,7 @@ class TestTheScript:
         r = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "nmas-prometheus-targets")],
                            capture_output=True, text=True, env=env, timeout=60)
         # An empty store holds no device: refused, never an empty file written.
-        assert r.returncode == 2 and "holds no device" in r.stderr
+        assert r.returncode == 2 and "of the 0 device(s) in the inventory, none is configured for SNMP" in r.stderr
         doc = open(os.path.join(ROOT, "docs", "PROMETHEUS_TARGETS.md"), encoding="utf-8").read()
         for name in FILE_OF_POOL.values():
             assert name in doc

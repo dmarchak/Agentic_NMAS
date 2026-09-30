@@ -73,7 +73,7 @@ def main(argv=None) -> int:
               f"row could not be written ({rec.get('record_error')})", file=sys.stderr)
         return 1
     print(f"written and recorded: {p['device']}'s role is {p['after']} "
-          f"(inventory_edits.jsonl, {rec['at']}, by {rec['actor']})")
+          f"(inventory_edits.jsonl, {rec['at']}, by {rec['actor_label']})")
     return 0
 
 

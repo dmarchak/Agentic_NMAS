@@ -837,6 +837,7 @@ def onboard_preview(plan: dict, bootstrap_config: str, confirm: dict) -> dict:
         "operands": [
             {"name": "Name", "value": host},
             {"name": "Platform", "value": plan.get("platform") or ""},
+            {"name": "Role", "value": plan.get("role") or "not chosen"},
             {"name": "List", "value": f"{plan.get('list') or ''} ({plan.get('source_kind') or ''})"},
             {"name": "Management IP", "value": address},
             {"name": "Gateway", "value": plan.get("manager_gateway") or

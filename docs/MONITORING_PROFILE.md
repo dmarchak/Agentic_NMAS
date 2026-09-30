@@ -1,4 +1,4 @@
-# The monitoring profile (NSOT_PLAN P.9): designed 2026-09-30, not built
+# The monitoring profile (NSOT_PLAN P.9): designed 2026-09-30, DECIDED the same day, being built
 
 The operator's requirement (2026-09-30): every device, new and existing, carries the
 configuration its integrations need (SNMP, syslog, the heartbeat, NTP, LLDP and CDP, the
@@ -130,10 +130,15 @@ page's Monitoring section, and on the fleet coverage page for several devices.
   by the profile", with a box to REMOVE it through Mode B and a reason field for each.
   Nothing is removed unless its box is ticked, and never silently. A line whose shape Mode
   B has not measured on that platform is drawn with its box disabled and the reason beside
-  it ("not measured to remove exactly itself on cisco_iosxe"). **So `nmas-removal-probe`
-  measures `logging host`, `ntp server` and `snmp-server community` on both platforms
-  first:** the community is measured on IOS (C139) and not on IOS-XE. That run is the
-  operator's.
+  it ("not measured to remove exactly itself on cisco_iosxe"). **Measured already, on both
+  platforms: `logging host` and `snmp-server community` remove exactly themselves**
+  (`removal_measured.json`; this document first said the community was unmeasured on
+  IOS-XE, repeating C139's older note instead of reading the record). **Not yet: `ntp
+  server` and `snmp-server host`**, the other lines a device can hold several of. A
+  single-value setting (the trap level, the source interface) is REPLACED by the push, so
+  it is never superseded beside itself. Both shapes are declared, and refused until the
+  operator's probe run (NSOT_STAGE7_PLAN, "Staged runs", 4). None of it blocks r6, which
+  has no monitoring configuration to supersede.
 
 **Fleet coverage.** The Monitoring page gains Coverage: devices by integration (SNMP,
 syslog, heartbeat, telemetry, IP SLA), each cell from the committed golden
@@ -191,12 +196,23 @@ host run:
 It needs P.8 only for the connector settings to be per network. Until then they are the
 installation's, which is the one network today.
 
-## 9. Decisions for the operator
+## 9. Decisions: ALL FIVE AGREED (the operator, 2026-09-30), and P.9 goes next
 
 1. **Verify becomes a preview and a confirm**, because phase 2 now sends a program.
-2. **The community's owner is the network** (the profile), with a device value as an
-   override. This revises C139's per-device rule.
-3. **The removal probe run** for `logging host`, `ntp server` and `snmp-server community`
-   on both platforms, before superseded lines can be offered for removal.
-4. **Two new per-network settings:** the Telegraf endpoint and the NTP servers.
-5. **IP SLA as a policy with suggested operations** (section 6).
+2. **One SNMP community per network**, with a device value as an override. Already true in
+   practice: snmp_exporter polls the whole fleet with one auth module. This reverses C139's
+   one-value-per-device rule (recorded there, with why). SNMPv3 (Stage 9) is the real fix
+   for a community that has been published.
+3. **The removal probe run is the operator's**, at the next lab session: `ntp server` and
+   `snmp-server host` on both platforms (NSOT_STAGE7_PLAN, "Staged runs", 4). It does not
+   block r6.
+4. **Two new per-network settings: the Telegraf endpoint and the NTP servers.** A benefit
+   the operator named: NTP in the profile corrects the switches' clocks, which run slow and
+   have drifted by days (C9: s3's heartbeat stamped Sep 26 on Sep 29).
+5. **IP SLA as a policy** in the profile (the gateway, the routing peers, or nothing), with
+   the suggested addresses committed into each device's own intent, where they are
+   reviewed.
+
+Built in the four steps of section 8: the model; existing devices, r6 first ("Apply
+monitoring profile" clears its warning); onboarding and adopt; then its screens inside the
+redesign's step 4.

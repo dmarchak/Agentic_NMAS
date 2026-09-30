@@ -132,6 +132,8 @@ def _plan_args(data, list_name: str, *, secret: str) -> dict:
         # somebody saying so.
         address_source=(data.get("address_source") or "static").strip(),
         mgmt_mac=(data.get("mgmt_mac") or "").strip(),
+        # ASKED, never guessed from the platform (C225).
+        role=(data.get("role") or "").strip().lower(),
     )
 
 

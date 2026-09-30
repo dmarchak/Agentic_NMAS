@@ -42,7 +42,8 @@ def _plan(tmp_path, monkeypatch, check=_ok_check, **kw):
     monkeypatch.setattr("modules.nsot.onboard._name_in_netbox", lambda *a: (False, True))
     base = dict(hostname="bp-ztp-a", platform="cisco_iosxe", list_name="probe",
                 secret="Secret123", manager_interface="Gi2", mgmt_interface="Gi1",
-                address_source="ztp", mgmt_mac=MAC, mgmt_ip=ADDR, ztp_check=check)
+                address_source="ztp", mgmt_mac=MAC, mgmt_ip=ADDR, ztp_check=check,
+                role="router")
     base.update(kw)
     return build_plan(**base)
 

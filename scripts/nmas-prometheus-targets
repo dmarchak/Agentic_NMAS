@@ -37,7 +37,8 @@ import argparse  # noqa: E402
 
 
 def _print_plan(generated: dict) -> None:
-    print(f"{generated['devices']} device(s) in the inventory")
+    print(f"{generated.get('inventory', generated['devices'])} device(s) in the inventory, "
+          f"{generated['devices']} configured for SNMP (the targets)")
     for name, groups in sorted(generated["files"].items()):
         names = ", ".join(g["labels"]["device"] + ("" if "role" in g["labels"]
                                                    else " (no role)") for g in groups)
@@ -101,8 +102,9 @@ def main(argv=None) -> int:
         print(f"COULD NOT READ THE INVENTORY: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     if not generated["devices"]:
-        print("REFUSED: the inventory holds no device with an address; writing would tell "
-              "Prometheus to scrape nothing", file=sys.stderr)
+        print(f"REFUSED: of the {generated.get('inventory', 0)} device(s) in the inventory, none is "
+              "configured for SNMP with an address; writing would tell Prometheus to scrape "
+              "nothing", file=sys.stderr)
         return 2
     _print_plan(generated)
 

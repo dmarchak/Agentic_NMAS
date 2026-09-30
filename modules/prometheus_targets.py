@@ -89,6 +89,7 @@ def generate(devices=None, golden=None) -> dict:
 
     golden = golden or read_golden
     files, notes, by_address = {_file(ALL): [], _file(IPSLA): []}, [], {}
+    excluded = {}
     for ref, dev in devices:
         host, ip = (dev.get("hostname") or "").strip(), (dev.get("ip") or "").strip()
         if not host or not ip:
@@ -111,9 +112,9 @@ def generate(devices=None, golden=None) -> dict:
         # the keeper records a failure and the files stay as they were.
         text = golden(ref, host) or ""
         if not configured(text)["snmp"]:
-            notes.append(f"{host}: its committed golden "
-                         + ("configures no SNMP" if text else "does not exist")
-                         + ", so it is not a target: it is not monitored by SNMP")
+            why = "its committed golden " + ("configures no SNMP" if text else "does not exist")
+            notes.append(f"{host}: {why}, so it is not a target: it is not monitored by SNMP")
+            excluded[host] = why
             continue
         dialect = platform_for_device(dev)
         if not dialect:
@@ -132,7 +133,11 @@ def generate(devices=None, golden=None) -> dict:
             files[_file(IPSLA)].append(group)
     for groups in files.values():
         groups.sort(key=lambda g: g["labels"]["device"])
-    return {"files": files, "notes": notes, "devices": len(files[_file(ALL)])}
+    # `devices` is the TARGETS; `inventory` the devices the inventory holds.
+    # The operator read "8 device(s) in the inventory" over nine (r6 held, not
+    # a target): one number that changed meaning. Both are carried and said.
+    return {"files": files, "notes": notes, "devices": len(files[_file(ALL)]),
+            "inventory": len(devices), "excluded": excluded}
 
 
 def render(groups: list) -> str:
@@ -520,11 +525,18 @@ def sync(reason: str, directory: str = None, generate_fn=None) -> dict:
     try:
         generated = (generate_fn or generate)()
         if not generated["devices"]:
-            raise RuntimeError("the inventory holds no device with an address; writing "
+            raise RuntimeError(f"of the {generated.get('inventory', 0)} device(s) in the "
+                               "inventory, none is configured for SNMP with an address; writing "
                                "would tell Prometheus to scrape nothing")
         out = write(directory, generated)
-        rec.update(ok=True, devices=generated["devices"], changed=out["changed"],
-                   unchanged=out["unchanged"])
+        # WHEN each device left the targets (the operator, 2026-09-30: "the
+        # condition began at a known moment"): the first run that excluded
+        # it, carried forward while it stays out, gone when it returns.
+        before = (last_sync().get("excluded") or {}) if isinstance(last_sync(), dict) else {}
+        rec.update(ok=True, devices=generated["devices"], inventory=generated.get("inventory"),
+                   changed=out["changed"], unchanged=out["unchanged"],
+                   excluded={h: {"since": (before.get(h) or {}).get("since") or rec["at"], "why": w}
+                             for h, w in sorted((generated.get("excluded") or {}).items())})
         if out["changed"]:
             log.info("prometheus targets: wrote %s (%s)", ", ".join(out["changed"]), reason)
     except Exception as exc:                            # noqa: BLE001

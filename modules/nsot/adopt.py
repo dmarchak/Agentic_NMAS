@@ -654,14 +654,14 @@ def _netbox_existing(hostname: str) -> dict:
 
 
 def _netbox_dry_run(list_name: str, hostname: str, mgmt_ip: str, platform: str,
-                    config: str, actor: str = "") -> dict:
+                    config: str, actor: str = "", role: str = "") -> dict:
     """The import's own dry run over the capture being previewed (the one
     place a caller's text is honoured, and only in a dry run)."""
     try:
         from modules.netbox_client import sync_list_to_netbox
 
         out = sync_list_to_netbox(list_name, [{"hostname": hostname, "ip": mgmt_ip,
-                                               "platform": platform, "role": "router",
+                                               "platform": platform, "role": role,
                                                "preview_config": config}], dry_run=True,
                                   actor=actor)
     except Exception as exc:                   # noqa: BLE001
@@ -696,7 +696,7 @@ def plan(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
          supplied_username: str, supplied_password: str, supplied_enable: str = "",
          tool_username: str = TOOL_ACCOUNT_DEFAULT, actor: str = "",
          convert_supplied: bool = False, read=None, netbox_existing=None,
-         netbox_preview=None) -> dict:
+         netbox_preview=None, role: str = "") -> dict:
     """Everything the apply would do, what it will not, and each gate.
 
     *convert_supplied* is the person's opt-in to re-send the SUPPLIED account
@@ -717,7 +717,8 @@ def plan(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
                     supplied_username=supplied_username, supplied_password=supplied_password,
                     supplied_enable=supplied_enable, tool_username=tool_username, actor=actor,
                     convert_supplied=convert_supplied, read=read,
-                    netbox_existing=netbox_existing, netbox_preview=netbox_preview)
+                    netbox_existing=netbox_existing, netbox_preview=netbox_preview,
+                    role=role)
     _scrub_plan(out, (supplied_password, supplied_enable))
     return out
 
@@ -732,7 +733,7 @@ def _scrub_plan(out: dict, values) -> None:
 
 def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied_password,
           supplied_enable, tool_username, read, netbox_existing, netbox_preview,
-          actor="", convert_supplied=False) -> dict:
+          actor="", convert_supplied=False, role="") -> dict:
     import json
 
     from modules import credentials
@@ -758,6 +759,14 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
     def done():
         out["blocking"] = [g["detail"] for g in out["gates"] if g["state"] == "fail"]
         return out
+
+    # THE ROLE IS ASKED (C225), first among the gates so a missing one is
+    # said with every other reason, never guessed from the platform.
+    from modules.inventory_edit import role_problem
+    role = (role or "").strip().lower()
+    out["role"] = role
+    problem = role_problem(role, list_name, platform)
+    gate("role", not problem, problem or f"recorded as a {role}")
 
     # ---- what can be refused without the device ---------------------------
     # A WRITE never derives its list (C51): `resolve()` derives an unknown
@@ -921,7 +930,7 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
         out["netbox"]["existing"] = [{"endpoint": ep, "id": i, "name": n}
                                      for ep, i, n in existing["objects"]]
     dry = (netbox_preview or _netbox_dry_run)(list_name, hostname, mgmt_ip, platform, running,
-                                              actor=actor or "preview")
+                                              actor=actor or "preview", role=role)
     if gate("netbox_preview", dry.get("ok"), dry.get("error") or (
             f"the import would create {dry.get('create_count', 0)} and update "
             f"{dry.get('update_count', 0)} object(s)")):
@@ -935,7 +944,7 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
             out["program"] = out["program"] + owner_program_masked(conv)
         out["fingerprint"] = _hash(json.dumps(
             {"list": ref.name, "device": hostname, "ip": mgmt_ip, "platform": platform,
-             "tool": tool_username, "resume": out["resume"],
+             "tool": tool_username, "resume": out["resume"], "role": role,
              "convert_owner": bool(out.get("_convert")),
              "capture": out["capture_hash"], "startup": out["startup_hash"]},
             sort_keys=True))
@@ -1078,7 +1087,7 @@ def apply(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
           supplied_username: str, supplied_password: str, supplied_enable: str = "",
           tool_username: str = TOOL_ACCOUNT_DEFAULT, confirmed_fingerprint: str,
           actor: str, reason: str = "", convert_supplied: bool = False,
-          **collab) -> dict:
+          role: str = "", **collab) -> dict:
     """Adopt, holding the device throughout. **`ok` means all of it**, decided
     from the steps; a stop names every step that did not run and why, and a
     re-run RESUMES (an account this adoption added and recorded is proven,
@@ -1097,7 +1106,7 @@ def apply(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
                          supplied_password=supplied_password,
                          supplied_enable=supplied_enable, tool_username=tool_username,
                          confirmed_fingerprint=confirmed_fingerprint, actor=actor,
-                         reason=reason, convert_supplied=convert_supplied, **collab)
+                         reason=reason, convert_supplied=convert_supplied, **collab, role=role)
     except device_ops.DeviceBusy as exc:
         out = {"ok": False, "device": hostname, "list": list_name, "state": "refused",
                "reason": str(exc), "remaining": [],
@@ -1119,7 +1128,7 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
            supplied_enable, tool_username, confirmed_fingerprint, actor, reason,
            convert_supplied=False, read=None, netbox_existing=None, netbox_preview=None, open_session=None,
            verify=None, record=None, persist=None, capture=None, netbox=None,
-           promote=None, record_adoption=None) -> dict:
+           promote=None, record_adoption=None, role="") -> dict:
     from modules import credentials
     from modules.netbox_guard import get_created, record_adopted
     from modules.nsot import credential_rotation as CR
@@ -1163,7 +1172,7 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
               supplied_username=supplied_username, supplied_password=supplied_password,
               supplied_enable=supplied_enable, tool_username=tool_username, read=read,
               netbox_existing=netbox_existing, netbox_preview=netbox_preview, actor=actor,
-              convert_supplied=convert_supplied)
+              convert_supplied=convert_supplied, role=role)
     where["repo"] = p.get("repo")
     if p["blocking"]:
         return _stop("confirm", "refused, and nothing was sent: " + "; ".join(p["blocking"]))
@@ -1260,7 +1269,7 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
     if not identity:
         identity = adopt_identity(repo, GoldenItem(hostname, "", mgmt_ip))
     _m.upsert_device(repo, identity, hostname, mgmt_ip=mgmt_ip, platform=platform,
-                     adopted=True)
+                     adopted=True, role=p.get("role", ""))
     try:
         saved = save_golden(list_name, [GoldenItem(hostname, cap["config"], mgmt_ip=mgmt_ip,
                                                    platform=platform)],

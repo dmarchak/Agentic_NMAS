@@ -44,6 +44,60 @@ class RoleEditRefused(ValueError):
     """The edit cannot be planned or applied; the message names why."""
 
 
+#: How the actor was established, in words (the operator, 2026-09-30: "by
+#: <user>" from a host command beside the app's verified email is two
+#: identities for one person, unlabelled). The record keeps both fields; this
+#: is how every reader of it says who.
+ACTOR_BASIS = {"access": "", "host-shell": "host login, not a verified identity",
+               "none": "not identified"}
+
+
+def actor_label(actor: str, actor_verified: str) -> str:
+    """``actor``, or ``actor (how, when it is not a verified person)``."""
+    basis = ACTOR_BASIS.get(actor_verified, f"established as {actor_verified!r}")
+    return f"{actor} ({basis})" if basis else actor
+
+
+def suggest_role(list_name: str, dialect: str) -> dict:
+    """What THIS network's own inventory says devices of *dialect* are:
+    ``{"role", "count"}`` when every such device shares one role, else ``{}``.
+
+    Never a platform rule. `cisco_ios` holds vIOS routers and L2 switches and
+    `cisco_iosxe` routers and Catalyst switches, so a role keyed on the
+    platform is a rule about one deployment wearing a platform's name (the
+    operator's own pattern). A network whose every `cisco_ios` device is a
+    switch is a fact about that network, said as one, and still a suggestion:
+    the person chooses."""
+    from modules.device import load_saved_devices
+    from modules.nsot import listref
+    from modules.nsot.platform import platform_for_device
+
+    try:
+        rows = load_saved_devices(listref.resolve(list_name).csv_path)
+    except Exception:                                   # noqa: BLE001
+        return {}
+    roles = [(r.get("role") or "").strip() for r in rows if platform_for_device(r) == dialect]
+    if roles and all(roles) and len(set(roles)) == 1:
+        return {"role": roles[0], "count": len(roles)}
+    return {}
+
+
+def role_problem(role: str, list_name: str = "", dialect: str = "") -> str:
+    """Why *role* cannot be recorded for a new device, or ``""``."""
+    if (role or "").strip().lower() in ROLES:
+        return ""
+    hint = ""
+    if list_name and dialect:
+        s = suggest_role(list_name, dialect)
+        if s:
+            hint = (f" Every {dialect} device in {list_name} is a {s['role']} "
+                    f"({s['count']}), which is a suggestion, not a rule.")
+    got = f"{role!r} is not one of router, switch, firewall" if role else "no role was chosen"
+    return (f"{got}: the role becomes the device's Prometheus role label, its topology "
+            f"icon and its NetBox role, so it is asked, never guessed from the platform."
+            + hint)
+
+
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -145,7 +199,8 @@ def apply(list_name: str, hostname: str, role: str, reason: str, fingerprint: st
         write_devices_csv(rows, ref.csv_path)
     rec = {"at": _now_iso(), "list": ref.name, "device": hostname, "field": "role",
            "before": p["before"], "after": p["after"], "reason": p["reason"],
-           "actor": actor, "actor_verified": actor_verified, "fingerprint": p["fingerprint"]}
+           "actor": actor, "actor_verified": actor_verified,
+           "actor_label": actor_label(actor, actor_verified), "fingerprint": p["fingerprint"]}
     path = os.path.join(ref.data_dir, AUDIT_FILE)
     try:
         with open_secure(path, "a") as fh:
@@ -174,5 +229,7 @@ def history(list_name: str, hostname: str = "") -> dict:
             rows = [json.loads(line) for line in fh if line.strip()]
     except (OSError, ValueError) as exc:
         return {"state": "unreadable", "rows": [], "error": f"{type(exc).__name__}: {exc}"}
-    rows = [r for r in rows if not hostname or r.get("device") == hostname]
+    rows = [dict(r, actor_label=r.get("actor_label") or actor_label(r.get("actor", ""),
+                                                                     r.get("actor_verified", "")))
+            for r in rows if not hostname or r.get("device") == hostname]
     return {"state": "ok", "rows": list(reversed(rows))}

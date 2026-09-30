@@ -92,6 +92,19 @@ EXEMPLARS = {
         "setup": ["logging host 192.0.2.10"],
         "unit": {"chain": [], "line": "logging host 192.0.2.10"},
         "teardown": []}],
+    "global.ntp-server": [{
+        "setup": ["ntp server 192.0.2.11"],
+        "unit": {"chain": [], "line": "ntp server 192.0.2.11"},
+        "teardown": []}],
+    # A trap host names a community. The scratch community is defined first,
+    # so the read-back can SEE whether removing the host line takes the
+    # community with it (a broader removal) or leaves it, and the teardown
+    # removes it either way.
+    "global.snmp-server-host": [{
+        "setup": ["snmp-server community NMASPROBE4 RO",
+                  "snmp-server host 192.0.2.12 version 2c NMASPROBE4"],
+        "unit": {"chain": [], "line": "snmp-server host 192.0.2.12 version 2c NMASPROBE4"},
+        "teardown": ["no snmp-server community NMASPROBE4 RO"]}],
     "global.event-manager-applet": [{
         "setup": ["event manager applet NMASPROBE", " event timer watchdog time 86400",
                   " action 1.0 syslog msg \"NMASPROBE\""],

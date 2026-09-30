@@ -13,6 +13,8 @@ import sys
 
 import pytest
 
+from tests.test_onboard_pending import repo  # noqa: F401  (the fixture)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 HOST_ROWS = [("s1", "router", "cisco_ios", "10.255.1.21"), ("s2", "router", "cisco_ios", "10.255.1.22"),
@@ -194,3 +196,92 @@ class TestTheCommand:
 def test_the_audit_file_is_classified_no_secret():
     src = open(os.path.join(ROOT, "scripts", "nmas-check-secret-storage"), encoding="utf-8").read()
     assert '("lists/*/inventory_edits.jsonl", "no-secret")' in src
+
+
+class TestANewDeviceIsAskedItsRole:
+    """C225's other half (the operator, 2026-09-30): onboarding and adopt
+    hard-coded `router`, so the next switch onboarded would be wrong."""
+
+    def test_the_network_suggests_only_when_every_device_on_the_platform_agrees(self, lab):
+        from modules import inventory_edit as E
+
+        assert E.suggest_role("RoleLab", "cisco_iosxe") == {}          # r1 router, r6 none
+        p = E.plan("RoleLab", "s1", "switch", "a reason of the right shape")
+        E.apply("RoleLab", "s1", "switch", "a reason of the right shape", p["fingerprint"],
+                actor="a", actor_verified="access")
+        assert E.suggest_role("RoleLab", "cisco_ios") == {}            # s1 switch, s2 router
+        q = E.plan("RoleLab", "s2", "switch", "a reason of the right shape")
+        E.apply("RoleLab", "s2", "switch", "a reason of the right shape", q["fingerprint"],
+                actor="a", actor_verified="access")
+        assert E.suggest_role("RoleLab", "cisco_ios") == {"role": "switch", "count": 2}
+
+    def test_no_role_is_refused_saying_why_and_naming_the_suggestion(self, lab):
+        from modules import inventory_edit as E
+
+        for h in ("s1", "s2"):
+            p = E.plan("RoleLab", h, "switch", "a reason of the right shape")
+            E.apply("RoleLab", h, "switch", "a reason of the right shape", p["fingerprint"],
+                    actor="a", actor_verified="access")
+        why = E.role_problem("", "RoleLab", "cisco_ios")
+        assert why.startswith("no role was chosen: the role becomes the device's Prometheus role label")
+        assert "never guessed from the platform" in why
+        assert "Every cisco_ios device in RoleLab is a switch (2), which is a suggestion, not a rule." in why
+        assert E.role_problem("core").startswith("'core' is not one of router, switch, firewall")
+        assert E.role_problem("Switch") == ""
+
+    def test_the_wizard_plan_refuses_no_role_and_carries_a_chosen_one(self, tmp_path, monkeypatch):
+        from modules.nsot.onboard import build_plan
+
+        monkeypatch.setattr("modules.config.LISTS_DIR", str(tmp_path))
+        monkeypatch.setattr("modules.nsot.onboard._name_in_manifest", lambda *a: (False, True))
+        monkeypatch.setattr("modules.nsot.onboard._name_in_netbox", lambda *a: (False, True))
+        args = dict(hostname="sw9", platform="cisco_ios", list_name="probe", mgmt_ip="203.0.113.9",
+                    mgmt_mask="255.255.255.0", manager_interface="GigabitEthernet0/1",
+                    secret="bootstrap-only")
+        none = build_plan(**args)
+        assert any(r.startswith("no role was chosen") for r in none.blocking_reasons)
+        chosen = build_plan(role="switch", **args)
+        assert not any("role" in r for r in chosen.blocking_reasons)
+        assert chosen.role == "switch" and chosen.summary["role"] == "switch"
+
+    def test_the_role_reaches_the_manifest_and_the_promoted_row(self, repo):
+        from modules.config import get_list_data_dir
+        from modules.device import load_saved_devices
+        from modules.nsot import manifest as _m
+        from modules.nsot.onboard import promote_device
+        from modules.nsot.repo import GoldenItem, adopt_identity
+
+        identity = adopt_identity(repo, GoldenItem("sw9", "", "203.0.113.39"))
+        _m.upsert_device(repo, identity, "sw9", mgmt_ip="203.0.113.39", platform="cisco_ios",
+                         pending=True, role="switch")
+        assert _m.find_by_name(repo, "sw9")[1]["role"] == "switch"
+        out = promote_device(repo, "sw9", "probe", username="admin", password="Rotated-9", secret="")
+        assert out.get("ok"), out
+        row = load_saved_devices(os.path.join(get_list_data_dir("probe"), "devices.csv"))[0]
+        assert row["role"] == "switch"
+
+    def test_neither_onboarding_nor_adopt_hard_codes_router_any_more(self):
+        for path in ("modules/nsot/onboard.py", "modules/nsot/adopt.py"):
+            src = open(os.path.join(ROOT, path), encoding="utf-8").read()
+            assert '"role": "router"' not in src, path
+
+    def test_adopt_asks_it_first_among_the_gates(self):
+        src = open(os.path.join(ROOT, "modules", "nsot", "adopt.py"), encoding="utf-8").read()
+        assert 'gate("role", not problem' in src and '"role": role,' in src
+
+
+def test_a_host_command_is_labelled_never_a_bare_login(lab):
+    from modules import inventory_edit as E
+
+    p = E.plan("RoleLab", "s1", "switch", "s1 is a vIOS L2 switch")
+    rec = E.apply("RoleLab", "s1", "switch", "s1 is a vIOS L2 switch", p["fingerprint"],
+                  actor="someone", actor_verified="host-shell")
+    assert rec["actor_label"] == "someone (host login, not a verified identity)"
+    assert E.actor_label("op@example.com", "access") == "op@example.com"
+    # A row written before the label existed is labelled when read.
+    path = os.path.join(lab.data_dir, "inventory_edits.jsonl")
+    lines = open(path).read().splitlines()
+    old = json.loads(lines[-1])
+    old.pop("actor_label")
+    open(path, "w").write(json.dumps(old) + "\n")
+    assert E.history("RoleLab")["rows"][0]["actor_label"] == "someone (host login, not a verified identity)"

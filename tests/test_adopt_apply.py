@@ -197,6 +197,7 @@ def _forget_records():
 
 def _plan(lab, **kw):
     args = {k: lab["collab"][k] for k in ("read", "netbox_existing", "netbox_preview")}
+    args.setdefault("role", "router")       # asked since C225; r2 is a router
     args.update(kw)
     return A.plan(LIST, HOST, mgmt_ip=IP, platform="cisco_iosxe", supplied_username="admin",
                   supplied_password=SUPPLIED_PW, **args)
@@ -204,6 +205,7 @@ def _plan(lab, **kw):
 
 def _apply(lab, fingerprint=None, **kw):
     collab = dict(lab["collab"], **kw)
+    collab.setdefault("role", "router")
     fingerprint = fingerprint if fingerprint is not None else _plan(lab)["fingerprint"]
     return A.apply(LIST, HOST, mgmt_ip=IP, platform="cisco_iosxe", supplied_username="admin",
                    supplied_password=SUPPLIED_PW, confirmed_fingerprint=fingerprint,
@@ -338,7 +340,7 @@ class TestThePreview:
         out = A.plan(lst, host, mgmt_ip=IP, platform="cisco_iosxe", supplied_username="admin",
                      supplied_password=SUPPLIED_PW, read=lab["router"].reads,
                      netbox_existing=lab["collab"]["netbox_existing"],
-                     netbox_preview=lab["collab"]["netbox_preview"])
+                     netbox_preview=lab["collab"]["netbox_preview"], role="router")
         assert not out["fingerprint"]
         assert any(words in b for b in out["blocking"]), out["blocking"]
         assert lab["router"].sent == sent_before, "a refused preview sends nothing"

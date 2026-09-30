@@ -39,6 +39,18 @@
             <label class="form-label small fw-semibold" for="obPlatform">Platform</label>
             <select class="form-select form-select-sm" id="obPlatform"></select>
           </div>
+          {# ASKED, never guessed from the platform (C225): IOS and IOS-XE each
+             hold routers and switches. The review names this network's own
+             suggestion when every device on the platform shares one role. #}
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold" for="obRole">Role</label>
+            <select class="form-select form-select-sm" id="obRole">
+              <option value="">Choose…</option>
+              <option value="router">router</option>
+              <option value="switch">switch</option>
+              <option value="firewall">firewall</option>
+            </select>
+          </div>
           {# Each blocked platform's reason, visible (C222): a disabled option's
              title is not shown, so the screen said only "blocked". #}
           <div class="col-12 small text-muted" id="obPlatformBlocked"></div>

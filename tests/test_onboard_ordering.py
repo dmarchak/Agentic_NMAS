@@ -437,6 +437,7 @@ class TestTheREALStepsSatisfyTheContract:
             manager_gateway = ""
             domain = "rcn.lab"
             platform = "cisco_iosxe"
+            role = "router"
             # What makes the committed set COMPLETE, recorded with it. Judging
             # completeness against the static shape reported a DHCP device as
             # one "onboarded before these were recorded", whose remedy is to

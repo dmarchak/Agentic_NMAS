@@ -66,7 +66,7 @@ def _plan(**over):
     args = dict(hostname="r6", platform="cisco_iosxe", list_name="probe",
                 mgmt_ip="203.0.113.6", mgmt_mask="255.255.255.0",
                 manager_interface="GigabitEthernet2",
-                secret="bootstrap-only")
+                secret="bootstrap-only", role="router")
     args.update(over)
     return build_plan(**args)
 

@@ -120,6 +120,12 @@ SHAPES = (
     Shape("global.snmp-server-community", "global", "leaf",
           r"^snmp-server community \S+( view \S+)? (RO|RW)( \S+)?$"),
     Shape("global.logging-host", "global", "leaf", r"^logging host \S+( .+)?$"),
+    # The monitoring profile's superseded lines (P.9): a device can hold
+    # several of each, so a profile line is ADDED beside an old one and the
+    # old one is offered for removal. Unmeasured until the operator's probe
+    # run, so refused, naming that, until then.
+    Shape("global.ntp-server", "global", "leaf", r"^ntp server \S+( .+)?$"),
+    Shape("global.snmp-server-host", "global", "leaf", r"^snmp-server host \S+( .+)?$"),
     Shape("global.event-manager-applet", "global", "stanza", r"^event manager applet \S+( .+)?$"),
     Shape("global.ip-prefix-list-entry", "global", "leaf",
           r"^ip prefix-list \S+ seq \d+ (permit|deny) .+$"),

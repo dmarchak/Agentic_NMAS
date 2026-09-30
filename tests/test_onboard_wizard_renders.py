@@ -380,7 +380,9 @@ class TestTheFormIsReadAndWatchedFromOneList:
                # like the rest -- a field read and sent but watched by nothing
                # is what left "no network mask" on screen while the payload
                # was already correct.
-               "obAddrSource", "obMgmtMac")
+               "obAddrSource", "obMgmtMac",
+               # Asked since C225, never guessed from the platform.
+               "obRole")
 
     def _stub_dom(self, values):
         return ("var __bound = [];\n"
@@ -400,7 +402,7 @@ class TestTheFormIsReadAndWatchedFromOneList:
         assert set(payload) == {"list_name", "hostname", "platform", "mgmt_ip",
                                 "mgmt_mask", "manager_interface",
                                 "manager_gateway", "mgmt_interface",
-                                "address_source", "mgmt_mac"}
+                                "address_source", "mgmt_mac", "role"}
         # Every value arrives, not just every key. A builder reading the
         # wrong id would return the right shape full of empty strings.
         assert "" not in payload.values(), payload
