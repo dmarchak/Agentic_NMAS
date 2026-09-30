@@ -1,10 +1,18 @@
 #!/bin/sh
-# Scan the staged diff for definitions the edit removed but did not mean to.
+# Refuse a staged secret or stray (scripts/nmas-stage-guard), then scan the
+# staged diff for definitions the edit removed but did not mean to.
 #
 # Install:  ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit
-# Bypass:   git commit --no-verify   (for a deliberate removal)
+# Bypass:   git commit --no-verify   (for a deliberate removal) skips BOTH
+#           checks, the stage guard included: name a stray with
+#           NMAS_STAGE_ALLOW instead, and never bypass for a secret.
 #
 # Blocks only on BROKEN / GONE — a removed definition something still calls.
 # A clean rename or a deliberate deletion with no remaining references prints
 # and passes.
-exec python3 "$(git rev-parse --show-toplevel)/scripts/check_removed_definitions.py"
+ROOT="$(git rev-parse --show-toplevel)"
+# First, a staged secret or stray (2026-09-29): the repository is public, and a
+# key committed is a key published. NMAS_STAGE_ALLOW names a new path outside
+# the known top-level entries that belongs.
+python3 "$ROOT/scripts/nmas-stage-guard" --repo "$ROOT" || exit 1
+exec python3 "$ROOT/scripts/check_removed_definitions.py"
