@@ -1,5 +1,13 @@
 # Authorization: who may do what
 
+**SUPERSEDED IN PART, 2026-09-30** ([NSOT_STAGE10_PLAN.md](NSOT_STAGE10_PLAN.md) sections 2
+and 3; built as Stage 9's item 9.I). Local accounts are now BUILT IN and the default, which
+reverses the "no user table" rejection below, because software other people install must be
+secure with nothing in front of it. The roles become two layers (an installation
+administrator; per network, a network administrator, an operator, a viewer). The approver
+below becomes the network administrator's permission. Separation of duties per artifact,
+the `approve` split and controls drawn from `may` are kept as decided here.
+
 **DECIDED 2026-09-26. Not built.** Recorded now because it shapes Stage 7.
 Every screen that draws a gated control has to know who may press it, and
 retrofitting that after the screens exist means redrawing them.

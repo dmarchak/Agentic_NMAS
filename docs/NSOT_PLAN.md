@@ -4074,6 +4074,13 @@ has never happened, and the layers above to exist.
 - **The sandbox last:** it waits on the CPU measurement and the operator's decision on
   capacity.
 
+**Also used by Stage 10's multi-vendor item** ([NSOT_STAGE10_PLAN.md](NSOT_STAGE10_PLAN.md)
+section 12). A new platform's WRITE capabilities (deploy, removal, rotation, bootstrap,
+persist) are enabled only after they are measured on a sandbox device of that platform. The
+second vendor's write tier and the assistant's pipeline (8.10) both wait on the sandbox.
+- A container platform (Arista cEOS) is far cheaper to hold as a sandbox than another VM on
+  this CPU-bound host, which is part of why it is recommended as the second vendor.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported
@@ -5319,6 +5326,25 @@ BUILT; after 8.3 and 8.4, and after P.10's layers exist).**
 **The honest expectation:** this makes the pipeline never repeat a mistake. A genuinely
 new kind of failure stays possible, which is what verify and rollback remain for.
 
+**8.10 The assistant adds platforms, through the platform pipeline (SCOPED 2026-09-30, the
+operator; NOT built).** The design is [NSOT_STAGE10_PLAN.md](NSOT_STAGE10_PLAN.md)
+section 12.4.
+- **The steps:** on request ("add support for <platform>"), the assistant:
+  1. captures real output READ-ONLY, from a command list a person approved first;
+  2. drafts the platform DEFINITION (data, never code);
+  3. proves it against the device's own output, never only against itself, including
+     captures of broken states.
+
+  A person approves it, as a template approval. Read features are enabled from the proven
+  captures; write features only after their measurement on P.10's sandbox.
+- **Its limit:** the assistant never enables a platform itself. Its role (VIEWER plus
+  `author`, 9.I) cannot hold `approve`.
+- **Numbered here because it is the agent's work, and RUN after** 9.P (the framework),
+  P.10's sandbox, 8.3 (the enforced authority) and 8.4 (the agent's first real runs).
+- **Acceptance:** a third platform added through it (Junos recommended), not a release
+  blocker.
+- **Size:** 30 to 60 commits.
+
 ---
 
 ### STAGE 9 — hardening and cleanup (ADDED 2026-09-28, the operator; reshaped the same night)
@@ -5356,7 +5382,9 @@ the environment does.
   - oxidized-web serving every config to the LAN (C143, which is 6.1);
   - the community rotation and its consumer work (C139);
   - 6.2's per-consumer accounts;
-  - `transport input all` (E3).
+  - `transport input all` (E3);
+  - SNMPv3 (C249, the operator, 2026-09-30): nothing the tool runs speaks it, so every
+    device must run a community. REQUIRED before Stage 10's release.
 
   Added by the triage for the operator to confirm: C44 (a manual pull
   bypasses the deploy gate), C100 (NMAS's NetBox token is the operator's
@@ -5421,3 +5449,246 @@ through a sanitiser that still leaks, would be the same repair made twice.
 
 *Acceptance:* none for the stage. Each item carries its own. The standing
 check is the precondition.
+
+#### 9.I — Identity, roles and running with nothing in front (SCOPED 2026-09-30, the operator; not built)
+
+**Why it is in Stage 9 and not Stage 10.** Stage 10's release depends on it, and the
+operator's lab moves to it first, so it is tested on the operator before anyone else
+depends on it. Its design is [NSOT_STAGE10_PLAN.md](NSOT_STAGE10_PLAN.md) sections 2 to 4
+and 11. Unlike the rest of Stage 9, it is not a deferral but a feature: the program must be
+secure ON ITS OWN, with nothing in front of it (Stage 10's principle, the installer
+chooses).
+
+**It supersedes part of AUTHZ** (above; [NSOT_AUTHORIZATION.md](NSOT_AUTHORIZATION.md)):
+- LOCAL ACCOUNTS are built in and the default, reversing the rejected "user table", with
+  the reason in NSOT_STAGE10_PLAN.md 2.2;
+- the roles become two layers;
+- AUTHZ's approver becomes the network administrator's permission;
+- its separation of duties per artifact is kept.
+
+**Steps, in order:**
+1. **Classify every gate by role and scope.** The table (120 endpoints: configure 35,
+   approve 19, confirm 16, not_device 41, publish_remote 5, reveal 4; measured 2026-09-30)
+   gains a scope column (installation or network) and a required role. `approve` splits
+   into `author` and `approve`. A test holds the table exact both ways, P.3's shape. No
+   behaviour changes yet: `any_person` still answers.
+2. **The provider interface.** `identify()` asks the configured provider. Cloudflare's
+   verification becomes the first provider, its behaviour and tests unchanged; the
+   trusted-peer check belongs to it alone.
+3. **Local accounts:**
+   - argon2id; the NIST 800-63B policy; TOTP with recovery codes (required for
+     installation administrators);
+   - server-side sessions with `Secure`, `HttpOnly`, `SameSite=Lax` cookies, rotated at
+     login;
+   - lockout by back-off per account and per address;
+   - the break-glass local administrator, every use a Needs attention row;
+   - the last installation administrator never removable;
+   - the user screen in v2.
+4. **Generic OIDC** (Authlib: discovery, code flow with PKCE, the ID token validated),
+   with a Test sign-in that shows the claims and a group-to-role mapping.
+5. **Roles:**
+   - installation administrator; per network, network administrator, operator, viewer;
+   - `strict_network_access` (off by default: an installation administrator holds every
+     network implicitly, recorded as such);
+   - `may()` answers from roles;
+   - every control drawn from it, disabled with what it needs.
+6. **The records.**
+   - `Actor-Verified:` gains the provider's value (`local`, `oidc`, `access`, `api-token`,
+     `break-glass`).
+   - A new `Actor-Role:` trailer records the role and scope held.
+   - The 20 record files that store an actor gain `provider`, `role` and `scope`, through
+     one helper.
+7. **API tokens** replace Cloudflare service tokens: scoped to a role on a network, hashed,
+   shown once, expiring. The AI agent becomes an identity with its role (VIEWER plus
+   `author`), the enforcement point Stage 8.3 needs.
+8. **Nothing in front** (C248):
+   - a production server (gunicorn, one gevent worker) replacing Werkzeug's development
+     server;
+   - HTTPS through Caddy on the host, with the same Caddyfile Stage 10's container ships:
+     an internal CA first, own certificate optional;
+   - the app bound to loopback behind it;
+   - the client address read from that one hop only (the pinned no-ProxyFix test
+     rewritten to pin exactly that);
+   - a CSRF token on every state-changing request;
+   - Socket.IO restricted to the configured origin;
+   - rate limits on sign-in, tokens and gated POSTs;
+   - HSTS and `X-Frame-Options`;
+   - trap and NetFlow sources allowlisted;
+   - a test listing every place that assumed something in front, exact both ways.
+9. **The operator's lab moves to Authentik** (the operator's host steps; NSOT_STAGE10_PLAN
+   11):
+   - Authentik runs as its own server;
+   - NMAS, Grafana (`[auth.generic_oauth]`, a group to Editor for dashboard authors) and
+     NetBox (python-social-auth OIDC) are its clients: one login for all three;
+   - Cloudflare Access's identity provider points at Authentik, so the tunnel stays as
+     transport only;
+   - NMAS keeps its own service tokens for Grafana and NetBox;
+   - no `auth.proxy`: the Stage 7 plan's embed design is superseded, measured absent from
+     the code.
+
+**Not in 9.I:**
+- LDAP/AD (Stage 10, on demand: OIDC covers AD through Entra ID, AD FS or an IdP in
+  front);
+- SAML (not planned);
+- the container delivery and the first-run wizard (Stage 10).
+
+**Acceptance:**
+- the operator signs in once through Authentik and reaches NMAS, Grafana and NetBox;
+- a browser on the LAN reaches NMAS directly over HTTPS, with no tunnel, and every gate
+  holds (P.3's unauthenticated sweep re-run, all refused);
+- a viewer sees every mutating control disabled, saying the role it needs;
+- the break-glass administrator signs in with Authentik stopped, and Needs attention says
+  so;
+- the in-front inventory test lists nothing assumed;
+- C248 closes.
+
+**Size:** 90 to 150 commits, 35 to 60 hours, estimated from P.3 (20 commits, the gate
+table) and 7.1 (69 commits, an operation made whole across the app), which are the
+closest finished stages. Checked against actuals when it closes.
+
+**Depends on:**
+- P.8 (a network role is scoped to what P.8 makes a network);
+- Stage 7's v2 screens (the user screen, controls drawn from `may`);
+- Stage 8.3 for the agent's role (step 7 provides the enforcement point either way).
+
+#### 9.P — The platform layer: platforms as data, with declared capabilities (SCOPED 2026-09-30, the operator; not built)
+
+The design is [NSOT_STAGE10_PLAN.md](NSOT_STAGE10_PLAN.md) section 12.
+- **What it is:** one interface every platform satisfies (parse, render, push, save, facts,
+  remove, rotate, bootstrap, errors, prompts, rollback). Each platform is a declarative
+  DEFINITION: YAML validated by a schema, never code, executed by the program's tested
+  engine.
+- **What the engine holds:** the grammar families, the transports (line-merge, candidate
+  commit), the rollback strategies, the probes and the judges.
+- **IOS and IOS-XE are re-expressed as definitions**, the existing behaviour kept, every
+  existing test green: that is the acceptance.
+- **The seeds it gathers:** `platform_map`, bootstrap's sets, `removal_measured.json`,
+  `PLATFORM_FOLDS`, `BLOCKED_PENDING_MEASUREMENT`, the parser `REGISTRY`.
+- **It closes C250** (the ephemeral-line list in five copies).
+- **Why Stage 9:** a refactor of the running program is proven on the operator's fleet
+  before the release depends on it, the reason 9.I is here.
+- **Size:** 60 to 110 commits.
+- **Then:**
+  - the second vendor (Arista EOS, cEOS) opens Stage 10;
+  - the AI authoring pipeline is Stage 8's 8.10, run after this and P.10's sandbox.
+
+---
+
+### STAGE 10 — A release other people can install and use (SCOPED 2026-09-30, the operator; not built)
+
+**The scope is [NSOT_STAGE10_PLAN.md](NSOT_STAGE10_PLAN.md)**, governing as
+NSOT_STAGE7_PLAN.md governs Stage 7. It comes after Stage 9, once functionality,
+appearance, features and known defects are finished.
+
+**The deliverable:** a clean public version someone else can download, install and use on
+their own network, in a SEPARATE, NEW public repository, exported fresh (no history).
+- This repository then goes private: that stops new viewers, not copies already cloned
+  (nothing is forked).
+- The instructor is added as a collaborator if the original is needed for grading.
+
+**The principle: THE INSTALLER CHOOSES** how people reach it and sign in, so the program is
+secure on its own with nothing in front. The operator's Cloudflare tunnel and Access are
+one install's transport, not the design.
+
+**Decided in the scope, each a recommendation for the operator to confirm:**
+1. **Delivery:**
+   - Docker images are the one artefact, run by Compose;
+   - an install script (short, checksummed, published with its manual steps);
+   - data in volumes, the key in its own;
+   - per-feature networking: bridge for the app; host networking only for the optional ZTP
+     responder and Kea;
+   - optional bundled monitoring (Grafana, Prometheus, Loki, the exporter) and Oxidized,
+     with NetBox and Kea connect-first;
+   - a VM image only after the container route passes acceptance.
+2. **Updates:**
+   - the app NEVER holds Docker's socket;
+   - a host-side root-owned helper (today's updater translated: request file, CI-signed
+     images verified by digest, preview, a person confirms, roll back to the recorded digest,
+     outcome shown);
+   - the one command, with a copy button, where no helper is installed.
+3. **Sign-in, pluggable:**
+   - LOCAL accounts built in and the default (reversing AUTHZ's rejected user table, with
+     the reason);
+   - generic OIDC;
+   - LDAP/AD later and on demand (OIDC covers AD through Entra ID, AD FS or an IdP in front);
+   - SAML not planned;
+   - Cloudflare Access an optional provider;
+   - Authentik recommended and never bundled;
+   - a break-glass local administrator, every use flagged;
+   - API tokens for services.
+4. **Roles in two layers:** INSTALLATION ADMINISTRATOR; per network, NETWORK ADMINISTRATOR,
+   OPERATOR, VIEWER.
+   - Implicit full rights for installation administrators by default, recorded, with a
+     strict setting.
+   - Every gate mapped to a role and scope.
+   - Groups map to roles.
+   - The AI agent is an identity with a role (VIEWER plus `author`).
+   - Disabled controls say what they need.
+   - Every action records the role and scope held (`Actor-Role:`).
+5. **Secure with nothing in front:**
+   - HTTPS through a bundled Caddy (an internal CA, the installer's own certificate, or
+     ACME);
+   - a production server;
+   - CSRF tokens, the Socket.IO origin, rate limits, headers, trap source allowlists;
+   - a test listing everything that assumed something in front (C248).
+6. **A first-run wizard over the existing Settings screens,** locked to a one-time setup
+   code until the break-glass administrator exists. Its steps: sign-in with a test and group
+   mapping, HTTPS, the key's backup made explicit, integrations (bundled or tested), the
+   first network, devices, backups.
+7. **Out or optional:**
+   - containerlab and vrnetlab pieces;
+   - the lab hosts;
+   - the host systemd and sudoers pieces (replaced);
+   - Proxmox and B2;
+   - the lab's names;
+   - 33 of 44 docs.
+8. **Required first:**
+   - 9.I;
+   - SNMPv3 (C249);
+   - C143;
+   - no shipped community (C39, C141);
+   - C139;
+   - C248;
+   - the AI off by default;
+   - C71's sanitised fixtures;
+   - C100.
+9. **The repository:**
+   - an allowlist export, CI that builds, scans, signs (cosign) and publishes images;
+   - Apache-2.0 recommended (AGPL-3.0 if hosted improvements must come back; check the
+     institution's policy first);
+   - **the release repository becomes the only development repository at cut-over**, with a
+     private lab repository for the operator's lab tooling.
+10. **Acceptance:** a tester who has not seen the program installs it on a clean VM from
+    the published docs alone, reaches it directly on the LAN, signs in by local and then
+    OIDC, and manages a small example network through ten timed tasks. Every stuck point
+    is a finding.
+11. **Multi-vendor (its own item, section 12):**
+    - the platform layer with platforms as DATA (9.P, in Stage 9);
+    - Arista EOS proven by hand (early Stage 10);
+    - the pipeline that adds a platform (capture, draft, prove against the device, a person
+      approves, read tier then write tier after sandbox measurement), usable by a person and
+      driven by the AI assistant in Stage 8's 8.10;
+    - a third platform (Junos recommended) through the pipeline as its acceptance test, not
+      a release blocker.
+
+**The Stage 9 part:**
+- **9.I** (identity, roles, running with nothing in front), in which the operator's lab
+  moves to Authentik via OIDC: one login across NMAS, Grafana and NetBox, the tunnel kept
+  as transport, and no `auth.proxy` (it does not exist in the code: NMAS draws Grafana's
+  panels with its own token);
+- **9.P** (the platform layer).
+
+**Size, estimated from finished stages of the same kind, checked when each closes:**
+- 9.I: 90 to 150 commits;
+- 9.P: 60 to 110;
+- 8.10: 30 to 60;
+- Stage 10 proper, with the second vendor: 110 to 210, plus the acceptance run's findings.
+
+No finished stage is of Stage 10's kind, so its range is the widest.
+
+**Depends on:**
+- Stage 9 (9.I and 9.P first for this purpose, and the required list);
+- P.8 (a network role is scoped to a P.8 network);
+- Stage 7 complete (the wizard reuses its screens and manual);
+- Stage 8.3 (the agent's role), or the AI off;
+- P.10's sandbox (the second vendor's write tier and 8.10).

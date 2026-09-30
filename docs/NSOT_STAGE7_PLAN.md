@@ -378,6 +378,10 @@ against the code, and two claims were corrected:
   P.8).** D4's checks stay scoped to the ZTP segment. Elsewhere: inside the subnet, no clash
   with a pool or another reservation, and never a managed device's management address
   unless the reservation is for that device. Lease history is the NMAS's own observed record.
+- **(SUPERSEDED 2026-09-30:** no `auth.proxy` and no iframe exist in the code, measured; the
+  device page draws panels from `api/ds/query` with the NMAS's own token, and with sign-in
+  moving to OIDC (Stage 9, 9.I), people author in Grafana through its own OIDC login.
+  NSOT_STAGE10_PLAN.md section 11. The line below is kept as the record.)
 - **Grafana, corrected: restrict who can ASSERT AN IDENTITY, never who can reach Grafana.**
   `auth.proxy`'s allowlist names the NMAS only; Grafana stays reachable for a direct login;
   job health checks that the header from any other address authenticates nothing. The app
