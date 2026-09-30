@@ -1,0 +1,202 @@
+# The monitoring profile (NSOT_PLAN P.9): designed 2026-09-30, not built
+
+The operator's requirement (2026-09-30): every device, new and existing, carries the
+configuration its integrations need (SNMP, syslog, the heartbeat, NTP, LLDP and CDP, the
+routers' telemetry, IP SLA), derived from the connectors the network uses, with one owner.
+
+## 1. Why
+
+- **r6.** It became an SNMP target when the targets were generated from the inventory
+  (C232), and Grafana's "Device unreachable (SNMP)" fired. That was false: r6 answers SSH
+  and its heartbeat, and its configuration has no SNMP. Since 2026-09-30 a device is a
+  target only when its committed golden configures SNMP, and a device missing an
+  integration the network uses is a Needs attention row (`modules/monitoring_coverage.py`):
+  "r6 is not monitored by SNMP". That row's action, "Apply the monitoring profile", is what
+  this document designs.
+- **Three mechanisms for one block today.** P.1's syslog and heartbeat block is written
+  into intent by onboarding (`onboard.py`), never emitted by the bootstrap, and dropped by
+  seed (C216, decided "seed keeps declared blocks"). The fleet's SNMP lines were written by
+  hand, device by device. Nothing gives a new device either.
+- **Every new device repeats r6** until this exists.
+
+## 2. The model
+
+**A profile is per network, and committed.** It is one document in the list's own
+repository, `config_repo/profiles/monitoring.yml`, changed by a commit
+(`profile: <summary>`, `Source: profile`), read at HEAD like every other record (C104).
+Being in the list's repository makes it per network with no new store. The connector
+settings it derives from become per network with P.8.
+
+**It holds data, never configuration text.** Each section has the shape the parsers
+already emit into `host_vars` (`snmp`, `logging.syslog`, `ntp_servers`, `lldp`, `cdp`,
+`telemetry`). The PLATFORM TEMPLATES render it, so IOS and IOS-XE syntax differences stay
+where they already live, and nothing in the profile is platform text. A section carries
+`platforms:` where it applies to some platforms only (telemetry: `cisco_iosxe`) and
+`roles:` where it applies to some roles only (IP SLA policy: `router`). That makes C225's
+role data load-bearing, and it is corrected through `modules/inventory_edit.py`.
+
+**Each section names the connector it is derived from,** and is ABSENT while that
+connector is not configured. "Configure a connector, and devices get the matching config"
+then means: configuring the connector proposes the section (a preview of the profile
+commit). It never writes itself.
+
+| Section | Derived from | What the profile holds |
+|---|---|---|
+| SNMP | Prometheus configured; the community snmp_exporter's auth module speaks (`public_v2` today) | `communities: [{ref: snmp_community_ro, access: RO}]`, the trap host (the NMAS's trap receiver address), location and contact (per-network settings) |
+| Syslog | Loki configured; the syslog receiver's address (the host's rsyslog, which writes `/var/log/network/<address>.log` for Promtail) | `hosts`, `trap: notifications`, the source interface RULE (below) |
+| Heartbeat | the heartbeat alert rules exist (P.1's, P.7's generated ones) | `heartbeat: 300` (the NMAS-HEARTBEAT applet) |
+| NTP | a per-network setting (no connector) | `ntp_servers` |
+| LLDP, CDP | always (the topology and the `lldp` job read them) | `lldp: run`, `cdp: run` |
+| Telemetry | the Telegraf endpoint, a new per-network setting (it is not a setting today) | the fleet's measured subscriptions (101 CPU, 102 interfaces), receiver from the setting; `platforms: [cisco_iosxe]` |
+| IP SLA | a POLICY, never addresses (section 6) | `policy`, `type`, `frequency`; `roles: [router]` |
+
+**Secrets are references, owned by the network.** The profile's community is
+`snmp_community_ro`, and its value is held once per network under a profile-scoped key
+built by ONE function (`credentials.profile_secret_key(list)`), beside
+`template_secret_key()`. `hydrate_secrets()` resolves a device's own value first, then the
+profile's. This settles C235 for the monitoring secrets: a new device inherits the value
+without a per-device copy. **It revises C139's rule** ("each device's own secret"), which
+came from a transition in which devices held different values. The profile's value is the
+owner, and a device value is an OVERRIDE, drawn as one, kept for a rotation in progress.
+That is a decision for the operator (section 9).
+
+## 3. Inheritance and overrides
+
+**Effective intent = the profile's sections for the device's platform and role, overlaid
+by the device's own intent.** Where a key is set on both, the device's value wins. One
+function computes it (`hostvars.effective(intent, profile, device)`), and every reader of
+intent calls it: render, the deploy plan, restore validation, round-trip, seed and the
+editor's preview. A second merge would be two answers to "what should this device look
+like".
+
+- **An override is visible.** A device value that differs from the profile's is drawn as
+  "overrides the profile" in the editor and the plan, never silently.
+- **An exclusion carries a reason.** A section the device must not have is excluded with
+  `profile_exclude: [{section, reason}]`, committed in its intent, the reason's shape rule
+  as for an authorised line. An exclusion without one is refused.
+- **One owner, enforced at extraction and seed.** A device-intent value EQUAL to what the
+  profile supplies is dropped at seed and at extraction, because the device inherits it.
+  So the fleet's hand-written SNMP lines become inherited once the profile holds the same
+  values, and a device's intent holds only what is its own. C216's "seed keeps declared
+  blocks" is subsumed: the syslog block lives in the profile, so seed has nothing of it to
+  drop. Onboarding's own merge of the block into `host_vars` is removed.
+- **A profile change is a change to every device's intent.** Its commit's preview names the
+  devices whose effective intent moves. Reaching the devices is a fleet deploy (section 5),
+  never a side effect of the commit.
+- **Template approval is unaffected.** Scheme 3 keys on the templates' closure hash, and
+  the profile is data. A device the template cannot reproduce stays blocked alone, by its
+  own `template_report`.
+
+## 4. New devices: onboarding's phase 2, and adopt
+
+**Not in the bootstrap** (the operator's three reasons, kept):
+- a ZTP bootstrap travels over cleartext TFTP, and the community would travel with it;
+- on vIOS the bootstrap is replayed line by line through the console, the path stage D
+  exists to measure;
+- configuration placed there sits outside intent and the profile.
+
+**Phase 2 applies it, over SSH, in the operation that already holds the device.** The
+order becomes: verify, capture, rotate, remove RW, APPLY THE PROFILE, persist, re-read,
+first golden, NetBox, promote. The profile's lines land before the first capture, so the
+first golden already records monitoring, and the device is monitored the moment
+onboarding finishes. The push is the deploy path's merge program on the held session
+(`merge_commands`, `assert_sendable`, `assert_merge_only`, `assert_credentials_unchanged`).
+It is verified by reading each line back, and undone by the computed rollback on failure,
+leaving the device pending with the step named.
+
+**This makes Verify a preview and a confirm** (a decision, section 9). Phase 2 is one click
+today (`SELF_CONFIRMED`), because nothing it sent needed reading. A program of profile
+lines does: the preview reads the device, as adopt's plan does, draws the profile's lines
+grouped as in section 5, and the confirm is bound to their fingerprint. **Adopt** gets the
+same step, in its apply, after the tool's account is proven.
+
+## 5. Existing devices: "Apply monitoring profile"
+
+The device's intent already inherits the profile, so nothing is seeded: the device has
+simply not received it. **The action is a deploy plan scoped to the profile's lines.** The
+plan attributes every line it would send as `from_this_edit`, `pre_existing` or, new,
+`from_profile`. This action selects the `from_profile` lines and their ancestors, through
+preview, confirm, result, push, verify and rollback, like any deploy. It sits on the device
+page's Monitoring section, and on the fleet coverage page for several devices.
+
+**The preview shows three groups:**
+- **Inherited from the profile: will be sent.** Each line, with the section and connector
+  it comes from.
+- **Already in place.** Profile lines the device has, stated so the reader knows they were
+  checked.
+- **Superseded on the device.** A brownfield device may carry DIFFERENT monitoring
+  configuration: an old `logging host`, another community, another `ntp server`. Merge-only
+  would add the profile's lines beside them. Each superseded line is named as "superseded
+  by the profile", with a box to REMOVE it through Mode B and a reason field for each.
+  Nothing is removed unless its box is ticked, and never silently. A line whose shape Mode
+  B has not measured on that platform is drawn with its box disabled and the reason beside
+  it ("not measured to remove exactly itself on cisco_iosxe"). **So `nmas-removal-probe`
+  measures `logging host`, `ntp server` and `snmp-server community` on both platforms
+  first:** the community is measured on IOS (C139) and not on IOS-XE. That run is the
+  operator's.
+
+**Fleet coverage.** The Monitoring page gains Coverage: devices by integration (SNMP,
+syslog, heartbeat, telemetry, IP SLA), each cell from the committed golden
+(`monitoring_coverage`, extended to telemetry and IP SLA), with a device's exclusions drawn
+as such. Selecting several devices opens ONE batch preview, in the deploy batch's order:
+sequential, with the circuit breaker, the order drawn. Needs attention already carries one
+row per uncovered device. Its action becomes this one when it exists.
+
+**r6 is the first case.** Once the profile exists, "Apply monitoring profile" on r6 sends
+its SNMP lines, and the next target generation makes it a target. r6's intent is NOT
+hand-edited before then.
+
+## 6. IP SLA: a policy in the profile, operations in the device's intent
+
+A probe targets another device's address, so addresses are the device's own data. The
+profile holds the POLICY:
+- `gateway`: probe the device's default route next hop;
+- `peers`: probe its routing peers, read from the capture's OSPF neighbours and BGP peers;
+- `none`;
+- plus `type` (icmp-echo) and `frequency`.
+
+The preview SUGGESTS operations from the device's own facts. The person accepts or edits
+them, and they are committed into the DEVICE's intent (`ip_sla`, which the parsers already
+model). **Recommended over fixed addresses in the profile**, which would be wrong for every
+device but one, and over a pure per-device item, which gives a new device nothing.
+
+## 7. What it replaces
+
+- P.1's block written by onboarding. The profile's syslog and heartbeat sections replace
+  it.
+- C216's "seed keeps declared blocks". Subsumed, since the block is inherited.
+- The fleet's hand-written SNMP lines. They become inherited at the next extraction or
+  seed, where they equal the profile.
+- C235 for the monitoring secrets, through the profile-scoped key.
+
+## 8. Where it lands in the order (proposed)
+
+**Next, before the rest of step 4's tabs:** every new device hits r6's problem until this
+exists, and step 4's Monitoring section is where its action lives. Four steps, each with a
+host run:
+
+- **(a) The model.** The profile document and its commit path; `hostvars.effective()` and
+  every reader moved onto it; the profile-scoped secret; `from_profile` attribution in the
+  plan; one owner at seed and extraction. From the real fleet goldens, the acceptance: the
+  fleet's current SNMP and syslog lines are inherited, and no device's plan changes.
+- **(b) Existing devices.** The scoped deploy with its three groups, and superseded lines
+  through Mode B (after the operator's removal probe run). r6 first: its alert clears, and
+  it becomes a target.
+- **(c) New devices.** Onboarding's phase 2 and adopt apply the profile; Verify becomes a
+  preview and a confirm. Acceptance: a throwaway device onboarded, monitored at promotion,
+  its first golden holding the profile.
+- **(d) The screens, in v2.** The device page's Monitoring section (coverage and the
+  action) and the fleet Coverage page, as part of step 4.
+
+It needs P.8 only for the connector settings to be per network. Until then they are the
+installation's, which is the one network today.
+
+## 9. Decisions for the operator
+
+1. **Verify becomes a preview and a confirm**, because phase 2 now sends a program.
+2. **The community's owner is the network** (the profile), with a device value as an
+   override. This revises C139's per-device rule.
+3. **The removal probe run** for `logging host`, `ntp server` and `snmp-server community`
+   on both platforms, before superseded lines can be offered for removal.
+4. **Two new per-network settings:** the Telegraf endpoint and the NTP servers.
+5. **IP SLA as a policy with suggested operations** (section 6).

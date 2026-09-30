@@ -3891,6 +3891,36 @@ per-list rules and targets, and 7.3 embeds per-list monitoring. The
 NetBox question in (1) is the operator's to answer first, because six keys and
 the inventory adapter move with it.
 
+### P.9 — The monitoring profile (DESIGNED 2026-09-30, not built; proposed NEXT, before the rest of the redesign's step 4)
+
+The operator's requirement (2026-09-30), after r6 was called "unreachable" by an SNMP alert
+when its configuration simply has no SNMP: every device, new and existing, carries what its
+integrations need, derived from the connectors the network uses, with ONE owner. The design is
+[MONITORING_PROFILE.md](MONITORING_PROFILE.md):
+
+- **The model:** one committed profile per network (`config_repo/profiles/monitoring.yml`),
+  data in the parsers' `host_vars` shape, rendered by the platform templates. Each section is
+  derived from a connector and absent without it. Secrets are references, with the profile's
+  values under a profile-scoped key.
+- **Inheritance:** effective intent is the profile overlaid by the device's own intent, through
+  one function every reader calls. An override is drawn; an exclusion carries a reason; a value
+  equal to the profile's is dropped at seed and extraction (one owner). C216 is subsumed, and
+  onboarding's own block merge is removed.
+- **New devices:** applied in onboarding's phase 2 over SSH, before the first capture, so the
+  first golden records it; Verify becomes a preview and a confirm. The same step goes into adopt.
+  Never in the bootstrap.
+- **Existing devices:** "Apply monitoring profile", a deploy scoped to the `from_profile` lines.
+  Its preview groups inherited, already in place, and superseded lines, and each superseded line
+  can be removed through Mode B with its reason. A fleet Coverage page runs it as a batch.
+- **IP SLA:** a policy in the profile (gateway, peers, none); operations are suggested from the
+  device's own facts and committed into its intent.
+- **Order, proposed:** (a) the model, (b) existing devices with r6 first, (c) new devices,
+  (d) the screens inside step 4. It needs P.8 only for the connector settings to be per network.
+- **Built ahead of it, 2026-09-30:** a device is an SNMP target only when its committed golden
+  configures SNMP, and a device missing an integration the network uses is a Needs attention row
+  (`modules/monitoring_coverage.py`) whose action names this item. r6's intent is not hand-edited
+  before the profile exists.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported

@@ -46,16 +46,15 @@ def _file(kind: str) -> str:
     return f"{PREFIX}{kind}.json"
 
 
-def _golden_text(ref, hostname: str) -> str:
+def read_golden(ref, hostname: str) -> str:
+    """The device's COMMITTED golden text; ``""`` when it has none. RAISES
+    when it cannot be read: an unreadable golden is not "no SNMP", and reading
+    it as one would drop the device from every target file."""
     from modules.nsot import manifest
     from modules.nsot import repo as R
 
-    try:
-        _ident, entry = manifest.find_by_name(ref.repo_dir, hostname)
-        return (R.committed_golden_for(ref.repo_dir, entry).get("text") or "") if entry else ""
-    except Exception as exc:                            # noqa: BLE001
-        log.info("prometheus targets: no golden read for %s (%s)", hostname, type(exc).__name__)
-        return ""
+    _ident, entry = manifest.find_by_name(ref.repo_dir, hostname)
+    return (R.committed_golden_for(ref.repo_dir, entry).get("text") or "") if entry else ""
 
 
 def inventory(lists=None) -> list:
@@ -75,7 +74,9 @@ def inventory(lists=None) -> list:
 def generate(devices=None, golden=None) -> dict:
     """``{"files": {name: [group, ...]}, "notes": [...], "devices": n}`` from
     the inventory. *devices*: (ref, row) pairs, default every list;
-    *golden*: (ref, hostname) -> text, default the committed golden.
+    *golden*: (ref, hostname) -> text, default the committed golden (raising
+    when it cannot be read). A device whose golden configures no SNMP is not a
+    target, and is named.
 
     Refused and NAMED, never guessed: a device with no address, an address two
     devices hold (one address scraped under two names is two series for one
@@ -84,7 +85,9 @@ def generate(devices=None, golden=None) -> dict:
     from modules.nsot.platform import platform_for_device
 
     devices = inventory() if devices is None else devices
-    golden = golden or _golden_text
+    from modules.monitoring_coverage import configured
+
+    golden = golden or read_golden
     files, notes, by_address = {_file(ALL): [], _file(IPSLA): []}, [], {}
     for ref, dev in devices:
         host, ip = (dev.get("hostname") or "").strip(), (dev.get("ip") or "").strip()
@@ -101,6 +104,17 @@ def generate(devices=None, golden=None) -> dict:
         host, ip = (dev.get("hostname") or "").strip(), (dev.get("ip") or "").strip()
         if not host or not ip or by_address.get(ip) != f"{host} ({ref.name})":
             continue
+        # ONLY A DEVICE CONFIGURED FOR SNMP IS A TARGET (the operator,
+        # 2026-09-30): r6 became a target with no SNMP in its configuration and
+        # Grafana called it "unreachable", which it was not. Its golden decides,
+        # as it does for IP SLA. An unreadable golden raises out of here, so
+        # the keeper records a failure and the files stay as they were.
+        text = golden(ref, host) or ""
+        if not configured(text)["snmp"]:
+            notes.append(f"{host}: its committed golden "
+                         + ("configures no SNMP" if text else "does not exist")
+                         + ", so it is not a target: it is not monitored by SNMP")
+            continue
         dialect = platform_for_device(dev)
         if not dialect:
             notes.append(f"{host}: its platform does not resolve, so no platform job scrapes it")
@@ -114,7 +128,7 @@ def generate(devices=None, golden=None) -> dict:
         files[_file(ALL)].append(group)
         if dialect:
             files.setdefault(_file(dialect), []).append(group)
-        if _IPSLA_OP.search(golden(ref, host) or ""):
+        if _IPSLA_OP.search(text):
             files[_file(IPSLA)].append(group)
     for groups in files.values():
         groups.sort(key=lambda g: g["labels"]["device"])

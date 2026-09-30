@@ -1407,6 +1407,32 @@ recorded as the person, never a plain form.
 The Anthropic API and Cloudflare Access have no screens: the assistant panel, and identity
 in the top bar.
 
+### 14.3 The monitoring profile's screens (designed 2026-09-30; NSOT_PLAN P.9)
+
+The design is [MONITORING_PROFILE.md](MONITORING_PROFILE.md). What a person sees:
+
+- **The device page's Monitoring section opens with what the device is monitored by:** SNMP,
+  syslog, the heartbeat, telemetry and IP SLA, each read from its committed golden. It shows
+  "excluded, because ..." where the device's intent excludes a section, and "Apply monitoring
+  profile..." when anything is missing.
+- **The profile's preview has three groups:**
+  - inherited from the profile, and will be sent (each line with the section and connector it
+    comes from);
+  - already in place;
+  - superseded on the device: each old monitoring line the profile replaces, with a box to
+    remove it (Mode B) and a reason field. A shape not measured on the platform has its box
+    disabled, with the reason beside it.
+  The result is the deploy's.
+- **Onboarding's Verify and adopt's preview** draw the same groups for a new device, before
+  the confirm.
+- **Monitoring > Coverage:** devices by integration, the cells from committed goldens. Select
+  several and "Apply monitoring profile" opens one batch preview with the rollout order drawn.
+- **The intent editor** draws inherited values in their own style, labelled "from the
+  profile". An override reads "overrides the profile", and an exclusion shows its reason.
+- **Needs attention:** one row per device not covered, "r6 is not monitored by SNMP: its
+  configuration has no SNMP community", with the profile as its action (built, and until P.9
+  exists it says the action is planned).
+
 ## 15. What each connector may do: a rule, not a list
 
 **The five questions (the operator, 2026-09-29).** Every capability is judged by what it

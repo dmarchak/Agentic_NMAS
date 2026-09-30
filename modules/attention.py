@@ -152,6 +152,7 @@ _JOB_STATES = {
     "socket_down": ("is not listening", "danger"),
     "mismatch": ("does not match what was declared", "warning"),
     "not_run": ("has never run on this host", "warning"),
+    "not_monitored": ("is not configured for an integration the network uses", "warning"),
     "breakglass_stale": ("is not recoverable from the break-glass record: it holds an "
                          "older credential", "danger"),
 }
@@ -249,7 +250,9 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
         device = job.get("device") or job.get("address")
         rows.append(row(
             source="job_health", key=job.get("unit", "?"),
-            what=f"{job.get('unit', '?')} {words}",
+            # A row may name its own headline, in the reader's words ("r6 is not
+            # monitored by SNMP"); otherwise the unit and its state's words.
+            what=job.get("headline") or f"{job.get('unit', '?')} {words}",
             devices=[device] if device else [],
             since=job.get("since"),
             cause=job.get("detail") or f"state {state}, with no detail recorded",

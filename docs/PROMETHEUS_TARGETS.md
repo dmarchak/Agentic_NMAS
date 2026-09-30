@@ -38,6 +38,8 @@ stops being scraped.
 | `nmas-snmp-ipsla.json` | devices whose COMMITTED golden defines an `ip sla <n>` operation (measured: exactly the five `cisco_ipsla` lists today) | `cisco_ipsla` |
 | `nmas-snmp-all.json` | every device | `lldp` |
 
+**Only a device whose committed golden configures SNMP is a target** (the operator, 2026-09-30, C236): r6 was one with no SNMP in its configuration, and Grafana called it unreachable. Its absence is named in the run's notes, and job health's `monitoring:<device>` row says "r6 is not monitored by SNMP" until the monitoring profile (NSOT_PLAN P.9) gives it SNMP. A golden that cannot be read stops the generation, and the files stay as they were.
+
 A device with no role in the inventory gets no `role` label, and the run says
 so. The inventory today says `router` for the four switches and nothing for
 r6; the targets carry that as it is (C225).
@@ -123,6 +125,5 @@ named, nothing is written and the row's action is the Settings field.
 - Series from before the switch-over keep their old labels until retention
   (90 days) removes them. A panel selecting `device` shows data from the
   switch-over on.
-- A device is scraped only if it answers SNMP with the job's `auth` module. r6's
-  scrape reads `down` until its SNMP configuration matches the others'; the
-  target being present is what makes that visible.
+- A device is scraped only once its committed golden configures SNMP, and then
+  only answers if its community is the one the job's `auth` module speaks.

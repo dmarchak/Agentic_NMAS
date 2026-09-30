@@ -41,6 +41,14 @@ def _devices(rows=HOST_ROWS):
 
 
 def _golden(_ref, host):
+    """The REAL fleet goldens. r6's golden configures no SNMP (measured on the
+    host, 2026-09-30): r2's real config with its `snmp-server` lines removed.
+    r7, a device onboarded in a test, is configured: r2's own."""
+    r2 = open(os.path.join(FLEET, "r2.cfg"), encoding="utf-8").read()
+    if host == "r6":
+        return "".join(l for l in r2.splitlines(True) if not l.startswith("snmp-server"))
+    if host == "r7":
+        return r2
     path = os.path.join(FLEET, f"{host}.cfg")
     return open(path, encoding="utf-8").read() if os.path.exists(path) else ""
 
@@ -86,10 +94,10 @@ class TestTheGeneratedFiles:
     def test_each_file_holds_its_population(self):
         g = _generated()
         f = g["files"]
-        assert _names(f["nmas-snmp-cisco_iosxe.json"]) == ["r1", "r2", "r3", "r4", "r6"]
+        assert _names(f["nmas-snmp-cisco_iosxe.json"]) == ["r1", "r2", "r3", "r4"]
         assert _names(f["nmas-snmp-cisco_ios.json"]) == ["s1", "s2", "s3", "s4"]
-        assert _names(f["nmas-snmp-all.json"]) == ["r1", "r2", "r3", "r4", "r6", "s1", "s2", "s3", "s4"]
-        assert g["devices"] == 9
+        assert _names(f["nmas-snmp-all.json"]) == ["r1", "r2", "r3", "r4", "s1", "s2", "s3", "s4"]
+        assert g["devices"] == 8
 
     def test_the_ipsla_file_is_the_devices_whose_golden_defines_an_operation(self):
         """Measured: exactly the five the hand-kept `cisco_ipsla` job lists."""
@@ -104,16 +112,37 @@ class TestTheGeneratedFiles:
         assert r3 == {"targets": ["10.255.1.13"], "labels": {"device": "r3", "role": "router"}}
 
     def test_an_empty_role_is_omitted_and_said_never_invented(self):
+        g = _generated(HOST_ROWS + [("r7", "", "cisco_iosxe", "10.255.0.33")])
+        r7 = next(x for x in g["files"]["nmas-snmp-all.json"] if x["labels"]["device"] == "r7")
+        assert r7["labels"] == {"device": "r7"}
+        assert any("r7: no role in the inventory" in n for n in g["notes"])
+
+    def test_a_device_whose_golden_configures_no_snmp_is_not_a_target_and_is_named(self):
+        """r6 (the operator, 2026-09-30): a target with no SNMP read as
+        "unreachable". Its golden decides, as it does for IP SLA."""
         g = _generated()
-        r6 = next(x for x in g["files"]["nmas-snmp-all.json"] if x["labels"]["device"] == "r6")
-        assert r6["labels"] == {"device": "r6"}
-        assert any("r6: no role in the inventory" in n for n in g["notes"])
+        assert all("r6" not in _names(v) for v in g["files"].values())
+        assert ("r6: its committed golden configures no SNMP, so it is not a target: it is not "
+                "monitored by SNMP") in g["notes"]
+        none = _generated(HOST_ROWS + [("r9", "router", "cisco_iosxe", "10.255.0.39")])
+        assert "r9: its committed golden does not exist, so it is not a target: it is not " \
+               "monitored by SNMP" in none["notes"]
+
+    def test_an_unreadable_golden_stops_the_generation_never_drops_the_device(self):
+        from modules import prometheus_targets as P
+
+        def boom(ref, host):
+            if host == "s2":
+                raise OSError("git show failed")
+            return _golden(ref, host)
+        with pytest.raises(OSError, match="git show failed"):
+            P.generate(_devices(), golden=boom)
 
     def test_retired_r5_is_not_a_target(self):
         """r5 left the inventory; the hand-kept jobs still scrape it."""
         assert "10.255.1.15" in {t["labels"]["instance"] for t in _capture()}
         all_ips = {g["targets"][0] for g in _generated()["files"]["nmas-snmp-all.json"]}
-        assert "10.255.1.15" not in all_ips and "10.255.0.32" in all_ips
+        assert "10.255.1.15" not in all_ips and "10.255.1.21" in all_ips
 
     def test_an_address_two_devices_hold_is_neither_and_both_are_named(self):
         rows = HOST_ROWS + [("r9", "router", "cisco_iosxe", "10.255.1.13")]
@@ -346,7 +375,7 @@ class TestTheJobHealthRow:
         g = _generated()
         (row,) = P.health_rows(_Prom(_installed(g)), g, directory="", now=_at(RELOADED) + 3600)
         assert row["state"] == "ok" and "4 SNMP job(s) scrape exactly" in row["detail"]
-        assert "r6: no role" in row["detail"]
+        assert "r6: its committed golden configures no SNMP" in row["detail"]
         assert "the NMAS does not regenerate them (no targets directory is set)" in row["detail"]
 
     def test_the_states_are_ones_needs_attention_draws(self):
@@ -540,7 +569,7 @@ class TestTheKeeper:
         from modules import prometheus_targets as P
 
         rec = P.sync("r7: devices.csv was written", directory=str(tmp_path), generate_fn=_generated)
-        assert rec["ok"] and rec["devices"] == 9 and len(rec["changed"]) == 4
+        assert rec["ok"] and rec["devices"] == 8 and len(rec["changed"]) == 4
         assert P.last_sync()["reason"] == "r7: devices.csv was written"
         again = P.sync("backstop", directory=str(tmp_path), generate_fn=_generated)
         assert again["changed"] == [] and len(again["unchanged"]) == 4
