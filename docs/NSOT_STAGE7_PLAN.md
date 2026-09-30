@@ -207,6 +207,99 @@ has five sections:
 - **Diagnostics**: the app log (absorbing the Logs tab) and the redaction
   health.
 
+## 1g. The GUI redesign: requirements and route (the operator, 2026-09-29)
+
+**Recorded, not built.** It applies from the Device page onward (the rest of
+7.3, and 7.4 to 7.9). Section 1's destinations are its input: the brief places
+them in a sidebar and says where each current feature goes. It does not
+re-decide the destinations.
+
+**What is wanted:**
+
+- **Easy to use, organised the way a person looks.** Things live where a
+  person would look for them. The Remote card sitting under the device list,
+  far from the Git history, is the kind of placement to eliminate.
+- **Professional and polished**, following how major commercial products
+  approach UI and UX, never invented from scratch.
+- **A sidebar instead of tabs**, grouped by task.
+- **A user manual reachable from the GUI.**
+- **Minimalist:** no duplicated functions and no cluttered screens. Today's
+  device list, with several buttons beside every device, is the example of
+  what not to do.
+
+**The route, in order, with the operator's sign-off between steps:**
+
+1. **Research.** Study how established products do it:
+   - network-management tools with a similar job: Meraki Dashboard, Juniper
+     Mist, Arista CloudVision, Cisco Catalyst Center, NetBox;
+   - the public design systems enterprise tools are built on: AWS Cloudscape,
+     Red Hat PatternFly, IBM Carbon.
+
+   Look for the patterns they share:
+   - navigation structure;
+   - how a list shows actions: one primary action per row, secondary actions
+     behind a "⋯" menu, bulk actions through selection;
+   - status at a glance;
+   - progressive disclosure;
+   - empty states;
+   - forms, spacing and typography;
+   - in-product help.
+2. **A design brief, short.**
+   - What was found, with sources.
+   - The principles adopted, and why.
+   - The sidebar's structure, with EVERY current feature placed in exactly one
+     location: the full mapping from today's tabs and cards to the new layout,
+     so nothing is lost and nothing is duplicated.
+   - The component rules: buttons, tables, status, forms, colours, spacing.
+
+   It reconciles with the rules already in force rather than restating them:
+   - one home per action (section 6a);
+   - the operator first, with debug one level down (the presentation rule);
+   - the preview-confirm-result component (section 2);
+   - the live-data contract (7.2).
+
+   **The stack:** the app is server-rendered HTML with Bootstrap, and the
+   expectation is a consistent design system on top of what exists, not a
+   frontend rewrite. A rewrite is recommended only with its case and its
+   costs.
+
+   **Minimalism, made checkable:** the brief inventories every duplicated
+   function in today's GUI and names the home each one keeps. A duplicate is
+   the same action reachable from more than one place, or two controls doing
+   one job. Section 6a's rule then has a list to enforce.
+3. **Mockups of three screens**, approved before building: the landing page
+   with the sidebar, the device list, and the Device page. Shown, not
+   described: the operator is a visual learner.
+4. **Then build, screen by screen**, each through the existing tests and
+   controls.
+
+**The manual:**
+
+- Written in the repository (Markdown), rendered in the app under a Help item
+  in the sidebar, and versioned with the code.
+- Each screen links to its own section, so help is one click from where the
+  question arises.
+- Organised by task ("onboard a device", "deploy a change", "restore a
+  baseline", "recover from a lockout"), never by screen.
+- The same neutral voice, and the same publication check, as the writeup.
+- It stays true. A stage is not closed until the screens it changed are
+  documented (acceptance item 15). A check, with a floor, fails when a
+  sidebar destination has no manual section, so a new screen without
+  documentation fails the suite.
+
+**Where it lands in the order:** before the Device page's screen, the first
+big screen.
+- **Research and the brief start after adopt's step 2 (its apply)**, which
+  draws nothing.
+- **Mockups follow the brief's sign-off.**
+- **Building starts with the landing page, the sidebar and the Device page**,
+  after the mockups' sign-off.
+- **While a sign-off is pending,** work that draws no screen continues: C216
+  (seed keeps declared blocks), the C117 loop's lab staging, and adopt's
+  recovery.
+- **Every screen still to come is built in the new design:** adopt's screen,
+  the rest of the Device page, and 7.4 to 7.9.
+
 ## 2. The shared patterns: built once, used everywhere
 
 1. **Preview, then confirm.** One component, used by:
@@ -586,6 +679,7 @@ first.**
 | **7.1** | The preview-then-confirm component, retrofitted to deploy (absorbing P.3's wizard fix), restore, onboarding, bulk intent and NetBox import/remove |
 | **7.2** | The status bar, and **Needs attention** with every source in section 1a. **The reachability reader (C92)**: one job keeping, per device, the last probe, its time and the consecutive-miss count, with the threshold taken from the host's measured misses, read by the dot and by every action that now acts on a single probe |
 | **7.3** | **SEED INTENT FIRST (C148, raised by the operator 2026-09-28): the step that makes onboarding useful, not one of five Device-page actions.** Every onboarding lands with bootstrap-only intent, and the extract-and-commit path has no GUI and refuses anything without a verified person, so no onboarded device can be deployed to from the interface; the tool did it once (r6, 2026-09-24) through the route before P.3 gated it. Seed intent is an operation (preview, confirm by hash, result, record), and its ACCEPTANCE is C117's loop on a fresh throwaway: onboard → seed → deploy → break (a dangerous line authorised with a reason) → roll back, with C112's read-back, after measuring whether IOS holds a BGP session to its hold timer when the update-source goes down (if it does, the break cannot fail verify inside the window and the test would pass either way). **Paired with C151 (in 7.2): onboarding's OUTPUT is incomplete in two directions** (the operator, 2026-09-28): the device cannot be deployed to (C148), and it heartbeats while nothing watches for its silence until a person regenerates the rules (C151). **A third, found by the reboot test and fixed (C152): its inventory row could not be opened by the tool's pooled-session paths** (an unencrypted empty secret). Both were invisible until somebody onboarded a device, and the loop's acceptance run is where both are shown closed. Then the Device page: the Grafana iframe test, then Overview (the reachability claim drawn with its age and which claim it is, never "offline" for a device nobody probed: C92), Monitoring, Neighbours, History and Actions, including seed intent, revert, retry, rotate, retire and PERSIST (C164); the row's actions move here and the page moves to `/device/<name>` (section 6a); the terminal is REMOVED (7.8), the command box absorbing its reads. **Neighbours absorbs the Topology tab's built-in discovery, per device** (C126, decided 2026-09-28). **Monitoring's acceptance is Stage 5's enumeration, 7.3-a…f** (NSOT_PLAN.md; renumbered from "7.5" on 2026-09-27), with 7.3-f already done by P.1 |
+| **7.D** | **The redesign's design steps (section 1g), each signed off by the operator: research, the design brief (with the sidebar mapping and the duplicate inventory), mockups of the landing page, the device list and the Device page. Before the Device page's screen is built; no screen after it is built in the old layout.** |
 | **7.4** | Fleet: the bounded list and selection, batch deploy, bulk intent, onboard, adopt and retire, networks, and the inventory source. **Onboarding is designed for N address sources** (static, dhcp, ztp: P.6 lands first): the source choice is a LIST, not a toggle, and the pending-device row carries a per-source PROGRESS column (for ZTP: reservation written, config fetched, first seen). Cheap to design now, expensive to retrofit. |
 | **7.5** | Versions: commits by actor and source (stating once *"N of M commits carry a verified identity"*, drawn beside its caveat: history carries known misstatements, listed by hash in `modules/nsot/record_exceptions.py` (the eleven rotation commits recorded `Source: manual`, C104; the two restores recorded `Source: pipeline`, C110; and the measured ABSENCE of agent-recorded first goldens, a checked negative). **It is the honest history of what the record got wrong, and the Versions screen draws from it rather than treating git as ground truth** (the operator, 2026-09-27): with C110 fixed, restore trailers mean something for the first time, and the screen must say which of the older ones do not. A screen stating a claim about history draws those exceptions next to the claim, with the rest marked *"recorded, not verified"*: D10, P.3 step 10), baselines with their reasons, re-applying one, the remote with connect |
 | **7.6** | Source of truth: templates (the scheme-3 approval badge saying what it covers and what it does not, P.5; revoke, bindings, coverage, seed status), NetBox, credentials, freshness authorisations |
@@ -2240,8 +2334,9 @@ read through one function, and P.8 moves it without the reader changing.
    names the prerequisite that failed. A blank frame fails.
 9. **CI has no destination:** each CI state appears beside its trigger
    (NSOT_CI.md §5), and there is no CI tab.
-10. **No subsystem tab:** the top-level navigation is exactly the five
-    destinations plus Settings, and a test pins it.
+10. **No subsystem tab:** the top-level navigation is a SIDEBAR grouped by
+    task (section 1g), holding exactly the five destinations, Settings and
+    Help, and a test pins it.
 11. **Scale:** nothing renders the whole inventory, and `test_scale.py` pins
     the page cost at 900 devices.
 12. **Behaviour:** Stage 7 moves controls, adds entry points and performs the
@@ -2263,3 +2358,11 @@ read through one function, and P.8 moves it without the reader changing.
     forecast would have been built on an unexamined one. Forecast from a
     finished stage of the same KIND (the 7.1 multiplier was about seven times
     too high for Mode B).
+15. **The manual stays true** (the operator, 2026-09-29): every sidebar
+    destination has a manual section, and each screen links to its own
+    section. A test fails, with a floor, on a destination with no section. A
+    stage is not closed until the screens it changed are documented, the same
+    rule as the writeup entry.
+16. **No duplicated function:** the brief's duplicate inventory (section 1g)
+    is empty by the stage's close. Every entry keeps the home the brief named,
+    and section 6a's check enforces the list.
