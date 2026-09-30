@@ -1,0 +1,45 @@
+# snmp_exporter modules for routing adjacencies (NSOT_PLAN P.9's follow-on,
+# PROMETHEUS_TARGETS.md "uptime and routing adjacencies"; the operator's
+# staged run 5 measured which tables each platform answers, 2026-09-30):
+#
+#   r3 (IOS-XE 17): OSPF-MIB (6 neighbours), OSPFV3-MIB, BGP4-MIB (1 peer,
+#                   IPv4 only), CISCO-BGP4-MIB cbgpPeer2Table (2 peers, IPv4
+#                   and IPv6, both established)
+#   s3 (vIOS 15):   OSPF-MIB (5 neighbours); OSPFV3-MIB "No Such Object"; no BGP
+#
+# So: OSPF-MIB for every OSPF device, OSPFV3-MIB for IOS-XE only, and
+# cbgpPeer2Table for BGP (it sees r3's IPv6 peer; BGP4-MIB does not).
+#
+# Generated with prom/snmp-generator at the exporter's own version (0.29.0),
+# from the IETF MIBs installed on the host and Cisco's CISCO-SMI and
+# CISCO-BGP4-MIB. No auth section: the output's modules are merged into the
+# host's snmp.yml, whose own auths (public_v2) stay as they are.
+modules:
+  ospf:
+    walk:
+      - ospfNbrTable
+    lookups:
+      # Each neighbour's state labelled with its router id, not only its
+      # interface address.
+      - source_indexes: [ospfNbrIpAddr, ospfNbrAddressLessIndex]
+        lookup: ospfNbrRtrId
+    overrides:
+      ospfNbrState:
+        type: gauge
+  ospfv3:
+    walk:
+      - ospfv3NbrTable
+    overrides:
+      ospfv3NbrState:
+        type: gauge
+  cisco_bgp_peer2:
+    walk:
+      - cbgpPeer2State
+      - cbgpPeer2AdminStatus
+      - cbgpPeer2RemoteAs
+      - cbgpPeer2FsmEstablishedTime
+    overrides:
+      cbgpPeer2State:
+        type: gauge
+      cbgpPeer2AdminStatus:
+        type: gauge

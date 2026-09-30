@@ -1,0 +1,1822 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    },
+    {
+      "name": "DS_LOKI",
+      "label": "Loki",
+      "type": "datasource",
+      "pluginId": "loki",
+      "pluginName": "Loki"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "prometheus",
+      "name": "Prometheus",
+      "version": "1.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "loki",
+      "name": "Loki",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    }
+  ],
+  "uid": "nmas-device",
+  "title": "NMAS device",
+  "tags": [
+    "nmas",
+    "device"
+  ],
+  "description": "One network device, for the NMAS device page: every panel selects the `device` variable. Built by deploy/grafana/build_nmas_device.py.",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "",
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": {
+          "query": "label_values(up{job=~\"cisco_8000v|cisco_vios_l2\"}, device)",
+          "refId": "device"
+        },
+        "definition": "label_values(up{job=~\"cisco_8000v|cisco_vios_l2\"}, device)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "options": []
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "At a glance",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Answering SNMP",
+      "description": "Whether this device answered the last SNMP scrape (30 s).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Not a target: its configuration has no SNMP. Needs attention says what to do.",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "Yes",
+                  "color": "green",
+                  "index": 0
+                },
+                "0": {
+                  "text": "No",
+                  "color": "red",
+                  "index": 1
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max by (device) (up{job=~\"cisco_8000v|cisco_vios_l2\", device=\"$device\"})",
+          "legendFormat": "via SNMP"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "CPU, 1-minute average",
+      "description": "The device's 1-minute CPU average over SNMP, the same measurement on every platform. On IOS-XE the telemetry model reports a different, much lower figure (the IOS processes' own); CPU over time draws both. Amber from 70%, red from 90%.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "No CPU reading over SNMP.",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 70
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(max by (device) (cpmCPUTotal1minRev{device=\"$device\"} or cpuAvgBusy1{device=\"$device\"}), \"via\", \"SNMP\", \"\", \"\")",
+          "legendFormat": "via {{via}} (CISCO-PROCESS-MIB)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Memory used",
+      "description": "The processor memory pool in use. Amber from 80%, red from 90%.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "Not collected on this platform: vIOS reports no memory pool over SNMP.",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(100 * sum by (device) (cempMemPoolUsed{device=\"$device\", cempMemPoolIndex=\"1\"}) / (sum by (device) (cempMemPoolUsed{device=\"$device\", cempMemPoolIndex=\"1\"}) + sum by (device) (cempMemPoolFree{device=\"$device\", cempMemPoolIndex=\"1\"})), \"via\", \"SNMP\", \"\", \"\")",
+          "legendFormat": "via {{via}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Interfaces down that should be up",
+      "description": "Interfaces configured up that are not up. An interface shut down on purpose is not counted. Red from 1.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No interface reading over SNMP.",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (device) ((ifOperStatus{device=\"$device\"} != bool 1) * on(device, ifIndex) (ifAdminStatus{device=\"$device\"} == bool 1)), \"via\", \"SNMP\", \"\", \"\")",
+          "legendFormat": "via {{via}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Routing neighbours in a wrong state",
+      "description": "OSPF and OSPFv3 neighbours down, attempting, initialising or stuck forming (exstart, exchange, loading), and BGP peers configured up and not established. Two-way is NOT counted: it is the expected state between routers that are neither the designated router nor its backup. Red from 1.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(({__name__=~\"ospfNbrState|ospfv3NbrState\", device=\"$device\"} < 4) or ({__name__=~\"ospfNbrState|ospfv3NbrState\", device=\"$device\"} > 4 < 8) or (cbgpPeer2State{device=\"$device\"} != 6 and on(device, cbgpPeer2RemoteAddr) cbgpPeer2AdminStatus{device=\"$device\"} == 2)) or vector(0)",
+          "legendFormat": "via SNMP"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Critical syslog lines, last 24 h",
+      "description": "Syslog lines of severity 0 to 2 (emergency, alert, critical) from this device in the last 24 hours. Red from 1; the lines are on the Logs tab.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${DS_LOKI}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"network_syslog\"} |~ `\\d+: $device: ` |~ `%[A-Z0-9_]+-[0-2]-` [24h])) or vector(0)",
+          "legendFormat": "via syslog",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Up for",
+      "description": "Time since the device's SNMP agent started, shown only where the device's clock keeps real time (rate at least 90%).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "noValue": "Not shown: this device's own clock runs slow, so its uptime count under-reads. Reboots are counted beside it, and the clock's rate is its own panel."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sysUpTime{device=\"$device\"} / 100 and on(device) (deriv(sysUpTime{device=\"$device\"}[1h]) / 100 > 0.9)",
+          "legendFormat": "via SNMP (sysUpTime)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Reboots detected",
+      "description": "Times the uptime counter reset in the chosen range: a reboot, counted reliably however slowly the device's clock runs. Amber from 1.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Not a target: no SNMP.",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "resets(sysUpTime{device=\"$device\"}[$__range])",
+          "legendFormat": "via SNMP (sysUpTime)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Device clock rate",
+      "description": "How fast the device's own clock runs against real time, over the last hour (100% keeps time). The emulated vIOS switches run slow (C9); NTP corrects the time of day, not this rate. Red below 70%, amber below 90%.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "Not a target: no SNMP, or less than an hour of history.",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.7
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "deriv(sysUpTime{device=\"$device\"}[1h]) / 100",
+          "legendFormat": "via SNMP (sysUpTime against real time)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Telemetry stream",
+      "description": "Seconds since the newest sample of this device's interface telemetry. Amber after 90 s (three missed scrapes), red after 5 min; after that the series are stale and the panel says no stream, never fresh.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 15,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "No stream: nothing received in 5 min. IOS-XE devices stream once the monitoring profile subscribes them; vIOS has no telemetry.",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 90
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "time() - max by (device) (timestamp(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_octets{device=\"$device\"}))",
+          "legendFormat": "via gRPC telemetry (the interface subscription)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "LLDP neighbours",
+      "description": "Physical neighbours this device reports over LLDP. No colour: the right number depends on how it is cabled.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "None reported over LLDP."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(count by (device) (lldpRemEntry{device=\"$device\"}), \"via\", \"SNMP\", \"\", \"\")",
+          "legendFormat": "via {{via}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Traffic (bits per second, each interface)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Traffic in",
+      "description": "Traffic in per interface, from gRPC telemetry where the device streams, else SNMP. Null and VoIP-Null interfaces are left out.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "noValue": "No interface counters from telemetry or SNMP."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace((sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_octets{device=\"$device\"}[$__rate_interval]))) * 8, \"via\", \"gRPC telemetry\", \"\", \"\") or (label_replace((label_replace((sum by (device, ifName) (rate(ifHCInOctets{device=\"$device\", ifName!~\"Nu[0-9].*|Vo[0-9].*\"}[$__rate_interval]))), \"name\", \"$1\", \"ifName\", \"(.*)\")) * 8, \"via\", \"SNMP\", \"\", \"\") unless on(device) (sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_octets{device=\"$device\"}[$__rate_interval]))) * 8)",
+          "legendFormat": "{{name}} (via {{via}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Traffic out",
+      "description": "Traffic out per interface, from gRPC telemetry where the device streams, else SNMP. Null and VoIP-Null interfaces are left out.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bps",
+          "noValue": "No interface counters from telemetry or SNMP."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace((sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_octets_64{device=\"$device\"}[$__rate_interval]))) * 8, \"via\", \"gRPC telemetry\", \"\", \"\") or (label_replace((label_replace((sum by (device, ifName) (rate(ifHCOutOctets{device=\"$device\", ifName!~\"Nu[0-9].*|Vo[0-9].*\"}[$__rate_interval]))), \"name\", \"$1\", \"ifName\", \"(.*)\")) * 8, \"via\", \"SNMP\", \"\", \"\") unless on(device) (sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_octets_64{device=\"$device\"}[$__rate_interval]))) * 8)",
+          "legendFormat": "{{name}} (via {{via}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "Errors and discards (packets per second, each interface)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "panels": []
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Interface errors",
+      "description": "Interface errors, in and out together, per interface.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "noValue": "No interface counters from telemetry or SNMP."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_errors{device=\"$device\"}[$__rate_interval])) + sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_errors{device=\"$device\"}[$__rate_interval])), \"via\", \"gRPC telemetry\", \"\", \"\") or (label_replace(label_replace((sum by (device, ifName) (rate(ifInErrors{device=\"$device\", ifName!~\"Nu[0-9].*|Vo[0-9].*\"}[$__rate_interval])) + sum by (device, ifName) (rate(ifOutErrors{device=\"$device\", ifName!~\"Nu[0-9].*|Vo[0-9].*\"}[$__rate_interval]))), \"name\", \"$1\", \"ifName\", \"(.*)\"), \"via\", \"SNMP\", \"\", \"\") unless on(device) sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_errors{device=\"$device\"}[$__rate_interval])) + sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_errors{device=\"$device\"}[$__rate_interval])))",
+          "legendFormat": "{{name}} (via {{via}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Interface discards",
+      "description": "Interface discards, in and out together, per interface.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "noValue": "No interface counters from telemetry or SNMP."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_discards{device=\"$device\"}[$__rate_interval])) + sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_discards{device=\"$device\"}[$__rate_interval])), \"via\", \"gRPC telemetry\", \"\", \"\") or (label_replace(label_replace((sum by (device, ifName) (rate(ifInDiscards{device=\"$device\", ifName!~\"Nu[0-9].*|Vo[0-9].*\"}[$__rate_interval])) + sum by (device, ifName) (rate(ifOutDiscards{device=\"$device\", ifName!~\"Nu[0-9].*|Vo[0-9].*\"}[$__rate_interval]))), \"name\", \"$1\", \"ifName\", \"(.*)\"), \"via\", \"SNMP\", \"\", \"\") unless on(device) sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_discards{device=\"$device\"}[$__rate_interval])) + sum by (device, name) (rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_out_discards{device=\"$device\"}[$__rate_interval])))",
+          "legendFormat": "{{name}} (via {{via}})"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "row",
+      "title": "Routing neighbours",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "table",
+      "title": "OSPF neighbours",
+      "description": "Each OSPFv2 neighbour and its state, via SNMP (OSPF-MIB). Two-way is expected between routers that are neither DR nor BDR.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No OSPF neighbour: no OSPF on this device, or its OSPF table is not scraped yet."
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "down",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "2": {
+                        "text": "attempt",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "3": {
+                        "text": "init",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "4": {
+                        "text": "two-way",
+                        "color": "text",
+                        "index": 3
+                      },
+                      "5": {
+                        "text": "exstart",
+                        "color": "orange",
+                        "index": 4
+                      },
+                      "6": {
+                        "text": "exchange",
+                        "color": "orange",
+                        "index": 5
+                      },
+                      "7": {
+                        "text": "loading",
+                        "color": "orange",
+                        "index": 6
+                      },
+                      "8": {
+                        "text": "full",
+                        "color": "green",
+                        "index": 7
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max by (ospfNbrRtrId, ospfNbrIpAddr) (ospfNbrState{device=\"$device\"})",
+          "legendFormat": "via SNMP",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "State",
+              "ospfNbrRtrId": "Router ID",
+              "ospfNbrIpAddr": "Address"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "OSPFv3 neighbours",
+      "description": "Each OSPFv3 neighbour and its state, via SNMP (OSPFV3-MIB, IOS-XE only).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No OSPFv3 neighbour. vIOS does not report OSPFv3 over SNMP."
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "down",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "2": {
+                        "text": "attempt",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "3": {
+                        "text": "init",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "4": {
+                        "text": "two-way",
+                        "color": "text",
+                        "index": 3
+                      },
+                      "5": {
+                        "text": "exstart",
+                        "color": "orange",
+                        "index": 4
+                      },
+                      "6": {
+                        "text": "exchange",
+                        "color": "orange",
+                        "index": 5
+                      },
+                      "7": {
+                        "text": "loading",
+                        "color": "orange",
+                        "index": 6
+                      },
+                      "8": {
+                        "text": "full",
+                        "color": "green",
+                        "index": 7
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max by (ospfv3NbrRtrId, ospfv3NbrIfIndex) (ospfv3NbrState{device=\"$device\"})",
+          "legendFormat": "via SNMP",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "State",
+              "ospfv3NbrRtrId": "Router ID",
+              "ospfv3NbrIfIndex": "Interface index"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "table",
+      "title": "BGP peers",
+      "description": "Each BGP peer, IPv4 and IPv6, and its session state, via SNMP (CISCO-BGP4-MIB).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 27
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No BGP peer on this device."
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "idle",
+                        "color": "red",
+                        "index": 0
+                      },
+                      "2": {
+                        "text": "connect",
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "3": {
+                        "text": "active",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "4": {
+                        "text": "opensent",
+                        "color": "orange",
+                        "index": 3
+                      },
+                      "5": {
+                        "text": "openconfirm",
+                        "color": "orange",
+                        "index": 4
+                      },
+                      "6": {
+                        "text": "established",
+                        "color": "green",
+                        "index": 5
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max by (cbgpPeer2RemoteAddr) (cbgpPeer2State{device=\"$device\"})",
+          "legendFormat": "via SNMP",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "State",
+              "cbgpPeer2RemoteAddr": "Peer"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "row",
+      "title": "Reachability and load",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      },
+      "panels": []
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "IP SLA round-trip time",
+      "description": "The latest round-trip time of each IP SLA operation this device runs.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 36
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "noValue": "No IP SLA operation on this device."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "rttMonLatestRttOperCompletionTime{device=\"$device\"}",
+          "legendFormat": "operation {{rttMonCtrlAdminIndex}} (via SNMP)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "IP SLA operations failing",
+      "description": "Operations whose latest result is not ok. Red from 1.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 4,
+        "x": 8,
+        "y": 36
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No IP SLA operation on this device.",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (device) (rttMonLatestRttOperSense{device=\"$device\"} != bool 1)",
+          "legendFormat": "via SNMP"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "CPU over time",
+      "description": "The 1-minute CPU average over the chosen range, from both sources where a device streams. They measure different things (measured 2026-09-30: about 54% over SNMP against 9% over telemetry on every router), so they are drawn as two named lines, never merged.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "No CPU reading from telemetry or SNMP."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(max by (device) (cpmCPUTotal1minRev{device=\"$device\"} or cpuAvgBusy1{device=\"$device\"}), \"via\", \"SNMP\", \"\", \"\")",
+          "legendFormat": "device CPU (via SNMP, CISCO-PROCESS-MIB)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(max by (device) (Cisco_IOS_XE_process_cpu_oper:cpu_usage_cpu_utilization_one_minute{device=\"$device\"}), \"via\", \"gRPC telemetry\", \"\", \"\")",
+          "legendFormat": "IOS processes (via gRPC telemetry)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 27,
+      "type": "row",
+      "title": "Interfaces",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "panels": []
+    },
+    {
+      "id": 28,
+      "type": "table",
+      "title": "Interface status",
+      "description": "Each interface's operational state, via SNMP. Null and VoIP-Null are left out.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No interface reading over SNMP."
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "1": {
+                        "text": "up",
+                        "color": "green",
+                        "index": 0
+                      },
+                      "2": {
+                        "text": "down",
+                        "color": "red",
+                        "index": 1
+                      },
+                      "3": {
+                        "text": "testing",
+                        "color": "orange",
+                        "index": 2
+                      },
+                      "5": {
+                        "text": "dormant",
+                        "color": "text",
+                        "index": 3
+                      },
+                      "6": {
+                        "text": "not present",
+                        "color": "text",
+                        "index": 4
+                      },
+                      "7": {
+                        "text": "lower layer down",
+                        "color": "orange",
+                        "index": 5
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max by (ifName, ifAlias) (ifOperStatus{device=\"$device\", ifName!~\"Nu[0-9].*|Vo[0-9].*\"})",
+          "legendFormat": "via SNMP",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value": "State",
+              "ifName": "Interface",
+              "ifAlias": "Description"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "row",
+      "title": "Detail",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "panels": []
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Syslog lines by severity",
+      "description": "Syslog lines per interval by severity (0 emergency to 7 debug). The lines themselves are on the Logs tab.",
+      "datasource": {
+        "type": "loki",
+        "uid": "${DS_LOKI}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 53
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "No syslog line from this device in the range."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (sev) (count_over_time({job=\"network_syslog\"} |~ `\\d+: $device: ` | regexp `%[A-Z0-9_]+-(?P<sev>[0-7])-` [$__interval]))",
+          "legendFormat": "severity {{sev}} (via syslog)",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Interface flaps",
+      "description": "Each interface's flap count since its counters were cleared.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "IOS-XE telemetry only: this device does not stream."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max by (device, name) (Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_num_flaps{device=\"$device\"})",
+          "legendFormat": "{{name}} (via gRPC telemetry)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Device clock rate over time",
+      "description": "The device's clock rate against real time, over time (100% keeps time).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 60
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "Not a target: no SNMP, or less than an hour of history."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "deriv(sysUpTime{device=\"$device\"}[1h]) / 100",
+          "legendFormat": "clock rate (via SNMP)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "timeseries",
+      "title": "SNMP collection time",
+      "description": "How long one SNMP read of this device takes, per job; its limit is 30 s.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 60
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "Not a target: no SNMP."
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max by (device, job) (snmp_scrape_duration_seconds{device=\"$device\"})",
+          "legendFormat": "{{job}} (via SNMP)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Append generated snmp_exporter modules to the exporter's snmp.yml, proven.
+
+    nmas-snmp-add-modules                                   # dry run: what would change
+    sudo nmas-snmp-add-modules --apply                      # back up, append, prove
+
+The operator's host step (PROMETHEUS_TARGETS.md). Defaults: the fragment
+`deploy/snmp_exporter/routing-modules.yml` (ospf, ospfv3, cisco_bgp_peer2)
+and `/etc/snmp_exporter/snmp.yml`. The file is appended to as text, the way
+the ipsla and lldp modules were added (2026-09-12), never rewritten, so the
+1.5 MB generated file and its auths keep their bytes.
+
+Refused, writing nothing: the config unreadable, `modules:` not its LAST
+top-level key (an append would land in the wrong map), or a module name
+already there. After the append the file is parsed again and REQUIRED to
+hold every module it held before, unchanged, plus exactly the new ones;
+otherwise the backup is put back. It never prints a community (the auths
+section is not read into any output).
+
+Exit 0: dry run clean, or appended and proven; 1: refused (named); 2: the
+append did not prove and the backup was restored.
+"""
+
+import argparse
+import os
+import shutil
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRAGMENT = os.path.join(ROOT, "deploy", "snmp_exporter", "routing-modules.yml")
+CONFIG = "/etc/snmp_exporter/snmp.yml"
+
+
+def _top_level_keys(text: str) -> list:
+    return [line.split(":", 1)[0] for line in text.splitlines()
+            if line and not line[0].isspace() and not line.startswith("#") and ":" in line]
+
+
+def main(argv=None) -> int:
+    import yaml
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--config", default=CONFIG)
+    ap.add_argument("--fragment", default=FRAGMENT)
+    ap.add_argument("--apply", action="store_true")
+    args = ap.parse_args(argv)
+
+    try:
+        text = open(args.config, encoding="utf-8").read()
+        frag = open(args.fragment, encoding="utf-8").read()
+    except OSError as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 1
+    keys = _top_level_keys(text)
+    if not keys or keys[-1] != "modules":
+        print(f"REFUSED: `modules:` is not the last top-level key of {args.config} "
+              f"(keys in order: {keys}); an append would land in the wrong map", file=sys.stderr)
+        return 1
+    before = (yaml.safe_load(text) or {}).get("modules") or {}
+    new = (yaml.safe_load("modules:\n" + frag) or {}).get("modules") or {}
+    if not new:
+        print(f"REFUSED: {args.fragment} holds no module", file=sys.stderr)
+        return 1
+    clash = sorted(set(new) & set(before))
+    if clash:
+        print(f"REFUSED: {args.config} already has module(s) {clash}; nothing changed",
+              file=sys.stderr)
+        return 1
+    print(f"{args.config}: {len(before)} module(s); would add {sorted(new)} "
+          f"({len(frag.splitlines())} lines appended)")
+    if not args.apply:
+        print("dry run: nothing written (--apply backs up, appends and proves)")
+        return 0
+
+    backup = f"{args.config}.bak-routing-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+    shutil.copy2(args.config, backup)
+    with open(args.config, "a", encoding="utf-8") as fh:
+        if not text.endswith("\n"):
+            fh.write("\n")
+        fh.write(frag)
+    after = (yaml.safe_load(open(args.config, encoding="utf-8").read()) or {}).get("modules") or {}
+    ok = (all(after.get(k) == v for k, v in before.items())
+          and set(after) == set(before) | set(new)
+          and all(after[k] == v for k, v in new.items()))
+    if not ok:
+        shutil.copy2(backup, args.config)
+        print(f"NOT PROVEN: the file after the append did not hold every module unchanged "
+              f"plus exactly {sorted(new)}; the backup {backup} was put back", file=sys.stderr)
+        return 2
+    print(f"appended and proven: {len(after)} module(s), the {len(before)} before unchanged; "
+          f"backup {backup}")
+    print("next: `docker exec snmp-exporter /bin/snmp_exporter --config.file=/etc/snmp_exporter/snmp.yml "
+          "--dry-run`, then `docker restart snmp-exporter`")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

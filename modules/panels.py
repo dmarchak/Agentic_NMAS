@@ -259,6 +259,8 @@ def render_payload(panel: dict, answer: dict, seconds: int) -> dict:
     # VALUE MAPPINGS travel with the payload and are applied where the value
     # is drawn: a stat's value, a table's column, a stepped series' axis.
     mappings = list(panel.get("mappings") or [])
+    # The panel's words for an empty answer (Grafana's noValue).
+    out["no_value"] = str(panel.get("no_value") or "")
     if panel.get("type") == "table":
         keys = sorted({k for s in shown for k in s["labels"] if k not in ("__name__", "instance", "job")})
         # The panel's own `organize` step, as Grafana applies it: columns it
@@ -282,6 +284,10 @@ def render_payload(panel: dict, answer: dict, seconds: int) -> dict:
         out["value"] = last[0] if len(last) == 1 else (sum(last) if last else None)
         out["thresholds"] = panel.get("thresholds") or []
         out["mappings"] = mappings
+        # The one series' own label (its legend): which source the value is
+        # from, drawn under the value.
+        labelled = [s["label"] for s in shown if s["values"] and s["values"][-1] is not None]
+        out["label"] = labelled[0] if len(labelled) == 1 else ""
     else:
         out["series"] = [{"label": s["label"], "times": s["times"], "values": s["values"]} for s in shown]
         out["mappings"] = mappings

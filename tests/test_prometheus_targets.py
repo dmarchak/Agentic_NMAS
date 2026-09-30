@@ -106,6 +106,15 @@ class TestTheGeneratedFiles:
         assert _names(f) == ["r1", "r2", "r3", "r4", "s3"]
         assert sorted(g["targets"][0] for g in f) == hand_kept
 
+    def test_the_routing_files_follow_the_goldens_and_the_measured_tables(self):
+        """Staged run 5: OSPF-MIB on both platforms, OSPFV3-MIB on IOS-XE
+        only, BGP from cbgpPeer2Table; each file the devices whose REAL golden
+        runs the protocol (OSPFv3 is spelled `ipv6 router ospf` here)."""
+        f = _generated()["files"]
+        assert _names(f["nmas-snmp-ospf.json"]) == ["r1", "r2", "r3", "r4", "s3", "s4"]
+        assert _names(f["nmas-snmp-ospfv3.json"]) == ["r1", "r2", "r3", "r4"]
+        assert _names(f["nmas-snmp-bgp.json"]) == ["r3", "r4"]
+
     def test_every_target_is_labelled_device_and_role_from_the_inventory(self):
         f = _generated()["files"]
         r3 = next(g for g in f["nmas-snmp-all.json"] if g["labels"]["device"] == "r3")
@@ -171,12 +180,12 @@ class TestWriting:
             out = P.write(str(tmp_path), _generated())
         finally:
             os.umask(old)
-        assert len(out["changed"]) == 4 and out["unchanged"] == []
+        assert len(out["changed"]) == 7 and out["unchanged"] == []
         for name in out["changed"]:
             assert stat.S_IMODE(os.stat(tmp_path / name).st_mode) == 0o644
         inode = os.stat(tmp_path / "nmas-snmp-all.json").st_ino
         again = P.write(str(tmp_path), _generated())
-        assert again["changed"] == [] and len(again["unchanged"]) == 4
+        assert again["changed"] == [] and len(again["unchanged"]) == 7
         assert os.stat(tmp_path / "nmas-snmp-all.json").st_ino == inode
         assert not [n for n in os.listdir(tmp_path) if n.startswith(".nmas-")]
 
@@ -210,7 +219,10 @@ class TestTheCheck:
 
         g = _generated()
         r = P.compare(g, _installed(g))
-        assert r["ok"] and r["static"] == [] and r["drift"] == [] and r["unread"] == []
+        # The routing files are read by no job until the operator adds the
+        # jobs (PROMETHEUS_TARGETS.md): said, and not a mismatch.
+        assert r["ok"] and r["static"] == [] and r["drift"] == []
+        assert r["unread"] == ["nmas-snmp-bgp.json", "nmas-snmp-ospf.json", "nmas-snmp-ospfv3.json"]
 
     def test_a_device_onboarded_since_the_file_is_named_missing(self):
         from modules import prometheus_targets as P
@@ -569,10 +581,10 @@ class TestTheKeeper:
         from modules import prometheus_targets as P
 
         rec = P.sync("r7: devices.csv was written", directory=str(tmp_path), generate_fn=_generated)
-        assert rec["ok"] and rec["devices"] == 8 and len(rec["changed"]) == 4
+        assert rec["ok"] and rec["devices"] == 8 and len(rec["changed"]) == 7
         assert P.last_sync()["reason"] == "r7: devices.csv was written"
         again = P.sync("backstop", directory=str(tmp_path), generate_fn=_generated)
-        assert again["changed"] == [] and len(again["unchanged"]) == 4
+        assert again["changed"] == [] and len(again["unchanged"]) == 7
 
     def test_an_empty_inventory_is_refused_and_recorded(self, tmp_path):
         from modules import prometheus_targets as P

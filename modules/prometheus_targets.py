@@ -41,6 +41,18 @@ IPSLA = "ipsla"
 DEFAULT_DIR = "/etc/prometheus/nmas"
 _IPSLA_OP = re.compile(r"^ip sla \d+\s*$", re.M)
 
+#: The routing-adjacency files (staged run 5, the operator, 2026-09-30): the
+#: devices whose COMMITTED golden runs each protocol, as the IP SLA file
+#: follows the goldens. OSPF-MIB answers on both platforms; OSPFV3-MIB on
+#: IOS-XE only (vIOS 15 answered "No Such Object"), so the v3 file holds
+#: IOS-XE devices alone; BGP is read from CISCO-BGP4-MIB's cbgpPeer2Table,
+#: the table that sees an IPv6 peer.
+ROUTING = (
+    ("ospf", re.compile(r"^router ospf \d+", re.M), None),
+    ("ospfv3", re.compile(r"^(ipv6 router ospf|router ospfv3) \d+", re.M), "cisco_iosxe"),
+    ("bgp", re.compile(r"^router bgp \d+", re.M), None),
+)
+
 
 def _file(kind: str) -> str:
     return f"{PREFIX}{kind}.json"
@@ -89,6 +101,8 @@ def generate(devices=None, golden=None) -> dict:
 
     golden = golden or read_golden
     files, notes, by_address = {_file(ALL): [], _file(IPSLA): []}, [], {}
+    for kind, _rx, _only in ROUTING:
+        files[_file(kind)] = []
     excluded = {}
     for ref, dev in devices:
         host, ip = (dev.get("hostname") or "").strip(), (dev.get("ip") or "").strip()
@@ -131,6 +145,9 @@ def generate(devices=None, golden=None) -> dict:
             files.setdefault(_file(dialect), []).append(group)
         if _IPSLA_OP.search(text):
             files[_file(IPSLA)].append(group)
+        for kind, rx, only in ROUTING:
+            if rx.search(text) and (only is None or dialect == only):
+                files[_file(kind)].append(group)
     for groups in files.values():
         groups.sort(key=lambda g: g["labels"]["device"])
     # `devices` is the TARGETS; `inventory` the devices the inventory holds.

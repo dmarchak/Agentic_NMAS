@@ -76,6 +76,8 @@ def _panels(model: dict) -> list:
             # VALUE MAPPINGS (the operator, 2026-09-30: "Yes"/"up" instead of 1):
             # the panel's own, and each field override's by the field's name.
             "mappings": defaults.get("mappings") or [],
+            "no_value": defaults.get("noValue") or "",
+            "description": p.get("description") or "",
             "field_mappings": _field_mappings(p),
             # The one transformation drawn natively: `organize` (drop and rename
             # columns). Any other is counted above and not applied.

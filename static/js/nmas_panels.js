@@ -26,6 +26,7 @@
     if (unit === 'pps') return scaled + ' p/s';
     if (unit === 'bytes' || unit === 'decbytes') return scaled + 'B';
     if (unit === 's') return trim(n) + ' s';
+    if (unit === 'dtdurations') return duration(n);
     if (unit === 'ms') return trim(n) + ' ms';
     return scaled;
   }
@@ -75,6 +76,17 @@
   /* PURE: which kind a stat's value is, from Grafana's threshold steps: the
      last step whose value the number reaches (the first step's null is the
      base). Named colours map onto the page's three kinds. */
+  /* PURE: seconds as the two largest units ("7 d 19 h", "3 h 4 min"). */
+  function duration(s) {
+    s = Math.max(0, Math.floor(Number(s)));
+    var parts = [[86400, 'd'], [3600, 'h'], [60, 'min'], [1, 's']], out = [];
+    for (var i = 0; i < parts.length && out.length < 2; i++) {
+      var q = Math.floor(s / parts[i][0]);
+      if (q || out.length) { out.push(q + ' ' + parts[i][1]); s -= q * parts[i][0]; }
+    }
+    return out.length ? out.join(' ') : '0 s';
+  }
+
   /* PURE: a Grafana colour name as a kind the page draws. */
   function colourKind(colour) {
     colour = String(colour || '').toLowerCase();
@@ -139,6 +151,10 @@
 
   /* PURE: what an empty answer says. */
   function emptyWords(p) {
+    // The panel's own words for no value (Grafana's noValue), when it has
+    // them: it knows why its query can be empty for a device (the operator:
+    // a panel says what it means, never a bare blank).
+    if (p.no_value) return p.no_value;
     return 'Grafana answered with no data for this device over ' + p.range
       + '. The query ran; nothing matched it.';
   }
@@ -219,6 +235,10 @@
     var kind = mapped && mapped.kind ? mapped.kind : thresholdKind(p.value, p.thresholds);
     box.appendChild(el('span', 'stat-value' + (kind ? ' stat-' + kind : ''),
                        mapped ? mapped.text : formatValue(p.value, unit)));
+    // Which source the value came from, when the panel says (its legend):
+    // "via gRPC telemetry" or "via SNMP", so two devices' values from two
+    // collectors are never compared unawares (the operator, 2026-09-30).
+    if (p.label) box.appendChild(el('span', 'stat-caption', p.label));
     body.appendChild(box);
   }
 
@@ -349,7 +369,7 @@
     });
   }
 
-  root.NMAS_PANELS = {palette: palette, mapValue: mapValue, colourKind: colourKind, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
+  root.NMAS_PANELS = {palette: palette, duration: duration, emptyWords: emptyWords, mapValue: mapValue, colourKind: colourKind, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
                       chartHeight: chartHeight,
                       footWords: footWords, emptyWords: emptyWords, scan: scan};
 })(typeof window !== 'undefined' ? window : this);
