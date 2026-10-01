@@ -93,7 +93,18 @@ MIN_GAPS = 6
 #: A gap over this multiple of the median is a miss in the history, not the
 #: device's interval, and is excluded from the band.
 OUTLIER_FACTOR = 1.8
-LOOKBACK_HOURS = 6
+#: Seven days (the operator, 2026-10-01): a window from a device's observed
+#: SPREAD over a week, never one that follows its rate. Six hours was a
+#: window that the next slow night made stale.
+LOOKBACK_HOURS = 168
+#: With at least this many gaps, the band runs from the TAIL percentile to
+#: 1 - TAIL rather than from the extremes. Measured on the host over 7 days:
+#: s1's and s3's extremes all fell in the nightly backup window (08:35 to
+#: 09:01 UTC, C289) -- s3's shortest (412 to 420 s) a catch-up burst after a
+#: stall -- and the extremes made both INSEPARABLE, where P0.5-P99.5 separates
+#: every device. Fewer gaps than this and the extremes ARE the sample.
+MIN_GAPS_FOR_TAILS = 200
+TAIL = 0.005
 #: Provisional window: this many intervals at the fleet's slowest rate.
 PROVISIONAL_INTERVALS = 2.5
 #: Used for the provisional rate only when NO device has been measured.
@@ -149,14 +160,25 @@ def measure(gaps: list, interval: int) -> dict:
     if len(gaps) < MIN_GAPS:
         return {"basis": "provisional", "n": len(gaps)}
     lo, hi = min(gaps), max(gaps)
+    extra = {}
+    if len(gaps) >= MIN_GAPS_FOR_TAILS:
+        # The band from the tails, said: how many gaps fall outside it and the
+        # extremes, so the trade is on the rule (a double miss inside a
+        # catch-up burst shorter than the band may go unseen).
+        q = statistics.quantiles(gaps, n=int(round(1 / TAIL)), method="inclusive")
+        lo, hi = q[0], q[-1]
+        extra = {"tails": {"below": sum(1 for g in gaps if g < lo),
+                           "above": sum(1 for g in gaps if g > hi),
+                           "min": round(min(gaps), 1), "max": round(max(gaps), 1),
+                           "percent": round(TAIL * 100, 2)}}
     rate = interval / statistics.median(gaps)
     if 2 * hi < 3 * lo:
         return {"basis": "measured", "window": math.ceil((2 * hi + 3 * lo) / 2),
                 "lo": round(lo, 1), "hi": round(hi, 1), "n": len(gaps),
-                "rate": round(rate, 3)}
+                "rate": round(rate, 3), **extra}
     return {"basis": "inseparable", "window": math.ceil(2 * hi * 1.05),
             "lo": round(lo, 1), "hi": round(hi, 1), "n": len(gaps),
-            "rate": round(rate, 3)}
+            "rate": round(rate, 3), **extra}
 
 
 def windows(gaps_by_host: dict, interval: int) -> dict:
@@ -190,6 +212,11 @@ def loki_arrivals(loki_url: str, hostname: str,
     out = []
     for stream in r.json().get("data", {}).get("result", []):
         out.extend(int(ts) / 1e9 for ts, _line in stream.get("values", []))
+    if len(out) >= 5000:
+        # A read that returns exactly its page size is CUT, not complete: a
+        # window from a cut week is measured from part of it.
+        raise RuntimeError(f"{hostname}: Loki returned its whole page (5000) over "
+                           f"{hours} h; the read is cut, not complete")
     return out
 
 
@@ -209,6 +236,13 @@ def rule_for(hostname: str, datasource_uid: str, heartbeat: int,
     if basis == "measured":
         how = (f"measured from this device's own {info['n']} heartbeat gaps "
                f"({info['lo']}-{info['hi']} s; clock rate {info['rate']})")
+        t = info.get("tails")
+        if t:
+            how += (f"; the band is the {t['percent']}th to {100 - t['percent']}th "
+                    f"percentile over {LOOKBACK_HOURS // 24} days ({t['below']} gap(s) shorter, "
+                    f"down to {t['min']} s, and {t['above']} longer, up to {t['max']} s): "
+                    "one miss never fires even at the longest, and a double miss inside "
+                    "a burst of the shortest may go unseen")
     elif basis == "provisional":
         how = (f"PROVISIONAL: derived from an ASSUMPTION, not a measurement of "
                f"this device ({info['n']} gap(s) so far) -- {PROVISIONAL_INTERVALS} "
@@ -409,7 +443,7 @@ def prometheus_restarts(hosts: list, hours: int = LOOKBACK_HOURS) -> tuple:
         names = "|".join(re.escape(h) for h in hosts)
         body = p.session().get(f"{p.url.rstrip('/')}/api/v1/query_range", params={
             "query": f'sysUpTime{{device=~"{names}"}}', "start": now - hours * 3600,
-            "end": now, "step": 60}, timeout=30).json()
+            "end": now, "step": 120}, timeout=30).json()
         if body.get("status") != "success":
             return {}, f"restarts NOT excluded: Prometheus answered {body.get('error')!r}"
         out = {}

@@ -438,3 +438,105 @@ class TestARestartIsNotAMeasurement:
         out = capsys.readouterr().out
         assert "current    s3: window 1337 s" in out
         assert "restarts excluded (the gap across each is the boot, not the interval): s3 (1)" in out
+
+
+class TestAWeekIsMeasuredByItsSpreadNotItsExtremes:
+    """The operator's decision (2026-10-01): a FIXED window from the observed
+    spread over 7 days, never one that follows the rate. On s1's and s3's REAL
+    week (`tests/fixtures/heartbeat/s1_s3_week.json`, captured read-only from
+    the host: Loki's arrivals and config changes, Prometheus's sysUpTime), the
+    extremes fall in the nightly backup window and make both INSEPARABLE; the
+    0.5th to 99.5th percentile band separates both, and the rule says the
+    trade it makes."""
+
+    @pytest.fixture(scope="class")
+    def week(self):
+        import json
+        with open("tests/fixtures/heartbeat/s1_s3_week.json", encoding="utf-8") as fh:
+            d = json.load(fh)
+        out = {}
+        for host, v in d["devices"].items():
+            rs = H.restart_windows([tuple(x) for x in v["sysuptime"]])
+            out[host] = H.gaps_from(v["arrivals"], v["config_events"], rs)
+        return out
+
+    def test_the_lookback_is_seven_days(self):
+        assert H.LOOKBACK_HOURS == 168
+        import inspect
+        for fn in (H.loki_arrivals, H.prometheus_restarts):
+            assert inspect.signature(fn).parameters["hours"].default == H.LOOKBACK_HOURS
+
+    @pytest.mark.parametrize("host", ["s1", "s3"])
+    def test_the_real_week_has_enough_gaps_for_the_tails(self, week, host):
+        assert len(week[host]) >= H.MIN_GAPS_FOR_TAILS
+
+    @pytest.mark.parametrize("host", ["s1", "s3"])
+    def test_the_extremes_alone_are_inseparable(self, week, host):
+        # Computed here from the gaps, not by the code under test.
+        lo, hi = min(week[host]), max(week[host])
+        assert not 2 * hi < 3 * lo
+
+    @pytest.mark.parametrize("host", ["s1", "s3"])
+    def test_the_percentile_band_is_measured(self, week, host):
+        info = H.measure(week[host], INTERVAL)
+        assert info["basis"] == "measured"
+        g = sorted(week[host])
+        assert min(g) < info["lo"] < info["hi"] < max(g)
+        assert 2 * info["hi"] < info["window"] < 3 * info["lo"]
+
+    @pytest.mark.parametrize("host", ["s1", "s3"])
+    def test_one_miss_never_fires_even_at_the_longest_gap(self, week, host):
+        info = H.measure(week[host], INTERVAL)
+        # A single missed heartbeat at the slowest interval seen all week.
+        assert 2 * max(week[host]) < info["window"]
+
+    @pytest.mark.parametrize("host", ["s1", "s3"])
+    def test_the_tails_are_counted_with_the_extremes(self, week, host):
+        info = H.measure(week[host], INTERVAL)
+        t = info["tails"]
+        g = week[host]
+        # The band edges unrounded, by the standard library directly.
+        import statistics
+        q = statistics.quantiles(g, n=200, method="inclusive")
+        assert t["below"] == sum(1 for x in g if x < q[0]) > 0
+        assert t["above"] == sum(1 for x in g if x > q[-1]) > 0
+        assert t["min"] == round(min(g), 1) and t["max"] == round(max(g), 1)
+        assert t["percent"] == 0.5
+
+    def test_the_rule_says_the_trade(self, week):
+        doc = yaml.safe_load(H.render(H.build(
+            {"s3": H.measure(week["s3"], INTERVAL)}, "uid", INTERVAL)))
+        text = str(doc)
+        assert "0.5th to 99.5th percentile over 7 days" in text
+        assert "a double miss inside a burst of the shortest may go unseen" in text
+        assert "one miss never fires even at the longest" in text
+
+    def test_fewer_gaps_keep_the_extremes_as_the_band(self, week):
+        few = week["s1"][:H.MIN_GAPS_FOR_TAILS - 1]
+        info = H.measure(few, INTERVAL)
+        assert "tails" not in info
+        assert info["lo"] == round(min(few), 1) and info["hi"] == round(max(few), 1)
+
+
+class TestACutLokiReadIsRefused:
+    """A read that returns exactly its page size is cut, not complete: a week's
+    window measured from part of it would read as the week's."""
+
+    def _fake(self, n):
+        class R:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"data": {"result": [{"values": [[str(10**18 + i * 300 * 10**9), "x"]
+                                                         for i in range(n)]}]}}
+        return lambda *a, **k: R()
+
+    def test_a_full_page_raises_naming_the_cut(self, monkeypatch):
+        monkeypatch.setattr("requests.get", self._fake(5000))
+        with pytest.raises(RuntimeError, match="the read is cut, not complete"):
+            H.loki_arrivals("http://loki.invalid", "s3")
+
+    def test_a_partial_page_is_the_answer(self, monkeypatch):
+        monkeypatch.setattr("requests.get", self._fake(4999))
+        assert len(H.loki_arrivals("http://loki.invalid", "s3")) == 4999

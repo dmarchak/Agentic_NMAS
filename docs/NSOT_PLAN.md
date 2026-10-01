@@ -3633,8 +3633,17 @@ instead the midpoint of the band from the shortest and longest REAL gaps over a 
 then reads STALE only when the device leaves its recorded spread far enough that the installed window no
 longer tells one miss from two: a real finding (C93's kind), drawn as a job-health row with the re-measure
 as its action, never a page. And where the spread itself grows until no window separates one miss from
-two, the rule says INSEPARABLE, which is the honest state. **Awaiting the operator's choice of the
-lookback** (the 6 h one stays until then).
+two, the rule says INSEPARABLE, which is the honest state. **DECIDED 2026-10-01 (the operator): a fixed
+window from the spread, with a 7-day lookback. BUILT the same day**, with one correction measured on the
+host before it was built: over 7 days the EXTREMES made s1 and s3 INSEPARABLE (s1 261.0 to 393.1 s, s3
+412.4 to 639.8 s), and every extreme fell in the nightly backup window (08:35 to 09:01 UTC, C289), s3's
+shortest a catch-up burst after a stall. So with 200 or more gaps the band runs from the 0.5th to the
+99.5th percentile (s1 316.1 to 331.1 s, s3 472.7 to 609.0 s), and the rule says the trade in its own label:
+how many gaps fall outside the band and how far, that one miss never fires even at the longest gap seen,
+and that a double miss inside a burst of the shortest may go unseen. Fewer gaps and the extremes are the
+band. A Loki read that returns its whole page (5000) is refused as cut. Read on the host with the built
+code: all nine installed windows sit inside their 7-day bands, so nothing needs writing (s3: installed
+1337 s, band (1218, 1418)).
 
 **Scope:**
 - a generator per rule KIND (device reachability, interface state, telemetry streams, syslog severity, IP SLA),
