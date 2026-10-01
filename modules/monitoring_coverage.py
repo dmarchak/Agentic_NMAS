@@ -425,13 +425,35 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
             row["why_not"] = f"{host} has no committed intent"
         elif not view.get("applies"):
             row["why_not"] = "no section of the profile applies to it (platform or role)"
+        elif not row["supplies"]:
+            # OFFERED ONLY FOR A GAP THE PROFILE SUPPLIES (C295, the operator,
+            # 2026-10-01): s1, s2, s4 and r6 were tickable for IP SLA, and the
+            # apply could send nothing, since IP SLA was not in the profile.
+            row["why_not"] = _nothing_to_apply(row, doc)
         else:
             row["selectable"] = True
-            row["checked"] = bool(row["supplies"])
+            row["checked"] = True
         rows.append(row)
     return {"list": ref.name, "columns": [{"key": k, "words": w, "connector": want.get(k, "")}
                                           for k, w in COLUMNS],
             "profile": prof, "devices": rows, "covered": covered, "total": len(rows)}
+
+
+def _nothing_to_apply(row: dict, doc: dict) -> str:
+    """Why a device the profile applies to has nothing for Apply to send:
+    what it is missing that the profile does not supply, each with why, or
+    that it already holds everything the profile supplies."""
+    has_policy = bool((((doc or {}).get("sections") or {}).get("ip_sla") or {}).get("policy"))
+    missing = []
+    for key, words in COLUMNS:
+        cell = row["cells"].get(key) or {}
+        if key == "ip_sla" and cell.get("state") == "unused" and not has_policy:
+            missing.append("IP SLA isn't in the profile yet")
+        elif cell.get("state") == "gap_open":
+            missing.append(f"{words}: {cell['words'].split(' — ', 1)[-1]}")
+    if missing:
+        return "nothing for Apply to send: " + "; ".join(missing)
+    return "nothing for Apply to send: it already has everything the profile supplies"
 
 
 def _iso_z(epoch) -> str:

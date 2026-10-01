@@ -55,11 +55,39 @@ class TestTheCells:
         r2, r6 = _row(c, "r2"), _row(c, "r6")
         assert r6["cells"]["snmp"] == {"state": "gap", "words": "missing — the profile supplies it"}
         assert r6["supplies"] == ["snmp"] and r6["selectable"] and r6["checked"]
-        # r2 lacks nothing: offered (the preview says what, if anything, is sent),
-        # never ticked by default.
-        assert r2["selectable"] and not r2["checked"] and not r2["gaps"]
+        # r2 lacks nothing the profile supplies: NOT offered, saying why (C295,
+        # the operator, 2026-10-01: an Apply that could send nothing was offered).
+        assert not r2["selectable"] and not r2["checked"] and not r2["gaps"]
+        assert r2["why_not"].startswith("nothing for Apply to send: "), r2["why_not"]
         rc, out, _e = R.git(lab["repo"], "log", "-1", "--format=%h", "--", "profiles/monitoring.yml")
         assert c["profile"]["commit"] == out.strip() and "snmp" in c["profile"]["sections"]
+
+    def test_ip_sla_missing_is_not_offered_while_the_profile_has_none(self, lab):
+        """C295, the operator's case (s1, s2, s4, r6 on 2026-10-01): a device
+        whose only missing piece is IP SLA was tickable, and the apply could
+        send nothing. A minimal edit of r2's REAL golden: its IP SLA removed."""
+        import re as _re
+        from modules.prometheus_targets import read_golden
+        _commit_proposal()
+
+        def golden(ref, host):
+            text = read_golden(ref, host)
+            if host != "r2":
+                return text
+            out, skip = [], False
+            for line in text.splitlines():
+                if _re.match(r"^ip sla \d+", line):
+                    skip = True
+                    continue
+                if skip and line.startswith(" "):
+                    continue
+                skip = False
+                out.append(line)
+            return "\n".join(out) + "\n"
+        r2 = _row(_fleet(lab, golden=golden), "r2")
+        assert r2["cells"]["ip_sla"]["state"] == "unused"
+        assert not r2["selectable"] and not r2["checked"]
+        assert "IP SLA isn't in the profile yet" in r2["why_not"], r2["why_not"]
 
     def test_an_excluded_section_is_a_decision_with_its_reason_never_a_gap(self, lab):
         from modules.nsot import hostvars
@@ -135,7 +163,9 @@ class TestThePage:
         assert 'name="open"' not in body
         assert '<input type="hidden" name="list" value="Lab">' in body
         assert re.search(r'<input type="checkbox" name="device" value="r6" id="cov-r6" checked', body)
-        assert re.search(r'<input type="checkbox" name="device" value="r2" id="cov-r2" aria', body)
+        # r2 has nothing for Apply to send: no box to tick, and the reason beside it.
+        assert 'value="r2"' not in body
+        assert "Not offered: nothing for Apply to send" in body
         assert "Preview applying the profile…" in body
         # Words and an icon in every cell, never colour alone.
         assert html.count('class="cov cov-') == 2 * 5

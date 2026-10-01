@@ -8,7 +8,10 @@
     hashes of the program on the screen. -#}
 {%- set STATE = {'deployable': ('can be applied', 'ok'), 'blocked': ('blocked: nothing is sent', 'danger'),
                  'refused': ('refused: nothing is sent', 'danger'),
-                 'not_authorised': ('waits on a stated reason', 'warn')} -%}
+                 'not_authorised': ('waits on a stated reason', 'warn'),
+                 'nothing': ('nothing to send', 'muted')} -%}
+{%- set sending = rows | rejectattr('nothing') | list -%}
+{%- set idle = rows | selectattr('nothing') | list -%}
 {%- set GATE = {'pass': 'passes', 'fail': 'FAILS', 'not_applicable': 'does not apply',
                 'at_apply': 'checked again at apply', 'not_reached': 'not reached'} -%}
 <section class="card apply" id="apply-preview">
@@ -23,10 +26,11 @@
   {%- endfor %}
   <p class="apply-what">{{ preview.what.summary }}</p>
 
+  {%- if sending %}
   <h2 class="apply-h">Rollout order</h2>
   <p class="muted apply-why">One device at a time, in this order. The batch stops after repeated verify failures, so the first devices are the ones a bad change would reach; put the one you would most like to learn from first.</p>
   <ol class="rollout" id="rollout">
-    {%- for r in rows %}
+    {%- for r in sending %}
     <li class="rollout-item">
       <span class="grow"><a href="#apply-{{ r.name }}">{{ r.name }}</a> {{ badge(STATE.get(r.state, (r.state, 'muted'))[0], STATE.get(r.state, (r.state, 'muted'))[1]) }}</span>
       <button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_preview', move='up:' ~ r.name) }}"
@@ -41,8 +45,17 @@
     </li>
     {%- endfor %}
   </ol>
+  {%- endif %}
+  {%- if idle %}
+  <h2 class="apply-h">Nothing to send</h2>
+  <ul class="apply-not" id="apply-nothing">
+    {%- for r in idle %}
+    <li id="apply-{{ r.name }}"><strong>{{ r.name }}</strong> {{ badge('nothing to send', 'muted') }}: {{ r.none or 'it already has every line the profile supplies' }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
 
-  {%- for r in rows %}
+  {%- for r in sending %}
   <section class="apply-device" id="apply-{{ r.name }}">
     <h2 class="apply-h">{{ loop.index }}. {{ r.name }} {{ badge(STATE.get(r.state, (r.state, 'muted'))[0], STATE.get(r.state, (r.state, 'muted'))[1]) }}</h2>
     {%- if r.busy %}<div class="notice notice-warn">{{ icon('warn') }}<p>{{ r.busy }}</p></div>{% endif %}
@@ -115,6 +128,8 @@
     <button type="button" class="btn btn-primary" id="apply-confirm" x-on:click="confirm"
             x-bind:disabled="locked" x-text="label">Apply to {{ ready | length }} device(s) in this order</button>
     <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
+    {%- elif all_nothing %}
+    <p class="muted">Nothing to apply: every device chosen already has every line the profile supplies.</p>
     {%- elif not confirm_body %}
     <p class="apply-refused">No device here can receive the profile now: each says why above.</p>
     {%- endif %}

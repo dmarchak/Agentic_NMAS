@@ -25,12 +25,36 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 @pytest.fixture
-def ready(lab, monkeypatch):
+def idle(lab, monkeypatch):
+    """r2 as the lab holds it: every line the profile supplies already on it,
+    so it has NOTHING to send (C295)."""
     _commit_proposal()
     # The lab's list is not in the registry, and a read naming an unknown
     # list is refused (C51): the test names it as known.
     monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
     return lab
+
+
+@pytest.fixture
+def ready(idle):
+    """Two devices that each receive a program: r6 (its SNMP and LLDP) and r2,
+    whose golden is a minimal edit of its REAL one with `lldp run` removed, so
+    the profile supplies it that one line. Before C295 these tests ran r2 with
+    nothing to send, which is the very batch the operator found useless."""
+    from modules.nsot import hostvars
+    from modules.nsot.parsers import get_parser
+    from modules.nsot.repo import GoldenItem, save_golden, save_host_vars
+    text = idle["captured"]
+    assert "\nlldp run\n" in text
+    edited = text.replace("\nlldp run\n", "\n")
+    out = save_golden("Lab", [GoldenItem("r2", edited, "203.0.113.12", platform="cisco_iosxe")],
+                      source="capture", actor="t", baseline=False)
+    assert out.get("commit"), out
+    # Its intent from the same edit (as r6's lab shape is built), so the line is
+    # the PROFILE's to supply: a line r2's own intent held would be its own.
+    hostvars.write_committed(idle["repo"], get_parser("cisco_iosxe").parse(edited))
+    assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
+    return idle
 
 
 def _get(lab, url):
@@ -53,6 +77,29 @@ def _order(page_html):
     return re.findall(r'<li class="rollout-item">\s*<span class="grow"><a href="#apply-([^"]+)"', page_html)
 
 
+class TestNothingToSend:
+    """C295 (the operator, 2026-10-01): a device that already holds every line
+    the profile supplies reads "nothing to send", leaves the rollout order and
+    the confirm, and a batch where every device has nothing has no confirm."""
+
+    def test_a_device_with_nothing_to_send_leaves_the_order_and_the_confirm(self, idle):
+        _r, page = _page(idle)                         # r6 receives; r2, as the lab holds it, does not
+        assert _order(page) == ["r6"]
+        body = _body(page)
+        assert body["order"] == ["r6"] and "r2" not in body["confirmations"]
+        nothing = re.search(r'<ul class="apply-not" id="apply-nothing">(.*?)</ul>', page, re.S)
+        assert nothing and "<strong>r2</strong>" in nothing.group(1)
+        assert "nothing to send" in nothing.group(1)
+        assert 'aria-label="Move r2' not in page and 'aria-label="Leave r2 out' not in page
+        assert "Apply to 1 device(s) in this order" in page
+
+    def test_every_device_with_nothing_to_send_offers_no_confirm(self, idle):
+        _r, page = _page(idle, devices=("r2",))
+        assert 'id="apply-confirm"' not in page and "data-body=''" in page
+        assert "Nothing to apply: every device chosen already has every line the profile supplies." in page
+        assert "Rollout order" not in page
+
+
 class TestThePreview:
     def test_the_programs_and_hashes_are_the_scoped_plans(self, ready):
         r, page = _page(ready)
@@ -70,7 +117,25 @@ class TestThePreview:
         r6 = want["r6"]["commands"]
         assert r6 and any(c.startswith("snmp-server") for c in r6)
         assert "&lt;redacted:" in page and "1. r6" in page
-        assert "Nothing will be sent: the device already has every line the profile supplies." in page
+
+    def test_every_gate_and_operand_has_words(self, ready):
+        """C296 (the operator, 2026-10-01: ten empty bullets per device). Every
+        gate drawn names its check and says its state in words, and every
+        operand names itself and carries a value, on every device's preview."""
+        _r, page = _page(ready)
+        lists = re.findall(r'<ul class="apply-gates">(.*?)</ul>', page, re.S)
+        assert len(lists) == 2
+        states = "passes|FAILS|does not apply|checked again at apply|not reached"
+        for block in lists:
+            items = re.findall(r"<li[^>]*>(.*?)</li>", block, re.S)
+            assert len(items) >= 8
+            for li in items:
+                m = re.match(r"<strong>([^<]+)</strong> (" + states + r")\b", li.strip())
+                assert m and m.group(1).strip(), li
+        for block in re.findall(r'<dl class="apply-operands">(.*?)</dl>', page, re.S):
+            pairs = re.findall(r"<dt>(.*?)</dt><dd><code>(.*?)</code></dd>", block, re.S)
+            assert len(pairs) >= 6
+            assert all(n.strip() and v.strip() for n, v in pairs), pairs
 
     def test_no_stored_secret_value_leaves_in_the_page(self, ready):
         from tests.test_profile_apply import _secret_values

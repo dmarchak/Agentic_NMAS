@@ -361,10 +361,22 @@ def _apply_ctx(req) -> dict:
         # (the shared preview checks only dangerous and re-added lines).
         if t.get("selectable") and d.get("authorisation_ok") is False:
             row.update(selectable=False, state="not_authorised")
+        # NOTHING TO SEND (C295, the operator, 2026-10-01): a device that
+        # already holds every line the profile supplies reads so, leaves the
+        # rollout order (no Earlier, Later or Leave out to give it), and is no
+        # part of the confirm.
+        row["nothing"] = bool(row["selectable"] and not row["program"])
+        if row["nothing"]:
+            row.update(selectable=False, state="nothing")
         rows.append(row)
         if row["selectable"]:
             ready.append(name)
-    ctx.update(rows=rows, preview=out["preview"], ready=ready)
+    # The devices with nothing to send go last in the order the page carries,
+    # so Earlier and Later move a device past a neighbour the person can see.
+    rows = [r for r in rows if not r["nothing"]] + [r for r in rows if r["nothing"]]
+    ctx["order"] = [r["name"] for r in rows]
+    ctx.update(rows=rows, preview=out["preview"], ready=ready,
+               all_nothing=bool(rows) and all(r["nothing"] for r in rows))
     if ready:
         # The confirm body, computed HERE from the hashes this preview drew: the
         # browser sends it back unchanged, in the rollout order.
