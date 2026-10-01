@@ -9,7 +9,7 @@
 {%- set rows = (a.rows or []) | rejectattr('level', 'equalto', 'info') | list -%}
 {%- set sources = a.sources or [] -%}
 <div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
-     hx-trigger="nmas:job_health from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:integration_health from:body, nmas:ci_verdict from:body, nmas:app_version from:body, nmas:reachability from:body, nmas:netbox from:body, nmas:remote from:body, nmas:baselines from:body, nmas:drift from:body, nmas:adjacencies from:body">
+     hx-trigger="nmas:job_health from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:integration_health from:body, nmas:ci_verdict from:body, nmas:app_version from:body, nmas:reachability from:body, nmas:netbox from:body, nmas:remote from:body, nmas:baselines from:body, nmas:drift from:body, nmas:adjacencies from:body, nmas:lab_startup from:body">
   <p class="att-summary">
     {%- if rows %}<strong>{{ rows|length }} item{{ '' if rows|length == 1 else 's' }}</strong>
     {%- else %}<strong>Nothing needs attention</strong>{% endif %}

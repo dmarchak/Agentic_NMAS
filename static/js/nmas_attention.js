@@ -329,6 +329,7 @@
         NMAS.subscribe('alerts', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('freshness', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('adjacencies', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('lab_startup', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('integration_health', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('ci_verdict', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('reachability', 'attention', loadAttention, {panel: 'needsAttentionPanel'});

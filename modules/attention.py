@@ -1671,11 +1671,98 @@ def adjacency_source(cached=None) -> dict:
                     if settling else "")))
 
 
+def lab_startup_source(cached=None) -> dict:
+    """A device whose lab startup file is not what its committed golden would
+    produce (the operator, 2026-10-01): a redeploy boots the file, so the
+    device would come back other than as recorded. One row per device, the
+    differing lines masked and a credential named by its slot; a file no
+    device owns is information, since a redeploy still boots it."""
+    from modules import reader_job
+
+    label = "Lab startup files"
+    started = time.time()
+    got = reader_job.read_cached("lab-startup") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("lab-startup", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    common = dict(read_at=started, took_ms=took, value_at=value_at,
+                  stale_after_seconds=promise, reader="lab-startup")
+    if not v.get("configured"):
+        return source_result("lab-startup", label, **common,
+                             checked="no lab host configured (clab_host): no lab file to compare")
+    rows = []
+    for d in v.get("devices") or []:
+        name, where = d["device"], d.get("file") or "its lab's configs directory"
+        if d.get("state") == "differs":
+            parts = []
+            if d.get("only_golden_count"):
+                parts.append(f"{d['only_golden_count']} line(s) the golden has and the file "
+                             "lacks: " + "; ".join(f"`{l.strip()}`" for l in d["only_golden"][:5]))
+            if d.get("only_file_count"):
+                parts.append(f"{d['only_file_count']} line(s) the file has and the golden "
+                             "lacks: " + "; ".join(f"`{l.strip()}`" for l in d["only_file"][:5]))
+            if d.get("credentials"):
+                parts.append("a credential differs in value: "
+                             + "; ".join(f"`{l.strip()}`" for l in d["credentials"]))
+            if d.get("reordered"):
+                parts.append("the same lines in another order")
+            rows.append(row(
+                source="lab-startup", key=f"differs:{d.get('list')}:{name}", level="warning",
+                what=f"{name}'s lab startup file is not what its golden would produce",
+                devices=[name], operands={"list": d.get("list"), "file": where},
+                cause=(f"A redeploy boots {where}, which the clab sync writes from Oxidized's "
+                       "copy; rendered through the same sanitiser, the committed golden gives "
+                       "something else: " + ". ".join(parts)),
+                action={"label": (f"If {name} runs what should be kept, capture it; if the "
+                                  "golden is right, the file is behind and the next clab sync "
+                                  "rewrites it from Oxidized"),
+                        "href": f"/v2/device/{name}"}))
+        elif d.get("state") == "missing":
+            rows.append(row(
+                source="lab-startup", key=f"missing:{d.get('list')}:{name}", level="warning",
+                what=f"{name} has no lab startup file", devices=[name],
+                operands={"list": d.get("list"), "file": where},
+                cause=(f"{where} does not exist, so a redeploy boots {name} on the image's own "
+                       "defaults, without the credential the tool holds"),
+                action={"label": "Check the clab sync's run: it writes the file for every "
+                                 "device it maps"}))
+    unknown = [d for d in v.get("devices") or [] if d.get("state") == "unknown"]
+    if unknown:
+        rows.append(row(
+            source="lab-startup", key="unknown", level="unknown",
+            what=f"{len(unknown)} device(s) whose lab startup file could not be compared",
+            devices=sorted({d["device"] for d in unknown}),
+            cause="; ".join(sorted({f"{d['device']}: {d.get('why') or '?'}" for d in unknown})),
+            action={"label": "The reason above is what is known", "known": False}))
+    for u in v.get("unowned") or []:
+        rows.append(row(
+            source="lab-startup", key=f"unowned:{u['file']}", level="info",
+            what=f"{u['file']} is a startup file no managed device owns",
+            cause=(f"No device of lab {u.get('lab')!r} in any list is named for it, and a "
+                   "redeploy still boots it for any node the topology declares by that name"),
+            action={"label": "Nothing to do if the topology no longer declares that node; "
+                             "otherwise remove the node or the file on the lab host"}))
+    counted = v.get("checked", 0)
+    return source_result(
+        "lab-startup", label, rows=rows, **common,
+        checked=(f"{counted} device(s) compared over {v.get('labs', 0)} lab(s), "
+                 f"{sum(1 for d in v.get('devices') or [] if d.get('state') == 'matches')} "
+                 "matching their golden"))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
            reachability_source, netbox_secrets_source, remote_source, pushed_source,
-           host_steps_source, adjacency_source)
+           host_steps_source, adjacency_source, lab_startup_source)
 
 
 def _attach(rows: list) -> list:

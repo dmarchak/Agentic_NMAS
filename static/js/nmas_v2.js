@@ -19,7 +19,9 @@
               // A batch deploy run as a job (P.9 d2), and the goldens it commits.
               'deploy_job', 'goldens',
               // C38's reader: the routing adjacencies intent implies.
-              'adjacencies'];
+              'adjacencies',
+              // The lab startup files against the goldens (modules/lab_startup.py).
+              'lab_startup'];
 
   /* PURE: an age in words, from two times in milliseconds. */
   function ageWords(thenMs, nowMs) {
@@ -89,6 +91,7 @@
   function relayDeployJob() { relay('deploy_job'); }
   function relayGoldens() { relay('goldens'); }
   function relayAdjacencies() { relay('adjacencies'); }
+  function relayLabStartup() { relay('lab_startup'); }
 
   function wireAnnouncements() {
     var NMAS = root.NMAS;
@@ -108,6 +111,7 @@
     NMAS.subscribe('deploy_job', 'v2DeployJob', relayDeployJob);
     NMAS.subscribe('goldens', 'v2Goldens', relayGoldens);
     NMAS.subscribe('adjacencies', 'v2Adjacencies', relayAdjacencies);
+    NMAS.subscribe('lab_startup', 'v2LabStartup', relayLabStartup);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

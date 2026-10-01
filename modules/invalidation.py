@@ -64,6 +64,7 @@ VOCABULARY = {
     "templates": "the template library, bindings and template approvals",
     "baselines": "baseline tags",
     "adjacencies": "the routing adjacencies intent implies, against what each device reports (C38)",
+    "lab_startup": "each lab startup file against what its committed golden would produce",
     "remote": "the remote: its push state and verification",
     "drift": "the drift checker's state and last run",
     "approvals": "the approval queue",

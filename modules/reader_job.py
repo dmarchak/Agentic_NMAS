@@ -236,7 +236,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.netbox_secrets",
                            "modules.readers.remote_publication",
                            "modules.readers.app_pushed",
-                           "modules.readers.adjacencies")
+                           "modules.readers.adjacencies",
+                           "modules.readers.lab_startup")
 
 
 # ---------------------------------------------------------------------------

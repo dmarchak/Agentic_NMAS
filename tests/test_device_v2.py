@@ -604,7 +604,7 @@ class TestTheShippedScripts:
                                                     "/v2/help/installation",
                                                     "/v2/monitoring/coverage/table",
                                                     "/v2/monitoring/apply/job/x"))
-        assert len(keys) == 15
+        assert len(keys) == 16
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")
