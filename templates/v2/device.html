@@ -39,6 +39,6 @@
   {% endfor %}
 </div>
 <div id="tab-body" class="tab-body">
-  {% if tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
+  {% if tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% elif tab == 'history' %}{% include "v2/_history.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
 </div>
 {% endblock %}

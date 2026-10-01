@@ -1,0 +1,29 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- The device page's History (NSOT_GUI_BRIEF 3.3): one timeline from
+    device_page.history(): golden commits (each names its workflow), intent
+    commits, and deploy and restore receipts, newest first. A record that
+    could not be read is said; a cut timeline says where it was cut. -#}
+{%- set KIND = {'golden': ('golden', 'info'), 'intent': ('intent', 'muted'), 'receipt': ('receipt', 'ok')} -%}
+<section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname) }}"
+         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body" hx-swap="outerHTML">
+  {%- for e in h.errors %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}: the timeline below lacks it, which is not the same as nothing having happened.</p></div>
+  {%- endfor %}
+  {%- if not h.events %}
+  <p class="cov-head">{{ icon('info') }} Nothing is recorded for {{ device.hostname }} yet: no golden, no intent commit, no deploy.</p>
+  {%- else %}
+  <ol class="timeline">
+    {%- for e in h.events %}
+    {%- set k = KIND.get(e.kind, (e.kind, 'muted')) %}
+    {%- set failed = e.kind == 'receipt' and e.outcome and e.outcome != 'deployed' %}
+    <li class="tl-item">
+      <span class="tl-when">{{ stamp(e.at) }}</span>
+      <span class="tl-what">{{ badge(k[0], 'danger' if failed else k[1]) }} <strong>{{ e.what }}</strong>{% if e.who %}<span class="muted"> by {{ e.who }}</span>{% endif %}</span>
+      <span class="tl-detail">{{ e.detail }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</span>
+      {%- if e.exception %}<span class="tl-detail tl-exception">This commit's record is known to be wrong: {{ e.exception }}</span>{% endif %}
+    </li>
+    {%- endfor %}
+  </ol>
+  {%- if h.cut %}<p class="muted">Cut at {{ h.cut | join(', ') }}: older entries are in the repository's history.</p>{% endif %}
+  {%- endif %}
+</section>

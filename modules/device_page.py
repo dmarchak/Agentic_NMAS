@@ -666,3 +666,69 @@ def fleet_panel_data(uid: str, panel_id: int, range_text: str, client=None) -> t
     payload["errors"] = panels.answer_errors(got["body"])
     payload["read_at"] = _iso(time.time())
     return payload, 200
+
+
+# ---------------------------------------------------------------------------
+# The History tab (NSOT_GUI_BRIEF 3.3, step 4): ONE timeline of what was done
+# to this device and its record, from the records the app keeps: its golden
+# commits (captures, deploys, restores, rotations, onboarding: each names its
+# workflow in `Source:`), its intent commits, and the deploy and restore
+# receipts. A record that cannot be read is said, never a shorter timeline.
+# ---------------------------------------------------------------------------
+
+#: How many of each record the timeline reads; a timeline cut says so.
+HISTORY_LIMIT = 30
+
+
+def _epoch(iso: str) -> float:
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def history(ref, dev: dict, limit: int = None) -> dict:
+    """``{"events", "errors", "cut"}``, newest first. Each event is
+    ``{"at", "kind", "what", "who", "detail", "sha", "outcome"}``."""
+    from modules.nsot import hostvars, receipts
+    from modules.nsot import repo as R
+
+    limit = limit or HISTORY_LIMIT
+    host = dev.get("hostname", "")
+    events, errors, cut = [], [], []
+    try:
+        golden = R.golden_history(ref.repo_dir, host, limit=limit)
+        for g in golden:
+            events.append({"at": g["timestamp"], "kind": "golden",
+                           "what": f"Golden recorded ({g['source'] or 'no Source: trailer'})",
+                           "who": g["actor"], "detail": g["subject"], "sha": g["sha"],
+                           "outcome": "", "exception": (g.get("exception") or {}).get("reason", "")})
+        if len(golden) >= limit:
+            cut.append(f"the golden history's newest {limit}")
+    except Exception as exc:                          # noqa: BLE001
+        errors.append(f"the golden history could not be read: {exc}")
+    try:
+        intent = hostvars.intent_commits(ref.repo_dir, host, limit=limit)
+        for c in intent:
+            events.append({"at": c["date"], "kind": "intent", "what": "Intent committed",
+                           "who": "", "detail": c["subject"], "sha": c["sha"], "outcome": ""})
+        if len(intent) >= limit:
+            cut.append(f"the intent history's newest {limit}")
+    except Exception as exc:                          # noqa: BLE001
+        errors.append(f"the intent history could not be read: {exc}")
+    got = receipts.read(ref.name, device=host, limit=limit)
+    if got["state"] == "unreadable":
+        errors.append(f"the deploy receipts could not be read: {got.get('error', '')}")
+    for r in got.get("rows") or []:
+        verb = {"deploy": "Deployed", "restore": "Restored"}.get(r.get("action", ""), "Changed")
+        events.append({"at": r.get("at", ""), "kind": "receipt",
+                       "what": f"{verb}: {r.get('outcome', '?').replace('_', ' ')}",
+                       "who": r.get("actor", ""),
+                       "detail": (f"{r.get('program_lines', 0)} line(s) sent"
+                                  + (f"; {r['reason']}" if r.get("reason") else "")),
+                       "sha": r.get("golden_commit", ""), "outcome": r.get("outcome", "")})
+    if len(got.get("rows") or []) >= limit:
+        cut.append(f"the receipts' newest {limit}")
+    events.sort(key=lambda e: _epoch(e["at"]), reverse=True)
+    return {"events": events, "errors": errors, "cut": cut, "limit": limit}

@@ -26,7 +26,7 @@ bp = Blueprint("device_v2", __name__, url_prefix="/v2")
 TABS = [("overview", "Overview"), ("intent", "Intent"), ("history", "History"),
         ("monitoring", "Monitoring"), ("logs", "Logs"), ("netbox", "NetBox"),
         ("neighbours", "Neighbours"), ("ask", "Ask the device")]
-BUILT = ("overview", "monitoring")
+BUILT = ("overview", "history", "monitoring")
 
 
 def _strict(resp, code=200):
@@ -68,6 +68,10 @@ def _overview_ctx(ref, dev):
             "hw": device_page.hardware(ref, dev)}
 
 
+def _history_ctx(ref, dev):
+    return {"device": dev, "h": device_page.history(ref, dev)}
+
+
 def _monitored_by(ref, dev) -> dict:
     """What this device is monitored by (P.9 d3; NSOT_GUI_BRIEF 14.3): the
     same cells Monitoring > Coverage draws, from its committed golden, for this
@@ -106,7 +110,8 @@ def device(name):
     ctx = {"device": dev, "list_name": ref.name, "tabs": TABS, "built": BUILT, "tab": tab,
            "answer": device_page.answering(dev), "who": _who(),
            "hw": device_page.hardware(ref, dev)}
-    ctx.update(_overview_ctx(ref, dev) if tab == "overview" else _monitoring_ctx(ref, dev))
+    ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
+               _history_ctx(ref, dev) if tab == "history" else _monitoring_ctx(ref, dev))
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -191,3 +196,14 @@ def monitored_by(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_monitored_by.html", device=dev, mb=_monitored_by(ref, dev)))
+
+
+@bp.route("/device/<name>/history", methods=["GET"])
+def history(name):
+    """The History tab: one timeline of the device's golden and intent commits
+    and its deploy and restore receipts."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_history.html", **_history_ctx(ref, dev)))
