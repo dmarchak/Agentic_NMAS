@@ -219,7 +219,8 @@ class TestJobHealthAsASource:
         job = next(j for j in J.JOBS if j["unit"] == "nmas-heartbeat-check")
         row = J.job_status(job, NOW, _runner(LOADED, "\n".join([_ok(NOW - 7200), _fail(NOW - 60)])))
         act = A._job_action(row)
-        assert row["state"] == "failing" and "nmas-heartbeat-rules" in act["command"]
+        assert row["state"] == "failing" and act["href"] == "/v2/monitoring/heartbeat"
+        assert "command" not in act, "the remedy is the page, never a command with a placeholder"
         ok_row = J.job_status(job, NOW, _runner(LOADED, _ok(NOW - 60)))
         assert "action" not in ok_row, "an ok job names no remedy"
 

@@ -1,8 +1,11 @@
-{#- Monitoring's tabs: the fleet dashboard (the default), Coverage, and IP SLA
-    (the probes the profile's policy suggests, P.9 d4: reachable from here and
-    from Coverage's IP SLA cells, never only by a typed address). -#}
+{#- Monitoring's tabs: the fleet dashboard (the default), Coverage, IP SLA (the
+    probes the profile's policy suggests, P.9 d4; also reached from Coverage's IP
+    SLA cells) and Heartbeat (each device's alert window, re-measured as an
+    action, P.7; also the heartbeat check's Needs attention action). Never only
+    by a typed address. -#}
 <nav class="tabs" aria-label="Monitoring">
   <a class="tab{% if monitoring_tab == 'dashboards' %} on{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if monitoring_tab == 'dashboards' %} aria-current="page"{% endif %}>Dashboards</a>
   <a class="tab{% if monitoring_tab == 'coverage' %} on{% endif %}" href="{{ url_for('v2.coverage') }}"{% if monitoring_tab == 'coverage' %} aria-current="page"{% endif %}>Coverage</a>
   <a class="tab{% if monitoring_tab == 'ip_sla' %} on{% endif %}" href="{{ url_for('v2.ip_sla') }}"{% if monitoring_tab == 'ip_sla' %} aria-current="page"{% endif %}>IP SLA</a>
+  <a class="tab{% if monitoring_tab == 'heartbeat' %} on{% endif %}" href="{{ url_for('v2.heartbeat') }}"{% if monitoring_tab == 'heartbeat' %} aria-current="page"{% endif %}>Heartbeat</a>
 </nav>

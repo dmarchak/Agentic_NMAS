@@ -1,0 +1,67 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge -%}
+{#- Monitoring > Heartbeat (NSOT_PLAN P.7; routes/v2._heartbeat_ctx): every
+    device's heartbeat window, installed against measured now, with what each
+    is measured from and the hourly check's own verdict; the re-measure's
+    confirm writes the rules file, and the page then names the ONE host step
+    that installs it, every value filled in. -#}
+{% block title %}Heartbeat · Monitoring · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Heartbeat windows</h1>
+    <p class="sub">Each device sends a heartbeat every {{ plan.heartbeat if plan else 'few' }} s by its own clock, and its alert fires when none arrives within its window: quiet on one missed heartbeat, firing on two. A window is measured from the device's own arrivals; gaps across a configuration change, a restart or a miss are not measurements.</p>
+  </div>
+</div>
+{% include "v2/_monitoring_tabs.html" %}
+<div class="tab-body">
+{%- if host_step %}
+<section class="card" id="hb-pending">
+  <div class="notice notice-warn">{{ icon('warn') }}<p>Re-measured windows are written{% if last.actor %} (by {{ last.actor }}, {{ last.at }}){% endif %} and NOT YET INSTALLED: Grafana still alerts on the old ones. Install them on the host (the installed file is root's, and the app's Grafana account cannot reload provisioning):</p></div>
+  <p class="cmd"><code>{{ host_step }}</code><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ host_step }}" x-on:click="copy" x-text="label">Copy</button></p>
+  <p class="muted">This page says installed once the file Grafana loads is the one written here.</p>
+</section>
+{%- endif %}
+<section class="card" id="hb-windows">
+  {%- if error %}
+  <div class="notice notice-danger">{{ icon('warn') }}<p>Nothing was measured: {{ error }}</p></div>
+  {%- else %}
+  <p>{% if plan.needs %}{{ plan.needs }} of {{ plan.rows | length }} device(s) need a new window: the hourly check fails for them.{% else %}Every installed window still tells one missed heartbeat from two: nothing needs writing.{% endif %} {{ plan.restarts }}.</p>
+  <div class="table-wrap">
+    <table class="table hb-table">
+      <thead><tr>
+        <th scope="col">Device</th><th scope="col">Installed</th><th scope="col">Measured now</th>
+        <th scope="col">From</th><th scope="col">The check</th>
+      </tr></thead>
+      <tbody>
+        {%- for r in plan.rows %}
+        <tr id="hb-{{ r.device }}">
+          <th scope="row"><a href="{{ url_for('device_v2.device', name=r.device) }}">{{ r.device }}</a></th>
+          <td>{% if r.installed %}{{ r.installed.window }} s <span class="muted">{{ r.installed.basis }}</span>{% else %}<span class="muted">no rule</span>{% endif %}</td>
+          <td>{% if r.new %}{{ r.new.window }} s <span class="muted">{{ r.new.basis }}</span>{% if r.needs %} {{ badge('needs a new window', 'warn') }}{% elif r.changes %} <span class="muted">(the installed one is still right)</span>{% endif %}{% else %}<span class="muted">no longer told to heartbeat</span>{% endif %}</td>
+          <td class="muted">
+            {%- if r.new and r.new.lo is not none %}gaps {{ r.new.lo }}-{{ r.new.hi }} s (n={{ r.new.n }}, rate {{ r.new.rate }}), band {{ r.band[0] }}-{{ r.band[1] }} s
+            {%- elif r.new %}{{ r.new.n }} gap(s): too few to measure; {{ r.new.assumed_rate }} assumed
+            {%- endif %}{% if r.restarts %}; {{ r.restarts }} restart(s) excluded{% endif %}</td>
+          <td>{{ r.check }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- for n in plan.not_expected %}<p class="muted">Not expected to heartbeat: {{ n }}.</p>{% endfor %}
+  <div class="confirm" x-data="ipslaPost" data-url="{{ url_for('v2.heartbeat_apply') }}"
+       data-body='{{ {"fingerprint": plan.fingerprint} | tojson }}'
+       data-label="Write the re-measured windows" data-busy="Measuring again and writing…">
+    <p>Measured again at the confirm; a measurement that moved since this preview writes nothing. Writing changes no alert until the file is installed on the host, which this page then names.</p>
+    {%- if plan.needs %}
+    <button type="button" class="btn btn-primary" id="hb-confirm" x-on:click="post" x-bind:disabled="busy" x-text="label">Write the re-measured windows</button>
+    {%- else %}
+    <p class="muted">Nothing to write: a re-measure would move windows by seconds and cost a Grafana restart for nothing.</p>
+    {%- endif %}
+    <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
+  </div>
+  {%- endif %}
+</section>
+</div>
+{% endblock %}

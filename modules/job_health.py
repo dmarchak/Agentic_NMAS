@@ -49,11 +49,10 @@ JOBS = (
      "what": "each device's heartbeat window still fits its measured rate, hourly (C16)",
      # Both of its failures (a device with no rule, C151; a rate that moved)
      # are fixed by regenerating the rules (NSOT_PLAN P.1 step 5).
-     "remedy": {"label": "Regenerate the heartbeat rules (a new device gets a provisional "
-                         "window), install the file and reload Grafana's provisioning",
-                "command": "scripts/nmas-heartbeat-rules --datasource-uid <loki-uid> "
-                           "--loki-url http://127.0.0.1:3100",
-                "reference": "NSOT_PLAN P.1 step 5"}},
+     "remedy": {"label": "Re-measure the heartbeat windows: each device's installed and new "
+                         "window previewed, confirmed, then the one host step that installs them",
+                "href": "/v2/monitoring/heartbeat",
+                "reference": "NSOT_PLAN P.7"}},
     {"unit": "nmas-startup-check", "max_age_minutes": 180,
      "what": "every device's startup config carries the credential NMAS holds, hourly (C53)"},
 )

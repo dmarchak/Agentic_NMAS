@@ -566,6 +566,53 @@ def ip_sla():
                  **_ip_sla_ctx(request))
 
 
+# ---------------------------------------------------------------------------
+# Monitoring > Heartbeat (NSOT_PLAN P.7's heartbeat generator, as an action):
+# re-measure every device's window, preview old against new, confirm, write
+# the rules file, then the one host step with every value filled in.
+# ---------------------------------------------------------------------------
+
+def _heartbeat_ctx() -> dict:
+    from modules import heartbeat_windows as HW
+    ctx = {"plan": None, "error": "", "state": {}, "last": HW.last_written(), "host_step": ""}
+    try:
+        ctx["plan"] = HW.plan()
+    except HW.Refused as exc:
+        ctx["error"] = str(exc)
+    except Exception as exc:                              # noqa: BLE001
+        ctx["error"] = f"the measurement failed: {type(exc).__name__}: {exc}"
+    path = (ctx["plan"] or {}).get("written_path", "")
+    ctx["state"] = HW.state(path)
+    if ctx["state"].get("pending"):
+        ctx["host_step"] = HW.host_step(path or HW._script().OUT)
+    return ctx
+
+
+@bp.route("/monitoring/heartbeat", methods=["GET"])
+def heartbeat():
+    """Each device's heartbeat window: installed against measured now, the
+    check's own verdict, and the re-measure's confirm."""
+    return _page("v2/heartbeat.html", active_nav="monitoring", monitoring_tab="heartbeat",
+                 **_heartbeat_ctx())
+
+
+@bp.route("/monitoring/heartbeat/apply", methods=["POST"])
+def heartbeat_apply():
+    """Write the re-measured rules as the verified person, refusing a moved
+    measurement; the page then names the host step that installs them."""
+    from flask import jsonify, request
+
+    from modules import heartbeat_windows as HW
+    from modules import identity
+
+    data = request.get_json(silent=True) or {}
+    try:
+        out = HW.apply(data.get("fingerprint") or "", identity.request_actor())
+    except HW.Refused as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+    return jsonify({"ok": True, **out})
+
+
 def _ip_sla_ref(data):
     from modules.nsot import listref
     name = (data.get("list") or "").strip()

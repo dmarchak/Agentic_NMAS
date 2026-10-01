@@ -148,6 +148,7 @@ DECLARED = {
     "templatize.profile_propose_apply": ("intent", "remote"),
     "v2.ip_sla_policy_set": ("intent", "remote"),
     "v2.ip_sla_commit": ("intent", "remote"),
+    "v2.heartbeat_apply": Nothing("writes the generated heartbeat rules file, which no panel reads; the page redraws itself, and nothing alerts differently until a person installs it on the host"),
     "templatize.edit_committed": ("intent", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
