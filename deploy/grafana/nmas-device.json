@@ -129,6 +129,8 @@
         "defaults": {
           "unit": "none",
           "noValue": "Not a target: its configuration has no SNMP. Needs attention says what to do.",
+          "min": 0,
+          "max": 1,
           "mappings": [
             {
               "type": "value",
@@ -193,6 +195,8 @@
         "defaults": {
           "unit": "percent",
           "noValue": "No IOS CPU reading. On IOS-XE it comes from telemetry, and this router is not streaming; its platform CPU is one level down.",
+          "min": 0,
+          "max": 100,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -260,6 +264,8 @@
         "defaults": {
           "unit": "percent",
           "noValue": "Memory isn't available over SNMP on vIOS.",
+          "min": 0,
+          "max": 100,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -528,7 +534,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sysUpTime{device=\"$device\"} / 100 and on(device) (deriv(sysUpTime{device=\"$device\"}[1h]) / 100 > 0.9)",
+          "expr": "sysUpTime{device=\"$device\"} / 100 and on(device) (rate(sysUpTime{device=\"$device\"}[1h]) / 100 > 0.9)",
           "legendFormat": "via SNMP (sysUpTime)"
         }
       ],
@@ -627,6 +633,8 @@
         "defaults": {
           "unit": "percentunit",
           "noValue": "Not a target: no SNMP, or less than an hour of history.",
+          "min": 0,
+          "max": 1.1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -658,7 +666,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "deriv(sysUpTime{device=\"$device\"}[1h]) / 100",
+          "expr": "rate(sysUpTime{device=\"$device\"}[1h]) / 100",
           "legendFormat": "via SNMP (sysUpTime against real time)"
         }
       ],
@@ -1748,7 +1756,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "deriv(sysUpTime{device=\"$device\"}[1h]) / 100",
+          "expr": "rate(sysUpTime{device=\"$device\"}[1h]) / 100",
           "legendFormat": "clock rate (via SNMP)"
         }
       ],

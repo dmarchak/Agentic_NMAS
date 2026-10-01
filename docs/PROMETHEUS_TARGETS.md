@@ -154,13 +154,23 @@ reload successful):
 
 | Job | Interval | Timeout | Polls |
 |---|---|---|---|
-| `cisco_vios_l2` | **60 s** (was 30 s) | 30 s | the four switches: `if_mib`, `cisco_old_cpu`, `system` |
+| `cisco_vios_l2` | **60 s** (was 30 s) | **55 s** (was 30 s; 2026-10-01 15:35 UTC) | the four switches: `if_mib`, `cisco_old_cpu`, `system` |
 | `cisco_ipsla` | **60 s** (was 30 s) | 20 s | the devices whose golden defines an IP SLA operation |
 | `ospf` | **60 s** (was 30 s) | 20 s | the OSPF devices' routing tables |
 | `lldp` | 60 s (unchanged) | 30 s | every device |
 | `cisco_8000v` | 30 s | 30 s | the routers |
 | `ospfv3`, `bgp` | 30 s | 20 s | IOS-XE routing tables |
 | `telemetry_mdt` | 30 s | 10 s | Telegraf (the routers push every 10 s) |
+
+**The `cisco_vios_l2` timeout was raised after s3's reboot** (the operator, 2026-10-01; read
+back from the loaded configuration: `scrape_interval: 1m`, `scrape_timeout: 55s`). s3, rebooted
+at about 15:24 UTC because it kept degrading, came back answering SNMP (the `cisco_ipsla`,
+`lldp` and `ospf` jobs polled it at once), while `cisco_vios_l2` stayed down with "context
+deadline exceeded" at exactly 30.0 s: the heaviest walk in the lab ran past its timeout. The
+walk's durations after the change, as the operator read them: s4 5.6 s, s1 10.6 s, s2 11.9 s,
+s3 14.1 s (about half s3's time before the reboot). The timeout stays under the interval, so
+one scrape never overlaps the next. That the device-unreachable alert fired on this job's
+`up` is a P.7 matter (NSOT_PLAN P.7: unreachable rests on a light signal).
 
 Nothing in the NMAS assumes an interval: the targets check reads each job's
 loaded interval to decide when "not yet discovered" becomes "differs"

@@ -169,7 +169,7 @@ _GUARD = re.compile(r"^(?P<value>.+?)\s+and\s+on\s*\([^()]*\)\s*\((?P<cond>.+)\)
 
 #: What a guard's condition is about, in the fold line's words; a guard not
 #: named here reads "withheld by its own condition".
-GUARD_WORDS = ((re.compile(r"deriv\(\s*sysUpTime"), "slow clock"),)
+GUARD_WORDS = ((re.compile(r"(?:deriv|rate)\(\s*sysUpTime"), "slow clock"),)
 
 
 def _balanced(text: str) -> bool:
@@ -459,7 +459,69 @@ def render_payload(panel: dict, answer: dict, seconds: int) -> dict:
         # from, drawn under the value.
         labelled = [s["label"] for s in shown if s["values"] and s["values"][-1] is not None]
         out["label"] = labelled[0] if len(labelled) == 1 else ""
+        # NEVER AN IMPOSSIBLE VALUE (the operator, 2026-10-01: the clock rate
+        # read -2475% after s3's reboot). A stat whose panel declares its
+        # valid range (Grafana's min and max) draws words, never a number
+        # outside it: a reading outside what the quantity can be is a failed
+        # measurement, not a measurement.
+        span = valid_range(panel)
+        if span and out["value"] is not None and not (span[0] <= out["value"] <= span[1]):
+            out["implausible"] = {"value": out["value"], "range": list(span),
+                                  "words": f"Not a valid reading (outside {_range_words(span, out['unit'])}): "
+                                           "measuring"}
+            out["value"] = None
     else:
         out["series"] = [{"label": s["label"], "times": s["times"], "values": s["values"]} for s in shown]
         out["mappings"] = mappings
     return out
+
+
+# ---------------------------------------------------------------------------
+# A stat's valid range, and a restart that explains a reading outside it.
+# ---------------------------------------------------------------------------
+
+def valid_range(panel: dict):
+    """``(low, high)`` when the panel declares both Grafana's ``min`` and
+    ``max`` (the builder sets them only where the quantity has a physical
+    range: a percentage, a clock rate), else None."""
+    lo, hi = panel.get("min"), panel.get("max")
+    if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and lo < hi:
+        return float(lo), float(hi)
+    return None
+
+
+def _range_words(span: tuple, unit: str) -> str:
+    lo, hi = span
+    if unit == "percentunit":
+        return f"{lo * 100:g}–{hi * 100:g}%"
+    if unit == "percent":
+        return f"{lo:g}–{hi:g}%"
+    return f"{lo:g}–{hi:g}"
+
+
+def reads_uptime(panel: dict) -> bool:
+    """Does the panel compute from sysUpTime (so a restart explains a reading
+    outside its range)?"""
+    return any("sysUpTime" in (t.get("expr") or "") for t in panel.get("targets") or [])
+
+
+def restart_panel(panel: dict, variable: str) -> dict:
+    """A synthetic panel asking for the device's own sysUpTime, on the panel's
+    data source, so the restart can be found where the reading came from."""
+    return {"type": "timeseries", "datasource": panel.get("datasource"),
+            "targets": [{"refId": "R", "expr": f'sysUpTime{{device="${variable}"}}',
+                         "datasource": (panel.get("targets") or [{}])[0].get("datasource")}]}
+
+
+def last_restart(answer: dict):
+    """When the device last restarted, from a sysUpTime series: the newest
+    point where the count dropped, less the uptime it then read (the device's
+    own ticks, so about). None when no drop is in the answer."""
+    best = None
+    for s in frames_to_series(answer, {}):
+        vals, times = s["values"], s["times"]
+        for i in range(1, len(vals)):
+            if vals[i] is not None and vals[i - 1] is not None and vals[i] < vals[i - 1]:
+                at = times[i] - vals[i] / 100.0
+                best = at if best is None or at > best else best
+    return best

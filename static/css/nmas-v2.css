@@ -504,3 +504,5 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 /* The device page's Logs tab (step 4). */
 .log-msg { word-break: break-word; }
 .log-table td { vertical-align: top; }
+/* A stat reading outside its valid range: words, never the number. */
+.stat-measuring { font-size: 14px; color: var(--ink-2); font-weight: 500; }

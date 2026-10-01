@@ -3650,6 +3650,14 @@ than one that never fires**: "it has alerted 9 times" would have satisfied anyon
   by its generator: the same principle as Needs attention's action field. The Alerts screen
   draws it as a "How to fix" column. A rule with no declared remedy says "no remedy declared
   for this rule", never an invented one, and the generator's test refuses a kind without one;
+- **UNREACHABLE RESTS ON A LIGHT SIGNAL; A SLOW POLL IS ITS OWN, LOWER RULE** (the operator,
+  2026-10-01, after s3's reboot): s3 answered SNMP the whole time, and `Device unreachable
+  (SNMP)` fired because the `cisco_vios_l2` interface-table walk (`if_mib` + `cisco_old_cpu` +
+  `system`) ran past its 30 s scrape timeout ("context deadline exceeded" at exactly 30.0 s),
+  which reads `up == 0`. A slow walk is not unreachability. The generated reachability rule
+  reads a light signal: the app's reachability probe (C92, ICMP then TCP 22) or a small SNMP
+  get (`sysUpTime`), never the heaviest job's `up`. "A poll is timing out" is its own kind, at
+  a lower severity, naming the job and its scrape duration against its timeout;
 - the evidence it must reproduce (C168): the two incidents the old rules missed (09-22 23:41, every
   telemetry source silent for about 20 minutes; 09-28 08:51, r1 and r3), each rule's history read
   uncapped (a capped read made "never alerted" out of a rule that had).

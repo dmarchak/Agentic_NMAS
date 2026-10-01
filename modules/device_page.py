@@ -567,6 +567,20 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
     errors = panels.answer_errors(got["body"])
     payload = panels.render_payload(panel, got["body"], seconds)
     payload["errors"] = errors
+    if payload.get("implausible") and panels.reads_uptime(panel):
+        # A reading outside its range from sysUpTime is a restart: say when.
+        try:
+            probe = panels.build_request(panels.restart_panel(panel, cfg["variable"]), dash, fill,
+                                         max(seconds, 7200), default_ds)
+            back = client.query(probe)
+            at = panels.last_restart(back["body"]) if back.get("ok") else None
+        except Exception as exc:                      # noqa: BLE001
+            log.info("panel %s: the restart time could not be read: %s", panel_id, exc)
+            at = None
+        if at:
+            payload["implausible"]["words"] = (
+                f"Restarted about {time.strftime('%H:%M', time.gmtime(at))} UTC: measuring")
+            payload["implausible"]["restarted_at"] = _iso(at)
     payload["read_at"] = _iso(time.time())
     # A STOPPED STREAM STAYS VISIBLE AND RED: a telemetry-only panel with
     # nothing to draw, on a device whose configuration subscribes, is the

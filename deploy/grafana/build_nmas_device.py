@@ -87,9 +87,14 @@ def row(title, y):
 
 
 def panel(ptype, title, pos, targets, *, unit, description, no_value="", th=None, maps=None,
-          overrides=None, organize=None, legend=True):
+          overrides=None, organize=None, legend=True, valid=None):
     x, y, w, h = pos
     defaults = {"unit": unit, "noValue": no_value}
+    if valid:
+        # The quantity's physical range (a percentage, a clock rate). The app
+        # draws a reading outside it as words, never the number (the
+        # operator, 2026-10-01); Grafana uses min and max only as a scale.
+        defaults["min"], defaults["max"] = valid
     if th:
         defaults["thresholds"] = th
         defaults["color"] = {"mode": "thresholds"}
@@ -134,7 +139,7 @@ def build() -> dict:
     row("At a glance", 0)
     panel("stat", "Answering SNMP", (0, 1, 4, 4),
           [{"expr": f'max by (device) (up{{job=~"cisco_8000v|cisco_vios_l2", {D}}})', "legendFormat": "via SNMP"}],
-          unit="none", maps=mapping({1: ("Yes", "green"), 0: ("No", "red")}),
+          unit="none", maps=mapping({1: ("Yes", "green"), 0: ("No", "red")}), valid=(0, 1),
           no_value="Not a target: its configuration has no SNMP. Needs attention says what to do.",
           description="Whether this device answered the last SNMP scrape (30 s).")
     # CPU AT A GLANCE IS IOS'S OWN (the operator's measurement on r3,
@@ -148,7 +153,7 @@ def build() -> dict:
     # they compare. The platform figure is one level down, with its note.
     panel("stat", "IOS CPU, 1-minute average", (4, 1, 4, 4),
           [{"expr": pick(cpu_t, cpu_s), "legendFormat": "IOS CPU (via {{via}})"}],
-          unit="percent", th=thresholds((None, "green"), (70, "orange"), (90, "red")),
+          unit="percent", th=thresholds((None, "green"), (70, "orange"), (90, "red")), valid=(0, 100),
           no_value="No IOS CPU reading. On IOS-XE it comes from telemetry, and this router is not "
                    "streaming; its platform CPU is one level down.",
           description="IOS's own control-plane CPU over the last minute: from gRPC telemetry on "
@@ -158,7 +163,7 @@ def build() -> dict:
     mem_free = f'sum by (device) (cempMemPoolFree{{{D}, cempMemPoolIndex="1"}})'
     panel("stat", "Memory used", (8, 1, 4, 4),
           [{"expr": via(f"100 * {mem_used} / ({mem_used} + {mem_free})", "SNMP"), "legendFormat": "via {{via}}"}],
-          unit="percent", th=thresholds((None, "green"), (80, "orange"), (90, "red")),
+          unit="percent", th=thresholds((None, "green"), (80, "orange"), (90, "red")), valid=(0, 100),
           no_value="Memory isn't available over SNMP on vIOS.",
           description="The processor memory pool in use. Amber from 80%, red from 90%.")
     panel("stat", "Interfaces down that should be up", (12, 1, 4, 4),
@@ -181,7 +186,7 @@ def build() -> dict:
                       "in the last 24 hours. Red from 1; the lines are on the Logs tab.")
 
     panel("stat", "Up for", (0, 5, 5, 4),
-          [{"expr": f"sysUpTime{{{D}}} / 100 and on(device) (deriv(sysUpTime{{{D}}}[1h]) / 100 > 0.9)",
+          [{"expr": f"sysUpTime{{{D}}} / 100 and on(device) (rate(sysUpTime{{{D}}}[1h]) / 100 > 0.9)",
             "legendFormat": "via SNMP (sysUpTime)"}],
           unit="dtdurations",
           no_value="Not shown: this device's own clock runs slow, so its uptime count under-reads. "
@@ -194,8 +199,9 @@ def build() -> dict:
           description="Times the uptime counter reset in the chosen range: a reboot, counted "
                       "reliably however slowly the device's clock runs. Amber from 1.")
     panel("stat", "Device clock rate", (10, 5, 5, 4),
-          [{"expr": f"deriv(sysUpTime{{{D}}}[1h]) / 100", "legendFormat": "via SNMP (sysUpTime against real time)"}],
+          [{"expr": f"rate(sysUpTime{{{D}}}[1h]) / 100", "legendFormat": "via SNMP (sysUpTime against real time)"}],
           unit="percentunit", th=thresholds((None, "red"), (0.5, "orange"), (0.9, "green")),
+          valid=(0, 1.1),
           no_value="Not a target: no SNMP, or less than an hour of history.",
           description="How fast the device's own clock runs against real time, over the last hour "
                       "(100% keeps time). The emulated vIOS switches run slow (C9, C93); NTP corrects "
@@ -319,7 +325,7 @@ def build() -> dict:
           unit="none", no_value="IOS-XE telemetry only: this device does not stream.",
           description="Each interface's flap count since its counters were cleared.")
     panel("timeseries", "Device clock rate over time", (0, 60, 12, 6),
-          [{"expr": f"deriv(sysUpTime{{{D}}}[1h]) / 100", "legendFormat": "clock rate (via SNMP)"}],
+          [{"expr": f"rate(sysUpTime{{{D}}}[1h]) / 100", "legendFormat": "clock rate (via SNMP)"}],
           unit="percentunit", no_value="Not a target: no SNMP, or less than an hour of history.",
           description="The device's clock rate against real time, over time (100% keeps time).")
     panel("timeseries", "SNMP collection time", (12, 60, 12, 6),

@@ -229,12 +229,23 @@
     body.appendChild(foot);
   }
 
-  function drawStat(body, p, unit) {
-    var box = el('div', 'stat');
+  /* PURE: what a stat shows, {text, cls}. A reading outside the panel's
+     valid range is drawn as words, never as a number (the server decides,
+     sending `implausible`; the operator, 2026-10-01: a clock rate of -2475%). */
+  function statText(p, unit) {
+    if (p.implausible) {
+      return {text: p.implausible.words || 'Not a valid reading: measuring', cls: 'stat-value stat-measuring'};
+    }
     var mapped = mapValue(p.value, p.mappings);
     var kind = mapped && mapped.kind ? mapped.kind : thresholdKind(p.value, p.thresholds);
-    box.appendChild(el('span', 'stat-value' + (kind ? ' stat-' + kind : ''),
-                       mapped ? mapped.text : formatValue(p.value, unit)));
+    return {text: mapped ? mapped.text : formatValue(p.value, unit),
+            cls: 'stat-value' + (kind ? ' stat-' + kind : '')};
+  }
+
+  function drawStat(body, p, unit) {
+    var box = el('div', 'stat');
+    var shown = statText(p, unit);
+    box.appendChild(el('span', shown.cls, shown.text));
     // Which source the value came from, when the panel says (its legend):
     // "via gRPC telemetry" or "via SNMP", so two devices' values from two
     // collectors are never compared unawares (the operator, 2026-09-30).
@@ -371,7 +382,7 @@
     });
   }
 
-  root.NMAS_PANELS = {palette: palette, duration: duration, emptyWords: emptyWords, mapValue: mapValue, colourKind: colourKind, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
+  root.NMAS_PANELS = {statText: statText, palette: palette, duration: duration, emptyWords: emptyWords, mapValue: mapValue, colourKind: colourKind, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
                       chartHeight: chartHeight,
                       footWords: footWords, emptyWords: emptyWords, scan: scan};
 })(typeof window !== 'undefined' ? window : this);
