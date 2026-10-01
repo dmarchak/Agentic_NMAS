@@ -4060,6 +4060,14 @@ integrations need, derived from the connectors the network uses, with ONE owner.
     After (d2), because its review and commit are the v2 preview-and-confirm component (d2)
     builds. Every device here supports IP SLA: probes were configured by hand on r1 to r4 and
     s3, and nobody chose targets for the others.
+    **The ADD path is BUILT (2026-10-01; MONITORING_PROFILE.md section 6, "Built")**: the
+    operator split adding from changing, so (d4) did not wait on run 9 for a NEW probe. The
+    policy set on Monitoring > IP SLA, the suggestions (60 s by default; a switch's path placed
+    on the router; a path already measured skipped; each with its expected CPU cost), one
+    intent commit, then the batch Apply scoped to IP SLA lines (scope `ip_sla`). **Changing a
+    running probe still waits on staged run 9** (the re-create, C290), and so does s3's probe
+    to r1: r1 already probes s3 (`ip sla 2`), so the recommendation is to REMOVE s3's rather
+    than slow it, which is the same delete run 9 measures.
 - **Next, from the operator's r6 run (2026-09-30):**
   - **The connectors are the PRIMARY source** (the design's own words, which (b) did not
     follow: it proposed only what the fleet already agrees on, which is circular on a network

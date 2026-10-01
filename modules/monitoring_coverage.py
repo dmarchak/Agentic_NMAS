@@ -299,11 +299,11 @@ def _ip_sla_words(doc: dict) -> str:
     policy = sec.get("policy")
     if not policy:
         return ("no probes configured — IP SLA targets are chosen per device; set a policy "
-                "to add them")
+                "on the IP SLA page to add them")
     if policy == "none":
         return "no probes — the profile's IP SLA policy is to probe nothing"
     return (f"no probes yet — the profile's policy is to {_IP_SLA_POLICY_WORDS[policy]}; "
-            "review the suggested targets in its intent")
+            "review the suggested probes on the IP SLA page")
 
 
 def _expected_columns(get) -> dict:
@@ -436,19 +436,27 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
         rows.append(row)
     return {"list": ref.name, "columns": [{"key": k, "words": w, "connector": want.get(k, "")}
                                           for k, w in COLUMNS],
-            "profile": prof, "devices": rows, "covered": covered, "total": len(rows)}
+            "profile": prof, "devices": rows, "covered": covered, "total": len(rows),
+            # The devices running no IP SLA probe, each a link to the IP SLA
+            # page, where the policy suggests probes (P.9 d4).
+            "ip_sla_missing": [r["host"] for r in rows
+                               if (r["cells"].get("ip_sla") or {}).get("state") == "unused"]}
 
 
 def _nothing_to_apply(row: dict, doc: dict) -> str:
     """Why a device the profile applies to has nothing for Apply to send:
     what it is missing that the profile does not supply, each with why, or
     that it already holds everything the profile supplies."""
-    has_policy = bool((((doc or {}).get("sections") or {}).get("ip_sla") or {}).get("policy"))
+    policy = ((((doc or {}).get("sections") or {}).get("ip_sla") or {}).get("policy"))
     missing = []
     for key, words in COLUMNS:
         cell = row["cells"].get(key) or {}
-        if key == "ip_sla" and cell.get("state") == "unused" and not has_policy:
+        if key == "ip_sla" and cell.get("state") == "unused" and not policy:
             missing.append("IP SLA isn't in the profile yet")
+        elif key == "ip_sla" and cell.get("state") == "unused" and policy != "none":
+            # A policy suggests probes; they are reviewed and sent from the IP
+            # SLA page, never by the profile's Apply (P.9 d4).
+            missing.append("IP SLA: its probes are suggested and sent from the IP SLA page")
         elif cell.get("state") == "gap_open":
             missing.append(f"{words}: {cell['words'].split(' — ', 1)[-1]}")
     if missing:

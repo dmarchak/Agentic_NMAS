@@ -244,6 +244,17 @@ class TestThePlanRoute:
         assert t["program"]["notes"][0]["title"].startswith("ip sla 1 is running")
         assert "re-creating 1 running IP SLA operation(s)" in out["preview"]["what"]["summary"]
 
+    def test_a_scoped_plan_still_draws_what_the_re_create_replaces(self, client, measured):
+        # C297: the scoped branch ASSIGNED its notes over the re-create's, so a
+        # scoped plan re-creating an operation never drew what it replaces.
+        out = client.post("/deploy/plan", json={"devices": ["s3"], "scope": "ip_sla"}).get_json()
+        assert out["ok"], out
+        d = out["devices"][0]
+        assert d["commands"] == PROGRAM and len(d["recreates"]) == 1
+        titles = [n["title"] for n in out["preview"]["targets"][0]["program"]["notes"]]
+        assert titles[0].startswith("ip sla 1 is running"), titles
+        assert any(t.startswith("The IP SLA probes committed to its intent") for t in titles), titles
+
     def test_unmeasured_blocks_the_device_and_sends_nothing(self, client):
         _out, d = _route_plan(client)
         assert d["deployable"] is False

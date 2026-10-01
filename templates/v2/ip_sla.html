@@ -1,0 +1,93 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge -%}
+{#- Monitoring > IP SLA (P.9 d4, the ADD path; routes/v2._ip_sla_ctx): the
+    profile's policy, then the probes it suggests for the devices chosen on
+    Coverage, each saying where it lives, what path it measures, why there,
+    and its expected CPU cost. The ticked ones are committed into the
+    devices' intent in one commit, then sent by the batch Apply scoped to IP
+    SLA lines, which previews each device's exact program first. -#}
+{% block title %}IP SLA probes · Monitoring · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>IP SLA probes</h1>
+    <p class="sub">Probes for devices that run none, suggested from the monitoring profile's policy. Each probe is committed to its device's own intent, then sent after a preview of its exact program. Changing a probe that already runs waits on staged run 9.</p>
+  </div>
+</div>
+{% include "v2/_monitoring_tabs.html" %}
+<div class="tab-body">
+<section class="card ipsla" id="ipsla-policy">
+  <h2 class="apply-h">The policy</h2>
+  {%- if error and not policy %}
+  <div class="notice notice-danger">{{ icon('warn') }}<p>{{ error }}</p></div>
+  {%- elif policy.error %}
+  <div class="notice notice-danger">{{ icon('warn') }}<p>{{ policy.error }}: nothing can be suggested until it is fixed.</p></div>
+  {%- elif not policy.committed %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ list_name }} has no monitoring profile yet, so there is no policy to set: propose the profile first.</p></div>
+  {%- else %}
+  <p>{% if policy.words %}The profile's policy: <strong>{{ policy.words }}</strong>.{% else %}The profile has no IP SLA policy yet: nothing is suggested until one is chosen.{% endif %}</p>
+  <div class="ipsla-form" x-data="ipslaPost" data-url="{{ url_for('v2.ip_sla_policy_set') }}"
+       data-body='{{ {"list": list_name, "profile_hash": policy.hash} | tojson }}'
+       data-label="{{ 'Change the policy' if policy.words else 'Set the policy' }}" data-busy="Committing the policy…">
+    <label>Policy
+      <select name="policy">
+        {%- for key, words in policies %}
+        <option value="{{ key }}"{% if policy.section.policy == key %} selected{% endif %}>{{ key }}: {{ words }}</option>
+        {%- endfor %}
+      </select>
+    </label>
+    <label>Every
+      <input type="number" name="frequency" min="10" max="3600" value="{{ policy.section.frequency or default_frequency }}"> seconds
+    </label>
+    <p class="muted">One probe every 10 s cost s3 about 12% of its CPU (measured, 2026-10-01); the default is every {{ default_frequency }} s. The policy is committed to the profile as you; it adds no probe by itself.</p>
+    <button type="button" class="btn" x-on:click="post" x-bind:disabled="busy" x-text="label">{{ 'Change the policy' if policy.words else 'Set the policy' }}</button>
+    <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
+  </div>
+  {%- endif %}
+</section>
+
+<section class="card ipsla" id="ipsla-suggestions">
+  <h2 class="apply-h">Suggested probes</h2>
+  {%- if not chosen %}
+  <p class="muted">No device was chosen. On <a href="{{ url_for('v2.coverage') }}">Coverage</a>, the devices running no probe link here.</p>
+  {%- elif error %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ error }}</p></div>
+  {%- elif not plan %}
+  <p class="muted">Choose a policy above: the probes for {{ chosen | join(', ') }} are suggested from it.</p>
+  {%- else %}
+  <p>For {{ chosen | join(', ') }}, with the policy to {{ plan.words }}. A path between a switch and a router is measured from the router, sparing the switch; a path an existing probe already measures, from either end, is not added again.</p>
+  {%- if plan.by_on %}
+  <div x-data="ipslaPost" data-url="{{ url_for('v2.ip_sla_commit') }}" data-body='{{ commit_body | tojson }}'
+       data-label="Commit the ticked probes to intent, then preview sending them" data-busy="Committing to intent…">
+    {%- for g in plan.by_on %}
+    <fieldset class="apply-superseded" id="ipsla-{{ g.on }}">
+      <legend>On {{ g.on }}: expected cost {{ g.cost }}</legend>
+      {%- for s in g.rows %}
+      <div class="apply-line">
+        <input type="checkbox" name="pick" value="{{ s.key }}" id="pick-{{ s.key }}" checked>
+        <label for="pick-{{ s.key }}"><strong>ip sla {{ s.op.id }}</strong> on {{ s.on }} probes <code>{{ s.target }}</code> every {{ s.frequency }} s: measures {{ s.measures }}.</label>
+        <span class="muted">{{ s.why }}. Cost: {{ s.cost }}.</span>
+        <pre class="apply-program">ip sla {{ s.op.id }}
+{{ s.op.settings | join('\n') }}
+ip sla schedule {{ s.schedule }}</pre>
+      </div>
+      {%- endfor %}
+    </fieldset>
+    {%- endfor %}
+    <p class="muted">Nothing is sent from here: the commit records the probes in each device's intent as you, and the next page previews the exact program for each device before anything reaches it.</p>
+    <button type="button" class="btn btn-primary" id="ipsla-commit" x-on:click="post" x-bind:disabled="busy" x-text="label">Commit the ticked probes to intent, then preview sending them</button>
+    <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
+  </div>
+  {%- else %}
+  <p class="muted">No probe to suggest for these devices: each says why below.</p>
+  {%- endif %}
+  {%- if plan.skipped %}
+  <h2 class="apply-h">Not suggested</h2>
+  <ul class="apply-not" id="ipsla-skipped">
+    {%- for k in plan.skipped %}<li><strong>{{ k.device }}</strong>: {{ k.why }}</li>{% endfor %}
+  </ul>
+  {%- endif %}
+  {%- endif %}
+</section>
+</div>
+{% endblock %}

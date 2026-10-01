@@ -146,6 +146,8 @@ DECLARED = {
     "retire.apply": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
     "templatize.seed_apply": ("intent", "remote"),
     "templatize.profile_propose_apply": ("intent", "remote"),
+    "v2.ip_sla_policy_set": ("intent", "remote"),
+    "v2.ip_sla_commit": ("intent", "remote"),
     "templatize.edit_committed": ("intent", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),

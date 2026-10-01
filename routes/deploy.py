@@ -289,6 +289,22 @@ def _split_profile(repo: str, hostname: str, artifact, captured: str, to_add: li
     return result
 
 
+#: The deploy scopes: the device's whole intent (""), the monitoring
+#: profile's lines (P.9 b), or only its IP SLA probes (P.9 d4's add path).
+SCOPES = ("", "profile", "ip_sla")
+
+
+def _scoped(scope: str, list_name: str, hostname: str, artifact, intended: str, captured: str,
+            device: dict) -> dict:
+    """The intended config scoped by *scope*, with the groups a person reads.
+    ONE dispatch for the plan, the apply's recompute and the path that
+    connects."""
+    from modules.nsot import ip_sla_policy
+    if scope == ip_sla_policy.SCOPE:
+        return ip_sla_policy.scoped(intended, captured, "the device's own intent (its IP SLA probes)")
+    return _profile_scope(list_name, hostname, artifact, intended, captured, device)
+
+
 def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captured: str,
                    device: dict) -> dict:
     """APPLY MONITORING PROFILE (P.9 step b): the intended config scoped to
@@ -382,7 +398,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             # intended config: the profile's missing lines and nothing else.
             intended = prepared["config"]
             if scope:
-                sc = _profile_scope(list_name, hostname, artifact, intended, captured, _device)
+                sc = _scoped(scope, list_name, hostname, artifact, intended, captured, _device)
                 intended = sc.pop("config")
                 entry["scope"] = scope
                 entry["profile_scope"] = sc
@@ -401,7 +417,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             entry["removable"] = removable(
                 prepared["config"], captured, mgmt_ip=(_device or {}).get("ip", ""),
                 dialect=entry.get("platform", ""))
-            if scope:
+            if scope == profile_apply.SCOPE:
                 # The device's lines of the same measured kind as the
                 # profile's: superseded, offered for removal, never removed
                 # unless ticked (MONITORING_PROFILE.md 5).
@@ -502,10 +518,11 @@ def plan():
     # lines. Anything else is refused by name, never read as the whole intent.
     from modules.nsot import profile_apply
     scope = (data.get("scope") or "").strip()
-    if scope not in ("", profile_apply.SCOPE):
+    if scope not in SCOPES:
         return jsonify({"ok": False, "error": (
             f"unknown deploy scope {scope!r}: the plan sends the device's whole intent, or "
-            f"with scope {profile_apply.SCOPE!r} only its monitoring profile's lines")}), 400
+            f"with scope {profile_apply.SCOPE!r} only its monitoring profile's lines, or with "
+            f"scope 'ip_sla' only its IP SLA probes")}), 400
 
     devices = plan_devices(list_name, hostnames, authorise=authorise, remove=remove,
                            scope=scope)
@@ -560,8 +577,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             try:
                 intended = prepare_device(artifact)["config"]
                 if scope:
-                    intended = _profile_scope(list_name, hostname, artifact, intended,
-                                              captured, device)["config"]
+                    intended = _scoped(scope, list_name, hostname, artifact, intended,
+                                       captured, device)["config"]
                 full = _program(intended, captured,
                                 remove.get(hostname) or [], device,
                                 getattr(artifact, "platform", ""))
@@ -704,7 +721,7 @@ def apply():
     remove = data.get("remove") or {}                      # Mode B, as at plan
     from modules.nsot import profile_apply
     scope = (data.get("scope") or "").strip()              # P.9 step (b), as at plan
-    if scope not in ("", profile_apply.SCOPE):
+    if scope not in SCOPES:
         return jsonify({"ok": False, "error": f"unknown deploy scope {scope!r}: nothing sent"}), 400
 
     from modules import identity
@@ -1011,8 +1028,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # The profile's lines only, computed AGAIN here: this is the path that
         # connects, and it holds the truthful renders (P.9 step b).
         try:
-            intended = _profile_scope(list_name, hostname, artifact, intended, captured,
-                                      device)["config"]
+            intended = _scoped(scope, list_name, hostname, artifact, intended, captured,
+                               device)["config"]
         except Exception as exc:                # noqa: BLE001
             return {"device": hostname, "outcome": FAILED, "stage": "scope",
                     "reason": f"the monitoring profile could not be scoped: {exc}"}

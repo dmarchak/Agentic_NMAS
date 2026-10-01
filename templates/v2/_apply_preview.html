@@ -21,6 +21,7 @@
 <form id="apply-form" class="apply-form" hx-get="{{ url_for('v2.profile_apply_preview') }}"
       hx-trigger="change" hx-target="#apply-preview" hx-swap="outerHTML">
   <input type="hidden" name="list" value="{{ list_name }}">
+  <input type="hidden" name="scope" value="{{ scope }}">
   {%- for name in order %}
   <input type="hidden" name="device" value="{{ name }}">
   {%- endfor %}
@@ -50,7 +51,7 @@
   <h2 class="apply-h">Nothing to send</h2>
   <ul class="apply-not" id="apply-nothing">
     {%- for r in idle %}
-    <li id="apply-{{ r.name }}"><strong>{{ r.name }}</strong> {{ badge('nothing to send', 'muted') }}: {{ r.none or 'it already has every line the profile supplies' }}</li>
+    <li id="apply-{{ r.name }}"><strong>{{ r.name }}</strong> {{ badge('nothing to send', 'muted') }}: {{ r.none or words.has_all }}</li>
     {%- endfor %}
   </ul>
   {%- endif %}
@@ -118,7 +119,7 @@
   {%- else %}
   <p class="muted">Nothing is held back from a device that can receive it.</p>
   {%- endif %}
-  <p class="muted">No line outside the profile's is sent, and nothing on a device is removed unless you ticked it above. Lines on the devices that their intent lacks are left as they are; Mode B removes them from a device's own deploy.</p>
+  <p class="muted">{{ words.only }} Lines on the devices that their intent lacks are left as they are; Mode B removes them from a device's own deploy.</p>
 
   <div class="confirm" x-data="applyConfirm" data-url="{{ url_for('v2.profile_apply_confirm') }}"
        data-body='{{ confirm_body | tojson if confirm_body else "" }}'
@@ -129,9 +130,9 @@
             x-bind:disabled="locked" x-text="label">Apply to {{ ready | length }} device(s) in this order</button>
     <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
     {%- elif all_nothing %}
-    <p class="muted">Nothing to apply: every device chosen already has every line the profile supplies.</p>
+    <p class="muted">{{ words.all_nothing }}</p>
     {%- elif not confirm_body %}
-    <p class="apply-refused">No device here can receive the profile now: each says why above.</p>
+    <p class="apply-refused">{{ words.none_can }}</p>
     {%- endif %}
   </div>
 </form>

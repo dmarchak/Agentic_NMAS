@@ -107,6 +107,8 @@ GATES = {
     "retire.apply": _g(A, "retires a device: removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row, the only stored copy of its credential"),
     "templatize.seed_apply": _g(A, "commits a device's first full intent, parsed from its committed golden"),
     "templatize.profile_propose_apply": _g(A, "commits the network's monitoring profile, intent every device inherits (P.9 step b)"),
+    "v2.ip_sla_policy_set": _g(A, "commits the monitoring profile's IP SLA policy, which decides the probes suggested (P.9 d4)"),
+    "v2.ip_sla_commit": _g(A, "commits suggested IP SLA probes into the devices' intent (P.9 d4)"),
     "templatize.edit_committed": _g(A, "commits an edit to intent"),
     "templatize.revert_apply": _g(A, "commits the inverse of one intent commit's change"),
     "templatize.bulk_apply": _g(A, "commits one change to many devices' intent"),

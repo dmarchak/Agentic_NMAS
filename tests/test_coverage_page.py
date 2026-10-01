@@ -204,14 +204,15 @@ class TestEveryCellSaysWhy:
     def test_ip_sla_with_no_policy_says_targets_are_chosen_per_device(self, lab):
         cell = _row(_fleet(lab, golden=self._no_ip_sla), "r6")["cells"]["ip_sla"]
         assert cell == {"state": "unused", "words": (
-            "no probes configured — IP SLA targets are chosen per device; set a policy to add them")}
+            "no probes configured — IP SLA targets are chosen per device; set a policy on the IP SLA "
+            "page to add them")}
 
     @pytest.mark.parametrize("policy,words", [
         ("none", "no probes — the profile's IP SLA policy is to probe nothing"),
         ("gateway", "no probes yet — the profile's policy is to probe the default gateway; "
-                    "review the suggested targets in its intent"),
+                    "review the suggested probes on the IP SLA page"),
         ("peers", "no probes yet — the profile's policy is to probe the routing peers; "
-                  "review the suggested targets in its intent")])
+                  "review the suggested probes on the IP SLA page")])
     def test_ip_sla_says_the_profiles_policy(self, lab, policy, words):
         from modules.nsot import profile as _p
         _commit_proposal()

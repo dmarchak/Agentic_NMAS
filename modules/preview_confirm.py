@@ -268,7 +268,7 @@ PROFILE_SECTION_WORDS = {"snmp": "SNMP", "syslog": "syslog and the heartbeat", "
                          "ip_sla": "IP SLA"}
 
 
-def _profile_scope_parts(name: str, sc: dict) -> tuple:
+def _profile_scope_parts(name: str, sc: dict, scope: str = "profile") -> tuple:
     """The scoped plan's notes (drawn inside the program) and its what-not
     items: each section's lines to send with the connector it comes from,
     the lines already in place, the lines held back, the superseded lines."""
@@ -282,10 +282,13 @@ def _profile_scope_parts(name: str, sc: dict) -> tuple:
         if not mine:
             continue
         src = (sc.get("sources") or {}).get(section) or ""
-        notes.append({"title": (f"From the profile's {PROFILE_SECTION_WORDS.get(section, section)} "
-                                f"section" + (f" (derived from {src})" if src else "")
-                                + f": will be sent ({len(mine)} line(s))"),
-                      "lines": _text(mine)})
+        if scope == "ip_sla":
+            title = f"The IP SLA probes committed to its intent: will be sent ({len(mine)} line(s))"
+        else:
+            title = (f"From the profile's {PROFILE_SECTION_WORDS.get(section, section)} section"
+                     + (f" (derived from {src})" if src else "")
+                     + f": will be sent ({len(mine)} line(s))")
+        notes.append({"title": title, "lines": _text(mine)})
     in_sections = {(tuple(x["chain"]), x["line"])
                    for rows in (sc.get("by_section") or {}).values() for x in rows}
     placed = [r for r in sc.get("to_send") or []
@@ -303,8 +306,9 @@ def _profile_scope_parts(name: str, sc: dict) -> tuple:
     if sc.get("held_back"):
         extra.append({"target": name, "kind": "held_back",
                       "text": ("Held back: this device's OWN intent would add these lines, and "
-                               "applying the profile does not send them. Deploy them from a "
-                               "plan of its intent."),
+                               + ("sending its IP SLA probes" if scope == "ip_sla"
+                                  else "applying the profile")
+                               + " does not send them. Deploy them from a plan of its intent."),
                       "lines": _text(sc["held_back"])})
     if sc.get("superseded"):
         extra.append({"target": name, "kind": "superseded",
@@ -339,7 +343,9 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
         elif failed:
             none = f"Nothing is sent to this device: {failed}"
         else:
-            none = ("Nothing will be sent: the device already has every line the profile "
+            none = ("Nothing will be sent: the device already has every IP SLA probe its intent "
+                    "defines." if scope == "ip_sla" else
+                    "Nothing will be sent: the device already has every line the profile "
                     "supplies." if d.get("profile_scope") else
                     "Nothing will be sent: the device already has every line.")
         # A running IP SLA operation re-created (deleted, defined from intent,
@@ -348,7 +354,11 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
         a = d.get("attribution")
         sc = d.get("profile_scope")
         if sc:
-            notes, extra = _profile_scope_parts(name, sc)
+            # Added AFTER the re-creates (C297: an assignment here dropped them,
+            # so a scoped plan re-creating an operation never drew what it
+            # replaces).
+            scoped_notes, extra = _profile_scope_parts(name, sc, scope)
+            notes.extend(scoped_notes)
             what_not.extend(extra)
         if a and (d.get("to_add") or []):
             notes.append({"title": "Where the added lines come from"
@@ -451,7 +461,10 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
                   if n_rc else "")
     return build(
         action="deploy",
-        summary=((f"Apply the network's monitoring profile to the devices you tick: only the "
+        summary=((f"Add the IP SLA probes committed to these devices' intent: only IP SLA lines are "
+                  f"sent, merge-only. {ready} of {n} can receive them now, and for each, exactly the "
+                  "program shown is sent, in order.") if scope == "ip_sla" else
+                 (f"Apply the network's monitoring profile to the devices you tick: only the "
                   f"profile's lines are sent, "
                   + ("plus the removals you selected" if removing_any else "merge-only")
                   + recreating

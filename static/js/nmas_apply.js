@@ -13,6 +13,12 @@
  * ES5, Alpine's CSP build: getters and argument-free methods only, every
  * data-* attribute read from `$root` (the x-data element; C243's rule).
  * `confirmOutcome` is PURE, executed in duktape by tests/test_profile_apply_v2.py.
+ *
+ * Also `ipslaPost`, Monitoring > IP SLA's two buttons (P.9 d4): commit the
+ * policy, or commit the ticked suggested probes to intent and go to the
+ * batch Apply scoped to IP SLA lines. Busy on itself; a refusal is said
+ * beside it in the server's words. `ipslaBody` and `ipslaOutcome` are PURE,
+ * executed in duktape by tests/test_ip_sla_policy.py.
  */
 (function (root) {
   'use strict';
@@ -25,7 +31,67 @@
     return {started: false, url: '', error: 'Nothing was sent: ' + why};
   }
 
+  /* PURE. The IP SLA page's POST body (P.9 d4): the server-drawn *base* (a
+     JSON string), the policy fields the form holds (each "" when absent),
+     and the keys of the ticked suggestions. */
+  function ipslaBody(base, policy, frequency, picked) {
+    var b = base ? JSON.parse(base) : {};
+    if (policy) b.policy = policy;
+    if (frequency) b.frequency = frequency;
+    if (picked) b.picked = picked;
+    return JSON.stringify(b);
+  }
+
+  /* PURE. What the IP SLA page does with an answer: go to the scoped batch
+     Apply the server names, redraw (a policy committed), or say why not. */
+  function ipslaOutcome(status, body) {
+    if (status === 200 && body && body.ok) return {go: body.url || '', reload: !body.url, error: ''};
+    var why = body && body.error ? body.error : 'refused (HTTP ' + status + ')';
+    return {go: '', reload: false, error: why};
+  }
+
   function register() {
+    root.Alpine.data('ipslaPost', function () {
+      return {
+        busy: false, error: '',
+        get hasError() { return !!this.error; },
+        get label() {
+          return this.busy ? this.$root.getAttribute('data-busy')
+                           : this.$root.getAttribute('data-label');
+        },
+        post: function () {
+          var self = this, el = self.$root;
+          if (self.busy) return;
+          var sel = el.querySelector('select[name=policy]');
+          var freq = el.querySelector('input[name=frequency]');
+          var boxes = el.querySelectorAll('input[name=pick]');
+          var picked = null;
+          if (boxes.length) {
+            picked = [];
+            for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) picked.push(boxes[i].value);
+          }
+          self.busy = true;
+          self.error = '';
+          root.fetch(el.getAttribute('data-url'), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            body: ipslaBody(el.getAttribute('data-body'), sel ? sel.value : '',
+                            freq ? freq.value : '', picked)
+          }).then(function (r) {
+            return r.json().then(function (b) { return ipslaOutcome(r.status, b); },
+                                 function () { return ipslaOutcome(r.status, null); });
+          }).then(function (o) {
+            if (o.go) { root.location.assign(o.go); return; }
+            if (o.reload) { root.location.reload(); return; }
+            self.busy = false;
+            self.error = o.error;
+          }, function (e) {
+            self.busy = false;
+            self.error = 'Nothing was committed: the request did not reach the server (' + e + ')';
+          });
+        }
+      };
+    });
     root.Alpine.data('applyConfirm', function () {
       return {
         busy: false, started: false, error: '',
@@ -67,5 +133,6 @@
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('alpine:init', register);
   }
-  root.NMAS_APPLY = {confirmOutcome: confirmOutcome};
+  root.NMAS_APPLY = {confirmOutcome: confirmOutcome, ipslaBody: ipslaBody,
+                     ipslaOutcome: ipslaOutcome};
 })(typeof window !== 'undefined' ? window : this);

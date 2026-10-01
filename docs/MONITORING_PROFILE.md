@@ -216,6 +216,32 @@ them, and they are committed into the DEVICE's intent (`ip_sla`, which the parse
 model). **Recommended over fixed addresses in the profile**, which would be wrong for every
 device but one, and over a pure per-device item, which gives a new device nothing.
 
+**Built (d4's ADD path, 2026-10-01; `modules/nsot/ip_sla_policy.py`, Monitoring > IP SLA at
+`/v2/monitoring/ip-sla`).** The operator split adding from changing: adding a probe is a new
+operation, merge-only; changing a running one is the re-create (C290), which waits on staged
+run 9. What was built, and what differs from the paragraph above:
+- `peers` reads the adjacencies the device's COMMITTED INTENT implies (`modules.neighbours`,
+  OSPF and BGP), not a capture: one probe per shared network, since on a segment every peer
+  measures the same path. RIP's peers are not read, and a RIP device says so ("choose its
+  targets by hand"). `gateway` is the static default in the global table only (a VRF's
+  default, the emulator's `clab-mgmt`, is never a gateway).
+- **The default is every 60 s** (the operator: one probe every 10 s cost s3 about 12% of its
+  CPU, C93), `frequency` and `frequency_by_platform` in the section, 10 to 3600.
+- **A switch's path to a router is placed ON THE ROUTER**, which probes the switch's
+  loopback: the same path, sparing the switch. A path an existing probe measures, from either
+  end or on the same segment, is not added again (s3 is skipped: its `ip sla 1` covers
+  10.255.3.0/24).
+- **Every suggestion states its expected CPU cost**: measured on vIOS only (12% at 10 s,
+  scaled by frequency), and "not measured" on IOS-XE.
+- The ticked suggestions are ONE intent commit (`Source: ip-sla`, as the person, refused if
+  the plan moved, if host_vars/ holds an uncommitted change, or with nothing ticked; a failed
+  commit puts every file back), then the batch Apply with scope `ip_sla` sends ONLY the IP SLA
+  lines, each device's exact program previewed and confirmed by hash.
+- On the real fleet with `peers`: s4 gets `ip sla 2` on r2 probing s4's loopback every 60 s;
+  s1 and s2 run RIP (by hand); s3 is already measured.
+- After any IP SLA apply to a switch, its CPU and clock rate are read before and after from
+  Prometheus (the operator, 2026-10-01).
+
 ## 7. What it replaces
 
 - P.1's block written by onboarding. The profile's syslog and heartbeat sections replace

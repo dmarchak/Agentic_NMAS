@@ -65,5 +65,9 @@
     <p class="cov-actions"><button type="submit" class="btn btn-primary">Preview applying the profile…</button></p>
     {%- endif %}
   </form>
+  {%- if c.ip_sla_missing and c.profile.committed %}
+  <p class="cov-actions" id="cov-ipsla">IP SLA: {{ c.ip_sla_missing | length }} device(s) run no probe ({{ c.ip_sla_missing | join(', ') }}). Probes are suggested from the profile's policy and sent from their own page, never by the profile's Apply.
+    <a class="btn" href="{{ url_for('v2.ip_sla', list=c.list, device=c.ip_sla_missing) }}">Suggest IP SLA probes for them…</a></p>
+  {%- endif %}
   {%- endif %}
 </section>

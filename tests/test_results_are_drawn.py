@@ -137,6 +137,15 @@ PAGE_RECORD = {
     "v2.profile_apply_confirm": ("templates/v2/_apply_job.html",
                                  ('id="apply-job"', "res.targets", "res.record"),
                                  "deploy.receipts_read"),
+    # The IP SLA policy (P.9 d4): committed to the profile; the page redraws
+    # and states the policy now in force from the committed profile.
+    "v2.ip_sla_policy_set": ("templates/v2/ip_sla.html",
+                             ('id="ipsla-policy"', "policy.words"), "v2.ip_sla"),
+    # The IP SLA probes (P.9 d4): committed to intent, then the page goes to
+    # the scoped Apply, whose preview draws each new probe in the device's
+    # program FROM that committed intent; the device's Intent tab re-reads it.
+    "v2.ip_sla_commit": ("templates/v2/_apply_preview.html",
+                         ('id="apply-preview"', "r.program"), "device_v2.intent"),
 }
 
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.

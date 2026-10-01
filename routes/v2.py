@@ -13,6 +13,7 @@ import os
 import subprocess
 
 from flask import Blueprint, render_template
+from html import escape
 
 from routes.device_v2 import _strict, _who
 
@@ -259,10 +260,51 @@ def monitoring_panel(uid, panel_id):
 # sequential, the circuit breaker stopping after repeated verify failures.
 # ---------------------------------------------------------------------------
 
-#: The one scope this page applies: the network's monitoring profile's lines.
-def _scope() -> str:
+#: The scopes this page applies, each with its words: the network's
+#: monitoring profile's lines (P.9 b), or only the IP SLA probes committed to
+#: the devices' intent (P.9 d4's add path, from the IP SLA page).
+SCOPE_WORDS = {
+    "profile": {"title": "Apply the monitoring profile",
+                "sub": ("To the devices ticked on Coverage, one at a time in the order below. Each "
+                        "receives exactly the program shown, and only the profile's lines."),
+                "has_all": "it already has every line the profile supplies",
+                "only": ("No line outside the profile's is sent, and nothing on a device is removed "
+                         "unless you ticked it above."),
+                "none_can": "No device here can receive the profile now: each says why above.",
+                "all_nothing": ("Nothing to apply: every device chosen already has every line the "
+                                "profile supplies.")},
+    "ip_sla": {"title": "Send the IP SLA probes",
+               "sub": ("The probes just committed to these devices' intent, one device at a time in "
+                       "the order below. Each receives exactly the program shown: its new IP SLA "
+                       "operations and their schedules, nothing else."),
+               "has_all": "it already runs every IP SLA probe its intent declares",
+               "only": ("No line but an IP SLA operation or its schedule is sent, and nothing on a "
+                        "device is removed."),
+               "none_can": "No device here can receive its probes now: each says why above.",
+               "all_nothing": ("Nothing to send: every device chosen already runs every probe its "
+                               "intent declares.")},
+}
+
+
+class UnknownScope(ValueError):
+    """A scope this page does not apply; nothing is planned or sent."""
+
+
+def _scope(req=None) -> str:
+    """The scope the request carries (the preview's form, or the confirm's
+    body), `profile` when none is named. An unknown one is refused, never
+    read as the profile (a lookup that misses is a fact about the query)."""
     from modules.nsot import profile_apply
-    return profile_apply.SCOPE
+    if req is None:
+        return profile_apply.SCOPE
+    got = req.args.get("scope")
+    if got is None and req.method == "POST":
+        got = (req.get_json(silent=True) or {}).get("scope")
+    got = (got or profile_apply.SCOPE).strip()
+    if got not in SCOPE_WORDS:
+        raise UnknownScope(f"unknown scope {got!r}: this page applies "
+                           + " or ".join(sorted(SCOPE_WORDS)) + "; nothing was planned or sent")
+    return got
 
 
 def _apply_args(req) -> dict:
@@ -307,12 +349,13 @@ def _apply_ctx(req) -> dict:
     from routes.deploy import plan_devices
 
     args = _apply_args(req)
+    scope = _scope(req)
     list_name = args["list"] or listref.active().name
     ctx = {"list_name": list_name, "order": args["order"], "rows": [], "preview": None,
-           "confirm_body": None, "ready": []}
+           "confirm_body": None, "ready": [], "scope": scope, "words": SCOPE_WORDS[scope]}
     if not args["order"]:
         return ctx
-    devices = plan_devices(list_name, args["order"], remove=args["picked"], scope=_scope())
+    devices = plan_devices(list_name, args["order"], remove=args["picked"], scope=scope)
     # Each ticked removal needs its stated reason in the confirm hash (Mode B,
     # C140): the keys are known only once the removal is planned, so a ticked
     # line with a reason is planned again carrying it.
@@ -325,8 +368,8 @@ def _apply_ctx(req) -> dict:
             authorise[d["device"]] = [a for a in auth if a["reason"]]
     if authorise:
         devices = plan_devices(list_name, args["order"], remove=args["picked"],
-                               authorise=authorise, scope=_scope())
-    preview = deploy_preview(devices, req, scope=_scope())
+                               authorise=authorise, scope=scope)
+    preview = deploy_preview(devices, req, scope=scope)
     out = mask_payload({"devices": devices, "preview": preview})
     # The six parts keep a target's state and selectability under "what", and
     # its program, operands and gates under "targets": one row of both.
@@ -382,7 +425,7 @@ def _apply_ctx(req) -> dict:
         # browser sends it back unchanged, in the rollout order.
         plan = {d["device"]: d for d in devices}
         ctx["confirm_body"] = {
-            "list": list_name, "order": ready,
+            "list": list_name, "order": ready, "scope": scope,
             "confirmations": {n: plan[n].get("capture_hash", "") for n in ready},
             "command_hashes": {n: plan[n].get("command_hash", "") for n in ready},
             "remove": {n: list((plan[n].get("removals") or {}).get("ids") or [])
@@ -396,8 +439,11 @@ def profile_apply():
     """Apply the monitoring profile to the devices ticked on Coverage: one
     batch preview, the rollout order drawn and settable, then one confirm."""
     from flask import request
-    return _page("v2/apply.html", active_nav="monitoring", monitoring_tab="coverage",
-                 **_apply_ctx(request))
+    try:
+        ctx = _apply_ctx(request)
+    except UnknownScope as exc:
+        return _strict(str(escape(str(exc))), 400)
+    return _page("v2/apply.html", active_nav="monitoring", monitoring_tab="coverage", **ctx)
 
 
 @bp.route("/monitoring/apply/preview", methods=["GET"])
@@ -405,7 +451,11 @@ def profile_apply_preview():
     """The preview alone, planned again: a device moved or left out, a
     superseded line ticked for removal, or a reason typed."""
     from flask import request
-    return _strict(render_template("v2/_apply_preview.html", **_apply_ctx(request)))
+    try:
+        ctx = _apply_ctx(request)
+    except UnknownScope as exc:
+        return _strict(str(escape(str(exc))), 400)
+    return _strict(render_template("v2/_apply_preview.html", **ctx))
 
 
 @bp.route("/monitoring/apply/confirm", methods=["POST"])
@@ -420,6 +470,10 @@ def profile_apply_confirm():
     from modules.nsot import listref
 
     data = request.get_json(silent=True) or {}
+    try:
+        scope = _scope(request)
+    except UnknownScope as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     list_name = (data.get("list") or "").strip()
     if not list_name or not listref.exists(list_name):
         return jsonify({"ok": False, "error": (
@@ -435,7 +489,7 @@ def profile_apply_confirm():
     job = deploy_job.start(
         list_name, order, confirmations, hashes,
         authorise=data.get("authorise") or {}, remove=data.get("remove") or {},
-        scope=_scope(), actor=identity.request_actor(),
+        scope=scope, actor=identity.request_actor(),
         actor_kind=getattr(identity.identify(request), "kind", ""),
         ident=identity.verified_identity())
     from flask import url_for
@@ -450,6 +504,121 @@ def profile_apply_job(job):
     from modules import deploy_job
     got = deploy_job.state(job)
     return _strict(render_template("v2/_apply_job.html", j=got, job=job)), (200 if got else 404)
+
+
+# ---------------------------------------------------------------------------
+# Monitoring > IP SLA (P.9 d4, the ADD path): the profile's policy, the probes
+# it suggests for the chosen devices (where each lives, what path it
+# measures, why there, its expected CPU cost), one commit of the ticked ones
+# into the devices' intent, then the batch Apply scoped to IP SLA lines.
+# Changing a running probe is the re-create (C290), gated on staged run 9.
+# ---------------------------------------------------------------------------
+
+def _ip_sla_ctx(req) -> dict:
+    from modules.nsot import ip_sla_policy, listref, profile
+    from routes.list_param import named_list
+
+    name = named_list(req) or listref.active().name
+    ref = listref.resolve(name) if listref.exists(name) else None
+    chosen = []
+    for d in req.args.getlist("device"):
+        d = d.strip()
+        if d and d not in chosen:
+            chosen.append(d)
+    ctx = {"list_name": name, "chosen": chosen, "policy": None, "plan": None, "error": "",
+           "policies": [(p, ip_sla_policy.POLICY_WORDS[p]) for p in profile.IP_SLA_POLICIES],
+           "default_frequency": ip_sla_policy.DEFAULT_FREQUENCY}
+    if ref is None:
+        ctx["error"] = f"no list named {name!r}"
+        return ctx
+    ctx["policy"] = ip_sla_policy.policy_view(ref)
+    if chosen and (ctx["policy"]["section"] or {}).get("policy"):
+        try:
+            got = ip_sla_policy.plan(ref, chosen)
+        except ip_sla_policy.Refused as exc:
+            ctx["error"] = str(exc)
+        else:
+            by_on = {}
+            for s in got["suggestions"]:
+                by_on.setdefault(s["on"], []).append(s)
+            got["by_on"] = [{"on": on, "rows": rows, "cost": got["cost_by_device"].get(on, "")}
+                            for on, rows in by_on.items()]
+            ctx["plan"] = got
+            ctx["commit_body"] = {"list": name, "devices": chosen,
+                                  "fingerprint": got["fingerprint"]}
+    return ctx
+
+
+@bp.route("/monitoring/ip-sla", methods=["GET"])
+def ip_sla():
+    """The IP SLA policy and the probes it suggests for the devices chosen on
+    Coverage (those running none)."""
+    from flask import request
+    return _page("v2/ip_sla.html", active_nav="monitoring", monitoring_tab="coverage",
+                 **_ip_sla_ctx(request))
+
+
+def _ip_sla_ref(data):
+    from modules.nsot import listref
+    name = (data.get("list") or "").strip()
+    if not name or not listref.exists(name):
+        return None
+    return listref.resolve(name)
+
+
+@bp.route("/monitoring/ip-sla/policy", methods=["POST"])
+def ip_sla_policy_set():
+    """Commit the profile's IP SLA policy and frequency as the verified
+    person, bound to the profile the page showed."""
+    from flask import jsonify, request
+
+    from modules import identity
+    from modules.nsot import ip_sla_policy
+
+    data = request.get_json(silent=True) or {}
+    ref = _ip_sla_ref(data)
+    if ref is None:
+        return jsonify({"ok": False, "error": "no known list named: nothing was committed"}), 400
+    try:
+        freq = int(data.get("frequency"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "the frequency is a whole number of seconds: "
+                                              "nothing was committed"}), 400
+    if not 10 <= freq <= 3600:
+        return jsonify({"ok": False, "error": "the frequency is 10 to 3600 seconds: nothing was "
+                                              "committed"}), 400
+    try:
+        out = ip_sla_policy.set_policy(ref, (data.get("policy") or "").strip(), freq,
+                                       identity.request_actor(), data.get("profile_hash") or "")
+    except ip_sla_policy.Refused as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+    return jsonify({"ok": True, **out})
+
+
+@bp.route("/monitoring/ip-sla/commit", methods=["POST"])
+def ip_sla_commit():
+    """Commit the ticked suggestions into the devices' intent (one commit, as
+    the verified person), refusing a plan that moved; answers with the scoped
+    batch Apply that sends them."""
+    from flask import jsonify, request, url_for
+
+    from modules import identity
+    from modules.nsot import ip_sla_policy
+
+    data = request.get_json(silent=True) or {}
+    ref = _ip_sla_ref(data)
+    if ref is None:
+        return jsonify({"ok": False, "error": "no known list named: nothing was committed"}), 400
+    chosen = [d for d in (data.get("devices") or []) if isinstance(d, str) and d]
+    picked = [k for k in (data.get("picked") or []) if isinstance(k, str) and k]
+    try:
+        out = ip_sla_policy.apply(ref, chosen, picked, data.get("fingerprint") or "",
+                                  identity.request_actor())
+    except ip_sla_policy.Refused as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+    out["url"] = url_for("v2.profile_apply", list=ref.name, scope=ip_sla_policy.SCOPE,
+                         device=out["devices"])
+    return jsonify({"ok": True, **out})
 
 
 # ---------------------------------------------------------------------------

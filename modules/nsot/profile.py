@@ -102,6 +102,9 @@ def problems(doc) -> list:
             if "data" in sec:
                 out.append("ip_sla holds a policy, never data: its operations are the "
                            "device's own intent, since a probe targets another device's address")
+            freqs = [sec.get("frequency", 60)] + list((sec.get("frequency_by_platform") or {}).values())
+            if not all(isinstance(f, int) and not isinstance(f, bool) and 10 <= f <= 3600 for f in freqs):
+                out.append("ip_sla.frequency is a whole number of seconds from 10 to 3600")
             continue
         data = sec.get("data")
         if not isinstance(data, dict) or not data:
