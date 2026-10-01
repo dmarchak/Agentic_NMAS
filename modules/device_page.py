@@ -51,6 +51,21 @@ def find_device(name: str, ref=None):
     raise NoSuchDevice(f"no device named {name!r} in the list {ref.name!r}")
 
 
+def find_pending(name: str, ref=None):
+    """(list reference, pending row) for a device onboarded and not yet
+    reached (the manifest's `pending_devices`), matched exactly, or None. A
+    pending device is in no inventory BY DESIGN (it has never answered), so
+    `find_device` cannot find it and the page draws its onboarding state
+    instead (NSOT_GUI_BRIEF 3.3)."""
+    from modules.nsot import listref, manifest
+
+    ref = ref or listref.active()
+    for p in manifest.pending_devices(ref.repo_dir):
+        if (p.get("name") or "").lower() == (name or "").lower():
+            return ref, p
+    return None
+
+
 def _cached(reader: str):
     """A reader's last good value and its time, or (None, why)."""
     from modules import reader_job

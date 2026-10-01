@@ -1,0 +1,35 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- set active_nav = 'devices' -%}
+{#- A pending device's page (NSOT_GUI_BRIEF 3.3): onboarded (phase 1: its
+    commit and its staged credential) and not yet reached, so it is in no
+    inventory and has none of a device's tabs. Its onboarding state, what to
+    expect, and its three actions, which are built on today's page. -#}
+{%- set STATE = {'in_flight': ('pending', 'info'), 'overdue': ('overdue', 'warn'), 'stale': ('stale', 'danger')} -%}
+{%- set s = STATE.get(p.state, (p.state, 'muted')) -%}
+{% block title %}{{ p.name }} (pending) · NMAS{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices') }}">Devices</a><span aria-hidden="true">/</span><span>{{ p.name }}</span></nav>
+<div class="page-head">
+  <div class="page-title">
+    <div class="title-row"><h1 class="mono">{{ p.name }}</h1> {{ badge('Pending onboarding: ' ~ s[0], s[1]) }}</div>
+    <p class="sub">Onboarded {{ stamp(p.onboarded_at) }} · network {{ list_name }} · not reached yet, so it is in no inventory and nothing polls, backs up or checks it</p>
+  </div>
+</div>
+<section class="card pending-card">
+  {%- if p.credential_findable == false %}
+  <div class="notice notice-danger">{{ icon('warn') }}<p>Its staged credential cannot be found where Verify will look, so Verify cannot reach it. Abandon and re-create it: nothing has reached the device, so there is nothing to undo.</p></div>
+  {%- elif p.state == 'stale' %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>Pending for over a week. If it is not going to boot, Abandon releases its name and removes its commit and staged credential.</p></div>
+  {%- elif p.state == 'overdue' %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>Pending for over a day: one boot takes minutes, so it has probably not been booted with its bootstrap config, or it booted and cannot be reached.</p></div>
+  {%- endif %}
+  <dl class="facts">
+    <div><dt>Address</dt><dd class="mono">{% if p.mgmt_ip %}{{ p.mgmt_ip }}{% elif p.address_source == 'dhcp' or p.address_source == 'ztp' %}awaiting {{ 'ZTP' if p.address_source == 'ztp' else 'DHCP' }}{% if p.reserved_address %} (Kea reservation → {{ p.reserved_address }}){% endif %}{% else %}no address recorded{% endif %}</dd></div>
+    <div><dt>Address source</dt><dd>{{ p.address_source }}{% if p.mgmt_mac %} <span class="muted mono">· {{ p.mgmt_mac }}</span>{% endif %}</dd></div>
+    <div><dt>Next</dt><dd>Boot it with its bootstrap config, then Verify: reaching it is the verification, and only then is it rotated, captured and added to the inventory.</dd></div>
+  </dl>
+  <p class="dev-actions"><a class="btn btn-primary" href="{{ url_for('index') }}">Verify, Abandon or get the bootstrap config (today's page)…</a>
+    <span class="muted">The pending banner on today's page carries all three until the redesign does.</span></p>
+</section>
+{% endblock %}

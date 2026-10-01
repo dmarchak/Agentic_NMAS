@@ -3,6 +3,6 @@
 {%- set list_name = list_name or '' -%}
 {% block title %}Not found · NMAS{% endblock %}
 {% block main %}
-<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('index') }}">Devices</a></nav>
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices') }}">Devices</a></nav>
 <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>{{ why }}.</strong> The device page is addressed by the device's name in the list the app is showing.</div></div>
 {% endblock %}

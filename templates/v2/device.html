@@ -3,7 +3,7 @@
 {%- set active_nav = 'devices' -%}
 {% block title %}{{ device.hostname }} · NMAS{% endblock %}
 {% block main %}
-<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('index') }}">Devices</a><span aria-hidden="true">/</span><span>{{ device.hostname }}</span></nav>
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices') }}">Devices</a><span aria-hidden="true">/</span><span>{{ device.hostname }}</span></nav>
 <div class="page-head">
   <div class="page-title">
     <div class="title-row">

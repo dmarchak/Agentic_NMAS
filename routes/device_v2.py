@@ -119,9 +119,19 @@ def _monitoring_ctx(ref, dev):
 
 @bp.route("/device/<name>", methods=["GET"])
 def device(name):
-    """The whole page, opened on the tab the URL names."""
+    """The whole page, opened on the tab the URL names. A device onboarded
+    and not yet reached is in no inventory, so its page is its onboarding
+    state (the brief's pending page), never a 404."""
     found, refusal = _device_or_404(name)
     if refusal is not None:
+        try:
+            pending = device_page.find_pending(name)
+        except Exception as exc:                      # noqa: BLE001
+            log.warning("device_v2: pending onboardings could not be read for %s: %s", name, exc)
+            pending = None
+        if pending:
+            ref, p = pending
+            return _strict(render_template("v2/pending.html", p=p, list_name=ref.name, who=_who()))
         return refusal
     ref, dev = found
     tab = request.args.get("tab", "overview")

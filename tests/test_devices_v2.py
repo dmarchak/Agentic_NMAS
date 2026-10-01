@@ -173,3 +173,48 @@ class TestThePage:
         src = open(os.path.join(ROOT, "static", "js", "gen", "partials__deploy_wizard.1.js"),
                    encoding="utf-8").read()
         assert "q.get('open') === 'deploy'" in src and "openDeployPlan(q.getAll('device')" in src
+
+
+class TestAPendingDevicesPage:
+    """The brief's pending page (3.3): a device onboarded and not yet reached
+    is in no inventory by design, so its row's link must not lead to a 404
+    (f1863ba drew the row and its link, and the link 404'd)."""
+
+    PENDING = {"identity": "uid:x", "name": "r7", "mgmt_ip": "", "address_source": "dhcp",
+               "mgmt_mac": "aa:bb:cc:00:02:47", "reserved_address": "203.0.113.17",
+               "onboarded_at": "2026-10-01T09:00:00Z", "age_seconds": 3600,
+               "state": "in_flight", "credential_findable": True}
+
+    def _get(self, lab, url):
+        r = lab["client"].get(url)
+        return r, r.get_data(as_text=True)
+
+    def test_every_rows_link_answers(self, inv, monkeypatch):
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(self.PENDING)])
+        _r, html = self._get(inv, "/v2/devices/table")
+        links = re.findall(r'<a href="(/v2/device/[^"]+)">', html)
+        assert "/v2/device/r7" in links and len(links) == 3
+        for url in links:
+            assert inv["client"].get(url).status_code == 200, url
+
+    def test_the_pending_page_says_where_it_is_and_what_is_next(self, inv, monkeypatch):
+        from modules import csp
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(self.PENDING)])
+        r, html = self._get(inv, "/v2/device/r7")
+        assert r.status_code == 200 and r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
+        assert not re.search(r"\sstyle=|\son[a-z]+=", html)
+        assert "Pending onboarding: pending" in html
+        assert "awaiting DHCP (Kea reservation → 203.0.113.17)" in html
+        assert "Verify, Abandon or get the bootstrap config (today&#39;s page)" in html \
+            or "Verify, Abandon or get the bootstrap config (today's page)" in html
+        assert '<a href="/v2/devices">Devices</a>' in html
+
+    def test_a_credential_that_cannot_be_found_says_re_create(self, inv, monkeypatch):
+        row = dict(self.PENDING, credential_findable=False, state="overdue")
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [row])
+        _r, html = self._get(inv, "/v2/device/r7")
+        assert "Abandon and re-create it: nothing has reached the device" in html
+
+    def test_a_name_neither_in_the_inventory_nor_pending_is_still_a_404(self, inv, monkeypatch):
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [dict(self.PENDING)])
+        assert inv["client"].get("/v2/device/r99").status_code == 404
