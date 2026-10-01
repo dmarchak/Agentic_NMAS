@@ -4295,6 +4295,47 @@ management segment, deliberately), is not a link in the physical layer.
 - The what-if gate waits on P.10's layer 1, where it belongs.
 - Nothing here waits on a new collection: every series is already scraped.
 
+### P.12 — Feature templates: intent, template, verify, removals and risk as one unit (SCOPED 2026-10-01, the operator; NOT BUILT)
+
+**The operator's requirement (2026-10-01).** The templates grow into FEATURES. Each feature is
+one bundle of: its section of intent (the `host_vars` keys it owns), its template per platform,
+its verify checks, its measured removal shapes, and its risk class. That bundle is what makes a
+deploy and its verify scopable ("deploy only OSPF to r3"; an OSPF change runs OSPF's checks and
+nothing else). It lets a feature be applied to a group of devices, and it is the natural unit
+for multi-vendor drivers (9.P, Stage 10). **The monitoring profile (P.9) is effectively the
+first one**: its own section, its own scope on the deploy (`scope: profile`, `ip_sla`), its own
+proposal and apply.
+
+**Granularity: about a dozen meaningful features, never hundreds.** A first cut, from what the
+parsers already model: base (hostname, domain, services, flags); users and enable; lines
+(console, aux, vty); management access (SSH, HTTP, NETCONF/RESTCONF); interfaces; VLANs and
+switching; static routes; OSPF/OSPFv3; BGP; RIP/RIPng; ACLs and prefix lists; monitoring (SNMP,
+syslog, NTP, telemetry, LLDP/CDP, IP SLA: the profile); FHRP (VRRP). The exact list is decided
+against the fleet's real intent when built, by the same rule as modelling (2+ devices, or a
+protocol in the design).
+
+**Risk class drives verify** (this round's item 2, built first, without waiting for P.12): a
+management-only feature (lines, users, logging, SNMP, NTP, banners) gets the quick verify; one
+that can affect forwarding or routing (interfaces, ACLs used on interfaces, route maps, prefix
+lists, VRFs, routing processes) keeps the full settle window. Unknown is full.
+
+**Cross-feature references, with an explicit order.** An ACL is used by the vty lines and by
+SNMP; OSPF runs on interfaces; a prefix list is used by BGP. Each feature declares what it
+references and what references it. A scoped deploy of one feature REFUSES, naming the other
+feature, when its program needs a line another feature owns (an SNMP ACL that does not exist
+yet). The render order is fixed per platform (objects before their users), so the program a
+scoped deploy sends is the same lines, in the same order, as the whole-device program would.
+
+**The whole device still combines into ONE exact config.** Template fidelity (`template_report`),
+the golden-versus-intent comparison and the replace-with-a-golden operation (decided 2026-10-01,
+measured before allowed) all need the complete file. A feature is a scope over the one render,
+never a second render. One template closure per platform stays the approval unit (P.5), or each
+feature's closure is approved, decided when built.
+
+**Placement:** after 7.3 and P.9 (d), alongside 9.P's platform layer, since a feature's per-platform
+template and its measured removals ARE platform capabilities. Before Stage 10's drivers, which
+consume it.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported
@@ -5733,7 +5774,11 @@ the environment does.
   - oxidized-web serving every config to the LAN (C143, which is 6.1);
   - the community rotation and its consumer work (C139);
   - 6.2's per-consumer accounts;
-  - `transport input all` (E3);
+  - `transport input all` (E3). **Measured 2026-10-01** with the vty standardisation (C301): r1 to
+    r4 run `transport input all` (telnet included) on `line vty 0 4`, and only r6 runs
+    `transport input ssh`. The hardening is one bulk-intent change of the vty stanza's transport
+    to `ssh` on r1 to r4, deployed through the normal path (C307 makes its rollback per line);
+    the switches' vty lines to be read and decided with it;
   - SNMPv3 (C249, the operator, 2026-09-30): nothing the tool runs speaks it, so every
     device must run a community. REQUIRED before Stage 10's release. **Designed the same
     day, tied to the monitoring profile (P.9): the profile's SNMP section produces secure SNMP
