@@ -1,0 +1,42 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- The device page's Logs (NSOT_GUI_BRIEF 3.3), from
+    modules/device_logs.for_device(): what the device sent to syslog, as Loki
+    holds it, newest first, heartbeats folded into one line. Read from Loki,
+    never from the device. A cut list says it is cut. -#}
+<section class="card logs" id="logs" hx-get="{{ url_for('device_v2.logs', name=device.hostname) }}"
+         hx-trigger="nmas:goldens from:body" hx-swap="outerHTML">
+  {%- for e in g.errors %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}. Not the same as {{ device.hostname }} having sent nothing.</p></div>
+  {%- endfor %}
+  {%- if not g.configured %}
+  <p class="cov-head">{{ icon('info') }} Loki is not configured, so {{ device.hostname }}'s logs cannot be read here (Settings &gt; Integrations).</p>
+  {%- elif not g.errors %}
+  {%- if g.heartbeat %}
+  <p class="cov-head">{% if g.heartbeat.count %}{{ icon('check') }} {{ g.heartbeat.count }} heartbeat(s) in the last {{ g.window_hours }} h, the last {{ stamp(g.heartbeat.last_iso) }}. They are folded here; any other line about the heartbeat applet is listed below.{% else %}{{ icon('warn') }} No heartbeat line from {{ device.hostname }} in the last {{ g.window_hours }} h.{% endif %}</p>
+  {%- endif %}
+  {%- if g.unsync %}
+  <p class="muted">{{ g.unsync }} line(s) carry a device time {{ device.hostname }} marks unsynchronised (*): its clock is not trusted, so each line is placed by when the NMAS received it.</p>
+  {%- endif %}
+  {%- if not g.lines %}
+  <p class="cov-head">{{ icon('info') }} {{ device.hostname }} sent nothing but heartbeats in the last {{ g.window_hours }} h.</p>
+  {%- else %}
+  {%- if g.cut %}<p class="muted">Showing the newest {{ g.limit }} of the last {{ g.window_hours }} h; older lines are in Loki.</p>{% endif %}
+  <div class="table-wrap">
+    <table class="table log-table">
+      <thead><tr><th scope="col">Received</th><th scope="col">Severity</th><th scope="col">Message</th><th scope="col">Device time</th></tr></thead>
+      <tbody>
+        {%- for l in g.lines %}
+        <tr>
+          <td>{{ stamp(l.at_iso) }}</td>
+          <td>{% if l.sev_word %}{{ badge(l.sev_word, l.kind) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="log-msg">{% if l.mnemonic %}<code>{{ l.mnemonic }}</code> {% endif %}{{ l.text }}</td>
+          <td class="mono muted">{{ l.devts or '—' }}{% if l.unsync %} <span title="the device marks this time unsynchronised">*</span>{% endif %}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- endif %}
+  {%- endif %}
+  <p class="muted nb-limits">From Loki: the lines {{ device.hostname }} names itself in (its origin-id), as the NMAS received them. Nothing here opens a session to the device.</p>
+</section>

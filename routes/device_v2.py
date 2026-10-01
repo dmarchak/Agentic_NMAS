@@ -26,7 +26,7 @@ bp = Blueprint("device_v2", __name__, url_prefix="/v2")
 TABS = [("overview", "Overview"), ("intent", "Intent"), ("history", "History"),
         ("monitoring", "Monitoring"), ("logs", "Logs"), ("netbox", "NetBox"),
         ("neighbours", "Neighbours"), ("ask", "Ask the device")]
-BUILT = ("overview", "intent", "history", "monitoring", "neighbours")
+BUILT = ("overview", "intent", "history", "monitoring", "logs", "neighbours")
 
 
 def _strict(resp, code=200):
@@ -66,6 +66,11 @@ def _overview_ctx(ref, dev):
     return {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev),
             "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev),
             "hw": device_page.hardware(ref, dev)}
+
+
+def _logs_ctx(ref, dev):
+    from modules import device_logs
+    return {"device": dev, "list_name": ref.name, "g": device_logs.for_device(dev)}
 
 
 def _neighbours_ctx(ref, dev):
@@ -122,7 +127,8 @@ def device(name):
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
                _intent_ctx(ref, dev) if tab == "intent" else
                _history_ctx(ref, dev) if tab == "history" else
-               _neighbours_ctx(ref, dev) if tab == "neighbours" else _monitoring_ctx(ref, dev))
+               _neighbours_ctx(ref, dev) if tab == "neighbours" else
+               _logs_ctx(ref, dev) if tab == "logs" else _monitoring_ctx(ref, dev))
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -241,3 +247,14 @@ def neighbours(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_neighbours.html", **_neighbours_ctx(ref, dev)))
+
+
+@bp.route("/device/<name>/logs", methods=["GET"])
+def logs(name):
+    """The Logs tab: the device's syslog as Loki holds it, heartbeats folded.
+    Opens no session to the device."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_logs.html", **_logs_ctx(ref, dev)))

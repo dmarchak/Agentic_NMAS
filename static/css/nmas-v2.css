@@ -501,3 +501,6 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 /* The device page's Neighbours tab (step 4, C38). */
 .nb-proto { font-size: 14px; margin: 14px 0 4px; }
 .nb-limits { margin-top: 12px; font-size: 12px; }
+/* The device page's Logs tab (step 4). */
+.log-msg { word-break: break-word; }
+.log-table td { vertical-align: top; }
