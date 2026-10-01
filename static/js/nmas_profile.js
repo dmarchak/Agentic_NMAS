@@ -78,7 +78,30 @@
     body.appendChild(pre);
   }
 
-  async function previewProfilePropose(listName) {
+  /* A section whose devices hold different versions of its SHARED fields:
+     the tool never picks one; a person may (the operator, 2026-09-30). Each
+     version is a button that previews again with it chosen. PURE: HTML. */
+  function choicesHtml(choices, esc) {
+    return (choices || []).filter(function (c) { return !c.chosen; }).map(function (c) {
+      return '<div class="alert alert-secondary py-2" data-profile-choice="' + esc(c.section) + '">'
+        + '<strong>Choose a version of ' + esc(c.section) + '</strong>: its devices hold '
+        + c.versions.length + ' versions of its shared fields. '
+        + c.versions.map(function (v) {
+          return '<button type="button" class="btn btn-sm btn-outline-primary ms-1" '
+            + 'data-profile-section="' + esc(c.section) + '" data-profile-version="' + esc(v.id)
+            + '">Use the version held by ' + esc(v.devices.join(', ')) + '</button>';
+        }).join('') + '</div>';
+    }).join('');
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+    });
+  }
+
+  async function previewProfilePropose(listName, choose) {
+    choose = choose || {};
     var el = modal('Propose the monitoring profile' + (listName ? ': ' + listName : ''));
     var body = el.querySelector('[data-profile-body]');
     body.textContent = 'Reading every device\'s committed intent…';
@@ -90,7 +113,7 @@
     try {
       var r = await fetch('/templatize/profile/propose/preview', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({list_name: listName || ''})});
+        body: JSON.stringify({list_name: listName || '', choose: choose})});
       d = await r.json();
     } catch (e) {
       body.textContent = 'The preview failed: ' + e.message;
@@ -99,8 +122,16 @@
     if (!d.ok) { body.textContent = d.error || 'The preview failed'; return; }
     state.preview = d.preview;
     // The component escapes every value it draws.
-    body.innerHTML = previewConfirmHtml(d.preview, {selectable: true,
-                                                    onSelect: '_profileSelectionChanged'});
+    body.innerHTML = choicesHtml(d.choices, esc)
+      + previewConfirmHtml(d.preview, {selectable: true, onSelect: '_profileSelectionChanged'});
+    body.querySelectorAll('[data-profile-version]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var next = Object.assign({}, choose);
+        next[b.dataset.profileSection] = b.dataset.profileVersion;
+        bootstrap.Modal.getInstance(el).hide();
+        previewProfilePropose(listName, next);
+      });
+    });
     body.querySelectorAll('input[data-pc-select]').forEach(function (b) {
       if (!b.disabled) b.checked = true;
     });
@@ -117,7 +148,7 @@
       try {
         var ar = await fetch('/templatize/profile/propose/apply', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({hash: sel.hash, list_name: sel.list || d.list})});
+          body: JSON.stringify({hash: sel.hash, list_name: sel.list || d.list, choose: choose})});
         ad = await ar.json();
       } catch (e) {
         body.insertAdjacentHTML('afterbegin', '<div class="alert alert-danger">'
@@ -152,4 +183,5 @@
 
   root.previewProfilePropose = previewProfilePropose;
   root.profileSelection = profileSelection;
+  root.profileChoicesHtml = function (c) { return choicesHtml(c, esc); };
 })(typeof window !== 'undefined' ? window : this);

@@ -321,7 +321,9 @@ class TestEveryDetectorReadsWhatTheParserWrites:
         d = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
                                                      "list_name": "Lab"}).get_json()["devices"][0]
         sent = [c.strip() for c in d["commands"]]
-        assert "lldp run" in sent and "cdp run" not in sent and "snmp-server contact noc" in sent
+        assert "lldp run" in sent and "cdp run" not in sent and "snmp ifmib ifindex persist" in sent
+        # Location and contact are PER-DEVICE: never in the profile, never sent.
+        assert not [c for c in sent if c.startswith(("snmp-server location", "snmp-server contact"))]
 
 
 def _with_s1(monkeypatch):
@@ -418,3 +420,120 @@ class TestAnAbsentLineMayBeOnByDefault:
         bad.write_text("{")
         got = pp.platform_default("cisco_ios", "cdp run", str(bad))
         assert got["state"] == "not_measured" and "could not be read" in got["why"]
+
+
+# ------------------------------------------- per-device fields, and choosing a version
+
+def _add_r1(lab, monkeypatch, ifindex=True):
+    """r1 in the host's shape (the operator, 2026-09-30): r2's config with its
+    OWN location and contact, and (unless *ifindex*) without
+    `snmp ifmib ifindex persist`."""
+    from modules.nsot import hostvars
+    from modules.nsot.parsers import get_parser
+    from modules.nsot.repo import GoldenItem, save_golden, save_host_vars
+    lines = []
+    for l in lab["captured"].splitlines():
+        if l.startswith("hostname"):
+            l = "hostname r1"
+        elif l.startswith("snmp-server location"):
+            l = "snmp-server location rack 4, row B"
+        elif l.startswith("snmp-server contact"):
+            l = "snmp-server contact netops@example.invalid"
+        elif l.startswith("snmp ifmib ifindex persist") and not ifindex:
+            continue
+        lines.append(l)
+    cfg = "\n".join(lines) + "\n"
+    save_golden("Lab", [GoldenItem("r1", cfg, "203.0.113.11", platform="cisco_iosxe")],
+                source="onboarding", actor="t", allow_new=True, baseline=False)
+    hostvars.write_committed(lab["repo"], get_parser("cisco_iosxe").parse(cfg))
+    assert save_host_vars("Lab", ["r1"], actor="t", source="extraction")["ok"]
+    from modules.nsot import restore
+    devs = restore._devices_of("Lab") + [{"hostname": "r1", "ip": "203.0.113.11",
+                                           "device_type": "cisco_xe", "platform": "cisco_iosxe"}]
+    monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(d) for d in devs])
+
+
+class TestPerDeviceFields:
+    """The operator, 2026-09-30: `snmp-server location` and `contact` are meant
+    to differ per device; only SHARED fields must agree. A per-device field
+    never blocks a proposal, is never in the profile, and is never overwritten."""
+
+    def test_a_different_location_and_contact_do_not_block_snmp(self, lab, monkeypatch):
+        from modules.nsot import profile_propose as pp
+        _add_r1(lab, monkeypatch, ifindex=True)
+        snmp = next(s for s in pp.propose("Lab")["sections"] if s["section"] == "snmp")
+        assert snmp["proposed"] and snmp["holders"] == ["r1", "r2"], snmp.get("why")
+        settings = pp.propose("Lab")["doc"]["sections"]["snmp"]["data"]["snmp"]["settings"]
+        assert not [s for s in settings if s.startswith(("location", "contact"))]
+
+    def test_r1_keeps_its_own_and_gains_what_it_lacks(self, lab, monkeypatch):
+        """The merge, entry by entry: r1's effective SNMP settings are its own
+        location and contact plus the profile's ifindex persist."""
+        from modules.nsot import hostvars, profile as P
+        _add_r1(lab, monkeypatch, ifindex=False)
+        doc = {"version": 1, "sections": {"snmp": {"source": "prometheus", "data": {"snmp": {
+            "settings": ["trap-source Loopback0", "enable traps snmp linkdown linkup",
+                         "snmp ifmib ifindex persist"]}}}}}
+        r1 = hostvars.read_committed(lab["repo"], "r1")
+        eff = P.effective(r1, doc, "cisco_iosxe", "")["snmp"]["settings"]
+        assert "location rack 4, row B" in eff and "contact netops@example.invalid" in eff
+        assert "snmp ifmib ifindex persist" in eff
+        assert P.overrides(r1, doc, "cisco_iosxe", "") == []
+        kept = P.strip_inherited(r1, doc, "cisco_iosxe", "")["snmp"]["settings"]
+        assert kept == ["location rack 4, row B", "contact netops@example.invalid"]
+
+
+class TestChoosingAVersion:
+    """The operator, 2026-09-30: when shared fields differ, the tool never picks;
+    a PERSON chooses a version, sees which devices change and how, and the
+    choice is confirmed and recorded."""
+
+    def test_two_versions_are_choosable_and_never_picked_by_the_tool(self, lab, monkeypatch):
+        from modules.nsot import profile_propose as pp
+        _add_r1(lab, monkeypatch, ifindex=False)
+        snmp = next(s for s in pp.propose("Lab")["sections"] if s["section"] == "snmp")
+        assert not snmp["proposed"] and snmp["choosable"] and "choose a version" in snmp["why"]
+        assert sorted(d for v in snmp["variants"] for d in v["devices"]) == ["r1", "r2"]
+
+    def test_the_chosen_version_is_proposed_and_r1_gains_ifindex_persist(self, lab, monkeypatch):
+        from modules.nsot import profile_propose as pp
+        _add_r1(lab, monkeypatch, ifindex=False)
+        vid = next(v["id"] for s in pp.propose("Lab")["sections"] if s["section"] == "snmp"
+                   for v in s["variants"] if v["devices"] == ["r2"])
+        p = pp.propose("Lab", choose={"snmp": vid})
+        snmp = next(s for s in p["sections"] if s["section"] == "snmp")
+        assert snmp["proposed"] and snmp["chosen"] == vid
+        assert snmp["changes"] == {"r1": {"gains": ["snmp ifmib ifindex persist"], "keeps": []}}
+        assert snmp["inherit"] == ["r6"]
+        assert p["hash"] != pp.propose("Lab")["hash"]          # the choice is in the hash
+
+    def test_the_choice_is_confirmed_and_recorded_through_the_routes(self, lab, monkeypatch):
+        _add_r1(lab, monkeypatch, ifindex=False)
+        c = lab["client"]
+        first = c.post("/templatize/profile/propose/preview", json={"list_name": "Lab"}).get_json()
+        (snmp,) = [x for x in first["choices"] if x["section"] == "snmp"]
+        vid = next(v["id"] for v in snmp["versions"] if v["devices"] == ["r2"])
+        pv = c.post("/templatize/profile/propose/preview",
+                    json={"list_name": "Lab", "choose": {"snmp": vid}}).get_json()
+        notes = [n for t in pv["preview"]["targets"] for n in t["program"].get("notes") or []]
+        assert any(n["title"].startswith("SNMP: you chose version " + vid) and
+                   "r1 gains: snmp ifmib ifindex persist" in n["lines"] for n in notes), notes
+        h = pv["preview"]["what"]["targets"][0]["select_data"]["hash"]
+        # The hash is bound to the choice: confirmed without it, refused.
+        moved = c.post("/templatize/profile/propose/apply",
+                       json={"list_name": "Lab", "hash": h}).get_json()
+        assert moved["result"]["targets"][0]["outcome"] == "moved"
+        done = c.post("/templatize/profile/propose/apply",
+                      json={"list_name": "Lab", "hash": h, "choose": {"snmp": vid}}).get_json()
+        assert done["result"]["level"] == "success"
+        subject = subprocess.run(["git", "-C", lab["repo"], "log", "-1", "--format=%s"],
+                                 capture_output=True, text=True).stdout
+        assert "chosen: snmp as held by r2" in subject
+
+    def test_the_shipped_client_draws_one_button_per_version(self):
+        import dukpy
+        src = open(os.path.join(ROOT, "static/js/nmas_profile.js"), encoding="utf-8").read()
+        html = dukpy.evaljs([src, "profileChoicesHtml([{section: 'snmp', chosen: '', versions: "
+                                  "[{id: 'a1', devices: ['r2', 'r3']}, {id: 'b2', devices: ['r1<x>']}]}])"])
+        assert html.count("data-profile-version=") == 2
+        assert "Use the version held by r2, r3" in html and "r1&lt;x&gt;" in html

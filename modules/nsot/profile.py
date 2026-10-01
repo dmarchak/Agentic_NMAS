@@ -127,14 +127,62 @@ def sections_for(doc: dict, platform: str, role: str, intent: dict = None) -> di
     return out
 
 
-def _overlay(base, top):
-    """*top* over *base*: dicts recursively, and any other value of *top*
-    replaces *base*'s unless it is empty."""
+#: A setting whose keyword takes ONE value is keyed on the keyword, so a
+#: device's own value replaces the profile's; any other line is its own key.
+KEYWORD_SETTINGS = ("trap-source", "location", "contact", "chassis-id", "packetsize",
+                    "source-interface", "queue-length")
+
+
+def _setting_key(entry) -> str:
+    s = str(entry).strip()
+    for kw in KEYWORD_SETTINGS:
+        if s == kw or s.startswith(kw + " "):
+            return kw
+    return s
+
+
+#: The lists merged ENTRY BY ENTRY, by key (the operator, 2026-09-30): r1, lacking
+#: `snmp ifmib ifindex persist`, must gain it and keep its own location and
+#: contact. Merged whole, a device's own list replaced the profile's and r1
+#: would have gained nothing. A device keeps its entries; the profile adds the
+#: entries whose key it lacks. Paths are inside a section's `data`.
+#: ONLY where per-device and shared entries share one list: every other list
+#: (NTP servers, syslog hosts, communities, telemetry subscriptions) stays a
+#: whole value a device may override, as step (a) decided and its tests hold;
+#: keying them would add the network's NTP server to a device that chose another.
+KEYED_LISTS = {
+    "snmp.settings": _setting_key,
+}
+
+#: PER-DEVICE fields, by the key their list gives them: meant to differ per
+#: device, so never compared by a proposal, never carried in the profile, and
+#: never overwritten by an apply. Every other field is SHARED: it must agree.
+PER_DEVICE = {"snmp.settings": ("location", "contact", "chassis-id")}
+
+
+def per_device(path: str, entry) -> bool:
+    return path in PER_DEVICE and KEYED_LISTS[path](entry) in PER_DEVICE[path]
+
+
+def shared_only(path: str, entries: list) -> list:
+    return [e for e in (entries or []) if not per_device(path, e)]
+
+
+def _overlay(base, top, path: str = ""):
+    """*top* (the device) over *base* (the profile): dicts recursively, a
+    KEYED list entry by entry, and any other value of *top* replaces *base*'s
+    unless it is empty."""
     if isinstance(base, dict) and isinstance(top, dict):
         out = dict(base)
         for k, v in top.items():
-            out[k] = _overlay(base[k], v) if k in base else copy.deepcopy(v)
+            p = f"{path}.{k}" if path else k
+            out[k] = _overlay(base[k], v, p) if k in base else copy.deepcopy(v)
         return out
+    if path in KEYED_LISTS and isinstance(base, list) and isinstance(top, list) and top:
+        key = KEYED_LISTS[path]
+        have = {key(e) for e in top}
+        return copy.deepcopy(top) + [copy.deepcopy(e) for e in base
+                                     if key(e) not in have and not per_device(path, e)]
     return copy.deepcopy(base) if _empty(top) else copy.deepcopy(top)
 
 
@@ -176,7 +224,14 @@ def effective(intent: dict, doc: dict, platform: str, role: str) -> dict:
 
 def _walk(profile_part, device_part, path=""):
     """Yield (path, profile value, device value) for every leaf the profile
-    sets."""
+    sets; a KEYED list's entries one by one, matched by key."""
+    if path in KEYED_LISTS and isinstance(profile_part, list):
+        key = KEYED_LISTS[path]
+        mine = {key(e): e for e in (device_part or []) if isinstance(device_part, list)}
+        for e in profile_part:
+            if not per_device(path, e):
+                yield f"{path}[{key(e)}]", e, mine.get(key(e))
+        return
     if isinstance(profile_part, dict):
         for k, v in profile_part.items():
             yield from _walk(v, (device_part or {}).get(k) if isinstance(device_part, dict) else None,
@@ -204,14 +259,21 @@ def strip_inherited(intent: dict, doc: dict, platform: str, role: str) -> dict:
     the parsers emit."""
     out = copy.deepcopy(intent or {})
 
-    def drop(pdata, node):
+    def drop(pdata, node, path=""):
         if not isinstance(pdata, dict) or not isinstance(node, dict):
             return
         for k, pv in pdata.items():
             if k not in node:
                 continue
+            p = f"{path}.{k}" if path else k
             if isinstance(pv, dict) and isinstance(node[k], dict):
-                drop(pv, node[k])
+                drop(pv, node[k], p)
+            elif p in KEYED_LISTS and isinstance(pv, list) and isinstance(node[k], list):
+                # Entry by entry: an entry equal to the profile's is inherited;
+                # a differing one, and every per-device one, stays.
+                key = KEYED_LISTS[p]
+                theirs = {key(e): e for e in pv}
+                node[k] = [e for e in node[k] if theirs.get(key(e)) != e]
             elif node[k] == pv:
                 node[k] = [] if isinstance(pv, list) else ({} if isinstance(pv, dict) else "")
     for _name, data in sections_for(doc, platform, role, intent).items():

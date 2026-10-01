@@ -54,9 +54,15 @@ def section_value(name: str, intent: dict):
 
     intent = intent or {}
     if name == "snmp":
+        from modules.nsot.profile import shared_only
         v = intent.get("snmp")
         if isinstance(v, dict) and any(not _empty(x) for x in v.values()):
-            return {"snmp": v}
+            # Only SHARED fields agree or differ: a device's location and
+            # contact are its own (the operator, 2026-09-30), never compared,
+            # never in the profile, never overwritten.
+            v = dict(v, settings=shared_only("snmp.settings", v.get("settings") or []))
+            if any(not _empty(x) for x in v.values()):
+                return {"snmp": v}
     elif name == "syslog":
         v = (intent.get("logging") or {}).get("syslog")
         if isinstance(v, dict) and v:
@@ -103,6 +109,53 @@ def platform_default(dialect: str, flag: str, path: str = None) -> dict:
 
 def _canon(v) -> str:
     return json.dumps(v, sort_keys=True, separators=(",", ":"))
+
+
+def _comparable(v, path=""):
+    """*v* with every KEYED list sorted by key: the same entries in another
+    order are the same version."""
+    from modules.nsot.profile import KEYED_LISTS
+    if isinstance(v, dict):
+        return {k: _comparable(x, f"{path}.{k}" if path else k) for k, x in v.items()}
+    if path in KEYED_LISTS and isinstance(v, list):
+        return sorted(v, key=lambda e: str(KEYED_LISTS[path](e)))
+    return v
+
+
+def version_id(value) -> str:
+    """A version's id: its comparable form, hashed. What a person chooses by."""
+    return hashlib.sha256(_canon(_comparable(value)).encode()).hexdigest()[:12]
+
+
+def _items(value, path=""):
+    """{(path, key): entry} for every leaf of a section's value, a keyed
+    list's entries one by one."""
+    from modules.nsot.profile import KEYED_LISTS
+    out = {}
+    if isinstance(value, dict):
+        for k, x in value.items():
+            out.update(_items(x, f"{path}.{k}" if path else k))
+    elif path in KEYED_LISTS and isinstance(value, list):
+        for e in value:
+            out[(path, str(KEYED_LISTS[path](e)))] = e
+    else:
+        out[(path, "")] = value
+    return out
+
+
+def _text(path, entry) -> str:
+    return entry if isinstance(entry, str) else f"{path}: {json.dumps(entry, sort_keys=True)}"
+
+
+def changes_for(chosen, theirs) -> dict:
+    """What a device holding *theirs* sees when *chosen* is the profile:
+    ``{"gains": [...], "keeps": [...]}``. It GAINS what it lacks; it KEEPS its
+    own where it differs (its value wins: an override, said by name)."""
+    mine, other = _items(chosen), _items(theirs or {})
+    gains = [_text(p, e) for (p, k), e in mine.items() if (p, k) not in other]
+    keeps = [_text(p, other[(p, k)]) for (p, k), e in mine.items()
+             if (p, k) in other and other[(p, k)] != e]
+    return {"gains": gains, "keeps": keeps}
 
 
 def _fleet(list_name: str) -> tuple:
@@ -157,9 +210,16 @@ def _secret_agreement(list_name: str, refs: set, holders: list) -> dict:
     return out
 
 
-def propose(list_name: str, get=None) -> dict:
+def propose(list_name: str, get=None, choose: dict = None) -> dict:
     """The proposal, computed from what is committed now. Carries secret
-    VALUES in `secrets` for `apply()` only: `public()` strips them."""
+    VALUES in `secrets` for `apply()` only: `public()` strips them.
+
+    *choose* is ``{section: version id}``: where the devices hold different
+    versions of a section's SHARED fields, the tool never picks one, and a
+    PERSON may (the operator, 2026-09-30). The chosen version is proposed; a
+    device holding another gains what it lacks and keeps its own where it
+    differs, each named, and the choice is in the hash and the commit."""
+    choose = dict(choose or {})
     from modules.nsot import profile as _p
 
     if get is None:
@@ -187,14 +247,25 @@ def propose(list_name: str, get=None) -> dict:
             continue
         variants = {}
         for h, plat, v in held:
-            variants.setdefault(_canon(v), {"value": v, "devices": []})["devices"].append(h)
+            variants.setdefault(version_id(v), {"value": v, "devices": []})["devices"].append(h)
         if len(variants) > 1:
-            row["why"] = (f"the devices hold {len(variants)} different versions; the tool never "
-                          "picks one, so reconcile their intent first")
-            row["variants"] = [{"devices": sorted(x["devices"]), "value": x["value"]}
-                               for x in variants.values()]
-            continue
-        (only,) = variants.values()
+            row["variants"] = [{"id": vid, "devices": sorted(x["devices"]), "value": x["value"]}
+                               for vid, x in sorted(variants.items(),
+                                                    key=lambda kv: (-len(kv[1]["devices"]), kv[0]))]
+            picked = choose.get(name)
+            if picked not in variants:
+                row["why"] = (f"the devices hold {len(variants)} different versions of its shared "
+                              "fields; the tool never picks one: choose a version, or reconcile "
+                              "their intent first")
+                row["choosable"] = True
+                continue
+            only = variants[picked]
+            row["chosen"] = picked
+            by_host = {h: v for h, _p, v in held}
+            row["changes"] = {h: changes_for(only["value"], by_host[h])
+                              for h in sorted(by_host) if h not in only["devices"]}
+        else:
+            (only,) = variants.values()
         if name in FLAG_SECTIONS:
             # A line MEASURED to enable nothing alone on a platform is never
             # proposed there (the operator, 2026-09-30: on IOS-XE `cdp run`
@@ -216,7 +287,9 @@ def propose(list_name: str, get=None) -> dict:
                     continue
         holders = sorted(only["devices"])
         holder_plats = sorted({plat for _h, plat, _v in held})
-        lacking = [(h, plat) for h, plat, _r, intent in fleet if h not in holders]
+        # A device holding ANOTHER version is not lacking: it is in `changes`.
+        lacking = [(h, plat) for h, plat, _r, intent in fleet if h not in holders
+                   and h not in (row.get("changes") or {})]
         section = {"source": source, "data": only["value"]}
         if any(plat not in holder_plats for _h, plat in lacking):
             section["platforms"] = holder_plats
@@ -264,7 +337,7 @@ def propose(list_name: str, get=None) -> dict:
             effect.append({"device": host, "inherits": gains})
     changed = _canon(doc) != _canon(current or {})
     head = _profile_blob(repo)
-    digest = hashlib.sha256(_canon({"doc": doc, "head": head,
+    digest = hashlib.sha256(_canon({"doc": doc, "head": head, "choose": sorted(choose.items()),
                                     "secrets": sorted(secrets)}).encode()).hexdigest()[:16]
     return {"list": list_name, "doc": doc, "current": current, "changed": changed,
             "sections": sections, "effect": effect, "skipped": skipped,
@@ -299,12 +372,13 @@ def document_diff(proposal: dict) -> list:
                                      "committed", "proposed", lineterm="", n=2))
 
 
-def apply(list_name: str, confirmed_hash: str, actor: str) -> dict:
-    """Recompute, refuse a proposal that moved, store each agreed secret under
-    the network's key, and commit the document as *actor*."""
+def apply(list_name: str, confirmed_hash: str, actor: str, choose: dict = None) -> dict:
+    """Recompute (with the person's *choose*, as previewed), refuse a proposal
+    that moved, store each agreed secret under the network's key, and commit
+    the document as *actor*, naming every chosen version."""
     from modules.nsot import profile as _p
 
-    now = propose(list_name)
+    now = propose(list_name, choose=choose)
     if not now["changed"]:
         return {"outcome": "nothing", "proposal": public(now),
                 "reason": "the proposal equals the committed profile"}
@@ -321,9 +395,12 @@ def apply(list_name: str, confirmed_hash: str, actor: str) -> dict:
             _p.set_secret(list_name, ref, value)
             stored.append(ref)
     proposed = [s["section"] for s in now["sections"] if s["proposed"]]
+    chosen = [f"{s['section']} as held by {', '.join(next(v['devices'] for v in s['variants'] if v['id'] == s['chosen']))}"
+              for s in now["sections"] if s.get("chosen")]
     out = _p.commit_profile(list_name, now["doc"], actor,
                             "proposed from the fleet's committed intent ("
-                            + ", ".join(proposed) + ")")
+                            + ", ".join(proposed) + ")"
+                            + (f"; chosen: {'; '.join(chosen)}" if chosen else ""))
     if not out.get("ok"):
         return {"outcome": "failed", "proposal": public(now), "secrets_stored": stored,
                 "reason": out.get("error") or "the commit did not happen"}

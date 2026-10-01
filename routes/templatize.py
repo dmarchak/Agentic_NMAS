@@ -175,12 +175,18 @@ def profile_propose_preview():
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)        # a read may derive its list
+    # A person's choice among versions of a section's shared fields.
+    choose = {k: v for k, v in (data.get("choose") or {}).items() if isinstance(v, str)}
     try:
-        p = pp.public(pp.propose(list_name))
+        p = pp.public(pp.propose(list_name, choose=choose))
     except _p.ProfileRefused as exc:
         return jsonify({"ok": False, "error": (f"{list_name}'s committed monitoring profile "
                                                f"cannot be read, so nothing is proposed: {exc}")}), 409
-    return jsonify(mask_payload({"ok": True, "list": list_name,
+    choices = [{"section": s["section"], "chosen": s.get("chosen", ""),
+                "versions": [{"id": v["id"], "devices": v["devices"]} for v in s["variants"]]}
+               for s in p["sections"] if s.get("variants")]
+    return jsonify(mask_payload({"ok": True, "list": list_name, "choose": choose,
+                                 "choices": choices,
                                  "preview": _parts(p, pp.document_diff(p), request=request)}))
 
 
@@ -203,8 +209,9 @@ def profile_propose_apply():
     confirmed = (data.get("hash") or "").strip()
     if not confirmed:
         return jsonify({"ok": False, "error": "Nothing confirmed: nothing committed"}), 400
+    choose = {k: v for k, v in (data.get("choose") or {}).items() if isinstance(v, str)}
     try:
-        out = pp.apply(list_name, confirmed, request_actor())
+        out = pp.apply(list_name, confirmed, request_actor(), choose=choose)
     except _p.ProfileRefused as exc:
         return jsonify({"ok": False, "error": f"nothing committed: {exc}"}), 409
     return jsonify(mask_payload({"ok": True, "list": list_name,

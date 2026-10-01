@@ -2052,7 +2052,7 @@ def profile_propose_preview(p: dict, diff: list, *, request) -> dict:
     for s in not_proposed:
         what_not.append({"target": p["list"], "kind": "not_proposed",
                          "text": f"Not proposed, {_section_words(s['section'])}: {s.get('why', '')}",
-                         "lines": [f"held by {', '.join(v['devices'])}: "
+                         "lines": [f"version {v['id']}, held by {', '.join(v['devices'])}: "
                                    + json.dumps(v["value"], sort_keys=True)
                                    for v in s.get("variants") or []]})
     for s in proposed:
@@ -2086,6 +2086,16 @@ def profile_propose_preview(p: dict, diff: list, *, request) -> dict:
                         else ["no device lacks it"])
                        + [f"secret {ref}: {why}" for ref, why in (s.get("secrets") or {}).items()]}
              for s in proposed]
+    for s in proposed:
+        # A version a PERSON chose (never the tool): who else changes, and how.
+        if s.get("chosen"):
+            held = next(v["devices"] for v in s["variants"] if v["id"] == s["chosen"])
+            notes.append({"title": (f"{_section_words(s['section'])}: you chose version "
+                                    f"{s['chosen']}, held by {', '.join(held)}"),
+                          "lines": [f"{h} gains: {'; '.join(c['gains']) or 'nothing'}"
+                                    + (f" · keeps its own: {'; '.join(c['keeps'])}"
+                                       if c["keeps"] else "")
+                                    for h, c in sorted((s.get("changes") or {}).items())]})
     for e in p.get("effect") or []:
         notes.append({"title": f"{e['device']}'s effective intent changes",
                       "lines": [f"gains the {_section_words(x)} section" for x in e["inherits"]]
