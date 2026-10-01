@@ -218,6 +218,7 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .check { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-2); font-size: 13px; }
 .check:last-child { border-bottom: none; }
 .check-body { flex-grow: 1; min-width: 0; }
+.check-lines { display: block; margin-top: 2px; font-size: 0.9em; overflow-wrap: anywhere; }
 .check-at { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
 .check-ok .check-ico { color: var(--ok); }
 .check-warn .check-ico { color: var(--warn-mark); }

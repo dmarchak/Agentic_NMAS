@@ -15,6 +15,10 @@
         <span class="muted">· {{ records.intent.source or 'no Source trailer' }}{% if records.intent.actor %} · {{ records.intent.actor }}{% endif %}</span>
         {%- else %}none committed <span class="muted">· nothing declares what it should look like, so it is not deployable</span>{% endif -%}
       </dd></div>
+      {%- if records.profile %}
+      <div><dt>Inherits</dt><dd>the monitoring profile <span class="mono">{{ records.profile.sha }}</span>, {{ stamp(records.profile.at) }}
+        <span class="muted">· what it SHOULD run is its own intent and this; either commit moves it</span></dd></div>
+      {%- endif %}
       <div><dt>Golden</dt><dd>
         {%- if records.golden %}<span class="mono">{{ records.golden.sha }}</span>, {{ stamp(records.golden.at) }}
         <span class="muted">· {{ records.golden.source or 'no Source trailer' }}{% if records.golden.actor %} · {{ records.golden.actor }}{% endif %}</span>
@@ -32,7 +36,9 @@
       {% for c in checks %}
       <li class="check check-{{ STATE_KIND.get(c.state, 'muted') }}">
         <span class="check-ico">{% if c.state == 'ok' %}{{ icon('check', 16) }}{% elif c.state in ('warn', 'danger') %}{{ icon('warn', 16) }}{% else %}{{ icon('dot', 16) }}{% endif %}</span>
-        <span class="check-body"><strong>{{ c.name }}</strong>: {{ c.text }}</span>
+        <span class="check-body"><strong>{{ c.name }}</strong>: {{ c.text }}
+          {%- if c.on_device %}<span class="check-lines"><span class="muted">on the device, not in intent:</span>{% for l in c.on_device %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}
+          {%- if c.in_intent %}<span class="check-lines"><span class="muted">in intent, not on the device:</span>{% for l in c.in_intent %} <code>{{ l }}</code>{% endfor %}</span>{% endif %}</span>
         {% if c.at %}<span class="check-at">{{ stamp(c.at) }}</span>{% endif %}
       </li>
       {% endfor %}

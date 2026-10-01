@@ -89,9 +89,15 @@ def _last_commit(repo: str, rel: str) -> dict:
 
 
 def records(ref, dev: dict) -> dict:
-    """The committed intent and golden, each its last commit or absent."""
+    """The committed intent and golden, each its last commit or absent, and
+    the network's monitoring profile the intent inherits (the operator,
+    2026-09-30: "Committed intent e2703d7, 5 d ago" read as unchanged for five
+    days while r6's EFFECTIVE intent changed that day through the profile)."""
+    from modules.nsot import profile as _profile
+
     host = dev.get("hostname")
     return {"intent": _last_commit(ref.repo_dir, f"host_vars/{host}.yml"),
+            "profile": _last_commit(ref.repo_dir, _profile.PROFILE_REL),
             "golden": _last_commit(ref.repo_dir, f"golden/{host}.cfg")}
 
 
@@ -181,6 +187,13 @@ def checks(ref, dev: dict) -> list:
             out.append({"name": "Drift", "state": "ok", "at": last.get("timestamp"),
                         "text": "clean at the last run"})
 
+    # Intent: does the committed golden match what the device SHOULD run (its
+    # own intent and what it inherits from the profile)? Drift says device
+    # against golden; this says golden against intent, and the two together
+    # are the difference plan 1c promises (the operator, 2026-09-30: r6 read
+    # "Drift: clean" while carrying `cdp run` its intent no longer has).
+    out.append(intent_check(ref, dev))
+
     # Freshness: is Oxidized's copy the approved one.
     value, at, why = _cached("freshness")
     rows = (((value or {}).get("lists") or {}).get(ref.name) or {}).get("devices") or []
@@ -230,6 +243,35 @@ def checks(ref, dev: dict) -> list:
                     "text": (", ".join(sorted({i.get("rule") or "?" for i in mine})) if mine
                              else "none firing")})
     return out
+
+
+def intent_check(ref, dev: dict) -> dict:
+    """The Overview's Intent row, from the deploy plan's own comparison
+    (`intent_match`) of the COMMITTED golden against effective intent: each
+    line on the device that intent lacks, and each in intent the device lacks,
+    masked on the way out."""
+    from modules import redact
+    from modules.nsot import manifest
+    from modules.nsot import repo as R
+    from modules.nsot.intent_match import explain, intent_match
+
+    host = dev.get("hostname")
+    try:
+        _ident, entry = manifest.find_by_name(ref.repo_dir, host)
+        golden = R.committed_golden_for(ref.repo_dir, entry) if entry else {}
+    except Exception as exc:                     # noqa: BLE001
+        return {"name": "Intent", "state": "unknown",
+                "text": f"the committed golden could not be read ({type(exc).__name__})"}
+    if not golden.get("text"):
+        return {"name": "Intent", "state": "unknown",
+                "text": "no committed golden to compare with its intent"}
+    r = intent_match(ref.repo_dir, ref.name, host, golden["text"],
+                     platform=(dev.get("platform") or "").strip())
+    on_device = [redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("- ")]
+    in_intent = [redact.redact_text(l[2:]) for l in r["lines"] if l.startswith("+ ")]
+    return {"name": "Intent", "state": {"match": "ok", "differs": "warn"}.get(r["state"], "unknown"),
+            "text": explain(r), "on_device": on_device, "in_intent": in_intent,
+            "commit": (golden.get("commit") or "")[:7]}
 
 
 # ---------------------------------------------------------------- Monitoring

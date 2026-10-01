@@ -105,6 +105,14 @@ EXEMPLARS = {
                   "snmp-server host 192.0.2.12 version 2c NMASPROBE4"],
         "unit": {"chain": [], "line": "snmp-server host 192.0.2.12 version 2c NMASPROBE4"},
         "teardown": ["no snmp-server community NMASPROBE4 RO"]}],
+    # A global flag. The setup is a no-op on a device that holds it already
+    # (r1 to r4, r6); the read-back says whether `no cdp run` removed the line
+    # (the platform default is off) or left `no cdp run` (the default is on:
+    # overrides_default, as `logging buffered` did on s4).
+    "global.cdp-run": [{
+        "setup": ["cdp run"],
+        "unit": {"chain": [], "line": "cdp run"},
+        "teardown": []}],
     "global.event-manager-applet": [{
         "setup": ["event manager applet NMASPROBE", " event timer watchdog time 86400",
                   " action 1.0 syslog msg \"NMASPROBE\""],

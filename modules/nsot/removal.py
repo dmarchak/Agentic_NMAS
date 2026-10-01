@@ -126,6 +126,11 @@ SHAPES = (
     # run, so refused, naming that, until then.
     Shape("global.ntp-server", "global", "leaf", r"^ntp server \S+( .+)?$"),
     Shape("global.snmp-server-host", "global", "leaf", r"^snmp-server host \S+( .+)?$"),
+    # A global FLAG (the operator, 2026-09-30: r6 holds `cdp run` its intent no
+    # longer has). Whether `no cdp run` removes the line or leaves `no cdp run`
+    # behind depends on the platform's default, so it is measured per
+    # platform like every shape, and refused until it is.
+    Shape("global.cdp-run", "global", "leaf", r"^cdp run$"),
     Shape("global.event-manager-applet", "global", "stanza", r"^event manager applet \S+( .+)?$"),
     Shape("global.ip-prefix-list-entry", "global", "leaf",
           r"^ip prefix-list \S+ seq \d+ (permit|deny) .+$"),

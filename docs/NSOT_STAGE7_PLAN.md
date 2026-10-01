@@ -492,6 +492,22 @@ session needs no reconstruction:
       again after it. If none does, the explanation in C93 stays "most likely" and the switches
       stay chronic entries.
    Teardown: `containerlab destroy` of the throwaway lab; nothing else was touched.
+8. **Can `cdp run` be removed on IOS-XE** (the operator, 2026-09-30, P.9)? r6 carries
+   `cdp run` that its effective intent no longer has (the first profile pushed it; CDP was
+   then dropped on IOS-XE because the line enables no interface there, C254), so r6 departs
+   from intent by one line and every Save All's baseline is denied until it is resolved. The
+   shape `global.cdp-run` exists and is refused until measured. On r2 directly, no throwaway
+   needed: the probe changes the running config only, never saves, holds the device and
+   restores it, and `cdp run` runs nothing on IOS-XE.
+   1. Dry run on the NMAS host: `scripts/nmas-removal-probe --shape global.cdp-run`.
+   2. `scripts/nmas-removal-probe --list Default --device r2 --shape global.cdp-run --apply
+      --actor <operator> --out /tmp/removal-cdp-r2.json`. Exit 2 is NOT RESTORED: stop and
+      read its first line.
+   3. Hand over the file. `exact` (IOS-XE's default is off, so the line goes) makes the line
+      removable through Mode B from r6's Device page, and then from r1 to r4 if CDP is
+      dropped on IOS-XE fleet-wide. `overrides_default` (the default is on, so `no cdp run`
+      stays behind) means removal is the wrong tool, and r6's line is recorded in its own
+      intent instead, saying why.
 
 **The Services mockups reviewed (the operator, 2026-09-30; brief 9b, 14.2, 15.1):**
 - **Every Grafana panel, rendered from the dashboard's own JSON model,** never a chosen few:

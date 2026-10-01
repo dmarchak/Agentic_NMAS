@@ -363,3 +363,28 @@ class TestUndoAndReadBack:
     def test_the_read_back_names_what_did_not_go(self):
         assert RM.still_present(self.LOAD, R2_BROKEN) == self.LOAD
         assert RM.still_present(self.LOAD, R2) == []
+
+
+class TestTheCdpRunFlag:
+    """r6 carries `cdp run` its effective intent no longer has (the operator,
+    2026-09-30): the profile pushed it, then dropped CDP on IOS-XE because the
+    line runs nothing there (C254). Its removal is a shape of its own, and,
+    like every shape, refused until measured on the platform."""
+
+    # r2's real config carries `cdp run` (r1 to r4 do); intent without it is r6's.
+    R6_LIKE = R2
+    INTENT = "".join(l for l in R2.splitlines(True) if l.strip() != "cdp run")
+
+    @pytest.mark.real_measurements
+    def test_refused_until_measured_naming_the_probe(self, monkeypatch):
+        rows = {"interface.load-interval": {"result": "exact", "device": "r2", "at": "x", "detail": ""}}
+        monkeypatch.setattr(RM, "measured", lambda: {"state": "ok", "by_dialect": {"cisco_iosxe": rows}})
+        cands = RM.candidates(self.INTENT, self.R6_LIKE)
+        assert [(c["chain"], c["line"]) for c in cands] == [([], "cdp run")]
+        out = program(self.R6_LIKE, [_unit([], "cdp run")])
+        assert out["commands"] == []
+        assert "scripts/nmas-removal-probe --shape global.cdp-run" in out["refused"][0]["reason"]
+
+    def test_removable_once_measured_exact(self):
+        out = program(self.R6_LIKE, [_unit([], "cdp run")])
+        assert out["commands"] == ["no cdp run"], out
