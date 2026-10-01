@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Read this repository's CI runs, and a failing run's log, with the
+operator's fine-grained Actions-read token (the operator, 2026-10-01).
+
+    nmas-ci-log runs [--limit N]          the latest runs and their verdicts
+    nmas-ci-log failed [RUN_ID]           the failing tests of RUN_ID (default:
+                                          the newest failed run): each failed
+                                          job's log, its FAILED/ERROR lines and
+                                          the assertion lines under them; the
+                                          whole log saved with --out DIR
+
+The token: ~/.config/nmas/github-actions-read.token (or NMAS_CI_TOKEN_FILE).
+It is read from that file and nowhere else, refused when the file or its
+directory can be read by anyone but its owner, and sent ONLY in the
+Authorization header of requests to https://api.github.com. Never printed,
+logged or passed on a command line. GitHub serves a job's log by REDIRECTING
+to a storage host, and Python's redirect handler forwards the Authorization
+header, so redirects are followed by hand and the storage host is asked
+without it.
+
+Its expiry is read from GitHub's own answer (the
+`github-authentication-token-expiration` header) on every call, and fewer
+than WARN_DAYS left is said first, on stderr.
+
+Exit: 0 ok; 1 the token file refused; 2 GitHub could not be asked or refused.
+"""
+
+import argparse
+import datetime
+import json
+import os
+import re
+import stat
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+API = "https://api.github.com"
+
+
+def _repo_slug() -> str:
+    """<account>/<repo> from this checkout's `origin` (the account is never
+    written into a file the public repository holds)."""
+    import subprocess
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    url = subprocess.run(["git", "-C", here, "remote", "get-url", "origin"],
+                         capture_output=True, text=True).stdout.strip()
+    m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", url)
+    return m.group(1) if m else ""
+
+
+REPO = _repo_slug()
+TOKEN_FILE = os.path.expanduser("~/.config/nmas/github-actions-read.token")
+USER_AGENT = "nmas-automation/1.0"
+WARN_DAYS = 14
+EXIT_TOKEN, EXIT_GITHUB = 1, 2
+FAILURE_LINE = re.compile(r"(?:^|\s)(FAILED|ERROR) tests/\S+|^E\s{2,}|Error: |##\[error\]")
+
+
+class TokenRefused(Exception):
+    pass
+
+
+def read_token(path: str = None) -> str:
+    """The token, from its file only. Refused when the file or its directory
+    is reachable by anyone but the owner, or the file is not a regular file."""
+    path = path or os.environ.get("NMAS_CI_TOKEN_FILE") or TOKEN_FILE
+    try:
+        st = os.stat(path, follow_symlinks=False)
+    except FileNotFoundError:
+        raise TokenRefused(f"no token file at {path}") from None
+    if not stat.S_ISREG(st.st_mode):
+        raise TokenRefused(f"{path} is not a regular file")
+    if st.st_mode & 0o077:
+        raise TokenRefused(f"{path} is mode {stat.S_IMODE(st.st_mode):04o}: refused, "
+                           "anyone but its owner can reach it (chmod 600)")
+    parent = os.stat(os.path.dirname(os.path.abspath(path)))
+    if parent.st_mode & 0o077:
+        raise TokenRefused(f"its directory is mode {stat.S_IMODE(parent.st_mode):04o}: refused "
+                           "(chmod 700)")
+    with open(path, encoding="utf-8") as fh:
+        token = fh.read().strip()
+    if not token:
+        raise TokenRefused(f"{path} is empty")
+    return token
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Hand every redirect back: the caller decides who sees the token."""
+
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def _opener():
+    return urllib.request.build_opener(_NoRedirect)
+
+
+class Answer:
+    def __init__(self, status, body, headers):
+        self.status, self.body, self.headers = status, body, headers
+
+
+def get(path: str, token: str, opener=None, timeout: int = 30) -> Answer:
+    """GET *path* from the API with the token; a redirect is followed WITHOUT
+    it (a job log lives on another host)."""
+    opener = opener or _opener()
+    url = API + path
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28", "User-Agent": USER_AGENT})
+    try:
+        r = opener.open(req, timeout=timeout)
+        return Answer(r.status, r.read(), dict(r.headers))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (301, 302, 303, 307, 308) and exc.headers.get("Location"):
+            first = dict(exc.headers)
+            loc = exc.headers["Location"]
+            if urllib.parse.urlparse(loc).scheme != "https":
+                raise RuntimeError("GitHub redirected to a non-https location: refused") from None
+            plain = urllib.request.Request(loc, headers={"User-Agent": USER_AGENT})
+            r = opener.open(plain, timeout=timeout)
+            return Answer(r.status, r.read(), {**first, **dict(r.headers)})
+        # Never the request: it carries the token.
+        raise RuntimeError(f"GitHub answered {exc.code} for {path}") from None
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"GitHub could not be asked ({exc.reason})") from None
+
+
+def expiry_warning(headers: dict, now: datetime.datetime = None) -> str:
+    """'' when the token has WARN_DAYS or more left; else what to do."""
+    raw = next((v for k, v in headers.items()
+                if k.lower() == "github-authentication-token-expiration"), "")
+    if not raw:
+        return ""
+    try:
+        when = datetime.datetime.strptime(raw.replace(" UTC", " +0000"), "%Y-%m-%d %H:%M:%S %z")
+    except ValueError:
+        return f"the token's expiry reads {raw!r}, which this cannot parse"
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    left = (when - now).days
+    if left < WARN_DAYS:
+        return (f"the CI-log token expires {when:%Y-%m-%d} ({max(left, 0)} day(s) left): ask the "
+                "operator for a new one before then")
+    return ""
+
+
+def _json(answer: Answer):
+    return json.loads(answer.body.decode("utf-8"))
+
+
+def runs(token, limit=10, opener=None):
+    a = get(f"/repos/{REPO}/actions/runs?per_page={limit}", token, opener)
+    return a, _json(a).get("workflow_runs", [])
+
+
+def failing_lines(log: str, limit: int = 60) -> list:
+    """The lines that say what failed: pytest's FAILED/ERROR lines, assertion
+    lines under them, and the runner's error lines, timestamps stripped."""
+    out = []
+    for line in log.splitlines():
+        text = re.sub(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s", "", line)
+        if FAILURE_LINE.search(text):
+            out.append(text.rstrip())
+    return out[:limit]
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="nmas-ci-log", description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("runs")
+    r.add_argument("--limit", type=int, default=10)
+    f = sub.add_parser("failed")
+    f.add_argument("run_id", nargs="?")
+    f.add_argument("--out", help="a directory to save each failed job's whole log in")
+    args = ap.parse_args(argv)
+
+    try:
+        token = read_token()
+    except TokenRefused as exc:
+        print(f"nmas-ci-log: {exc}", file=sys.stderr)
+        return EXIT_TOKEN
+    try:
+        first, items = runs(token, 30 if args.cmd == "failed" else args.limit)
+        warn = expiry_warning(first.headers)
+        if warn:
+            print(f"nmas-ci-log: WARNING: {warn}", file=sys.stderr)
+        if args.cmd == "runs":
+            for run in items[: args.limit]:
+                print(f"#{run['run_number']} {run['head_sha'][:7]} {run['status']} "
+                      f"{run.get('conclusion') or '-'} attempt {run.get('run_attempt', 1)} "
+                      f"{run['created_at']} id {run['id']}")
+            return 0
+        run_id = args.run_id or next((str(x["id"]) for x in items
+                                      if x.get("conclusion") == "failure"), "")
+        if not run_id:
+            print("nmas-ci-log: no failed run among the latest 30", file=sys.stderr)
+            return 0
+        jobs = _json(get(f"/repos/{REPO}/actions/runs/{run_id}/jobs", token))["jobs"]
+        for job in jobs:
+            print(f"job {job['id']} {job['name']}: {job.get('conclusion')}")
+            if job.get("conclusion") not in ("failure", "cancelled", "timed_out"):
+                continue
+            log = get(f"/repos/{REPO}/actions/jobs/{job['id']}/logs", token).body.decode(
+                "utf-8", "replace")
+            if args.out:
+                os.makedirs(args.out, exist_ok=True)
+                with open(os.path.join(args.out, f"job-{job['id']}.log"), "w",
+                          encoding="utf-8") as fh:
+                    fh.write(log)
+            for line in failing_lines(log):
+                print("  " + line)
+        return 0
+    except RuntimeError as exc:
+        print(f"nmas-ci-log: {exc}", file=sys.stderr)
+        return EXIT_GITHUB
+
+
+if __name__ == "__main__":
+    sys.exit(main())
