@@ -565,6 +565,49 @@ def snmp_access_modes(repo_dir: str, ref: str, hosts: list) -> dict:
             "all_read_only": totals["RW"] == 0 and totals["unqualified"] == 0}
 
 
+def ack_salt(list_name: str) -> str:
+    """This list's salt for secret fingerprints, created once and kept in
+    `remote.json` (0600, never in the repository). Salted so a fingerprint
+    shown on a screen cannot be checked against a guessed community offline."""
+    import secrets as _secrets
+
+    config = load_remote(list_name)
+    if not config:
+        return ""
+    if not config.get("ack_salt"):
+        config["ack_salt"] = _secrets.token_hex(16)
+        save_remote(list_name, config)
+    return config["ack_salt"]
+
+
+def _salt_beside(repo_dir: str, list_name: str) -> str:
+    """The salt of the list whose `remote.json` sits beside *repo_dir*
+    (`<list>/config_repo`), created there once; '' when the list has no
+    remote. Found from the repository's own path, never by resolving the
+    list's name, which creates its directory (C51)."""
+    if not repo_dir:
+        return ""
+    path = os.path.join(os.path.dirname(os.path.abspath(repo_dir)), REMOTE_FILE)
+    if not os.path.isfile(path):
+        return ""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            got = json.load(fh).get("ack_salt") or ""
+    except (OSError, ValueError):
+        return ""
+    return got or (ack_salt(list_name) if list_name else "")
+
+
+def secret_fingerprint(kind: str, value: str, salt: str) -> str:
+    """A secret's name on a screen: HMAC-SHA256 of kind and value under the
+    list's salt, 12 hex. Never the value, never reversible."""
+    import hashlib
+    import hmac
+
+    return hmac.new(bytes.fromhex(salt), f"{kind}\0{value}".encode(),
+                    hashlib.sha256).hexdigest()[:12]
+
+
 def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
     """What a push would publish, per device, per kind, with LIVENESS.
 
@@ -599,6 +642,7 @@ def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
     # collides with ordinary config text, so "is this string present" is not
     # the question. "Is this string still serving as a secret" is.
     current = set()
+    at_head = {}                         # value -> devices whose HEAD golden holds it
     proc = _run(["git", "-C", repo_dir, "ls-tree", "-r", "--name-only",
                  "HEAD", "golden"], timeout=60)
     for name in proc.stdout.splitlines():
@@ -609,6 +653,8 @@ def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
         for _kind, pattern, _recoverable in SECRET_SHAPES:
             for match in pattern.finditer(text):
                 current.add(match.groups()[-1])
+                at_head.setdefault(match.groups()[-1], set()).add(
+                    os.path.basename(name)[:-4])
     try:
         from modules.redact import known_secret_values
         current |= {v for v in known_secret_values() if v}
@@ -616,6 +662,7 @@ def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
         pass
 
     findings = {}
+    by_value = {}                        # (kind, value) -> recoverable, devices
     for sha, path in blobs.items():
         device = os.path.basename(path)[:-4]
         text = _run(["git", "-C", repo_dir, "cat-file", "-p", sha],
@@ -631,6 +678,10 @@ def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
                     "values": set(), "live": set(), "dead": set()})
                 entry["values"].add(value)
                 (entry["live"] if live else entry["dead"]).add(value)
+                if live:
+                    v = by_value.setdefault((kind, value), {
+                        "recoverable": recoverable, "devices": set()})
+                    v["devices"].add(device)
 
     rows = []
     for entry in findings.values():
@@ -644,7 +695,21 @@ def scan_history_secrets(repo_dir: str, list_name: str) -> dict:
 
     gated = sorted({r["kind"] for r in rows
                     if r["recoverable"] and r["live"]})
-    return {"rows": rows, "blobs_scanned": len(blobs), "gated_kinds": gated}
+    # Each LIVE value by its salted fingerprint, never the value, with where
+    # it appears (the devices whose history holds it, and whose HEAD golden
+    # holds it now). The acknowledgement is about these: another copy of an
+    # acknowledged value publishes nothing new (the operator, 2026-10-01).
+    salt = _salt_beside(repo_dir, list_name)
+    live_values = []
+    if salt:
+        for (kind, value), v in by_value.items():
+            live_values.append({
+                "kind": kind, "fingerprint": secret_fingerprint(kind, value, salt),
+                "recoverable": v["recoverable"], "devices": sorted(v["devices"]),
+                "at_head": sorted(at_head.get(value, ()))})
+        live_values.sort(key=lambda x: (x["kind"], x["fingerprint"]))
+    return {"rows": rows, "blobs_scanned": len(blobs), "gated_kinds": gated,
+            "live_values": live_values}
 
 
 def first_push_preview(list_name: str, repo_dir: str = "") -> dict:
@@ -706,7 +771,10 @@ def gated_summary(scan: dict) -> dict:
     for row in scan["rows"]:
         if row["recoverable"] and row["live"]:
             counts[row["kind"]] = counts.get(row["kind"], 0) + row["live"]
-    return {"kinds": sorted(counts), "counts": counts}
+    values = {v["fingerprint"]: {"kind": v["kind"], "devices": v["devices"],
+                                 "at_head": v.get("at_head", [])}
+              for v in scan.get("live_values") or [] if v["recoverable"]}
+    return {"kinds": sorted(counts), "counts": counts, "values": values}
 
 
 def acknowledge(list_name: str, *, actor: str, actor_kind: str,
@@ -734,10 +802,17 @@ def acknowledge(list_name: str, *, actor: str, actor_kind: str,
     head = _run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
                 timeout=60).stdout.strip()
 
+    # Re-read AFTER the scan: the scan may have created the list's salt, and
+    # saving the copy read before it would drop the salt, changing every
+    # fingerprint and making the next push hold on secrets already accepted.
+    config = load_remote(list_name) or config
     config["acknowledged_secrets"] = {
         "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "by": actor, "by_kind": actor_kind,
         "kinds": gated["kinds"], "counts": gated["counts"],
+        # Each acknowledged secret by fingerprint, with where it appeared:
+        # what the gate compares, and what the card shows (never a value).
+        "values": gated["values"],
         "commit": head,
     }
     save_remote(list_name, config)
@@ -750,9 +825,19 @@ def acknowledge(list_name: str, *, actor: str, actor_kind: str,
 def acknowledgement_covers(list_name: str, repo_dir: str = "") -> dict:
     """Does the recorded acknowledgement still cover what would be published?
 
-    Re-scanned, not trusted. A NEW gated kind, or a HIGHER count of one
-    already acknowledged, means a person agreed to publish less than is now
-    on offer — so it does not carry.
+    Re-scanned, not trusted. A NEW gated kind, or a secret VALUE not among
+    those acknowledged (by fingerprint), means a person agreed to publish
+    less than is now on offer, so it does not carry.
+
+    **Another copy of an acknowledged value is not new** (the operator,
+    2026-10-01): r6 received the community eight devices already carried,
+    and the old rule (any rise in a kind's COUNT of occurrences) held four
+    pushes for four hours. Under that rule every onboarding and profile
+    apply froze pushes until someone re-acknowledged, which trains people to
+    acknowledge without reading. A copy is reported (``copies``), never held.
+
+    An acknowledgement recorded before fingerprints (no ``values``) keeps the
+    count rule until it is made once more, and says so.
 
     A count that FELL, or a kind that disappeared, still carries: less is
     being published than was agreed to.
@@ -770,11 +855,26 @@ def acknowledgement_covers(list_name: str, repo_dir: str = "") -> dict:
     repo_dir = repo_dir or os.path.join(get_list_data_dir(list_name),
                                         "config_repo")
     now = gated_summary(scan_history_secrets(repo_dir, list_name))
-    was = {"kinds": ack.get("kinds") or [], "counts": ack.get("counts") or {}}
+    was = {"kinds": ack.get("kinds") or [], "counts": ack.get("counts") or {},
+           "values": ack.get("values")}
 
     new_kinds = sorted(set(now["kinds"]) - set(was["kinds"]))
     risen = sorted(k for k, n in now["counts"].items()
                    if n > was["counts"].get(k, 0))
+    if was["values"] is not None:
+        new_values = {fp: v for fp, v in now["values"].items() if fp not in was["values"]}
+        if new_kinds or new_values:
+            named = "; ".join(f"{v['kind']} {fp} (in {', '.join(v['devices']) or '?'})"
+                              for fp, v in sorted(new_values.items()))
+            return {"ok": False, "needs": "re-acknowledgement",
+                    "new_kinds": new_kinds, "new_values": new_values, "risen": risen,
+                    "was": was, "now": now,
+                    "reason": "a secret not acknowledged would be published: " + "; ".join(
+                        x for x in ((f"new kinds {', '.join(new_kinds)}" if new_kinds else ""),
+                                    named) if x)}
+        return {"ok": True, "was": was, "now": now,
+                # More occurrences of acknowledged values: said, never held.
+                "copies": risen}
     if new_kinds or risen:
         return {"ok": False, "needs": "re-acknowledgement",
                 "new_kinds": new_kinds, "risen": risen,
@@ -783,7 +883,10 @@ def acknowledgement_covers(list_name: str, repo_dir: str = "") -> dict:
                     "what would be published has grown since it was "
                     f"acknowledged: {'new kinds ' + ', '.join(new_kinds) if new_kinds else ''}"
                     f"{' and ' if new_kinds and risen else ''}"
-                    f"{'more ' + ', '.join(risen) if risen else ''}")}
+                    f"{'more ' + ', '.join(risen) if risen else ''} (this acknowledgement "
+                    "predates fingerprints, so it counts occurrences: acknowledge once "
+                    "more to record each secret's fingerprint, and another copy of an "
+                    "acknowledged secret will no longer hold a push)")}
     return {"ok": True, "was": was, "now": now}
 
 

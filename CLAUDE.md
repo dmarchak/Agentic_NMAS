@@ -331,7 +331,9 @@ tracked in git.
   `origin`, never the push hook's record) every 120 s and after every commit,
   and the tool's tags the remote lacks. A push the hook HELD at the publication gate
   (C278) is recorded (`remote.record_push_held`) and drawn red at once with its reason and
-  "acknowledge, then push"; an unpushed commit with no hold is red past 10 min; a tag
+  "acknowledge, then push". The gate holds only for a NEW secret value or kind (C280:
+  each live secret by a salted fingerprint, listed with its devices on the Remote card;
+  another copy of an acknowledged value is never held). An unpushed commit with no hold is red past 10 min; a tag
   a hook call named and could not send is kept (`pending_tags`) and sent by the next push,
   never computed from what the remote lacks (a withdrawn baseline would ride along);
   its one sentence, `describe()`, is drawn by the Git tab ("Everything is

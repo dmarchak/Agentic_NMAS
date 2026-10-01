@@ -5662,7 +5662,12 @@ the environment does.
     device must run a community. REQUIRED before Stage 10's release. **Designed the same
     day, tied to the monitoring profile (P.9): the profile's SNMP section produces secure SNMP
     by default.** Our lab's v2c (one shared community, no view, no ACL) is exactly what the
-    program must never generate for a real network.
+    program must never generate for a real network. **It is also the real fix for the
+    publication gate's community (C280, the operator, 2026-10-01):** that gate now holds a
+    push only for a NEW secret value, so another copy of an acknowledged community passes,
+    but the community is still in every golden and so in the published history. SNMPv3
+    removes it from the configurations altogether; until then the acknowledgement is what
+    stands between it and the remote.
     - **authPriv**: SHA-2 authentication where the platform accepts it, else SHA; AES
       privacy. **Measured per platform first** (IOS-XE 17 and vIOS 15 accept different
       sets), recorded with evidence the way `removal_measured.json` and

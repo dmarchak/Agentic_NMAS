@@ -423,3 +423,18 @@ class TestAHeldPushIsSaidAndItsTagsFollow:
         late = P.describe(dict(base, oldest_at=now - P.UNPUSHED_DANGER_S), now=now)
         assert fresh["level"] == "warning" and "has not sent it" not in fresh["clause"]
         assert late["level"] == "danger" and "auto-push has not sent it" in late["clause"]
+
+
+def test_the_shipped_card_lists_each_acknowledged_secret_by_fingerprint():
+    """The acknowledgement stays reviewable: kind, fingerprint and devices,
+    escaped; an acknowledgement before fingerprints says so (2026-10-01)."""
+    import dukpy
+    from tests.payload_render import lift, shipped
+
+    js = (lift(shipped("partials__golden_repo.1.js"), "_gEsc") + "\n"
+          + lift(shipped("partials__golden_repo.2.js"), "remoteAckValuesHtml"))
+    html = dukpy.evaljs(js + "\nremoteAckValuesHtml({'a1b2c3d4e5f6': {kind: 'snmp_community', "
+                             "devices: ['r1', '<r6>']}})")
+    assert "snmp_community" in html and "a1b2c3d4e5f6" in html and "r1, &lt;r6&gt;" in html
+    old = dukpy.evaljs(js + "\nremoteAckValuesHtml(undefined)")
+    assert "before secrets had fingerprints" in old

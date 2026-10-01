@@ -64,10 +64,11 @@ async function loadRemotePanel() {
                 : '<span class="badge bg-secondary-subtle text-secondary-emphasis">off</span>'}</div>
           ${ack ? `<div class="mt-1">acknowledged ${_gEsc(ack.at)} by
                      <code>${_gEsc(ack.by)}</code> (${_gEsc(ack.by_kind)}) —
-                     ${_gEsc((ack.kinds || []).join(', '))}</div>` : ''}
-          ${held ? `<div class="alert alert-warning py-1 px-2 mt-2 mb-0 small">
-                      <strong>Auto-push HELD.</strong> ${_gEsc(covers.reason || '')}
-                      Re-acknowledge to resume.</div>` : ''}
+                     ${_gEsc((ack.kinds || []).join(', '))}</div>
+                   ${remoteAckValuesHtml(ack.values)}` : ''}
+          ${held ? `<div class="alert alert-danger py-1 px-2 mt-2 mb-0 small">
+                      <strong>Auto-push HELD.</strong> ${_gEsc(covers.reason || '')}.
+                      Acknowledge to resume.</div>` : ''}
         </div>
         <div class="mt-2 d-flex gap-2 flex-wrap">
           <button class="btn btn-outline-secondary btn-sm" onclick="remoteVerify()">Verify (read-only)</button>
@@ -87,6 +88,24 @@ async function loadRemotePanel() {
       Remote card failed to load: ${_gEsc(String(e && e.message || e))}</div>`;
     return false;
   }
+}
+
+/* Each acknowledged secret by kind and FINGERPRINT (a salted hash, never the
+   value) with the devices it appears in, so an acknowledgement stays
+   reviewable (the operator, 2026-10-01). One recorded before fingerprints
+   says so. PURE. */
+function remoteAckValuesHtml(values) {
+  if (values === undefined || values === null) {
+    return '<div class="text-muted small">recorded before secrets had fingerprints: '
+         + 'acknowledge once more to list each one here</div>';
+  }
+  const fps = Object.keys(values).sort();
+  if (!fps.length) return '<div class="text-muted small">no live secret was acknowledged</div>';
+  return '<ul class="small mb-0 ps-3" data-ack-values>' + fps.map(function (fp) {
+    const v = values[fp] || {};
+    return '<li><code>' + _gEsc(v.kind || '?') + '</code> <code>' + _gEsc(fp) + '</code> in '
+         + _gEsc((v.devices || []).join(', ') || '?') + '</li>';
+  }).join('') + '</ul>';
 }
 
 /* Whether the history is ON the remote (C223): the server's one sentence
@@ -203,6 +222,7 @@ window.remotePreview = async function () {
                               : '<span class="text-muted">not gated</span>'}</td>
       </tr>`).join('')}
     </tbody></table>
+    ${remoteAckValuesHtml((d.gated || {}).values || {})}
     <div class="text-muted">Rotating these after pushing does not unpublish them.</div>`);
 };
 
@@ -219,6 +239,11 @@ window.remoteAcknowledge = async function () {
   // single-quoted, and the parse error took the whole script block with it.
   const lines = ['Publishing to ' + d.owner_repo + ' exposes, in history:', ''];
   kinds.forEach(k => lines.push('  ' + k + ' x' + counts[k]));
+  // Each secret by fingerprint (never its value) and where it appears: what
+  // this acknowledgement accepts, and what a later push is compared against.
+  const values = (d.gated && d.gated.values) || {};
+  Object.keys(values).sort().forEach(fp => lines.push(
+    '    ' + values[fp].kind + ' ' + fp + ' in ' + (values[fp].devices || []).join(', ')));
   lines.push('', 'Rotating them afterwards does not unpublish them.', '',
              'Type the gated kinds to acknowledge:', '  ' + kinds.join(' '));
   const typed = prompt(lines.join('\n'));

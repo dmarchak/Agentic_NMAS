@@ -585,19 +585,61 @@ class TestTheAcknowledgementIsBoundToWhatItAcknowledged:
         assert covers["new_kinds"] == ["user_password"]
         assert covers["needs"] == "re-acknowledgement"
 
-    def test_a_higher_count_of_a_known_kind_is_not_covered(self, lab, monkeypatch):
+    def _valued(self, kinds_counts, values):
+        out = self._scan(kinds_counts)
+        out["live_values"] = [{"kind": k, "fingerprint": fp, "recoverable": True,
+                               "devices": devs, "at_head": devs} for k, fp, devs in values]
+        return out
+
+    def test_another_copy_of_an_acknowledged_value_is_reported_never_held(self, lab,
+                                                                         monkeypatch):
+        """The operator, 2026-10-01: r6 received the community eight devices
+        already carried, and the count rule held four pushes for four hours."""
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "abc\n", "stderr": "", "returncode": 0})())
+        eight = [f"r{i}" for i in range(1, 9)]
+        monkeypatch.setattr(R, "scan_history_secrets", lambda *a, **k: self._valued(
+            {"snmp_community": 9}, [("snmp_community", "aaaaaaaaaaaa", eight)]))
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+
+        monkeypatch.setattr(R, "scan_history_secrets", lambda *a, **k: self._valued(
+            {"snmp_community": 10}, [("snmp_community", "aaaaaaaaaaaa", eight + ["r6"])]))
+        covers = R.acknowledgement_covers("default")
+        assert covers["ok"] is True and covers["copies"] == ["snmp_community"]
+
+    def test_a_new_value_of_a_known_kind_is_held_naming_it(self, lab, monkeypatch):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr(R, "_run", lambda *a, **k: type(
+            "P", (), {"stdout": "abc\n", "stderr": "", "returncode": 0})())
+        monkeypatch.setattr(R, "scan_history_secrets", lambda *a, **k: self._valued(
+            {"snmp_community": 9}, [("snmp_community", "aaaaaaaaaaaa", ["r1"])]))
+        R.acknowledge("default", actor="a@b", actor_kind="person")
+
+        monkeypatch.setattr(R, "scan_history_secrets", lambda *a, **k: self._valued(
+            {"snmp_community": 9}, [("snmp_community", "aaaaaaaaaaaa", ["r1"]),
+                                    ("snmp_community", "bbbbbbbbbbbb", ["r6"])]))
+        covers = R.acknowledgement_covers("default")
+        assert covers["ok"] is False and list(covers["new_values"]) == ["bbbbbbbbbbbb"]
+        assert "snmp_community bbbbbbbbbbbb (in r6)" in covers["reason"]
+
+    def test_an_acknowledgement_before_fingerprints_keeps_the_count_rule_and_says_so(
+            self, lab, monkeypatch):
         R.adopt("default", ssh_alias="a", owner="o", repo="r")
         monkeypatch.setattr(R, "_run", lambda *a, **k: type(
             "P", (), {"stdout": "abc\n", "stderr": "", "returncode": 0})())
         monkeypatch.setattr(R, "scan_history_secrets",
                             lambda *a, **k: self._scan({"snmp_community": 9}))
         R.acknowledge("default", actor="a@b", actor_kind="person")
+        cfg = R.load_remote("default")
+        del cfg["acknowledged_secrets"]["values"]           # the host's 05:08 record
+        R.save_remote("default", cfg)
 
         monkeypatch.setattr(R, "scan_history_secrets",
                             lambda *a, **k: self._scan({"snmp_community": 10}))
         covers = R.acknowledgement_covers("default")
-        assert covers["ok"] is False
-        assert covers["risen"] == ["snmp_community"]
+        assert covers["ok"] is False and covers["risen"] == ["snmp_community"]
+        assert "predates fingerprints" in covers["reason"]
 
     def test_a_lower_count_still_carries(self, lab, monkeypatch):
         """Less is being published than was agreed to."""
@@ -934,3 +976,65 @@ class TestAListIsNotItsOwnRival:
         assert out["ok"] is False
         assert out["detail"] == "other", "it must name the list that owns it"
         assert "must not share" in out["fix"]
+
+
+class TestThePublicationGateIsKeyedOnSecretValues:
+    """The operator, 2026-10-01, through the REAL scan on a real repository:
+    a device receiving a community the fleet already carries publishes no new
+    secret and holds nothing; a new community value is held, named by its
+    fingerprint and where it appears; no value is ever stored or shown."""
+
+    COMMUNITY = "FixtureCommunityA"
+
+    def _commit(self, repo, name, text):
+        (repo / "golden" / f"{name}.cfg").write_text(text, encoding="utf-8")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", name)
+
+    def _cfg(self, host, community):
+        return f"hostname {host}\nsnmp-server community {community} RO 99\n"
+
+    @pytest.fixture
+    def repo(self, lab, monkeypatch):
+        R.adopt("default", ssh_alias="a", owner="o", repo="r")
+        monkeypatch.setattr("modules.redact.known_secret_values", lambda: set())
+        work = lab / "default" / "config_repo"
+        (work / "golden").mkdir(parents=True)
+        _git(work, "init", "-q")
+        for host in ("r1", "r2"):
+            self._commit(work, host, self._cfg(host, self.COMMUNITY))
+        R.acknowledge("default", actor="a@b", actor_kind="person", repo_dir=str(work))
+        return work
+
+    def test_the_acknowledgement_names_each_secret_by_fingerprint_and_where(self, repo):
+        ack = R.load_remote("default")["acknowledged_secrets"]
+        (fp, v), = ack["values"].items()
+        assert v["kind"] == "snmp_community" and v["devices"] == ["r1", "r2"]
+        assert len(fp) == 12 and self.COMMUNITY not in json.dumps(R.load_remote("default"))
+        assert fp != R.secret_fingerprint("snmp_community", self.COMMUNITY, "00" * 16), \
+            "salted: not the bare hash a guess could be checked against"
+
+    def test_another_device_carrying_the_same_community_holds_nothing(self, repo):
+        self._commit(repo, "r6", self._cfg("r6", self.COMMUNITY))
+        covers = R.acknowledgement_covers("default", str(repo))
+        assert covers["ok"] is True and covers["copies"] == ["snmp_community"]
+        cfg = R.load_remote("default")
+        cfg["auto_push"] = True
+        R.save_remote("default", cfg)
+        assert R.auto_push_decision("default", str(repo))["push"] is True
+
+    def test_a_new_community_value_is_held_naming_its_fingerprint_and_device(self, repo):
+        self._commit(repo, "r6", self._cfg("r6", "FixtureCommunityB"))
+        covers = R.acknowledgement_covers("default", str(repo))
+        assert covers["ok"] is False
+        (fp, v), = covers["new_values"].items()
+        assert v["devices"] == ["r6"] and f"snmp_community {fp} (in r6)" in covers["reason"]
+        assert "FixtureCommunityB" not in json.dumps(covers)
+
+    def test_the_salt_survives_the_acknowledgement(self, repo):
+        """acknowledge() re-reads after the scan created the salt: saving its
+        earlier copy would drop the salt and every fingerprint would change."""
+        salt = R.load_remote("default")["ack_salt"]
+        R.acknowledge("default", actor="a@b", actor_kind="person", repo_dir=str(repo))
+        assert R.load_remote("default")["ack_salt"] == salt
+        assert R.acknowledgement_covers("default", str(repo))["ok"] is True
