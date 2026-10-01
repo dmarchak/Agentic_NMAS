@@ -1,10 +1,8 @@
 # TEMPLATE (2026-09-29): the repository is public, so the host's user and paths
 # are placeholders. Render it, never copy it:
 # NSOT_PLAN.md P.2 -- installed as a SYSTEM unit (no linger needed).
-#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-netbox-backup.*
-#   sudo install -m 0644 /tmp/nmas-units/nmas-netbox-backup.* /etc/systemd/system/
-#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-netbox-restore-test.*
-#   sudo install -m 0644 /tmp/nmas-units/nmas-netbox-restore-test.* /etc/systemd/system/
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-netbox-backup.service deploy/systemd/nmas-netbox-backup.timer && sudo install -m 0644 "$d/nmas-netbox-backup.service" "$d/nmas-netbox-backup.timer" /etc/systemd/system/
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-netbox-restore-test.service deploy/systemd/nmas-netbox-restore-test.timer && sudo install -m 0644 "$d/nmas-netbox-restore-test.service" "$d/nmas-netbox-restore-test.timer" /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now nmas-netbox-backup.timer nmas-netbox-restore-test.timer
 [Unit]

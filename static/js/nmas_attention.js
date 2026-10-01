@@ -15,9 +15,9 @@
   }
 
   var BADGE = {danger: 'bg-danger', warning: 'bg-warning text-dark',
-               unknown: 'bg-secondary'};
+               unknown: 'bg-secondary', info: 'bg-info text-dark'};
   var LEVEL_WORDS = {danger: 'needs action', warning: 'check',
-                     unknown: 'cannot tell'};
+                     unknown: 'cannot tell', info: 'information'};
 
   function when(iso) {
     return iso ? esc(iso.replace('T', ' ').replace('Z', ' UTC')) : 'not recorded';

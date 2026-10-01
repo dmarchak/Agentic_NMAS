@@ -429,7 +429,9 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
         out["folded"] = fold_summary(dev.get("hostname", ""), folds)
     out.update(device_value=device_value, drawn=[p for p in drawn if p.get("id") not in
                                                  {f["id"] for f in folds}],
-               left_out=left_out, layout=panels.layout(drawn, [f["id"] for f in folds]),
+               left_out=left_out,
+               layout=panels.drawn_elsewhere(panels.layout(drawn, [f["id"] for f in folds]), uid,
+                                             _grafana_url()),
                seconds=seconds, step=panels.step_for(seconds), range_words=panels.describe(seconds))
     return out
 
@@ -530,6 +532,9 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
     panel = next((p for p in drawn if p.get("id") == panel_id), None)
     if panel is None:
         return {"ok": False, "error": f"panel {panel_id} is not a device panel of {uid}"}, 404
+    if panel.get("type") not in panels.NATIVE_TYPES:
+        return {"ok": False, "error": (f"panel {panel_id} is a {panel.get('type')} panel: Grafana "
+                                       "draws it, this page does not")}, 400
     try:
         seconds = panels.parse_range(range_text)
         fill = panels.variable_values(dash, cfg["variable"], variable_value(dev, cfg["value_from"]),
@@ -557,4 +562,107 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
         payload["no_value"] = (f"No stream: {streams[1]}, and nothing arrived for this panel in "
                                "the last 5 minutes")
         payload["no_value_kind"] = "danger"
+    return payload, 200
+
+
+# ---------------------------------------------------------------------------
+# The Monitoring page: the FLEET dashboard (NSOT_GUI_BRIEF 14.2; the operator,
+# 2026-10-01: Monitoring opens on the fleet Grafana dashboard, with the
+# selector, and Coverage is a tab beside it). The same stored models, the same
+# panel logic and the same renderer as the device page, with no device: every
+# panel of the chosen dashboard is drawn, its variables at their own values.
+# ---------------------------------------------------------------------------
+
+def _grafana_url() -> str:
+    """Grafana's address, for a link a person opens (reachable from the LAN only)."""
+    from modules.settings_schema import get_setting
+    return (get_setting("grafana_url", "") or "").strip()
+
+
+def fleet_dashboard_uid() -> str:
+    from modules.settings_schema import get_setting
+    return (get_setting("grafana_fleet_dashboard_uid", "") or "").strip()
+
+
+def _fleet_panels(dash: dict) -> list:
+    return [p for p in dash.get("panels") or [] if p.get("type") != "row"]
+
+
+def fleet_monitoring(chosen_uid: str = "", range_text: str = "1h", client=None) -> dict:
+    """Everything the Monitoring page draws, or the state that replaces it: the
+    dashboards not read yet, no fleet dashboard set, the UID gone, a range
+    refused, or the panels. The selector lists EVERY dashboard Grafana holds;
+    choosing one changes the view, never the setting."""
+    default = fleet_dashboard_uid()
+    value, at, why = _cached("grafana-dashboards")
+    out = {"default": default, "value_at": at, "range": range_text, "offered": [], "state": "ok"}
+    if value is None:
+        out.update(state="not_read", why=why)
+        return out
+    dashboards, datasources = value.get("dashboards") or {}, value.get("datasources") or []
+    out["offered"] = sorted(({"uid": uid, "title": d.get("title") or uid}
+                             for uid, d in dashboards.items()), key=lambda d: d["title"].lower())
+    uid = chosen_uid or default
+    if not uid:
+        out.update(state="not_set")
+        return out
+    dash, live = _dashboard(dashboards, uid, client)
+    if dash is None:
+        out.update(state="uid_gone" if live.get("state") == "absent" else "uid_unconfirmed",
+                   uid=uid, live=live)
+        return out
+    if live:
+        out["live"] = live
+    out.update(dashboard={"uid": uid, "title": dash["title"]}, is_default=(uid == default))
+    try:
+        seconds = panels.parse_range(range_text)
+        panels.check_range(seconds, "prometheus")
+    except panels.RangeRefused as exc:
+        out.update(state="range_refused", why=str(exc))
+        return out
+    drawn = _fleet_panels(dash)
+    out.update(drawn=drawn, layout=panels.drawn_elsewhere(panels.layout(drawn), uid, _grafana_url()),
+               seconds=seconds,
+               step=panels.step_for(seconds), range_words=panels.describe(seconds),
+               variables={k: v for k, v in panels.variable_values(dash, "", "", datasources).items()})
+    return out
+
+
+def fleet_panel_data(uid: str, panel_id: int, range_text: str, client=None) -> tuple:
+    """(payload, http status) for one panel of a fleet dashboard. Only a panel
+    the dashboard holds; the query is the dashboard's, with its variables at
+    their own values, never anything the browser sends."""
+    value, _at, why = _cached("grafana-dashboards")
+    if value is None:
+        return {"ok": False, "error": f"the dashboards are not read yet: {why}"}, 503
+    dash, live = _dashboard(value.get("dashboards") or {}, uid, client)
+    if dash is None:
+        if live.get("state") == "absent":
+            return {"ok": False, "error": f"Grafana answered, asked now: no dashboard with UID {uid}"}, 404
+        return {"ok": False, "error": (f"{uid} is not in the stored dashboard list, and Grafana could "
+                                       f"not be asked now: {live.get('error')}")}, 503
+    panel = next((p for p in _fleet_panels(dash) if p.get("id") == panel_id), None)
+    if panel is None:
+        return {"ok": False, "error": f"{uid} holds no panel {panel_id}"}, 404
+    if panel.get("type") not in panels.NATIVE_TYPES:
+        return {"ok": False, "error": (f"panel {panel_id} is a {panel.get('type')} panel: Grafana "
+                                       "draws it, this page does not")}, 400
+    datasources = value.get("datasources") or []
+    try:
+        seconds = panels.parse_range(range_text)
+        panels.check_range(seconds, "prometheus")
+        fill = panels.variable_values(dash, "", "", datasources)
+        body = panels.build_request(panel, dash, fill, seconds,
+                                    panels.default_datasource(datasources, "prometheus"))
+    except panels.RangeRefused as exc:
+        return {"ok": False, "error": str(exc)}, 400
+    if client is None:
+        from modules.integrations.grafana import GrafanaIntegration
+        client = GrafanaIntegration()
+    got = client.query(body)
+    if not got.get("ok"):
+        return {"ok": False, "error": f"Grafana: {got.get('error')}"}, 502
+    payload = panels.render_payload(panel, got["body"], seconds)
+    payload["errors"] = panels.answer_errors(got["body"])
+    payload["read_at"] = _iso(time.time())
     return payload, 200

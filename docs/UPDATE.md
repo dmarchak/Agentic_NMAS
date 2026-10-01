@@ -106,12 +106,10 @@ has sudo):
 ```bash
 cd <checkout>                                     # the checkout flask-app.service runs
 python3 -c 'import yaml' && echo yaml ok          # the gate's copy needs PyYAML in the system python
-scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-update.path deploy/systemd/nmas-update.service
-cat /tmp/nmas-units/nmas-update.path /tmp/nmas-units/nmas-update.service   # read what you install
 sudo install -o root -g root -m 0755 deploy/update/nmas-update /usr/local/sbin/nmas-update
 sudo install -d -o root -g root -m 0755 /usr/local/lib/nmas-update
 sudo install -o root -g root -m 0644 scripts/nmas-deploy /usr/local/lib/nmas-update/nmas-deploy
-sudo install -o root -g root -m 0644 /tmp/nmas-units/nmas-update.path /tmp/nmas-units/nmas-update.service /etc/systemd/system/
+d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-update.path deploy/systemd/nmas-update.service && cat "$d/nmas-update.path" "$d/nmas-update.service" && sudo install -o root -g root -m 0644 "$d/nmas-update.path" "$d/nmas-update.service" /etc/systemd/system/
 sudo install -d -o root -g root -m 0755 /var/lib/nmas-update
 install -d -m 0700 data/update/requests data/update/staging        # as the service user, NOT sudo
 sudo systemctl daemon-reload
@@ -179,11 +177,17 @@ Re-install from the checkout, now at the new commit:
 cd <checkout>
 sudo install -o root -g root -m 0755 deploy/update/nmas-update /usr/local/sbin/nmas-update
 sudo install -o root -g root -m 0644 scripts/nmas-deploy /usr/local/lib/nmas-update/nmas-deploy
-scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-update.path deploy/systemd/nmas-update.service
-sudo install -o root -g root -m 0644 /tmp/nmas-units/nmas-update.path /tmp/nmas-units/nmas-update.service /etc/systemd/system/
+d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-update.path deploy/systemd/nmas-update.service && cat "$d/nmas-update.path" "$d/nmas-update.service" && sudo install -o root -g root -m 0644 "$d/nmas-update.path" "$d/nmas-update.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 scripts/nmas-update-check
 ```
+
+**Units are rendered into a FRESH directory and installed by name, in one line**
+(the operator, 2026-10-01). A host step once installed `/tmp/nmas-units/*.service`, and that
+shared folder still held units rendered for earlier installs, which the glob would have
+reinstalled silently. `scripts/nmas-render-units` refuses an `--out` that already holds a file,
+`scripts/nmas-host-step-check` refuses a host step that installs from a glob or a fixed shared
+folder, and one line means nothing depends on a variable set on an earlier line.
 
 ## A release that needs a host step
 

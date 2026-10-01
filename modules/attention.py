@@ -35,8 +35,10 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: Worst first. The browser draws the level; it never decides it.
-LEVELS = ("danger", "warning", "unknown")
+#: Worst first. The browser draws the level; it never decides it. `info` is
+#: NOT a problem (the operator, 2026-10-01: "a new release being available
+#: isn't a problem"): drawn apart, and never counted as needing attention.
+LEVELS = ("danger", "warning", "unknown", "info")
 
 
 class RowRefused(ValueError):
@@ -1336,7 +1338,45 @@ def netbox_secrets_source(cached=None) -> dict:
 # Source: history committed and not on its remote (C223)
 # ---------------------------------------------------------------------------
 
-_PUSHED_LEVEL = {"behind": "warning", "behind_unfetched": "warning", "not_on_remote": "warning"}
+_PUSHED_LEVEL = {"behind": "info", "behind_unfetched": "info", "not_on_remote": "warning"}
+
+#: How long the host may run behind the pushed tip before that is itself
+#: something wrong: 2.5x the slowest push-to-deploy wait measured on the host
+#: (115 deploys to 2026-10-01: median 0.1 h, 90th percentile 0.2 h, slowest 8.0 h).
+BEHIND_TOO_LONG_S = 20 * 3600
+
+
+def pushed_level(v: dict, now: float = None) -> tuple:
+    """``(level, why)`` for the app-pushed row. An update being available is
+    INFORMATION; it is a WARNING only when something is actually wrong: CI
+    failed for the release, the tip could not be fetched, the host has run
+    behind for longer than BEHIND_TOO_LONG_S, or the running commit is not on
+    the remote at all. *why* names the reason ("" for information)."""
+    now = time.time() if now is None else now
+    state = v.get("state")
+    if state == "not_on_remote":
+        return "warning", "the running commit is not on the remote"
+    ci = v.get("ci") or {}
+    if ci.get("tip") == v.get("tip") and ci.get("state") in ("failed", "cancelled"):
+        return "warning", f"CI {ci['state']} for {str(v.get('tip') or '')[:7]}"
+    if state == "behind_unfetched" and v.get("fetch_error"):
+        return "warning", f"the new release could not be fetched: {v['fetch_error']}"
+    since = _ts(v.get("behind_since"))
+    if since is not None and now - since > BEHIND_TOO_LONG_S:
+        return "warning", (f"the host has run behind for {int((now - since) // 3600)} h, longer "
+                           f"than the {BEHIND_TOO_LONG_S // 3600} h a release here has ever "
+                           "waited (2.5x the slowest of 115 measured)")
+    return "info", ""
+
+
+def update_words(v: dict) -> str:
+    """The row's headline, in a person's words: "Update available — 1a587a6 →
+    2986b5c (2 new commits)"."""
+    run, tip = str(v.get("running") or "")[:7], str(v.get("tip") or "")[:7]
+    n = v.get("behind")
+    count = (f"{n} new commit{'' if n == 1 else 's'}" if n is not None else
+             "how many new commits is not known until it is fetched")
+    return f"Update available — {run} → {tip} ({count})"
 
 
 def pushed_source(cached=None) -> dict:
@@ -1376,15 +1416,19 @@ def pushed_source(cached=None) -> dict:
         # THE UPDATE BUTTON (the operator, 2026-09-30): the app knows it is out
         # of date, so its action is the Update operation, never a terminal.
         tip = str(v.get("tip") or "")
-        action = ({"label": f"Update to {tip[:10]}: preview the commits and CI's verdict, "
-                            "then confirm", "open": "app_update"}
+        action = ({"label": f"Preview the commits and CI's verdict for {tip[:7]}, then "
+                            "confirm", "open": "app_update"}
                   if v["state"] != "not_on_remote" else
                   {"label": "The host should run only pushed commits: find where this one came "
                             "from before updating over it", "known": False})
-        cause = (f"origin/{v.get('branch') or 'main'} was asked with git ls-remote; "
-                 "the host moves only when a person updates it")
+        # How and when it was checked: the evidence, drawn behind a disclosure
+        # for information (the operator, 2026-10-01), in the row for a warning.
+        cause = (f"origin/{v.get('branch') or 'main'} was asked with git ls-remote at "
+                 f"{good.get('value_at') or '?'}; the host moves only when a person updates it")
         last = (update_op.outcome().get("value") or {})
-        level = _PUSHED_LEVEL[v["state"]]
+        level, why = pushed_level(v)
+        if why:
+            cause = f"{why[0].upper()}{why[1:]}. {cause}"
         if last.get("outcome") in ("refused", "rolled_back", "rollback_failed", "failed") \
                 and last.get("from") == running:
             # One event, one row: the update that did not happen is this row's
@@ -1404,8 +1448,10 @@ def pushed_source(cached=None) -> dict:
                       "it starts when CI passes")
             action = dict(action, label=f"Waiting for CI to pass {str(wait["target"])[:10]}: "
                                         "open the Update page to follow it or stop waiting")
+        what = (update_words(v) if v["state"] in ("behind", "behind_unfetched")
+                else sentence[0].upper() + sentence[1:])
         rows.append(row(source="pushed", key=running[:10], level=level,
-                        what=sentence[0].upper() + sentence[1:],
+                        what=what,
                         since=_ts(v.get("behind_since")),
                         cause=cause, action=action))
     return source_result("pushed", label, read_at=started, took_ms=took, rows=rows,
@@ -1576,8 +1622,11 @@ def needs_attention(sources=None) -> dict:
     rows = _attach([r for res in results for r in res["rows"]])
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
     unreadable = [res["label"] for res in results if res["state"] != "read"]
-    if rows:
-        headline = f"{len(rows)} thing(s) need attention"
+    # Information is not something that needs attention (the operator,
+    # 2026-10-01): it is drawn apart and never counted in the headline.
+    acting = [r for r in rows if r["level"] != "info"]
+    if acting:
+        headline = f"{len(acting)} thing(s) need attention"
     else:
         headline = "Nothing needs attention"
     return {"ok": True, "headline": headline, "rows": rows,

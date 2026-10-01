@@ -693,7 +693,9 @@ class TestTheInstallCheck:
         from modules import update_op
         doc = open(os.path.join(ROOT, "docs", "UPDATE.md"), encoding="utf-8").read()
         lines = set(update_op.REINSTALL_COMMANDS) | set(update_op.INSTALL_COMMANDS)
-        assert len(lines) >= 10
+        # 9 since 2026-10-01: the units' render and install are ONE line (a fresh
+        # folder, the files named), where they were two.
+        assert len(lines) >= 9 and update_op.UNITS_COMMAND in lines
         missing = [l for l in lines if l not in doc]
         assert missing == []
 

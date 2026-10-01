@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """Render deploy/systemd's TEMPLATES into installable units.
 
-    scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-startup-check.*
-    sudo install -m 0644 /tmp/nmas-units/nmas-startup-check.* /etc/systemd/system/
+    d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-startup-check.service \
+      deploy/systemd/nmas-startup-check.timer && sudo install -m 0644 "$d/nmas-startup-check.service" \
+      "$d/nmas-startup-check.timer" /etc/systemd/system/
+
+Render into a FRESH directory and install exactly the files named: --out is
+refused when it already holds a file, since a shared folder (the old
+/tmp/nmas-units) held units rendered for earlier installs, and a glob over it
+would have reinstalled them (the operator, 2026-10-01).
 
 The repository is public (the operator, 2026-09-29), so the units in
 `deploy/systemd/` carry placeholders instead of the host's user, paths and
@@ -46,9 +52,10 @@ def _hosts_doc() -> tuple:
         raise SystemExit(_refuse(f"{path} could not be read: {exc}"))
 
 
-def _refuse(why: str) -> int:
-    print(f"nmas-render-units: refused: {why}. Nothing was written. The hosts' values are "
-          "kept out of the public repository, in data/lab_hosts.json (gitignored).",
+def _refuse(why: str, hosts: bool = True) -> int:
+    print(f"nmas-render-units: refused: {why}. Nothing was written."
+          + (" The hosts' values are kept out of the public repository, in "
+             "data/lab_hosts.json (gitignored)." if hosts else ""),
           file=sys.stderr)
     return EXIT_REFUSED
 
@@ -94,6 +101,19 @@ def main(argv=None) -> int:
             return _refuse(f"{tpl} uses {', '.join('@' + m + '@' for m in missing)}, which "
                            f"{path} does not establish on this machine")
         rendered[os.path.basename(tpl)] = text
+    # A FRESH directory only (the operator, 2026-10-01): a host step installed
+    # `/tmp/nmas-units/*.service`, and that shared folder still held units
+    # rendered for earlier installs, which it would have reinstalled silently.
+    # Render into `d=$(mktemp -d)` and install exactly the files named.
+    if not args.out.strip():
+        return _refuse("--out is empty: render into a fresh directory, d=$(mktemp -d)",
+                       hosts=False)
+    if os.path.isdir(args.out) and os.listdir(args.out):
+        held = sorted(os.listdir(args.out))
+        return _refuse(f"{args.out} already holds {len(held)} file(s) ({', '.join(held[:5])}"
+                       f"{', ...' if len(held) > 5 else ''}), so installing from it could install "
+                       "a unit rendered for something else: render into a fresh directory, "
+                       "d=$(mktemp -d)", hosts=False)
     os.makedirs(args.out, exist_ok=True)
     for name, text in rendered.items():
         with open(os.path.join(args.out, name), "w", encoding="utf-8") as fh:

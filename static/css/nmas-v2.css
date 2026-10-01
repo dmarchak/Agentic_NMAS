@@ -439,3 +439,12 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .cov-why { display: block; font-weight: 400; font-size: 12px; color: var(--ink-2); }
 .cov-pick { width: 28px; }
 .cov-actions { margin: 12px 0 0; }
+
+/* Needs attention's information (2026-10-01): not a problem, so drawn apart and quiet. */
+.att-notes { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.att-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px;
+  padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); }
+.att-note > .ico { color: var(--accent); }
+.att-note-what { font-weight: 500; }
+.att-how { flex-basis: 100%; font-size: 12px; color: var(--ink-2); }
+.att-how p { margin: 4px 0 0; }

@@ -1,8 +1,7 @@
 # P.6 D5: systemd binds the privileged TFTP port, so the responder holds no
 # capability. Bound to the ZTP INTERFACE, never an address (D3: derived, not
 # stored). The interface is the one Kea listens on for the ZTP subnet.
-#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-ztp-responder.*
-#   sudo install -m 0644 /tmp/nmas-units/nmas-ztp-responder.* /etc/systemd/system/
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-ztp-responder.socket deploy/systemd/nmas-ztp-responder.service && sudo install -m 0644 "$d/nmas-ztp-responder.socket" "$d/nmas-ztp-responder.service" /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now nmas-ztp-responder.socket
 [Unit]
 Description=NMAS: ZTP config responder socket (TFTP, udp/69 on the ZTP interface)

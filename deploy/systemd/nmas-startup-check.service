@@ -3,8 +3,7 @@
 # Register C53: does each device's STARTUP config carry the credential NMAS
 # holds? Read-only (two show commands per device); writes
 # data/startup_check.json, which job health reads.
-#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-startup-check.*
-#   sudo install -m 0644 /tmp/nmas-units/nmas-startup-check.* /etc/systemd/system/
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-startup-check.service deploy/systemd/nmas-startup-check.timer && sudo install -m 0644 "$d/nmas-startup-check.service" "$d/nmas-startup-check.timer" /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now nmas-startup-check.timer
 [Unit]
 Description=NMAS: every device's startup config carries the credential NMAS holds

@@ -303,24 +303,27 @@ REINSTALL_ACTION = {"label": "Re-install the updater's root-owned copies from th
 #: is the one-time exception to "no console command on a row" (the operator,
 #: 2026-09-30: a row pointing at a document made them go looking). A test holds
 #: each line equal to docs/UPDATE.md's own.
+#: The updater's two units, rendered into a FRESH directory and installed by
+#: name, in ONE line: a shared folder held units rendered for earlier installs,
+#: and a glob over it would have reinstalled them (the operator, 2026-10-01).
+#: One line, so nothing depends on a variable set on an earlier line.
+UNITS_COMMAND = ('d=$(mktemp -d) && scripts/nmas-render-units --out "$d" '
+                 'deploy/systemd/nmas-update.path deploy/systemd/nmas-update.service && '
+                 'cat "$d/nmas-update.path" "$d/nmas-update.service" && '
+                 'sudo install -o root -g root -m 0644 "$d/nmas-update.path" '
+                 '"$d/nmas-update.service" /etc/systemd/system/')
 REINSTALL_COMMANDS = (
     "sudo install -o root -g root -m 0755 deploy/update/nmas-update /usr/local/sbin/nmas-update",
     "sudo install -o root -g root -m 0644 scripts/nmas-deploy /usr/local/lib/nmas-update/nmas-deploy",
-    "scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-update.path "
-    "deploy/systemd/nmas-update.service",
-    "sudo install -o root -g root -m 0644 /tmp/nmas-units/nmas-update.path "
-    "/tmp/nmas-units/nmas-update.service /etc/systemd/system/",
+    UNITS_COMMAND,
     "sudo systemctl daemon-reload",
     "scripts/nmas-update-check",
 )
 INSTALL_COMMANDS = (
-    "scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-update.path "
-    "deploy/systemd/nmas-update.service",
     "sudo install -o root -g root -m 0755 deploy/update/nmas-update /usr/local/sbin/nmas-update",
     "sudo install -d -o root -g root -m 0755 /usr/local/lib/nmas-update",
     "sudo install -o root -g root -m 0644 scripts/nmas-deploy /usr/local/lib/nmas-update/nmas-deploy",
-    "sudo install -o root -g root -m 0644 /tmp/nmas-units/nmas-update.path "
-    "/tmp/nmas-units/nmas-update.service /etc/systemd/system/",
+    UNITS_COMMAND,
     "sudo install -d -o root -g root -m 0755 /var/lib/nmas-update",
     "install -d -m 0700 data/update/requests data/update/staging",
     "sudo systemctl daemon-reload",

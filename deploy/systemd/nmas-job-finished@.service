@@ -6,8 +6,13 @@
 # OnFailure= with its own name as the instance (%N), and systemd starts it
 # once the job's result is recorded, a job a person starts by hand included.
 # It posts the unit's name to the app's /jobs/finished and changes nothing.
-#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-job-finished@.service
-#   sudo install -m 0644 /tmp/nmas-units/nmas-job-finished@.service /etc/systemd/system/
+# It reads the unit from its instance (%i) and NEVER systemd's MONITOR_*
+# variables: when two runs of a job end before this instance starts, systemd
+# merges them into one start ("multiple trigger source candidates for exit
+# status propagation ... skipping") and sets none of them (seen at the host's
+# install, 2026-10-01, a manual start beside the hourly run). The app reads job
+# health itself, so one start covers both runs.
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-job-finished@.service && sudo install -m 0644 "$d/nmas-job-finished@.service" /etc/systemd/system/
 #   sudo systemctl daemon-reload
 [Unit]
 Description=NMAS: %i finished, so job health is read now

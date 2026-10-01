@@ -2201,8 +2201,7 @@ the confirmed path.
    ```
    scripts/nmas-heartbeat-rules --datasource-uid <loki-uid> --loki-url http://127.0.0.1:3100
    sudo install -m 0644 deploy/grafana/provisioning/alerting/nmas-heartbeat.yaml /etc/grafana/provisioning/alerting/
-   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-heartbeat-check.*
-   sudo install -m 0644 /tmp/nmas-units/nmas-heartbeat-check.* /etc/systemd/system/
+   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-heartbeat-check.service deploy/systemd/nmas-heartbeat-check.timer && sudo install -m 0644 "$d/nmas-heartbeat-check.service" "$d/nmas-heartbeat-check.timer" /etc/systemd/system/
    sudo systemctl daemon-reload && sudo systemctl enable --now nmas-heartbeat-check.timer
    ```
    Then reload Grafana's provisioning.
@@ -3752,8 +3751,8 @@ per network, each new:**
 - `grafana_fleet_dashboard_uid`: the Monitoring page's default dashboard, by UID (Default:
   `rcn-lab-overview`). The page's selector changes the view, never this;
 - `grafana_device_dashboard_uid` and `grafana_device_variable`: the device page's
-  dashboard, by UID, and the template variable the app sets (Default: `rcn-lab1-snmp`,
-  `device`). They supersede `grafana_device_dashboard_url`, kept and read by nothing;
+  dashboard, by UID, and the template variable the app sets (Default: `nmas-device`,
+  `device`; `rcn-lab1-snmp` was the original device dashboard, replaced 2026-09-30). They supersede `grafana_device_dashboard_url`, kept and read by nothing;
 - `kea_writable_subnets`: the subnets where the tool may write reservations and pools, by
   family (the ZTP segment keeps D4's checks, and is never offered a pool);
 - saved queries (PromQL and LogQL), per network, pinnable to a device page.
@@ -4034,6 +4033,20 @@ integrations need, derived from the connectors the network uses, with ONE owner.
   drawn server-side from the six-part contract (today's renderer emits inline handlers, which
   v2's strict policy refuses), with the rollout order; (d3) the device page's "monitored by"
   section and its Apply.
+  - **The operator's review of (d1), 2026-10-01:** Monitoring opens on the FLEET dashboard
+    (`grafana_fleet_dashboard_uid`; `rcn-lab-overview` for Default), every panel drawn by the
+    device page's own renderer, the selector over every dashboard Grafana holds, and Coverage a
+    tab beside it (`/v2/monitoring`, `/v2/monitoring/coverage`). Every cell says why in a
+    person's words ("not applicable — vIOS doesn't support model-driven telemetry"; IP SLA "no
+    probes configured — IP SLA targets are chosen per device; set a policy to add them").
+  - **(d4) The IP SLA policy, placed here (decision 5):** the profile's `ip_sla` section holds
+    a policy (probe the default gateway, probe the routing peers, or nothing); the tool SUGGESTS
+    each device's targets from its committed configuration (the default route's next hop; the
+    BGP neighbours and the far end of its routed point-to-point links), previewed per device and
+    committed to that device's OWN intent, where the operator reviews them before any apply.
+    After (d2), because its review and commit are the v2 preview-and-confirm component (d2)
+    builds. Every device here supports IP SLA: probes were configured by hand on r1 to r4 and
+    s3, and nobody chose targets for the others.
 - **Next, from the operator's r6 run (2026-09-30):**
   - **The connectors are the PRIMARY source** (the design's own words, which (b) did not
     follow: it proposed only what the fleet already agrees on, which is circular on a network

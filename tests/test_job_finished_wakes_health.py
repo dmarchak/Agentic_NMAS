@@ -187,3 +187,25 @@ def test_the_rule_finds_a_unit_missing_either_half(removed, tmp_path, monkeypatc
     monkeypatch.setattr(__import__(__name__), "UNITS", str(tmp_path))
     with pytest.raises(AssertionError):
         TestEveryJobUnitWakesTheReader().test_every_declared_job_with_a_unit_here_names_the_sender_both_ways()
+
+
+def test_the_sender_never_reads_systemds_monitor_variables():
+    """The operator's install, 2026-10-01: two runs of the startup check ended
+    before one sender started, and systemd logged "multiple trigger source
+    candidates for exit status propagation ... skipping", setting no
+    MONITOR_SERVICE_RESULT or other MONITOR_* variable. The sender takes the
+    unit from its argument and reads one environment variable, NMAS_URL."""
+    import ast
+    src = open(os.path.join(ROOT, "scripts", "nmas-job-finished"), encoding="utf-8").read()
+    assert "MONITOR_" not in src
+    reads = set()
+    for node in ast.walk(ast.parse(src)):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("get", "getenv")
+                and ast.unparse(node.func.value) in ("os.environ", "os")):
+            reads.add(node.args[0].value)
+        if isinstance(node, ast.Subscript) and ast.unparse(node.value) == "os.environ":
+            reads.add(ast.unparse(node.slice))
+    assert reads == {"NMAS_URL"}, reads
+    unit = _unit("nmas-job-finished@.service")
+    assert re.search(r"^ExecStart=\S+nmas-job-finished %i$", unit, re.M)

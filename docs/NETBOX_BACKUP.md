@@ -259,8 +259,7 @@ ssh-keyscan -t ed25519 <hypervisor> >> ~/.ssh/known_hosts
   if [ -e /etc/nmas/netbox-backup.env ]; then
     echo "env exists, left as it is"
   else
-    scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/netbox-backup.env.example
-    sudo install -m 0640 -o root -g <user> /tmp/nmas-units/netbox-backup.env.example /etc/nmas/netbox-backup.env
+    d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/netbox-backup.env.example && sudo install -m 0640 -o root -g <user> "$d/netbox-backup.env.example" /etc/nmas/netbox-backup.env
   fi
 )
 sudoedit /etc/nmas/netbox-backup.env      # set NMAS_BACKUP_RCLONE_REMOTE (section 4); check RCLONE_CONFIG
@@ -272,11 +271,14 @@ sudo grep -v '^#' /etc/nmas/netbox-backup.env | grep .     # show what the unit 
 ( set -eu
   cd ~/python/Agentic_NMAS
   # TEMPLATES (the repository is public): rendered from data/lab_hosts.json, never copied.
-  scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-netbox-backup.service \
+  # A FRESH directory, and only the files named (render-units refuses a folder holding anything).
+  d=$(mktemp -d)
+  scripts/nmas-render-units --out "$d" deploy/systemd/nmas-netbox-backup.service \
        deploy/systemd/nmas-netbox-backup.timer deploy/systemd/nmas-netbox-restore-test.service \
-       deploy/systemd/nmas-netbox-restore-test.timer
-  sudo install -m 0644 /tmp/nmas-units/nmas-netbox-backup.service /tmp/nmas-units/nmas-netbox-backup.timer \
-       /tmp/nmas-units/nmas-netbox-restore-test.service /tmp/nmas-units/nmas-netbox-restore-test.timer /etc/systemd/system/
+       deploy/systemd/nmas-netbox-restore-test.timer deploy/systemd/nmas-job-finished@.service
+  sudo install -m 0644 "$d/nmas-netbox-backup.service" "$d/nmas-netbox-backup.timer" \
+       "$d/nmas-netbox-restore-test.service" "$d/nmas-netbox-restore-test.timer" \
+       "$d/nmas-job-finished@.service" /etc/systemd/system/
   sudo systemctl daemon-reload
 )
 sudo systemctl start nmas-netbox-backup.service; journalctl -u nmas-netbox-backup -n 20 --no-pager

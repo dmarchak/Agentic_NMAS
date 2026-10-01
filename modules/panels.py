@@ -396,6 +396,26 @@ def answer_errors(answer: dict) -> list:
             if res.get("error")]
 
 
+#: The panel types this app draws itself from an `api/ds/query` answer. Any
+#: other (an alert list, a text panel, a logs panel) holds no series to draw:
+#: it keeps its place on the page and says Grafana draws it, never an empty
+#: chart that reads as no data (the operator, 2026-10-01: the fleet dashboard
+#: rcn-lab-overview holds all three).
+NATIVE_TYPES = frozenset({"timeseries", "stat", "gauge", "bargauge", "table", "state-timeline"})
+
+
+def drawn_elsewhere(layout: list, uid: str, grafana_url: str = "") -> list:
+    """Mark each panel of *layout* this app does not draw with the words and,
+    where Grafana's address is known, the link that opens it there."""
+    for item in layout:
+        p = item.get("panel") or {}
+        if item.get("kind") == "panel" and p.get("type") not in NATIVE_TYPES:
+            item["elsewhere"] = {
+                "words": f"A {p.get('type') or 'typeless'} panel: Grafana draws it, this page does not.",
+                "href": (f"{grafana_url.rstrip('/')}/d/{uid}?viewPanel={p.get('id')}" if grafana_url else "")}
+    return layout
+
+
 def render_payload(panel: dict, answer: dict, seconds: int) -> dict:
     """What the browser draws: the panel's type, title and unit, and its
     series (a time series), its rows (a table) or its value (a stat), with the

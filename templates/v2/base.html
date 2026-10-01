@@ -36,7 +36,7 @@
   <a class="nav-item{% if active_nav == 'devices' %} active{% endif %}" href="{{ url_for('index') }}"{% if active_nav == 'devices' %} aria-current="page"{% endif %}>{{ icon('devices') }}<span>Devices</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('history') }}<span>History</span></a>
   <div class="nav-head">OBSERVE</div>
-  <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.coverage') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
+  <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('logs') }}<span>Logs</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('dhcp') }}<span>DHCP</span></a>
   <div class="nav-head">SOURCE OF TRUTH</div>
@@ -44,7 +44,7 @@
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('netbox') }}<span>NetBox</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('credentials') }}<span>Credentials</span></a>
   <div class="grow"></div>
-  <p class="spike-note">The redesign so far: Needs attention, the device page, Monitoring &gt; Coverage and Help &gt; About. Other items open today's screens.</p>
+  <p class="spike-note">The redesign so far: Needs attention, the device page, Monitoring and Help &gt; About. Other items open today's screens.</p>
   <div class="nav-rule"></div>
   <a class="nav-item{% if active_nav == 'help' %} active{% endif %}" href="{{ url_for('v2.about') }}"{% if active_nav == 'help' %} aria-current="page"{% endif %}>{{ icon('help') }}<span>Help</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('settings') }}<span>Settings</span></a>

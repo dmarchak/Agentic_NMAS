@@ -1,8 +1,12 @@
 {%- from "v2/_macros.html" import icon, stamp -%}
 {#- Needs attention's list: attention.needs_attention(), masked (routes/v2._attention).
     Re-fetched when any reader it draws from announces (nmas_v2.js relays each key). -#}
-{%- set LEVEL_WORDS = {'danger': 'Critical', 'warning': 'Warning', 'unknown': 'Unknown'} -%}
-{%- set rows = a.rows or [] -%}
+{%- set LEVEL_WORDS = {'danger': 'Critical', 'warning': 'Warning', 'unknown': 'Unknown', 'info': 'Information'} -%}
+{#- Information is not something that needs attention (the operator, 2026-10-01:
+    "a new release being available isn't a problem"): drawn apart, below, with
+    its evidence behind a disclosure, and never counted. -#}
+{%- set notes = (a.rows or []) | selectattr('level', 'equalto', 'info') | list -%}
+{%- set rows = (a.rows or []) | rejectattr('level', 'equalto', 'info') | list -%}
 {%- set sources = a.sources or [] -%}
 <div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
      hx-trigger="nmas:job_health from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:integration_health from:body, nmas:ci_verdict from:body, nmas:app_version from:body, nmas:reachability from:body, nmas:netbox from:body, nmas:remote from:body, nmas:baselines from:body, nmas:drift from:body">
@@ -52,6 +56,17 @@
   </div>
   {%- else %}
   <p class="att-clear">{{ icon('check', 16) }} Every source answered and none reports anything a person must do.</p>
+  {%- endif %}
+  {%- if notes %}
+  <div class="att-notes">
+    {%- for r in notes %}
+    <article class="att-note" data-attention-row="{{ r.id }}">
+      {{ icon('info', 16) }}<span class="att-note-what">{{ r.what }}</span>
+      {%- if r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" href="{{ url_for('v2.update') }}" title="{{ r.action.label }}">Update…</a>{% endif %}
+      <details class="att-how"><summary>How this was checked</summary><p>{{ r.cause }}{% if r.since %} Since {{ stamp(r.since) }}.{% endif %}</p></details>
+    </article>
+    {%- endfor %}
+  </div>
   {%- endif %}
   <details class="evidence">
     <summary>What was checked · {{ sources|length }} sources</summary>

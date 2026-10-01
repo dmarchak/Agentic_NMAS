@@ -12,6 +12,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import re
+
 import pytest
 import yaml
 
@@ -128,3 +130,77 @@ class TestOneList:
         doc = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text())
         runs = [s.get("run", "") for s in doc["jobs"]["test"]["steps"]]
         assert any('nmas-host-step-check --range "$RANGE"' in r for r in runs)
+
+
+#: 404db02's own step, verbatim: it installed `/tmp/nmas-units/*.service`, and
+#: that shared folder still held units rendered for the updater's earlier
+#: install (the operator, 2026-10-01).
+STEP_404DB02 = ("Host-Step-After: Install the job units so a finished job wakes job health: "
+                "scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-job-finished@.service "
+                "deploy/systemd/nmas-startup-check.service deploy/systemd/nmas-heartbeat-check.service "
+                "deploy/systemd/nmas-netbox-backup.service deploy/systemd/nmas-netbox-restore-test.service "
+                "&& sudo install -m 0644 /tmp/nmas-units/*.service /etc/systemd/system/ "
+                "&& sudo systemctl daemon-reload")
+FRESH = ('Host-Step-After: Install the job units: d=$(mktemp -d) && scripts/nmas-render-units '
+         '--out "$d" deploy/systemd/a.service && sudo install -m 0644 "$d/a.service" '
+         '/etc/systemd/system/ && sudo systemctl daemon-reload')
+
+
+class TestAStepInstallsOnlyWhatItNames:
+    def test_the_404db02_step_is_refused_for_its_fixed_folder(self, hs):
+        why = hs.unsafe_step("x\n\n" + STEP_404DB02 + "\n")
+        assert why.startswith("Host-Step-After renders into a fixed folder (/tmp/nmas-units)")
+        assert hs.problem(["deploy/systemd/x.service"], "x\n\n" + STEP_404DB02) == why
+
+    def test_a_glob_install_is_refused_even_from_a_fresh_folder(self, hs):
+        step = FRESH.replace('"$d/a.service"', '"$d"/*.service')
+        why = hs.unsafe_step("x\n\n" + step)
+        assert why.startswith("Host-Step-After installs by a glob") and "*.service" in why
+
+    def test_a_fresh_folder_and_named_files_pass(self, hs):
+        assert hs.unsafe_step("x\n\n" + FRESH) == ""
+        assert hs.problem(["deploy/systemd/a.service"], "x\n\n" + FRESH) == ""
+        assert hs.unsafe_step("x\n\nHost-Step: restart nmas-topology (`sudo systemctl "
+                              "restart nmas-topology`)") == ""
+
+    def test_the_range_check_refuses_it_on_a_pushed_commit(self, repo):
+        sha = _commit(repo, "deploy/systemd/x.service", "units\n\n" + STEP_404DB02)
+        p = _run(repo, "--range", "HEAD~1..HEAD")
+        assert p.returncode == 1 and sha[:12] in p.stderr and "fixed folder" in p.stderr
+
+
+#: Records of what HAPPENED, which quote the old command as the finding
+#: (C284), never a recipe anybody follows: the register and the writeup.
+HISTORY = {"docs/OPEN_FINDINGS.md", "docs/NSOT_WRITEUP.md", "docs/NSOT_WRITEUP_NOTES.md"}
+
+
+def _recipe_lines():
+    """Every line in the repository that renders units or installs what was
+    rendered: the docs, the unit headers, the scripts, and the Update button's
+    commands (modules/update_op.py)."""
+    out = []
+    roots = [ROOT / "docs", ROOT / "deploy", ROOT / "scripts", ROOT / "modules"]
+    for base in roots:
+        for p in base.rglob("*"):
+            if not p.is_file() or p.suffix in (".pyc", ".json", ".png") or "__pycache__" in p.parts:
+                continue
+            if p.relative_to(ROOT).as_posix() in HISTORY:
+                continue
+            try:
+                text = p.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            for i, line in enumerate(text.splitlines(), 1):
+                if "nmas-render-units --out" in line or re.search(r"\binstall\b.*(/tmp/|\$d)", line):
+                    out.append((f"{p.relative_to(ROOT)}:{i}", line))
+    return out
+
+
+def test_every_recipe_renders_into_a_fresh_folder_and_installs_by_name():
+    lines = _recipe_lines()
+    renders = [l for _w, l in lines if "nmas-render-units --out" in l]
+    assert len(renders) >= 12, renders                      # the floor: the scan finds them
+    bad = [w for w, l in lines
+           if re.search(r"--out\s+(?![\"']?\$)/", l)
+           or re.search(r"\binstall\b[^&;]*(/tmp/nmas-units|\S*\*\S*)", l)]
+    assert bad == [], bad

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, panel_grid -%}
 {%- set dev_name = device.hostname -%}
 {%- set cur_range = m.range or '1h' -%}
 {%- set dash_uid = (m.dashboard or {}).get('uid', '') -%}
@@ -98,18 +98,8 @@
   {%- if m.streams_unknown %}
   <p class="limits">Telemetry panels are shown: whether this device streams is not known, since {{ m.streams_unknown }}.</p>
   {%- endif %}
-  <div class="panels" data-refresh="30">
-    {% for item in m.layout %}
-    {% if item.kind == 'row' %}
-    <h2 class="panel-row">{{ item.title|replace('$' ~ m.settings.variable, m.device_value) }}</h2>
-    {% else %}{% set p = item.panel %}
-    <section class="panel gx-{{ item.x }} gw-{{ item.w }}" data-panel-h="{{ item.h }}" data-panel-src="{{ url_for('device_v2.panel', name=dev_name, uid=dash_uid, panel_id=p.id, range=cur_range) }}" data-panel-type="{{ p.type }}" data-panel-unit="{{ p.unit }}">
-      <div class="panel-head"><h3>{{ p.title|replace('$' ~ m.settings.variable, m.device_value) }}</h3><span class="panel-type mono">{{ p.type }}</span></div>
-      <div class="panel-body"><p class="panel-wait">Reading from Grafana…</p></div>
-    </section>
-    {% endif %}
-    {% endfor %}
-  </div>
+  {{ panel_grid(m.layout, 'device_v2.panel', {'name': dev_name, 'uid': dash_uid, 'range': cur_range},
+                m.settings.variable, m.device_value) }}
   {% if m.left_out %}
   <section class="card">
     <div class="card-head"><h2>{{ m.left_out|length }} panel{{ '' if m.left_out|length == 1 else 's' }} left out: {{ 'its query does' if m.left_out|length == 1 else 'their queries do' }} not select by device</h2></div>

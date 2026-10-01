@@ -1,0 +1,5 @@
+{#- Monitoring's tabs: the fleet dashboard (the default) and Coverage. -#}
+<nav class="tabs" aria-label="Monitoring">
+  <a class="tab{% if monitoring_tab == 'dashboards' %} on{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if monitoring_tab == 'dashboards' %} aria-current="page"{% endif %}>Dashboards</a>
+  <a class="tab{% if monitoring_tab == 'coverage' %} on{% endif %}" href="{{ url_for('v2.coverage') }}"{% if monitoring_tab == 'coverage' %} aria-current="page"{% endif %}>Coverage</a>
+</nav>

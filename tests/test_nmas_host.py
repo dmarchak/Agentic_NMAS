@@ -223,6 +223,27 @@ class TestTheUnitTemplates:
         assert exc.value.code == 78 and not out.exists()
         assert "absent.json does not exist" in capsys.readouterr().err
 
+    def test_a_folder_that_already_holds_a_file_is_refused_and_untouched(self, tmp_path,
+                                                                        monkeypatch, capsys):
+        """The operator, 2026-10-01: the shared /tmp/nmas-units still held units
+        rendered for the updater's install, and a glob over it would have
+        reinstalled them. Only a fresh folder is rendered into."""
+        self._hosts(tmp_path, monkeypatch, home="/srv/op", checkout="/srv/op/nmas")
+        out = tmp_path / "units"
+        out.mkdir()
+        (out / "nmas-update.service").write_text("left from an earlier render\n")
+        rc = self.R.main(["--out", str(out), *self.UNITS])
+        assert rc == 78 and sorted(os.listdir(out)) == ["nmas-update.service"]
+        assert (out / "nmas-update.service").read_text() == "left from an earlier render\n"
+        err = capsys.readouterr().err
+        assert "already holds 1 file(s) (nmas-update.service)" in err and "mktemp -d" in err
+        assert "lab_hosts.json" not in err                 # not a hosts-file refusal
+        rc = self.R.main(["--out", "", *self.UNITS])
+        assert rc == 78 and "--out is empty" in capsys.readouterr().err
+        fresh = tmp_path / "fresh"
+        fresh.mkdir()                                      # mktemp -d's empty folder
+        assert self.R.main(["--out", str(fresh), *self.UNITS]) == 0
+
     def test_a_value_it_cannot_establish_refuses_naming_the_placeholder(self, tmp_path, monkeypatch,
                                                                         capsys):
         self._hosts(tmp_path, monkeypatch, user="no-such-user-here")   # no home to find

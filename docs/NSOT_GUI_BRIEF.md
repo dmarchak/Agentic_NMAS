@@ -1143,8 +1143,10 @@ both, with costs.
     holds, from its search API (`api/search?type=dash-db`, five today). Choosing one
     changes the VIEW, never the default.
   - **The DEVICE dashboard, for the device page's Monitoring section.** A dashboard with a
-    device template variable, named by UID (for Default: `rcn-lab1-snmp`, "RCN Lab 1 -
-    SNMP per device"), and a second setting naming the VARIABLE the app sets (for Default:
+    device template variable, named by UID (for Default: `nmas-device`, built by
+    `deploy/grafana/build_nmas_device.py`, imported and set on 2026-09-30; it REPLACED the
+    original `rcn-lab1-snmp`, "RCN Lab 1 - SNMP per device", which the measurements below were
+    taken on and which is no longer the default for either role), and a second setting naming the VARIABLE the app sets (for Default:
     `device`, whose values come from `label_values(ifOperStatus{role=~"$role"}, device)`).
     - **Only panels whose queries use the variable are drawn** (4 of `rcn-lab1-snmp`'s 8:
       Devices offline, throughput, interface state, errors and discards; first counted as

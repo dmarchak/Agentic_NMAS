@@ -55,6 +55,9 @@ KEYING = {
     # The OSPFv3 target file is IOS-XE only (vIOS does not implement
     # OSPFV3-MIB): compared with platform_for_device(), a dialect.
     "modules/prometheus_targets.py":        "dialect",
+    # Coverage words per platform, compared with the manifest's platform
+    # (platform_for_device()): the dialect.
+    "modules/monitoring_coverage.py":       "dialect",
     "modules/ai_assistant.py":              "driver",
     "modules/connection.py":                "driver",
     "scripts/netmiko_timing_probe.py":      "driver",

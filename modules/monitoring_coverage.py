@@ -256,6 +256,56 @@ _IP_SLA = re.compile(r"^ip sla \d+", re.M)
 _SECTION_OF_COLUMN = {**SECTION_OF, "ip_sla": "ip_sla"}
 
 
+#: The connector that makes each integration one the network uses.
+_CONNECTOR_OF = {"snmp": "Prometheus", "syslog": "Loki", "heartbeat": "Loki",
+                 "telemetry": "Telegraf listener (telemetry_receiver)"}
+_SECTION_WORDS = {"snmp": "SNMP", "syslog": "syslog", "telemetry": "telemetry",
+                  "ip_sla": "IP SLA", "ntp": "NTP", "lldp": "LLDP", "cdp": "CDP"}
+_PLATFORM_WORDS = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}
+_IP_SLA_POLICY_WORDS = {"gateway": "probe the default gateway",
+                        "peers": "probe the routing peers", "none": "probe nothing"}
+
+
+def _model_words(text: str, platform: str) -> str:
+    """What the device IS, in a person's words: its model from the golden
+    (`vios_l2` reads "vIOS"), else its platform."""
+    from modules.device_page import model_from_golden
+
+    model, _basis = model_from_golden(text or "")
+    if model.lower().startswith("vios"):
+        return "vIOS"
+    return model or _PLATFORM_WORDS.get(platform, platform or "this platform")
+
+
+def _not_applicable_words(section: str, doc: dict, text: str, platform: str) -> str:
+    """Why a section the profile holds is not for this device, plainly."""
+    # Said only where it is TRUE: classic IOS (vIOS here) has no model-driven
+    # telemetry. A section scoped away from a platform that has it says the
+    # profile's scope instead, never a claim about the platform.
+    if section == "telemetry" and platform == "cisco_ios":
+        return f"not applicable — {_model_words(text, platform)} doesn't support model-driven telemetry"
+    sec = (doc or {}).get("sections", {}).get(section) or {}
+    scope = [_PLATFORM_WORDS.get(p, p) for p in sec.get("platforms") or []] + \
+        [f"the {r} role" for r in sec.get("roles") or []]
+    return (f"not applicable — the profile's {_SECTION_WORDS.get(section, section)} section is "
+            f"for {' and '.join(scope) or 'other devices'}")
+
+
+def _ip_sla_words(doc: dict) -> str:
+    """IP SLA unconfigured, in the words of the agreed policy (P.9 decision 5):
+    a probe measures ONE path, so its target is a per-device choice; the
+    profile's policy decides how targets are suggested."""
+    sec = ((doc or {}).get("sections") or {}).get("ip_sla") or {}
+    policy = sec.get("policy")
+    if not policy:
+        return ("no probes configured — IP SLA targets are chosen per device; set a policy "
+                "to add them")
+    if policy == "none":
+        return "no probes — the profile's IP SLA policy is to probe nothing"
+    return (f"no probes yet — the profile's policy is to {_IP_SLA_POLICY_WORDS[policy]}; "
+            "review the suggested targets in its intent")
+
+
 def _expected_columns(get) -> dict:
     """``{column: connector}`` for what this network USES: SNMP and syslog as
     `expected()` decides, telemetry when Telegraf's listener is set. IP SLA is
@@ -335,31 +385,33 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
         have["ip_sla"] = bool(text and _IP_SLA.search(text))
         for key, words in COLUMNS:
             section = _SECTION_OF_COLUMN[key]
+            # Every cell in a person's words, saying WHY (the operator,
+            # 2026-10-01: "none (a policy per device)" explained nothing).
             if text is None:
-                cell = {"state": "unknown", "words": "golden unreadable"}
+                cell = {"state": "unknown", "words": "unknown — its golden could not be read"}
             elif have.get(key):
                 cell = {"state": "ok", "words": "configured"}
             elif section in (view.get("excluded") or {}):
                 cell = {"state": "excluded",
-                        "words": f"excluded: {view['excluded'][section]}"}
+                        "words": f"excluded — {view['excluded'][section]}"}
+            elif key == "ip_sla":
+                cell = {"state": "unused", "words": _ip_sla_words(doc)}
             elif key not in want:
                 cell = {"state": "unused",
-                        "words": ("none (a policy per device)" if key == "ip_sla" else
-                                  "none (the network does not use it)")}
+                        "words": f"not used — this network has no {_CONNECTOR_OF[key]} connector"}
             elif section in (view.get("applies") or ()):
-                cell = {"state": "gap", "words": "missing; the profile supplies it"}
+                cell = {"state": "gap", "words": "missing — the profile supplies it"}
                 row["supplies"].append(key)
             elif section in prof["sections"]:
                 # The profile SCOPES the section away from this device (its
                 # platform or role): a decision, never a gap. Telemetry on a
                 # vIOS switch is the measured case: the platform cannot stream.
                 cell = {"state": "not_applicable",
-                        "words": f"none (the profile's {section} section is not for its "
-                                 f"platform or role)"}
+                        "words": _not_applicable_words(section, doc, text, platform)}
             else:
                 cell = {"state": "gap_open", "words": (
-                    "missing; there is no monitoring profile" if not doc else
-                    f"missing; the profile has no {section} section")}
+                    "missing — no monitoring profile yet" if not doc else
+                    f"missing — the profile has no {_SECTION_WORDS.get(section, section)} section")}
             if cell["state"] in ("gap", "gap_open"):
                 row["gaps"].append(key)
             row["cells"][key] = cell

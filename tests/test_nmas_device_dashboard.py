@@ -21,6 +21,7 @@ import dukpy
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JSON = os.path.join(ROOT, "deploy", "grafana", "nmas-device.json")
 BUILDER = os.path.join(ROOT, "deploy", "grafana", "build_nmas_device.py")
+# The types the app draws itself: one list, the app's (modules/panels.py).
 NATIVE = {"stat", "timeseries", "table", "state-timeline", "gauge", "bargauge"}
 
 
@@ -58,6 +59,8 @@ class TestTheOperatorsRules:
                 assert panels.uses_variable(t["expr"], "device"), (p["title"], t["expr"])
 
     def test_only_native_panel_types(self):
+        from modules import panels
+        assert NATIVE == panels.NATIVE_TYPES, "the app draws a different set of panel types"
         assert {p["type"] for p in _content()} <= NATIVE
 
     def test_the_grid_is_half_and_third_widths_with_no_overlap(self):

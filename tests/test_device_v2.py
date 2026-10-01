@@ -1,7 +1,9 @@
 """The redesign's device page (the spike, NSOT_GUI_BRIEF 9b), Overview and
 Monitoring, through the real app with real captures:
 
-- the dashboard model is `rcn-lab1-snmp` as Grafana returned it, stored by the
+- the dashboard model is `rcn-lab1-snmp` as Grafana returned it (the panel
+  FILTERING fixture: the ORIGINAL device dashboard, not this lab's, which is
+  `nmas-device`; see TestTheLabsDeviceDashboard), stored by the
   REAL `grafana_dashboards.read()` over a fake client serving the capture;
 - the panel answers are real `api/ds/query` answers (`tests/fixtures/grafana/
   dsquery/`): throughput for r3 by its address, the interface-state table,
@@ -44,7 +46,9 @@ class _Resp:
 
 
 class FakeGrafana:
-    """Serves the captured search, the captured `rcn-lab1-snmp` model (every
+    """Serves the captured search, the three captured models (`rcn-lab1-snmp`,
+    the panel-FILTERING fixture; `rcn-lab-overview`, this lab's FLEET dashboard;
+    `nmas-device`, its DEVICE dashboard; every
     other dashboard a minimal model with no device variable), the captured
     data sources, the label values it is told, and query answers by panel."""
 
@@ -58,11 +62,13 @@ class FakeGrafana:
         # (the operator's import of nmas-device), and Grafana unreachable.
         self.extra = {}
         self.dashboards_down = False
+        # Dashboards imported after the search capture (2026-09-29): nmas-device.
+        self.more_search = []
 
     def _get(self, path, **params):
         self.gets.append((path, params))
         if path == "api/search":
-            return {"ok": True, "response": _Resp(_fixture("dashboards", "search.json"))}
+            return {"ok": True, "response": _Resp(_fixture("dashboards", "search.json") + self.more_search)}
         if path.startswith("api/dashboards/uid/"):
             uid = path.rsplit("/", 1)[-1]
             if self.dashboards_down:
@@ -70,8 +76,8 @@ class FakeGrafana:
             titles = {d["uid"]: d["title"] for d in _fixture("dashboards", "search.json")}
             if uid in self.extra:
                 model = self.extra[uid]
-            elif uid == "rcn-lab1-snmp":
-                model = _fixture("dashboards", "rcn-lab1-snmp.json")
+            elif uid in ("rcn-lab1-snmp", "rcn-lab-overview", "nmas-device"):
+                model = _fixture("dashboards", f"{uid}.json")
             elif uid in titles:
                 model = {"title": titles[uid], "panels": [], "templating": {"list": []}}
             else:
@@ -115,7 +121,12 @@ def _unstore(name):
         pass
 
 
-SETTINGS = {"grafana_device_dashboard_uid": "rcn-lab1-snmp", "grafana_device_variable": "device",
+# The panel-FILTERING fixture, not this lab's device dashboard (CLAUDE.md, "Standing
+# facts"): `rcn-lab1-snmp` was the ORIGINAL device dashboard, and its real model
+# selects the device in 4 of its 8 panels, the contrast these tests are about.
+# This lab's device dashboard is `nmas-device` (TestTheLabsDeviceDashboard).
+FILTERING_FIXTURE = "rcn-lab1-snmp"
+SETTINGS = {"grafana_device_dashboard_uid": FILTERING_FIXTURE, "grafana_device_variable": "device",
             "grafana_device_variable_value": "hostname",
             "nsot_git_author_name": "NMAS", "nsot_git_author_email": "nmas@localhost"}
 
@@ -171,6 +182,42 @@ def _get_json(lab, url):
 
 def _text(html):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html))
+
+
+def _with_nmas_device(lab):
+    """This lab's DEVICE dashboard: `nmas-device`'s model as Grafana returned it
+    on 2026-10-01 (read-only), listed by the search and stored by the real reader."""
+    from modules.readers import grafana_dashboards
+
+    lab["fake"].more_search = [{"type": "dash-db", "uid": "nmas-device", "title": "NMAS device"}]
+    _store("grafana-dashboards", grafana_dashboards.read(lab["fake"]))
+    lab["settings"]["grafana_device_dashboard_uid"] = "nmas-device"
+
+
+class TestTheLabsDeviceDashboard:
+    """The DEVICE role's real dashboard (CLAUDE.md, "Standing facts"): every one
+    of nmas-device's 27 panels selects the device, so the device page draws
+    them all and leaves none out, unlike the filtering fixture's 4 of 8."""
+
+    def test_every_panel_is_drawn_or_folded_and_none_left_out(self, lab):
+        _with_nmas_device(lab)
+        _r, html = _get(lab, "/v2/device/r3/monitoring")
+        drawn = re.findall(r'data-panel-src="/v2/device/r3/panel/nmas-device/(\d+)', html)
+        model = _fixture("dashboards", "nmas-device.json")
+        ids = {p["id"] for p in model["panels"] if p["type"] != "row"}
+        assert len(ids) == 27 and set(map(int, drawn)) <= ids and len(drawn) >= 20
+        folded = len(ids) - len(drawn)
+        assert "left out" not in _text(html)
+        assert folded == 0 or re.search(rf"\b{folded} panel", _text(html)), "a missing panel must be a stated fold"
+        assert "Grafana draws it, this page does not" not in html      # every panel is native
+
+    def test_a_panel_reads_the_device_through_its_own_query(self, lab):
+        _with_nmas_device(lab)
+        _r, html = _get(lab, "/v2/device/r3/monitoring")
+        src = re.findall(r'data-panel-src="([^"]+)"', html)[0].replace("&amp;", "&")
+        code, body = _get_json(lab, src)
+        assert code == 200 and "read_at" in body
+        assert any("r3" in q["queries"][0]["expr"] for q in lab["fake"].queries)
 
 
 # ---------------------------------------------------------------- the policy

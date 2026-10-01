@@ -2,8 +2,7 @@
 # are placeholders. Render it, never copy it:
 # OPEN_FINDINGS C16: re-measure each device's heartbeat rate and compare with
 # the installed windows. A moved rate fails this unit, and job_health shows it.
-#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-heartbeat-check.*
-#   sudo install -m 0644 /tmp/nmas-units/nmas-heartbeat-check.* /etc/systemd/system/
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-heartbeat-check.service deploy/systemd/nmas-heartbeat-check.timer && sudo install -m 0644 "$d/nmas-heartbeat-check.service" "$d/nmas-heartbeat-check.timer" /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now nmas-heartbeat-check.timer
 [Unit]
 Description=NMAS: heartbeat windows still fit each device's measured clock rate

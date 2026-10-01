@@ -78,8 +78,39 @@ def says_host(message: str) -> bool:
     return bool(TRAILER.search(body))
 
 
+STEP_TEXT = re.compile(r"^(Host-Step|Host-Step-After):\s*(.*)$", re.M)
+
+
+def unsafe_step(message: str) -> str:
+    """A host step that could install something other than what it names
+    (the operator, 2026-10-01): a step installed `/tmp/nmas-units/*.service`,
+    and that shared folder still held units rendered for earlier installs. A
+    step renders into a FRESH directory (`--out "$d"`, `d=$(mktemp -d)`) and
+    installs each file BY NAME. "" when every step does."""
+    body = "\n".join(l for l in message.splitlines() if not l.startswith("#"))
+    for kind, text in STEP_TEXT.findall(body):
+        fixed = re.search(r"--out\s+(?![\"']?\$)(\S+)", text)
+        if fixed:
+            return (f"{kind} renders into a fixed folder ({fixed.group(1)}), which can hold "
+                    "units rendered for something else: render into a fresh one, "
+                    "d=$(mktemp -d) && scripts/nmas-render-units --out \"$d\" ...")
+        for segment in re.split(r"&&|;|\|\|", text):
+            words = segment.split()
+            if words[:1] == ["sudo"]:
+                words = words[1:]
+            if words[:1] == ["install"]:
+                globbed = [w for w in words[1:] if any(c in w for c in "*?[")]
+                if globbed:
+                    return (f"{kind} installs by a glob ({', '.join(globbed)}), which installs "
+                            "whatever else matches it: name each file")
+    return ""
+
+
 def problem(paths, message) -> str:
     """The refusal for one commit, or "" when it passes."""
+    unsafe = unsafe_step(message)
+    if unsafe:
+        return unsafe
     touched = host_paths(paths)
     if not touched or says_host(message):
         return ""

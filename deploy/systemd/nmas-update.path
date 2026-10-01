@@ -1,7 +1,6 @@
 # TEMPLATE (2026-09-30): the repository is public, so the host's paths are
 # placeholders. Render it, never copy it (docs/UPDATE.md has the whole install):
-#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-update.*
-#   sudo install -o root -g root -m 0644 /tmp/nmas-units/nmas-update.* /etc/systemd/system/
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-update.path deploy/systemd/nmas-update.service && sudo install -o root -g root -m 0644 "$d/nmas-update.path" "$d/nmas-update.service" /etc/systemd/system/
 # The Update button: the app writes a request into this directory and holds no
 # privilege; this unit starts the root-owned updater when a request appears.
 # The updater empties the directory every run, so it starts once per request.

@@ -1,0 +1,14 @@
+{%- extends "v2/base.html" -%}
+{% block title %}Monitoring · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Monitoring</h1>
+    <p class="sub">The network's Grafana dashboards, drawn here, and what each device is configured for.</p>
+  </div>
+</div>
+{% include "v2/_monitoring_tabs.html" %}
+<div class="tab-body" id="tab-body">
+{% include "v2/_fleet.html" %}
+</div>
+{% endblock %}

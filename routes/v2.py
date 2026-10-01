@@ -208,10 +208,44 @@ def _coverage() -> dict:
 def coverage():
     """Monitoring > Coverage: each device by integration, from its committed
     golden, and the monitoring profile's batch Apply (NSOT_GUI_BRIEF 14.3)."""
-    return _page("v2/coverage.html", c=_coverage(), active_nav="monitoring")
+    return _page("v2/coverage.html", c=_coverage(), active_nav="monitoring",
+                 monitoring_tab="coverage")
 
 
 @bp.route("/monitoring/coverage/table", methods=["GET"])
 def coverage_table():
     """The table alone, re-fetched when goldens, intent or job health move."""
     return _strict(render_template("v2/_coverage.html", c=_coverage()))
+
+
+def _fleet_ctx() -> dict:
+    from flask import request
+
+    from modules import device_page
+    return {"m": device_page.fleet_monitoring(chosen_uid=request.args.get("dashboard", ""),
+                                              range_text=request.args.get("range", "1h"))}
+
+
+@bp.route("/monitoring", methods=["GET"])
+def monitoring_page():
+    """Monitoring: the FLEET dashboard by default, with the selector, and
+    Coverage as a tab beside it (the operator, 2026-10-01)."""
+    return _page("v2/monitoring.html", active_nav="monitoring", monitoring_tab="dashboards",
+                 **_fleet_ctx())
+
+
+@bp.route("/monitoring/dashboard", methods=["GET"])
+def monitoring_dashboard():
+    """The fleet dashboard alone: the selector, the range and the panels."""
+    return _strict(render_template("v2/_fleet.html", **_fleet_ctx()))
+
+
+@bp.route("/monitoring/panel/<uid>/<int:panel_id>", methods=["GET"])
+def monitoring_panel(uid, panel_id):
+    """One fleet panel's data, for the browser to draw: a panel the dashboard
+    holds, with the dashboard's own query."""
+    from flask import jsonify, request
+
+    from modules import device_page
+    payload, code = device_page.fleet_panel_data(uid, panel_id, request.args.get("range", "1h"))
+    return jsonify(payload), code

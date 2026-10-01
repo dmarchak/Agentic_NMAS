@@ -160,6 +160,11 @@ DEFAULTS: dict = {
     #: variable naming one device. Empty means none is set, and the device
     #: page says so rather than guessing. Per network after P.8.
     "grafana_device_dashboard_uid": "",
+    #: The Monitoring page's FLEET dashboard (NSOT_GUI_BRIEF 14.2; the operator,
+    #: 2026-10-01: "Monitoring opens on the fleet Grafana dashboard"), by UID.
+    #: Empty means none is set, and the page says so and offers every
+    #: dashboard Grafana holds. Per network after P.8.
+    "grafana_fleet_dashboard_uid": "",
     #: The template variable the app sets to the device.
     "grafana_device_variable": "device",
     #: What the variable's value is: the device's hostname, or its management
@@ -674,6 +679,7 @@ SCHEMA: dict = {
         "grafana_embed_mode": {"enum": ["link", "iframe"]},
         "grafana_verify_tls": _BOOL,
         "grafana_device_dashboard_uid": _STR,
+        "grafana_fleet_dashboard_uid": _STR,
         "grafana_device_variable": _STR,
         "grafana_device_variable_value": {"enum": ["hostname", "address"]},
 

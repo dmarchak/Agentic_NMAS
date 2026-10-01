@@ -65,7 +65,8 @@ touches it. **Adopt applies it too** (the same day): its preview computes the pr
 capture it reads with the supplied credential, lists it masked in the program and binds it in the
 fingerprint; the apply sends it after the accounts and before the save, reads it back, and the first
 golden records it. A value the device sets differently is kept (the device overrides the profile).
-**(d), the screens, began 2026-10-01:** Monitoring > Coverage (`/v2/monitoring/coverage`,
+**(d), the screens, began 2026-10-01:** Monitoring opens on the fleet Grafana dashboard
+(`/v2/monitoring`, `grafana_fleet_dashboard_uid`), with Coverage as a tab beside it. Coverage (`/v2/monitoring/coverage`,
 `monitoring_coverage.fleet()`) draws each device by integration from its committed golden, each
 cell decided on the server (configured; missing and the profile supplies it; missing and it does
 not, saying why; excluded with the reason; not used by the network; the profile's section scoped

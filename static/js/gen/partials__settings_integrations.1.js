@@ -15,6 +15,8 @@ const INTEGRATION_SPEC = {
     {key: 'grafana_token', label: 'API token', type: 'secret'},
     {key: 'grafana_device_dashboard_url', label: 'Device dashboard URL', type: 'text',
      help: 'Supports {hostname} and {ip} placeholders.'},
+    {key: 'grafana_fleet_dashboard_uid', label: 'Fleet dashboard UID', type: 'text',
+     help: 'The dashboard the Monitoring page opens on, by UID. Choosing another there changes the view, never this.'},
     {key: 'grafana_device_dashboard_uid', label: 'Device dashboard UID', type: 'text',
      help: 'The device page\'s dashboard, by UID (a rename in Grafana breaks nothing). It needs a variable naming one device.'},
     {key: 'grafana_device_variable', label: 'Device variable', type: 'text',

@@ -47,6 +47,10 @@ TEMPLATES = os.path.join(ROOT, "templates")
 WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 _METHOD = re.compile(r"""method\s*[:=]\s*['"]([A-Za-z]+)['"]""")
 _URL_FOR = re.compile(r"""url_for\(\s*['"]([A-Za-z_][\w.]*)['"]""")
+#: The v2 panel grid macro calls `url_for(endpoint, ...)` with the endpoint it
+#: is HANDED, so the literal is at each call (`panel_grid(layout, '<endpoint>',
+#: ...)`): a GET of one panel's data, made by nmas_panels.js.
+_PANEL_GRID = re.compile(r"""panel_grid\([^,]*,\s*['"]([A-Za-z_][\w.]*)['"]""")
 
 
 def classify(text: str, index: int):
@@ -136,6 +140,8 @@ def url_for_references() -> dict:
     for text in template_sources().values():
         for m in _URL_FOR.finditer(text):
             out.setdefault(m.group(1), set()).add(classify(text, m.start()))
+        for m in _PANEL_GRID.finditer(text):
+            out.setdefault(m.group(1), set()).add("GET")
     return out
 
 

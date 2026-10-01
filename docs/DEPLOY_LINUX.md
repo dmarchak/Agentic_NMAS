@@ -131,8 +131,8 @@ it):
 
 ```bash
 # The units are TEMPLATES (the repository is public): render them from data/lab_hosts.json.
-scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-ztp-responder.socket deploy/systemd/nmas-ztp-responder.service
-sudo install -m 0644 /tmp/nmas-units/nmas-ztp-responder.socket /tmp/nmas-units/nmas-ztp-responder.service /etc/systemd/system/
+# A FRESH directory, and only the files named (render-units refuses a folder holding anything).
+d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-ztp-responder.socket deploy/systemd/nmas-ztp-responder.service && sudo install -m 0644 "$d/nmas-ztp-responder.socket" "$d/nmas-ztp-responder.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now nmas-ztp-responder.socket
 systemctl show -p ActiveState,Listen nmas-ztp-responder.socket
@@ -169,8 +169,7 @@ carries the credential NMAS holds (two show commands each, never a save),
 writes `data/startup_check.json`, and job health reads that file:
 
 ```bash
-scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-startup-check.service deploy/systemd/nmas-startup-check.timer
-sudo install -m 0644 /tmp/nmas-units/nmas-startup-check.service /tmp/nmas-units/nmas-startup-check.timer /etc/systemd/system/
+d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-startup-check.service deploy/systemd/nmas-startup-check.timer deploy/systemd/nmas-job-finished@.service && sudo install -m 0644 "$d/nmas-startup-check.service" "$d/nmas-startup-check.timer" "$d/nmas-job-finished@.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now nmas-startup-check.timer
 sudo systemctl start nmas-startup-check.service

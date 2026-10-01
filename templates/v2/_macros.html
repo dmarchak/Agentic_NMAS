@@ -56,3 +56,29 @@
 {%- if c.failed %}<span class="check-failed">The last check, {{ stamp(c.failed.at, note=c.failed.words) }}, failed: {{ c.failed.error }}. What is shown is the answer before it.</span>{% endif -%}
 </span>
 {%- endmacro %}
+
+{#- The panel grid: ONE renderer for the device page's Monitoring tab and the
+    Monitoring page's fleet dashboard (NSOT_GUI_BRIEF 14.2). *layout* is
+    panels.layout()'s answer; *endpoint* and *args* name the route that serves
+    one panel's data (its panel_id filled here); *var*/*value* replace a
+    device variable in titles, when there is one. -#}
+{% macro panel_grid(layout, endpoint, args, var='', value='') -%}
+<div class="panels" data-refresh="30">
+  {%- for item in layout %}
+  {%- if item.kind == 'row' %}
+  <h2 class="panel-row">{{ item.title|replace('$' ~ var, value) if var else item.title }}</h2>
+  {%- elif item.elsewhere %}{% set p = item.panel %}
+  <section class="panel panel-elsewhere gx-{{ item.x }} gw-{{ item.w }}" data-panel-h="{{ item.h }}">
+    <div class="panel-head"><h3>{{ p.title|replace('$' ~ var, value) if var else p.title }}</h3><span class="panel-type mono">{{ p.type }}</span></div>
+    <div class="panel-body"><p class="muted">{{ item.elsewhere.words }}
+      {%- if item.elsewhere.href %} <a href="{{ item.elsewhere.href }}" rel="noopener" target="_blank">Open it in Grafana</a> <span class="muted">(reachable from the LAN only)</span>{% endif %}</p></div>
+  </section>
+  {%- else %}{% set p = item.panel %}
+  <section class="panel gx-{{ item.x }} gw-{{ item.w }}" data-panel-h="{{ item.h }}" data-panel-src="{{ url_for(endpoint, panel_id=p.id, **args) }}" data-panel-type="{{ p.type }}" data-panel-unit="{{ p.unit }}">
+    <div class="panel-head"><h3>{{ p.title|replace('$' ~ var, value) if var else p.title }}</h3><span class="panel-type mono">{{ p.type }}</span></div>
+    <div class="panel-body"><p class="panel-wait">Reading from Grafana…</p></div>
+  </section>
+  {%- endif %}
+  {%- endfor %}
+</div>
+{%- endmacro %}

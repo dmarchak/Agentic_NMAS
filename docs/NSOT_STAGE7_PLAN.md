@@ -524,7 +524,7 @@ session needs no reconstruction:
 - **Which dashboard: two roles, by UID, per network (P.8).** The fleet dashboard is the
   Monitoring page's default (Default: `rcn-lab-overview`), with a selector over every
   dashboard Grafana holds. The device dashboard has a device variable (Default:
-  `rcn-lab1-snmp`, `device`); only panels selecting the device are drawn, and a dashboard
+  `nmas-device`, `device`; it replaced the original `rcn-lab1-snmp` on 2026-09-30); only panels selecting the device are drawn, and a dashboard
   with no such variable says so. A missing UID is a Needs attention row.
 - **Alerts get a fix:** now, a "How to fix" column from each rule's own declared remedy (P.7
   declares one per rule; none declared says so); at Stage 8, an Investigate action with

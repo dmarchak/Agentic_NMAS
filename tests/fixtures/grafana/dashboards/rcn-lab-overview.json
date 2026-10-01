@@ -1,0 +1,1278 @@
+{
+ "annotations": {
+  "list": [
+   {
+    "builtIn": 1,
+    "datasource": {
+     "type": "grafana",
+     "uid": "-- Grafana --"
+    },
+    "enable": true,
+    "hide": true,
+    "iconColor": "rgba(0, 211, 255, 1)",
+    "name": "Annotations & Alerts",
+    "type": "dashboard"
+   },
+   {
+    "datasource": {
+     "type": "loki",
+     "uid": "efxk88ulvh3pcf"
+    },
+    "enable": true,
+    "expr": "{job=~\".*snmptrapd\"} |= \"linkDown\"",
+    "hide": false,
+    "iconColor": "red",
+    "name": "linkDown traps",
+    "target": {
+     "expr": "{job=~\".*snmptrapd\"} |= \"linkDown\"",
+     "queryType": "range",
+     "refId": "Anno"
+    },
+    "titleFormat": "linkDown trap"
+   }
+  ]
+ },
+ "editable": true,
+ "fiscalYearStartMonth": 0,
+ "graphTooltip": 0,
+ "id": 170356410318848,
+ "liveNow": false,
+ "panels": [
+  {
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "id": 21,
+   "title": "Health and alerts",
+   "type": "row"
+  },
+  {
+   "description": "Firing and pending alerts from the RCN Lab rule folder. Empty is the healthy state.",
+   "gridPos": {
+    "h": 8,
+    "w": 10,
+    "x": 0,
+    "y": 1
+   },
+   "id": 2,
+   "options": {
+    "alertInstanceLabelFilter": "",
+    "alertName": "",
+    "dashboardAlerts": false,
+    "groupBy": [],
+    "groupMode": "default",
+    "maxItems": 20,
+    "showInactiveAlerts": false,
+    "sortOrder": 1,
+    "statColorMode": "none",
+    "statThresholds": {
+     "mode": "absolute",
+     "steps": [
+      {
+       "color": "green",
+       "value": 0
+      },
+      {
+       "color": "red",
+       "value": 80
+      }
+     ]
+    },
+    "statValueMappings": [],
+    "stateFilter": {
+     "error": true,
+     "firing": true,
+     "noData": false,
+     "normal": false,
+     "pending": true,
+     "recovering": true
+    },
+    "viewMode": "list"
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [],
+   "title": "Active alerts",
+   "type": "alertlist"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "SNMP-reachable devices out of 9. Green at 9, amber when one or two are down, red below 7.",
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 0,
+     "max": 9,
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": 0
+       },
+       {
+        "color": "orange",
+        "value": 7
+       },
+       {
+        "color": "yellow",
+        "value": 8
+       },
+       {
+        "color": "green",
+        "value": 9
+       }
+      ]
+     },
+     "unit": "none"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 5,
+    "x": 10,
+    "y": 1
+   },
+   "id": 3,
+   "options": {
+    "barShape": "flat",
+    "barWidthFactor": 0.5,
+    "effects": {
+     "barGlow": false,
+     "centerGlow": false,
+     "gradient": false
+    },
+    "endpointMarker": "point",
+    "minVizHeight": 75,
+    "minVizWidth": 75,
+    "orientation": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "segmentCount": 1,
+    "segmentSpacing": 0.3,
+    "shape": "gauge",
+    "showThresholdLabels": false,
+    "showThresholdMarkers": false,
+    "sizing": "auto",
+    "sparkline": false,
+    "textMode": "auto"
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "count(up{job=~\"cisco_8000v|cisco_vios_l2\"} == 1)",
+     "instant": true,
+     "legendFormat": "Online",
+     "refId": "A"
+    }
+   ],
+   "title": "Devices online",
+   "type": "gauge"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "Percentage of IP SLA probes returning OK. This is the packet-loss signal - a probe that times out means the path between two devices failed, even if both devices are individually reachable.",
+   "fieldConfig": {
+    "defaults": {
+     "decimals": 0,
+     "max": 100,
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": 0
+       },
+       {
+        "color": "orange",
+        "value": 80
+       },
+       {
+        "color": "yellow",
+        "value": 95
+       },
+       {
+        "color": "green",
+        "value": 100
+       }
+      ]
+     },
+     "unit": "percent"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 5,
+    "x": 15,
+    "y": 1
+   },
+   "id": 4,
+   "options": {
+    "barShape": "flat",
+    "barWidthFactor": 0.5,
+    "effects": {
+     "barGlow": false,
+     "centerGlow": false,
+     "gradient": false
+    },
+    "endpointMarker": "point",
+    "minVizHeight": 75,
+    "minVizWidth": 75,
+    "orientation": "auto",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "segmentCount": 1,
+    "segmentSpacing": 0.3,
+    "shape": "gauge",
+    "showThresholdLabels": false,
+    "showThresholdMarkers": false,
+    "sizing": "auto",
+    "sparkline": false,
+    "textMode": "auto"
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "count(rttMonLatestRttOperSense == 1) / count(rttMonLatestRttOperSense) * 100",
+     "instant": true,
+     "legendFormat": "Success",
+     "refId": "A"
+    }
+   ],
+   "title": "IP SLA probe success",
+   "type": "gauge"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "Live series arriving via gRPC MDT from r1-r4",
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": 0
+       },
+       {
+        "color": "blue",
+        "value": 1
+       }
+      ]
+     },
+     "unit": "none"
+    }
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 1
+   },
+   "id": 5,
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "auto",
+    "orientation": "auto",
+    "percentChangeColorMode": "standard",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "showPercentChange": false,
+    "textMode": "auto",
+    "wideLayout": true
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "count({subscription=~\"10[12]\"})",
+     "instant": true,
+     "legendFormat": "",
+     "refId": "A"
+    }
+   ],
+   "title": "gRPC telemetry series",
+   "type": "stat"
+  },
+  {
+   "datasource": {
+    "type": "loki",
+    "uid": "efxk88ulvh3pcf"
+   },
+   "description": "SNMP linkDown traps received in the selected window",
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": 0
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     },
+     "unit": "none"
+    }
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 5
+   },
+   "id": 6,
+   "options": {
+    "colorMode": "background",
+    "graphMode": "none",
+    "justifyMode": "auto",
+    "orientation": "auto",
+    "percentChangeColorMode": "standard",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "showPercentChange": false,
+    "textMode": "auto",
+    "wideLayout": true
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "efxk88ulvh3pcf"
+     },
+     "expr": "sum(count_over_time({job=~\".*snmptrapd\"} |= \"linkDown\" [$__range]))",
+     "instant": true,
+     "legendFormat": "",
+     "refId": "A"
+    }
+   ],
+   "title": "linkDown traps",
+   "type": "stat"
+  },
+  {
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 9
+   },
+   "id": 22,
+   "title": "Network topology  |  discovered via LLDP (extra credit)",
+   "type": "row"
+  },
+  {
+   "description": "Built by rcn-topology.py on the NMAS: queries Prometheus for LLDP adjacencies and device reachability, deduplicates bidirectional neighbour reports into unique links, and lays the graph out with NetworkX. Nodes are coloured by SNMP reachability - a device that stops responding turns red and its links go dashed. Requires disable_sanitize_html = true under [panels] in grafana.ini.",
+   "gridPos": {
+    "h": 14,
+    "w": 24,
+    "x": 0,
+    "y": 10
+   },
+   "id": 20,
+   "options": {
+    "code": {
+     "language": "plaintext",
+     "showLineNumbers": false,
+     "showMiniMap": false
+    },
+    "content": "<div style=\"width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#111217\">\n  <img src=\"https://topology.example.invalid/topology.svg?cb=$__to\" style=\"max-width:100%;max-height:100%;object-fit:contain\">\n</div>",
+    "mode": "html"
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [],
+   "title": "Live topology (NetworkX / LLDP)",
+   "type": "text"
+  },
+  {
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 24
+   },
+   "id": 23,
+   "title": "Reachability and latency  |  IP SLA",
+   "type": "row"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "Cisco IP SLA icmp-echo operations running on the devices themselves, polled via CISCO-RTTMON-MIB. Measures the path between devices, not from the NMAS - so it detects core path failures that device-level SNMP polling cannot see.",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisBorderShow": false,
+      "axisCenteredZero": false,
+      "axisColorMode": "text",
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "barWidthFactor": 0.6,
+      "drawStyle": "line",
+      "fillOpacity": 8,
+      "gradientMode": "none",
+      "hideFrom": {
+       "legend": false,
+       "tooltip": false,
+       "viz": false
+      },
+      "insertNulls": false,
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "never",
+      "showValues": false,
+      "spanNulls": true,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": 0
+       },
+       {
+        "color": "yellow",
+        "value": 100
+       },
+       {
+        "color": "red",
+        "value": 500
+       }
+      ]
+     },
+     "unit": "ms"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 14,
+    "x": 0,
+    "y": 25
+   },
+   "id": 8,
+   "options": {
+    "legend": {
+     "calcs": [
+      "mean",
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right",
+     "showLegend": true
+    },
+    "tooltip": {
+     "hideZeros": false,
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "rttMonLatestRttOperCompletionTime",
+     "legendFormat": "{{instance}} probe {{rttMonCtrlAdminIndex}}",
+     "range": true,
+     "refId": "A"
+    }
+   ],
+   "title": "Device-to-device latency (IP SLA, 10s probes)",
+   "type": "timeseries"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "rttMonLatestRttOperSense: 1 = OK, anything else is a failed or timed-out probe. A value above 1 means packet loss on that path.",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisBorderShow": false,
+      "axisCenteredZero": false,
+      "axisColorMode": "text",
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "barWidthFactor": 0.6,
+      "drawStyle": "line",
+      "fillOpacity": 8,
+      "gradientMode": "none",
+      "hideFrom": {
+       "legend": false,
+       "tooltip": false,
+       "viz": false
+      },
+      "insertNulls": false,
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "never",
+      "showValues": false,
+      "spanNulls": true,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "max": 6,
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": 0
+       },
+       {
+        "color": "green",
+        "value": 1
+       },
+       {
+        "color": "red",
+        "value": 2
+       }
+      ]
+     },
+     "unit": "none"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 10,
+    "x": 14,
+    "y": 25
+   },
+   "id": 9,
+   "options": {
+    "legend": {
+     "calcs": [
+      "mean",
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right",
+     "showLegend": true
+    },
+    "tooltip": {
+     "hideZeros": false,
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "rttMonLatestRttOperSense",
+     "legendFormat": "{{instance}} probe {{rttMonCtrlAdminIndex}}",
+     "range": true,
+     "refId": "A"
+    }
+   ],
+   "title": "IP SLA probe return code",
+   "type": "timeseries"
+  },
+  {
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 33
+   },
+   "id": 24,
+   "title": "SNMP polling  |  Objective 1",
+   "type": "row"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "C8000v via CISCO-PROCESS-MIB cpmCPUTotal5minRev; vIOS-L2 via OLD-CISCO-CPU-MIB avgBusy5. Virtualised IOS-XE baselines at 70-90% because the QFP dataplane is emulated in software - thresholds set accordingly.",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisBorderShow": false,
+      "axisCenteredZero": false,
+      "axisColorMode": "text",
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "barWidthFactor": 0.6,
+      "drawStyle": "line",
+      "fillOpacity": 8,
+      "gradientMode": "none",
+      "hideFrom": {
+       "legend": false,
+       "tooltip": false,
+       "viz": false
+      },
+      "insertNulls": false,
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "never",
+      "showValues": false,
+      "spanNulls": true,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "max": 100,
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": 0
+       },
+       {
+        "color": "yellow",
+        "value": 95
+       },
+       {
+        "color": "red",
+        "value": 98
+       }
+      ]
+     },
+     "unit": "percent"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 34
+   },
+   "id": 11,
+   "options": {
+    "legend": {
+     "calcs": [
+      "mean",
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right",
+     "showLegend": true
+    },
+    "tooltip": {
+     "hideZeros": false,
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "max by (instance) (cpmCPUTotal5minRev)",
+     "legendFormat": "{{instance}} (C8000v)",
+     "range": true,
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "max by (instance) (cpuAvgBusy5)",
+     "legendFormat": "{{instance}} (vIOS-L2)",
+     "range": true,
+     "refId": "B"
+    }
+   ],
+   "title": "CPU utilisation, 5 min average",
+   "type": "timeseries"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "if_mib ifHCInOctets from the routers, polled every 30 seconds. Scoped to cisco_8000v so it is directly comparable with the gRPC panel below.",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisBorderShow": false,
+      "axisCenteredZero": false,
+      "axisColorMode": "text",
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "barWidthFactor": 0.6,
+      "drawStyle": "line",
+      "fillOpacity": 8,
+      "gradientMode": "none",
+      "hideFrom": {
+       "legend": false,
+       "tooltip": false,
+       "viz": false
+      },
+      "insertNulls": false,
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "never",
+      "showValues": false,
+      "spanNulls": true,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": 0
+       }
+      ]
+     },
+     "unit": "bps"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 42
+   },
+   "id": 12,
+   "options": {
+    "legend": {
+     "calcs": [
+      "mean",
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right",
+     "showLegend": true
+    },
+    "tooltip": {
+     "hideZeros": false,
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "topk(6, rate(ifHCInOctets{job=\"cisco_8000v\"}[5m]) * 8)",
+     "legendFormat": "{{instance}} {{ifDescr}} in",
+     "range": true,
+     "refId": "A"
+    }
+   ],
+   "title": "Interface throughput, SNMP polled (30s)",
+   "type": "timeseries"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "Error and discard rates across all nine devices. Note s3 GigabitEthernet1/1 - the port carrying all monitoring traffic to the NMAS - shows sustained output discards, a real finding surfaced by this panel.",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisBorderShow": false,
+      "axisCenteredZero": false,
+      "axisColorMode": "text",
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "barWidthFactor": 0.6,
+      "drawStyle": "line",
+      "fillOpacity": 8,
+      "gradientMode": "none",
+      "hideFrom": {
+       "legend": false,
+       "tooltip": false,
+       "viz": false
+      },
+      "insertNulls": false,
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "never",
+      "showValues": false,
+      "spanNulls": true,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": 0
+       },
+       {
+        "color": "yellow",
+        "value": 0.1
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     },
+     "unit": "pps"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 42
+   },
+   "id": 13,
+   "options": {
+    "legend": {
+     "calcs": [
+      "mean",
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right",
+     "showLegend": true
+    },
+    "tooltip": {
+     "hideZeros": false,
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "topk(5, rate(ifInErrors{job=~\"cisco_8000v|cisco_vios_l2\"}[5m]))",
+     "legendFormat": "{{instance}} {{ifDescr}} in-err",
+     "range": true,
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "topk(5, rate(ifOutErrors{job=~\"cisco_8000v|cisco_vios_l2\"}[5m]))",
+     "legendFormat": "{{instance}} {{ifDescr}} out-err",
+     "range": true,
+     "refId": "B"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "topk(5, rate(ifInDiscards{job=~\"cisco_8000v|cisco_vios_l2\"}[5m]))",
+     "legendFormat": "{{instance}} {{ifDescr}} in-disc",
+     "range": true,
+     "refId": "C"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "topk(5, rate(ifOutDiscards{job=~\"cisco_8000v|cisco_vios_l2\"}[5m]))",
+     "legendFormat": "{{instance}} {{ifDescr}} out-disc",
+     "range": true,
+     "refId": "D"
+    }
+   ],
+   "title": "Interface errors and discards",
+   "type": "timeseries"
+  },
+  {
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 50
+   },
+   "id": 25,
+   "title": "gRPC streaming telemetry  |  Objective 2",
+   "type": "row"
+  },
+  {
+   "datasource": {
+    "type": "prometheus",
+    "uid": "efwpn8hr7sfeob"
+   },
+   "description": "Model-driven telemetry, dial-out over gRPC from r1-r4, kvGPB encoded, 10 second interval. Three times the resolution of SNMP polling - note the visibly spikier trace. vIOS-L2 cannot stream.",
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "axisBorderShow": false,
+      "axisCenteredZero": false,
+      "axisColorMode": "text",
+      "axisLabel": "",
+      "axisPlacement": "auto",
+      "barAlignment": 0,
+      "barWidthFactor": 0.6,
+      "drawStyle": "line",
+      "fillOpacity": 8,
+      "gradientMode": "none",
+      "hideFrom": {
+       "legend": false,
+       "tooltip": false,
+       "viz": false
+      },
+      "insertNulls": false,
+      "lineInterpolation": "linear",
+      "lineWidth": 1,
+      "pointSize": 5,
+      "scaleDistribution": {
+       "type": "linear"
+      },
+      "showPoints": "never",
+      "showValues": false,
+      "spanNulls": true,
+      "stacking": {
+       "group": "A",
+       "mode": "none"
+      },
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "min": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": 0
+       }
+      ]
+     },
+     "unit": "bps"
+    }
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 51
+   },
+   "id": 15,
+   "options": {
+    "legend": {
+     "calcs": [
+      "mean",
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "right",
+     "showLegend": true
+    },
+    "tooltip": {
+     "hideZeros": false,
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "efwpn8hr7sfeob"
+     },
+     "expr": "topk(8, rate(Cisco_IOS_XE_interfaces_oper:interfaces_interface_statistics_in_octets[1m]) * 8)",
+     "legendFormat": "{{source}} {{name}}",
+     "range": true,
+     "refId": "A"
+    }
+   ],
+   "title": "Interface throughput, gRPC MDT (10s push)",
+   "type": "timeseries"
+  },
+  {
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 59
+   },
+   "id": 26,
+   "title": "Traps and syslog  |  Objectives 1 and 3",
+   "type": "row"
+  },
+  {
+   "datasource": {
+    "type": "loki",
+    "uid": "efxk88ulvh3pcf"
+   },
+   "description": "Asynchronous SNMP traps received on UDP/162 by snmptrapd, shipped to Loki by Alloy. Red = linkDown, green = linkUp.",
+   "gridPos": {
+    "h": 9,
+    "w": 24,
+    "x": 0,
+    "y": 60
+   },
+   "id": 17,
+   "options": {
+    "dedupStrategy": "none",
+    "enableInfiniteScrolling": false,
+    "enableLogDetails": true,
+    "prettifyLogMessage": false,
+    "showCommonLabels": false,
+    "showControls": false,
+    "showFieldSelector": false,
+    "showLabels": false,
+    "showLevel": true,
+    "showTime": true,
+    "sortOrder": "Descending",
+    "timestampResolution": "ms",
+    "unwrappedColumns": false,
+    "wrapLogMessage": true
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "efxk88ulvh3pcf"
+     },
+     "editorMode": "code",
+     "expr": "{job=~\".*snmptrapd\"} |= \"linkDown\" | label_format level=\"error\"",
+     "queryType": "range",
+     "refId": "A"
+    },
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "efxk88ulvh3pcf"
+     },
+     "editorMode": "code",
+     "expr": "{job=~\".*snmptrapd\"} |= \"linkUp\"   | label_format level=\"info\"",
+     "queryType": "range",
+     "refId": "B"
+    }
+   ],
+   "title": "SNMP link state traps",
+   "type": "logs"
+  },
+  {
+   "datasource": {
+    "type": "loki",
+    "uid": "efxk88ulvh3pcf"
+   },
+   "description": "Device syslog received by rsyslog on UDP/514. Retention: 30 days on disk via logrotate, 30 days in Loki via compactor.",
+   "gridPos": {
+    "h": 9,
+    "w": 24,
+    "x": 0,
+    "y": 69
+   },
+   "id": 18,
+   "options": {
+    "dedupStrategy": "none",
+    "enableInfiniteScrolling": false,
+    "enableLogDetails": true,
+    "prettifyLogMessage": false,
+    "showCommonLabels": false,
+    "showControls": false,
+    "showFieldSelector": false,
+    "showLabels": false,
+    "showLevel": true,
+    "showTime": true,
+    "sortOrder": "Descending",
+    "timestampResolution": "ms",
+    "unwrappedColumns": false,
+    "wrapLogMessage": true
+   },
+   "pluginVersion": "13.2.0",
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "efxk88ulvh3pcf"
+     },
+     "editorMode": "code",
+     "expr": "{job=~\".*network_syslog\"} | label_format level=\"error\"",
+     "queryType": "range",
+     "refId": "A"
+    }
+   ],
+   "title": "Critical syslog from devices",
+   "type": "logs"
+  }
+ ],
+ "preload": false,
+ "refresh": "10s",
+ "schemaVersion": 42,
+ "tags": [
+  "csci5840",
+  "lab2",
+  "lab3",
+  "rcn-lab1"
+ ],
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "5s",
+   "10s",
+   "30s",
+   "1m",
+   "5m",
+   "15m",
+   "30m",
+   "1h",
+   "2h",
+   "1d"
+  ]
+ },
+ "timezone": "utc",
+ "title": "RCN Lab — Monitoring, Telemetry, Alerting and Data Lake",
+ "uid": "rcn-lab-overview",
+ "version": 3
+}
