@@ -166,6 +166,20 @@ _JOB_STATES = {
     "cannot_run": ("cannot run: a program it needs is missing or not root's", "danger"),
     "path_inactive": ("is not watching for update requests", "danger"),
     "differs": ("differs from this release's copy", "warning"),
+    # The nightly VM images' storage (B6). These four reached the page as
+    # "reads will_not_fit" in danger (C288): every state job health can
+    # write has its words here, held by test_job_health.
+    "will_not_fit": ("has too little free space for the next run's largest image", "warning"),
+    "images_missing": ("holds less than the newest images add up to: one was removed", "danger"),
+    "inactive": ("is not mounted or is disabled: the next run will fail", "danger"),
+    "unsized": ("has no image size yet to judge the next run against", "unknown"),
+    "missing": ("no longer lists the image its last run wrote", "danger"),
+    "never": ("has no backup task on record", "warning"),
+    "not_configured": ("is not configured, so nothing watches it", "unknown"),
+    "pool_unhealthy": ("is not ONLINE: a suspended pool stops every write", "danger"),
+    "pool_will_pause": ("is near ZFS's reserve: every VM on it pauses there", "danger"),
+    "pool_degrading": ("is past the fill where allocation slows", "warning"),
+    "pool_filling": ("is filling: an LVM-thin pool that fills stops its VMs' writes", "danger"),
 }
 
 

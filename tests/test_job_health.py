@@ -373,6 +373,39 @@ class TestFillingIsAboutTheNextRun:
             "vm-images-storage:vzdump-sda"]
         assert row["state"] == "will_not_fit" and "writes before it prunes" in row["detail"]
 
+    # C288, measured 2026-10-01: the storage read 26.2 GiB free at 08:41 UTC,
+    # between VM 100's new 23.0 GiB image and the prune of the one it
+    # replaced, and 48.7 GiB once the run ended. Mid-run, low free space is
+    # vzdump's own order of work, not a shortage.
+    MID_RUN = {"active": 1, "avail": 26.2 * GIB, "used": 120 * GIB}
+    RUNNING = {"upid": "URUN", "id": "", "starttime": NOW - 660}       # no endtime yet
+
+    def _with_run(self, storage):
+        default = FakeProxmox()._tasks
+        return _rows(FakeProxmox(tasks=default + [self.RUNNING], storage=storage))[
+            "vm-images-storage:vzdump-sda"]
+
+    def test_a_reading_taken_while_a_backup_runs_is_not_judged(self):
+        row = self._with_run(self.MID_RUN)
+        assert row["state"] == "backup_running", row
+        assert "a backup is running (started 11 min ago)" in row["detail"]
+        assert "26.2 GiB free now" in row["detail"] and "judged once the run ends" in row["detail"]
+        assert row["state"] in J.OK_STATES                     # quiet: nothing to do
+
+    def test_the_same_reading_with_no_run_in_progress_still_will_not_fit(self):
+        """The control: the check is not switched off, only deferred."""
+        row = _rows(FakeProxmox(storage=self.MID_RUN))["vm-images-storage:vzdump-sda"]
+        assert row["state"] == "will_not_fit"
+
+    def test_the_run_ended_with_room_to_spare_is_ok(self):
+        row = _rows(FakeProxmox(storage={"active": 1, "avail": 48.7 * GIB, "used": 97.9 * GIB}))[
+            "vm-images-storage:vzdump-sda"]
+        assert row["state"] == "ok"
+
+    def test_a_running_backup_does_not_hide_an_unmounted_destination(self):
+        row = self._with_run({"active": 0, "avail": 0})
+        assert row["state"] == "inactive"
+
     def test_just_enough_room_fits(self):
         row = _rows(FakeProxmox(storage={"active": 1, "avail": 31 * GIB, "used": 34 * GIB}))[
             "vm-images-storage:vzdump-sda"]
@@ -570,3 +603,57 @@ class TestTheRunningVersion:
         row = job_health.version_rows()[0]
         assert row["state"] in ("ok", "mixed_version", "unknown")
         assert row["unit"] == "running-version"
+
+
+class TestEveryStateHasWords:
+    """C288: `will_not_fit` reached Needs attention as "reads will_not_fit" in
+    danger, because job health could write a state the page had no words for
+    (eight such states, found by this scan). Every state literal job_health
+    writes (a row's second argument, a dict's "state", a value assigned to
+    `state`, and both branches of a conditional in those places) is either
+    quiet (`OK_STATES`) or has its words and level in `attention._JOB_STATES`.
+    States read from a record at run time (a rotation's own state) are outside
+    a literal scan, and the page still draws those loud by name."""
+
+    @staticmethod
+    def _states():
+        import ast
+
+        tree = ast.parse(open(J.__file__, encoding="utf-8").read())
+
+        def consts(v):
+            if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                yield v.value
+            elif isinstance(v, ast.IfExp):
+                yield from consts(v.body)
+                yield from consts(v.orelse)
+
+        found = set()
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and len(node.args) >= 2
+                    and getattr(node.func, "id", "") == "row"):
+                found.update(consts(node.args[1]))
+            elif isinstance(node, ast.Dict):
+                for k, v in zip(node.keys, node.values):
+                    if isinstance(k, ast.Constant) and k.value == "state":
+                        found.update(consts(v))
+            elif isinstance(node, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == "state" for t in node.targets):
+                found.update(consts(node.value))
+        return found
+
+    def test_the_scan_finds_the_states(self):
+        states = self._states()
+        assert len(states) >= 30, sorted(states)                # measured 32
+        assert {"will_not_fit", "backup_running", "pool_filling", "not_configured"} <= states
+
+    def test_every_state_is_quiet_or_has_words(self):
+        from modules import attention
+        unworded = sorted(s for s in self._states()
+                          if s not in J.OK_STATES and s not in attention._JOB_STATES)
+        assert unworded == [], unworded
+
+    def test_will_not_fit_reads_as_words_not_its_name(self):
+        from modules import attention
+        words, level = attention._JOB_STATES["will_not_fit"]
+        assert "will_not_fit" not in words and level == "warning"

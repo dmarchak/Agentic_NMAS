@@ -120,7 +120,8 @@ r6; the targets carry that as it is (C225).
    reload, did not take), `NOT YET DISCOVERED` (exit 3: inside one scrape
    interval of the reload or of a write, with the time to ask again), and
    `DIFFERS` (the same difference past that interval). Within a scrape
-   interval (30 s), `rcn-lab1-snmp`'s `device` variable lists the devices.
+   interval (30 s then; 60 s for the switches since 2026-10-01, below), the
+   device dashboard's `device` variable lists the devices.
 
 6. Name the directory in Settings > Integrations > Prometheus, **Targets
    directory**: `/etc/prometheus/nmas`. From then on the NMAS writes the files
@@ -143,6 +144,31 @@ directory's owner or mode, step 1); files behind a recent run read
 `settling` with the time they will be current; files behind with no run for
 longer than the backstop mean the keeper is not running. With no directory
 named, nothing is written and the row's action is the Settings field.
+
+## Scrape intervals (the operator's change, 2026-10-01)
+
+To take load off s3, the management gateway (register C93), the operator
+slowed the jobs that poll the switches. Read back from what Prometheus has
+LOADED (`api/v1/status/config`, configuration loaded 2026-10-01T08:54:07Z,
+reload successful):
+
+| Job | Interval | Timeout | Polls |
+|---|---|---|---|
+| `cisco_vios_l2` | **60 s** (was 30 s) | 30 s | the four switches: `if_mib`, `cisco_old_cpu`, `system` |
+| `cisco_ipsla` | **60 s** (was 30 s) | 20 s | the devices whose golden defines an IP SLA operation |
+| `ospf` | **60 s** (was 30 s) | 20 s | the OSPF devices' routing tables |
+| `lldp` | 60 s (unchanged) | 30 s | every device |
+| `cisco_8000v` | 30 s | 30 s | the routers |
+| `ospfv3`, `bgp` | 30 s | 20 s | IOS-XE routing tables |
+| `telemetry_mdt` | 30 s | 10 s | Telegraf (the routers push every 10 s) |
+
+Nothing in the NMAS assumes an interval: the targets check reads each job's
+loaded interval to decide when "not yet discovered" becomes "differs"
+(`prometheus_targets.seconds()`). What a slower interval changes: a switch's
+panels and alerts see a change up to 60 s later, `rate()` over a 1 m window
+on those jobs holds one sample (use 2 m or more), and the per-hour sample
+count halves (counts of failed scrapes before and after the change are
+compared as a fraction, never as a number).
 
 ## Uptime, routing adjacencies and telemetry (2026-09-30)
 
@@ -257,7 +283,7 @@ equivalent (a `[[processors.rename]]` of the tag) would do it at the source, but
 second config to own; the relabel sits beside the other scrape edits.
 
 **Resolution:** the routers push every 10 s (`update-policy periodic 1000`), but Prometheus
-scrapes Telegraf every 30 s, the same as SNMP. `scrape_interval: 10s` on `telemetry_mdt`
+scrapes Telegraf every 30 s, the same as the routers' SNMP. `scrape_interval: 10s` on `telemetry_mdt`
 alone would keep what the devices send.
 
 **CPU is two measurements, not one from two collectors** (measured 2026-09-30, read-only):

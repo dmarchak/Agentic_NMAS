@@ -440,6 +440,10 @@ def image_jobs(now: float = None, client=None) -> list:
                     outcome[vmid] = {**fact, "endtime": task["endtime"],
                                      "status": str(task.get("status", ""))}
 
+    # A run in progress: a task the node lists with no end time yet.
+    running = ([t for t in (tasks["data"] or []) if not t.get("endtime")]
+               if tasks["ok"] else [])
+
     listing = client.backups()
     listed = {str(item.get("volid", "")).rsplit("/", 1)[-1]
               for item in (listing.get("data") or [])} if listing["ok"] else set()
@@ -501,6 +505,17 @@ def image_jobs(now: float = None, client=None) -> list:
         rows.append(row(unit, "unsized",
                         f"{_gib(st['data'].get('avail'))} free, and no archive size yet "
                         f"to size the next run against"))
+    elif running:
+        # vzdump writes each image BEFORE pruning the one it replaces, so in
+        # the middle of a run free space is low by design: measured
+        # 2026-10-01, 26.2 GiB read at 08:41 UTC between VM 100's write and its
+        # prune, 48.7 GiB at the run's end. Judged when the run ends (C288).
+        first = min(running, key=lambda t: t.get("starttime") or now)
+        rows.append(row(unit, "backup_running",
+                        f"a backup is running (started {_age(now, first.get('starttime') or now)}): "
+                        f"{_gib(st['data'].get('avail'))} free now, below what the next run starts "
+                        f"with, because vzdump writes each image before pruning the one it "
+                        f"replaces; free space is judged once the run ends"))
     else:
         avail = st["data"].get("avail") or 0
         used = st["data"].get("used")
@@ -915,7 +930,8 @@ def sync_owner_rows(run=None, get=None) -> list:
 #: `settling`: a change not yet taken up where it is being taken up (the
 #: generated Prometheus targets, C232), dated with when to ask again. Nothing
 #: for a person to do; the next read says whether it settled or differs.
-OK_STATES = ("ok", "not_applicable", "departed", "settling")
+#: `backup_running`: the backup storage is not judged mid-run (C288).
+OK_STATES = ("ok", "not_applicable", "departed", "settling", "backup_running")
 
 
 def ztp_responder_rows(run=None, get=None) -> list:
