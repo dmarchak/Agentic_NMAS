@@ -528,6 +528,9 @@ def _register_stack_dump(session):
 
 
 def pytest_runtest_logstart(nodeid, location):
+    from tests import run_history
+
+    run_history.record(nodeid)
     path = _inflight_file("running")
     if path:
         import time

@@ -279,12 +279,16 @@ class TestAFailedReleaseReadsAsAFailure:
     def test_the_words_name_the_run(self):
         from modules import update_op
         words = update_op.person_ci(self.FAILED, "b" * 40)
-        assert words.startswith("CI failed for this release (run #241): it will not be installed")
+        assert words == ("CI failed for this release (run #241): it will not be installed. "
+                         "A fix needs a new release")
 
     def test_without_a_run_number_it_still_says_failed(self):
         from modules import update_op
         words = update_op.person_ci({"tip": "b" * 40, "state": "failed", "sentence": "x"})
-        assert words.startswith("CI failed for this release: it will not be installed")
+        assert words == "CI failed for this release: it will not be installed. A fix needs a new release"
+        # The tool never promises what it cannot know (the operator, 2026-10-01).
+        from modules.update_op import CI_PERSON
+        assert not any("next release" in w for w in CI_PERSON.values())
 
     def test_a_wait_ends_on_it(self, store):
         from modules import update_op

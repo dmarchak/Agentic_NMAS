@@ -96,8 +96,9 @@ CI_PERSON = {
     "verified": "CI passed this release",
     "pending": ("CI is still checking this release (a check takes about 4 minutes here). "
                 "You can confirm now, and it updates when CI passes"),
-    "failed": "CI found a problem with this release, so it will not be installed. The next "
-              "release fixes it",
+    # Never a promise the tool cannot keep (the operator, 2026-10-01): it does
+    # not know that the next release fixes anything.
+    "failed": "CI failed for this release: it will not be installed. A fix needs a new release",
     "cancelled": "CI's check of this release was stopped, usually because a newer release "
                  "replaced it: check again for the newer one",
     "could_not_ask": "CI could not be asked about this release just now; Check again asks once more",
@@ -422,7 +423,7 @@ def person_ci(ci: dict, target: str = "") -> str:
         # release (run #241): it won't be installed".
         m = re.search(r"run #(\d+)", ci.get("sentence") or "")
         return ("CI failed for this release" + (f" (run #{m.group(1)})" if m else "")
-                + ": it will not be installed. The next release fixes it")
+                + ": it will not be installed. A fix needs a new release")
     return CI_PERSON.get(ci.get("state"), f"CI answered {ci.get('state')!r}")
 
 

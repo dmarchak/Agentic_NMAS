@@ -216,14 +216,15 @@ def _setup(v, mp, client):
                   source="manual", actor="t", baseline=False)
     v["golden"].append(_p("HeadComm"))
 
-    # A second backup, under its own name.
-    second = backups.save_config_backup(DEVICE["ip"], "r1", _config_body("Back2"))
-    if second["filename"] == v["_backup_file"]:
-        new = second["filepath"].replace(".cfg", "_b.cfg")
-        os.replace(second["filepath"], new)
-        second["filename"] = os.path.basename(new)
-        # save_config_backup overwrote the first under the same name: re-plant it.
-        backups.save_config_backup(DEVICE["ip"], "r1", _config_body("Back"))
+    # A second backup, under its own name BY CONSTRUCTION: a startup backup,
+    # whose filename can never be the running one's. It was a second running
+    # backup, which in the same second as the first OVERWROTE it, was renamed,
+    # and re-planted the first, which then took the NEXT second's name if the
+    # clock ticked in between: `_backup_file` named nothing (2026-10-01,
+    # measured: the overwrite ran on every local run).
+    second = backups.save_config_backup(DEVICE["ip"], "r1", _config_body("Back2"),
+                                        config_type="startup")
+    assert second["filename"] != v["_backup_file"], second["filename"]
     v["_backup_file_2"] = second["filename"]
     v["backup"] += [_p("Back2Sec"), _p("Back2Comm")]
 
@@ -256,6 +257,29 @@ def _setup(v, mp, client):
     for name, cls in REGISTRY.items():
         if name not in INTEGRATIONS_NOT_DRIVEN:
             config.set_user_setting(cls().url_key, "http://127.0.0.1:9")
+
+
+def _planted_backups_present(v, when):
+    """The sweep's precondition, asserted where it can be read (the operator,
+    2026-10-01: CI answered 404 "Backup file not found" for compare_backups on
+    gw1 twice, while 28 simulated schedules here passed). Order-independent: it
+    says what is missing, where it went, and what ran before, whatever ran."""
+    from modules import backups, config
+    from tests import run_history
+
+    where = backups.get_backups_dir()
+    missing = [n for n in (v["_backup_file"], v["_backup_file_2"])
+               if not os.path.exists(os.path.join(where, n))]
+    if not missing:
+        return
+    found = [os.path.join(root, f) for root, _d, files in os.walk(config.DATA_DIR)
+             for f in files if f in missing]
+    listing = sorted(os.listdir(where)) if os.path.isdir(where) else "(no such directory)"
+    raise AssertionError(
+        f"the backup(s) the fixture planted are gone {when}: {missing} (not in {where}, "
+        f"current list {config.get_current_list_name()!r}). Found elsewhere in the store: "
+        f"{found or 'nowhere'}. The directory holds: {listing}. "
+        + run_history.last_line() + "\n" + run_history.describe())
 
 
 def _store_state():
@@ -368,8 +392,10 @@ def swept():
             planted = {x: store for store, xs in values.items() if not store.startswith("_")
                        for x in xs}
             writes = {}
-            yield {"writes": writes, "values": values, "planted": planted,
-                   "anon": _drive(values, person=False),
+            _planted_backups_present(values, "after the setup, before any route ran")
+            anon = _drive(values, person=False)
+            _planted_backups_present(values, "after the anonymous pass, before the person's")
+            yield {"writes": writes, "values": values, "planted": planted, "anon": anon,
                    "person": _drive(values, person=True, writes=writes)}
     finally:
         mp.undo()
@@ -472,3 +498,34 @@ class TestNoPreviewWritesTheStore:
 
     def test_every_declared_writer_is_in_the_population(self):
         assert set(MAY_WRITE) <= set(_population()), set(MAY_WRITE) - set(_population())
+
+
+class TestThePreconditionIsSaid:
+    """The sweep's own precondition (CI run #245, 2026-10-01): a missing
+    planted backup is named with where it was looked for, where it is, and what
+    this worker ran before, on the FIRST line, which is all CI's annotation
+    carries."""
+
+    def _v(self, tmp_path, monkeypatch, names):
+        from modules import backups
+        monkeypatch.setattr(backups, "get_backups_dir", lambda: str(tmp_path))
+        for n in names:
+            (tmp_path / n).write_text("x")
+        return {"_backup_file": "first.cfg", "_backup_file_2": "second.cfg"}
+
+    def test_both_present_says_nothing(self, tmp_path, monkeypatch):
+        _planted_backups_present(self._v(tmp_path, monkeypatch, ["first.cfg", "second.cfg"]),
+                                 "now")
+
+    def test_one_gone_is_named_with_what_ran_before(self, tmp_path, monkeypatch):
+        from tests import run_history
+        v = self._v(tmp_path, monkeypatch, ["second.cfg"])
+        with pytest.raises(AssertionError) as exc:
+            _planted_backups_present(v, "before the drive")
+        first = str(exc.value).splitlines()[0]
+        assert "gone before the drive: ['first.cfg']" in first and str(tmp_path) in first
+        assert "The directory holds: ['second.cfg']" in first
+        assert "before it, worker" in first
+        # The history is this process's own, the running test last.
+        assert run_history.RAN[-1].endswith("test_one_gone_is_named_with_what_ran_before")
+        assert "other threads alive now" in str(exc.value)
