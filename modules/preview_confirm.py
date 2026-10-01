@@ -138,7 +138,10 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
                                  for t in targets]},
             "what_not": {"items": what_not, "none": "" if what_not else nothing_left_out},
             "targets": [{"name": t["name"], "program": t["program"],
-                         "operands": t["operands"], "gates": t["gates"]}
+                         "operands": t["operands"], "gates": t["gates"],
+                         # A stated reason the person must give for this
+                         # target (C310), drawn beside its gates.
+                         **({"acknowledge": t["acknowledge"]} if t.get("acknowledge") else {})}
                         for t in targets],
             "confirm": confirm}
 
@@ -682,6 +685,7 @@ OUTCOME_WORDS = {
     "moved": "refused: it changed since the preview, nothing was recorded",
     "unread": "could not be read, nothing was recorded",
     "refused": "refused: nothing was sent",
+    "not_recorded": "read, and not recorded: the save refused its capture",
     "busy": "refused: another operation holds this device (C98), nothing was recorded",
     "skipped_drifted": "skipped: its capture moved since the preview, nothing was sent",
     "failed": "failed",
@@ -827,9 +831,27 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
     tags = list(golden.get("tags") or [])
     baseline = next((t for t in tags if t.startswith("baseline/")), "")
     commit = golden.get("commit", "")
+    # A deploy whose golden was NOT recorded is not a clean deploy (C310: five
+    # vty deploys drew green while the shrink guard refused every capture, and
+    # the record said "nothing succeeded, or no capture changed").
+    golden_refused = {r.get("device"): r.get("reason", "") for r in golden.get("refused") or []}
+    golden_failed = golden.get("ok") is False
+    if golden_failed:
+        golden_refused = golden_refused or {d: golden.get("error") or "the golden save failed"
+                                            for d in golden.get("devices") or []}
+    for name, why in golden_refused.items():
+        did_not.append({"target": name, "kind": "golden_not_recorded",
+                        "text": "The change is on the device and its golden was NOT recorded: "
+                                + (why or "no reason was recorded")
+                                + ". Capture it from its Device page to record it.",
+                        "lines": []})
+    recorded_devices = [d for d in golden.get("devices") or [] if d not in golden_refused]
     statement = (f"Golden commit {commit[:12]} records the captures of "
-                 f"{', '.join(golden.get('devices') or []) or 'no device'}."
-                 if commit else "No golden commit: nothing succeeded, or no capture changed.")
+                 f"{', '.join(recorded_devices) or 'no device'}."
+                 if commit and recorded_devices else
+                 "GOLDEN NOT RECORDED for " + ", ".join(golden_refused) + "."
+                 if golden_refused else
+                 "No golden commit: nothing succeeded, or no capture changed.")
     statement += (f" Baseline {baseline} was tagged." if baseline else
                   " No baseline tag: " + "; ".join(golden.get("baseline_reasons") or
                                                    ["not earned"]) + ".")
@@ -863,9 +885,12 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
     else:
         summary = (f"{done} of {len(rows)} device(s) {verb}. {len(rows)} device(s) accounted "
                    "for: every device in the batch appears here.")
+    level = result_level(rows, receipt_ok, bool(report.get("breaker_tripped")))
+    if golden_refused and level == "success":
+        level = "partial"
     return build_result(
         action=action,
-        level=result_level(rows, receipt_ok, bool(report.get("breaker_tripped"))),
+        level=level,
         summary=summary,
         targets=targets, did_not=did_not,
         nothing_left_out="Nothing: every device was done, and the rollback had nothing to leave.",
@@ -1731,6 +1756,17 @@ def _intent_words(i: dict) -> str:
     return words(i) if i else "not compared"
 
 
+def _structure_gate(structure: dict) -> dict:
+    """The shrink guard drawn as a gate (C310): passed when committed intent
+    renders the smaller structure, waiting on the person's reason when not."""
+    if structure.get("explained"):
+        return gate("structure: no section lost that intent does not explain", "pass",
+                    f"{structure['lost']}, which is what committed intent renders")
+    return gate("structure: no section lost that intent does not explain", "fail",
+                f"{structure['lost']}, not explained by committed intent: recorded only "
+                "with your reason below")
+
+
 def capture_preview(entries: list, *, fleet: bool, inventory: list, request=None,
                     not_read: list = None, timing: dict = None, confirm: dict = None) -> dict:
     """*entries*: per device ``{device, read, error, capture_hash, diff,
@@ -1796,7 +1832,15 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request=None
                        busy_gate(e)]
                       + ([gate("capture unchanged since this preview", "at_apply",
                                "the device IS re-read at apply, and one that moved is refused")]
-                         if e.get("read") else [])),
+                         if e.get("read") else [])
+                      + ([_structure_gate(e["structure"])] if e.get("structure") else [])),
+            # A shrink committed intent does not explain asks the person for a
+            # reason here, recorded on the commit (C310). Never a parameter.
+            **({"acknowledge": {
+                "prompt": (f"Its structure shrank ({e['structure']['lost']}) and committed "
+                           "intent does not explain it. If the device really changed, say why "
+                           "(a few words, recorded on the commit as yours)")}}
+               if (e.get("structure") or {}) and not e["structure"].get("explained") else {}),
         })
     what_not.append({"target": "the devices", "kind": "scope",
                      "text": "Nothing is sent to any device: a capture reads and records.",
@@ -1970,6 +2014,14 @@ def capture_result(outcomes: list, save: dict, *, fleet: bool, timing: dict = No
     # operator, 2026-09-29): s3's connect failed on a Save All and the result
     # said only "s3 skipped", while the reason sat in a lower row and the log.
     unread = [o for o in outcomes if o["outcome"] == "unread"]
+    not_recorded = [o for o in outcomes if o["outcome"] == "not_recorded"]
+    if not_recorded:
+        # One device's refusal is ITS row, and leads (C310): the others were
+        # recorded or measured, and a baseline needs every device.
+        summary = (" ".join(f"{o['device']} was not recorded: {o.get('reason')}"
+                            for o in not_recorded)
+                   + (" A baseline needs every device. " if fleet else " ")
+                   + summary)
     if unread:
         summary = (" ".join(f"{o['device']} could not be read: "
                             f"{o.get('reason') or 'no reason was recorded'}."

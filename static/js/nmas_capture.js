@@ -90,6 +90,17 @@
     return out;
   }
 
+  /* PURE over the drawn fields: each device's stated reason for a shrink
+     committed intent does not explain (C310). Empty fields are not sent. */
+  function captureAcknowledged(el) {
+    var out = {};
+    Array.prototype.slice.call(el.querySelectorAll('input[data-ack-device]')).forEach(function (i) {
+      var v = (i.value || '').trim();
+      if (v) out[i.dataset.ackDevice] = v;
+    });
+    return out;
+  }
+
   function refreshButton(el) {
     var boxes = Array.prototype.slice.call(el.querySelectorAll('input[data-pc-select]'));
     var n = Object.keys(captureSelection(boxes)).length;
@@ -197,7 +208,7 @@
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(Object.assign(
               {confirmations: captureSelection(boxes), fleet: state.fleet,
-               mode: conf.mode || 'record'},
+               mode: conf.mode || 'record', acknowledge: captureAcknowledged(el)},
               approvals ? {approvals: approvals} : {}))});
           ad = await ar.json();
         } catch (e) {
@@ -225,6 +236,7 @@
 
   root.previewCapture = previewCapture;
   root.captureSelection = captureSelection;
+  root.captureAcknowledged = captureAcknowledged;
   root.captureWaitingWords = captureWaitingWords;
   root.capturePreviewHeard = capturePreviewHeard;
 })(typeof window !== 'undefined' ? window : this);

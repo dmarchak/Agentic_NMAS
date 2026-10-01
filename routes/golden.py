@@ -305,6 +305,13 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
                           + ". Nothing will be recorded for it"),
                 "read_phases": phases}, None
     incoming = golden_body(host, ip, text)
+    # The shrink guard, judged at the preview (C310): what save_golden will
+    # say, so a person gives a reason where intent does not explain it.
+    from modules.nsot.repo import lost_sections
+    shrink = lost_sections(current, incoming) if current else {}
+    intent_now = intent_match(repo, list_name, host, text, platform)
+    structure = ({"lost": ", ".join(f"{k} {b}->{a}" for k, (b, a) in sorted(shrink.items())),
+                  "explained": intent_now.get("state") == "match"} if shrink else {})
     # The device's own self-signed certificate is regenerated at boot: drawn as
     # one labelled line, never as its hex. The golden is recorded verbatim.
     from modules.nsot.normalize import self_signed_note, strip_self_signed_certs
@@ -317,7 +324,7 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
         diff.append(note)
     return ({"device": host, "read": True, "error": "", "platform": platform,
              "capture_hash": _capture_hash(text), "changed": incoming != current,
-             "diff": diff, "intent": intent_match(repo, list_name, host, text, platform),
+             "diff": diff, "intent": intent_now, "structure": structure,
              "busy": busy, "read_phases": phases},
             text)
 
@@ -543,6 +550,16 @@ def capture_apply():
 
     data = request.get_json(silent=True) or {}
     confirmations = {k: v for k, v in (data.get("confirmations") or {}).items() if k}
+    # A person's reason per device for a shrink intent does not explain
+    # (C310), in the shape of a reason, recorded on the commit as theirs.
+    from modules.nsot.authorisation import reason_problem
+    acknowledged = {}
+    for host, reason in (data.get("acknowledge") or {}).items():
+        problem = reason_problem({"reason": str(reason or "").strip(),
+                                  "line": f"{host}'s structural change"})
+        if problem:
+            return jsonify({"ok": False, "error": f"{host}: {problem}"}), 400
+        acknowledged[host] = str(reason).strip()
     if not confirmations:
         return jsonify({"ok": False, "error": "Nothing confirmed: nothing recorded"}), 400
     list_name = _active_list(data)
@@ -608,11 +625,17 @@ def capture_apply():
                                actor=request_actor(), allow_new=False,
                                inventory_size=len(inventory) if fleet else 0,
                                skipped=skipped, baseline=None if fleet else False,
+                               acknowledge_structural_change=acknowledged,
                                # Items handed to this capture close as done below.
                                leave_items=[i for ids in (data.get("approvals") or {}).values()
                                             for i in (ids or [])])
+            # Each device's own outcome (C310): a device the save refused is
+            # named with ITS reason, never another device's.
+            refused = {r["device"]: r for r in (save.get("refused") or [])}
             for o in pending:
-                if not save.get("ok"):
+                if o["device"] in refused:
+                    o.update(outcome="not_recorded", reason=refused[o["device"]]["reason"])
+                elif not save.get("ok"):
                     o.update(outcome="unread", reason=save.get("error") or "the save failed")
                 else:
                     o["outcome"] = ("captured" if o["device"] in (save.get("changed") or [])

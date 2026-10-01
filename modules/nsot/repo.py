@@ -609,9 +609,13 @@ def lost_sections(previous: str, incoming: str) -> dict:
 class GoldenWouldLoseSections(Exception):
     """A save that would drop structural sections from a device's record."""
 
+    def __init__(self, message: str, lost: dict = None):
+        super().__init__(message)
+        self.lost = dict(lost or {})
+
 
 def _guard_content(abs_path: str, hostname: str, incoming: str,
-                   acknowledge: bool) -> None:
+                   acknowledge, explained: bool = False) -> str:
     """Refuse a save that silently shrinks a device's configuration.
 
     The chokepoint, not the caller. The credential rotation replaced r1's and
@@ -632,6 +636,15 @@ def _guard_content(abs_path: str, hostname: str, incoming: str,
     real thing that must remain possible, so it is allowed with
     ``acknowledge_structural_change=True``. Explicit, recorded in the call,
     and impossible to reach by accident.
+
+    **A shrink committed intent explains is accepted** (C310, 2026-10-01: the
+    vty standardisation took r1's `line` sections from 5 to 3, and the guard
+    refused the deploy's own capture and then Save All for all nine). When
+    the incoming capture IS what committed intent renders (*explained*), the
+    smaller structure is the change the tool made, not a filtered read.
+    *acknowledge* is a person's reason (text) or the older ``True``. Returns
+    the words a commit records for an accepted shrink, ``""`` when nothing
+    shrank.
     """
     previous = None
     if os.path.exists(abs_path):
@@ -644,19 +657,25 @@ def _guard_content(abs_path: str, hostname: str, incoming: str,
     # skipped its own check is refused anyway.
     from modules import config_read
     config_read.check(incoming, hostname, previous, strict=False)
-    if acknowledge or previous is None:
-        return
+    if previous is None:
+        return ""
 
     lost = lost_sections(previous, incoming)
     if not lost:
-        return
+        return ""
     detail = ", ".join(f"{kind} {before}->{after}"
                        for kind, (before, after) in sorted(lost.items()))
+    if explained:
+        return f"{detail}, which is what committed intent renders"
+    if isinstance(acknowledge, str) and acknowledge.strip():
+        return f"{detail}, acknowledged: {acknowledge.strip()}"
+    if acknowledge is True:
+        return f"{detail}, acknowledged by the caller"
     raise GoldenWouldLoseSections(
-        f"{hostname}: the incoming config has fewer structural sections than "
-        f"the golden it would replace ({detail}). This is what a filtered or "
-        f"truncated capture looks like. If the device really did change "
-        f"structurally, pass acknowledge_structural_change=True.")
+        f"{hostname}: the capture has fewer structural sections than the golden it would "
+        f"replace ({detail}), and committed intent does not explain it. A filtered or "
+        f"truncated read looks like this. If the device really did change structurally, "
+        f"acknowledge it with a reason on the capture's preview.", lost)
 
 
 def _baseline_wanted(baseline, source: str, changed_count: int) -> bool:
@@ -762,7 +781,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                 actor: str = "nmas", message: str = "", allow_new: bool = False,
                 pipeline_id: str = None, baseline: bool = None,
                 extra_trailers: list = None, extra_paths: list = None,
-                acknowledge_structural_change: bool = False,
+                acknowledge_structural_change=False,
                 inventory_size: int = 0, skipped: list = None,
                 operational: dict = None, baseline_reasons: list = None,
                 leave_items=()) -> dict:
@@ -828,24 +847,50 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         # failure the extra_paths handling below was fixed for. A Save All is
         # one commit over nine devices; a ninth device failing the guard must
         # not leave eight rewritten.
-        try:
-            for _item, _identity, _rel, abs_path, content in pending:
-                _guard_content(abs_path, _item.hostname, content,
-                               acknowledge_structural_change)
-        except (GoldenWouldLoseSections, UnreliableRead) as exc:
-            log.error("repo: %s", exc)
-            return {"ok": False, "error": (str(exc) + ". Nothing was recorded"
-                                           if isinstance(exc, UnreliableRead) else str(exc)),
-                    "changed": [],
-                    "unchanged": unchanged, "tags": [],
-                    "renamed": rename_result["renamed"]}
-
+        #
+        # EACH DEVICE IS JUDGED ALONE (C310, 2026-10-01): one device's refusal
+        # was the whole save's error, and the capture drew it on all nine rows.
+        # A refused device is left out of this commit, named with its own
+        # reason, and counted as skipped, so no baseline is taken without it.
+        #
         # Every capture in this save against its COMMITTED INTENT, computed
-        # once, read by the trailer and the baseline decision alike (C89).
+        # once, read by the guard, the trailer and the baseline decision (C89).
         from modules.nsot.intent_match import intent_match, trailer as _intent_trailer
         intent = {item.hostname: intent_match(repo, list_name, item.hostname,
                                                item.config_text, item.platform or "")
                   for item in items}
+        acks = acknowledge_structural_change
+        refused, structural, kept = [], [], []
+        for entry in pending:
+            _item, _identity, _rel, abs_path, content = entry
+            ack = (acks.get(_item.hostname, False) if isinstance(acks, dict) else acks)
+            try:
+                why = _guard_content(abs_path, _item.hostname, content, ack,
+                                     explained=(intent.get(_item.hostname) or {})
+                                     .get("state") == "match")
+            except (GoldenWouldLoseSections, UnreliableRead) as exc:
+                log.error("repo: %s", exc)
+                refused.append({"device": _item.hostname,
+                                "kind": ("unreliable" if isinstance(exc, UnreliableRead)
+                                         else "structure"),
+                                "lost": {k: list(v) for k, v in
+                                         getattr(exc, "lost", {}).items()},
+                                "reason": str(exc) + (". Nothing was recorded for it"
+                                                      if isinstance(exc, UnreliableRead)
+                                                      else "")})
+                continue
+            if why:
+                structural.append(f"Structural-Change: {_item.hostname} {why}")
+            kept.append(entry)
+        pending = kept
+        if refused:
+            skipped = list(skipped or []) + [{"hostname": r["device"], "reason": r["reason"]}
+                                             for r in refused]
+            if not pending and not unchanged:
+                return {"ok": False, "error": "; ".join(r["reason"] for r in refused),
+                        "refused": refused, "changed": [], "unchanged": unchanged,
+                        "tags": [], "renamed": rename_result["renamed"]}
+        extra_trailers = list(extra_trailers or []) + structural
 
         # What each file held before this call, so a commit that fails can
         # put it back (None: the file is new). See _undo_golden_writes.
@@ -969,6 +1014,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             _supersede_drift_items(list_name, unchanged, decision_commit, source, actor,
                                    leave_items)
             return {"ok": True, "commit": decision_commit, "changed": [],
+                    "refused": refused,
                     "decision_only": bool(decision_commit),
                     "unchanged": unchanged, "tags": tags,
                     "baseline": baseline_tag, "baseline_denied": denied,
@@ -1072,6 +1118,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
     # `baseline` on both return paths, so a caller never has to sift `tags`
     # to find out whether a restore point exists.
     return {"ok": True, "commit": sha, "changed": [c["hostname"] for c in changed],
+            "refused": refused,
             "unchanged": unchanged, "tags": tags, "baseline": baseline_tag,
             "baseline_denied": denied, "intent": intent,
             "renamed": rename_result["renamed"], "error": ""}

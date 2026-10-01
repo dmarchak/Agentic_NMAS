@@ -305,13 +305,21 @@
   }
 
   function gatesHtml(t) {
+    // A target that needs the person's stated reason (C310: a shrink intent
+    // does not explain) carries `acknowledge`; the field is drawn beside its
+    // gates and read by the screen's own client (`data-ack-device`).
+    var ack = t.acknowledge
+      ? '<label class="small d-block mt-1">' + esc(t.acknowledge.prompt)
+        + '<input type="text" class="form-control form-control-sm mt-1" data-ack-device="'
+        + esc(t.name) + '" placeholder="why its structure changed"></label>'
+      : '';
     return section('gates', 'Gates', (t.gates || []).map(function (g) {
       var st = GATE_STATE[g.state] || ['bg-secondary', g.state];
       return '<div class="small" data-pc-gate="' + esc(g.state) + '">'
         + '<span class="badge ' + st[0] + '">' + esc(st[1]) + '</span> '
         + esc(g.name) + (g.detail ? ' <span class="text-muted">(' + esc(g.detail) + ')</span>' : '')
         + '</div>';
-    }).join(''));
+    }).join('') + ack);
   }
 
   /* What confirming WILL achieve, at the confirm, when the preview knows

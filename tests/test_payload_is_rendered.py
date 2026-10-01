@@ -453,7 +453,7 @@ UNDRAWN = {
         ("capture_confirmed capture_current current_hash moved",
          "a refusal's operands: its `reason` sentence names them and which "
          "side moved, and that IS drawn (test_deploy_plan_apply_seam)"),
-        ("by_outcome refused workers deployed total",
+        ("by_outcome workers deployed total",
          "counts and groupings of the rows; the result's summary sentence counts "
          "the receipt rows it draws one by one (7.1 step 2)"),
         ("routing_neighbors routing_protocol",
@@ -711,7 +711,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 107  # -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 106  # -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

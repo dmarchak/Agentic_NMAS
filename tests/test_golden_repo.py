@@ -782,6 +782,62 @@ class TestSaveGoldenRefusesToLoseSections:
     # Exactly what the rotation stored.
     FILTERED = "username admin privilege 15 secret 9 $9$salt$hash\n"
 
+    @pytest.fixture(autouse=True)
+    def _no_intent(self, lab, monkeypatch):
+        """These devices have no committed intent, so intent explains no
+        shrink (C310): the real answer, `unknown`, in place of the lab's
+        everything-matches stub, which would explain every one."""
+        from modules.nsot import intent_match as im
+        self.intent_state = "unknown"
+        monkeypatch.setattr(im, "intent_match",
+                            lambda repo, list_name, hostname, config_text, platform="": {
+                                "state": self.intent_state, "adds": 0, "removes": 0,
+                                "reordered": 0, "lines": [], "why": "no committed intent"})
+
+    def test_a_shrink_committed_intent_renders_is_accepted_and_recorded(self, lab):
+        """C310: the vty standardisation took r1's `line` sections 5 -> 3, and
+        the guard refused the deploy's own capture and then Save All. A
+        capture that IS what intent renders explains its own shrink."""
+        import subprocess
+
+        self._save(lab, self.FULL)
+        smaller = self.FULL.replace("line con 0\n!\n", "")
+        self.intent_state = "match"
+        out = self._save(lab, smaller)
+        assert out["ok"] is True and out["changed"] == ["r1"]
+        msg = subprocess.run(["git", "-C", lab, "log", "-1", "--format=%B"],
+                             capture_output=True, text=True).stdout
+        assert "Structural-Change: r1 line 2->1, which is what committed intent renders" in msg
+
+    def test_one_refused_device_leaves_the_others_recorded(self, lab):
+        """C310: one device's refusal was every device's row. Each is judged
+        alone: r9 recorded, r1 refused with ITS reason, and no baseline."""
+        from modules.nsot.repo import GoldenItem, save_golden
+
+        save_golden("lab", [GoldenItem("r1", self.FULL, "203.0.113.1"),
+                            GoldenItem("r9", self.FULL.replace("hostname r1", "hostname r9"),
+                                       "203.0.113.19")],
+                    source="manual", actor="test", allow_new=True)
+        nine = self.FULL.replace("hostname r1", "hostname r9").replace(
+            "transport input ssh", "transport input ssh telnet")
+        out = save_golden("lab", [GoldenItem("r1", self.FILTERED, "203.0.113.1"),
+                                  GoldenItem("r9", nine, "203.0.113.19")],
+                          source="save_all", actor="test", allow_new=False,
+                          inventory_size=2)
+        assert out["ok"] is True and out["changed"] == ["r9"]
+        assert [r["device"] for r in out["refused"]] == ["r1"]
+        assert "r1: the capture has fewer structural sections" in out["refused"][0]["reason"]
+        assert "r9" not in out["refused"][0]["reason"]
+        assert not out.get("baseline")
+        assert "transport input ssh telnet" in read_shipped(os.path.join(lab, "golden", "r9.cfg"))
+        assert "interface Loopback0" in read_shipped(os.path.join(lab, "golden", "r1.cfg"))
+
+    def test_the_refusal_names_the_screen_not_a_parameter(self, lab):
+        self._save(lab, self.FULL)
+        out = self._save(lab, self.FILTERED)
+        assert "acknowledge_structural_change" not in out["error"]
+        assert "acknowledge it with a reason on the capture's preview" in out["error"]
+
     def _save(self, repo_path, text, **kw):
         """`lab` yields the repo path; the list name resolves through the
         patched get_list_data_dir, so any name reaches the same directory."""
@@ -857,14 +913,13 @@ class TestSaveGoldenRefusesToLoseSections:
         assert out["ok"] is False
         assert "routing 2->0" in out["error"]
 
-    def test_a_refusal_writes_NOTHING_even_for_earlier_devices(self, lab):
-        """A Save All is one commit over nine devices.
+    def test_a_refusal_writes_nothing_for_the_refused_and_leaves_no_dirty_tree(self, lab):
+        """Each device is judged alone (C310, which replaced "a refusal writes
+        NOTHING, even for earlier devices"). What that rule protected stays:
+        nothing is left written and uncommitted. The passing device is in the
+        commit, the refused one is untouched, and the tree is clean."""
+        import subprocess
 
-        Refusing mid-loop would leave the devices already written sitting on
-        disk uncommitted, in the live repo — a dirty working tree, and a
-        partial rewrite nobody asked for. Every pending write is validated
-        before any of them happens.
-        """
         from modules.nsot.repo import GoldenItem, save_golden
 
         good = self.FULL.replace("hostname r1", "hostname r9")
@@ -873,22 +928,23 @@ class TestSaveGoldenRefusesToLoseSections:
                             GoldenItem("r9", good, "203.0.113.9")],
                            source="manual", actor="test",
                            allow_new=True)["ok"] is True
+        r9_before = read_shipped(os.path.join(lab, "golden", "r9.cfg"))
 
-        before = {h: read_shipped(os.path.join(lab, "golden", f"{h}.cfg")) for h in ("r1", "r9")}
-
-        # r1 grows (fine); r9 is a filtered capture (refused). r1 must not be
-        # written, because the commit as a whole does not happen.
-        grown = self.FULL.replace("!\nend\n",
-                                  "interface GigabitEthernet9\n!\nend\n")
+        grown = self.FULL.replace("!\nend\n", "interface GigabitEthernet9\n!\nend\n")
         out = save_golden("lab",
                           [GoldenItem("r1", grown, "203.0.113.1"),
                            GoldenItem("r9", self.FILTERED, "203.0.113.9")],
                           source="manual", actor="test", allow_new=True)
 
-        assert out["ok"] is False
-        assert "r9" in out["error"]
-        for host, text in before.items():
-            assert read_shipped(os.path.join(lab, "golden", f"{host}.cfg")) == text, f"{host} was rewritten"
+        assert out["ok"] is True and out["changed"] == ["r1"]
+        assert [r["device"] for r in out["refused"]] == ["r9"]
+        assert read_shipped(os.path.join(lab, "golden", "r9.cfg")) == r9_before
+        shown = subprocess.run(["git", "-C", lab, "show", "HEAD:golden/r1.cfg"],
+                               capture_output=True, text=True).stdout
+        assert "interface GigabitEthernet9" in shown
+        dirty = subprocess.run(["git", "-C", lab, "status", "--porcelain", "--", "golden"],
+                               capture_output=True, text=True).stdout
+        assert dirty == ""
 
     def test_the_guard_counts_every_kind_it_claims_to(self):
         from modules.nsot.repo import section_counts

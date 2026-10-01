@@ -31,7 +31,7 @@ def _r1():
 
 
 def _vty_block(text):
-    return re.search(r"(?ms)^line vty 0\n.*?^line vty 2 4\n(?: .*\n)*", text).group(0)
+    return re.search(r"(?ms)^line vty 0\n.*?^line vty 2 4\n(?: [^\n]*\n)*", text).group(0)
 
 
 @pytest.fixture

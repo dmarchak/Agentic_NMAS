@@ -130,7 +130,8 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
     confirmations = confirmations or {}
     command_hashes = command_hashes or {}
     golden = report.get("golden") or {}
-    golden_devices = set(golden.get("devices") or [])
+    golden_devices = (set(golden.get("devices") or [])
+                      - {r.get("device") for r in golden.get("refused") or []})
     batch_id = golden.get("batch_id", "")
     at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     rows = []
