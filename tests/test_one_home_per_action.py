@@ -31,7 +31,7 @@ from tests.test_session_write_guard import _writer_sites
 
 #: Sends whose text the scan cannot resolve, declared by the task they serve.
 DECLARED_DYNAMIC = {
-    ("modules/commands.py", "run_device_command"): ("typed",),
+    ("modules/commands.py", "_run"): ("typed",),
     ("modules/bulk_ops.py", "_run_single_enable_command"): ("typed",),
     ("modules/nsot/credential_rotation.py", "push_rotation"): ("rotation",),
 }
@@ -64,7 +64,7 @@ KNOWN_DUPLICATES = {
     ("copy", "file", "tftp"): {"app.py:download_device_file",
                                "modules/bulk_ops.py:_execute_tftp_download"},
     ("copy", "tftp", "file"): {"app.py:upload_file", "modules/bulk_ops.py:_execute_tftp_upload"},
-    ("typed",): {"modules/commands.py:run_device_command",
+    ("typed",): {"modules/commands.py:_run",
                  "modules/bulk_ops.py:_run_single_enable_command"},
 }
 

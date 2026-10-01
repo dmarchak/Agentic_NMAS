@@ -126,12 +126,15 @@ class TestTheReadIsNeverRetriedOnItsSession:
             run_device_command(_Session(_stitched()), "show running-config")
         assert config_read.UNRELIABLE in str(exc.value)
 
-    def test_other_commands_keep_their_fallback(self):
-        """The control: only a configuration read changed."""
+    def test_no_show_command_is_resent_either(self):
+        """C272: the rule is every command's. Until then `show version` timed
+        out and was re-sent as a timing read on the same session (the shape
+        that stitched r2's capture); tests/test_verify_reads_reliably.py."""
         from modules.commands import run_device_command
         s = _Session(TimeoutError("slow"), timing="Cisco IOS XE Software")
-        assert run_device_command(s, "show version") == "Cisco IOS XE Software"
-        assert [x[0] for x in s.sent] == ["send_command", "send_command_timing"]
+        with pytest.raises(TimeoutError):
+            run_device_command(s, "show version")
+        assert [x[0] for x in s.sent] == ["send_command"], s.sent
 
 
 class TestTheCaptureRefusesIt:

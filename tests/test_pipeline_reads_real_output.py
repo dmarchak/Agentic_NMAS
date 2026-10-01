@@ -133,7 +133,7 @@ class TestTheFindings:
         monkeypatch.setattr("modules.commands.run_device_command", lambda *a, **k: text)
         monkeypatch.setattr("modules.connection.get_persistent_connection",
                             lambda *a, **k: None)
-        ctx = type("Ctx", (), {"connections_pool": {}, "pool_lock": None})()
+        ctx = type("Ctx", (), {"connections_pool": {}, "pool_lock": __import__("threading").Lock()})()
         with pytest.raises(pipeline.PipelineStageError):
             pipeline._canary_sanity_check({"ip": "x", "hostname": "r3"}, ctx)
 

@@ -1576,13 +1576,10 @@ def _fetch_neighbors_live(dev: dict) -> list[dict]:
 
     Uses conn.send_command directly (not modules.commands.run_device_command)
     — matching topology.py's gather_device_topology, which discovers this
-    exact same data reliably. run_device_command's prompt-based reader with
-    retry-to-timing fallback exists for commands prone to confusing
-    Netmiko's prompt regex (see modules/commands.py's _TIMING_PREFIXES);
-    'show cdp/lldp neighbors detail' output — long, multi-line, dash-
-    delimited — is exactly that shape, and neither is in that known-slow
-    list, so it gets the full prompt-based read path with no special
-    handling. A confused read there fails closed (empty string) rather than
+    exact same data reliably. (run_device_command's retry-to-timing fallback,
+    which this note used to describe, is gone: C272 sends each command once
+    and never re-sends it on its session.) A confused read here fails closed
+    (empty string) rather than
     raising, so it wouldn't show up as a sync error — it would just mean
     silently discovering fewer neighbors than the device actually has.
     """

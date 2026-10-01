@@ -115,6 +115,51 @@ def problems(text: str, hostname: str, previous: str = None, strict: bool = True
     return out
 
 
+#: A prompt the session can wait for: a hostname (C272: after a push the
+#: session's prompt read as `^@`, NUL bytes, and no read could ever match it).
+USABLE_PROMPT = re.compile(r"[A-Za-z0-9._-]+")
+
+
+#: Set on a session whose read did not finish or could not be trusted (C272).
+#: Its channel may still carry that command's output, so nothing is read on it
+#: again: `commands.run_device_command` refuses it, and the connection pool
+#: replaces it with a new session. This is "never resend on the same session"
+#: made structural, for every caller, verify's settle-window re-polls included.
+SPENT_ATTR = "nmas_spent"
+
+
+def spent(conn) -> str:
+    """Why *conn* must not be read again, or ''."""
+    why = getattr(conn, SPENT_ATTR, None)
+    return why if isinstance(why, str) else ""
+
+
+def spend(conn, why: str) -> None:
+    """Mark *conn* as never to be read again, saying why."""
+    try:
+        setattr(conn, SPENT_ATTR, why or "a read on it failed")
+    except Exception:                                   # noqa: BLE001
+        pass
+
+
+def output_problems(text: str, prompt: str = "") -> list:
+    """Why a SHOW command's output is not one command's output, or ``[]``
+    (C272): a command echoed after a prompt (a second command's output
+    follows), or a line that is the session's own prompt. Never judged on
+    content: a show command's lines are whatever the device prints."""
+    lines = (text or "").splitlines()
+    out = []
+    echoed = [l for l in lines if ECHO.match(l)]
+    if echoed:
+        out.append(f"it holds {len(echoed)} echoed command(s), the first {echoed[0][:60]!r}: "
+                   "a second command's output follows")
+    if prompt and USABLE_PROMPT.fullmatch(prompt):
+        own = [l for l in lines if re.fullmatch(re.escape(prompt) + r"(\([^)]*\))?[#>]\s*", l)]
+        if own:
+            out.append(f"it holds {len(own)} line(s) that are the session's own prompt")
+    return out
+
+
 def check(text: str, hostname: str, previous: str = None, strict: bool = True) -> str:
     """*text* if it is one configuration of *hostname*, else raise
     ``UnreliableRead`` naming every reason."""
@@ -142,6 +187,15 @@ def read(conn, hostname: str, previous: str = None, timeout: int = None) -> str:
     No fallback: a read that does not see its prompt within the bound raises,
     and nothing is sent again on that session (a second command on a channel
     still carrying the first one's output is what stitched r2's capture)."""
-    text = conn.send_command("show running-config", read_timeout=timeout or read_timeout(),
-                             strip_prompt=True, strip_command=True)
-    return check((text or "").lstrip("\x00"), hostname, previous)
+    from modules.commands import _usable_prompt
+    if spent(conn):
+        raise UnreliableRead(hostname, [f"this session is not read again: {spent(conn)}"])
+    try:
+        _usable_prompt(conn)                               # C272: never wait on `^@`
+        text = conn.send_command("show running-config", read_timeout=timeout or read_timeout(),
+                                 strip_prompt=True, strip_command=True)
+        return check((text or "").lstrip("\x00"), hostname, previous)
+    except Exception as exc:
+        spend(conn, f"`show running-config` on it ended in {type(exc).__name__}: "
+                    f"{str(exc)[:200]}")
+        raise

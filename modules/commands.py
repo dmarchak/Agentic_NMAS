@@ -3,12 +3,13 @@
 Shared SSH command execution logic for Cisco IOS devices.
 
 `run_device_command` is the single entry point used by every part of the app
-that needs to send a command to a device.  It routes each command to either
-Netmiko's prompt-based `send_command` (which handles --More-- pagination
-automatically) or timing-based `send_command_timing` (used for slow or
-output-heavy commands such as `show crypto`, `show ip bgp`, etc. that confuse
-Netmiko's prompt-detection regex).  Falls back to timing on any prompt-based
-timeout, then cleans up duplicate trailing prompts and null bytes in the output.
+that needs to send a command to a device. A read (show, more, dir, ping,
+traceroute) goes through Netmiko's prompt-based `send_command`, which handles
+--More-- pagination; anything else through `send_command_timing`. Each is sent
+ONCE: a read that does not finish, or whose reply holds an echoed command or
+the session's own prompt, raises, and its session is never read again (C272,
+`config_read.SPENT_ATTR`). It used to fall back to a timing read on the same
+session, which returned two outputs stitched into one (C271).
 """
 
 import re
@@ -16,37 +17,40 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Commands that have historically caused Netmiko prompt-detection timeouts on
-# some platforms (crypto/VPN state lookups, BGP table scans, NHRP queries) or
-# produce output that confuses the prompt-regex.  Prompt-based send_command is
-# still tried first (it's ~2-3x faster when it works, e.g. on containerlab
-# nodes), but with a short read_timeout so a platform where it genuinely
-# fails falls back to send_command_timing quickly instead of stalling for
-# the full default read_timeout.
-_PROMPT_PROBE_TIMEOUT = 10
-
-_TIMING_PREFIXES = (
-    "show crypto",
-    "show ip nhrp",
-    "show ip bgp",
-    "show ip ospf",
-    "show mpls",
-    "show interfaces",
-    "show ip interface",
-    "show version",
-    "show inventory",
-    "show environment",
-    "show processes",
-    "show platform",
-)
+# The 10 s prompt "probe" and its list of slow commands are gone (C272,
+# 2026-10-01): a probe that ran out re-sent the command on the same session,
+# which still carried the first command's output. Every read now waits once,
+# with the config read's measured bound, and is never re-sent.
 
 #: A whole configuration: read once, never retried on its session, and judged
 #: before it is returned (modules/config_read.py).
 CONFIG_READS = ("show running-config", "show startup-config")
 
-# Extra read_timeout (seconds) for commands that genuinely take a long time
-# to produce output even with timing-based reads.
-_SLOW_TIMEOUT = 120
+
+def _usable_prompt(conn) -> str:
+    """The session's base prompt, made usable before a read (C272).
+
+    After a push the prompt read as `^@` (NUL bytes) on the deploy's own
+    session, so a prompt-based read could never see it end (2026-09-30
+    23:54, 2026-10-01 01:14). It is read again once (`set_base_prompt`, one
+    newline, before the command is sent); still unusable, the read is
+    refused rather than waited out. A session that names no prompt (a test's
+    fake) is read as it is."""
+    from modules import config_read
+
+    prompt = getattr(conn, "base_prompt", None)
+    if prompt is None or config_read.USABLE_PROMPT.fullmatch(prompt or ""):
+        return prompt or ""
+    try:
+        prompt = conn.set_base_prompt()
+    except Exception as exc:                              # noqa: BLE001
+        raise config_read.UnreliableRead("the device", [
+            f"the session's prompt reads as {getattr(conn, 'base_prompt', '')!r} and could "
+            f"not be read again ({type(exc).__name__}: {exc})"]) from None
+    if not config_read.USABLE_PROMPT.fullmatch(prompt or ""):
+        raise config_read.UnreliableRead("the device", [
+            f"the session's prompt reads as {prompt!r} even after reading it again"])
+    return prompt
 
 
 def run_device_command(conn, command: str, adaptive_mode: bool = True,
@@ -58,13 +62,15 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True,
     paginated output (--More--) is handled automatically and the call returns
     as soon as the device prompt reappears — no fixed timer needed.
 
-    Commands in _TIMING_PREFIXES are still tried prompt-based first (fast on
-    platforms where it works), but with a short probe timeout so a platform
-    where prompt detection genuinely fails falls back to send_command_timing
-    quickly instead of stalling for the full read_timeout.
+    A show command is sent ONCE and waited for (the config read's bound,
+    120 s by default), never re-sent on its session, and its reply refused
+    (`UnreliableRead`) when it holds an echoed command or the session's own
+    prompt; a session whose prompt reads as NUL bytes is asked for it again
+    first, and refused if it still does (C272). A configuration read is also
+    judged as one configuration (C271).
 
-    For config-mode commands (no recognisable prompt terminator) also uses
-    send_command_timing.
+    For config-mode commands (no recognisable prompt terminator) uses
+    send_command_timing, sent once.
 
     Args:
         conn:         Netmiko connection object
@@ -75,7 +81,24 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True,
     Returns:
         Command output as a string with duplicate prompts removed
     """
+    from modules import config_read
+
     logger.debug(f'Executing command: {command}')
+    if config_read.spent(conn):
+        # Never a second command on a channel that may still carry the
+        # first's output (C272): the caller opens a new session.
+        raise config_read.UnreliableRead("the device", [
+            f"this session is not read again: {config_read.spent(conn)}"])
+    try:
+        return _run(conn, command, read_timeout)
+    except Exception as exc:
+        config_read.spend(conn, f"{command.strip()!r} on it ended in "
+                                f"{type(exc).__name__}: {str(exc)[:200]}")
+        raise
+
+
+def _run(conn, command: str, read_timeout: int) -> str:
+    """One send of *command* on *conn* (`run_device_command`'s body)."""
     cmd = command.strip()
     cmd_lower = cmd.lower()
 
@@ -90,19 +113,11 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True,
         # `UnreliableRead`, whoever the caller (modules/config_read.py).
         from modules import config_read
 
+        _usable_prompt(conn)
         output = conn.send_command(cmd, read_timeout=max(read_timeout, config_read.read_timeout()),
                                    strip_prompt=True, strip_command=True)
         return config_read.check((output or "").lstrip("\x00"), "", strict=False)
 
-    # Commands known on some platforms to cause prompt-detection failures.
-    # Still tried prompt-based first (see use_prompt_based below), just with
-    # a short leash so a platform where it fails falls back quickly.
-    known_slow = any(cmd_lower.startswith(p) for p in _TIMING_PREFIXES)
-
-    # Prefer send_command (prompt-based, handles --More-- automatically) for
-    # show/more/dir/ping/traceroute commands — including known_slow ones,
-    # since on many platforms (e.g. containerlab nodes) prompt detection
-    # works fine and is 2-3x faster than the fixed-delay timing path.
     use_prompt_based = (
         cmd_lower.startswith("show")
         or cmd_lower.startswith("more")
@@ -112,42 +127,38 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True,
         or cmd_lower.startswith("do show")
     )
 
-    # Give inherently slow commands extra time on the timing-based fallback.
-    effective_timeout = max(
-        read_timeout,
-        _SLOW_TIMEOUT if known_slow else read_timeout,
-    )
-    # known_slow commands get a short prompt-based probe timeout so a
-    # platform where prompt detection genuinely fails doesn't stall for the
-    # full read_timeout before falling back to timing-based.
-    prompt_timeout = _PROMPT_PROBE_TIMEOUT if known_slow else read_timeout
+    if use_prompt_based:
+        # ONE read, never resent on its session (C272, the operator, 2026-10-01;
+        # C271's rule for every command). It used to probe 10 s, then re-send
+        # the command with `send_command_timing` on the SAME session, which
+        # still carried the first command's output: a slow device answered
+        # two outputs read as one, and verify's own reads (`show ip ospf`,
+        # `show ip bgp`, `show interfaces`) took that path. The bound is the
+        # config read's, measured: `write memory` leaves an emulated device
+        # slow for tens of seconds, and verify reads right after a push and a
+        # save. A read that does not finish raises; a reply that holds an
+        # echoed command or the session's own prompt raises `UnreliableRead`.
+        from modules import config_read
 
-    try:
-        if use_prompt_based:
-            # send_command waits for the prompt, strips --More-- pages,
-            # and never times out on continuously-streaming output.
-            output = conn.send_command(
-                cmd,
-                read_timeout=prompt_timeout,
-                strip_prompt=True,
-                strip_command=True,
-            )
-        else:
-            # Timing-based: config commands (no recognisable prompt terminator).
-            output = conn.send_command_timing(
-                cmd,
-                read_timeout=effective_timeout,
-                strip_prompt=True,
-                strip_command=True,
-            )
-    except Exception as exc:
-        # If prompt-based times out (e.g. unusual prompt), retry with timing.
-        logger.warning(
-            "run_device_command: prompt-based read failed (%s), retrying with timing", exc
+        prompt = _usable_prompt(conn)
+        output = conn.send_command(
+            cmd,
+            read_timeout=max(read_timeout, config_read.read_timeout()),
+            strip_prompt=True,
+            strip_command=True,
         )
+        output = (output or "").lstrip("\x00")
+        bad = config_read.output_problems(output, prompt)
+        if bad:
+            logger.error("run_device_command: %r: %s: %s", cmd, config_read.UNRELIABLE,
+                         "; ".join(bad))
+            raise config_read.UnreliableRead(prompt or "the device", bad)
+    else:
+        # Timing-based: config commands (no recognisable prompt terminator).
+        # Sent once; nothing here re-sends it.
         output = conn.send_command_timing(
             cmd,
-            read_timeout=effective_timeout,
+            read_timeout=read_timeout,
             strip_prompt=True,
             strip_command=True,
         )

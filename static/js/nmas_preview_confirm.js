@@ -515,6 +515,11 @@
             return '<div class="small text-danger" data-pr-intent-unmet>' + esc(i)
               + ' (not rolled back: the change cannot have caused it)</div>';
           }).join('')
+        + (c.unreadable || []).map(function (i) {
+            return '<div class="small text-danger" data-pr-unreadable>could not be read reliably '
+              + 'after the change, ' + esc(i) + ' (verify did not pass on it and nothing was '
+              + 'rolled back for it: capture the device to read it again)</div>';
+          }).join('')
         + (c.pending_convergence || []).map(function (i) {
             return '<div class="small text-muted">' + esc(i) + '</div>';
           }).join('');

@@ -2045,8 +2045,8 @@ def topology_link_status():
             return device_id, None
         try:
             conn = get_persistent_connection(device, connections, lock)
-            # Must use run_device_command — 'show ip interface' is in _TIMING_PREFIXES
-            # and will timeout/return bad output with send_command directly.
+            # run_device_command: one read, never re-sent, its reply checked (C272).
+            # A bare send_command skips the NUL-prompt re-read and the shape check.
             output = run_device_command(conn, "show ip interface brief")
             statuses: dict = {}
             # Parse ALL interfaces (including unassigned) since CDP links may use
@@ -2134,7 +2134,7 @@ def topology_proto_link_status():
                 "tunnels":    [],
             }
             with _device_lock(device["ip"]):
-                # All these commands are in _TIMING_PREFIXES — must use run_device_command.
+                # run_device_command: one read, never re-sent, its reply checked (C272).
                 out = run_device_command(conn, "show ip interface brief")
                 result["interfaces"] = parse_ip_interfaces(out)
 

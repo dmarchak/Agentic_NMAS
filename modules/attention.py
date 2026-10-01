@@ -586,11 +586,14 @@ def deploy_source(read=None) -> dict:
         checks = r.get("checks") or {}
         issues = [str(i) for i in checks.get("issues") or []]
         unmet = [str(p) for p in checks.get("intent_unmet") or []]
+        unread = [str(p) for p in checks.get("unreadable") or []]
         cause = "; ".join(x for x in (
             r.get("reason"),
             f"stopped at {r['stage']}" if r.get("stage") else "",
             f"verify found: {'; '.join(issues)}" if issues else "",
             f"declared by intent and not up after: {', '.join(unmet)}" if unmet else "",
+            f"could not be read reliably after the change: {'; '.join(unread)}"
+            if unread else "",
             f"rollback: {rb.get('state')}" if rb.get("performed") else "",
             "the program sent does NOT match the one confirmed"
             if r.get("matches_confirmed") is False else "") if x) or \

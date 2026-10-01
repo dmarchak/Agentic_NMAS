@@ -80,6 +80,9 @@ def _checks(result: dict) -> dict:
         # Declared by the target intent and not up after: verify did not
         # pass, and nothing was rolled back for it.
         "intent_unmet": list(verify.get("intent_unmet") or []),
+        # Read after the change and not trustworthy (C272): verify did not
+        # pass, did not fail on them, and nothing was rolled back for them.
+        "unreadable": list(verify.get("unreadable") or []),
         "checked_protocols": protocols,
         # Checked because intent declares them, though the device was not
         # running them before (its before-state alone would have missed them).

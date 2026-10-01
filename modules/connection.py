@@ -575,7 +575,12 @@ def get_persistent_connection(
             conn = connections.get(ip)
             # Unwrap LockedConnection to get the raw ConnectHandler for is_alive
             raw = object.__getattribute__(conn, '_conn') if isinstance(conn, LockedConnection) else conn
-            if not raw or not getattr(raw, "is_alive", lambda: True)():
+            # A session whose read failed is replaced, never read again (C272):
+            # its channel may still carry that read's output.
+            from modules.config_read import spent
+            if raw and spent(raw):
+                logger.info("connection: replacing %s's pooled session: %s", ip, spent(raw))
+            if not raw or spent(raw) or not getattr(raw, "is_alive", lambda: True)():
                 try:
                     if raw:
                         raw.disconnect()

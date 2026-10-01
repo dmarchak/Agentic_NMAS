@@ -664,8 +664,16 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
         ip       = dev["ip"]
         hostname = dev.get("hostname", ip)
         try:
-            conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-            snap = _capture_operational_snapshot(conn, ip, hostname)
+            get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
+            snap = _capture_operational_snapshot(_session_for(ctx, dev), ip, hostname)
+            bad = _unreadable(snap)
+            if bad:
+                # Refuse, never guess (C272): a baseline read that cannot be
+                # trusted would make verify compare against nothing, so the
+                # protocol it names would never be checked. Nothing is sent.
+                errors.append(f"{hostname} ({ip}): could not be read reliably before the "
+                              "change, so nothing was sent: " + "; ".join(bad))
+                continue
 
             # Also save the running-config so Stage 5 can diff and Stage 8 can roll back.
             running_cfg = _get_running_config_for_golden(ip, hostname)
@@ -924,11 +932,13 @@ def _canary_sanity_check(canary_dev: dict, ctx: PipelineContext) -> None:
     Verify the canary device still has at least one up interface after push.
     Halts fleet deployment if the check fails.
     """
-    from modules.connection import get_persistent_connection
+    from modules.connection import close_persistent_connection, get_persistent_connection
     from modules.commands   import run_device_command
 
     ip       = canary_dev["ip"]
     hostname = canary_dev.get("hostname", ip)
+    # A new session, not the push's (C272: after a save its prompt read as `^@`).
+    close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
     conn     = get_persistent_connection(canary_dev, ctx.connections_pool, ctx.pool_lock)
     out      = run_device_command(conn, "show ip interface brief")
     # A LOOPBACK does not count: it is up whatever the push did, so "any
@@ -950,8 +960,10 @@ def _canary_sanity_check(canary_dev: dict, ctx: PipelineContext) -> None:
 # ---------------------------------------------------------------------------
 
 def _stage_post_snapshot(ctx: PipelineContext) -> None:
-    """Capture the same operational metrics as Stage 4, now AFTER deploy."""
-    from modules.connection import get_persistent_connection
+    """Capture the same operational metrics as Stage 4, now AFTER deploy,
+    on a NEW session (C272): the push's session is where the prompt read as
+    `^@` after a save, and a read on it could not see its own end."""
+    from modules.connection import close_persistent_connection, get_persistent_connection
 
     errors: list[str] = []
 
@@ -959,8 +971,9 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
         ip       = dev["ip"]
         hostname = dev.get("hostname", ip)
         try:
-            conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-            snap = _capture_operational_snapshot(conn, ip, hostname)
+            close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
+            get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
+            snap = _capture_operational_snapshot(_session_for(ctx, dev), ip, hostname)
 
             # The operational snapshot is metrics only — neighbours, interface
             # counts. Stage 8.5 needs the post-deploy CONFIG to commit as
@@ -968,12 +981,17 @@ def _stage_post_snapshot(ctx: PipelineContext) -> None:
             # and record the wrong thing entirely.
             try:
                 from modules.commands import run_device_command
+                # Asked of the pool again: a read above that failed spent its
+                # session, and the pool replaces a spent one (C272).
+                conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
                 snap["running_config"] = run_device_command(
                     conn, "show running-config")
             except Exception as cfg_exc:
                 log.warning("pipeline[7/post_snapshot]: %s config capture failed: %s",
                             hostname, cfg_exc)
                 snap["running_config"] = ""
+                # Verify says it could not read it (C272), never "not removed".
+                snap["running_config_error"] = f"{type(cfg_exc).__name__}: {cfg_exc}"
 
             ctx.post_snapshots[ip] = snap
             log.info("pipeline[7/post_snapshot]: %s OK", hostname)
@@ -996,6 +1014,10 @@ from modules.nsot.convergence import (
     CONVERGED as _CONVERGED, FAILED as _FAILED, NOT_YET as _NOT_YET,
     SKIPPED as _SKIPPED, wait_for as _wait_for, window_for as _window_for,
 )
+
+#: A settle-window read that could not be trusted (C272): neither converged
+#: nor failed, and said so.
+_UNREADABLE = "unreadable"
 
 
 def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
@@ -1028,8 +1050,10 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
     seen: list = []
 
     def _probe():
-        conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-        snapshot = _detect_routing_neighbors(conn)
+        get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
+        snapshot = _detect_routing_neighbors(_session_for(ctx, dev))
+        # A read of THIS protocol that failed is not a count of zero (C272).
+        latest["unreadable"] = _unread_protocol(snapshot, protocol)
         # THIS protocol's count and details, not the primary's (C62).
         latest["count"] = _protocol_counts(snapshot).get(protocol, -1)
         latest["snapshot"] = (snapshot.get("protocols") or {}).get(protocol) or snapshot
@@ -1052,6 +1076,11 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
     rose = len(seen) > 1 and max(seen[1:]) > seen[0]
     if result["state"] == _CONVERGED:
         state = _CONVERGED
+    elif latest.get("unreadable"):
+        # The last read could not be trusted: neither converged nor failed.
+        return {"state": _UNREADABLE, "count": count, "elapsed": result["elapsed"],
+                "window": window, "attempts": result["attempts"],
+                "unreadable": latest["unreadable"], "snapshot": latest["snapshot"]}
     elif _protocol_shows_progress(latest["snapshot"], count, rose=rose):
         state = _NOT_YET
     else:
@@ -1092,15 +1121,23 @@ def _watch_bgp_hold(ctx, ip: str, baseline: int, config: str) -> dict:
     try:
         if dev is None:
             raise RuntimeError("the device is not in this run")
-        conn = get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
-        after = _protocol_counts(_detect_routing_neighbors(conn)).get("bgp", -1)
+        get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
+        snap = _detect_routing_neighbors(_session_for(ctx, dev))
+        after = _protocol_counts(snap).get("bgp", -1)
+        unread = _unread_protocol(snap, "bgp")
     except Exception as exc:                  # noqa: BLE001
-        after, why = -1, f"{type(exc).__name__}: {exc}"
+        after, why, unread = -1, f"{type(exc).__name__}: {exc}", ""
     else:
         why = "BGP was not in the read" if after < 0 else ""
     out["watched_s"] = round(clock() - pushed)
     out["after"] = after
-    if after < 0:
+    if unread:
+        # Read, and the reply could not be trusted (C272): unknown, said so,
+        # never a session lost.
+        out["state"] = _UNREADABLE
+        out["unreadable"] = (f"bgp at its {hold} s hold time could not be read "
+                             f"reliably ({unread})")
+    elif after < 0:
         out["state"] = _FAILED
         out["issue"] = (f"bgp not re-read after its {hold} s hold time ({why}): whether "
                         "the sessions survived to hold expiry is unknown")
@@ -1221,10 +1258,18 @@ def _stage_verify(ctx: PipelineContext) -> None:
         checked = sorted(set(pre_counts) | set(from_intent))
         record["checked_protocols"] = checked
         unmet: list[str] = []
+        # Reads after the change that could not be trusted (C272): verify
+        # neither passes nor fails on them. It says so, and nothing is rolled
+        # back for them, because the tool cannot see what the change did.
+        cant_read: list[str] = []
 
         for pre_proto, pre_count in sorted(pre_counts.items()):
             post_count = post_counts.get(pre_proto, -1)
-            if post_count < 0:
+            # A read that could not be trusted goes to the settle window below,
+            # which reads again on a new session; only when that read cannot be
+            # trusted either is it `unreadable` (C272), never "unreadable after
+            # deploy" counted as a loss.
+            if post_count < 0 and not _unread_protocol(post_nbr, pre_proto):
                 # Present before, not read after: treat as full loss.
                 issues.append(
                     f"{pre_proto} neighbor table unreadable after deploy "
@@ -1244,7 +1289,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
             if pre_proto == primary or "neighbors" not in record:
                 record["neighbors"] = settled
 
-            if settled["state"] == _CONVERGED:
+            if settled["state"] == _UNREADABLE:
+                cant_read.append(f"{pre_proto}: {settled['unreadable']}")
+            elif settled["state"] == _CONVERGED:
                 log.info("pipeline[8/verify]: %s %s neighbours recovered "
                          "(%d) after %.0fs", hostname, pre_proto,
                          settled["count"], settled["elapsed"])
@@ -1277,7 +1324,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
                 ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)
             record.setdefault("neighbors_by_protocol", {})[proto] = settled
             up, why = protocol_up(proto, settled.get("snapshot") or {})
-            if settled["state"] == _CONVERGED and up:
+            if settled["state"] == _UNREADABLE:
+                cant_read.append(f"{proto}: {settled['unreadable']}")
+            elif settled["state"] == _CONVERGED and up:
                 log.info("pipeline[8/verify]: %s %s declared by intent and now up: %s",
                          hostname, proto, why)
             elif settled["state"] == _NOT_YET:
@@ -1302,6 +1351,8 @@ def _stage_verify(ctx: PipelineContext) -> None:
             record["bgp_watch"] = watch
             if watch.get("issue"):
                 issues.append(watch["issue"])
+            if watch.get("unreadable"):
+                cant_read.append(watch["unreadable"])
 
         if not checked:
             # No routing protocol detected at all. Record it explicitly so a
@@ -1322,6 +1373,8 @@ def _stage_verify(ctx: PipelineContext) -> None:
         )
         pre_routes  = pre.get("routes",  {}).get("total_count", -1)
         post_routes = post.get("routes", {}).get("total_count", -1)
+        if not _skip_route and pre_routes > 0 and (post.get("routes") or {}).get("error"):
+            cant_read.append(f"routes: `show ip route summary`: {post['routes']['error']}")
         if not _skip_route and pre_routes > 0 and post_routes >= 0:
             retention = post_routes / pre_routes
             if retention < _ROUTE_RETENTION_MIN:
@@ -1347,6 +1400,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # ── Interface up-count ────────────────────────────────────────────
         pre_up  = pre.get("interfaces",  {}).get("up_count",  -1)
         post_up = post.get("interfaces", {}).get("up_count", -1)
+        if pre_up >= 0 and (post.get("interfaces") or {}).get("error"):
+            cant_read.append(f"interfaces: `{_INTERFACES_READ}`: "
+                             f"{post['interfaces']['error']}")
         if pre_up >= 0 and post_up >= 0:
             down_delta = pre_up - post_up
             if down_delta > _INTERFACE_DOWN_TOLERANCE:
@@ -1361,7 +1417,10 @@ def _stage_verify(ctx: PipelineContext) -> None:
         if removed:
             from modules.nsot.removal import still_present
             post_cfg = post.get("running_config") or ""
-            if not post_cfg:
+            if not post_cfg and post.get("running_config_error"):
+                cant_read.append("removals: `show running-config`: "
+                                 + post["running_config_error"])
+            elif not post_cfg:
                 issues.append("Removal not verified: the post-change config could not be read")
             else:
                 removals_left = still_present(removed, post_cfg)
@@ -1371,7 +1430,10 @@ def _stage_verify(ctx: PipelineContext) -> None:
                         for u in removals_left))
 
         ctx.verify_result[ip] = {
-            "ok":     not issues and not unmet,
+            "ok":     not issues and not unmet and not cant_read,
+            # Read after the change and not trustworthy (C272): verify did not
+            # pass, did not fail on them, and rolled nothing back for them.
+            "unreadable": cant_read,
             # The removals read back, by name (Mode B).
             "removals_checked": len(removed),
             # How long BGP was watched after the push, against which hold
@@ -1409,6 +1471,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
         if unmet:
             log.error("pipeline[8/verify]: %s intent not met (no rollback): %s",
                       hostname, unmet)
+        if cant_read:
+            log.error("pipeline[8/verify]: %s could not be read reliably after the change "
+                      "(verify did not pass; no rollback for it): %s", hostname, cant_read)
         if issues:
             failures.append(f"{hostname}: " + "; ".join(issues))
             log.error("pipeline[8/verify]: %s FAILED: %s", hostname, issues)
@@ -1920,6 +1985,23 @@ def _audit_dir() -> str:
 # Shared helper — operational snapshot
 # ---------------------------------------------------------------------------
 
+def _conn_of(conn):
+    """The session to send the next read on. *conn* is a session, or a
+    callable returning one from the pool (C272): a read that fails spends its
+    session (`config_read.SPENT_ATTR`), and asking the pool for each read gets
+    a new one, so one untrustworthy read does not make every later read in a
+    snapshot refuse."""
+    if callable(conn) and not hasattr(conn, "send_command"):
+        return conn()
+    return conn
+
+
+def _session_for(ctx, dev):
+    """The pool's session for *dev*, asked again at every read (`_conn_of`)."""
+    from modules.connection import get_persistent_connection
+    return lambda: get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)
+
+
 def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
     """
     Capture three protocol-agnostic operational metrics via SSH:
@@ -1950,8 +2032,8 @@ def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
     # ── Interface states ──────────────────────────────────────────────────
     try:
         intf_out   = run_device_command(
-            conn, "show interfaces | include (line protocol|Internet address)"
-        )
+            _conn_of(conn), "show interfaces | include (line protocol|Internet address)"
+        )                                             # _INTERFACES_READ
         up_count   = intf_out.lower().count("line protocol is up")
         down_count = intf_out.lower().count("line protocol is down")
         snap["interfaces"] = {
@@ -1964,7 +2046,7 @@ def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
 
     # ── Route table size ──────────────────────────────────────────────────
     try:
-        route_out = run_device_command(conn, "show ip route summary")
+        route_out = run_device_command(_conn_of(conn), "show ip route summary")
         total     = _parse_route_total(route_out)
         snap["routes"] = {"output": route_out[:1000], "total_count": total}
     except Exception as exc:
@@ -2085,8 +2167,16 @@ def _parse_ripng_next_hops(out: str) -> list:
 # one name. Every protocol present is read and verified (C62).
 _PROTOCOL_ORDER = ("bgp", "ospf", "eigrp", "isis", "rip", "ospfv3", "ripng")
 
+#: The command each protocol's neighbour state is read with, so a read that
+#: failed names the protocol it leaves unknown (C272).
+_ROUTING_READS = {"bgp": "show bgp all summary", "ospf": "show ip ospf neighbor",
+                  "eigrp": "show ip eigrp neighbors", "isis": "show isis neighbors",
+                  "ospfv3": "show ospfv3 neighbor", "ripng": "show ipv6 rip next-hops",
+                  "rip": "show ip protocols"}
+_INTERFACES_READ = "show interfaces | include (line protocol|Internet address)"
 
-def _read_routing_protocols(conn) -> dict:
+
+def _read_routing_protocols(conn, unreadable: dict = None) -> dict:
     """Every routing protocol the device answers for, with its neighbour
     count: ``{name: {"count", "output", ...}}``.
 
@@ -2097,21 +2187,25 @@ def _read_routing_protocols(conn) -> dict:
     """
     from modules.commands import run_device_command
 
+    # A read that failed is RECORDED with its reason (C272): it used to be
+    # `pass`, so a protocol whose read could not be trusted vanished, read
+    # before the push as "not running" (never checked) and after it as gone.
+    unreadable = {} if unreadable is None else unreadable
     found: dict = {}
 
     try:
         # BOTH address families: r3's intent declares an IPv6 peer too, and
         # `show ip bgp summary` lists IPv4 sessions only.
-        out = run_device_command(conn, "show bgp all summary")
+        out = run_device_command(_conn_of(conn), "show bgp all summary")
         bgp = _parse_bgp_summary(out)
         if bgp is not None:
             found["bgp"] = {"count": bgp["established"], "configured": bgp["configured"],
                             "peers": bgp["peers"], "output": out[:2000]}
-    except Exception:
-        pass
+    except Exception as exc:                          # noqa: BLE001
+        unreadable["show bgp all summary"] = f"{type(exc).__name__}: {exc}"
 
     try:
-        out = run_device_command(conn, "show ip ospf neighbor")
+        out = run_device_command(_conn_of(conn), "show ip ospf neighbor")
         if out.strip() and "Neighbor ID" in out:
             # Counts adjacencies in any state: 2WAY between DROTHERs is a
             # steady state on a broadcast segment (r1 and s3 show three), so
@@ -2121,58 +2215,58 @@ def _read_routing_protocols(conn) -> dict:
                              "states": [r["state"] for r in rows],
                              "neighbors": [r["neighbor_id"] for r in rows],
                              "output": out[:2000]}
-    except Exception:
-        pass
+    except Exception as exc:                          # noqa: BLE001
+        unreadable["show ip ospf neighbor"] = f"{type(exc).__name__}: {exc}"
 
     try:
-        out = run_device_command(conn, "show ip eigrp neighbors")
+        out = run_device_command(_conn_of(conn), "show ip eigrp neighbors")
         if out.strip() and "H " in out:
             rows = [ln for ln in out.splitlines()
                     if re.match(r"\s*\d+\s+\d+\.\d+\.\d+\.\d+", ln)]
             found["eigrp"] = {"count": len(rows), "output": out[:2000]}
-    except Exception:
-        pass
+    except Exception as exc:                          # noqa: BLE001
+        unreadable["show ip eigrp neighbors"] = f"{type(exc).__name__}: {exc}"
 
     try:
-        out = run_device_command(conn, "show isis neighbors")
+        out = run_device_command(_conn_of(conn), "show isis neighbors")
         if out.strip() and "System Id" in out:
             rows = [ln for ln in out.splitlines()
                     if ln.strip() and not ln.strip().startswith("System")
                     and not ln.strip().startswith("IS-IS")]
             found["isis"] = {"count": len(rows), "output": out[:2000]}
-    except Exception:
-        pass
+    except Exception as exc:                          # noqa: BLE001
+        unreadable["show isis neighbors"] = f"{type(exc).__name__}: {exc}"
 
     try:
-        out = run_device_command(conn, "show ospfv3 neighbor")
+        out = run_device_command(_conn_of(conn), "show ospfv3 neighbor")
         if "Neighbor ID" in (out or ""):
             rows = _parse_ospf_neighbor_rows(out)
             found["ospfv3"] = {"count": len(rows), "states": [r["state"] for r in rows],
                                "neighbors": [r["neighbor_id"] for r in rows],
                                "output": out[:2000]}
-    except Exception:
-        pass
+    except Exception as exc:                          # noqa: BLE001
+        unreadable["show ospfv3 neighbor"] = f"{type(exc).__name__}: {exc}"
 
     try:
-        out = run_device_command(conn, "show ipv6 rip next-hops")
+        out = run_device_command(_conn_of(conn), "show ipv6 rip next-hops")
         if "RIP process" in (out or ""):
             hops = _parse_ripng_next_hops(out)
             found["ripng"] = {"count": len(hops), "next_hops": hops, "output": out[:2000]}
-    except Exception:
-        pass
+    except Exception as exc:                          # noqa: BLE001
+        unreadable["show ipv6 rip next-hops"] = f"{type(exc).__name__}: {exc}"
 
     # RIP is distance-vector: no adjacencies. Its equivalent is the Routing
     # Information Sources table under RIP's own section of `show ip protocols`
     # (C65: not the first such table, which is the "application"
     # pseudo-protocol's).
     try:
-        out = run_device_command(conn, "show ip protocols")
+        out = run_device_command(_conn_of(conn), "show ip protocols")
         sources = _parse_rip_sources(out)
         if sources is not None:
             found["rip"] = {"count": len(sources), "sources": sources,
                             "output": out[:2000]}
-    except Exception:
-        pass
+    except Exception as exc:                          # noqa: BLE001
+        unreadable["show ip protocols"] = f"{type(exc).__name__}: {exc}"
 
     return found
 
@@ -2187,13 +2281,39 @@ def _detect_routing_neighbors(conn) -> dict:
     and ``protocol`` "none" when no routing protocol answers, which tells
     verify to record a skip rather than a pass.
     """
-    protocols = _read_routing_protocols(conn)
+    unreadable: dict = {}
+    protocols = _read_routing_protocols(conn, unreadable)
     primary = next((p for p in _PROTOCOL_ORDER if p in protocols), None)
     if primary is None:
-        return {"protocol": "none", "count": -1, "output": "", "protocols": {}}
-    result = {"protocol": primary, "protocols": protocols}
+        return {"protocol": "none", "count": -1, "output": "", "protocols": {},
+                "unreadable": unreadable}
+    result = {"protocol": primary, "protocols": protocols, "unreadable": unreadable}
     result.update(protocols[primary])
     return result
+
+
+def _unreadable(snap: dict) -> list:
+    """What an operational snapshot could not read, each `command: reason`
+    (C272). Before a push it refuses the deploy with nothing sent; after it,
+    verify says so rather than reading the gap as a protocol down or a check
+    passed."""
+    out = [f"`{cmd}`: {why}" for cmd, why in sorted(
+        ((snap.get("routing_neighbors") or {}).get("unreadable") or {}).items())]
+    for key, cmd in (("interfaces", _INTERFACES_READ), ("routes", "show ip route summary")):
+        err = (snap.get(key) or {}).get("error")
+        if err:
+            out.append(f"`{cmd}`: {err}")
+    if snap.get("running_config_error"):
+        out.append(f"`show running-config`: {snap['running_config_error']}")
+    return out
+
+
+def _unread_protocol(nbr: dict, protocol: str) -> str:
+    """'`<command>`: <reason>' when *protocol*'s read failed in this neighbour
+    snapshot, else ''."""
+    cmd = _ROUTING_READS.get(protocol, "")
+    why = (nbr.get("unreadable") or {}).get(cmd)
+    return f"`{cmd}`: {why}" if why else ""
 
 
 def _protocol_counts(snapshot: dict) -> dict:
