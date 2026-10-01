@@ -388,3 +388,17 @@ class TestTheCdpRunFlag:
     def test_removable_once_measured_exact(self):
         out = program(self.R6_LIKE, [_unit([], "cdp run")])
         assert out["commands"] == ["no cdp run"], out
+
+    @pytest.mark.real_measurements
+    def test_the_committed_record_removes_it_on_ios_xe_and_nowhere_else(self):
+        """Staged run 8 (2026-10-01): `global.cdp-run` measured EXACT on r2, so
+        the COMMITTED record lets r6 drop the line (C262); IOS was never asked,
+        so it is still refused there, naming the probe."""
+        rows = RM.measured()["by_dialect"]
+        assert rows["cisco_iosxe"]["global.cdp-run"]["result"] == "exact"
+        assert rows["cisco_iosxe"]["global.cdp-run"]["device"] == "r2"
+        xe = program(self.R6_LIKE, [_unit([], "cdp run")])
+        assert xe["commands"] == ["no cdp run"] and not xe["refused"], xe
+        ios = program(self.R6_LIKE, [_unit([], "cdp run")], dialect="cisco_ios")
+        assert ios["commands"] == []
+        assert "scripts/nmas-removal-probe --shape global.cdp-run" in ios["refused"][0]["reason"]

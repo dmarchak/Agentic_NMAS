@@ -1498,7 +1498,8 @@ def host_steps_source(owed=None) -> dict:
         return source_result("host_steps", label, read_at=started, took_ms=took,
                              error=got["error"])
     rows = [row(source="host_steps", key=s["id"], level="warning",
-                what=f"A host step for {s['sha'][:10]} is still to do: {s['step']}",
+                what=(f"A host step for {', '.join(x[:10] for x in s.get('shas') or [s['sha']])}"
+                      f" is still to do: {s['step']}"),
                 cause=(f"checked: {s['check_detail']}" if s["check_state"] != "not_checkable"
                        else "it is done after the update, and nothing can check it"),
                 action={"label": ("Open the Update page and say it is done"

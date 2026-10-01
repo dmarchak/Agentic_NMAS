@@ -64,6 +64,12 @@
       }
     },
     "cisco_iosxe": {
+      "global.cdp-run": {
+        "at": "2026-10-01T02:44:18Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
+      },
       "global.event-manager-applet": {
         "at": "2026-09-29T04:48:57Z",
         "detail": "",

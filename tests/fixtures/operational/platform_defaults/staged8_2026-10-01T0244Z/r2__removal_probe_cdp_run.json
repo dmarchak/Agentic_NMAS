@@ -1,0 +1,41 @@
+{
+  "by_dialect": {
+    "cisco_iosxe": {
+      "global.cdp-run": {
+        "at": "2026-10-01T02:44:18Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
+      }
+    }
+  },
+  "full": {
+    "global.cdp-run": {
+      "at": "2026-10-01T02:44:18Z",
+      "detail": "",
+      "device": "r2",
+      "dialect": "cisco_iosxe",
+      "exemplars": [
+        {
+          "detail": "",
+          "program": [
+            "no cdp run"
+          ],
+          "restore": {
+            "extras_sent": [],
+            "readd_error": "",
+            "readded": [
+              "cdp run"
+            ],
+            "teardown": [],
+            "teardown_error": ""
+          },
+          "result": "exact",
+          "sent_as": "global.cdp-run",
+          "shown_as": "global.cdp-run"
+        }
+      ],
+      "result": "exact"
+    }
+  }
+}

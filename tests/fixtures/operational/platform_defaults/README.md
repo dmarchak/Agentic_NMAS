@@ -38,3 +38,15 @@ Files written 23:55:31 (r6) and 23:55:58 (s3), after r6's deploy (receipt at
   Measured: on IOS-XE `lldp run` enables LLDP on the interfaces (unlike
   `cdp run`).
 - **s3:** LLDP on every interface; neighbours s4, r1 and r3.
+
+## staged8_2026-10-01T0244Z (`scripts/nmas-removal-probe --shape global.cdp-run`)
+
+Staged run 8, run by the operator on the NMAS host against r2 (C8000V, IOS-XE,
+its configuration carrying `cdp run`); the probe's result file
+(`/tmp/removal-cdp-r2.json`) copied here byte for byte (sha256 `3ca2cecb…`).
+
+- **r2:** `no cdp run` removed the line and left nothing behind (result
+  `exact`); the probe then re-added `cdp run` with no re-add or teardown error.
+  Measured: an ABSENT `cdp run` on IOS-XE is the state `no cdp run` sets, CDP
+  OFF. Had the default been on, the negation would have been printed
+  (`overrides_default`). This is the measurement set1's r6 capture could not be.

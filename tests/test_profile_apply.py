@@ -393,6 +393,15 @@ class TestAnAbsentLineMayBeOnByDefault:
         assert pp.platform_default("cisco_iosxe", "cdp run")["runs_alone"] is False
         # r6's first capture was DURING its push: never a default.
         assert pp.platform_default("cisco_iosxe", "lldp run")["state"] == "not_measured"
+        # Staged run 8: `no cdp run` on r2 left no line at all (exact), so an
+        # absent `cdp run` on IOS-XE is OFF; the probe's own record says so.
+        probe = json.load(open(os.path.join(base, "staged8_2026-10-01T0244Z",
+                                            "r2__removal_probe_cdp_run.json")))
+        ex = probe["full"]["global.cdp-run"]["exemplars"][0]
+        assert ex["program"] == ["no cdp run"] and ex["result"] == "exact"
+        assert ex["restore"]["readded"] == ["cdp run"] and not ex["restore"]["readd_error"]
+        xe = pp.platform_default("cisco_iosxe", "cdp run")
+        assert xe["state"] == "off" and xe["device"] == "r2" and xe["runs_alone"] is False
 
     def test_an_unmeasured_absence_is_said_and_not_applied_there(self, lab, monkeypatch, tmp_path):
         """With a record that has measured nothing, CDP (held on IOS-XE) is not

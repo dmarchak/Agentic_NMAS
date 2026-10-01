@@ -68,15 +68,19 @@ def step_done():
     owed = host_steps.owed(health._COMMIT or "")
     if not owed["ok"]:
         return jsonify({"ok": False, "error": owed["error"]}), 409
-    match = [s for s in owed["steps"] if s["sha"] == sha and s["step"] == step]
+    # One row may stand for several commits that asked for the same step
+    # (host_steps.grouped): saying it done says it for each of them.
+    match = [s for s in owed["steps"]
+             if sha in (s.get("shas") or [s["sha"]]) and s["step"] == step]
     if not match:
         return jsonify({"ok": False, "error": "that step is not one the running release owes"}), 409
     if match[0]["check_state"] != "not_checkable":
         return jsonify({"ok": False, "error": ("the tool checks this step itself: "
                                                + match[0]["check_detail"])}), 409
-    got = host_steps.record_done(sha, step, identity.request_actor())
-    if not got["ok"]:
-        return jsonify({"ok": False, "error": got["reason"]}), 409
+    for each in match[0].get("shas") or [sha]:
+        got = host_steps.record_done(each, step, identity.request_actor())
+        if not got["ok"]:
+            return jsonify({"ok": False, "error": got["reason"]}), 409
     return jsonify({"ok": True, "message": f"Recorded as done by {got['row']['by']}."})
 
 

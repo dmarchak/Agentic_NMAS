@@ -23,13 +23,15 @@
     },
     "cisco_iosxe": {
       "cdp run": {
-        "state": "not_measured",
+        "state": "off",
+        "device": "r2",
+        "measured_at": "2026-10-01T02:44:18Z",
+        "evidence": "staged run 8, scripts/nmas-removal-probe on r2: `no cdp run` left neither `cdp run` nor `no cdp run` in the running configuration (result `exact`), so an ABSENT line is the state `no cdp run` sets: CDP off. Were it on by default, the negation would have been printed (`overrides_default`). r2 was restored by re-adding `cdp run`, with no re-add or teardown error. r6's 'CDP active' reading of 23:53:43 was taken DURING its push, whose first line was `cdp run`",
+        "fixture": "staged8_2026-10-01T0244Z/r2__removal_probe_cdp_run.json",
         "runs_alone": false,
-        "device": "r1",
-        "measured_at": "2026-09-30T23:53:46Z",
-        "evidence": "r1 carries `cdp run`; `show cdp` answers 'Global CDP information', and `show cdp interface` answers 'cdp enabled interfaces : 0': on this platform `cdp run` alone enables no interface (each needs `cdp enable`). r6 read the same after its push",
-        "fixture": "set1_2026-09-30T2353Z/r1__show_cdp_interface.txt",
-        "measure_on": "a C8000V whose configuration carries no `cdp run`, read when no deploy is running to it (r6's capture of 23:53:43 was taken DURING its push, whose first line was `cdp run`)"
+        "runs_alone_device": "r1",
+        "runs_alone_evidence": "r1 carries `cdp run`; `show cdp` answers 'Global CDP information', and `show cdp interface` answers 'cdp enabled interfaces : 0': on this platform `cdp run` alone enables no interface (each needs `cdp enable`). r6 read the same after its push",
+        "runs_alone_fixture": "set1_2026-09-30T2353Z/r1__show_cdp_interface.txt"
       },
       "lldp run": {
         "state": "not_measured",

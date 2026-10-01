@@ -203,4 +203,21 @@ def owed(running: str, root: str = ROOT, log_text: str = None) -> dict:
             continue
         out.append(dict(s, check_state=c["state"], check_detail=c["detail"]))
     # The record read back: who said each step done, and when.
-    return {"ok": True, "steps": out, "said_done": said}
+    return {"ok": True, "steps": grouped(out), "said_done": grouped(said)}
+
+
+def grouped(steps: list) -> list:
+    """One row per STEP, naming every commit that asked for it (the operator,
+    2026-10-01: "re-install the updater's copy of scripts/nmas-deploy" was
+    listed twice, for 4a61081 and dde8495, and it is one re-install). Keyed on
+    the step's words and its check, oldest commit first; ``sha`` and ``id``
+    stay the first commit's, and ``shas``/``ids`` hold them all."""
+    out, by = [], {}
+    for s in steps:
+        key = (s["step"], s.get("check") or "")
+        if key not in by:
+            by[key] = dict(s, shas=[], ids=[])
+            out.append(by[key])
+        by[key]["shas"].append(s["sha"])
+        by[key]["ids"].append(s["id"])
+    return out

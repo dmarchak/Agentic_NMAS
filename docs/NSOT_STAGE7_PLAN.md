@@ -508,6 +508,13 @@ session needs no reconstruction:
       dropped on IOS-XE fleet-wide. `overrides_default` (the default is on, so `no cdp run`
       stays behind) means removal is the wrong tool, and r6's line is recorded in its own
       intent instead, saying why.
+   **DONE 2026-10-01, `exact`** (r2, 02:44:18Z): `no cdp run` removed the line with nothing
+   left behind, and r2 was restored (`cdp run` re-added, no re-add or teardown error). So
+   CDP is OFF by default on IOS-XE. Recorded in `removal_measured.json` and
+   `platform_defaults.json`, the probe's file kept byte for byte as
+   `tests/fixtures/operational/platform_defaults/staged8_2026-10-01T0244Z/`. `cdp run` is
+   removable through Mode B on IOS-XE from the next deploy; IOS was not asked and still
+   refuses it. Next: r6's removal from its Device page (C262), then r1 to r4 (C269).
 
 **The Services mockups reviewed (the operator, 2026-09-30; brief 9b, 14.2, 15.1):**
 - **Every Grafana panel, rendered from the dashboard's own JSON model,** never a chosen few:

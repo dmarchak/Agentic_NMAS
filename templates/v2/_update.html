@@ -121,7 +121,7 @@
 <section class="card" id="update-owed">
   <div class="card-head"><h2>Still to do on the host</h2></div>
   <ul class="plain-list" id="update-owed-steps">
-    {%- for s in owed.steps %}<li data-step-id="{{ s.id }}">{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}nothing can check it: say when it is done{% else %}checked: {{ s.check_detail }}{% endif %} <span class="mono">({{ s.sha[:10] }})</span></span>
+    {%- for s in owed.steps %}<li data-step-id="{{ s.id }}">{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}nothing can check it: say when it is done{% else %}checked: {{ s.check_detail }}{% endif %} <span class="mono">({% for x in s.shas or [s.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span>
       {%- if s.check_state == 'not_checkable' %}
       <span x-data="stepDone" data-url="{{ url_for('update.step_done') }}" data-sha="{{ s.sha }}" data-step="{{ s.step }}">
         <button type="button" class="btn btn-sm" x-on:click="say" x-bind:disabled="busy" x-text="label">It is done</button>
@@ -135,7 +135,7 @@
 <section class="card" id="update-said-done">
   <div class="card-head"><h2>Host steps said done</h2></div>
   <ul class="plain-list">
-    {%- for d in owed.said_done %}<li>{{ d.step }} <span class="muted">· said done by {{ d.by }}, {{ stamp(d.at) }} <span class="mono">({{ d.sha[:10] }})</span></span></li>{% endfor %}
+    {%- for d in owed.said_done %}<li>{{ d.step }} <span class="muted">· said done by {{ d.by }}, {{ stamp(d.at) }} <span class="mono">({% for x in d.shas or [d.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span></li>{% endfor %}
   </ul>
 </section>
 {%- endif %}

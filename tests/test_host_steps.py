@@ -217,3 +217,67 @@ class TestTheBoxIsReadWhereItIsDrawn:
         html = (ROOT / "templates" / "v2" / "_update.html").read_text()
         preview = html[html.index('id="update-preview"'):]
         assert "data-host-step=" in preview[:preview.index("</section>")]
+
+
+class TestOneStepAskedTwiceIsOneRow:
+    """The operator, 2026-10-01, updating 1954ce7 -> 8bef2e1: "Still to do on the
+    host" listed the SAME re-install twice, once for 4a61081 and once for
+    dde8495. It is one re-install: one row naming both commits. The two
+    commits' REAL trailers, read from git."""
+
+    A, B = "4a610813d7194fc122531d6f8ad4c3129a3e8163", "dde849524de80a9f666892544bdb49dac7c022e0"
+
+    def _text(self):
+        out = subprocess.run(["git", "-C", str(ROOT), "log", "--no-walk", "--format=%H%x1f%B%x1e",
+                              self.B, self.A], capture_output=True, text=True)
+        if out.returncode != 0:
+            pytest.skip(f"this checkout lacks the two commits: {out.stderr.strip()[:120]}")
+        return out.stdout
+
+    def test_the_updaters_re_install_is_owed_once_naming_both(self, store, monkeypatch):
+        from modules import host_steps
+        monkeypatch.setitem(host_steps.CHECKS, "updater",
+                            lambda root: {"state": "not_done", "detail": "the copy differs"})
+        steps = host_steps.owed(self.B, log_text=self._text())["steps"]
+        assert len(steps) == 1, steps
+        assert steps[0]["shas"] == [self.A, self.B]        # oldest first
+        assert steps[0]["step"].startswith("re-install the updater's copy of scripts/nmas-deploy")
+
+    def test_the_page_and_needs_attention_draw_one_row(self, store, monkeypatch):
+        import app as A
+        from modules import attention, host_steps
+        from routes import health
+        monkeypatch.setitem(host_steps.CHECKS, "updater",
+                            lambda root: {"state": "not_done", "detail": "the copy differs"})
+        text = self._text()
+        monkeypatch.setattr(host_steps, "_log", lambda root, rng, limit, run=None: text)
+        monkeypatch.setattr(health, "_COMMIT", self.B)
+        html = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
+        card = html[html.index('id="update-owed-steps"'):]
+        card = card[:card.index("</ul>")]
+        assert card.count("<li") == 1 and f"({self.A[:10]}, {self.B[:10]})" in card
+        (r,) = attention.host_steps_source()["rows"]
+        assert f"{self.A[:10]}, {self.B[:10]}" in r["what"]
+
+    def test_saying_one_row_done_says_it_for_each_commit(self, store, monkeypatch):
+        import app as A
+        from modules import host_steps, identity
+        from routes import health
+        body = "x\n\nHost-Step-After: tell the team\n"
+        text = _log(("b" * 40, body), ("a" * 40, body))
+        monkeypatch.setattr(host_steps, "_log", lambda root, rng, limit, run=None: text)
+        monkeypatch.setattr(health, "_COMMIT", "b" * 40)
+        monkeypatch.setattr(identity, "request_actor", lambda: "p@example.invalid")
+        (s,) = host_steps.owed("b" * 40)["steps"]
+        r = A.app.test_client().post("/update/host-step/done",
+                                     json={"sha": s["sha"], "step": "tell the team"})
+        assert r.status_code == 200
+        assert host_steps.owed("b" * 40)["steps"] == []
+        (d,) = host_steps.owed("b" * 40)["said_done"]
+        assert d["shas"] == ["a" * 40, "b" * 40]
+
+    def test_different_steps_stay_apart(self, store):
+        from modules import host_steps
+        text = _log(("b" * 40, "x\n\nHost-Step-After: tell the team\n"),
+                    ("a" * 40, "x\n\nHost-Step-After: tell the other team\n"))
+        assert len(host_steps.owed("b" * 40, log_text=text)["steps"]) == 2

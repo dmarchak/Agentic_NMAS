@@ -104,6 +104,13 @@ FLAG_SECTIONS = {"lldp": "lldp run", "cdp": "cdp run"}
 DEFAULTS_FILE = os.path.join(os.path.dirname(__file__), "platform_defaults.json")
 
 
+def _runs_alone_evidence(d: dict) -> str:
+    """The evidence for a verdict's `runs_alone`, which is its own measurement
+    (a device carrying the line), separate from the default's (a device
+    without it): a record holding both names this one `runs_alone_evidence`."""
+    return d.get("runs_alone_evidence") or d.get("evidence") or "measured"
+
+
 def platform_default(dialect: str, flag: str, path: str = None) -> dict:
     """``{"state": "on"|"off"|"not_measured", ...}``: whether *flag* is ON on
     *dialect* when its line is ABSENT, as MEASURED (platform_defaults.json).
@@ -418,7 +425,7 @@ def propose(list_name: str, get=None, choose: dict = None) -> dict:
                 dead = {p: platform_default(p, FLAG_SECTIONS[name]) for p in applies}
                 dead = {p: d for p, d in dead.items() if d.get("runs_alone") is False}
                 if dead:
-                    row["runs_nothing"] = {p: d.get("evidence", "measured") for p, d in dead.items()}
+                    row["runs_nothing"] = {p: _runs_alone_evidence(d) for p, d in dead.items()}
                     applies = [p for p in applies if p not in dead]
                     if not applies:
                         row["why"] = (f"`{FLAG_SECTIONS[name]}` alone enables nothing on "
@@ -470,11 +477,11 @@ def propose(list_name: str, get=None, choose: dict = None) -> dict:
                 if dead:
                     held = [x for x in held if x[1] not in dead]
                     only = {"value": only["value"], "devices": [h for h, _p, _v in held]}
-                    row["runs_nothing"] = {p: d.get("evidence", "measured") for p, d in dead.items()}
+                    row["runs_nothing"] = {p: _runs_alone_evidence(d) for p, d in dead.items()}
                     if not held:
                         row["why"] = (f"`{FLAG_SECTIONS[name]}` alone enables nothing on "
                                       + ", ".join(sorted(dead)) + " ("
-                                      + "; ".join(d.get("evidence", "measured")
+                                      + "; ".join(_runs_alone_evidence(d)
                                                   for d in dead.values())
                                       + "), so the profile would claim a feature that does not run")
                         continue
