@@ -39,6 +39,6 @@
   {% endfor %}
 </div>
 <div id="tab-body" class="tab-body">
-  {% if tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% elif tab == 'history' %}{% include "v2/_history.html" %}{% elif tab == 'intent' %}{% include "v2/_intent.html" %}{% elif tab == 'neighbours' %}{% include "v2/_neighbours.html" %}{% elif tab == 'logs' %}{% include "v2/_logs.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
+  {% if tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% elif tab == 'history' %}{% include "v2/_history.html" %}{% elif tab == 'intent' %}{% include "v2/_intent.html" %}{% elif tab == 'neighbours' %}{% include "v2/_neighbours.html" %}{% elif tab == 'logs' %}{% include "v2/_logs.html" %}{% elif tab == 'netbox' %}{% include "v2/_netbox.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
 </div>
 {% endblock %}

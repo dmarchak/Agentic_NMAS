@@ -1,0 +1,44 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- The device page's NetBox (NSOT_GUI_BRIEF 3.3), from
+    modules/device_netbox.for_device(): what NetBox holds about the device and
+    who owns that record by NMAS's own provenance. Read-only; writes stay on
+    today's NetBox tab behind its preview and token. -#}
+<section class="card netbox-rec" id="netbox" hx-get="{{ url_for('device_v2.netbox', name=device.hostname) }}"
+         hx-trigger="nmas:netbox from:body" hx-swap="outerHTML">
+  {%- for e in nb.errors %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}. Not the same as NetBox holding nothing.</p></div>
+  {%- endfor %}
+  {%- if not nb.configured %}
+  <p class="cov-head">{{ icon('info') }} NetBox is not configured, so its record of {{ device.hostname }} cannot be read here (Settings &gt; Integrations).</p>
+  {%- elif nb.absent %}
+  <p class="cov-head">{{ icon('info') }} NetBox holds no device named {{ device.hostname }}. The import on today's NetBox tab records it from its committed golden.</p>
+  {%- elif nb.record %}
+  {%- set r = nb.record %}
+  <p class="cov-head">{{ badge(nb.provenance.state | replace('_', ' '), nb.provenance.kind) }} {{ nb.provenance.words }}</p>
+  {%- if nb.platform_note %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ nb.platform_note }}</p></div>
+  {%- endif %}
+  <dl class="facts nb-facts">
+    <div><dt>Status</dt><dd>{{ r.status or '—' }}</dd></div>
+    <div><dt>Role</dt><dd>{{ r.role or '—' }}</dd></div>
+    <div><dt>Platform</dt><dd>{{ r.platform or '—' }}</dd></div>
+    <div><dt>Site</dt><dd>{{ r.site or '—' }}</dd></div>
+    <div><dt>Model</dt><dd>{{ r.model or '—' }}</dd></div>
+    <div><dt>Primary IPv4</dt><dd class="mono">{{ r.primary_ip4 or '—' }}</dd></div>
+    <div><dt>Interfaces</dt><dd>{{ nb.counts.interfaces if nb.counts.interfaces is not none else 'could not be counted' }}</dd></div>
+    <div><dt>IP addresses</dt><dd>{{ nb.counts.addresses if nb.counts.addresses is not none else 'could not be counted' }}</dd></div>
+    <div><dt>Tags</dt><dd>{{ r.tags | join(', ') if r.tags else 'none' }}</dd></div>
+    <div><dt>Created</dt><dd>{{ stamp(r.created) }}</dd></div>
+    <div><dt>Last updated</dt><dd>{{ stamp(r.last_updated) }}</dd></div>
+  </dl>
+  {%- if nb.mods.error %}
+  <p class="muted">NMAS's record of its writes to NetBox could not be read ({{ nb.mods.error }}).</p>
+  {%- elif nb.mods.count %}
+  <p class="muted">NMAS has recorded {{ nb.mods.count }} write(s) to this record, the last {{ stamp(nb.mods.last.at) }} by {{ nb.mods.last.actor }}.</p>
+  {%- else %}
+  <p class="muted">NMAS has recorded no write to this record.</p>
+  {%- endif %}
+  <p><a class="ext" href="{{ nb.ui_url }}" rel="noopener" target="_blank">Open in NetBox {{ icon('ext', 13) }}</a></p>
+  {%- endif %}
+  <p class="muted nb-limits">Read from NetBox and NMAS's own records. Importing and removing stay on today's NetBox tab, behind its preview and one-time confirmation.</p>
+</section>

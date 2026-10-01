@@ -266,9 +266,9 @@ class TestThePage:
         assert "r3" in text and "Answering" in text and "10.255.1.13" in text
         assert 'hx-get="/v2/device/r3/overview"' in html and 'hx-get="/v2/device/r3/monitoring"' in html
         assert text.count("Not in the spike") == 0          # a title, not text
-        # Overview, Intent, History, Logs and Neighbours (step 4, 2026-10-01)
-        # and Monitoring are built.
-        assert html.count('aria-disabled="true"') == 2
+        # Overview, Intent, History, Logs, NetBox and Neighbours (step 4,
+        # 2026-10-01) and Monitoring are built; Ask the device is not.
+        assert html.count('aria-disabled="true"') == 1
 
     def test_an_unknown_device_is_a_404_naming_it_and_the_list(self, lab):
         r, html = _get(lab, "/v2/device/nope")

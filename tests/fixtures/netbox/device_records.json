@@ -1,0 +1,206 @@
+{
+ "r3": {
+  "count": 1,
+  "counts": {
+   "dcim/interfaces": 5,
+   "ipam/ip-addresses": 10
+  },
+  "device": {
+   "created": "2026-08-28T23:53:44.646891Z",
+   "device_role": null,
+   "device_type": {
+    "description": "",
+    "device_count": 10,
+    "display": "Unknown",
+    "id": 1,
+    "manufacturer": {
+     "description": "",
+     "display": "Cisco",
+     "id": 1,
+     "name": "Cisco",
+     "slug": "cisco",
+     "url": "http://netbox.example.test:8000/api/dcim/manufacturers/1/"
+    },
+    "model": "Unknown",
+    "slug": "unknown",
+    "url": "http://netbox.example.test:8000/api/dcim/device-types/1/"
+   },
+   "display": "r3",
+   "id": 7,
+   "last_updated": "2026-09-28T04:35:51.105068Z",
+   "name": "r3",
+   "platform": {
+    "_depth": 0,
+    "description": "",
+    "device_count": 0,
+    "display": "IOS",
+    "id": 1,
+    "name": "IOS",
+    "slug": "ios",
+    "url": "http://netbox.example.test:8000/api/dcim/platforms/1/",
+    "virtualmachine_count": 0
+   },
+   "primary_ip4": {
+    "address": "10.255.1.13/32",
+    "description": "r3 Loopback0",
+    "display": "10.255.1.13/32",
+    "dns_name": "",
+    "family": {
+     "label": "IPv4",
+     "value": 4
+    },
+    "id": 29,
+    "nat_inside": null,
+    "nat_outside": [],
+    "url": "http://netbox.example.test:8000/api/ipam/ip-addresses/29/"
+   },
+   "role": {
+    "_depth": 0,
+    "description": "Default role for devices auto-created by Network Device Manager.",
+    "device_count": 0,
+    "display": "Router",
+    "id": 2,
+    "name": "Router",
+    "slug": "router",
+    "url": "http://netbox.example.test:8000/api/dcim/device-roles/2/",
+    "virtualmachine_count": 0
+   },
+   "serial": "",
+   "site": {
+    "description": "",
+    "display": "Default",
+    "id": 1,
+    "name": "Default",
+    "slug": "default",
+    "url": "http://netbox.example.test:8000/api/dcim/sites/1/"
+   },
+   "status": {
+    "label": "Active",
+    "value": "active"
+   },
+   "tags": [
+    {
+     "color": "4caf50",
+     "display": "BGP",
+     "display_url": "http://netbox.example.test:8000/extras/tags/5/",
+     "id": 5,
+     "name": "BGP",
+     "slug": "bgp",
+     "url": "http://netbox.example.test:8000/api/extras/tags/5/"
+    },
+    {
+     "color": "9c27b0",
+     "display": "CDP",
+     "display_url": "http://netbox.example.test:8000/extras/tags/4/",
+     "id": 4,
+     "name": "CDP",
+     "slug": "cdp",
+     "url": "http://netbox.example.test:8000/api/extras/tags/4/"
+    },
+    {
+     "color": "2196f3",
+     "display": "OSPF",
+     "display_url": "http://netbox.example.test:8000/extras/tags/2/",
+     "id": 2,
+     "name": "OSPF",
+     "slug": "ospf",
+     "url": "http://netbox.example.test:8000/api/extras/tags/2/"
+    }
+   ],
+   "url": "http://netbox.example.test:8000/api/dcim/devices/7/"
+  }
+ },
+ "r6": {
+  "count": 1,
+  "counts": {
+   "dcim/interfaces": 3,
+   "ipam/ip-addresses": 2
+  },
+  "device": {
+   "created": "2026-09-24T05:45:42.246023Z",
+   "device_role": null,
+   "device_type": {
+    "description": "",
+    "device_count": 10,
+    "display": "Unknown",
+    "id": 1,
+    "manufacturer": {
+     "description": "",
+     "display": "Cisco",
+     "id": 1,
+     "name": "Cisco",
+     "slug": "cisco",
+     "url": "http://netbox.example.test:8000/api/dcim/manufacturers/1/"
+    },
+    "model": "Unknown",
+    "slug": "unknown",
+    "url": "http://netbox.example.test:8000/api/dcim/device-types/1/"
+   },
+   "display": "r6",
+   "id": 11,
+   "last_updated": "2026-09-28T04:36:05.034137Z",
+   "name": "r6",
+   "platform": {
+    "_depth": 0,
+    "description": "",
+    "device_count": 0,
+    "display": "IOS",
+    "id": 1,
+    "name": "IOS",
+    "slug": "ios",
+    "url": "http://netbox.example.test:8000/api/dcim/platforms/1/",
+    "virtualmachine_count": 0
+   },
+   "primary_ip4": {
+    "address": "10.255.0.32/24",
+    "description": "r6 GigabitEthernet2",
+    "display": "10.255.0.32/24",
+    "dns_name": "",
+    "family": {
+     "label": "IPv4",
+     "value": 4
+    },
+    "id": 85,
+    "nat_inside": null,
+    "nat_outside": [],
+    "url": "http://netbox.example.test:8000/api/ipam/ip-addresses/85/"
+   },
+   "role": {
+    "_depth": 0,
+    "description": "Default role for devices auto-created by Network Device Manager.",
+    "device_count": 0,
+    "display": "Router",
+    "id": 2,
+    "name": "Router",
+    "slug": "router",
+    "url": "http://netbox.example.test:8000/api/dcim/device-roles/2/",
+    "virtualmachine_count": 0
+   },
+   "serial": "",
+   "site": {
+    "description": "",
+    "display": "Default",
+    "id": 1,
+    "name": "Default",
+    "slug": "default",
+    "url": "http://netbox.example.test:8000/api/dcim/sites/1/"
+   },
+   "status": {
+    "label": "Active",
+    "value": "active"
+   },
+   "tags": [
+    {
+     "color": "00bcd4",
+     "display": "nmas-managed",
+     "display_url": "http://netbox.example.test:8000/extras/tags/6/",
+     "id": 6,
+     "name": "nmas-managed",
+     "slug": "nmas-managed",
+     "url": "http://netbox.example.test:8000/api/extras/tags/6/"
+    }
+   ],
+   "url": "http://netbox.example.test:8000/api/dcim/devices/11/"
+  }
+ }
+}

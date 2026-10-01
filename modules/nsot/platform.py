@@ -94,6 +94,23 @@ def assert_dialect(value: str, where: str = "") -> str:
     return value
 
 
+def dialect_for_netbox_slug(slug: str) -> str:
+    """The config dialect a NetBox platform *slug* names, or ``""`` when it
+    names none this program knows (the table, then the `platform_map`
+    setting). ``""`` is an answer: NetBox's `ios` (register A4) maps to
+    nothing, and defaulting it would hide that."""
+    slug = (slug or "").strip().lower()
+    if not slug:
+        return ""
+    mapped = _FROM_NETBOX_SLUG.get(slug)
+    if mapped:
+        return mapped
+    from modules.settings_schema import get_setting
+    entry = (get_setting("platform_map", {}) or {}).get(slug, {})
+    template_dir = (entry.get("template_dir") or "").strip()
+    return template_dir.replace("-", "_") if template_dir else ""
+
+
 def platform_for_device(device: dict) -> str:
     """Config dialect for *device*, in order of decreasing authority.
 
@@ -108,14 +125,9 @@ def platform_for_device(device: dict) -> str:
 
     netbox_slug = (device.get("_platform") or "").strip().lower()
     if netbox_slug:
-        mapped = _FROM_NETBOX_SLUG.get(netbox_slug)
+        mapped = dialect_for_netbox_slug(netbox_slug)
         if mapped:
             return mapped
-        from modules.settings_schema import get_setting
-        entry = (get_setting("platform_map", {}) or {}).get(netbox_slug, {})
-        template_dir = (entry.get("template_dir") or "").strip()
-        if template_dir:
-            return template_dir.replace("-", "_")
 
     device_type = (device.get("device_type") or "").strip().lower()
     if device_type:
