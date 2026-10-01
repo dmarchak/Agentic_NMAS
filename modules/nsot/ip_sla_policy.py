@@ -373,6 +373,19 @@ def _inventory(ref) -> dict:
     return out
 
 
+def without_probes(ref) -> tuple:
+    """``(hosts, error)``: the inventory's devices whose COMMITTED intent
+    declares no IP SLA operation, in inventory order. The IP SLA page's
+    population when it is opened from its tab with no device named; read in
+    the two git calls `committed_intents` makes, never per device."""
+    from modules.neighbours import committed_intents
+    intents, err = committed_intents(ref.repo_dir)
+    if err:
+        return [], err
+    return [h for h in _inventory(ref)
+            if h in intents and not (intents[h] or {}).get("ip_sla")], ""
+
+
 def plan(ref, chosen: list) -> dict:
     """The suggestions for the *chosen* devices from committed intent, with a
     fingerprint the confirm is bound to."""

@@ -397,6 +397,11 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 /* A disabled control LOOKS disabled (the Update button's first run: a button
    disabled by a wiring defect looked clickable and did nothing). */
 .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+/* The same for a box that cannot be ticked (the operator, 2026-10-01: Coverage's
+   disabled boxes looked usable and clicking them appeared broken). Faded, the
+   not-allowed cursor, and its reason beside it and on hover. */
+input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .35; cursor: not-allowed; }
+input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { color: var(--ink-3); cursor: not-allowed; }
 .fact-actions { display: inline-flex; align-items: center; gap: 8px; margin-left: 8px; vertical-align: middle; }
 .check-again { display: inline-flex; align-items: center; gap: 8px; }
 

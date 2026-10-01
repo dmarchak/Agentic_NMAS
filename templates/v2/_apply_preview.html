@@ -77,7 +77,7 @@
       {%- for s in r.superseded %}
       <div class="apply-line">
         {%- if s.why_not %}
-        <input type="checkbox" disabled id="rm-{{ r.name }}-{{ s.id }}">
+        <input type="checkbox" disabled id="rm-{{ r.name }}-{{ s.id }}" title="Cannot be removed: {{ s.why_not }}">
         <label for="rm-{{ r.name }}-{{ s.id }}"><code>{{ s.text }}</code></label>
         <span class="muted">Cannot be removed: {{ s.why_not }}</span>
         {%- else %}

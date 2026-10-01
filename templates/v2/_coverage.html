@@ -44,7 +44,7 @@
           <tr>
             <td class="cov-pick">
               {%- if d.selectable %}<input type="checkbox" name="device" value="{{ d.host }}" id="cov-{{ d.host }}"{% if d.checked %} checked{% endif %} aria-label="Apply the monitoring profile to {{ d.host }}">
-              {%- else %}<input type="checkbox" disabled aria-label="{{ d.host }} cannot receive the profile: {{ d.why_not }}">{% endif -%}
+              {%- else %}<input type="checkbox" disabled title="Not offered: {{ d.why_not }}" aria-label="{{ d.host }} cannot receive the profile: {{ d.why_not }}">{% endif -%}
             </td>
             <th scope="row" class="cov-dev">
               <a href="{{ url_for('device_v2.device', name=d.host) }}">{{ d.host }}</a>
@@ -54,7 +54,9 @@
               {%- if not d.selectable %}<span class="cov-why">Not offered: {{ d.why_not }}.</span>{% endif %}
             </th>
             {%- for col in c.columns %}{% set cell = d.cells[col.key] %}
-            <td class="cov cov-{{ cell.state }}">{{ icon(ICON[cell.state], 14) }}<span>{{ cell.words }}</span></td>
+            <td class="cov cov-{{ cell.state }}">{{ icon(ICON[cell.state], 14) }}
+              {%- if col.key == 'ip_sla' and cell.state == 'unused' %}<a href="{{ url_for('v2.ip_sla', list=c.list, device=d.host) }}">{{ cell.words }}</a>
+              {%- else %}<span>{{ cell.words }}</span>{% endif %}</td>
             {%- endfor %}
           </tr>
           {%- endfor %}

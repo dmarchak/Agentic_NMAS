@@ -526,12 +526,20 @@ def _ip_sla_ctx(req) -> dict:
         if d and d not in chosen:
             chosen.append(d)
     ctx = {"list_name": name, "chosen": chosen, "policy": None, "plan": None, "error": "",
+           "defaulted": False,
            "policies": [(p, ip_sla_policy.POLICY_WORDS[p]) for p in profile.IP_SLA_POLICIES],
            "default_frequency": ip_sla_policy.DEFAULT_FREQUENCY}
     if ref is None:
         ctx["error"] = f"no list named {name!r}"
         return ctx
     ctx["policy"] = ip_sla_policy.policy_view(ref)
+    if not chosen:
+        # Opened from the tab: every device whose committed intent declares no
+        # probe, said as such (a population the page chose is named).
+        chosen, err = ip_sla_policy.without_probes(ref)
+        ctx.update(chosen=chosen, defaulted=True, error=err)
+        if err:
+            return ctx
     if chosen and (ctx["policy"]["section"] or {}).get("policy"):
         try:
             got = ip_sla_policy.plan(ref, chosen)
@@ -554,7 +562,7 @@ def ip_sla():
     """The IP SLA policy and the probes it suggests for the devices chosen on
     Coverage (those running none)."""
     from flask import request
-    return _page("v2/ip_sla.html", active_nav="monitoring", monitoring_tab="coverage",
+    return _page("v2/ip_sla.html", active_nav="monitoring", monitoring_tab="ip_sla",
                  **_ip_sla_ctx(request))
 
 

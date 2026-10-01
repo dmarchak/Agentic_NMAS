@@ -250,10 +250,6 @@ class TestTheSuggestionsPage:
         assert "No probe to suggest for these devices" in page
         assert "no static default route" in html_mod.unescape(page)
 
-    def test_no_device_chosen_points_to_coverage(self, lab):
-        r = lab["client"].get("/v2/monitoring/ip-sla?list=Lab")
-        assert "No device was chosen" in r.get_data(as_text=True)
-
 
 class TestTheCommit:
     def _commit(self, lab, page, picked=None, **over):
@@ -402,3 +398,89 @@ class TestTheShippedClient:
             "go": "", "reload": False, "error": "moved"}
         assert self._call("window.NMAS_APPLY.ipslaOutcome(500, null)")["error"] == \
             "refused (HTTP 500)"
+
+
+# ---------------------------------------------------------------------------
+# The operator on 1d97de3 (2026-10-01): no way in to the IP SLA page, and
+# disabled checkboxes that looked usable.
+# ---------------------------------------------------------------------------
+
+def _coverage_inventory(monkeypatch):
+    from modules.nsot import listref
+    monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+    monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: [
+        {"hostname": "r2", "ip": "203.0.113.12", "platform": "cisco_iosxe"},
+        {"hostname": "s4", "ip": "203.0.113.24", "platform": "cisco_ios"}])
+
+
+class TestTheWayIn:
+    def test_monitoring_has_an_ip_sla_tab_and_its_page_marks_it(self, lab):
+        _r, page = _page(lab)
+        assert re.search(r'<a class="tab on" href="/v2/monitoring/ip-sla" aria-current="page">'
+                         r'IP SLA</a>', page), "the IP SLA tab, current on its own page"
+        assert '<a class="tab" href="/v2/monitoring/coverage">Coverage</a>' in page
+
+    def test_every_monitoring_page_carries_the_tab(self, lab, monkeypatch):
+        _coverage_inventory(monkeypatch)
+        for path in ("/v2/monitoring/coverage", "/v2/monitoring"):
+            page = lab["client"].get(path).get_data(as_text=True)
+            assert '<a class="tab" href="/v2/monitoring/ip-sla">IP SLA</a>' in page, path
+
+    def test_opened_from_the_tab_it_shows_every_device_without_a_probe(self, lab):
+        assert _policy(lab).status_code == 200
+        page = html_mod.unescape(lab["client"].get("/v2/monitoring/ip-sla?list=Lab")
+                                 .get_data(as_text=True))
+        # r2's intent runs ip sla 1; s4's runs none.
+        assert "the 1 device(s) whose intent has no IP SLA probe (s4)" in page
+        assert _keys(page) == ["r2:2"]
+
+    def test_with_every_device_probing_it_says_so(self, lab, monkeypatch):
+        monkeypatch.setattr("modules.nsot.ip_sla_policy.without_probes", lambda ref: ([], ""))
+        page = lab["client"].get("/v2/monitoring/ip-sla?list=Lab").get_data(as_text=True)
+        assert "already has an IP SLA probe in its intent: nothing to suggest" in page
+
+    def test_coverage_s_ip_sla_cell_is_itself_the_link(self, lab, monkeypatch):
+        _coverage_inventory(monkeypatch)
+        assert _policy(lab).status_code == 200
+        page = lab["client"].get("/v2/monitoring/coverage/table").get_data(as_text=True)
+        cells = [c for c in re.findall(r'<td class="cov cov-unused">.*?</td>', page, re.S)
+                 if "probes" in c]
+        assert len(cells) == 1, "s4's IP SLA cell (r2 runs a probe)"
+        assert '<a href="/v2/monitoring/ip-sla?list=Lab&amp;device=s4">no probes yet' in cells[0]
+
+
+class TestADisabledBoxLooksDisabled:
+    CSS = os.path.join(ROOT, "static", "css", "nmas-v2.css")
+
+    def test_the_stylesheet_fades_a_disabled_box_and_refuses_the_pointer(self):
+        with open(self.CSS, encoding="utf-8") as fh:
+            css = fh.read()
+        m = re.search(r'input\[type="checkbox"\]:disabled[^{]*\{([^}]*)\}', css)
+        assert m, "a rule for a disabled checkbox"
+        opacity = float(re.search(r"opacity:\s*([\d.]+)", m.group(1)).group(1))
+        assert opacity <= 0.5 and "cursor: not-allowed" in m.group(1)
+
+    def test_every_disabled_box_on_coverage_says_why_on_hover(self, lab, monkeypatch):
+        _coverage_inventory(monkeypatch)
+        page = lab["client"].get("/v2/monitoring/coverage/table").get_data(as_text=True)
+        boxes = re.findall(r'<input type="checkbox" disabled[^>]*>', page)
+        assert len(boxes) >= 2, "the lab offers neither device (the floor)"
+        assert all(re.search(r'title="Not offered: [^"]+"', b) for b in boxes), boxes
+
+    def test_a_real_browser_draws_it_faded(self, lab, monkeypatch):
+        from tests import browser
+        ok, why = browser.available()
+        if not ok:
+            pytest.skip(f"no real browser here ({why}); the stylesheet rule above still runs")
+        import app as A
+        _coverage_inventory(monkeypatch)
+        with browser.Served(A.app) as srv, browser.Browser() as b:
+            try:
+                b.go(srv.url("/v2/monitoring/coverage"))
+                b.wait_for("return document.querySelector('.cov-pick input[disabled]')")
+                style = b.js("var s=getComputedStyle(document.querySelector("
+                             "'.cov-pick input[disabled]'));return [s.opacity, s.cursor]")
+                assert float(style[0]) <= 0.5 and style[1] == "not-allowed", style
+            finally:
+                b.go("about:blank")
+                browser.close_socketio_sessions()

@@ -48,14 +48,14 @@
 
 <section class="card ipsla" id="ipsla-suggestions">
   <h2 class="apply-h">Suggested probes</h2>
-  {%- if not chosen %}
-  <p class="muted">No device was chosen. On <a href="{{ url_for('v2.coverage') }}">Coverage</a>, the devices running no probe link here.</p>
-  {%- elif error %}
+  {%- if error %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ error }}</p></div>
+  {%- elif not chosen %}
+  <p class="muted">{% if defaulted %}Every device in {{ list_name }} already has an IP SLA probe in its intent: nothing to suggest.{% else %}No device was chosen.{% endif %}</p>
   {%- elif not plan %}
   <p class="muted">Choose a policy above: the probes for {{ chosen | join(', ') }} are suggested from it.</p>
   {%- else %}
-  <p>For {{ chosen | join(', ') }}, with the policy to {{ plan.words }}. A path between a switch and a router is measured from the router, sparing the switch; a path an existing probe already measures, from either end, is not added again.</p>
+  <p>For {% if defaulted %}the {{ chosen | length }} device(s) whose intent has no IP SLA probe ({{ chosen | join(', ') }}){% else %}{{ chosen | join(', ') }}{% endif %}, with the policy to {{ plan.words }}. A path between a switch and a router is measured from the router, sparing the switch; a path an existing probe already measures, from either end, is not added again.</p>
   {%- if plan.by_on %}
   <div x-data="ipslaPost" data-url="{{ url_for('v2.ip_sla_commit') }}" data-body='{{ commit_body | tojson }}'
        data-label="Commit the ticked probes to intent, then preview sending them" data-busy="Committing to intent…">
