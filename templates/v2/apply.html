@@ -1,0 +1,15 @@
+{%- extends "v2/base.html" -%}
+{% block title %}Apply the monitoring profile · Monitoring · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Apply the monitoring profile</h1>
+    <p class="sub">To the devices ticked on Coverage, one at a time in the order below. Each receives exactly the program shown, and only the profile's lines.</p>
+  </div>
+</div>
+{% include "v2/_monitoring_tabs.html" %}
+<div class="tab-body">
+{% include "v2/_apply_preview.html" %}
+<div id="apply-result"></div>
+</div>
+{% endblock %}

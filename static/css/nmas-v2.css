@@ -448,3 +448,31 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .att-note-what { font-weight: 500; }
 .att-how { flex-basis: 100%; font-size: 12px; color: var(--ink-2); }
 .att-how p { margin: 4px 0 0; }
+
+/* Monitoring > Coverage's batch Apply (P.9 d2): the preview, the rollout
+   order, each device's program, and the job's progress and result. */
+.apply-what { margin: 0 0 12px; font-weight: 600; }
+.apply-h { display: flex; align-items: center; gap: 8px; margin: 16px 0 6px; font-size: 15px; font-weight: 600; }
+.apply-sub { margin: 10px 0 4px; font-size: 13px; font-weight: 600; }
+.apply-why { margin: 0 0 8px; font-size: 13px; }
+.rollout { margin: 0 0 8px; padding-left: 22px; font-size: 13px; }
+.rollout-item { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.apply-device { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--line); }
+.apply-program { margin: 4px 0 8px; padding: 8px 10px; background: var(--surface-2); border-radius: 6px; font-size: 12px;
+                 white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+.apply-note p { margin: 6px 0 2px; font-size: 13px; }
+.apply-superseded { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.apply-superseded legend { padding: 0 4px; font-weight: 600; }
+.apply-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; padding: 3px 0; }
+.apply-reason { display: flex; flex-direction: column; gap: 2px; width: 100%; margin-left: 22px; font-size: 12px; color: var(--ink-2); }
+.apply-reason input { max-width: 420px; }
+.apply-evidence { margin: 6px 0; font-size: 13px; }
+.apply-evidence summary { cursor: pointer; color: var(--ink-2); }
+.apply-gates { margin: 6px 0; padding-left: 18px; }
+.apply-gates .gate-fail { color: var(--danger); }
+.apply-operands { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 6px 0; }
+.apply-operands dt { color: var(--ink-2); }
+.apply-operands dd { margin: 0; overflow-wrap: anywhere; }
+.apply-not { margin: 4px 0 8px; padding-left: 18px; font-size: 13px; }
+.apply-refused { margin: 6px 0 0; color: var(--danger); font-size: 13px; }
+.apply-job { margin-top: 14px; }

@@ -130,6 +130,13 @@ PAGE_RECORD = {
     # each step done and when, on the Update page.
     "update.step_done": ("templates/v2/_update.html", ('id="update-said-done"', "d.by", "d.at"),
                          "v2.update_panel"),
+    # The monitoring profile's batch Apply (P.9 d2): a job, its result drawn
+    # from the receipts the apply wrote (each device's outcome, what was sent
+    # and checked, the record), and the receipts read back on each device's
+    # Changes.
+    "v2.profile_apply_confirm": ("templates/v2/_apply_job.html",
+                                 ('id="apply-job"', "res.targets", "res.record"),
+                                 "deploy.receipts_read"),
 }
 
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.

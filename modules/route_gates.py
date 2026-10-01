@@ -90,6 +90,7 @@ GATES = {
     "upload_file": _g(C, "copies a file onto a device's flash"),
     "delete_file": _g(C, "deletes a file from a device's flash"),
     "rotate.apply": _g(C, "rotates a device's login credential: the device then accepts only the new password"),
+    "v2.profile_apply_confirm": _g(C, "deploys the monitoring profile's confirmed programs to the chosen devices, one after another (P.9 d2)"),
     "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
     "ai_chat": _g(C, "the assistant holds tools that push config until P.3 step 8 removes them"),

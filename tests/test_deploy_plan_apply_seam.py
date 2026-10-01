@@ -323,7 +323,9 @@ class TestOnlyOneConditionProducesThisOutcome:
 
         import routes.deploy as rd
 
-        source = inspect.getsource(rd.apply)
+        # The apply view delegates to `apply_batch` (P.9 d2: one apply for the
+        # JSON route and the v2 confirm), where the comparison lives.
+        source = inspect.getsource(rd.apply_batch)
         block = source[source.index("if now != expected:"):]
         # The whole block, not a slice of it: the first version read
         # `block[:400]` and broke when a comment was added above the append,

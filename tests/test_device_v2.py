@@ -588,15 +588,21 @@ class TestTheShippedScripts:
                                "window.NMAS_V2.jumpTarget('/v2/device/', '  ')] : 0"))
         assert out == ["/v2/device/r3", "/v2/device/a%2Fb", ""]
 
-    def test_the_keys_it_wires_are_in_the_vocabulary_and_each_is_heard(self, lab):
-        from modules import invalidation
+    def test_the_keys_it_wires_are_in_the_vocabulary_and_each_is_heard(self, lab, monkeypatch):
+        from modules import deploy_job, invalidation
 
         keys = json.loads(_eval("nmas_v2.js", "NMAS_V2", "KEYS"))
         assert keys and set(keys) <= set(invalidation.VOCABULARY)
+        # A batch apply RUNNING (P.9 d2) listens for its job's announcements.
+        monkeypatch.setattr(deploy_job, "state", lambda job: {
+            "job": job, "state": "running", "order": ["r3"], "elapsed_s": 1, "payload": None,
+            "error": "", "steps": [{"device": "r3", "state": "running", "took_s": 1}]})
         heard = " ".join(_get(lab, u)[1] for u in ("/v2/device/r3", "/v2/device/r3/overview",
                                                     "/v2/device/r3/monitoring", "/v2/attention",
-                                                    "/v2/help/installation"))
-        assert len(keys) == 12
+                                                    "/v2/help/installation",
+                                                    "/v2/monitoring/coverage/table",
+                                                    "/v2/monitoring/apply/job/x"))
+        assert len(keys) == 14
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

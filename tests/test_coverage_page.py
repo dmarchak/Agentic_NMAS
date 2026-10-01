@@ -129,13 +129,14 @@ class TestThePage:
         r, html = _page(lab, monkeypatch)
         assert "missing — the profile supplies it" in html
         form = re.search(r'<form method="get" action="([^"]*)" class="cov-form">(.*?)</form>', html, re.S)
-        assert form and form.group(1) == "/"
+        # P.9 (d2): the v2 batch preview, carrying the list and the ticked devices.
+        assert form and form.group(1) == "/v2/monitoring/apply"
         body = form.group(2)
-        assert '<input type="hidden" name="open" value="profile_apply">' in body
+        assert 'name="open"' not in body
         assert '<input type="hidden" name="list" value="Lab">' in body
         assert re.search(r'<input type="checkbox" name="device" value="r6" id="cov-r6" checked', body)
         assert re.search(r'<input type="checkbox" name="device" value="r2" id="cov-r2" aria', body)
-        assert "Preview applying the profile (today's page)" in body
+        assert "Preview applying the profile…" in body
         # Words and an icon in every cell, never colour alone.
         assert html.count('class="cov cov-') == 2 * 5
 

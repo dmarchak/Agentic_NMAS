@@ -1,0 +1,82 @@
+{%- from "v2/_macros.html" import icon, badge -%}
+{#- The batch Apply, after the confirm (P.9 step d2): where it is, in the
+    rollout order, then its result, drawn from the receipts the apply wrote
+    (preview_confirm.operation_result). Redrawn when the job announces
+    `deploy_job` (each device finishing, and the end); "Check now" asks
+    when the live channel is down. -#}
+{%- set LEVEL = {'success': ('Done', 'ok'), 'partial': ('Partly done', 'warn'),
+                 'failed': ('Failed', 'danger'), 'nothing': ('Nothing was changed', 'muted')} -%}
+{%- if not j %}
+<section class="card apply-job" id="apply-job">
+  <div class="notice notice-warn">{{ icon('warn') }}<p>This server has no record of that batch: it expired, or the server restarted while it ran. What each device received is in its receipts (each device's Changes) and in the golden history.</p></div>
+</section>
+{%- elif j.state == 'running' %}
+<section class="card apply-job" id="apply-job" hx-get="{{ url_for('v2.profile_apply_job', job=job) }}"
+         hx-trigger="nmas:deploy_job from:body" hx-swap="outerHTML">
+  <h2 class="apply-h">Applying, one device at a time</h2>
+  <ol class="stepper">
+    {%- for s in j.steps %}
+    {%- set failed = s.state == 'done' and s.outcome != 'deployed' %}
+    <li class="step step-{{ 'failed' if failed else 'current' if s.state == 'running' else s.state }}">
+      <span class="step-mark"></span>
+      <span class="step-words">{{ s.device }}</span>
+      <span class="step-note">
+        {%- if s.state == 'done' %}{{ s.words }}{% if s.reason and failed %}: {{ s.reason }}{% endif %} ({{ s.took_s }} s)
+        {%- elif s.state == 'running' %}being applied: pushed, then verified, which waits out each protocol's settle window ({{ s.took_s }} s so far)
+        {%- else %}waits its turn{% endif -%}
+      </span>
+    </li>
+    {%- endfor %}
+  </ol>
+  <p class="muted">Started {{ j.elapsed_s }} s ago. This page follows it; it keeps running if you leave.
+    <button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_job', job=job) }}"
+            hx-target="#apply-job" hx-swap="outerHTML">Check now</button></p>
+</section>
+{%- elif j.state == 'failed' %}
+<section class="card apply-job" id="apply-job">
+  <div class="notice notice-danger">{{ icon('warn') }}<p>The batch stopped with an error: {{ j.error }}. What reached each device before it stopped is in its receipts and the golden history; read them before applying again.</p></div>
+</section>
+{%- else %}
+{%- set res = (j.payload or {}).get('result') or {} %}
+{%- set lv = LEVEL.get(res.level, (res.level or 'unknown', 'muted')) %}
+<section class="card apply-job" id="apply-job">
+  <h2 class="apply-h">{{ badge(lv[0], lv[1]) }} {{ (res.happened or {}).summary }}</h2>
+  <ol class="stepper">
+    {%- for t in res.targets or [] %}
+    {%- set ok = t.outcome == 'deployed' %}
+    <li class="step step-{{ 'done' if ok else 'failed' }}">
+      <span class="step-mark"></span><span class="step-words">{{ t.name }}</span>
+      <span class="step-note">{{ ((res.happened or {}).targets | selectattr('name', 'equalto', t.name) | map(attribute='words') | first) or t.outcome }}{% if t.reason and not ok %}: {{ t.reason }}{% endif %}</span>
+    </li>
+    {%- endfor %}
+  </ol>
+  {%- for t in res.targets or [] %}
+  <details class="apply-evidence">
+    <summary>{{ t.name }}: what was sent and what was checked</summary>
+    {%- if (t.sent or {}).lines %}
+    <p>{{ t.sent.match_words }}.</p>
+    <pre class="apply-program">{{ t.sent.lines | join('\n') }}</pre>
+    {%- else %}
+    <p class="muted">{{ (t.sent or {}).none }}</p>
+    {%- endif %}
+    {%- set c = t.checks or {} %}
+    {%- if c.ran %}
+    <p>Verify {{ 'passed' if c.ok else 'did NOT pass' }}{% if c.checked_protocols %}, checking {{ c.checked_protocols | join(', ') }}{% endif %}.</p>
+    {%- for i in (c.issues or []) + (c.intent_unmet or []) + (c.unreadable or []) %}<p class="apply-refused">{{ i }}</p>{% endfor %}
+    {%- else %}
+    <p class="muted">Nothing was verified: {{ c.why }}.</p>
+    {%- endif %}
+    {%- if (t.rollback or {}).performed %}<p>Rolled back: {{ t.rollback.state }}{% if t.rollback.detail %} ({{ t.rollback.detail }}){% endif %}.</p>{% endif %}
+  </details>
+  {%- endfor %}
+  {%- if (res.did_not or {})['items'] %}
+  <h3 class="apply-sub">What did not happen</h3>
+  <ul class="apply-not">
+    {%- for i in res.did_not['items'] %}<li><strong>{{ i.target }}</strong>: {{ i.text }}{% if i.lines %}<pre class="apply-program">{{ i.lines | join('\n') }}</pre>{% endif %}</li>{% endfor %}
+  </ul>
+  {%- endif %}
+  <p class="muted">{{ (res.record or {}).statement }}</p>
+  <p class="muted">{{ res.not_watched }}</p>
+  <p><a href="{{ url_for('v2.coverage') }}">Back to Coverage</a>: it redraws from the new goldens.</p>
+</section>
+{%- endif %}

@@ -238,7 +238,8 @@ class TestEveryChangingPathHoldsIt:
 #: paths that change the RECORD of a device (capture, retirement) as well,
 #: which no session guard can see.
 HOLDERS = {
-    "routes/deploy.py": ("apply", "run_targets"),
+    # `apply_batch` is THE apply (/deploy/apply and the v2 batch confirm, P.9 d2).
+    "routes/deploy.py": ("apply_batch", "run_targets"),
     "routes/golden.py": ("capture_apply",),
     "modules/nsot/credential_rotation.py": ("rotate", "persist"),
     "modules/nsot/persist_op.py": ("apply",),

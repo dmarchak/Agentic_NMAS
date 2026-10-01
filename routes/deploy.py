@@ -338,35 +338,19 @@ def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captu
     return out
 
 
-@bp.route("/plan", methods=["POST"])
-def plan():
-    """Per-device diff and deployability. Reads captured configs only."""
+def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
+                 remove: dict = None, scope: str = "") -> list:
+    """Every device's plan entry: its exact program, hashes, gates and what it
+    holds back. THE plan, for `/deploy/plan` and the v2 batch preview (P.9 d2)
+    alike. Reads captured configs only; contacts no device."""
     from modules.nsot.deploy import (DeployRefused, NotAuthorised,
                                      assert_authorised, command_fingerprint,
-                                     dangerous_in, merge_commands, merge_diff,
+                                     dangerous_in, merge_diff,
                                      prepare_device, residue_in_context)
-
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    hostnames = data.get("devices") or []
-    # Per device, always. Authorising a line for one device must never
-    # authorise it for another in the same batch.
-    authorise = data.get("authorise") or {}
-    # Mode B (7.3 step 2): the lines a person SELECTED for removal, per device,
-    # as `{device: [{chain, line}]}`. Never inferred from the residue: each is a
-    # decision, and each needs a stated reason (through `authorise`).
-    remove = data.get("remove") or {}
-    if not hostnames:
-        return jsonify({"ok": False, "error": "No devices selected"}), 400
-    # P.9 step (b): "profile" sends only the network's monitoring profile's
-    # lines. Anything else is refused by name, never read as the whole intent.
     from modules.nsot import profile as _profile, profile_apply
-    scope = (data.get("scope") or "").strip()
-    if scope not in ("", profile_apply.SCOPE):
-        return jsonify({"ok": False, "error": (
-            f"unknown deploy scope {scope!r}: the plan sends the device's whole intent, or "
-            f"with scope {profile_apply.SCOPE!r} only its monitoring profile's lines")}), 400
 
+    authorise = authorise or {}
+    remove = remove or {}
     devices = []
     for hostname in hostnames:
         built, error = _artifact_for(list_name, hostname)
@@ -496,6 +480,35 @@ def plan():
         from modules.nsot.device_ops import busy_text
         entry["busy"] = busy_text(list_name, hostname)       # C99
         devices.append(entry)
+    return devices
+
+
+@bp.route("/plan", methods=["POST"])
+def plan():
+    """Per-device diff and deployability. Reads captured configs only."""
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    hostnames = data.get("devices") or []
+    # Per device, always. Authorising a line for one device must never
+    # authorise it for another in the same batch.
+    authorise = data.get("authorise") or {}
+    # Mode B (7.3 step 2): the lines a person SELECTED for removal, per device,
+    # as `{device: [{chain, line}]}`. Never inferred from the residue: each is a
+    # decision, and each needs a stated reason (through `authorise`).
+    remove = data.get("remove") or {}
+    if not hostnames:
+        return jsonify({"ok": False, "error": "No devices selected"}), 400
+    # P.9 step (b): "profile" sends only the network's monitoring profile's
+    # lines. Anything else is refused by name, never read as the whole intent.
+    from modules.nsot import profile_apply
+    scope = (data.get("scope") or "").strip()
+    if scope not in ("", profile_apply.SCOPE):
+        return jsonify({"ok": False, "error": (
+            f"unknown deploy scope {scope!r}: the plan sends the device's whole intent, or "
+            f"with scope {profile_apply.SCOPE!r} only its monitoring profile's lines")}), 400
+
+    devices = plan_devices(list_name, hostnames, authorise=authorise, remove=remove,
+                           scope=scope)
 
     # The six parts, built ONCE by the shared contract (Stage 7.1); the
     # wizard draws `preview` with the one renderer. `devices` stays: apply's
@@ -511,38 +524,21 @@ def plan():
         "preview": deploy_preview(devices, request, scope=scope)}))
 
 
-@bp.route("/apply", methods=["POST"])
-def apply():
-    """Deploy the confirmed devices through the pipeline.
-
-    *confirmations* maps device → the capture hash shown in the plan. A device
-    whose fresh capture no longer matches is skipped and reported, never
-    deployed against a diff the operator did not see.
-    """
+def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
+                authorise: dict = None, remove: dict = None, scope: str = "",
+                actor: str, actor_kind: str = "", on_device=None) -> dict:
+    """Deploy the confirmed devices, in the ORDER of *confirmations* (the
+    rollout order: sequential, the circuit breaker stopping after repeated
+    verify failures). THE apply, for `/deploy/apply` and the v2 batch confirm
+    (P.9 d2), which runs it as a job: the actor and how it was verified come
+    in as arguments, since a job's thread has no request to read them from."""
+    from modules.nsot import profile as _profile, profile_apply
     from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
                                      assert_authorised, command_fingerprint,
-                                     merge_commands, plan_batch, prepare_device,
-                                     run_batch)
+                                     plan_batch, prepare_device, run_batch)
 
-    data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    confirmations = data.get("confirmations") or {}
-    if not confirmations:
-        return jsonify({"ok": False,
-                        "error": "Nothing confirmed — deploy refused"}), 400
-
-    # One-shot discipline, the same shape as the Phase 0 plan token: the
-    # operator confirmed one exact command list, so that exact list is what
-    # may be sent. Recomputed here and compared, never trusted from the
-    # request — a hash the client supplies proves only what the client saw.
-    command_hashes = data.get("command_hashes") or {}
-    authorise = data.get("authorise") or {}
-    remove = data.get("remove") or {}                      # Mode B, as at plan
-    from modules.nsot import profile as _profile, profile_apply
-    scope = (data.get("scope") or "").strip()              # P.9 step (b), as at plan
-    if scope not in ("", profile_apply.SCOPE):
-        return jsonify({"ok": False, "error": f"unknown deploy scope {scope!r}: nothing sent"}), 400
-
+    authorise = authorise or {}
+    remove = remove or {}
     artifacts, fresh_captures, device_rows = [], {}, {}
     refused = []
     for hostname in confirmations:
@@ -649,29 +645,71 @@ def apply():
     # One operation per device (C98): each device is held from here to its
     # commit and receipt. A device another operation holds is refused alone,
     # by name, and the rest proceed.
-    from modules import identity
     from modules.nsot import device_ops
     held, busy = device_ops.acquire_many(
-        list_name, [a.device for a in artifacts], "deploy", identity.request_actor())
+        list_name, [a.device for a in artifacts], "deploy", actor)
     artifacts = [a for a in artifacts if a.device in held]
     refused += busy
     try:
         batch = plan_batch(artifacts, confirmations, fresh_captures)
 
         extra = {**({"remove": remove} if remove else {}), **({"scope": scope} if scope else {})}
-        report = run_batch(batch,
-                           lambda entry: _deploy_one(entry, list_name, device_rows,
-                                                     authorise, **extra),
-                           CircuitBreaker())
+        def _one(entry):
+            # *on_device* (a job, P.9 d2) hears each device start and finish,
+            # in the rollout order, so its page can draw where the batch is.
+            name = entry["artifact"].device
+            if on_device:
+                on_device("start", name, None)
+            result = _deploy_one(entry, list_name, device_rows, authorise, **extra)
+            if on_device:
+                on_device("done", name, result)
+            return result
+
+        report = run_batch(batch, _one, CircuitBreaker())
         if refused:
             _merge_refusals(report, refused)
 
         report["golden"] = _commit_batch_golden(
             list_name, report, **({"label": "after the monitoring profile was applied"} if scope else {}))
         report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
-                                             command_hashes)
+                                             command_hashes, actor=actor,
+                                             actor_kind=actor_kind)
     finally:
         device_ops.release_many(list_name, held)
+    return report
+
+
+@bp.route("/apply", methods=["POST"])
+def apply():
+    """Deploy the confirmed devices through the pipeline.
+
+    *confirmations* maps device → the capture hash shown in the plan. A device
+    whose fresh capture no longer matches is skipped and reported, never
+    deployed against a diff the operator did not see.
+    """
+    data = request.get_json(silent=True) or {}
+    list_name = _active_list(data)
+    confirmations = data.get("confirmations") or {}
+    if not confirmations:
+        return jsonify({"ok": False,
+                        "error": "Nothing confirmed — deploy refused"}), 400
+
+    # One-shot discipline, the same shape as the Phase 0 plan token: the
+    # operator confirmed one exact command list, so that exact list is what
+    # may be sent. Recomputed here and compared, never trusted from the
+    # request — a hash the client supplies proves only what the client saw.
+    command_hashes = data.get("command_hashes") or {}
+    authorise = data.get("authorise") or {}
+    remove = data.get("remove") or {}                      # Mode B, as at plan
+    from modules.nsot import profile_apply
+    scope = (data.get("scope") or "").strip()              # P.9 step (b), as at plan
+    if scope not in ("", profile_apply.SCOPE):
+        return jsonify({"ok": False, "error": f"unknown deploy scope {scope!r}: nothing sent"}), 400
+
+    from modules import identity
+    report = apply_batch(list_name, confirmations, command_hashes, authorise=authorise,
+                         remove=remove, scope=scope, actor=identity.request_actor(),
+                         actor_kind=getattr(identity.identify(request), "kind", ""))
     # Masked on the way out (C77's apply side, measured 2026-09-27: a planted
     # community came back in `results[].commands`). The receipts and the
     # golden commit are written above from the truthful report; nothing
@@ -716,7 +754,8 @@ def _prior_authorised(list_name: str, hostname: str, lines) -> dict:
 
 
 def _write_receipts(list_name: str, report: dict, action: str, confirmations: dict,
-                    command_hashes: dict, source_ref: str = "") -> dict:
+                    command_hashes: dict, source_ref: str = "", *, actor: str = None,
+                    actor_kind: str = None) -> dict:
     """Record what was sent, after the commit it names (C60). A failure is
     loud in the response and the log, and never turns a deploy that happened
     into one that reads as failed.
@@ -728,10 +767,11 @@ def _write_receipts(list_name: str, report: dict, action: str, confirmations: di
     from modules.nsot import receipts
     from modules.preview_confirm import operation_result
 
-    ident = identity.identify(request)
+    if actor is None:                     # inside the request: ask it
+        actor = identity.request_actor()
+        actor_kind = getattr(identity.identify(request), "kind", "")
     rows = receipts.rows_for(report, list_name=list_name, action=action,
-                             actor=identity.request_actor(),
-                             actor_kind=getattr(ident, "kind", ""),
+                             actor=actor, actor_kind=actor_kind or "",
                              confirmations=confirmations,
                              command_hashes=command_hashes, source_ref=source_ref)
     status = receipts.write(list_name, rows)

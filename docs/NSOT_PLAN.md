@@ -4029,10 +4029,13 @@ integrations need, derived from the connectors the network uses, with ONE owner.
   accounts and before the save, read back. (d), the batch Apply from the coverage view, is next.
 - **Step (d), the screens, BEGUN 2026-10-01** (MONITORING_PROFILE.md section 2): (d1)
   Monitoring > Coverage in v2, its cells from committed goldens and its form opening the batch
-  preview for the ticked devices, BUILT. Next: (d2) the batch preview, confirm and result in v2,
+  preview for the ticked devices, BUILT. (d2) the batch preview, confirm and result in v2,
   drawn server-side from the six-part contract (today's renderer emits inline handlers, which
-  v2's strict policy refuses), with the rollout order; (d3) the device page's "monitored by"
-  section and its Apply.
+  v2's strict policy refuses), with the rollout order: **BUILT 2026-10-01**
+  (`/v2/monitoring/apply`; MONITORING_PROFILE.md section 2), the plan and the apply extracted from
+  the JSON views as `plan_devices` and `apply_batch` so both screens run one computation, the
+  batch a job (`modules/deploy_job.py`) in the order the page set. Next: (d3) the device page's
+  "monitored by" section and its Apply.
   - **The operator's review of (d1), 2026-10-01:** Monitoring opens on the FLEET dashboard
     (`grafana_fleet_dashboard_uid`; `rcn-lab-overview` for Default), every panel drawn by the
     device page's own renderer, the selector over every dashboard Grafana holds, and Coverage a

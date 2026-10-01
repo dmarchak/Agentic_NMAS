@@ -1,0 +1,124 @@
+{%- from "v2/_macros.html" import icon, badge -%}
+{#- The batch Apply's preview (P.9 step d2), drawn server-side from the six
+    parts routes.v2._apply_ctx builds with deploy_preview(): what happens, the
+    rollout order, each device's exact program and what it holds back, the
+    gates and operands one level down, and the confirm. A change of order, a
+    device left out, a superseded line ticked or a reason typed plans the
+    batch again (`change` on the form), so the confirm always carries the
+    hashes of the program on the screen. -#}
+{%- set STATE = {'deployable': ('can be applied', 'ok'), 'blocked': ('blocked: nothing is sent', 'danger'),
+                 'refused': ('refused: nothing is sent', 'danger'),
+                 'not_authorised': ('waits on a stated reason', 'warn')} -%}
+{%- set GATE = {'pass': 'passes', 'fail': 'FAILS', 'not_applicable': 'does not apply',
+                'at_apply': 'checked again at apply', 'not_reached': 'not reached'} -%}
+<section class="card apply" id="apply-preview">
+{%- if not order %}
+  <p class="cov-head">{{ icon('info') }} No device was chosen. Tick devices on <a href="{{ url_for('v2.coverage') }}">Coverage</a> and preview from there.</p>
+{%- else %}
+<form id="apply-form" class="apply-form" hx-get="{{ url_for('v2.profile_apply_preview') }}"
+      hx-trigger="change" hx-target="#apply-preview" hx-swap="outerHTML">
+  <input type="hidden" name="list" value="{{ list_name }}">
+  {%- for name in order %}
+  <input type="hidden" name="device" value="{{ name }}">
+  {%- endfor %}
+  <p class="apply-what">{{ preview.what.summary }}</p>
+
+  <h2 class="apply-h">Rollout order</h2>
+  <p class="muted apply-why">One device at a time, in this order. The batch stops after repeated verify failures, so the first devices are the ones a bad change would reach; put the one you would most like to learn from first.</p>
+  <ol class="rollout" id="rollout">
+    {%- for r in rows %}
+    <li class="rollout-item">
+      <span class="grow"><a href="#apply-{{ r.name }}">{{ r.name }}</a> {{ badge(STATE.get(r.state, (r.state, 'muted'))[0], STATE.get(r.state, (r.state, 'muted'))[1]) }}</span>
+      <button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_preview', move='up:' ~ r.name) }}"
+              hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML"{% if loop.first %} disabled{% endif %}
+              aria-label="Move {{ r.name }} earlier">Earlier</button>
+      <button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_preview', move='down:' ~ r.name) }}"
+              hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML"{% if loop.last %} disabled{% endif %}
+              aria-label="Move {{ r.name }} later">Later</button>
+      <button type="button" class="btn btn-small" hx-get="{{ url_for('v2.profile_apply_preview', drop=r.name) }}"
+              hx-include="#apply-form" hx-target="#apply-preview" hx-swap="outerHTML"
+              aria-label="Leave {{ r.name }} out of this batch">Leave out</button>
+    </li>
+    {%- endfor %}
+  </ol>
+
+  {%- for r in rows %}
+  <section class="apply-device" id="apply-{{ r.name }}">
+    <h2 class="apply-h">{{ loop.index }}. {{ r.name }} {{ badge(STATE.get(r.state, (r.state, 'muted'))[0], STATE.get(r.state, (r.state, 'muted'))[1]) }}</h2>
+    {%- if r.busy %}<div class="notice notice-warn">{{ icon('warn') }}<p>{{ r.busy }}</p></div>{% endif %}
+    {%- if r.refused %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ r.refused }}</p></div>{% endif %}
+    {%- for b in r.blocking %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ b }}</p></div>{% endfor %}
+    {%- if r.program %}
+    <h3 class="apply-sub">The program: exactly these {{ r.program | length }} line(s), in order</h3>
+    <pre class="apply-program">{{ r.program | join('\n') }}</pre>
+    {%- else %}
+    <p class="muted">{{ r.none }}</p>
+    {%- endif %}
+    {%- for n in r.notes %}
+    <div class="apply-note"><p>{{ n.title }}</p>{% if n.lines %}<pre class="apply-program">{{ n.lines | join('\n') }}</pre>{% endif %}</div>
+    {%- endfor %}
+    {%- if r.superseded %}
+    <fieldset class="apply-superseded">
+      <legend>Superseded by the profile: the device holds another line of the same kind. It stays unless you tick it for removal, with your reason.</legend>
+      {%- for s in r.superseded %}
+      <div class="apply-line">
+        {%- if s.why_not %}
+        <input type="checkbox" disabled id="rm-{{ r.name }}-{{ s.id }}">
+        <label for="rm-{{ r.name }}-{{ s.id }}"><code>{{ s.text }}</code></label>
+        <span class="muted">Cannot be removed: {{ s.why_not }}</span>
+        {%- else %}
+        <input type="checkbox" name="rm::{{ r.name }}" value="{{ s.id }}" id="rm-{{ r.name }}-{{ s.id }}"{% if s.picked %} checked{% endif %}>
+        <label for="rm-{{ r.name }}-{{ s.id }}"><code>{{ s.text }}</code>{% if s.picked %} <strong>will be removed</strong>{% endif %}</label>
+        {%- if s.picked %}
+        <label class="apply-reason">Why (your stated reason, recorded with the change)
+          <input type="text" name="why::{{ r.name }}::{{ s.id }}" value="{{ s.reason }}" placeholder="the old collector was retired">
+        </label>
+        {%- endif %}
+        {%- endif %}
+      </div>
+      {%- endfor %}
+    </fieldset>
+    {%- endif %}
+    {%- if r.authorisation_error %}<div class="notice notice-warn">{{ icon('warn') }}<p>{{ r.authorisation_error }}</p></div>{% endif %}
+    <details class="apply-evidence">
+      <summary>Gates and operands</summary>
+      <ul class="apply-gates">
+        {%- for g in r.gates %}
+        <li class="gate gate-{{ g.state }}"><strong>{{ g.name }}</strong> {{ GATE.get(g.state, g.state) }}{% if g.detail %}: {{ g.detail }}{% endif %}</li>
+        {%- endfor %}
+      </ul>
+      <dl class="apply-operands">
+        {%- for o in r.operands %}<dt>{{ o.name }}</dt><dd><code>{{ o.value }}</code></dd>{% endfor %}
+      </dl>
+    </details>
+  </section>
+  {%- endfor %}
+
+  {%- set held = preview.what_not['items'] | rejectattr('kind', 'in', ['superseded', 'residue']) | list %}
+  <h2 class="apply-h">What will not happen</h2>
+  {%- if held %}
+  <ul class="apply-not">
+    {%- for i in held %}
+    <li><strong>{{ i.target }}</strong>: {{ i.text }}{% if i.lines %}<pre class="apply-program">{{ i.lines | join('\n') }}</pre>{% endif %}</li>
+    {%- endfor %}
+  </ul>
+  {%- else %}
+  <p class="muted">Nothing is held back from a device that can receive it.</p>
+  {%- endif %}
+  <p class="muted">No line outside the profile's is sent, and nothing on a device is removed unless you ticked it above. Lines on the devices that their intent lacks are left as they are; Mode B removes them from a device's own deploy.</p>
+
+  <div class="confirm" x-data="applyConfirm" data-url="{{ url_for('v2.profile_apply_confirm') }}"
+       data-body='{{ confirm_body | tojson if confirm_body else "" }}'
+       data-label="Apply to {{ ready | length }} device(s) in this order">
+    <p>{{ preview.confirm.statement }}</p>
+    {%- if confirm_body and preview.confirm.may %}
+    <button type="button" class="btn btn-primary" id="apply-confirm" x-on:click="confirm"
+            x-bind:disabled="locked" x-text="label">Apply to {{ ready | length }} device(s) in this order</button>
+    <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
+    {%- elif not confirm_body %}
+    <p class="apply-refused">No device here can receive the profile now: each says why above.</p>
+    {%- endif %}
+  </div>
+</form>
+{%- endif %}
+</section>

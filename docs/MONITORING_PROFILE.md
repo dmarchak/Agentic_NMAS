@@ -71,9 +71,17 @@ golden records it. A value the device sets differently is kept (the device overr
 cell decided on the server (configured; missing and the profile supplies it; missing and it does
 not, saying why; excluded with the reason; not used by the network; the profile's section scoped
 away from its platform or role; unknown when the golden cannot be read). The devices the profile
-applies to are offered, ticked where it supplies a gap, and the form opens today's batch preview
-for the ticked devices. Not built yet: the batch preview, confirm and result in v2 (its rollout
-order drawn), and the device page's "monitored by" section.
+applies to are offered, ticked where it supplies a gap, and the form opens the batch preview
+for the ticked devices. **(d2), built 2026-10-01:** the preview, confirm and result in v2
+(`/v2/monitoring/apply`, `routes/v2.py`), drawn server-side from the six parts the deploy plan
+builds (`routes.deploy.plan_devices` with scope `profile`): the ROLLOUT ORDER drawn and set on
+the page (earlier, later, leave out), each device's exact program masked, what is in place and
+held back, each superseded line with its box and, once ticked, its reason field (a device with
+a ticked line and no reason is not confirmable), gates and operands one level down. The confirm
+starts the batch as a JOB (`modules/deploy_job.py`) in that order, as the verified person,
+through `routes.deploy.apply_batch` (the one apply); the page draws where it is, device by
+device, as each finishes, then the result from the receipts. Not built yet: the device page's
+"monitored by" section (d3).
 
 **Each section names the connector it is derived from,** and is ABSENT while that
 connector is not configured. "Configure a connector, and devices get the matching config"

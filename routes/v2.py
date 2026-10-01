@@ -249,3 +249,192 @@ def monitoring_panel(uid, panel_id):
     from modules import device_page
     payload, code = device_page.fleet_panel_data(uid, panel_id, request.args.get("range", "1h"))
     return jsonify(payload), code
+
+
+# ---------------------------------------------------------------------------
+# Monitoring > Coverage's batch Apply (P.9 step d2): the preview, the confirm
+# and the result, drawn server-side from the six-part contract (today's
+# renderer emits inline handlers, which the strict policy refuses). The
+# devices are applied in the ROLLOUT ORDER the preview shows and sets:
+# sequential, the circuit breaker stopping after repeated verify failures.
+# ---------------------------------------------------------------------------
+
+#: The one scope this page applies: the network's monitoring profile's lines.
+def _scope() -> str:
+    from modules.nsot import profile_apply
+    return profile_apply.SCOPE
+
+
+def _apply_args(req) -> dict:
+    """What the preview form carries: the list, the devices in the rollout
+    order (a move or a leave-out applied), the superseded lines ticked for
+    removal (by id) and each one's stated reason."""
+    from routes.list_param import named_list
+
+    order = []
+    for d in req.args.getlist("device"):
+        d = d.strip()
+        if d and d not in order:
+            order.append(d)
+    move = (req.args.get("move") or "").strip()
+    if ":" in move:
+        way, name = move.split(":", 1)
+        if name in order:
+            i = order.index(name)
+            j = i - 1 if way == "up" else i + 1 if way == "down" else i
+            if 0 <= j < len(order):
+                order[i], order[j] = order[j], order[i]
+    drop = (req.args.get("drop") or "").strip()
+    order = [d for d in order if d != drop]
+    picked, reasons = {}, {}
+    for d in order:
+        ids = [i for i in req.args.getlist(f"rm::{d}") if i]
+        if ids:
+            picked[d] = ids
+        for i in ids:
+            reasons[(d, i)] = (req.args.get(f"why::{d}::{i}") or "").strip()
+    return {"list": named_list(req), "order": order, "picked": picked, "reasons": reasons}
+
+
+def _apply_ctx(req) -> dict:
+    """The batch preview: every device's profile-scoped plan, as
+    `/deploy/plan` with scope `profile` computes it, masked on the way out
+    AFTER every hash is computed, and the confirm body built from those
+    hashes, so the confirm sends exactly what this preview showed."""
+    from modules.nsot import listref
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import deploy_preview
+    from routes.deploy import plan_devices
+
+    args = _apply_args(req)
+    list_name = args["list"] or listref.active().name
+    ctx = {"list_name": list_name, "order": args["order"], "rows": [], "preview": None,
+           "confirm_body": None, "ready": []}
+    if not args["order"]:
+        return ctx
+    devices = plan_devices(list_name, args["order"], remove=args["picked"], scope=_scope())
+    # Each ticked removal needs its stated reason in the confirm hash (Mode B,
+    # C140): the keys are known only once the removal is planned, so a ticked
+    # line with a reason is planned again carrying it.
+    authorise = {}
+    for d in devices:
+        rm = d.get("removals") or {}
+        auth = [{"line": key, "reason": args["reasons"].get((d.get("device"), rid), "")}
+                for rid, key in zip(rm.get("ids") or [], rm.get("keys") or [])]
+        if any(a["reason"] for a in auth):
+            authorise[d["device"]] = [a for a in auth if a["reason"]]
+    if authorise:
+        devices = plan_devices(list_name, args["order"], remove=args["picked"],
+                               authorise=authorise, scope=_scope())
+    preview = deploy_preview(devices, req, scope=_scope())
+    out = mask_payload({"devices": devices, "preview": preview})
+    # The six parts keep a target's state and selectability under "what", and
+    # its program, operands and gates under "targets": one row of both.
+    by_name = {t["name"]: dict(t) for t in out["preview"]["targets"]}
+    for w in out["preview"]["what"]["targets"]:
+        by_name.setdefault(w["name"], {}).update(state=w.get("state", ""),
+                                                 selectable=w.get("selectable"),
+                                                 why_not=w.get("why_not", ""))
+    rows, ready = [], []
+    for d in out["devices"]:
+        name = d.get("device", "")
+        t = by_name.get(name) or {}
+        sc = d.get("profile_scope") or {}
+        chosen = set((d.get("removals") or {}).get("ids") or [])
+        superseded = [{"id": s.get("id", ""),
+                       "text": " > ".join(list(s.get("chain") or []) + [s["line"].strip()]),
+                       "why_not": s.get("why_not", ""), "picked": s.get("id") in chosen,
+                       "reason": args["reasons"].get((name, s.get("id")), "")}
+                      for s in sc.get("superseded") or []]
+        row = {"name": name, "state": t.get("state", ""), "selectable": t.get("selectable"),
+               "program": (t.get("program") or {}).get("lines") or [],
+               "none": (t.get("program") or {}).get("none", ""),
+               "notes": (t.get("program") or {}).get("notes") or [],
+               "gates": t.get("gates") or [], "operands": t.get("operands") or [],
+               "superseded": superseded,
+               "authorisation_error": d.get("authorisation_error", ""),
+               "blocking": list(d.get("blocking_reasons") or []),
+               "refused": d.get("refused") or d.get("error") or "",
+               "busy": d.get("busy") or ""}
+        # A ticked removal with no stated reason (or any line awaiting one)
+        # is not confirmable: the apply would refuse it, so it is not offered
+        # (the shared preview checks only dangerous and re-added lines).
+        if t.get("selectable") and d.get("authorisation_ok") is False:
+            row.update(selectable=False, state="not_authorised")
+        rows.append(row)
+        if row["selectable"]:
+            ready.append(name)
+    ctx.update(rows=rows, preview=out["preview"], ready=ready)
+    if ready:
+        # The confirm body, computed HERE from the hashes this preview drew: the
+        # browser sends it back unchanged, in the rollout order.
+        plan = {d["device"]: d for d in devices}
+        ctx["confirm_body"] = {
+            "list": list_name, "order": ready,
+            "confirmations": {n: plan[n].get("capture_hash", "") for n in ready},
+            "command_hashes": {n: plan[n].get("command_hash", "") for n in ready},
+            "remove": {n: list((plan[n].get("removals") or {}).get("ids") or [])
+                       for n in ready if (plan[n].get("removals") or {}).get("ids")},
+            "authorise": {n: authorise[n] for n in ready if n in authorise}}
+    return ctx
+
+
+@bp.route("/monitoring/apply", methods=["GET"])
+def profile_apply():
+    """Apply the monitoring profile to the devices ticked on Coverage: one
+    batch preview, the rollout order drawn and settable, then one confirm."""
+    from flask import request
+    return _page("v2/apply.html", active_nav="monitoring", monitoring_tab="coverage",
+                 **_apply_ctx(request))
+
+
+@bp.route("/monitoring/apply/preview", methods=["GET"])
+def profile_apply_preview():
+    """The preview alone, planned again: a device moved or left out, a
+    superseded line ticked for removal, or a reason typed."""
+    from flask import request
+    return _strict(render_template("v2/_apply_preview.html", **_apply_ctx(request)))
+
+
+@bp.route("/monitoring/apply/confirm", methods=["POST"])
+def profile_apply_confirm():
+    """Start the confirmed batch as a job, as the verified person, in the
+    rollout order. Every device's program is computed again by the apply and
+    compared with the hash this confirm carries; a moved one is refused alone,
+    with nothing sent to it. Answers 202 with the job's id."""
+    from flask import jsonify, request
+
+    from modules import deploy_job, identity
+    from modules.nsot import listref
+
+    data = request.get_json(silent=True) or {}
+    list_name = (data.get("list") or "").strip()
+    if not list_name or not listref.exists(list_name):
+        return jsonify({"ok": False, "error": (
+            "No known list named: the batch records into one list's repository, so the list "
+            "comes from the preview you confirmed. Nothing was sent.")}), 400
+    order = [d for d in (data.get("order") or []) if isinstance(d, str) and d]
+    confirmations = data.get("confirmations") or {}
+    hashes = data.get("command_hashes") or {}
+    if not order or any(d not in confirmations or not hashes.get(d) for d in order):
+        return jsonify({"ok": False, "error": (
+            "Nothing confirmed: every device needs the capture and command hashes its preview "
+            "showed. Nothing was sent.")}), 400
+    job = deploy_job.start(
+        list_name, order, confirmations, hashes,
+        authorise=data.get("authorise") or {}, remove=data.get("remove") or {},
+        scope=_scope(), actor=identity.request_actor(),
+        actor_kind=getattr(identity.identify(request), "kind", ""),
+        ident=identity.verified_identity())
+    from flask import url_for
+    return jsonify({"ok": True, "job": job,
+                    "url": url_for("v2.profile_apply_job", job=job)}), 202
+
+
+@bp.route("/monitoring/apply/job/<job>", methods=["GET"])
+def profile_apply_job(job):
+    """Where the batch is, in the rollout order, then its result: drawn from
+    the receipts the apply wrote. Redrawn when the job announces."""
+    from modules import deploy_job
+    got = deploy_job.state(job)
+    return _strict(render_template("v2/_apply_job.html", j=got, job=job)), (200 if got else 404)

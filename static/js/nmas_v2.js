@@ -15,7 +15,9 @@
   /* The data keys a v2 fragment can listen for (modules/invalidation.py's
      vocabulary; the readers that announce them). */
   var KEYS = ['reachability', 'integration_health', 'alerts', 'freshness', 'drift', 'dashboards',
-              'job_health', 'ci_verdict', 'app_version', 'netbox', 'remote', 'baselines'];
+              'job_health', 'ci_verdict', 'app_version', 'netbox', 'remote', 'baselines',
+              // A batch deploy run as a job (P.9 d2), and the goldens it commits.
+              'deploy_job', 'goldens'];
 
   /* PURE: an age in words, from two times in milliseconds. */
   function ageWords(thenMs, nowMs) {
@@ -82,6 +84,8 @@
   function relayNetbox() { relay('netbox'); }
   function relayRemote() { relay('remote'); }
   function relayBaselines() { relay('baselines'); }
+  function relayDeployJob() { relay('deploy_job'); }
+  function relayGoldens() { relay('goldens'); }
 
   function wireAnnouncements() {
     var NMAS = root.NMAS;
@@ -98,6 +102,8 @@
     NMAS.subscribe('netbox', 'v2Netbox', relayNetbox);
     NMAS.subscribe('remote', 'v2Remote', relayRemote);
     NMAS.subscribe('baselines', 'v2Baselines', relayBaselines);
+    NMAS.subscribe('deploy_job', 'v2DeployJob', relayDeployJob);
+    NMAS.subscribe('goldens', 'v2Goldens', relayGoldens);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
