@@ -15,6 +15,7 @@ import json
 import os
 import re
 import threading
+import time
 
 import pytest
 
@@ -295,3 +296,63 @@ class TestASupersededLine:
         assert capture_job.wait(out["job"], 20)
         (remove, authorise), = seen
         assert remove == {"r6": [rid]} and authorise["r6"][0]["reason"] == "the old collector is retired"
+
+
+# ------------------------------------------------ clicking what ships
+#
+# C243's lesson (the Update button's first real run was disabled by its own
+# wiring): the page is loaded in a REAL browser and its shipped controls
+# clicked, where Firefox runs. Skipped, saying why, where it cannot start.
+
+@pytest.fixture(scope="module")
+def live_browser():
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why}); the client's pure logic and the "
+                    "$root rule above still run")
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        yield browser, srv, b
+
+
+class TestClickingTheShippedPage:
+    def test_reorder_then_confirm_runs_the_batch_in_the_order_set(self, ready, monkeypatch,
+                                                                   live_browser):
+        import routes.deploy as rd
+        browser, srv, b = live_browser
+        reached = []
+
+        def spy(entry, list_name, rows, authorise, **kw):
+            reached.append(entry["artifact"].device)
+            return {"device": entry["artifact"].device, "outcome": "deployed", "commands": ["x"]}
+        monkeypatch.setattr(rd, "_deploy_one", spy)
+        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+        try:
+            b.go(srv.url("/v2/monitoring/apply?list=Lab&device=r6&device=r2"))
+            b.wait_for("var c=document.querySelector('#apply-confirm');"
+                       "return window.Alpine && c && !c.disabled")
+            assert b.js("return document.querySelector('#apply-confirm').textContent.trim()") == \
+                "Apply to 2 device(s) in this order"
+            # "Later" on r6, the first row: the server plans the batch again.
+            b.click('button[aria-label="Move r6 later"]')
+            b.wait_for("var a=document.querySelectorAll('#rollout li a');"
+                       "return a.length === 2 && a[0].textContent === 'r2'")
+            b.wait_for("var c=document.querySelector('#apply-confirm');"
+                       "return window.Alpine && c && !c.disabled")
+            b.click("#apply-confirm")
+            text = ""
+            for _ in range(40):
+                text = b.wait_for("var j=document.querySelector('#apply-job');"
+                                  "return j && j.textContent")
+                if "device(s) deployed" in text:
+                    break
+                b.js("var x=document.querySelector('#apply-job button');"
+                     "if (x) x.click(); return 1")
+                time.sleep(0.25)
+            assert "2 of 2 device(s) deployed" in text, text
+            assert reached == ["r2", "r6"]
+            assert b.js("return document.querySelector('#apply-confirm').disabled") is True
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
