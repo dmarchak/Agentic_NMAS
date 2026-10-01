@@ -61,7 +61,7 @@ class TestTheOffer:
         assert not p["waitable"]
         p = update_op.plan(**_kw(ci={"tip": "b" * 40, "state": "failed", "sentence": "x"}))
         assert not p["waitable"]
-        assert p["ci_words"].startswith("CI found a problem with this release")
+        assert p["ci_words"].startswith("CI failed for this release")
 
     def test_the_page_offers_it_in_words_with_the_cause_on_hover(self, store, monkeypatch):
         import app as A
@@ -152,7 +152,7 @@ class TestTheRelease:
         doc = json.loads((store / "requests" / name).read_text())
         assert _updater().validate(doc, time.time()) == doc
 
-    @pytest.mark.parametrize("state,words", [("failed", "CI found a problem"),
+    @pytest.mark.parametrize("state,words", [("failed", "CI failed for this release"),
                                              ("cancelled", "CI's check of this release was stopped")])
     def test_ci_that_will_never_pass_ends_the_wait_in_words(self, store, state, words):
         from modules import update_op
@@ -265,3 +265,97 @@ class TestTheShippedClient:
         assert "when: el.getAttribute('data-when') || ''" in js
         assert "body: JSON.stringify({when: 'stop'})" in js
         assert "addEventListener('nmas:app_version', heard)" in js
+
+
+class TestAFailedReleaseReadsAsAFailure:
+    """The operator, 2026-10-01: run #241 failed and the page said "could_not_ask".
+    A definite failure is said as one, naming the run, and ends a wait."""
+
+    FAILED = {"tip": "b" * 40, "state": "failed", "asked_at": "2026-10-01T09:00:00Z",
+              "sentence": "FAILED: bbbbbbbbbb has no run of its own (its paths are ones CI "
+                          "skips), and the nearest ancestor with one, aaaaaaaaaa, failed: run "
+                          "#241 concluded failure."}
+
+    def test_the_words_name_the_run(self):
+        from modules import update_op
+        words = update_op.person_ci(self.FAILED, "b" * 40)
+        assert words.startswith("CI failed for this release (run #241): it will not be installed")
+
+    def test_without_a_run_number_it_still_says_failed(self):
+        from modules import update_op
+        words = update_op.person_ci({"tip": "b" * 40, "state": "failed", "sentence": "x"})
+        assert words.startswith("CI failed for this release: it will not be installed")
+
+    def test_a_wait_ends_on_it(self, store):
+        from modules import update_op
+        _defer()
+        out = update_op.release_deferred(**_kw(ci=self.FAILED))
+        assert out.get("outcome") == "ci_failed" and update_op.deferred() == {}
+        assert out["words"].startswith("CI failed for this release (run #241)")
+
+    def test_the_badge_is_words_never_the_key(self, store, monkeypatch):
+        import app as A
+        from modules import update_op
+        real = update_op.plan
+        for ci, word in ((self.FAILED, ">failed<"),
+                         ({"tip": "b" * 40, "state": "could_not_ask", "sentence": "x"},
+                          ">not asked<")):
+            monkeypatch.setattr(update_op, "plan", lambda ci=ci, **kw: real(**_kw(ci=ci)))
+            html = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
+            assert word in html
+            assert "could_not_ask" not in html.replace('data-', '')
+
+
+class TestTheLastUpdateByEitherRoute:
+    """The operator, 2026-10-01: the panel showed the button's e7b80c7 -> 771bead and
+    not the terminal deploy 771bead -> 1954ce7 after it."""
+
+    BUTTON = {"state": "ok", "value": {"outcome": "updated", "from": "e7b80c7" + "0" * 33,
+                                       "to": "771bead" + "0" * 33, "step": "confirmed",
+                                       "requested_by": "person@example.invalid",
+                                       "ended_at": "2026-09-30T20:00:00Z"}}
+
+    def _audit(self, tmp_path, *rows):
+        path = tmp_path / "deploy_audit.jsonl"
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        return str(path)
+
+    def test_a_newer_terminal_deploy_is_the_last_update(self, tmp_path):
+        from modules import update_op
+        path = self._audit(tmp_path,
+                           {"user": "op", "exit": 0, "from": "771bead" + "0" * 33,
+                            "to": "1954ce7" + "0" * 33, "ended_at": "2026-09-30T21:00:00.123Z"},
+                           {"user": "op", "exit": 1, "verdict": "FAILED", "ended_at":
+                            "2026-09-30T22:00:00.000Z"},                    # refused: not one
+                           {"user": "op", "exit": 0, "from": "1954ce7" + "0" * 33,
+                            "to": "1954ce7" + "0" * 33, "ended_at": "2026-09-30T23:00:00.000Z"})
+        got = update_op.last_update(self.BUTTON, update_op.terminal_deploy(path))
+        v = got["value"]
+        assert v["route"] == "terminal" and v["to"].startswith("1954ce7")
+        assert v["from"].startswith("771bead") and v["requested_by"] == "op"
+
+    def test_an_older_terminal_deploy_leaves_the_button_shown(self, tmp_path):
+        from modules import update_op
+        path = self._audit(tmp_path, {"user": "op", "exit": 0, "from": "a" * 40, "to": "b" * 40,
+                                      "ended_at": "2026-09-30T19:00:00.000Z"})
+        assert update_op.last_update(self.BUTTON, update_op.terminal_deploy(path)) == self.BUTTON
+
+    def test_no_record_or_an_unreadable_one_is_none(self, tmp_path):
+        from modules import update_op
+        assert update_op.terminal_deploy(str(tmp_path / "absent.jsonl")) == {}
+        assert update_op.last_update(self.BUTTON, {}) == self.BUTTON
+
+    def test_the_panel_draws_it_with_how_and_no_raw_step(self, store, monkeypatch, tmp_path):
+        import app as A
+        from modules import update_op
+        monkeypatch.setattr(update_op, "DEPLOY_AUDIT", self._audit(
+            tmp_path, {"user": "op", "exit": 0, "from": "771bead" + "0" * 33,
+                       "to": "1954ce7" + "0" * 33, "ended_at": "2026-09-30T21:00:00.123Z"}))
+        real = update_op.plan
+        monkeypatch.setattr(update_op, "plan",
+                            lambda **kw: real(**{**_kw(), "now_outcome": self.BUTTON}))
+        html = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
+        last = html[html.index('id="update-last"'):]
+        last = last[:last.index("</section>")]
+        assert "1954ce7" in last and "a terminal deploy (nmas-deploy) by op" in last
+        assert "updated: " not in last and ": wait" not in last

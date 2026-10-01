@@ -304,11 +304,21 @@ def ci_verdict(repo, target, get=github_get):
             return CI_PENDING, (f"PENDING: {short} has no run of its own, and the nearest ancestor "
                                 f"with one, {a}, is still running (#{num}). Asked: "
                                 f"{'; '.join(asked)}. Wait, or run `nmas-deploy --wait`.")
+        if state == "CANCELLED":
+            # No verdict at all (superseded by a newer push): keep walking. A
+            # CODE commit passed over this way is still refused below, where
+            # the change from the base to the target must be ignorable.
+            asked[-1] += " (no verdict: keep walking)"
+            continue
         if state != "PASSED":
-            return COULD_NOT_ASK, (f"no CI run for {short}, and the nearest ancestor with a run, "
-                                   f"{a}, did not pass (run #{num} {state.lower()}): its code is "
-                                   f"unverified, so nothing after it is deployed. Asked: "
-                                   f"{'; '.join(asked)}. Refused.")
+            # A DEFINITE answer, never "could not ask" (the operator,
+            # 2026-10-01: GitHub answered #241 failed in 0.6 s, and the Update
+            # page said "could_not_ask" and kept waiting for it).
+            return CI_REFUSED, (f"FAILED: {short} has no run of its own (its paths are ones CI "
+                                f"skips), and the nearest ancestor with one, {a}, failed: run #{num} "
+                                f"concluded {run.get('conclusion') or state.lower()}. Its code is in "
+                                f"{short}, so {short} is not deployed. Asked: "
+                                f"{'; '.join(asked)}.")
         base = ancestor
         break
     if base is None:

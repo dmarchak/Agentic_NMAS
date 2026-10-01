@@ -179,6 +179,7 @@ def _update_ctx() -> dict:
             "owed": host_steps.owed(health._COMMIT) if health._COMMIT else None,
             "confirm": confirm_part(request, "confirm"),
             "words": update_op.OUTCOME_WORDS, "up_bound_s": update_op.UP_BOUND_S,
+            "ci_badge": update_op.CI_BADGE, "step_words": update_op.STEP_WORDS,
             "steps": update_op.STEPS, "check": check_state(),
             "updater_timeout_s": update_op.UPDATER_TIMEOUT_S}
 

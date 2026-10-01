@@ -303,15 +303,42 @@ class TestTheWalkAsksEachAncestor:
         code, _, calls = _run(world, {bad: _run_entry(bad, "failure")},
                               passed=[world.base])
         err = capsys.readouterr().err
-        assert code == 2 and _head(world) == world.base
-        assert f"{bad[:10]}, did not pass (run #? failed)" in err
+        # A definite FAILURE, never "could not ask" (the operator, 2026-10-01: #241
+        # failed, and the docs-only commit on top read could_not_ask).
+        assert code == 1 and _head(world) == world.base
+        assert err.startswith("FAILED:") or "FAILED:" in err
+        assert f"the nearest ancestor with one, {bad[:10]}, failed: run #? concluded failure" in err
         assert not any(world.base in c for c in calls), "it never asked past the failure"
 
-    def test_a_cancelled_code_commit_stops_the_walk_too(self, world, capsys):
+    def test_a_cancelled_commit_is_no_verdict_and_the_walk_goes_on(self, world, capsys):
+        """A cancelled run is "no verdict, keep walking", never "could not ask".
+        A CODE commit passed over that way still refuses, on its change."""
         bad = world.advance({"app.py": "v = 2\n"}, "superseded")
         world.advance({"docs/X.md": "x\n"}, "docs")
         code, _, _ = _run(world, {bad: _run_entry(bad, "cancelled")}, passed=[world.base])
-        assert code == 2 and "did not pass (run #? cancelled)" in capsys.readouterr().err
+        err = capsys.readouterr().err
+        assert code == 2 and "cancelled (no verdict: keep walking)" in err
+        assert "changes more than ignored paths" in err
+
+    def test_two_cancelled_then_a_failure_is_the_failure(self, world, capsys):
+        """The operator's exact case: 5e394aa (docs) on b14b470 (#241 failed) on
+        6a5689f and cf4bfda (cancelled). The walk meets the failure first."""
+        c1 = world.advance({"app.py": "v = 2\n"}, "cancelled one")
+        c2 = world.advance({"app.py": "v = 3\n"}, "cancelled two")
+        bad = world.advance({"app.py": "v = 4\n"}, "failed")
+        world.advance({"docs/X.md": "x\n"}, "docs")
+        code, _, _ = _run(world, {c1: _run_entry(c1, "cancelled"), c2: _run_entry(c2, "cancelled"),
+                                  bad: _run_entry(bad, "failure")}, passed=[world.base])
+        err = capsys.readouterr().err
+        assert code == 1 and f"{bad[:10]}, failed" in err
+
+    def test_a_cancelled_docs_commit_walks_on_to_a_pass(self, world, capsys):
+        """A docs commit whose own run was cancelled is no verdict: the walk
+        reaches the pass beneath, and the docs-only change deploys."""
+        d1 = world.advance({"docs/A.md": "a\n"}, "docs, run cancelled")
+        world.advance({"docs/B.md": "b\n"}, "docs on top")
+        code, _, _ = _run(world, {d1: _run_entry(d1, "cancelled")}, passed=[world.base])
+        assert code == 0, capsys.readouterr().err
 
     def test_a_running_code_commit_is_pending_so_wait_can_follow_it(self, world, capsys):
         running = world.advance({"app.py": "v = 2\n"}, "still running")

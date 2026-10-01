@@ -9,14 +9,15 @@
      hx-trigger="nmas:app_version from:body, nmas:job_health from:body">
 
 {#- 1. What the last update did: shown on the next page load after it. -#}
-{%- set last = p.last -%}
+{%- set last = p.last_shown or p.last -%}
 {%- if last.state == 'ok' and last.value %}{% set o = last.value %}
 <section class="card" id="update-last" data-outcome="{{ o.outcome }}">
   <div class="card-head"><h2>The last update</h2>{{ badge(words.get(o.outcome, o.outcome)|truncate(40, True), OUT_KIND.get(o.outcome, 'muted')) }}</div>
   <dl class="facts">
     {%- if o.to %}<div><dt>From, to</dt><dd><span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ o.to[:10] }}</span></dd></div>{% endif %}
-    {%- if o.requested_by %}<div><dt>Requested by</dt><dd>{{ o.requested_by }}{% if o.requested_at %} <span class="muted">· {{ stamp(o.requested_at) }}</span>{% endif %}</dd></div>{% endif %}
-    <div><dt>Outcome</dt><dd>{{ words.get(o.outcome, o.outcome) }}{% if o.step %}: {{ o.step }}{% endif %}{% if o.ended_at %} <span class="muted">· {{ stamp(o.ended_at) }}</span>{% endif %}</dd></div>
+    {%- if o.requested_by and o.route != 'terminal' %}<div><dt>Requested by</dt><dd>{{ o.requested_by }}{% if o.requested_at %} <span class="muted">· {{ stamp(o.requested_at) }}</span>{% endif %}</dd></div>{% endif %}
+    {%- if o.route == 'terminal' %}<div><dt>How</dt><dd>a terminal deploy (nmas-deploy) by {{ o.requested_by or 'someone' }}</dd></div>{% endif %}
+    <div><dt>Outcome</dt><dd>{{ words.get(o.outcome, o.outcome) }}{% if o.step and o.outcome != 'updated' %}, at the step "{{ step_words.get(o.step, o.step)|replace('<target>', (o.to or '')[:10]) }}"{% endif %}{% if o.ended_at %} <span class="muted">· {{ stamp(o.ended_at) }}</span>{% endif %}</dd></div>
     {%- if o.reason %}<div><dt>Why</dt><dd>{{ o.reason }}</dd></div>{% endif %}
     {%- for n in o.notes or [] %}<div><dt>Note</dt><dd>{{ n }}</dd></div>{% endfor %}
   </dl>
@@ -41,7 +42,7 @@
     <div><dt>What</dt><dd>{% if f.behind is not none %}{{ f.behind }} commit{{ '' if f.behind == 1 else 's' }}{% else %}an unknown number of commits{% endif %} pushed and not running{% if f.behind_since %} <span class="muted">· ahead since {{ stamp(f.behind_since) }} ({{ f.behind_since_basis }})</span>{% endif %}</dd></div>
     {#- In a person's words; nmas-deploy's own sentence (it names the run, and
         tells a terminal user to run --wait) is the cause, on hover. -#}
-    <div><dt>CI for the target</dt><dd>{{ badge(f.ci.state or 'not asked', CI_KIND.get(f.ci.state, 'muted')) }} <span id="update-ci-words"{% if f.ci.sentence %} title="{{ f.ci.sentence }}"{% endif %}>{{ p.ci_words }}</span>{% if f.ci.asked_at %} <span class="muted">· asked {{ stamp(f.ci.asked_at) }}</span>{% endif %}</dd></div>
+    <div><dt>CI for the target</dt><dd>{{ badge(ci_badge.get(f.ci.state, f.ci.state) if f.ci.state else 'not asked', CI_KIND.get(f.ci.state, 'muted')) }} <span id="update-ci-words"{% if f.ci.sentence %} title="{{ f.ci.sentence }}"{% endif %}>{{ p.ci_words }}</span>{% if f.ci.asked_at %} <span class="muted">· asked {{ stamp(f.ci.asked_at) }}</span>{% endif %}</dd></div>
   </dl>
   {%- if f.commits %}
   <h3 class="sub-head">The commits it would run</h3>
@@ -146,7 +147,7 @@
 <section class="card" id="update-history">
   <div class="card-head"><h2>Earlier updates</h2></div>
   <ul class="plain-list">
-    {%- for o in hist.rows[1:] %}<li>{{ badge(o.outcome, OUT_KIND.get(o.outcome, 'muted')) }} <span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ (o.to or '')[:10] }}</span> <span class="muted">· {{ o.requested_by or '' }} · {{ stamp(o.ended_at or o.at) }}</span></li>{% endfor %}
+    {%- for o in hist.rows[1:] %}<li>{{ badge(words.get(o.outcome, o.outcome)|truncate(30, True), OUT_KIND.get(o.outcome, 'muted')) }} <span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ (o.to or '')[:10] }}</span> <span class="muted">· {{ o.requested_by or '' }} · {{ stamp(o.ended_at or o.at) }}</span></li>{% endfor %}
   </ul>
 </section>
 {%- endif %}

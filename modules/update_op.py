@@ -24,6 +24,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import stat
 import time
 
@@ -80,6 +81,9 @@ LOCK = os.path.join(config.DATA_DIR, "update", "lock")
 #: gate failing ends the wait in words, and nothing is updated.
 DEFERRED = os.path.join(config.DATA_DIR, "update", "deferred.json")
 DEFERRED_OUTCOME = os.path.join(config.DATA_DIR, "update", "deferred_outcome.json")
+#: nmas-deploy's own audit (one row per run), read for "the last update" by
+#: the terminal route.
+DEPLOY_AUDIT = os.path.join(config.DATA_DIR, "deploy_audit.jsonl")
 
 #: How long a wait lasts: 2.5x CI's job bound (10 min in ci.yml, itself 2.7x
 #: the slowest measured job, 224 s), because a run can queue before it starts.
@@ -413,7 +417,59 @@ def person_ci(ci: dict, target: str = "") -> str:
     """The CI gate's line, in a person's words."""
     if not ci or (target and ci.get("tip") != target):
         return "CI has not been asked about this release yet; Check again asks now"
+    if ci.get("state") == "failed":
+        # The run, named (the operator, 2026-10-01): "CI failed for this
+        # release (run #241): it won't be installed".
+        m = re.search(r"run #(\d+)", ci.get("sentence") or "")
+        return ("CI failed for this release" + (f" (run #{m.group(1)})" if m else "")
+                + ": it will not be installed. The next release fixes it")
     return CI_PERSON.get(ci.get("state"), f"CI answered {ci.get('state')!r}")
+
+
+#: A CI verdict's badge, in words (the operator: "could_not_ask" leaked as text).
+CI_BADGE = {"verified": "passed", "failed": "failed", "cancelled": "cancelled",
+            "pending": "checking", "could_not_ask": "not asked"}
+
+#: The updater's step keys, in words, for a record that names one.
+STEP_WORDS = dict(STEPS)
+
+
+def terminal_deploy(path: str = None) -> dict:
+    """The last terminal deploy that moved the app (`nmas-deploy`'s audit row,
+    exit 0 with a target), in the updater's record's shape; ``{}`` when none
+    is recorded or the record cannot be read."""
+    path = path or DEPLOY_AUDIT
+    last = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if row.get("exit") == 0 and row.get("to") and row.get("from") != row.get("to"):
+                    last = row
+    except OSError:
+        return {}
+    if not last:
+        return {}
+    return {"outcome": "updated", "from": last.get("from") or "", "to": last["to"],
+            "requested_by": last.get("user") or "", "route": "terminal",
+            "ended_at": str(last.get("ended_at") or "")[:19] + "Z" if last.get("ended_at") else ""}
+
+
+def last_update(updater: dict = None, terminal: dict = None) -> dict:
+    """"The last update" by EITHER route (the operator, 2026-10-01: the panel
+    showed the button's e7b80c7 -> 771bead and not the terminal deploy 771bead
+    -> 1954ce7 after it): the newer of the updater's record and the last terminal
+    deploy, in the updater's record's shape ``{"state", "value"}``."""
+    updater = outcome() if updater is None else updater
+    terminal = terminal_deploy() if terminal is None else terminal
+    uv = (updater.get("value") or {}) if updater.get("state") == "ok" else {}
+    u_at = str(uv.get("ended_at") or uv.get("at") or "")
+    if terminal and str(terminal.get("ended_at") or "") > u_at:
+        return {"state": "ok", "value": terminal}
+    return updater
 
 
 def deferred() -> dict:
@@ -521,7 +577,7 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
             # after the updater's last record: otherwise "The last update" says it.
             "wait_ended": (ended if ended and ended.get("outcome") != "requested"
                            and str(ended.get("ended_at") or "") > last_end else {}),
-            "last": last, "install": install}
+            "last": last, "last_shown": last_update(updater=last), "install": install}
 
 
 # ---------------------------------------------------------------------------
