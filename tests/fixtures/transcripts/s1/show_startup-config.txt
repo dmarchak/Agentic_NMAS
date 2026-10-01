@@ -1,0 +1,249 @@
+
+s1#
+s1#
+s1#
+s1#
+s1#show startup-config
+Using 3079 out of 262144 bytes, uncompressed size = 5981 bytes
+!
+! Last configuration change at 01:50:22 UTC Sat Sep 26 2026 by admin
+!
+version 15.2
+service timestamps debug datetime msec
+service timestamps log datetime msec show-timezone
+no service password-encryption
+service compress-config
+!
+hostname s1
+!
+boot-start-marker
+boot-end-marker
+!
+!
+no logging console
+!
+username admin privilege 15 secret 9 <redacted:user_password>
+no aaa new-model
+fhrp version vrrp v3
+!
+!
+!
+!
+!
+vtp mode transparent
+!
+!
+!
+ip domain-name rcn.lab
+ip cef
+ipv6 unicast-routing
+ipv6 cef
+!
+!
+!
+spanning-tree mode pvst
+spanning-tree extend system-id
+!
+!
+vlan 10 
+!
+vlan 20
+ name USERS
+!
+vlan 30
+ name IPV6
+lldp run
+!
+track 1 interface GigabitEthernet0/2 line-protocol
+!
+! 
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+interface Loopback0
+ description mgmt identity
+ ip address 10.255.1.21 255.255.255.255
+ ipv6 address 2001:DB8:1::21/128
+!
+interface GigabitEthernet0/0
+ description clab-mgmt
+ no switchport
+ ip address dhcp
+ negotiation auto
+!
+interface GigabitEthernet0/1
+ negotiation auto
+!
+interface GigabitEthernet0/2
+ description P2P to r1 Gi3 - RIPng
+ no switchport
+ ip address 10.255.2.11 255.255.255.254
+ negotiation auto
+ ipv6 address 2001:DB8:2:A::2/64
+ ipv6 rip RCN enable
+!
+interface GigabitEthernet0/3
+ description trunk to s2 Gi0/3 - VRRP rides this
+ switchport trunk allowed vlan 10,20,30
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ negotiation auto
+!
+interface GigabitEthernet1/0
+ description h1 - VLAN 10
+ switchport access vlan 10
+ switchport mode access
+ negotiation auto
+!
+interface GigabitEthernet1/1
+ description h2 - VLAN 20
+ switchport access vlan 20
+ switchport mode access
+ negotiation auto
+!
+interface Vlan10
+ ip address 10.10.10.2 255.255.255.0
+ ip helper-address 10.255.0.10 
+ ipv6 address 2001:DB8:10::2/64
+ ipv6 enable
+ ipv6 nd prefix 2001:DB8:10::/64 2592000 604800 no-autoconfig
+ ipv6 nd managed-config-flag
+ ipv6 nd other-config-flag
+ ipv6 dhcp relay destination 2001:DB8:255::10
+ ipv6 rip RCN enable
+ vrrp 10 address-family ipv4
+  priority 110
+  track 1 decrement 20
+  address 10.10.10.1 primary
+  exit-vrrp
+ vrrp 10 address-family ipv6
+  priority 110
+  track 1 decrement 20
+  address FE80::A primary
+  exit-vrrp
+!
+interface Vlan20
+ ip address 10.10.20.2 255.255.255.0
+ ip helper-address 10.255.0.10 
+ ipv6 address 2001:DB8:20::2/64
+ ipv6 enable
+ ipv6 nd prefix 2001:DB8:20::/64 2592000 604800 no-autoconfig
+ ipv6 nd managed-config-flag
+ ipv6 nd other-config-flag
+ ipv6 dhcp relay destination 2001:DB8:255::10
+ ipv6 rip RCN enable
+ vrrp 20 address-family ipv4
+  track 1 decrement 20
+  address 10.10.20.1 primary
+  exit-vrrp
+ vrrp 20 address-family ipv6
+  track 1 decrement 20
+  address FE80::14 primary
+  exit-vrrp
+!
+interface Vlan30
+ no ip address
+ ipv6 address 2001:DB8:30::2/64
+ ipv6 enable
+ ipv6 nd prefix 2001:DB8:30::/64 2592000 604800 no-autoconfig
+ ipv6 nd managed-config-flag
+ ipv6 nd other-config-flag
+ ipv6 dhcp relay destination 2001:DB8:255::10
+ ipv6 rip RCN enable
+ vrrp 30 address-family ipv6
+  priority 110
+  address FE80::1 primary
+  exit-vrrp
+!
+router rip
+ version 2
+ passive-interface Loopback0
+ passive-interface Vlan10
+ passive-interface Vlan20
+ network 192.0.2.0
+ no auto-summary
+!
+ip forward-protocol nd
+!
+ip http server
+!
+ip ssh time-out 60
+ip ssh version 2
+ip ssh server algorithm encryption aes128-ctr aes192-ctr aes256-ctr
+ip ssh client algorithm encryption aes128-ctr aes192-ctr aes256-ctr
+!
+!
+logging trap notifications
+logging origin-id hostname
+logging source-interface Loopback0
+logging host 10.255.1.10
+ipv6 router rip RCN
+!
+!
+!
+!
+snmp-server community <redacted:snmp_community> RO
+snmp-server trap-source Loopback0
+snmp-server location containerlab-rcn-lab1
+snmp-server contact noc
+snmp-server enable traps snmp linkdown linkup
+snmp-server host 10.255.1.10 version 2c <redacted:snmp_community> 
+snmp ifmib ifindex persist
+!
+control-plane
+!
+banner exec ^C
+**************************************************************************
+* IOSv is strictly limited to use for evaluation, demonstration and IOS  *
+* education. IOSv is provided as-is and is not supported by Cisco's      *
+* Technical Advisory Center. Any use or disclosure, in whole or in part, *
+* of the IOSv Software or Documentation to any third party for any       *
+* purposes is expressly prohibited except as otherwise authorized by     *
+* Cisco in writing.                                                      *
+**************************************************************************^C
+banner incoming ^C
+**************************************************************************
+* IOSv is strictly limited to use for evaluation, demonstration and IOS  *
+* education. IOSv is provided as-is and is not supported by Cisco's      *
+* Technical Advisory Center. Any use or disclosure, in whole or in part, *
+* of the IOSv Software or Documentation to any third party for any       *
+* purposes is expressly prohibited except as otherwise authorized by     *
+* Cisco in writing.                                                      *
+**************************************************************************^C
+banner login ^C
+**************************************************************************
+* IOSv is strictly limited to use for evaluation, demonstration and IOS  *
+* education. IOSv is provided as-is and is not supported by Cisco's      *
+* Technical Advisory Center. Any use or disclosure, in whole or in part, *
+* of the IOSv Software or Documentation to any third party for any       *
+* purposes is expressly prohibited except as otherwise authorized by     *
+* Cisco in writing.                                                      *
+**************************************************************************^C
+!
+line con 0
+line aux 0
+line vty 0 4
+ login local
+ transport input telnet ssh
+line vty 5 15
+ login local
+ transport input telnet ssh
+!
+ntp server 10.255.1.10
+netconf-yang
+event manager applet NMAS-HEARTBEAT
+ event timer watchdog time 300
+ action 1.0 syslog priority notifications msg "NMAS-HEARTBEAT"
+!
+end
+
+s1#

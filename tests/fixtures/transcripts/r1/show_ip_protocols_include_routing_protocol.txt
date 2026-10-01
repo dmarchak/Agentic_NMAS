@@ -1,0 +1,5 @@
+show ip protocols | include Routing Protocol
+Routing Protocol is "application"
+Routing Protocol is "ospf 1"
+Routing Protocol is "rip"
+r1#

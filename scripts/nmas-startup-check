@@ -8,8 +8,11 @@ and each credential line's FORM, never its value.
 
     python3 scripts/nmas-startup-check
 
-Exit codes: 0 every device carries it; 1 at least one does not (a reload
-would lock NMAS out of it); 2 none fails but at least one could not be asked.
+Exit codes: 0 no device is known not to carry it; 1 at least one does not (a
+reload would lock NMAS out of it); 2 the run read NO device, so it checked
+nothing. A device it could not read this hour is a row of its own in job
+health ("could not read"), never a failed run: one unreadable device is not
+the critical finding (the operator, 2026-10-01).
 """
 
 import os
@@ -19,16 +22,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def main(argv=None) -> int:
-    from modules.nsot.startup_check import run_check
+    from modules.nsot.startup_check import brief, run_check
 
     out = run_check()
     for d in out["devices"]:
-        print(f"{d['list']:<10} {d['device']:<10} {d['state'].upper():<14} {d['detail']}")
+        print(f"{d['list']:<10} {d['device']:<10} {d['state'].upper():<14} {brief(d['detail'])}")
     counts = out["counts"]
     print("\n" + ", ".join(f"{k}: {v}" for k, v in sorted(counts.items())))
     if counts.get("not_persisted"):
         return 1
-    return 2 if counts.get("unknown") else 0
+    read = sum(v for k, v in counts.items() if k != "unknown")
+    return 0 if read else 2
 
 
 if __name__ == "__main__":

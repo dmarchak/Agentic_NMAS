@@ -42,6 +42,84 @@ logger = logging.getLogger(__name__)
 CONNECT_TIMEOUT_S = 35
 
 
+def read_floor() -> float:
+    """The least any read on a tool session may wait: the config read's
+    measured bound (`nsot_config_read_timeout`, 120 s), never Netmiko's fixed
+    ones.
+
+    Netmiko waits a FIXED 10 s for a command's echo (`command_echo_read`, set
+    by no argument a caller can pass), 10 s for the prompt and for `terminal
+    width 511` while logging in, and 20 s for `terminal length 0`. Measured on
+    the host 2026-10-01: an echo took up to 5.9 s with every device read at
+    once, a vIOS `show running-config | include ^username` 31.6 s alone (s3),
+    a login 46 s, and at 06:03 the hourly startup check met all four bounds at
+    once: r1 to r4 at the echo, s1 at the login prompt, s3 and s4 in session
+    preparation. A bound smaller than what it bounds is how a slow device
+    reads as an unreadable one."""
+    try:
+        from modules.config_read import read_timeout
+        return float(read_timeout())
+    except Exception:                                   # noqa: BLE001
+        return 120.0
+
+
+def prompt_terminator(base_prompt: str):
+    """The pattern a show command's read ends on: the device's OWN prompt, as
+    the last line of what has arrived after the command's echo, or None when
+    the base prompt is not a hostname (a NUL read, C272), so the caller's
+    default stands.
+
+    Netmiko's default with no prompt probe is the bare base prompt, which
+    `hostname r1` matches mid-configuration; with one, a 10 s probe per
+    command. Anchored to a line of its own and to the end of the text, a
+    hostname inside the output cannot end the read. The echo still comes
+    first: measured on r1 and s1, prompts left over from logging in sit in the
+    channel before it (`\\nr1#\\nr1#\\nr1#\\nr1#show startup-config`), and a
+    read ending on the prompt alone answered every command with the previous
+    command's output (tests/fixtures/transcripts/)."""
+    import re as _re
+
+    bp = (base_prompt or "").strip()
+    if not bp or not _re.fullmatch(r"[\w.\-]+", bp):
+        return None
+    return (r"(?m)^" + _re.escape(bp) + r"[\w.\-]*(?:\([^)\n]*\))?[>#][ \t]*\Z")
+
+
+def floor_reads(conn, floor: float = None) -> None:
+    """Make every read on *conn* wait at least *floor* seconds (read_floor()),
+    and end a show command on prompt_terminator(): login, Netmiko's session
+    preparation, each echo and each command. A caller's LONGER bound is kept;
+    nothing here shortens a wait. Applied by open_ssh() before the session
+    logs in, so the session preparation is bounded too."""
+    floor = read_floor() if floor is None else float(floor)
+    until = getattr(conn, "read_until_pattern", None)
+    if callable(until):
+        def read_until_pattern(*args, **kwargs):
+            args = list(args)
+            if len(args) >= 2:
+                if args[1] and args[1] < floor:
+                    args[1] = floor
+            else:
+                given = kwargs.get("read_timeout", 10.0)
+                if given and given < floor:
+                    kwargs["read_timeout"] = floor
+            return until(*args, **kwargs)
+        conn.read_until_pattern = read_until_pattern
+    send = getattr(conn, "send_command", None)
+    if callable(send):
+        def send_command(*args, **kwargs):
+            given = kwargs.get("read_timeout", 10.0)
+            if given and given < floor:
+                kwargs["read_timeout"] = floor
+            if len(args) < 2 and kwargs.get("expect_string") is None:
+                pattern = prompt_terminator(getattr(conn, "base_prompt", ""))
+                if pattern:
+                    kwargs["expect_string"] = pattern
+            return send(*args, **kwargs)
+        conn.send_command = send_command
+    conn._nmas_read_floor = floor
+
+
 def connection_params(dev: dict, *, password: str, secret: str = None) -> dict:
     """Build the ConnectHandler kwargs. The only place they are assembled.
 
@@ -297,7 +375,23 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
         # Netmiko's default 10 s, set by nothing, while s3's connect measured
         # 13.7 s, so a Save All gave up on a device that was answering. A
         # caller's own value wins.
-        conn = netmiko.ConnectHandler(**{"conn_timeout": CONNECT_TIMEOUT_S, **params})
+        #
+        # The session logs in only after floor_reads(): Netmiko's login and
+        # session preparation read with its own 10 s and 20 s bounds, and at
+        # 06:03 on 2026-10-01 s1, s3 and s4 failed inside them.
+        conn = netmiko.ConnectHandler(**{"conn_timeout": CONNECT_TIMEOUT_S,
+                                         "auto_connect": False, **params})
+        floor_reads(conn)
+        login = getattr(conn, "_open", None)
+        if callable(login):
+            try:
+                login()
+            except Exception:
+                try:
+                    conn.disconnect()
+                except Exception:                       # noqa: BLE001
+                    pass
+                raise
     except Exception:
         _drop(ip, sid, "connect failed")
         raise

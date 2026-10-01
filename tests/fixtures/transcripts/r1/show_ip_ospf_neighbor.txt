@@ -1,0 +1,9 @@
+show ip ospf neighbor
+
+Neighbor ID     Pri   State           Dead Time   Address         Interface
+10.255.1.12     100   2WAY/DROTHER    00:00:33    10.255.3.12     GigabitEthernet2
+10.255.1.13     255   FULL/DR         00:00:33    10.255.3.13     GigabitEthernet2
+10.255.1.14     200   FULL/BDR        00:00:35    10.255.3.14     GigabitEthernet2
+10.255.1.23       0   2WAY/DROTHER    00:00:38    10.255.3.23     GigabitEthernet2
+10.255.1.24       0   2WAY/DROTHER    00:00:28    10.255.3.24     GigabitEthernet2
+r1#

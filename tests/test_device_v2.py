@@ -259,6 +259,20 @@ class TestOverview:
         assert html.count("check check-ok") == 0
         assert "no drift run recorded for this list" in html
 
+    def test_an_unreadable_startup_check_says_it_will_read_it_again(self, lab, monkeypatch):
+        """The 06:03 run (2026-10-01): an unreadable device is not a startup
+        config that lacks the credential, and its reason arrives without
+        Netmiko's paragraph of advice."""
+        from modules.nsot import startup_check
+
+        monkeypatch.setattr(startup_check, "read_results", lambda: {"at": 1.0, "devices": [
+            {"list": "Lab", "device": "r3", "state": "unknown", "detail":
+             "could not ask: ReadTimeout: \n\nPattern not detected: 'terminal width 511' "
+             "in output.\n\nThings you might try to fix this:\n1. Explicitly set ..."}]})
+        text = _text(_get(lab, "/v2/device/r3/overview")[1])
+        assert "the hourly check could not read it" in text
+        assert "it reads it again at the next run" in text
+        assert "Things you might try" not in text
     def test_an_unapproved_copy_and_a_firing_alert_are_danger(self, lab):
         _store("freshness", {"lists": {"Lab": {"devices": [{"device": "r3", "verdict": "unapproved"}]}}})
         _store("grafana-alerts", {"instances": [

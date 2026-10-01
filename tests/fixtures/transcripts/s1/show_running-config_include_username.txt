@@ -1,0 +1,3 @@
+show running-config | include ^username
+username admin privilege 15 secret 9 <redacted:user_password>
+s1#

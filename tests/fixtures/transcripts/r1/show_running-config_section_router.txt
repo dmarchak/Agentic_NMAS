@@ -1,0 +1,19 @@
+show running-config | section router
+router ospf 1
+ router-id 10.255.1.11
+ redistribute rip
+ passive-interface Loopback0
+ network 10.255.1.11 0.0.0.0 area 0
+ network 10.255.3.0 0.0.0.255 area 0
+router rip
+ version 2
+ passive-interface default
+ no passive-interface GigabitEthernet3
+ network 192.0.2.0
+ default-information originate
+ no auto-summary
+ipv6 router ospf 1
+ router-id 10.255.1.11
+ redistribute rip RCN include-connected
+ipv6 router rip RCN
+r1#

@@ -143,6 +143,10 @@ _JOB_STATES = {
     "unset_guard": ("is an empty setting that switches off a guard", "warning"),
     "contradiction": ("is declared not applicable and is also set", "warning"),
     "not_safe_to_reboot": ("would not survive a reboot", "danger"),
+    # The startup check could not READ a device: not the critical finding
+    # above (the operator, 2026-10-01), and a warning only once it persists.
+    "unread": ("could not read a device this hour", "unknown"),
+    "unread_persisting": ("has not read a device for hours", "warning"),
     "not_recorded": ("was rotated and not recorded", "danger"),
     "revert_failed": ("failed a rotation and its revert", "danger"),
     "neither_accepted": ("accepts neither its staged nor its recorded credential", "danger"),
@@ -258,7 +262,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             # A row may name its own headline, in the reader's words ("r6 is not
             # monitored by SNMP"); otherwise the unit and its state's words.
             what=job.get("headline") or f"{job.get('unit', '?')} {words}",
-            devices=[device] if device else [],
+            devices=list(job.get("devices") or ([device] if device else [])),
             since=job.get("since"),
             cause=job.get("detail") or f"state {state}, with no detail recorded",
             operands={"job": job.get("what", ""), "state": state},

@@ -960,6 +960,13 @@ def ztp_responder_rows(run=None, get=None) -> list:
                  "not started yet (systemd starts it on the first request)"))}]
 
 
+#: An unreadable device becomes a WARNING once it has been unreadable this
+#: long: three hourly runs in a row (the first, and two retries). At 06:03 on
+#: 2026-10-01 seven devices were unreadable for one run and read at the next;
+#: a run or two is weather, three is a device to look at.
+UNREAD_PERSISTS_S = 2 * 3600
+
+
 def startup_rows(read=None, now: float = None) -> list:
     """C53, from the hourly job's file (never a device session per request).
 
@@ -993,12 +1000,43 @@ def startup_rows(read=None, now: float = None) -> list:
                  "max_age_minutes": 0,
                  "detail": f"the last run (at {when}) found NO devices to check"}]
     rows = []
+    # A device the run could not READ is not a device that would boot the
+    # wrong credential (the operator, 2026-10-01: at 06:03 seven slow reads
+    # drew as Critical). They are ONE row naming them, with since when and what
+    # to do; quiet for a run or two, a warning once it persists.
+    unread = [d for d in devices if d.get("state") not in ("persisted", "not_persisted")]
+    if unread:
+        first = min((d.get("since") or at) for d in unread)
+        persisting = at - first >= UNREAD_PERSISTS_S
+        names = ", ".join(d.get("device", "?") for d in unread)
+        nxt = time.strftime("%H:%M", time.localtime(at + 3600))
+        rows.append({
+            "unit": "startup-check:unread", "what": what,
+            "state": "unread_persisting" if persisting else "unread",
+            "headline": (f"The startup check has not read {names} since "
+                         f"{time.strftime('%H:%M', time.localtime(first))}" if persisting else
+                         f"The startup check could not read {len(unread)} of {len(devices)} "
+                         f"device(s) this hour: {names}"),
+            "devices": [d.get("device") for d in unread], "since": first,
+            "max_age_minutes": 0,
+            "action": ({"label": "Check that each answers SSH from the host (its Device page "
+                                 "shows whether it is answering), then run the check by hand",
+                        "command": "python3 scripts/nmas-startup-check"} if persisting else
+                       {"label": f"Nothing to do yet: it reads them again at the next run "
+                                 f"(about {nxt}). If a device stays unreadable, check that it "
+                                 "answers (its Device page)"}),
+            "detail": "; ".join(
+                f"{d.get('device')}: {startup_check.brief(d.get('detail'))} (since "
+                f"{time.strftime('%H:%M', time.localtime(d.get('since') or at))})"
+                for d in unread) + f" (checked {when}). Not the same as a startup config "
+                                   "that does not carry the credential: that is its own row."})
     for d in devices:
-        if d.get("state") == "persisted":
+        if d.get("state") != "not_persisted":
             continue
-        state = "not_safe_to_reboot" if d.get("state") == "not_persisted" else "unknown"
+        state = "not_safe_to_reboot"
         rows.append({"unit": f"startup:{d.get('list')}/{d.get('device')}", "what": what,
                      "device": d.get("device"), "list": d.get("list"), "state": state,
+                     "since": d.get("since"),
                      **({"action": {"label": "Persist the running credential on the device "
                                              "before anything reloads it: Persist… on its "
                                              "Device page, or on the host",

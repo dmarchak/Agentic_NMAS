@@ -108,6 +108,11 @@ EXEMPT = {
     ('tests/fixtures/configs/fleet/r1.cfg', '1ef15544fd6e'): ('CAPTURE', ('address',)),
     ('tests/fixtures/configs/fleet/r1.cfg', 'a5b73e35b275'): ('VENDOR', ('email',)),
     ('tests/fixtures/configs/fleet/r1.cfg', 'f1eeba711c88'): ('VENDOR', ('email',)),
+    # tests/fixtures/transcripts/r1/ (C281: r1's real channel transcripts)
+    ('tests/fixtures/transcripts/r1/show_running-config.txt', 'a5b73e35b275'): ('VENDOR', ('email',)),
+    ('tests/fixtures/transcripts/r1/show_running-config.txt', 'f1eeba711c88'): ('VENDOR', ('email',)),
+    ('tests/fixtures/transcripts/r1/show_startup-config.txt', 'a5b73e35b275'): ('VENDOR', ('email',)),
+    ('tests/fixtures/transcripts/r1/show_startup-config.txt', 'f1eeba711c88'): ('VENDOR', ('email',)),
     # tests/fixtures/configs/fleet/r2.cfg
     ('tests/fixtures/configs/fleet/r2.cfg', '25715794b34e'): ('CAPTURE', ('address',)),
     ('tests/fixtures/configs/fleet/r2.cfg', '4554dea76cef'): ('CAPTURE', ('address',)),

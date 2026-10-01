@@ -156,8 +156,13 @@ class TestTheJob:
         loader = importlib.machinery.SourceFileLoader("nmas_startup_check", path)
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
         loader.exec_module(mod)
+        # An unreadable device is not a failed run (the operator, 2026-10-01):
+        # 2 only when the run read NO device.
         for counts, code in (({"persisted": 9}, 0), ({"persisted": 8, "not_persisted": 1}, 1),
-                             ({"persisted": 8, "unknown": 1}, 2)):
+                             ({"persisted": 8, "unknown": 1}, 0),
+                             ({"persisted": 2, "unknown": 7}, 0),
+                             ({"not_persisted": 1, "unknown": 8}, 1),
+                             ({"unknown": 9}, 2), ({}, 2)):
             monkeypatch.setattr(startup_check, "run_check",
                                 lambda c=counts: {"devices": [], "counts": c})
             assert mod.main() == code
@@ -184,10 +189,10 @@ class TestTheRows:
         assert [(r["unit"], r["state"]) for r in rows] == [("startup:Default/s1", "not_safe_to_reboot")]
         assert "nmas-persist-native s1 --list Default" in rows[0]["detail"]
 
-    def test_could_not_ask_is_unknown(self):
+    def test_could_not_ask_is_one_unread_row_never_the_critical_one(self):
         rows = self._rows({"at": 900.0, "devices": [
             {"list": "Default", "device": "s1", "state": "unknown", "detail": "timeout"}]})
-        assert rows[0]["state"] == "unknown"
+        assert [r["state"] for r in rows] == ["unread"]
 
     def test_stale_results_are_not_ok(self):
         rows = self._rows({"at": 0.0, "devices": []}, now=4 * 3600.0)
@@ -203,3 +208,87 @@ def test_a_run_that_found_no_devices_is_not_ok():
     """The floor: "0 of 0" would read as coverage."""
     rows = job_health.startup_rows(read=lambda: {"at": 900.0, "devices": []}, now=1000.0)
     assert rows[0]["state"] == "unknown" and "NO devices" in rows[0]["detail"]
+
+
+# ── an unreadable device is not the critical finding (2026-10-01) ───────────
+
+#: The host's 06:03 run, as job health read it: two devices read, seven not,
+#: each reason in Netmiko's own words (journalctl -u nmas-startup-check).
+_ECHO = ("could not ask: ReadTimeout: \n\nPattern not detected: "
+         "'show\\\\ running\\\\-config\\\\ \\\\|\\\\ include\\\\ \\\\^username' in output.\n\n"
+         "Things you might try to fix this:\n1. Explicitly set your pattern using the "
+         "expect_string argument.\n2. Increase the read_timeout to a larger value.\n")
+_0603 = {"at": 21600.0, "devices": (
+    [{"list": "Default", "device": d, "state": "unknown", "detail": _ECHO, "since": 21600.0}
+     for d in ("r1", "r2", "r3", "r4")]
+    + [{"list": "Default", "device": "s1", "state": "unknown", "since": 21600.0,
+        "detail": "could not ask: ReadTimeout: Pattern not detected: '(\\\\#|>)' in output."},
+       {"list": "Default", "device": "s3", "state": "unknown", "since": 21600.0,
+        "detail": "could not ask: ReadTimeout: Pattern not detected: 'terminal width 511'"},
+       {"list": "Default", "device": "s4", "state": "unknown", "since": 21600.0,
+        "detail": "could not ask: ReadTimeout: Pattern not detected: 'terminal\\\\ length\\\\ 0'"},
+       {"list": "Default", "device": "r6", "state": "persisted", "detail": "", "since": 0.0},
+       {"list": "Default", "device": "s2", "state": "persisted", "detail": "", "since": 0.0}])}
+
+
+class TestAnUnreadableDeviceIsNotTheCriticalFinding:
+    def test_the_0603_run_is_one_row_naming_the_seven_and_what_to_do(self):
+        from modules import attention as A
+
+        rows = job_health.startup_rows(read=lambda: _0603, now=21660.0)
+        assert [r["state"] for r in rows] == ["unread"]
+        row = rows[0]
+        assert row["devices"] == ["r1", "r2", "r3", "r4", "s1", "s3", "s4"]
+        assert "could not read 7 of 9 device(s) this hour" in row["headline"]
+        assert row["since"] == 21600.0
+        assert "next run" in row["action"]["label"]
+        assert "Things you might try" not in row["detail"]
+        assert "terminal width 511" in row["detail"]
+        assert A._job_action(row).get("known") is not False
+        src = A.job_health_source(health=lambda: {"jobs": rows})
+        (drawn,) = src["rows"]
+        assert drawn["level"] == "unknown" and drawn["since"]
+        assert drawn["devices"] == row["devices"]
+        assert "No remedy is recorded" not in drawn["action"]["label"]
+
+    def test_it_becomes_a_warning_once_it_persists_with_the_check_to_run(self):
+        from modules import attention as A
+
+        later = dict(_0603, at=21600.0 + job_health.UNREAD_PERSISTS_S)
+        (row,) = job_health.startup_rows(read=lambda: later, now=later["at"] + 60)
+        assert row["state"] == "unread_persisting"
+        assert row["action"]["command"] == "python3 scripts/nmas-startup-check"
+        (drawn,) = A.job_health_source(health=lambda: {"jobs": [row]})["rows"]
+        assert drawn["level"] == "warning"
+
+    def test_a_device_that_would_boot_the_wrong_credential_keeps_its_own_danger_row(self):
+        from modules import attention as A
+
+        res = {"at": 21600.0, "devices": _0603["devices"] + [
+            {"list": "Default", "device": "r9", "state": "not_persisted", "detail": "old line",
+             "since": 18000.0}]}
+        rows = job_health.startup_rows(read=lambda: res, now=21660.0)
+        assert sorted(r["state"] for r in rows) == ["not_safe_to_reboot", "unread"]
+        drawn = A.job_health_source(health=lambda: {"jobs": rows})["rows"]
+        danger = [r for r in drawn if r["level"] == "danger"]
+        assert len(danger) == 1 and danger[0]["devices"] == ["r9"] and danger[0]["since"]
+
+    def test_each_device_keeps_since_when_its_state_began(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(startup_check, "_path", lambda: str(tmp_path / "startup_check.json"))
+        states = {"s1": "unknown", "r1": "persisted"}
+
+        def check(row):
+            return {"state": states[row["hostname"]], "detail": "d"}
+
+        first = startup_check.run_check(inventory=INV, check=check, clock=lambda: 1000.0)
+        second = startup_check.run_check(inventory=INV, check=check, clock=lambda: 4600.0)
+        assert [d["since"] for d in first["devices"]] == [1000.0, 1000.0]
+        assert [d["since"] for d in second["devices"]] == [1000.0, 1000.0]
+        states["s1"] = "persisted"
+        third = startup_check.run_check(inventory=INV, check=check, clock=lambda: 8200.0)
+        assert [d["since"] for d in third["devices"]] == [8200.0, 1000.0]
+
+    def test_a_reason_is_one_short_line_without_netmikos_advice(self):
+        assert startup_check.brief(_ECHO).startswith("could not ask: ReadTimeout: Pattern")
+        assert "Things you might try" not in startup_check.brief(_ECHO)
+        assert len(startup_check.brief("x " * 400)) <= 200

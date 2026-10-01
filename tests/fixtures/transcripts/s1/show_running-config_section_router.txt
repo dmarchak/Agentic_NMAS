@@ -1,0 +1,10 @@
+show running-config | section router
+router rip
+ version 2
+ passive-interface Loopback0
+ passive-interface Vlan10
+ passive-interface Vlan20
+ network 192.0.2.0
+ no auto-summary
+ipv6 router rip RCN
+s1#

@@ -224,9 +224,10 @@ class TestJobHealthAsASource:
         assert "action" not in ok_row, "an ok job names no remedy"
 
     def test_an_unknown_state_names_no_remedy(self):
-        unknown = J.startup_rows(read=lambda: {"at": 900.0, "devices": [
-            {"list": "Default", "device": "s1", "state": "unknown", "detail": "timeout"}]},
-            now=1000.0)[0]
+        def unreadable():
+            raise ValueError("Expecting value")
+        unknown = J.startup_rows(read=unreadable, now=1000.0)[0]
+        assert unknown["state"] == "unknown"
         assert A._job_action(unknown)["known"] is False
 
 

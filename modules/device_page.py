@@ -229,7 +229,10 @@ def checks(ref, dev: dict) -> list:
                     "state": {"persisted": "ok", "not_persisted": "danger"}.get(st, "unknown"),
                     "at": _iso(res.get("at")),
                     "text": ("its startup config carries its credential" if st == "persisted"
-                             else (srow.get("detail") or st or "unknown"))})
+                             else (srow.get("detail") or st or "unknown") if st == "not_persisted"
+                             else "the hourly check could not read it ("
+                                  + startup_check.brief(srow.get("detail") or st or "unknown")
+                                  + "); it reads it again at the next run")})
 
     # Alerts: Grafana's instances naming this device, by label, line or address.
     value, at, why = _cached("grafana-alerts")

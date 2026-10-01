@@ -68,16 +68,29 @@ def run_check(*, inventory=None, check=None, write=True, clock=time.time) -> dic
     from modules.fanout import Failed, read_each
 
     results = read_each(lambda lr: check(lr[1]), rows, name="startup-check")
+    at = clock()
+    # Each device keeps the time its CURRENT state began (`since`), carried
+    # from the last run while the state holds: "unreadable since 03:02" is a
+    # different fact from "unreadable this hour", and the row said neither.
+    try:
+        previous = {(d.get("list"), d.get("device")): d
+                    for d in (read_results() or {}).get("devices") or []} if write else {}
+    except Exception:                                   # noqa: BLE001
+        previous = {}
     devices = []
     for (list_name, row), got in zip(rows, results):
         if isinstance(got, Failed):
             got = {"state": "unknown", "detail": f"the check raised {got}"}
+        state = got.get("state", "unknown")
+        before = previous.get((list_name, row.get("hostname", "?"))) or {}
+        since = before.get("since") if before.get("state") == state and before.get("since") \
+            else at
         devices.append({"list": list_name, "device": row.get("hostname", "?"),
-                        "state": got.get("state", "unknown"), "detail": got.get("detail", "")})
+                        "state": state, "detail": got.get("detail", ""), "since": since})
     counts = {}
     for d in devices:
         counts[d["state"]] = counts.get(d["state"], 0) + 1
-    out = {"at": clock(), "devices": devices, "counts": counts}
+    out = {"at": at, "devices": devices, "counts": counts}
     if write:
         from modules.config import open_secure
 
@@ -86,6 +99,14 @@ def run_check(*, inventory=None, check=None, write=True, clock=time.time) -> dic
             json.dump(out, fh, indent=2, sort_keys=True)
         os.replace(tmp, _path())
     return out
+
+
+def brief(detail: str) -> str:
+    """A device's reason, short enough for a row: one line, Netmiko's advice
+    ("Things you might try...") dropped, at most 200 characters."""
+    text = " ".join(str(detail or "").split())
+    text = text.split(" Things you might try")[0]
+    return text if len(text) <= 200 else text[:197] + "..."
 
 
 def read_results() -> dict:
