@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Grafana alert rules for model-driven telemetry: one per device and
+subscription, each NAMING ITS DEVICE (NSOT_PLAN P.7, the second generator).
+
+**Why it exists** (the operator, 2026-10-01). After the afternoon's redeploy
+the hand-built rule "gRPC telemetry stream lost" fired four times and Needs
+attention said "the rule names no device": its expression was
+``count by (source) (...)``, which drops the series' own ``device`` label, so
+an alert carried only ``source``. And its expected set was "a source seen in
+the last day" (C168's repair), so a device gone longer than a day stopped
+firing, and a device that never streamed was never expected.
+
+**The population is the committed configuration**: every device of every list
+whose COMMITTED golden holds ``telemetry ietf subscription <id>`` gets one rule
+per subscription, as the device page decides streaming (never from whether a
+series exists now, which would make a stopped stream its own excuse).
+
+**The rule**: ``count(last_over_time({device="<d>", subscription="<id>"}[90s]))``,
+NoData = Alerting (a stream that stopped yields no series), labelled
+``device`` and ``subscription``. 90 s is three scrapes of the ``telemetry_mdt``
+job (30 s, read from Prometheus's loaded config 2026-10-01), so one missed
+scrape never fires.
+
+    nmas-telemetry-rules --datasource-uid <prometheus-uid>   # write the file
+    nmas-telemetry-rules --check                          # 0 current, 1 not, 2 unproven
+
+The file is generated on the host and never committed (it carries the
+datasource UID); installing it is the same host step as the heartbeat rules',
+and the hand-built rule is then deleted in Grafana by the operator, or both
+fire. **An empty population is refused, never written.**
+"""
+
+import argparse
+import os
+import re
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+EXIT_OK, EXIT_STALE, EXIT_UNPROVEN = 0, 1, 2
+OUT = os.path.join(ROOT, "deploy", "grafana", "provisioning", "alerting",
+                   "nmas-telemetry.yaml")
+GROUP = "nmas-telemetry"
+FOLDER = "NMAS"
+#: Three scrapes of the telemetry_mdt job (30 s, measured 2026-10-01).
+WINDOW_SECONDS = 90
+SUBSCRIPTION = re.compile(r"^telemetry ietf subscription (\d+)\s*$", re.M)
+_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9._-]*$")
+
+
+def subscriptions(golden: str) -> list:
+    """The subscription ids a committed configuration declares, in order."""
+    return sorted(set(SUBSCRIPTION.findall(golden or "")), key=int)
+
+
+def expected(population=None, golden=None) -> tuple:
+    """``({device: [subscription]}, not_streaming, errors)`` over every list."""
+    from modules.prometheus_targets import inventory, read_golden
+
+    population, golden = population or inventory, golden or read_golden
+    out, quiet, errors = {}, [], []
+    for ref, dev in population():
+        host = dev.get("hostname") or ""
+        try:
+            subs = subscriptions(golden(ref, host))
+        except Exception as exc:               # noqa: BLE001
+            errors.append(f"{host}: its committed golden could not be read ({exc})")
+            continue
+        if subs:
+            out[host] = subs
+        else:
+            quiet.append(host)
+    return out, sorted(quiet), errors
+
+
+def rule_for(host: str, sub: str, datasource_uid: str) -> dict:
+    if not _NAME.match(host):
+        raise ValueError(f"{host!r} is not a usable device name")
+    expr = (f'count(last_over_time({{device="{host}", subscription="{sub}"}}'
+            f"[{WINDOW_SECONDS}s]))")
+    return {
+        "uid": (f"nmas-tel-{re.sub(r'[^A-Za-z0-9_-]', '-', host)}-{sub}")[:40],
+        "title": f"NMAS telemetry stream lost: {host} subscription {sub}",
+        "condition": "C",
+        "data": [
+            {"refId": "A", "datasourceUid": datasource_uid,
+             "relativeTimeRange": {"from": WINDOW_SECONDS, "to": 0},
+             "model": {"refId": "A", "expr": expr, "instant": True, "range": False}},
+            {"refId": "B", "datasourceUid": "__expr__",
+             "model": {"refId": "B", "type": "reduce", "expression": "A", "reducer": "last"}},
+            {"refId": "C", "datasourceUid": "__expr__",
+             "model": {"refId": "C", "type": "threshold", "expression": "B",
+                       "conditions": [{"evaluator": {"type": "lt", "params": [1]}}]}},
+        ],
+        # A stream that stopped yields NO series: that is the failure.
+        "noDataState": "Alerting",
+        "execErrState": "Alerting",
+        "for": "0s",
+        "labels": {"nmas": "telemetry", "device": host, "subscription": sub},
+        "annotations": {
+            "summary": f"{host} has stopped streaming telemetry subscription {sub}",
+            "description": (
+                f"{host}'s committed configuration declares `telemetry ietf subscription {sub}`, "
+                f"and Prometheus holds no sample of it in the last {WINDOW_SECONDS} s (three "
+                "scrapes of telemetry_mdt). The device, its subscription, the gRPC path to "
+                "Telegraf, Telegraf or the scrape has stopped; the rule cannot say which."),
+        },
+    }
+
+
+def build(subs_by_host: dict, datasource_uid: str) -> dict:
+    if not subs_by_host:
+        raise ValueError("the population is empty -- a rule file with no rules alerts on "
+                         "nothing and reads like every stream is up")
+    if not datasource_uid:
+        raise ValueError("no Prometheus datasource UID")
+    return {"apiVersion": 1, "groups": [{
+        "orgId": 1, "name": GROUP, "folder": FOLDER, "interval": "1m",
+        "rules": [rule_for(h, s, datasource_uid)
+                  for h in sorted(subs_by_host) for s in subs_by_host[h]]}]}
+
+
+def render(doc: dict) -> str:
+    import yaml
+    head = ("# GENERATED by scripts/nmas-telemetry-rules: one rule per device and "
+            "subscription,\n# from each device's committed configuration. Do not edit; "
+            "regenerate.\n")
+    return head + yaml.safe_dump(doc, sort_keys=False, width=100)
+
+
+def installed(doc: dict) -> set:
+    """``{(device, subscription)}`` a rules document covers."""
+    return {(r.get("labels", {}).get("device"), r.get("labels", {}).get("subscription"))
+            for g in (doc or {}).get("groups", []) for r in g.get("rules", [])}
+
+
+def check(have: set, want: dict) -> tuple:
+    """(exit code, lines). Every (device, subscription) in one named state."""
+    pairs = {(h, s) for h, subs in want.items() for s in subs}
+    lines, code = [], EXIT_OK
+    for h, s in sorted(have | pairs):
+        if (h, s) not in have:
+            lines.append(f"MISSING    {h} subscription {s}: configured to stream, no rule")
+            code = EXIT_STALE
+        elif (h, s) not in pairs:
+            lines.append(f"EXTRA      {h} subscription {s}: a rule for a stream no committed "
+                         "configuration declares")
+            code = EXIT_STALE
+        else:
+            lines.append(f"current    {h} subscription {s}")
+    return code, lines
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--datasource-uid", default=os.environ.get("NMAS_GRAFANA_PROM_UID", ""))
+    ap.add_argument("--check", action="store_true",
+                    help="compare the generated rules file (--out) with the population")
+    ap.add_argument("--out", default=OUT)
+    args = ap.parse_args(argv)
+    try:
+        want, quiet, errors = expected()
+    except Exception as exc:                   # noqa: BLE001
+        print(f"UNPROVEN: {type(exc).__name__}: {exc}")
+        return EXIT_UNPROVEN
+    if errors:
+        # A population with a device left out is a guess about it.
+        print("UNPROVEN: " + "; ".join(errors))
+        return EXIT_UNPROVEN
+    if args.check:
+        import yaml
+        try:
+            with open(args.out, encoding="utf-8") as fh:
+                have = installed(yaml.safe_load(fh))
+        except FileNotFoundError:
+            print(f"STALE: {args.out} does not exist")
+            return EXIT_STALE
+        code, lines = check(have, want)
+        bad = [l for l in lines if not l.startswith("current")]
+        print(f"FAILED: {len(bad)} of {len(lines)} stream(s) need attention" if bad else
+              f"telemetry rules current for {len(lines)} stream(s)")
+        print("\n".join(lines))
+        return code
+    try:
+        doc = build(want, args.datasource_uid)
+    except ValueError as exc:
+        print(f"UNPROVEN: {exc}")
+        return EXIT_UNPROVEN
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    with open(args.out, "w", encoding="utf-8") as fh:
+        fh.write(render(doc))
+    for h in sorted(want):
+        print(f"  {h:<6} subscription(s) {', '.join(want[h])}")
+    for h in quiet:
+        print(f"  not streaming: {h} -- its committed configuration declares no subscription")
+    print(f"wrote {sum(len(s) for s in want.values())} rule(s) to {args.out}")
+    print("Then delete the hand-built rule \"gRPC telemetry stream lost\" in Grafana, "
+          "or both fire.")
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

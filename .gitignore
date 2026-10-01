@@ -73,6 +73,7 @@ docs/bootstrap-probe/configs/bp-vios-d3neg.cfg
 # Host-specific; never committed. Ignored so the live checkout stays clean and a
 # pull can never collide with it.
 deploy/grafana/provisioning/alerting/nmas-heartbeat.yaml
+deploy/grafana/provisioning/alerting/nmas-telemetry.yaml
 
 # Local Claude Code permissions: "local" means not published (2026-09-29).
 .claude/settings.local.json
