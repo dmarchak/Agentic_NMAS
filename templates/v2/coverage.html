@@ -1,0 +1,11 @@
+{%- extends "v2/base.html" -%}
+{% block title %}Coverage · Monitoring · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Monitoring coverage</h1>
+    <p class="sub">What each device is configured for, read from its committed golden, and the monitoring profile that supplies what is missing.</p>
+  </div>
+</div>
+{% include "v2/_coverage.html" %}
+{% endblock %}

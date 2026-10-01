@@ -194,3 +194,24 @@ def update():
 def update_panel():
     """The preview alone, re-fetched when the reader announces `app_version`."""
     return _strict(render_template("v2/_update.html", who=_who(), **_update_ctx()))
+
+
+def _coverage() -> dict:
+    """Monitoring > Coverage for the active list (P.9 (d))."""
+    from modules import monitoring_coverage
+    from modules.nsot import listref
+
+    return monitoring_coverage.fleet(listref.active())
+
+
+@bp.route("/monitoring/coverage", methods=["GET"])
+def coverage():
+    """Monitoring > Coverage: each device by integration, from its committed
+    golden, and the monitoring profile's batch Apply (NSOT_GUI_BRIEF 14.3)."""
+    return _page("v2/coverage.html", c=_coverage(), active_nav="monitoring")
+
+
+@bp.route("/monitoring/coverage/table", methods=["GET"])
+def coverage_table():
+    """The table alone, re-fetched when goldens, intent or job health move."""
+    return _strict(render_template("v2/_coverage.html", c=_coverage()))

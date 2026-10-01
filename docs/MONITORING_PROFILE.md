@@ -65,7 +65,14 @@ touches it. **Adopt applies it too** (the same day): its preview computes the pr
 capture it reads with the supplied credential, lists it masked in the program and binds it in the
 fingerprint; the apply sends it after the accounts and before the save, reads it back, and the first
 golden records it. A value the device sets differently is kept (the device overrides the profile).
-Not built yet: the batch Apply from the coverage view (d).
+**(d), the screens, began 2026-10-01:** Monitoring > Coverage (`/v2/monitoring/coverage`,
+`monitoring_coverage.fleet()`) draws each device by integration from its committed golden, each
+cell decided on the server (configured; missing and the profile supplies it; missing and it does
+not, saying why; excluded with the reason; not used by the network; the profile's section scoped
+away from its platform or role; unknown when the golden cannot be read). The devices the profile
+applies to are offered, ticked where it supplies a gap, and the form opens today's batch preview
+for the ticked devices. Not built yet: the batch preview, confirm and result in v2 (its rollout
+order drawn), and the device page's "monitored by" section.
 
 **Each section names the connector it is derived from,** and is ABSENT while that
 connector is not configured. "Configure a connector, and devices get the matching config"

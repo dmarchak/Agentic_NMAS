@@ -420,3 +420,22 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .check-again .check-late:empty { display: none; }
 /* A check that answered late, or a last attempt that failed: said in words. */
 .check-again .check-late, .check-again .check-failed { color: var(--warn); }
+
+/* Monitoring > Coverage (P.9 (d)): each cell in words and an icon, never colour alone. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.cov-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-weight: 600; }
+.cov-head-ok .ico { color: var(--ok); }
+.cov-head-warn .ico { color: var(--warn-mark); }
+.cov-profile { margin: 0 0 12px; font-size: 13px; }
+.cov-table .cov { white-space: nowrap; }
+.cov-table .cov .ico { vertical-align: -2px; margin-right: 4px; }
+.cov-ok .ico { color: var(--ok); }
+.cov-gap .ico, .cov-gap_open .ico { color: var(--warn-mark); }
+.cov-gap_open span { color: var(--warn); }
+.cov-excluded, .cov-unused, .cov-not_applicable, .cov-unknown { color: var(--ink-2); }
+.cov-excluded .ico, .cov-unused .ico, .cov-not_applicable .ico, .cov-unknown .ico { color: var(--ink-3); }
+.cov-dev { font-weight: 500; }
+.cov-why { display: block; font-weight: 400; font-size: 12px; color: var(--ink-2); }
+.cov-pick { width: 28px; }
+.cov-actions { margin: 12px 0 0; }

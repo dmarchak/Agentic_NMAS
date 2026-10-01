@@ -217,8 +217,10 @@ if (typeof document !== 'undefined' && document.addEventListener) {
   });
   document.addEventListener('DOMContentLoaded', () => {
     const q = new URLSearchParams(window.location.search);
+    // Several devices arrive as repeated `device` parameters (Monitoring >
+    // Coverage's form) or one comma-separated value (a proposal's result).
     if (q.get('open') === 'profile_apply' && q.get('device')) {
-      openProfileApply(q.get('device'), q.get('list') || '');
+      openProfileApply(q.getAll('device').join(','), q.get('list') || '');
     }
   });
 }

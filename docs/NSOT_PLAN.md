@@ -4028,6 +4028,12 @@ integrations need, derived from the connectors the network uses, with ONE owner.
   preview sends nothing at all. Adopt applies it the same way: computed from the capture its
   preview reads, in its program and fingerprint, sent as the apply's `profile` step after the
   accounts and before the save, read back. (d), the batch Apply from the coverage view, is next.
+- **Step (d), the screens, BEGUN 2026-10-01** (MONITORING_PROFILE.md section 2): (d1)
+  Monitoring > Coverage in v2, its cells from committed goldens and its form opening the batch
+  preview for the ticked devices, BUILT. Next: (d2) the batch preview, confirm and result in v2,
+  drawn server-side from the six-part contract (today's renderer emits inline handlers, which
+  v2's strict policy refuses), with the rollout order; (d3) the device page's "monitored by"
+  section and its Apply.
 - **Next, from the operator's r6 run (2026-09-30):**
   - **The connectors are the PRIMARY source** (the design's own words, which (b) did not
     follow: it proposed only what the fleet already agrees on, which is circular on a network

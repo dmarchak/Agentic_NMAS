@@ -247,6 +247,141 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
     return out
 
 
+#: Monitoring > Coverage's columns (NSOT_GUI_BRIEF 14.3): each integration's
+#: words, the regex that finds it in a committed golden (CHECKS, plus IP SLA),
+#: and the profile section that supplies it.
+COLUMNS = (("snmp", "SNMP"), ("syslog", "Syslog"), ("heartbeat", "Heartbeat"),
+           ("telemetry", "Telemetry"), ("ip_sla", "IP SLA"))
+_IP_SLA = re.compile(r"^ip sla \d+", re.M)
+_SECTION_OF_COLUMN = {**SECTION_OF, "ip_sla": "ip_sla"}
+
+
+def _expected_columns(get) -> dict:
+    """``{column: connector}`` for what this network USES: SNMP and syslog as
+    `expected()` decides, telemetry when Telegraf's listener is set. IP SLA is
+    a per-device policy (MONITORING_PROFILE.md section 9, decision 5), never
+    expected of every device."""
+    out = dict(expected(get))
+    if str(get("telemetry_receiver", "") or "").strip():
+        out["telemetry"] = "Telegraf"
+    return out
+
+
+def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
+    """Monitoring > Coverage for one list: every device, each integration it is
+    CONFIGURED for from its committed golden, and what the list's monitoring
+    profile would supply where it is not (the operator's design, 14.3).
+
+    A cell's state is decided HERE, never in the browser: ``ok`` (configured),
+    ``gap`` (expected and missing, and the profile supplies it), ``gap_open``
+    (expected and missing, and the profile does not supply it, saying why),
+    ``excluded`` (the device's intent excludes it, with the reason),
+    ``unused`` (missing, and the network does not use it), ``unknown`` (the
+    golden could not be read: never "not configured"). A device is offered for
+    "Apply monitoring profile" when the profile applies to it; it starts ticked
+    when the profile supplies one of its gaps; one that cannot be offered says
+    why beside its box."""
+    from modules import prometheus_targets as P
+    from modules.nsot import hostvars
+    from modules.nsot import profile as _p
+    from modules.nsot import repo as R
+    from modules.nsot.platform import platform_for_device
+
+    if get is None:
+        from modules.settings_schema import get_setting as get
+    golden = golden or P.read_golden
+    want = _expected_columns(get)
+    if devices is None:
+        from modules.device import load_saved_devices
+        devices = [(ref, d) for d in load_saved_devices(ref.csv_path)]
+    try:
+        doc = _p.read_committed(ref.repo_dir)
+        prof = {"committed": bool(doc), "error": "",
+                "sections": sorted((doc or {}).get("sections") or {})}
+    except Exception as exc:                            # noqa: BLE001
+        doc, prof = None, {"committed": False, "error": f"{type(exc).__name__}: {exc}",
+                           "sections": []}
+    if prof["committed"]:
+        rc, out, _e = R.git(ref.repo_dir, "log", "-1", "--format=%h%x09%cI", "--", _p.PROFILE_REL)
+        sha, _, at = (out.strip().partition("\t") if rc == 0 else ("", "", ""))
+        prof.update(commit=sha, committed_at=at,
+                    sources={k: ((doc["sections"].get(k) or {}).get("source") or "")
+                             for k in prof["sections"]})
+    rows, covered = [], 0
+    for _ref, dev in devices:
+        host = (dev.get("hostname") or "").strip()
+        if not host:
+            continue
+        platform = platform_for_device(dev) or ""
+        role = (dev.get("role") or "").strip()
+        row = {"host": host, "platform": platform, "role": role, "cells": {}, "gaps": [],
+               "supplies": [], "selectable": False, "checked": False, "why_not": ""}
+        try:
+            text = golden(ref, host)
+            row["golden"] = "ok" if text else "none"
+        except Exception as exc:                        # noqa: BLE001
+            text, row["golden"] = None, "unreadable"
+            row["error"] = f"{type(exc).__name__}: {exc}"
+        try:
+            intent = hostvars.read_committed(ref.repo_dir, host)
+        except Exception:                               # noqa: BLE001
+            intent = None
+        if profile is not None:
+            view = profile(ref, dev)
+        else:
+            view = {"applies": set(_p.sections_for(doc, platform, role, intent)) if doc else set(),
+                    "excluded": _p.excluded(intent or {}), "error": prof["error"]}
+        have = configured(text) if text else {}
+        have["ip_sla"] = bool(text and _IP_SLA.search(text))
+        for key, words in COLUMNS:
+            section = _SECTION_OF_COLUMN[key]
+            if text is None:
+                cell = {"state": "unknown", "words": "golden unreadable"}
+            elif have.get(key):
+                cell = {"state": "ok", "words": "configured"}
+            elif section in (view.get("excluded") or {}):
+                cell = {"state": "excluded",
+                        "words": f"excluded: {view['excluded'][section]}"}
+            elif key not in want:
+                cell = {"state": "unused",
+                        "words": ("none (a policy per device)" if key == "ip_sla" else
+                                  "none (the network does not use it)")}
+            elif section in (view.get("applies") or ()):
+                cell = {"state": "gap", "words": "missing; the profile supplies it"}
+                row["supplies"].append(key)
+            elif section in prof["sections"]:
+                # The profile SCOPES the section away from this device (its
+                # platform or role): a decision, never a gap. Telemetry on a
+                # vIOS switch is the measured case: the platform cannot stream.
+                cell = {"state": "not_applicable",
+                        "words": f"none (the profile's {section} section is not for its "
+                                 f"platform or role)"}
+            else:
+                cell = {"state": "gap_open", "words": (
+                    "missing; there is no monitoring profile" if not doc else
+                    f"missing; the profile has no {section} section")}
+            if cell["state"] in ("gap", "gap_open"):
+                row["gaps"].append(key)
+            row["cells"][key] = cell
+        if text is not None and not row["gaps"]:
+            covered += 1
+        if prof["error"]:
+            row["why_not"] = f"the profile cannot be read ({prof['error']})"
+        elif not doc:
+            row["why_not"] = "the network has no monitoring profile yet"
+        elif intent is None:
+            row["why_not"] = f"{host} has no committed intent"
+        elif not view.get("applies"):
+            row["why_not"] = "no section of the profile applies to it (platform or role)"
+        else:
+            row["selectable"] = True
+            row["checked"] = bool(row["supplies"])
+        rows.append(row)
+    return {"list": ref.name, "columns": [{"key": k, "words": w, "connector": want.get(k, "")}
+                                          for k, w in COLUMNS],
+            "profile": prof, "devices": rows, "covered": covered, "total": len(rows)}
+
+
 def _iso_z(epoch) -> str:
     import time as _time
 

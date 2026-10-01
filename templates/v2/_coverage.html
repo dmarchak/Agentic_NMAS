@@ -1,0 +1,70 @@
+{%- from "v2/_macros.html" import icon, stamp -%}
+{#- Monitoring > Coverage (P.9 (d), NSOT_GUI_BRIEF 14.3). Every cell's state is
+    decided by modules/monitoring_coverage.fleet(); this draws it, in words and
+    an icon, never colour alone. The answer first: all covered is one line that
+    still makes the positive claim; otherwise how many lack something. -#}
+{%- set ICON = {'ok': 'check', 'gap': 'warn', 'gap_open': 'warn', 'excluded': 'info',
+                'unused': 'dot', 'not_applicable': 'dot', 'unknown': 'info'} -%}
+{%- set gaps = c.devices | selectattr('gaps') | list -%}
+{%- set unreadable = c.devices | selectattr('golden', 'equalto', 'unreadable') | list -%}
+{%- set used = c.columns | selectattr('connector') | list -%}
+{%- set offered = c.devices | selectattr('selectable') | list -%}
+<section class="card coverage" id="coverage" hx-get="{{ url_for('v2.coverage_table') }}"
+         hx-trigger="nmas:goldens from:body, nmas:intent from:body, nmas:job_health from:body" hx-swap="outerHTML">
+  {%- if not c.total %}
+  <p class="cov-head">{{ icon('info') }} {{ c.list }} has no devices.</p>
+  {%- elif not gaps and not unreadable %}
+  <p class="cov-head cov-head-ok">{{ icon('check') }} All {{ c.total }} devices are configured for everything the network uses{% if used %} ({% for col in used %}{{ col.words }} through {{ col.connector }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}.</p>
+  {%- else %}
+  <p class="cov-head cov-head-warn">{{ icon('warn') }} {{ gaps | length }} of {{ c.total }} devices lack something the network uses{% if unreadable %}, and {{ unreadable | length }} could not be read{% endif %}.</p>
+  {%- endif %}
+
+  {%- if c.profile.error %}
+  <div class="notice notice-danger">{{ icon('warn') }}<p>The network's monitoring profile cannot be read ({{ c.profile.error }}), so nothing can be applied until it is fixed.</p></div>
+  {%- elif c.profile.committed %}
+  <p class="muted cov-profile">The monitoring profile: commit <code>{{ c.profile.commit }}</code>, {{ stamp(c.profile.committed_at) }}. Sections: {% for s in c.profile.sections %}{{ s }}{% if c.profile.sources[s] %} (from {{ c.profile.sources[s] }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.</p>
+  {%- else %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ c.list }} has no monitoring profile yet, so nothing can be applied: propose one from the network's connectors first. <a href="{{ url_for('index', open='profile_propose', list=c.list) }}">Propose on today's page</a></p></div>
+  {%- endif %}
+
+  {%- if c.total %}
+  <form method="get" action="{{ url_for('index') }}" class="cov-form">
+    <input type="hidden" name="open" value="profile_apply">
+    <input type="hidden" name="list" value="{{ c.list }}">
+    <div class="table-wrap">
+      <table class="table cov-table">
+        <thead><tr>
+          <th scope="col"><span class="sr-only">Apply the profile</span></th>
+          <th scope="col">Device</th>
+          {%- for col in c.columns %}
+          <th scope="col">{{ col.words }}{% if col.connector %}<span class="muted cov-conn"> · {{ col.connector }}</span>{% endif %}</th>
+          {%- endfor %}
+        </tr></thead>
+        <tbody>
+          {%- for d in c.devices %}
+          <tr>
+            <td class="cov-pick">
+              {%- if d.selectable %}<input type="checkbox" name="device" value="{{ d.host }}" id="cov-{{ d.host }}"{% if d.checked %} checked{% endif %} aria-label="Apply the monitoring profile to {{ d.host }}">
+              {%- else %}<input type="checkbox" disabled aria-label="{{ d.host }} cannot receive the profile: {{ d.why_not }}">{% endif -%}
+            </td>
+            <th scope="row" class="cov-dev">
+              <a href="{{ url_for('device_v2.device', name=d.host) }}">{{ d.host }}</a>
+              <span class="muted"> · {{ d.platform or 'platform unknown' }}{{ ' · ' ~ d.role if d.role }}</span>
+              {%- if d.golden == 'none' %}<span class="cov-why">No committed golden: nothing shows it configured.</span>{% endif %}
+              {%- if d.golden == 'unreadable' %}<span class="cov-why">Its golden could not be read ({{ d.error }}): not the same as not configured.</span>{% endif %}
+              {%- if not d.selectable %}<span class="cov-why">Not offered: {{ d.why_not }}.</span>{% endif %}
+            </th>
+            {%- for col in c.columns %}{% set cell = d.cells[col.key] %}
+            <td class="cov cov-{{ cell.state }}">{{ icon(ICON[cell.state], 14) }}<span>{{ cell.words }}</span></td>
+            {%- endfor %}
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+    {%- if offered %}
+    <p class="cov-actions"><button type="submit" class="btn btn-primary">Preview applying the profile (today's page)…</button></p>
+    {%- endif %}
+  </form>
+  {%- endif %}
+</section>
