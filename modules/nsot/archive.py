@@ -15,6 +15,46 @@ import os
 log = logging.getLogger(__name__)
 
 
+#: The tag namespaces the tool creates, each meant for publication with its
+#: commit (`repo.save_golden`, `golden_state`).
+TOOL_TAG_PATTERNS = ("baseline/*", "golden/*", "golden-state/*")
+
+
+def unpushed_tool_tags(repo: str, remote: str = "origin", timeout: int = 30) -> list:
+    """The tool's tags that ``remote`` lacks and that name a commit HEAD holds,
+    sorted, leaving out a WITHDRAWN baseline (C177: deleted on the remote on
+    purpose). The publication reader's measurement; the push hook never
+    publishes from it. ``[]`` when the remote cannot be asked."""
+    from modules.nsot.record_exceptions import withdrawn_baseline
+    from modules.nsot.repo import git
+
+    rc, out, _ = git(repo, "tag", "-l", *TOOL_TAG_PATTERNS)
+    local = [t for t in out.splitlines() if t.strip()] if rc == 0 else []
+    if not local:
+        return []
+    import subprocess
+
+    try:
+        got = subprocess.run(["git", "-C", repo, "ls-remote", "--tags", remote],
+                             capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return []
+    if got.returncode != 0:
+        return []
+    there = {l.split("refs/tags/", 1)[1] for l in got.stdout.splitlines()
+             if "refs/tags/" in l and not l.endswith("^{}")}
+    out = []
+    for t in local:
+        if t in there:
+            continue
+        rc, sha, _ = git(repo, "rev-parse", f"{t}^{{commit}}")
+        if rc != 0 or withdrawn_baseline(sha.strip()):
+            continue
+        if git(repo, "merge-base", "--is-ancestor", sha.strip(), "HEAD")[0] == 0:
+            out.append(t)
+    return sorted(out)
+
+
 def push_hook(context: dict) -> dict:
     """Push to this LIST's remote, if there is one and auto-push is on.
 
@@ -60,6 +100,12 @@ def push_hook(context: dict) -> dict:
         if decision.get("held"):
             log.warning("archive: auto-push HELD for '%s': %s", list_name,
                         decision["reason"])
+            # RECORDED where the publication reader reads it (the operator,
+            # 2026-10-01): four held commits read as "not pushed" with no
+            # cause for four hours, the reason in this log line alone.
+            R.record_push_held(list_name, reason=decision["reason"],
+                               needs=decision.get("needs") or "",
+                               tags=context.get("tags") or [])
             return {"ok": False, "held": True, "error": (
                 f"auto-push held — {decision['reason']}. A person must "
                 f"re-acknowledge publication in the UI before this commit "
@@ -93,10 +139,20 @@ def push_hook(context: dict) -> dict:
                       "divergence manually; NMAS will not force-push")
         else:
             reason = err[:300]
-        R.record_push_failure(list_name, actor="auto-push", reason=reason)
+        R.record_push_failure(list_name, actor="auto-push", reason=reason,
+                              tags=context.get("tags") or [])
         return {"ok": False, "error": reason}
 
-    tags = [t for t in (context.get("tags") or []) if t]
+    # The tags this save created, AND the tags an earlier hook call NAMED and
+    # could not send (held, or a failed push: `pending_tags`). 2026-10-01: a
+    # baseline tagged while auto-push was held was never sent by the push
+    # that followed, which sent only ITS save's tags. Still named one by
+    # one, never computed from reachability: a tag nobody named (a withdrawn
+    # baseline deleted on the remote, an older tag) never rides along. A
+    # pending tag deleted here since is dropped.
+    pending = [t for t in (config.get("pending_tags") or [])
+               if git(repo, "rev-parse", "-q", "--verify", f"refs/tags/{t}")[0] == 0]
+    tags = sorted({t for t in (context.get("tags") or []) if t} | set(pending))
     pushed_tags = []
     for tag in tags:
         # One tag per invocation, so a single bad ref cannot take the others
@@ -122,9 +178,10 @@ def push_hook(context: dict) -> dict:
     # Tag-only iff the caller published tags for no devices -- which is
     # exactly `save_golden()`'s no-commit baseline path. A golden commit names
     # its changed devices; a template commit names no tags.
-    tag_only = bool(pushed_tags) and not context.get("devices")
+    tag_only = bool(context.get("tags")) and not context.get("devices")
     R.record_push(list_name, actor="auto-push", branch=branch, commit=head,
-                  tags=pushed_tags, kind="tags" if tag_only else "commit")
+                  tags=pushed_tags, kind="tags" if tag_only else "commit",
+                  pending=[t for t in tags if t not in pushed_tags])
 
     message = f"pushed to {branch}"
     if tags:

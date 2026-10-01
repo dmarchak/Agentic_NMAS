@@ -248,3 +248,58 @@ class TestItPublishesForReal:
                               capture_output=True, text=True).stdout.strip()
         assert "abandon: bp1" in head, (out, head)
         assert [(c["list_name"], c["sha"]) for c in fired] == [("Probe", head.split()[0])]
+
+
+def _unrecorded_failures(func_src: str) -> list:
+    """Every `return {"ok": False, ...}` in *func_src* not preceded, in its own
+    block, by a `record_push*` call: an outcome only the log would hold."""
+    import ast
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(func_src))
+    bad = []
+
+    def failing(node):
+        return (isinstance(node, ast.Return) and isinstance(node.value, ast.Dict)
+                and any(isinstance(k, ast.Constant) and k.value == "ok"
+                        and isinstance(v, ast.Constant) and v.value is False
+                        for k, v in zip(node.value.keys, node.value.values)))
+
+    def recorded(stmt):
+        return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                   and n.func.attr.startswith("record_push") for n in ast.walk(stmt))
+
+    for node in ast.walk(tree):
+        for field in ("body", "orelse", "handlers", "finalbody"):
+            block = getattr(node, field, None)
+            if not isinstance(block, list):
+                continue
+            for i, stmt in enumerate(block):
+                if failing(stmt) and not any(recorded(s) for s in block[:i]):
+                    bad.append(f"line {stmt.lineno}")
+    return bad
+
+
+def test_every_push_the_hook_does_not_make_is_recorded_where_the_reader_reads():
+    """The operator, 2026-10-01: four commits HELD at the publication gate for
+    four hours, the reason in the log alone, so the row said "not pushed" with
+    no cause. Every non-publishing exit of the push hook records itself
+    (`record_push_held`, `record_push_failure`), by AST over the hook."""
+    import inspect
+
+    from modules.nsot import archive
+
+    src = inspect.getsource(archive.push_hook)
+    assert src.count('"ok": False') >= 2, "the scan finds the hook's failing exits"
+    assert _unrecorded_failures(src) == []
+
+
+def test_the_scan_finds_an_unrecorded_failure():
+    planted = '''
+def hook(c):
+    if c:
+        return {"ok": False, "error": "held"}
+    R.record_push_failure("x", actor="a", reason="r")
+    return {"ok": False, "error": "failed"}
+'''
+    assert _unrecorded_failures(planted) == ["line 4"]

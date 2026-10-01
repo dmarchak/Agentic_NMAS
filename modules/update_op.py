@@ -482,8 +482,40 @@ def deferred() -> dict:
 
 
 def deferred_outcome() -> dict:
-    """How the last wait ended, ``{}`` when none has."""
-    return _read_json(DEFERRED_OUTCOME).get("value") or {}
+    """How the last wait ended, ``{}`` when none has. Its ``words`` are
+    computed now from the outcome and the target (`wait_end_words`), never the
+    sentence stored when it ended: that sentence says whatever the code that
+    wrote it promised (the operator, 2026-10-01: a stored "The next release
+    fixes it" outlived the change that removed the promise)."""
+    doc = _read_json(DEFERRED_OUTCOME).get("value") or {}
+    return dict(doc, words=wait_end_words(doc)) if doc else {}
+
+
+BOUND_WORDS = "the wait's bound"
+
+
+def wait_end_words(doc: dict) -> str:
+    """How a wait ended, in words built from its OUTCOME, its TARGET and the
+    one variable fact it recorded (``detail``: who stopped it, the newer
+    release, the refusal), never from stored prose."""
+    short = (doc.get("target") or "")[:10] or "the release"
+    o, detail = doc.get("outcome") or "", doc.get("detail") or ""
+    if o.startswith("ci_"):
+        return (person_ci({"state": o[3:], "tip": doc.get("target"), "sentence": detail},
+                          doc.get("target") or "")
+                + f"; nothing was updated (asked for {short})")
+    words = {
+        "requested": f"CI passed {short}; the update was requested",
+        "stopped": f"stopped{' by ' + detail if detail else ''}: nothing was updated",
+        "gave_up": (f"CI had not passed {short} within {detail or BOUND_WORDS}, "
+                    "so nothing was updated: Check again, then update"),
+        "superseded": (f"a newer release{' (' + detail + ')' if detail else ''} was pushed after "
+                       f"you asked for {short}, so nothing was updated: the page shows the newer one"),
+        "refused": f"CI passed {short}, but it was not updated" + (f": {detail}" if detail else ""),
+        "unreadable": ("the wait record could not be read" + (f" ({detail})" if detail else "")
+                       + "; nothing was updated"),
+    }
+    return words.get(o, f"it ended ({o or 'with no outcome recorded'}); nothing was updated")
 
 
 CI_GATE = "CI passed the target"
@@ -741,7 +773,7 @@ def stop_waiting(actor: str) -> dict:
         d = deferred()
         if not d:
             return {"ok": False, "reason": "nothing is waiting for CI"}
-        _end(d, "stopped", f"stopped by {actor}: nothing was updated")
+        _end(d, "stopped", actor)
     return {"ok": True}
 
 
@@ -753,12 +785,16 @@ def _audit(row: dict) -> None:
         log.error("update: %s could not be recorded in %s: %s", row, AUDIT, exc)
 
 
-def _end(d: dict, outcome: str, words: str, request_id: str = "") -> dict:
+def _end(d: dict, outcome: str, detail: str = "", request_id: str = "") -> dict:
+    """End the wait: the outcome, its target and its ONE variable fact
+    (``detail``). ``words`` is stored for the audit's reader, and never drawn:
+    the page computes them (`wait_end_words`)."""
     from modules.filestore import write_atomic
 
-    doc = {"outcome": outcome, "words": words, "target": d.get("target") or "",
+    doc = {"outcome": outcome, "detail": detail, "target": d.get("target") or "",
            "requested_by": d.get("requested_by") or "", "requested_at": d.get("requested_at") or "",
            "ended_at": _now(), **({"request_id": request_id} if request_id else {})}
+    words = doc["words"] = wait_end_words(doc)
     write_atomic(DEFERRED_OUTCOME, json.dumps(doc, sort_keys=True))
     try:
         os.remove(DEFERRED)
@@ -781,41 +817,33 @@ def release_deferred(clock=time.time, **plan_kw):
         if not d:
             return None
         if d.get("unreadable"):
-            return _end({}, "unreadable", f"the wait record could not be read ({d['unreadable']}); "
-                                          "nothing was updated")
+            return _end({}, "unreadable", d["unreadable"])
         target = str(d.get("target") or "")
-        short = target[:10]
         try:
             asked = calendar.timegm(time.strptime(str(d.get("requested_at")), "%Y-%m-%dT%H:%M:%SZ"))
         except ValueError:
-            return _end(d, "unreadable", "the wait record has no readable time; nothing was updated")
+            return _end(d, "unreadable", "it has no readable time")
         if clock() - asked > int(d.get("bound_s") or DEFER_BOUND_S):
-            return _end(d, "gave_up", f"CI had not passed {short} after "
-                                      f"{int(d.get('bound_s') or DEFER_BOUND_S) // 60} min, so "
-                                      "nothing was updated: Check again, then update")
+            return _end(d, "gave_up", f"{int(d.get('bound_s') or DEFER_BOUND_S) // 60} min")
         p = plan(waiting={}, **plan_kw)
         f, ci = p["facts"], p["facts"]["ci"] or {}
         if f["target"] and f["target"] != target:
-            return _end(d, "superseded", f"a newer release, {f['target'][:10]}, was pushed after "
-                                         f"you asked for {short}, so nothing was updated: the "
-                                         "page shows the newer one")
+            return _end(d, "superseded", f["target"][:10])
         if ci.get("tip") != target or ci.get("state") in ("pending", "could_not_ask", None):
             return None
         if ci.get("state") != "verified":
-            return _end(d, f"ci_{ci.get('state')}", person_ci(ci, target)
-                        + f"; nothing was updated (asked for {short})")
+            run = re.search(r"run #(\d+)", ci.get("sentence") or "")
+            return _end(d, f"ci_{ci.get('state')}", f"run #{run.group(1)}" if run else "")
         if not p["selectable"]:
-            return _end(d, "refused", f"CI passed {short}, but it was not updated: "
-                                      + p["why_not"])
+            return _end(d, "refused", p["why_not"])
         bad, ack = step_gate(f["host_steps"], d.get("acknowledged_host_steps") or [])
         if bad:
-            return _end(d, "refused", f"CI passed {short}, but it was not updated: {bad}")
+            return _end(d, "refused", bad)
         # The request is the updater's exact fields (its validate() refuses any
         # other), dated now; the wait itself is in this app's audit and the
         # outcome record.
         got = _write_request(p, ack, d.get("requested_by") or "")
-        return _end(d, "requested", f"CI passed {short}; the update was requested",
-                    request_id=got["id"])
+        return _end(d, "requested", request_id=got["id"])
 
 
 def status() -> dict:

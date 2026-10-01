@@ -788,7 +788,7 @@ def acknowledgement_covers(list_name: str, repo_dir: str = "") -> dict:
 
 
 def record_push(list_name: str, *, actor: str, branch: str = "",
-                commit: str = "", tags=None, kind: str = "commit") -> dict:
+                commit: str = "", tags=None, kind: str = "commit", pending=None) -> dict:
     """Record a SUCCESSFUL push. The one producer of ``last_push``.
 
     Two code paths push: :func:`push` (the button) and
@@ -817,13 +817,27 @@ def record_push(list_name: str, *, actor: str, branch: str = "",
         "tags": list(tags or []),
     }
     # A previous failure is cleared by a success: leaving it would have the
-    # card reporting a problem that has since been fixed.
+    # card reporting a problem that has since been fixed. So is a hold.
     config.pop("last_push_failure", None)
+    config.pop("auto_push_held", None)
+    # Tags a hook call named and this push could not send stay pending.
+    if pending:
+        config["pending_tags"] = sorted(set(pending))
+    else:
+        config.pop("pending_tags", None)
     save_remote(list_name, config)
     return {"ok": True, "last_push": config["last_push"]}
 
 
-def record_push_failure(list_name: str, *, actor: str, reason: str) -> dict:
+def _keep_pending(config: dict, tags) -> None:
+    """Tags a hook call NAMED and did not send, kept for the next push (the
+    caller named them; nothing is computed from reachability)."""
+    keep = set(config.get("pending_tags") or []) | {t for t in (tags or []) if t}
+    if keep:
+        config["pending_tags"] = sorted(keep)
+
+
+def record_push_failure(list_name: str, *, actor: str, reason: str, tags=None) -> dict:
     """Record a FAILED push — deliberately not as ``last_push``.
 
     A timestamp on a push that did not happen is the worst kind of record:
@@ -841,8 +855,36 @@ def record_push_failure(list_name: str, *, actor: str, reason: str) -> dict:
         "by": actor,
         "reason": (reason or "")[:400],
     }
+    _keep_pending(config, tags)
     save_remote(list_name, config)
     return {"ok": True, "last_push_failure": config["last_push_failure"]}
+
+
+def record_push_held(list_name: str, *, reason: str, needs: str = "",
+                     tags=None) -> dict:
+    """Record that auto-push HELD a commit at the publication gate (the
+    operator, 2026-10-01: four commits sat on the host for four hours and the
+    reason was in the log alone, so the row said "not pushed" and its action,
+    Push now, could not work until a person re-acknowledged). The reader draws
+    it; the next successful push clears it. *tags* are the tags the held
+    commit created, kept as ``pending_tags`` so the push that follows sends
+    them."""
+    from datetime import datetime, timezone
+
+    config = load_remote(list_name)
+    if not config:
+        return {"ok": False, "error": f"'{list_name}' has no remote configured"}
+    was = config.get("auto_push_held") or {}
+    config["auto_push_held"] = {
+        # SINCE the first hold, not the latest: the row's age is how long a
+        # person has been needed.
+        "since": was.get("since") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "reason": (reason or "")[:400], "needs": needs or "",
+    }
+    _keep_pending(config, tags)
+    save_remote(list_name, config)
+    return {"ok": True, "auto_push_held": config["auto_push_held"]}
 
 
 def push(list_name: str, *, actor: str, repo_dir: str = "") -> dict:

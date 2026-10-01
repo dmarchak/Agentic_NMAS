@@ -38,6 +38,12 @@ INTERVAL_SECONDS = 120
 #: the session closed. So the bound is wider than 2.5x the sample, until there
 #: are more samples; a timeout reads as `not_asked`, never as in sync.
 LS_REMOTE_TIMEOUT_S = 10
+#: An unpushed commit with no hold is LATE past this: the push hook sends a
+#: commit within seconds (on the host, 3887670: committed 22:23:35, pushed
+#: 22:23:39 on 2026-09-29), and this reader re-reads after each commit and
+#: every 120 s, so five reads that still find it are not lag (the operator,
+#: 2026-10-01: four hours of amber was too quiet).
+UNPUSHED_DANGER_S = 5 * INTERVAL_SECONDS
 LOCAL_GIT_TIMEOUT_S = 15
 
 
@@ -76,7 +82,31 @@ def _record(list_dir: str):
 
 
 def judge(repo: str, list_dir: str) -> dict:
-    """One list's publication state. Never raises for a git failure: it names it."""
+    """One list's publication state. Never raises for a git failure: it names it.
+
+    Beside the branch: a HOLD the push hook recorded (``held``, and whether a
+    person acknowledged publication since, ``acknowledged_since_hold``), and
+    the tool's tags the remote lacks (``tags_not_pushed``): a branch in step
+    with a baseline tag left on the host is not published (2026-10-01)."""
+    out = _judge_heads(repo, list_dir)
+    _state, config = _record(list_dir)
+    held = (config or {}).get("auto_push_held") or {}
+    if held:
+        out["held"] = held
+        ack = ((config or {}).get("acknowledged_secrets") or {}).get("at") or ""
+        out["acknowledged_since_hold"] = bool(ack and ack > (held.get("at") or ""))
+    if out.get("state") in ("in_sync", "ahead"):
+        from modules.nsot.archive import unpushed_tool_tags
+
+        rc, origin, _ = _git(repo, "remote", "get-url", "origin")
+        if rc == 0 and origin:
+            out["tags_not_pushed"] = unpushed_tool_tags(repo, "origin",
+                                                        timeout=LS_REMOTE_TIMEOUT_S)
+    return out
+
+
+def _judge_heads(repo: str, list_dir: str) -> dict:
+    """The branch half of `judge`."""
     from modules.nsot.remote import remote_url
 
     record, config = _record(list_dir)
@@ -203,19 +233,42 @@ def describe(pub: dict, now: float = None) -> dict:
     if state == "no_remote":
         return {"level": "secondary", "state": state,
                 "clause": "no remote: the history is on this host only", "detail": ""}
+    tags = list(pub.get("tags_not_pushed") or [])
+    tag_words = (f"{len(tags)} tag(s) not on it ({', '.join(tags[:3])}"
+                 + (", …" if len(tags) > 3 else "") + ")") if tags else ""
+    if state == "in_sync" and tags and not unreadable:
+        return {"level": "warning", "state": "tags_not_pushed",
+                "clause": f"and its commits pushed to {remote}, but {tag_words}",
+                "detail": "; ".join(x for x in (heads, asked) if x)}
     if state == "in_sync":
         return {"level": "danger" if unreadable else "success", "state": state,
                 "clause": f"and pushed to {remote}" + record,
                 "detail": "; ".join(x for x in (heads, asked) if x)}
     if state == "ahead":
         n = pub.get("ahead", 0)
-        age = age_words(now - pub["oldest_at"]) if pub.get("oldest_at") else "unknown age"
-        return {"level": "danger" if unreadable else "warning", "state": state,
-                "clause": (f"{n} commit(s) not pushed to {remote} (oldest: "
-                           f"{str(pub.get('oldest_sha', ''))[:7]}, {age})" + record),
-                "detail": "; ".join(x for x in (heads, asked,
-                                                 f"oldest: {pub.get('oldest_subject', '')}")
-                                    if x)}
+        waited = now - pub["oldest_at"] if pub.get("oldest_at") else None
+        age = age_words(waited) if waited is not None else "unknown age"
+        head_clause = (f"{n} commit(s) not pushed to {remote} (oldest: "
+                       f"{str(pub.get('oldest_sha', ''))[:7]}, {age})")
+        detail = "; ".join(x for x in (heads, asked, f"oldest: {pub.get('oldest_subject', '')}",
+                                       tag_words) if x)
+        held = pub.get("held") or {}
+        if held:
+            # The push hook HELD it at the publication gate: nothing will send
+            # it until a person decides, so it is red at once, with the gate's
+            # reason and the real remedy (the operator, 2026-10-01).
+            why = ("publication was acknowledged since, so Push now sends them"
+                   if pub.get("acknowledged_since_hold") else
+                   f"{held.get('reason') or 'what would be published grew'}; a person "
+                   "acknowledges publication on the Remote card, then pushes")
+            return {"level": "danger", "state": "held",
+                    "clause": f"{head_clause}: auto-push is HELD, {why}" + record,
+                    "detail": detail}
+        late = waited is not None and waited >= UNPUSHED_DANGER_S
+        return {"level": "danger" if unreadable or late else "warning", "state": state,
+                "clause": head_clause + (": auto-push has not sent it, and a commit "
+                                         "pushes within seconds" if late else "") + record,
+                "detail": detail}
     if state == "no_branch":
         return {"level": "warning", "state": state,
                 "clause": (f"none of its {pub.get('ahead', 0)} commit(s) is on {remote}: the "

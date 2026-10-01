@@ -328,7 +328,12 @@ tracked in git.
   job health's running-version row and computes none of them.
   `readers/remote_publication.py` (C223) compares each list repository's HEAD
   with the REMOTE's own branch (`git ls-remote` through the repository's own
-  `origin`, never the push hook's record) every 120 s and after every commit;
+  `origin`, never the push hook's record) every 120 s and after every commit,
+  and the tool's tags the remote lacks. A push the hook HELD at the publication gate
+  (C278) is recorded (`remote.record_push_held`) and drawn red at once with its reason and
+  "acknowledge, then push"; an unpushed commit with no hold is red past 10 min; a tag
+  a hook call named and could not send is kept (`pending_tags`) and sent by the next push,
+  never computed from what the remote lacks (a withdrawn baseline would ride along);
   its one sentence, `describe()`, is drawn by the Git tab ("Everything is
   committed · N commit(s) not pushed…"), the Remote card and Needs attention.
   `readers/reachability.py` (C92) probes every list's devices every 5 s and

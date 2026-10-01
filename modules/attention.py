@@ -1441,7 +1441,23 @@ def remote_source(cached=None) -> dict:
         if said["state"] == "no_remote":
             continue
         remote = pub.get("remote") or "its remote"
-        if said["state"] == "ahead":
+        if said["state"] == "held":
+            what = (f"{pub.get('ahead', 0)} commit(s) on {name} held back from {remote}: "
+                    "auto-push needs a person")
+            since = _ts((pub.get("held") or {}).get("since")) or pub.get("oldest_at")
+            action = {"label": (
+                "Push now, on the Remote card (the Devices tab, below the device list): "
+                "publication was acknowledged since the hold"
+                if pub.get("acknowledged_since_hold") else
+                "On the Remote card (the Devices tab, below the device list), read what "
+                "would be published, acknowledge it, then Push now. Until then nothing is "
+                "pushed, by design: auto-push never widens what is published")}
+        elif said["state"] == "tags_not_pushed":
+            what = f"{len(pub.get('tags_not_pushed') or [])} tag(s) on {name} not on {remote}"
+            since = None
+            action = {"label": "Push now, on the Remote card (the Devices tab, below the "
+                               "device list): it sends every tag with the branch"}
+        elif said["state"] == "ahead":
             what = f"{pub.get('ahead', 0)} commit(s) on {name} not pushed to {remote}"
             since = pub.get("oldest_at")
             action = {"label": "Push now, on the Remote card: the Devices tab, below the "

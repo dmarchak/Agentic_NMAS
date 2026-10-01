@@ -438,3 +438,67 @@ class TestAnEndedWaitForAnotherReleaseIsHistory:
         earlier = html[html.index('id="update-history"'):]
         assert 'id="update-wait-ended-earlier"' in earlier and "bbbbbbbbbb" in earlier
         assert "CI failed for this release" in earlier
+
+
+class TestAnEndedWaitIsWordedNowNeverFromItsStoredSentence:
+    """The operator, 2026-10-01: the host's ended wait still carried "The next
+    release fixes it", a promise 8f1676c removed from the code; a page drawing
+    the stored sentence repeats it for ever. The words are computed from the
+    outcome, the target and the one fact recorded beside them."""
+
+    HOST = {"ended_at": "2026-10-01T03:00:23Z", "outcome": "ci_failed",
+            "target": "9fd781bcbfa42783f835df532856d26386ac8125",
+            "words": "CI failed for this release: it will not be installed. The next release "
+                     "fixes it; nothing was updated (asked for 9fd781bcbf)"}
+
+    def test_the_hosts_record_is_drawn_without_the_removed_promise(self, store):
+        import app as A
+        from modules import update_op
+        (store / "deferred_outcome.json").write_text(json.dumps(self.HOST))
+        for ended in (update_op.deferred_outcome(), update_op.status()["wait_ended"]):
+            assert "next release fixes it" not in ended["words"]
+            assert ended["words"].startswith("CI failed for this release: it will not be "
+                                             "installed. A fix needs a new release")
+            assert ended["words"].endswith("nothing was updated (asked for 9fd781bcbf)")
+        html = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
+        assert "next release fixes it" not in html
+
+    def test_a_new_ending_records_its_fact_and_draws_its_run(self, store):
+        from modules import update_op
+        _defer()
+        ended = update_op.release_deferred(**_kw(ci={"tip": "b" * 40, "state": "failed",
+                                                     "sentence": "FAILED: run #245"}))
+        stored = json.loads((store / "deferred_outcome.json").read_text())
+        assert stored["detail"] == "run #245"
+        assert "CI failed for this release (run #245)" in update_op.deferred_outcome()["words"]
+        assert ended["words"] == update_op.deferred_outcome()["words"]
+
+    @pytest.mark.parametrize("outcome,detail,said", [
+        ("stopped", "p@example.invalid", "stopped by p@example.invalid: nothing was updated"),
+        ("superseded", "dddddddddd", "a newer release (dddddddddd) was pushed"),
+        ("gave_up", "25 min", "within 25 min"),
+        ("refused", "M app.py", "it was not updated: M app.py"),
+        ("requested", "", "the update was requested"),
+        ("mystery", "", "it ended (mystery)")])
+    def test_each_outcome_has_its_words(self, outcome, detail, said):
+        from modules import update_op
+        assert said in update_op.wait_end_words({"outcome": outcome, "detail": detail,
+                                                 "target": "b" * 40, "words": "STORED"})
+
+    def test_a_page_restored_from_the_back_forward_cache_is_loaded_again(self):
+        """One path fits every measurement of the host (no wait recorded, no
+        request since 04:59, the shipped page drawing no button in a real
+        browser): a tab left on the 02:53 wait, restored by the browser with its
+        script state "waiting". The SHIPPED frame reloads a restored page, and
+        leaves a fresh one alone (the control)."""
+        import dukpy
+        src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "static", "js", "nmas_v2.js"), encoding="utf-8").read()
+        out = dukpy.evaljs(
+            "var reloads = 0, handlers = {};\n"
+            "var window = {location: {reload: function () { reloads++; }},"
+            " addEventListener: function (k, f) { handlers[k] = f; }};\n" + src +
+            "\nhandlers.pageshow({persisted: false}); var fresh = reloads;"
+            "\nhandlers.pageshow({persisted: true});"
+            "\nJSON.stringify([fresh, reloads]);")
+        assert json.loads(out) == [0, 1]

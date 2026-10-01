@@ -1205,6 +1205,38 @@ class TestClickingTheShippedButton:
                            "return w && getComputedStyle(w).display !== 'none' && w.textContent")
         assert words.startswith("Waiting for CI: the update to bbbbbbbbbb starts when CI passes")
 
+    @pytest.mark.parametrize("selectable", [True, False])
+    def test_no_wait_in_force_draws_no_stop_waiting(self, served_update, monkeypatch,
+                                                     tmp_path, selectable):
+        """The operator, 2026-10-01: "Stop waiting" was drawn with no wait
+        requested. The host's state: a leftover `deferred.json.lock`, an ended
+        outcome for an older release, no `deferred.json`. The REAL plan's
+        waiting field, the shipped page, a real browser."""
+        from modules import update_op
+        b = served_update["b"]
+        d = tmp_path / "update"
+        d.mkdir()
+        (d / "deferred.json.lock").write_text("")
+        (d / "deferred_outcome.json").write_text(json.dumps({
+            "ended_at": "2026-10-01T03:00:23Z", "outcome": "ci_failed", "target": "9" * 40,
+            "words": "CI failed for this release: it will not be installed. The next release "
+                     "fixes it; nothing was updated (asked for 9999999999)"}))
+        monkeypatch.setattr(update_op, "DEFERRED", str(d / "deferred.json"))
+        monkeypatch.setattr(update_op, "DEFERRED_OUTCOME", str(d / "deferred_outcome.json"))
+        assert update_op.deferred() == {}, "the lock file is not a wait"
+        p = dict(_plan(), waiting=update_op.deferred(), selectable=selectable, waitable=False)
+        monkeypatch.setattr(update_op, "plan", lambda **kw: p)
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
+                   "&& !document.querySelector('#update-confirm').hasAttribute('x-cloak') "
+                   "&& document.querySelector('#update-confirm')._x_dataStack !== undefined "
+                   "|| (window.Alpine && document.querySelector('#update-panel'))")
+        b.wait_for("return !document.querySelector('[x-cloak]') || "
+                   "!document.querySelector('#update-stop-waiting').hasAttribute('x-cloak')")
+        shown = b.js("var s=document.querySelector('#update-stop-waiting');"
+                     "return s ? getComputedStyle(s).display : 'absent'")
+        assert shown in ("none", "absent"), shown
+
     def test_check_again_on_about_answers_in_words(self, served_update):
         b = served_update["b"]
         b.go(served_update["srv"].url("/v2/help/about"))

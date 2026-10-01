@@ -74,8 +74,11 @@ class TestEachStateFromRealRepositories:
         assert (out["state"], out["ahead"], out["oldest_sha"]) == ("ahead", 1, abandon)
         assert abs(out["oldest_at"] - int(when)) < 2
         said = P.describe(out, now=int(when) + 12 * 60)
-        assert said["level"] == "warning"
-        assert said["clause"] == f"1 commit(s) not pushed to acct/nsot (oldest: {abandon[:7]}, 12 min)"
+        # Twelve minutes is past UNPUSHED_DANGER_S (2026-10-01): not lag, red.
+        assert said["level"] == "danger"
+        assert said["clause"] == (f"1 commit(s) not pushed to acct/nsot (oldest: {abandon[:7]}, "
+                                  "12 min): auto-push has not sent it, and a commit pushes "
+                                  "within seconds")
 
     def test_the_next_pushed_commit_sends_both(self, lab):
         """The operator's acceptance: after the fix, the next commit's push
@@ -196,7 +199,7 @@ class TestNeedsAttention:
         out = remote_source(cached=self._cached({"Default": {
             "state": "ahead", "ahead": 1, "remote": "acct/nsot", "branch": "main",
             "head": "7a72258" + "0" * 33, "remote_head": "cf4d96d" + "0" * 33,
-            "oldest_sha": "7a72258" + "0" * 33, "oldest_at": time.time() - 720,
+            "oldest_sha": "7a72258" + "0" * 33, "oldest_at": time.time() - 300,
             "oldest_subject": "abandon: R10 - onboarding withdrawn", "asked_at": time.time(),
             "record": "ok"}}))
         (r,) = out["rows"]
@@ -239,7 +242,7 @@ class TestTheScreensDrawTheOneSentence:
         esc = lift(shipped("partials__golden_repo.1.js"), "_gEsc")
         js = esc + "\n" + lift(src, "remotePublicationHtml")
         said = P.describe({"state": "ahead", "ahead": 1, "remote": "a/<b>",
-                           "oldest_sha": "7a72258", "oldest_at": 100}, now=820)
+                           "oldest_sha": "7a72258", "oldest_at": 100}, now=400)
         html = dukpy.evaljs(js + f"\nremotePublicationHtml({json.dumps(said)})")
         assert "alert-warning" in html and "1 commit(s) not pushed to a/&lt;b&gt;" in html
         assert "<b>" not in html
@@ -265,12 +268,12 @@ class TestTheScreensDrawTheOneSentence:
                                 "[els.gitStatusBar.className, els.gitStatusText.innerHTML]")
         ahead = P.describe({"state": "ahead", "ahead": 1, "remote": "acct/nsot",
                             "branch": "main", "head": "7a72258", "remote_head": "cf4d96d",
-                            "oldest_sha": "7a72258", "oldest_at": 100}, now=820)
+                            "oldest_sha": "7a72258", "oldest_at": 100}, now=400)
         cls, html = draw({"initialised": True, "ok": True, "uncommitted": [],
                           "last_commit": "7a72258 abandon: R10", "publication": ahead})
         assert "alert-warning" in cls
         assert "<strong>Everything is committed</strong> · <span title=" in html
-        assert ">1 commit(s) not pushed to acct/nsot (oldest: 7a72258, 12 min)</span>." in html
+        assert ">1 commit(s) not pushed to acct/nsot (oldest: 7a72258, 5 min)</span>." in html
         assert "HEAD 7a72258, acct/nsot main at cf4d96d" in html, "the evidence, on hover"
         synced = P.describe({"state": "in_sync", "remote": "acct/nsot"})
         cls, html = draw({"initialised": True, "ok": True, "uncommitted": [],
@@ -311,3 +314,112 @@ class TestAManualPushReReads:
         monkeypatch.setattr(P, "refresh_hook", lambda ctx: ran.set())
         RR._reread_publication()
         assert ran.wait(5), "the push did not re-read the remote"
+
+
+class TestAHeldPushIsSaidAndItsTagsFollow:
+    """The operator, 2026-10-01: four commits sat on the host for four hours.
+    Every one was HELD at the publication gate (r6's golden had gained an SNMP
+    community), the reason was in the log alone, and the row said "not
+    pushed" with Push now as its action, which could not work until a person
+    re-acknowledged. And the baseline tagged while held would not have been
+    sent by the next automatic push, which sent only its own save's tags.
+    Driven through the REAL push hook against real repositories."""
+
+    @pytest.fixture
+    def hooked(self, lab, monkeypatch):
+        from modules.nsot import remote as R
+        monkeypatch.setattr("modules.config.get_list_data_dir",
+                            lambda name: lab["dir"] if name == "default" else "/nonexistent")
+        cfg = json.loads(open(os.path.join(lab["dir"], "remote.json")).read())
+        cfg["auto_push"] = True
+        R.save_remote("default", cfg)
+        lab["decision"] = {"push": False, "held": True, "needs": "re-acknowledgement",
+                           "reason": "what would be published has grown since it was "
+                                     "acknowledged: more snmp_community"}
+        monkeypatch.setattr(R, "auto_push_decision", lambda *a, **k: lab["decision"])
+        return lab
+
+    def _hook(self, lab, tags=()):
+        from modules.nsot import archive
+        return archive.push_hook({"repo": lab["repo"], "list_name": "default",
+                                  "tags": list(tags), "devices": ["r6"]})
+
+    def _remote_tags(self, lab):
+        return {l.split("refs/tags/")[1] for l in
+                _g(lab["repo"], "ls-remote", "--tags", "origin").splitlines()
+                if not l.endswith("^{}")}
+
+    def test_the_hold_is_recorded_drawn_red_and_its_action_is_to_acknowledge(self, hooked):
+        from modules import attention
+        _commit(hooked["repo"], "profile")
+        _push(hooked)
+        _commit(hooked["repo"], "r6", when=time.time() - 60)
+        out = self._hook(hooked, tags=[])
+        assert out["held"] is True
+        pub = P.judge(hooked["repo"], hooked["dir"])
+        assert "more snmp_community" in pub["held"]["reason"]
+        said = P.describe(pub)
+        assert said["level"] == "danger" and said["state"] == "held"
+        assert "auto-push is HELD" in said["clause"] and "more snmp_community" in said["clause"]
+        assert "acknowledges publication" in said["clause"]
+        cached = {"state": "ok", "doc": {"last_good": {"value": {"lists": {"Default": pub}},
+                                                        "value_at": time.time()}}}
+        (row,) = attention.remote_source(cached=cached)["rows"]
+        assert row["level"] == "danger" and "held back" in row["what"]
+        assert "acknowledge it, then Push now" in row["action"]["label"]
+
+    def test_acknowledged_since_the_hold_says_push_now(self, hooked):
+        from modules.nsot import remote as R
+        _commit(hooked["repo"], "a")
+        _push(hooked)
+        _commit(hooked["repo"], "b")
+        self._hook(hooked)
+        cfg = R.load_remote("default")
+        cfg["acknowledged_secrets"] = {"at": "2999-01-01T00:00:00Z"}
+        R.save_remote("default", cfg)
+        said = P.describe(P.judge(hooked["repo"], hooked["dir"]))
+        assert "acknowledged since, so Push now sends them" in said["clause"]
+
+    def test_a_tag_made_while_held_goes_with_the_next_automatic_push(self, hooked):
+        from modules.nsot import remote as R
+        _commit(hooked["repo"], "a")
+        _push(hooked)
+        _commit(hooked["repo"], "save-all")
+        _g(hooked["repo"], "tag", "-a", "baseline/20261001T050133Z", "-m", "b")
+        self._hook(hooked, tags=["baseline/20261001T050133Z"])          # held
+        assert "baseline/20261001T050133Z" not in self._remote_tags(hooked)
+        assert P.judge(hooked["repo"], hooked["dir"])["tags_not_pushed"] == \
+            ["baseline/20261001T050133Z"]
+        # Controls: a tag outside the tool's namespaces, and one naming a
+        # commit this push does not publish, never ride along.
+        _g(hooked["repo"], "tag", "-a", "manual/x", "-m", "m")
+        _g(hooked["repo"], "checkout", "-q", "-b", "side")
+        _commit(hooked["repo"], "side")
+        _g(hooked["repo"], "tag", "-a", "golden/r9/off-branch", "-m", "o")
+        _g(hooked["repo"], "checkout", "-q", "main")
+        hooked["decision"] = {"push": True, "reason": "acknowledgement still covers this"}
+        _commit(hooked["repo"], "next")
+        out = self._hook(hooked, tags=[])                                # the NEXT commit
+        assert out["ok"] is True and "baseline/20261001T050133Z" in out["tags_pushed"]
+        there = self._remote_tags(hooked)
+        assert "baseline/20261001T050133Z" in there
+        assert "manual/x" not in there and "golden/r9/off-branch" not in there
+        assert "auto_push_held" not in R.load_remote("default"), "a push clears the hold"
+        assert P.describe(P.judge(hooked["repo"], hooked["dir"]))["state"] == "in_sync"
+
+    def test_in_step_with_a_tag_left_on_the_host_is_not_published(self, hooked):
+        _commit(hooked["repo"], "a")
+        _g(hooked["repo"], "tag", "-a", "baseline/1", "-m", "b")
+        _push(hooked)
+        said = P.describe(P.judge(hooked["repo"], hooked["dir"]))
+        assert said["state"] == "tags_not_pushed" and said["level"] == "warning"
+        assert "1 tag(s) not on it (baseline/1)" in said["clause"]
+
+    def test_an_unpushed_commit_with_no_hold_is_red_once_it_is_not_lag(self):
+        base = {"state": "ahead", "ahead": 1, "oldest_sha": "abcdef0", "remote": "acct/nsot",
+                "head": "h", "remote_head": "r", "branch": "main"}
+        now = 10_000.0
+        fresh = P.describe(dict(base, oldest_at=now - 60), now=now)
+        late = P.describe(dict(base, oldest_at=now - P.UNPUSHED_DANGER_S), now=now)
+        assert fresh["level"] == "warning" and "has not sent it" not in fresh["clause"]
+        assert late["level"] == "danger" and "auto-push has not sent it" in late["clause"]

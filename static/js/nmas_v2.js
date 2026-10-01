@@ -193,6 +193,19 @@
     });
   }
 
+  /* A page the browser RESTORES from its back/forward cache comes back with its
+     script state as it was left, and its live channel closed: a wait that
+     ended hours ago still reads "waiting", with Stop waiting beside it (the
+     operator, 2026-10-01). Every v2 page draws live state, so a restored one
+     is loaded again rather than shown as it was. */
+  function reloadIfRestored(e, loc) {
+    if (e && e.persisted) { loc.reload(); return true; }
+    return false;
+  }
+  if (root.addEventListener && root.location) {
+    root.addEventListener('pageshow', function (e) { reloadIfRestored(e, root.location); });
+  }
+
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('alpine:init', registerAlpine);
     root.document.addEventListener('DOMContentLoaded', function () {
@@ -212,5 +225,6 @@
     });
   }
 
-  root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS};
+  root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
+                  reloadIfRestored: reloadIfRestored};
 })(typeof window !== 'undefined' ? window : this);

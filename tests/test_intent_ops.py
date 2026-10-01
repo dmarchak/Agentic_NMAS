@@ -141,7 +141,11 @@ class TestRevertApply:
         msg = _git(lab["repo"], "log", "-1", "--format=%B")
         assert "Source: revert" in msg and f"Reverts: {lab['a']}" in msg
         assert f"Actor: {TEST_PERSON}" in msg and "Actor-Verified: access" in msg
-        assert "abc" not in res["record"]["statement"] and "Source: revert" in \
+        # The statement names the revert commit, as git records it. (It asserted
+        # `"abc" not in` the statement, a needle nothing planted: CI run #249's
+        # commit was eabc1973..., and a 3-hex needle hits a sha ~1 time in 100.)
+        head = _git(lab["repo"], "rev-parse", "HEAD").strip()
+        assert head[:12] in res["record"]["statement"] and "Source: revert" in \
             res["record"]["statement"]
         assert "What was reverted" in render_result(res)
 
