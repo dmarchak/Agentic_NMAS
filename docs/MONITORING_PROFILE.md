@@ -37,6 +37,25 @@ where they already live, and nothing in the profile is platform text. A section 
 `roles:` where it applies to some roles only (IP SLA policy: `router`). That makes C225's
 role data load-bearing, and it is corrected through `modules/inventory_edit.py`.
 
+**The connectors are the PRIMARY source, built 2026-09-30** (the operator: step (b)'s first
+version proposed only what the fleet's intent already agreed on, which is circular, and a
+network the tool has never seen has nothing to agree on). `profile_propose.connector_value()`
+derives each section from its connector's settings:
+- syslog and the heartbeat from `syslog_host`, `syslog_trap_level`, `syslog_origin_id`,
+  `syslog_source_interface` and `syslog_heartbeat_seconds`;
+- SNMP from snmp_exporter's auth module (`snmp_exporter_config`, `snmp_exporter_auth`: the
+  community it polls with, read in memory and never shown) and `snmp_trap_host`;
+- NTP from `ntp_servers`;
+- telemetry from Telegraf's listener (`telemetry_receiver`), with the fleet's measured
+  subscriptions, IOS-XE only;
+- LLDP from the lldp scrape.
+
+The fleet is then the CROSS-CHECK. A device holding another version is named with what it
+gains and what it keeps (its own value wins), and a device whose own stored secret differs is
+named (values never shown). A section whose connector is empty falls back to what the fleet
+agrees on, and its basis says so. CDP has no connector. Not built yet: the batch Apply from the
+coverage view, and adopt and onboarding applying it ((c) and (d)).
+
 **Each section names the connector it is derived from,** and is ABSENT while that
 connector is not configured. "Configure a connector, and devices get the matching config"
 then means: configuring the connector proposes the section (a preview of the profile

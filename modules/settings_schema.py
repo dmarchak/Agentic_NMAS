@@ -348,6 +348,21 @@ DEFAULTS: dict = {
     "syslog_source_interface": "Loopback0",
     #: The EEM watchdog interval. Alerting fires after two missed.
     "syslog_heartbeat_seconds": 300,
+    # ── The monitoring profile's connectors (NSOT_PLAN P.9, decision 4) ──────
+    #: The profile is DERIVED from these, never from what the fleet happens to
+    #: agree on (the operator, 2026-09-30). Each empty value leaves its section
+    #: to the fleet cross-check, said so in the preview. Empty by default: the
+    #: proposal did not read them before, so nothing it proposed changes.
+    #: The NTP servers every device uses.
+    "ntp_servers": [],
+    #: The Telegraf model-driven telemetry listener, "<address>:<port>".
+    "telemetry_receiver": "",
+    #: Where devices send SNMP traps (the NMAS's trap receiver address).
+    "snmp_trap_host": "",
+    #: snmp_exporter's config file and the auth module Prometheus polls with:
+    #: the community the profile carries is read from it, in memory, never shown.
+    "snmp_exporter_config": "",
+    "snmp_exporter_auth": "public_v2",
 
     # ── Config persistence (Oxidized → containerlab startup files) ──────────
     # The pipeline lives outside this repo; see docs/ARCHITECTURE.md. These are
@@ -531,6 +546,7 @@ GUARD_GATING_EMPTY_DEFAULTS = (
     "oxidized_url",       # oxidized_client() -> reload_oxidized, confirm_fetch
     "syslog_host",        # onboard.syslog_baseline -> build_plan's refusal
     "kea_ztp_fragment",   # ztp.write_reservations, ztp.posture -> a ztp plan
+    "snmp_exporter_config",  # profile_propose.exporter_community -> the profile's SNMP
 )
 
 #: The refusal these guards write, as a **shape** rather than a list.
@@ -726,6 +742,11 @@ SCHEMA: dict = {
         "syslog_origin_id": _STR,
         "syslog_source_interface": _STR,
         "syslog_heartbeat_seconds": {"type": "integer", "minimum": 60},
+        "ntp_servers": {"type": "array", "items": _STR},
+        "telemetry_receiver": {"type": "string", "pattern": r"^$|^[^\s:]+:[0-9]{1,5}$"},
+        "snmp_trap_host": _STR,
+        "snmp_exporter_config": _STR,
+        "snmp_exporter_auth": _STR,
 
         "oxidized_rest_url": _STR,
         "oxidized_router_db": _STR,

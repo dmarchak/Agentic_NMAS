@@ -4027,7 +4027,11 @@ integrations need, derived from the connectors the network uses, with ONE owner.
     from Loki, SNMP from what the exporter expects, telemetry from the Telegraf endpoint, NTP
     from its setting, the heartbeat from its alert rules); fleet agreement becomes the
     CROSS-CHECK that names devices configured differently. Then Apply is one confirmed deploy
-    per device, or a batch from the coverage view, and adopt applies it.
+    per device, or a batch from the coverage view, and adopt applies it. **The derivation is
+    BUILT (2026-09-30):** `connector_value()`, five new settings (`ntp_servers`,
+    `telemetry_receiver`, `snmp_trap_host`, `snmp_exporter_config`, `snmp_exporter_auth`),
+    and the cross-check drawn in the preview (MONITORING_PROFILE.md section 2). The batch
+    from the coverage view is (d); adopt and onboarding are (c).
   - **The SNMP section's next change is SNMPv3** (Stage 9's (L) item, designed there).
   - **`ip domain name`** is a shared field, in a section of its own outside monitoring and
     never applied by "Apply monitoring profile": on IOS the SSH key's default label is the

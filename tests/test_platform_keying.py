@@ -49,6 +49,8 @@ KEYING = {
     "modules/nsot/parsers/cisco_ios.py":    "dialect",
     "modules/nsot/parsers/cisco_iosxe.py":  "dialect",
     "modules/nsot/onboard.py":              "dialect",
+    # TELEMETRY_PLATFORMS: the dialect the telemetry section applies to.
+    "modules/nsot/profile_propose.py":      "dialect",
     "modules/nsot/manifest.py":             "dialect",
     # The OSPFv3 target file is IOS-XE only (vIOS does not implement
     # OSPFV3-MIB): compared with platform_for_device(), a dialect.

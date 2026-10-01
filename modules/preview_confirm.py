@@ -2077,15 +2077,35 @@ def profile_propose_preview(p: dict, diff: list, *, request) -> dict:
     for sk in p.get("skipped") or []:
         what_not.append({"target": sk["device"], "kind": "not_read",
                          "text": f"Not read: {sk['why']}", "lines": []})
-    notes = [{"title": (f"{_section_words(s['section'])}: held alike by "
-                        f"{', '.join(s.get('holders') or [])}"
-                        + (f"; applies to {', '.join(s['platforms'])} only"
-                           if s.get("platforms") else "")
-                        + f"; basis: {DERIVED[s['section']][0]}"),
+    notes = [{"title": ((f"{_section_words(s['section'])}: derived from {s['basis']}; held "
+                         f"already by {', '.join(s.get('holders') or []) or 'no device'}")
+                        if s.get("connector") else
+                        (f"{_section_words(s['section'])}: held alike by "
+                         f"{', '.join(s.get('holders') or [])}"
+                         + f"; basis: {s.get('basis') or DERIVED[s['section']][0]}"))
+                       + (f"; applies to {', '.join(s['platforms'])} only"
+                          if s.get("platforms") else ""),
               "lines": ([f"inherited by {', '.join(s['inherit'])}"] if s.get("inherit")
                         else ["no device lacks it"])
                        + [f"secret {ref}: {why}" for ref, why in (s.get("secrets") or {}).items()]}
              for s in proposed]
+    for s in proposed:
+        # THE CROSS-CHECK (the operator, 2026-09-30): a device configured
+        # differently from what the connector needs, named with what it gains
+        # and what it keeps. Its own value wins, so what it keeps is the gap.
+        if s.get("differs"):
+            notes.append({"title": (f"{_section_words(s['section'])}: configured differently "
+                                    "from what the connector needs"),
+                          "lines": [f"{h} gains: {'; '.join(c['gains']) or 'nothing'}"
+                                    + (f" · keeps its own (its value wins): {'; '.join(c['keeps'])}"
+                                       if c["keeps"] else "")
+                                    for h, c in sorted(s["differs"].items())]})
+        if s.get("secret_differs"):
+            notes.append({"title": (f"{_section_words(s['section'])}: a device's own stored "
+                                    "secret differs from the connector's (values never shown)"),
+                          "lines": [f"{d['device']}: {d['ref']} differs; the collector polls with "
+                                    "the connector's, so this device would not answer it"
+                                    for d in s["secret_differs"]]})
     for s in proposed:
         # A version a PERSON chose (never the tool): who else changes, and how.
         if s.get("chosen"):
@@ -2132,8 +2152,10 @@ def profile_propose_preview(p: dict, diff: list, *, request) -> dict:
     }
     return build(
         action="profile_propose",
-        summary=(f"Commit {p['list']}'s monitoring profile: {len(proposed)} section(s) the "
-                 f"fleet's committed intent agrees on, read from {p['devices_read']} device(s), "
+        summary=(f"Commit {p['list']}'s monitoring profile: {len(proposed)} section(s), "
+                 + (f"{sum(1 for s in proposed if s.get('connector'))} derived from the "
+                    "connectors and " if any(s.get("connector") for s in proposed) else "")
+                 + f"cross-checked against {p['devices_read']} device(s)' committed intent, "
                  "in one commit."),
         targets=[target], what_not=what_not,
         nothing_left_out="Nothing: every section is proposed and every device was read.",
