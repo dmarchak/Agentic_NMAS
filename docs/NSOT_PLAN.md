@@ -4034,8 +4034,10 @@ integrations need, derived from the connectors the network uses, with ONE owner.
   v2's strict policy refuses), with the rollout order: **BUILT 2026-10-01**
   (`/v2/monitoring/apply`; MONITORING_PROFILE.md section 2), the plan and the apply extracted from
   the JSON views as `plan_devices` and `apply_batch` so both screens run one computation, the
-  batch a job (`modules/deploy_job.py`) in the order the page set. Next: (d3) the device page's
-  "monitored by" section and its Apply.
+  batch a job (`modules/deploy_job.py`) in the order the page set. (d3) the device page's
+  "monitored by" section and its Apply: **BUILT 2026-10-01** (the Monitoring tab opens with
+  Coverage's cells for the device alone, and "Apply monitoring profile…" opens the same preview
+  for it). Next: (d4), the IP SLA policy, after staged run 9.
   - **The operator's review of (d1), 2026-10-01:** Monitoring opens on the FLEET dashboard
     (`grafana_fleet_dashboard_uid`; `rcn-lab-overview` for Default), every panel drawn by the
     device page's own renderer, the selector over every dashboard Grafana holds, and Coverage a

@@ -476,3 +476,9 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .apply-not { margin: 4px 0 8px; padding-left: 18px; font-size: 13px; }
 .apply-refused { margin: 6px 0 0; color: var(--danger); font-size: 13px; }
 .apply-job { margin-top: 14px; }
+/* The device page's "Monitored by" (P.9 d3). */
+.monitored-by { margin-bottom: 14px; }
+.mb-list { list-style: none; margin: 8px 0; padding: 0; font-size: 13px; }
+.mb-list li { padding: 3px 0; }
+.mb-list .ico { vertical-align: -2px; margin-right: 4px; }
+.mb-action { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0 0; font-size: 13px; }

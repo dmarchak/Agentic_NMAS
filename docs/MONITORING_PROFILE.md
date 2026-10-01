@@ -80,8 +80,10 @@ held back, each superseded line with its box and, once ticked, its reason field 
 a ticked line and no reason is not confirmable), gates and operands one level down. The confirm
 starts the batch as a JOB (`modules/deploy_job.py`) in that order, as the verified person,
 through `routes.deploy.apply_batch` (the one apply); the page draws where it is, device by
-device, as each finishes, then the result from the receipts. Not built yet: the device page's
-"monitored by" section (d3).
+device, as each finishes, then the result from the receipts. **(d3), built the same day:** the
+device page's Monitoring tab opens with "Monitored by", Coverage's own cells for that device
+(`routes/device_v2._monitored_by`), and "Apply monitoring profile…" where the profile supplies a
+gap, opening the same preview for that device alone.
 
 **Each section names the connector it is derived from,** and is ABSENT while that
 connector is not configured. "Configure a connector, and devices get the matching config"

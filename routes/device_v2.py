@@ -68,9 +68,27 @@ def _overview_ctx(ref, dev):
             "hw": device_page.hardware(ref, dev)}
 
 
+def _monitored_by(ref, dev) -> dict:
+    """What this device is monitored by (P.9 d3; NSOT_GUI_BRIEF 14.3): the
+    same cells Monitoring > Coverage draws, from its committed golden, for this
+    device alone, and whether "Apply monitoring profile" is offered. A failure
+    to compute it is said, never drawn as an empty section."""
+    from modules import monitoring_coverage
+    try:
+        c = monitoring_coverage.fleet(ref, devices=[(ref, dict(dev))])
+        row = next((d for d in c["devices"] if d["host"] == dev.get("hostname")), None)
+        if row is None:
+            return {"error": "the coverage computation returned no row for this device"}
+        return {"list": ref.name, "columns": c["columns"], "row": row, "profile": c["profile"]}
+    except Exception as exc:                      # noqa: BLE001
+        log.warning("device_v2: monitored-by for %s could not be computed: %s",
+                    dev.get("hostname"), exc)
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def _monitoring_ctx(ref, dev):
     hw = device_page.hardware(ref, dev)
-    return {"device": dev, "m": device_page.monitoring(
+    return {"device": dev, "mb": _monitored_by(ref, dev), "m": device_page.monitoring(
         dev, chosen_uid=request.args.get("dashboard", ""), range_text=request.args.get("range", "1h"),
         streams=device_page.streams_telemetry(ref, dev),
         model=(hw.get("model") or "", hw.get("model_from") or ""))}
@@ -162,3 +180,14 @@ def attention_count():
     except Exception as exc:                            # noqa: BLE001
         log.warning("v2 attention count failed: %s", exc)
         return _strict(render_template("v2/_count.html", n=None, ok=False))
+
+
+@bp.route("/device/<name>/monitored-by", methods=["GET"])
+def monitored_by(name):
+    """The Monitoring tab's "Monitored by" section alone, redrawn when the
+    goldens or job health move."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_monitored_by.html", device=dev, mb=_monitored_by(ref, dev)))

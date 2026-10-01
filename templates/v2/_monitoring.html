@@ -5,6 +5,7 @@
 {#- Re-rendered when Grafana's dashboards change (the reader announces only a change). -#}
 <div class="monitoring" id="monitoring" hx-get="{{ url_for('device_v2.monitoring', name=dev_name, dashboard=dash_uid, range=cur_range) }}"
      hx-trigger="nmas:dashboards from:body" hx-swap="outerHTML">
+{%- if mb is defined %}{% include "v2/_monitored_by.html" %}{% endif %}
 <div class="toolbar">
   <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
     <button type="button" class="btn btn-select" aria-haspopup="listbox" x-bind:aria-expanded="expanded" x-on:click="toggle">

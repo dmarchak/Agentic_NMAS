@@ -356,3 +356,97 @@ class TestClickingTheShippedPage:
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
+
+
+# ------------------------------------------------ the device page (P.9 d3)
+
+R2 = {"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
+      "platform": "cisco_iosxe", "role": "router"}
+R6 = {"hostname": "r6", "ip": "203.0.113.16", "device_type": "cisco_xe",
+      "platform": "cisco_iosxe", "role": "router"}
+
+
+class TestMonitoredBy:
+    """The device page's Monitoring tab opens with what the device is
+    monitored by: Coverage's own cells (`monitoring_coverage.fleet`) for this
+    device alone, and "Apply monitoring profile…" when the profile supplies
+    something it lacks, opening the same preview for it alone."""
+
+    @pytest.fixture
+    def page(self, ready, monkeypatch):
+        from modules import device_page
+        from modules.nsot import listref
+        rows = {"r2": R2, "r6": R6}
+        monkeypatch.setattr(device_page, "find_device",
+                            lambda name: (listref.resolve("Lab"), dict(rows[name])))
+        return lambda name: _get(ready, f"/v2/device/{name}/monitored-by")
+
+    def test_r6_lacks_snmp_and_is_offered_the_profile(self, page):
+        r, html = page("r6")
+        assert r.status_code == 200
+        assert "<strong>SNMP</strong><span class=\"muted\"> through Prometheus</span>: missing — the profile supplies it" in html
+        assert 'href="/v2/monitoring/apply?list=Lab&amp;device=r6">Apply monitoring profile…</a>' in html
+
+    def test_r2_lacks_nothing_and_says_so(self, page):
+        _r, html = page("r2")
+        assert "r2 is configured for everything the network uses." in html
+        assert "Apply monitoring profile" not in html
+
+    def test_the_link_opens_the_same_preview_for_that_device(self, ready, page):
+        _r, html = page("r6")
+        href = html_mod.unescape(re.search(r'href="(/v2/monitoring/apply\?[^"]+)"', html).group(1))
+        _r, preview = _get(ready, href)
+        assert _order(preview) == ["r6"] and _body(preview)["order"] == ["r6"]
+
+    def test_a_failed_read_is_said_never_an_empty_section(self, page, monkeypatch):
+        from modules import monitoring_coverage
+
+        def boom(*a, **k):
+            raise OSError("git show failed")
+        monkeypatch.setattr(monitoring_coverage, "fleet", boom)
+        _r, html = page("r6")
+        assert "could not be read (OSError: git show failed)" in html
+        assert "not the same as it being monitored by nothing" in html
+
+    def test_it_redraws_on_keys_v2_relays_under_the_strict_policy(self, page):
+        from modules import csp, invalidation
+        r, html = page("r6")
+        assert r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
+        keys = re.findall(r"nmas:(\w+) from:body",
+                          re.search(r'hx-trigger="([^"]*)"', html).group(1))
+        src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
+        assert keys == ["goldens", "job_health"]
+        for k in keys:
+            assert k in invalidation.VOCABULARY and f"NMAS.subscribe('{k}'" in src
+
+    def test_the_monitoring_tab_opens_with_it(self, ready, monkeypatch):
+        from tests.test_device_v2 import _get as _dget  # noqa: F401 (same client shape)
+        src = open(os.path.join(ROOT, "templates", "v2", "_monitoring.html"), encoding="utf-8").read()
+        head = src[:src.index('<div class="toolbar">')]
+        assert 'include "v2/_monitored_by.html"' in head
+
+
+class TestNeedsAttentionOpensIt:
+    def test_a_not_monitored_rows_action_opens_the_v2_preview(self):
+        """The design (MONITORING_PROFILE.md 5): the row's action becomes this
+        apply once it exists. Drawn on the v2 landing from the row the real
+        `action_for` builds."""
+        from flask import render_template
+
+        import app as A
+        from types import SimpleNamespace
+
+        from modules import monitoring_coverage
+
+        # `action_for` reads the ref's name alone; resolving a list would create it.
+        action = monitoring_coverage.action_for(
+            SimpleNamespace(name="Lab"), "r6", ["snmp"], {"applies": ["snmp"], "profile": True})
+        assert action["open"] == "profile_apply"
+        row = {"level": "warning", "what": "r6 is not monitored by SNMP", "cause": "c",
+               "devices": ["r6"], "since": None, "operands": [], "action": action, "source": "s",
+               "key": "k", "triage": None}
+        with A.app.test_request_context("/v2/"):
+            html = render_template("v2/_attention.html", a={
+                "ok": True, "rows": [row], "sources": [], "headline": "1", "counts": {}})
+        assert 'href="/v2/monitoring/apply?device=r6&amp;list=Lab">Preview the apply…</a>' in html
+        assert "today&#39;s page" not in html.split("r6 is not monitored")[1].split("</article>")[0]

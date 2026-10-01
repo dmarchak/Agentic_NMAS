@@ -47,7 +47,7 @@
         {%- endif %}
         {%- if r.action.reference %}<span class="muted">({{ r.action.reference }})</span>{% endif %}
         {%- if r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" href="{{ url_for('v2.update') }}">Update…</a>
-        {%- elif r.action.open == 'profile_apply' %}<a class="btn btn-small btn-outline" href="{{ url_for('index', open='profile_apply', device=r.action.device, list=r.action.list) }}">Preview on today's page</a>
+        {%- elif r.action.open == 'profile_apply' %}<a class="btn btn-small btn-outline" href="{{ url_for('v2.profile_apply', device=r.action.device, list=r.action.list) }}">Preview the apply…</a>
         {%- elif r.action.open == 'profile_propose' %}<a class="btn btn-small btn-outline" href="{{ url_for('index', open='profile_propose', list=r.action.list) }}">Propose on today's page</a>
         {%- elif r.action.open %}<a class="btn btn-small" href="{{ url_for('index') }}">Open on today's page</a>{% endif %}
       </div>
