@@ -406,8 +406,11 @@ tracked in git.
   [docs/MONITORING_PROFILE.md](docs/MONITORING_PROFILE.md)
 - **[modules/nsot/profile_propose.py](modules/nsot/profile_propose.py)** and
   **[profile_apply.py](modules/nsot/profile_apply.py)** — P.9 step (b): PROPOSE the network's
-  profile from what the fleet's committed intent agrees on (connector-gated; two versions never
-  reconciled; a secret one value across holders, compared in memory), confirmed by hash and
+  profile DERIVED FROM THE CONNECTORS (`connector_value()`: the syslog settings, snmp_exporter's
+  auth module, Telegraf's listener, the NTP servers, the LLDP scrape; set on Settings >
+  Integrations > Monitoring profile), the fleet's committed intent the CROSS-CHECK naming a
+  device configured differently (a connector left empty falls back to what the fleet agrees on,
+  saying so; two versions never reconciled by the tool), confirmed by hash and
   committed as the person; APPLY it as the deploy scoped to the profile's lines (`scope: profile`
   on `/deploy/plan` and `/deploy/apply`), recomputed at apply and where it connects. Client
   **[static/js/nmas_profile.js](static/js/nmas_profile.js)**; the apply is the deploy wizard
