@@ -404,7 +404,10 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
         operands = [
             {"name": "capture hash", "value": d.get("capture_hash") or "none"},
             {"name": "command hash", "value": d.get("command_hash") or "none"},
-            {"name": "intent commit", "value": ((a or {}).get("intent_commit") or "none")[:12]},
+            {"name": "intent commit",
+             "value": ((a or {}).get("intent_commit") or d.get("intent_commit") or "none")[:12]},
+            *([{"name": "profile commit", "value": (d.get("profile_commit") or "none")[:12]}]
+              if d.get("profile_scope") else []),
             {"name": "authorised lines", "value": str(len(d.get("authorised") or []))},
             {"name": "template", "value": d.get("template") or "none"},
             {"name": "platform", "value": d.get("platform") or "unknown"},
@@ -2117,9 +2120,13 @@ def profile_propose_preview(p: dict, diff: list, *, request) -> dict:
                                        if c["keeps"] else "")
                                     for h, c in sorted((s.get("changes") or {}).items())]})
     for e in p.get("effect") or []:
-        notes.append({"title": f"{e['device']}'s effective intent changes",
-                      "lines": [f"gains the {_section_words(x)} section" for x in e["inherits"]]
-                      or ["its effective intent changes"]})
+        lines = [f"gains the {_section_words(x)} section" for x in e["inherits"]]
+        lines += [f"{_section_words(sec)}: gains {'; '.join(c['gains']) or 'nothing'}"
+                  + (f" · keeps its own: {'; '.join(c['keeps'])}" if c.get("keeps") else "")
+                  for sec, c in sorted((e.get("within") or {}).items())]
+        if not lines:
+            lines = [f"{e['device']}'s own lines change in: {', '.join(e.get('moved') or []) or '?'}"]
+        notes.append({"title": f"{e['device']}'s effective intent changes", "lines": lines})
     ok = p["changed"] and bool(proposed)
     target = {
         "name": p["list"],

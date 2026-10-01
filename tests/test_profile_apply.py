@@ -84,7 +84,8 @@ class TestThePropose:
         snmp = next(s for s in p["sections"] if s["section"] == "snmp")
         assert snmp["proposed"] and snmp["holders"] == ["r2"] and snmp["inherit"] == ["r6"]
         assert p["doc"]["sections"]["snmp"]["source"] == "prometheus"
-        assert {"device": "r6", "inherits": ["lldp", "snmp"]} in p["effect"]
+        r6 = next(e for e in p["effect"] if e["device"] == "r6")
+        assert r6["inherits"] == ["lldp", "snmp"] and "snmp" in r6["moved"]
         assert "secrets" not in pp.public(p)
 
     def test_a_connector_not_configured_proposes_nothing_for_it_and_says_why(self, lab):
@@ -179,6 +180,20 @@ class TestTheScopedDeploy:
         # The unscoped plan WOULD send it: the scope, not the fixture, holds it back.
         whole = lab["client"].post("/deploy/plan", json={"devices": ["r6"]}).get_json()
         assert any("ntp server 192.0.2.99" in c for c in whole["devices"][0]["commands"])
+
+    def test_the_scoped_preview_names_both_commits_it_renders_from(self, lab):
+        """The operator, 2026-09-30: r6's apply preview read "intent commit:
+        none" beside a gate passing committed intent. A scoped plan attributes
+        nothing, and still names the device's intent commit and the profile's."""
+        from modules.nsot import hostvars
+        from modules.nsot import repo as R
+        _commit_proposal()
+        body = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
+                                                        "list_name": "Lab"}).get_json()
+        ops = {o["name"]: o["value"] for t in body["preview"]["targets"] for o in t["operands"]}
+        assert ops["intent commit"] == hostvars.intent_change(lab["repo"], "r6")["sha"][:12]
+        profile_sha = R.git(lab["repo"], "log", "-1", "--format=%H", "--", "profiles/monitoring.yml")[1]
+        assert ops["profile commit"] == profile_sha.strip()[:12] and ops["intent commit"] != "none"
 
     def test_no_committed_profile_refuses_by_name(self, lab):
         body = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",

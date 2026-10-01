@@ -204,3 +204,48 @@ class TestCommitAndPreview:
         assert "configured differently from what the connector needs" in text
         assert PLANTED not in text and "exporter-community-0451" not in text
         assert "secret differs from the connector" in text
+
+
+class TestThePresentation:
+    """The operator, 2026-09-30: the document diff showed syslog and telemetry
+    as changed when only key ORDER differed; r1's note read "its effective
+    intent changes" with nothing named; r6's apply preview read "intent
+    commit: none" beside a gate passing committed intent."""
+
+    def test_a_key_that_only_moved_is_not_a_change(self, lab, tmp_path):  # noqa: F811
+        from modules.nsot import profile as _p
+        from modules.nsot import profile_propose as pp
+        _connectors(lab, tmp_path)
+        p = pp.propose("Lab")
+        assert pp.apply("Lab", p["hash"], "op@example.invalid")["outcome"] == "committed"
+        current = _p.read_committed(lab["repo"])
+        reordered = {"version": current["version"],
+                     "sections": {k: dict(reversed(list(v.items())))
+                                  for k, v in reversed(list(current["sections"].items()))}}
+        assert pp.document_diff({"current": current, "doc": reordered}) == []
+
+    def test_a_device_gaining_inside_a_section_it_holds_is_named(self, lab, tmp_path,  # noqa: F811
+                                                                 monkeypatch):
+        """r1 in the host's shape lacks `snmp ifmib ifindex persist`: it gains
+        that line inside the SNMP section it holds, and the note names it."""
+        from flask import Flask
+        from modules.nsot import profile_propose as pp
+        from modules.preview_confirm import profile_propose_preview
+        from tests.test_profile_apply import _add_r1
+        _add_r1(lab, monkeypatch, ifindex=False)
+        _connectors(lab, tmp_path)
+        p = pp.public(pp.propose("Lab"))
+        r1 = next(e for e in p["effect"] if e["device"] == "r1")
+        assert "snmp ifmib ifindex persist" in r1["within"]["snmp"]["gains"]
+        with Flask(__name__).test_request_context("/"):
+            pv = profile_propose_preview(p, pp.document_diff(p), request=None)
+        notes = [n for t in pv["targets"] for n in t["program"]["notes"]]
+        r1note = next(n for n in notes if n["title"] == "r1's effective intent changes")
+        assert any("gains snmp ifmib ifindex persist" in l for l in r1note["lines"]), r1note
+        assert "its effective intent changes" not in r1note["lines"]
+
+    def test_a_kept_field_is_named_never_a_bare_value(self):
+        from modules.nsot import profile_propose as pp
+        c = pp.changes_for({"logging": {"syslog": {"trap": "notifications"}}},
+                           {"logging": {"syslog": {"trap": "critical"}}})
+        assert c["keeps"] == ['logging.syslog.trap: "critical"']

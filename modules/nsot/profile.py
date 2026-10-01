@@ -51,6 +51,17 @@ import logging
 log = logging.getLogger(__name__)
 
 PROFILE_REL = "profiles/monitoring.yml"
+
+
+def dump(doc: dict) -> str:
+    """THE serialisation of a profile document: every mapping's keys in a fixed
+    (sorted) order, lists as they are. The document diff a person reviews is
+    made from it, so a key that only moved is never drawn as a change (the
+    operator, 2026-09-30: syslog and telemetry read as changed when only the
+    heartbeat key and the subscription key had moved)."""
+    import yaml
+
+    return yaml.safe_dump(doc, sort_keys=True, default_flow_style=False)
 VERSION = 1
 #: Every section the profile knows, in the order a preview draws them.
 SECTIONS = ("snmp", "syslog", "ntp", "lldp", "cdp", "telemetry", "ip_sla")
@@ -383,7 +394,7 @@ def commit_profile(list_name: str, doc: dict, actor: str, summary: str) -> dict:
     if os.path.exists(path):
         with open(path, encoding="utf-8") as fh:
             before = fh.read()
-    text = yaml.safe_dump(doc, sort_keys=False, default_flow_style=False)
+    text = dump(doc)
     write_atomic(path, text)
     out = R._commit_paths(list_name, [PROFILE_REL], f"profile: {summary}",
                           [f"Actor: {actor}"], "profile")

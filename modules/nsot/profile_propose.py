@@ -279,7 +279,13 @@ def _items(value, path=""):
 
 
 def _text(path, entry) -> str:
-    return entry if isinstance(entry, str) else f"{path}: {json.dumps(entry, sort_keys=True)}"
+    """An item in words: a keyed list's entry is its own line (`snmp ifmib
+    ifindex persist`); any other leaf names its field (`logging.syslog.trap:
+    "critical"`), never a bare value."""
+    from modules.nsot.profile import KEYED_LISTS
+    if path in KEYED_LISTS and isinstance(entry, str):
+        return entry
+    return f"{path}: {json.dumps(entry, sort_keys=True)}"
 
 
 def changes_for(chosen, theirs) -> dict:
@@ -537,7 +543,14 @@ def propose(list_name: str, get=None, choose: dict = None) -> dict:
                            if s not in (_p.sections_for(current, plat, role, intent)
                                         if current else {})
                            and (s not in DERIVED or section_value(s, intent) is None))
-            effect.append({"device": host, "inherits": gains})
+            # WHAT moves, not only that something does (the operator, 2026-09-30:
+            # r1's note read "its effective intent changes" under its own name):
+            # the top-level parts that differ, and what the device gains and
+            # keeps in each section it holds another version of.
+            moved = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+            within = {s["section"]: s["changes"][host] for s in sections
+                      if s.get("proposed") and host in (s.get("changes") or {})}
+            effect.append({"device": host, "inherits": gains, "moved": moved, "within": within})
     changed = _canon(doc) != _canon(current or {})
     head = _profile_blob(repo)
     digest = hashlib.sha256(_canon({"doc": doc, "head": head, "choose": sorted(choose.items()),
@@ -566,10 +579,10 @@ def document_diff(proposal: dict) -> list:
     unified diff lines (no secret: the document holds references)."""
     import difflib
 
-    import yaml
+    from modules.nsot import profile as _p
 
     def _text(d):
-        return yaml.safe_dump(d, sort_keys=False, default_flow_style=False).splitlines() if d else []
+        return _p.dump(d).splitlines() if d else []
 
     return list(difflib.unified_diff(_text(proposal.get("current")), _text(proposal["doc"]),
                                      "committed", "proposed", lineterm="", n=2))

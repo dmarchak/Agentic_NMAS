@@ -456,6 +456,18 @@ def plan():
                 entry["attribution"] = _attribute_additions(
                     _repo_for(list_name), hostname, artifact, captured,
                     diff["to_add"])
+            else:
+                # A scoped plan attributes nothing (its lines are the
+                # profile's), and still names BOTH commits it renders from:
+                # the operands read "intent commit: none" beside a gate passing
+                # committed intent (the operator, 2026-09-30, r6's apply).
+                from modules.nsot import hostvars as _hv
+                from modules.nsot import repo as _R
+                entry["intent_commit"] = _hv.intent_change(_repo_for(list_name),
+                                                           hostname).get("sha", "")
+                rc, out, _e = _R.git(_repo_for(list_name), "log", "-1", "--format=%H", "--",
+                                     _profile.PROFILE_REL)
+                entry["profile_commit"] = out.strip() if rc == 0 else ""
         except (DeployRefused, profile_apply.ScopeRefused, _profile.ProfileRefused) as exc:
             entry["to_add"] = []
             entry["removal_warnings"] = []
