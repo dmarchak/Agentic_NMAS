@@ -69,6 +69,27 @@ class TestSecretsAreRefused:
         _write(repo, "docs/a.md", "clean\n" + KEY_BLOCK)
         assert _run(repo) == 1 and "docs/a.md" in capsys.readouterr().err
 
+    # Built, never written whole: a literal token in this file would be the
+    # thing the guard refuses (the operator, 2026-10-01, before an
+    # Actions-read token exists).
+    FINE_GRAINED = "github" + "_pat_" + "11ABCDEFG0" + "x" * 72
+    CLASSIC = "gh" + "p_" + "a1B2c3D4e5" * 4
+
+    @pytest.mark.parametrize("token", [FINE_GRAINED, CLASSIC])
+    def test_a_github_token_in_any_staged_file_is_refused(self, repo, token, capsys):
+        _write(repo, "docs/a.md", f"clean\nGH_TOKEN={token}\n")
+        assert _run(repo) == 1
+        assert "docs/a.md: its staged content holds a GitHub token" in capsys.readouterr().err
+
+    def test_a_token_file_is_refused_by_name(self, repo, capsys):
+        _write(repo, "docs/gh-actions-read.token")
+        assert _run(repo) == 1 and "gh-actions-read.token" in capsys.readouterr().err
+
+    def test_prose_naming_the_prefixes_is_not_a_token(self, repo):
+        """The control: the shapes are named in docs and code, never refused."""
+        _write(repo, "docs/a.md", "clean\nGitHub tokens start ghp_ or github_pat_.\n")
+        assert _run(repo) == 0
+
     def test_an_ignored_key_is_never_staged_so_never_seen(self, repo, capsys):
         _write(repo, "ignored.key", KEY_BLOCK)
         assert _run(repo) == 0

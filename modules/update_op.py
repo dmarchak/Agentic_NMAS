@@ -570,14 +570,22 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
                 and all(g["state"] == "pass" for g in gates if g["name"] != CI_GATE))
     ended = deferred_outcome()
     last_end = (last.get("value") or {}).get("ended_at") or ""
+    ended_unshown = bool(ended and ended.get("outcome") != "requested"
+                         and str(ended.get("ended_at") or "") > last_end)
     return {"facts": facts, "gates": gates, "selectable": ok, "hash": digest,
             "why_not": "; ".join(f"{g['name']}: {g['detail']}" for g in gates
                                  if g["state"] != "pass"),
             "waitable": waitable, "waiting": wait, "ci_words": person_ci(ci, v.get("tip") or ""),
             # How the last wait ended, when it ended without an update and
             # after the updater's last record: otherwise "The last update" says it.
-            "wait_ended": (ended if ended and ended.get("outcome") != "requested"
-                           and str(ended.get("ended_at") or "") > last_end else {}),
+            # Above the button only while it concerns the release OFFERED (the
+            # operator, 2026-10-01: "CI failed ... (asked for 9fd781bcbf)" sat
+            # above "Update to 8f1676c02d", after the newer release passed);
+            # about another release it is history, under "Earlier updates".
+            "wait_ended": (ended if ended_unshown and ended.get("target") == facts["target"]
+                           else {}),
+            "wait_ended_earlier": (ended if ended_unshown
+                                   and ended.get("target") != facts["target"] else {}),
             "following": following(ended, last, running),
             "last": last, "last_shown": last_update(updater=last), "install": install}
 

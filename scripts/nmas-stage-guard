@@ -15,7 +15,8 @@ can refuse, so this reads the INDEX and refuses:
   a password vault (*.kdbx), anything under data/, or a credential store by
   name (key.key, credential_profiles.json, devices.csv, user_settings.json);
 - a NEW or MODIFIED file whose staged content holds a private-key block
-  (BEGIN ... PRIVATE KEY): a key pasted into an existing file is the same leak;
+  (BEGIN ... PRIVATE KEY) or a GitHub token (ghp_ and kin, github_pat_): a
+  key pasted into an existing file is the same leak; and a NEW *.token file;
 - a NEW file outside the top-level entries HEAD already has, unless it is named
   with --allow (or NMAS_STAGE_ALLOW, space-separated): a stray is refused
   until someone says it belongs.
@@ -37,9 +38,15 @@ import sys
 SECRET_NAMES = ("*.key", "*.pem", "*.p12", "*.pfx", "*.jks", "*.kdbx", "*.bg", "*.gpg",
                 "id_rsa", "id_rsa.*", "id_dsa", "id_dsa.*", "id_ecdsa", "id_ecdsa.*",
                 "id_ed25519", "id_ed25519.*", ".env", ".env.*",
-                "key.key", "credential_profiles.json", "devices.csv", "user_settings.json")
+                "key.key", "credential_profiles.json", "devices.csv", "user_settings.json",
+                "*.token")
 SECRET_DIRS = ("data/",)
 PRIVATE_KEY = re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----")
+#: A GitHub token, by GitHub's published prefixes: a classic or app token
+#: (ghp_, gho_, ghu_, ghs_, ghr_, 36 characters after) and a fine-grained one
+#: (github_pat_). Added before the operator's Actions-read token existed (the
+#: operator, 2026-10-01: "confirm the guards would refuse it"; they did not).
+GITHUB_TOKEN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b")
 EXIT_REFUSED, EXIT_UNREADABLE = 1, 2
 
 
@@ -102,8 +109,11 @@ def judge(repo: str, allow=()) -> dict:
                                       f"('{top}' is new); name it with --allow if it belongs"))
                 continue
         blob = _git(repo, "show", f":{path}", binary=True)
-        if PRIVATE_KEY.search(blob.decode("latin-1")):
+        text = blob.decode("latin-1")
+        if PRIVATE_KEY.search(text):
             refused.append((path, "its staged content holds a private-key block"))
+        if GITHUB_TOKEN.search(text):
+            refused.append((path, "its staged content holds a GitHub token"))
     return {"new": new, "refused": refused, "staged": len(files)}
 
 

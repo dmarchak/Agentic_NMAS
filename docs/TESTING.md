@@ -184,6 +184,31 @@ made it, by name (C46).
 `requirements-test.txt` pins the test tools the host AND CI install
 (`pytest-xdist`): the runner that decides test order must be one version.
 
+### CI's interpreter here
+
+A green run on the development laptop's Python (3.14) says nothing about CI's
+(3.12.3, with the host's pinned packages): that gap is a standing source of
+CI-only failures (the operator, 2026-10-01, C270). The pre-push gate runs CI's
+own command in an environment that IS CI's:
+
+```bash
+# Once: CI's exact interpreter, without root. A python-build-standalone release
+# of the version ci.yml pins, checked against that release's SHA256SUMS before
+# it is unpacked; then the venv with CI's three requirement files, --no-deps.
+scripts/nmas-ci-env ~/.local/opt/cpython-3.12.3/bin/python3
+
+# The gate: CI's command, CI's worker count, coverage on, confined.
+PYTHON=~/.local/share/nmas-py312/bin/python COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 \
+  scripts/nmas-test -q -p no:cacheprovider -n 2 \
+  --cov=modules --cov=routes --cov=app --cov-report=
+```
+
+`nmas-ci-env` refuses an interpreter whose version is not the one `ci.yml`
+pins, so a stale environment cannot pass for CI's. The browser tests skip in
+the confined runner (snap Firefox cannot start in its namespace) and run in CI,
+which has a Firefox outside any snap: run `tests/test_update_button.py`
+unconfined too.
+
 ## Reproducing these numbers
 
 ```bash

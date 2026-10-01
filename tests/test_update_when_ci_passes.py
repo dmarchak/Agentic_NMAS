@@ -402,3 +402,39 @@ class TestARedrawAfterTheReleaseKeepsTheStepper:
         assert 'data-follow-id="r1"' in html
         monkeypatch.setattr(update_op, "plan", lambda **kw: real(**_kw()))
         assert "data-follow-id" not in A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
+
+
+class TestAnEndedWaitForAnotherReleaseIsHistory:
+    """The operator, 2026-10-01: above "Update to 8f1676c02d" the page still
+    said "The wait for CI ended 35 min ago: CI failed for this release ...
+    (asked for 9fd781bcbf)", a wait for an OLDER release after a newer one had
+    passed. Above the button only while it concerns the release offered."""
+
+    def _ended_for_b(self):
+        from modules import update_op
+        _defer()
+        update_op.release_deferred(**_kw(ci={"tip": "b" * 40, "state": "failed",
+                                             "sentence": "FAILED: run #245"}))
+
+    def test_about_the_release_offered_it_stays_above_the_button(self, store):
+        from modules import update_op
+        self._ended_for_b()
+        p = update_op.plan(**_kw())
+        assert p["wait_ended"]["outcome"] == "ci_failed" and p["wait_ended_earlier"] == {}
+
+    def test_about_another_release_it_moves_to_earlier_updates(self, store, monkeypatch):
+        import app as A
+        from modules import update_op
+        self._ended_for_b()
+        newer = {"tip": "e" * 40, "state": "verified", "sentence": "CI passed"}
+        p = update_op.plan(**_kw(ci=newer, tip="e" * 40))
+        assert p["wait_ended"] == {}
+        assert p["wait_ended_earlier"]["target"] == "b" * 40
+        real = update_op.plan
+        monkeypatch.setattr(update_op, "plan",
+                            lambda **kw: real(**_kw(ci=newer, tip="e" * 40)))
+        html = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
+        assert 'id="update-wait-ended"' not in html
+        earlier = html[html.index('id="update-history"'):]
+        assert 'id="update-wait-ended-earlier"' in earlier and "bbbbbbbbbb" in earlier
+        assert "CI failed for this release" in earlier

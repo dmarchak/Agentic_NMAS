@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Build (or rebuild) a local environment that IS CI's: the interpreter CI pins
+# (.github/workflows/ci.yml `python-version`) and exactly the packages CI
+# installs, the same three files with --no-deps (the operator, 2026-10-01: a
+# laptop on another Python is a standing source of CI-only failures, C270).
+#
+#   scripts/nmas-ci-env <python> [venv]
+#
+# <python> must report CI's version; the venv defaults to
+# ~/.local/share/nmas-py312. Run the gate in it with:
+#
+#   PYTHON=<venv>/bin/python scripts/nmas-test -q -p no:cacheprovider -n 2 \
+#     --cov=modules --cov=routes --cov=app --cov-report=
+#
+# Where to get the interpreter without root: a python-build-standalone release
+# of CI's exact version, verified against its release's SHA256SUMS before it is
+# unpacked (docs/TESTING.md, "CI's interpreter here").
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+py="${1:?usage: nmas-ci-env <python> [venv]}"
+venv="${2:-$HOME/.local/share/nmas-py312}"
+
+want="$(sed -n 's/.*python-version: *"\([0-9.]*\)".*/\1/p' "$here/.github/workflows/ci.yml" | head -1)"
+[ -n "$want" ] || { echo "nmas-ci-env: could not read CI's python-version from ci.yml" >&2; exit 2; }
+have="$("$py" -c 'import platform; print(platform.python_version())')"
+if [ "$have" != "$want" ]; then
+  echo "nmas-ci-env: $py is Python $have; CI runs $want. Refused: an environment on" >&2
+  echo "another interpreter is the gap this exists to close." >&2
+  exit 1
+fi
+
+rm -rf "$venv"
+"$py" -m venv "$venv"
+for f in requirements.lock requirements-ci.txt requirements-test.txt; do
+  "$venv/bin/python" -m pip install -q --disable-pip-version-check --no-deps -r "$here/$f"
+done
+echo "nmas-ci-env: $venv is Python $have with CI's packages ($("$venv/bin/python" -m pip list \
+  --disable-pip-version-check 2>/dev/null | tail -n +3 | wc -l) installed)"

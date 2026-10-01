@@ -74,6 +74,20 @@ def _excused(exempt, path, line, rule):
     return entry is not None and rule in entry[1]
 
 
+_TOKEN = []
+
+
+def _token_pattern():
+    """The stage guard's GITHUB_TOKEN, loaded once from the script itself."""
+    if not _TOKEN:
+        from importlib.machinery import SourceFileLoader
+        guard = SourceFileLoader("stage_guard_for_tokens", os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts", "nmas-stage-guard")).load_module()
+        _TOKEN.append(guard.GITHUB_TOKEN)
+    return _TOKEN[0]
+
+
 def scan(path: str, text: str, *, exempt=None, denylist=None):
     """Findings in one file: (path, line number, rule, what). Pure.
     *exempt* maps (path, line hash) -> (reason, rules excused)."""
@@ -98,6 +112,11 @@ def scan(path: str, text: str, *, exempt=None, denylist=None):
             for term, rx in terms:
                 if rx.search(line):
                     found.append((path, n, "local denylist", term))
+        # Never exemptable, and the token is never printed whole: the stage
+        # guard's own pattern, one definition (2026-10-01, before the
+        # operator's Actions-read token existed).
+        for m in _token_pattern().finditer(line):
+            found.append((path, n, "GitHub token", m.group(0)[:11] + "…"))
     return found
 
 
@@ -210,6 +229,14 @@ class TestTheScanCanFail:
 
     PLANTED_EMAIL = "someone.real" + "@mail-provider.net"
     PLANTED_ADDRESS = "10.0.0" + ".15"
+
+    def test_a_planted_github_token_is_found_never_exempted_never_printed(self):
+        token = "github" + "_pat_" + "11ABCDEFG0" + "x" * 72
+        line = f"GH_TOKEN={token}"
+        every_rule = {("docs/x.md", line_key(line)): ("VRNETLAB", RULES)}
+        (f,) = scan("docs/x.md", line, exempt=every_rule)
+        assert f[2] == "GitHub token" and token not in f[3]
+        assert scan("docs/x.md", "tokens start ghp_ or github_pat_") == []
 
     def test_a_planted_email_is_found(self):
         (f,) = scan("docs/x.md", "Actor: " + self.PLANTED_EMAIL)

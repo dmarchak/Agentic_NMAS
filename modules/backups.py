@@ -45,11 +45,22 @@ def save_config_backup(ip: str, hostname: str, config: str, config_type: str = "
     """
     backups_dir = get_backups_dir()
     timestamp   = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename    = f"{hostname}_{ip}_{config_type}_{timestamp}.cfg"
-    filepath    = os.path.join(backups_dir, filename)
-
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(config)
+    # A NEW file, never over another backup (the operator, 2026-10-01): the
+    # name is to the second, so two backups of one device in one second (a
+    # double click on Backup Config, the agent's backup beside a person's)
+    # had the second silently replace the first. Created exclusively; a name
+    # already taken gets the next free `_2`, `_3`.
+    stem = f"{hostname}_{ip}_{config_type}_{timestamp}"
+    n = 1
+    while True:
+        filename = f"{stem}.cfg" if n == 1 else f"{stem}_{n}.cfg"
+        filepath = os.path.join(backups_dir, filename)
+        try:
+            with open(filepath, "x", encoding="utf-8") as f:
+                f.write(config)
+            break
+        except FileExistsError:
+            n += 1
 
     backup_info = {
         "filename":    filename,
@@ -117,11 +128,12 @@ def delete_backup(filename: str) -> bool:
             os.remove(filepath)
 
         if os.path.exists(index_file):
-            with open(index_file, "r", encoding="utf-8") as f:
-                index = json.load(f)
-            index["backups"] = [b for b in index.get("backups", []) if b.get("filename") != filename]
-            with open(index_file, "w", encoding="utf-8") as f:
-                json.dump(index, f, indent=2)
+            from modules.filestore import PathLock, read_json_for_write, write_atomic
+            with PathLock(index_file):          # the save's lock: one index, one writer
+                index = read_json_for_write(index_file, empty={"backups": []})
+                index["backups"] = [b for b in index.get("backups", [])
+                                    if b.get("filename") != filename]
+                write_atomic(index_file, json.dumps(index, indent=2))
 
         return True
     except Exception:
@@ -130,18 +142,17 @@ def delete_backup(filename: str) -> bool:
 
 def _update_backup_index(backup_info: Dict) -> None:
     """Append backup metadata to the current list's index file."""
+    from modules.filestore import PathLock, read_json_for_write, write_atomic
+
     index_file = get_backup_index_file()
-
-    if os.path.exists(index_file):
-        with open(index_file, "r", encoding="utf-8") as f:
-            index = json.load(f)
-    else:
-        index = {"backups": []}
-
-    index["backups"].append(backup_info)
-
-    with open(index_file, "w", encoding="utf-8") as f:
-        json.dump(index, f, indent=2)
+    # Two backups at once (the same event the name above handles) each read
+    # the index and wrote it whole, truncating in place: one entry was lost.
+    # The store's own fix (C158): the lock, a refusal on an unreadable index,
+    # and an atomic replace.
+    with PathLock(index_file):
+        index = read_json_for_write(index_file, empty={"backups": []})
+        index.setdefault("backups", []).append(backup_info)
+        write_atomic(index_file, json.dumps(index, indent=2))
 
 
 def get_backup_stats() -> Dict[str, int]:

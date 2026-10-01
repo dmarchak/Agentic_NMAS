@@ -143,10 +143,11 @@
 <div class="notice notice-warn" id="update-owed-unread">{{ icon('warn') }}<p>Whether a release that runs now still owes a host step could not be read: {{ owed.error }}. This is not the same as none being owed.</p></div>
 {%- endif %}
 
-{%- if hist.rows|length > 1 %}
+{%- if hist.rows|length > 1 or p.wait_ended_earlier %}
 <section class="card" id="update-history">
   <div class="card-head"><h2>Earlier updates</h2></div>
   <ul class="plain-list">
+    {%- if p.wait_ended_earlier %}{% set w = p.wait_ended_earlier %}<li id="update-wait-ended-earlier">{{ badge('wait ended', 'muted') }} <span class="mono">{{ (w.target or '')[:10] }}</span> <span class="muted">· {{ w.words }} · {{ stamp(w.ended_at) }}</span></li>{% endif %}
     {%- for o in hist.rows[1:] %}<li>{{ badge(words.get(o.outcome, o.outcome)|truncate(30, True), OUT_KIND.get(o.outcome, 'muted')) }} <span class="mono">{{ (o['from'] or '')[:10] }}</span> → <span class="mono">{{ (o.to or '')[:10] }}</span> <span class="muted">· {{ o.requested_by or '' }} · {{ stamp(o.ended_at or o.at) }}</span></li>{% endfor %}
   </ul>
 </section>

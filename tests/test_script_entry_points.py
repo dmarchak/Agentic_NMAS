@@ -50,7 +50,12 @@ def _script_paths() -> list:
             head = open(path, encoding="utf-8").read(200)
         except (UnicodeDecodeError, OSError):
             continue
-        if name.endswith(".py") or head.startswith("#!") and "python" in head:
+        # The SHEBANG names the interpreter, never the prose under it: a bash
+        # script whose header mentions `python-version` was parsed as Python
+        # (scripts/nmas-ci-env, 2026-10-01; a pattern that can appear in
+        # English needs an anchor).
+        shebang = head.splitlines()[0] if head.startswith("#!") else ""
+        if name.endswith(".py") or "python" in shebang:
             out.append(path)
     return out
 
