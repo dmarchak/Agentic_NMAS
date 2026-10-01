@@ -319,6 +319,13 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
         if not diff:
             log.debug("drift_check: %s clean", hostname)
             clean_list.append(hostname)
+            # An item queued by an earlier run no longer stands: this run, under
+            # the rules in force now, finds the device at its golden.
+            from modules.approval_queue import supersede_drift
+            supersede_drift([hostname], f"the drift check at {timestamp} ({triggered_by}) "
+                                        f"found {hostname} at its golden under the current "
+                                        "rules, so the queued diff no longer stands",
+                            by="drift check")
             return
         if note:
             diff.append(note)

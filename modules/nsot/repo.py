@@ -735,13 +735,37 @@ def _covers_inventory(measured: list, inventory_size: int, skipped) -> bool:
     return len(measured) >= inventory_size
 
 
+def _supersede_drift_items(list_name: str, hosts: list, sha: str, source: str,
+                           actor: str, leave=()) -> list:
+    """A golden just recorded (or measured unchanged) for *hosts* supersedes
+    every older drift item proposing to record them (the operator,
+    2026-10-01): an item never waits for someone to approve a diff a newer
+    capture has replaced. The one place every capture commits, so every path
+    (Save All, a capture, a deploy, a restore) supersedes alike."""
+    if not hosts:
+        return []
+    from modules.approval_queue import supersede_drift
+
+    at = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+    what = f"commit {sha[:10]}" if sha else "a capture that found it unchanged"
+    try:
+        return supersede_drift(hosts, f"superseded by {what} ({source}) at {at}: a newer "
+                                      "golden records the device, so this diff no longer "
+                                      "describes it", by=actor or source, list_name=list_name,
+                               leave=leave)
+    except Exception as exc:                   # noqa: BLE001
+        log.error("repo: could not supersede drift items for %s: %s", hosts, exc)
+        return []
+
+
 def save_golden(list_name: str, items: list, source: str = "manual",
                 actor: str = "nmas", message: str = "", allow_new: bool = False,
                 pipeline_id: str = None, baseline: bool = None,
                 extra_trailers: list = None, extra_paths: list = None,
                 acknowledge_structural_change: bool = False,
                 inventory_size: int = 0, skipped: list = None,
-                operational: dict = None, baseline_reasons: list = None) -> dict:
+                operational: dict = None, baseline_reasons: list = None,
+                leave_items=()) -> dict:
     """Promote golden configs for one or more devices in a single commit.
 
     *baseline_reasons*: a caller that decided the baseline itself (deploy and
@@ -942,6 +966,8 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                 _rc, head_sha, _e = git(repo, "rev-parse", "HEAD")
                 publish(repo, (head_sha or "").strip(), list_name=list_name,
                         source=source, actor=actor, tags=tags)
+            _supersede_drift_items(list_name, unchanged, decision_commit, source, actor,
+                                   leave_items)
             return {"ok": True, "commit": decision_commit, "changed": [],
                     "decision_only": bool(decision_commit),
                     "unchanged": unchanged, "tags": tags,
@@ -1039,6 +1065,9 @@ def save_golden(list_name: str, items: list, source: str = "manual",
 
     publish(repo, sha, list_name=list_name, source=source, actor=actor, tags=tags,
             devices=[c["hostname"] for c in changed])
+
+    _supersede_drift_items(list_name, [c["hostname"] for c in changed] + unchanged, sha,
+                           source, actor, leave_items)
 
     # `baseline` on both return paths, so a caller never has to sift `tags`
     # to find out whether a restore point exists.

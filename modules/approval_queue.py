@@ -25,21 +25,27 @@ EXPIRY_HOURS = 48   # auto-expire unreviewed approvals after 48 hours
 # Storage helpers
 # ---------------------------------------------------------------------------
 
-def _queue_path() -> str:
+def _queue_path(list_name: str = "") -> str:
+    """The queue of *list_name* when given (a caller that knows its list
+    CARRIES it: a golden commit supersedes items in its own list's queue),
+    else the active list's, as every older caller reads it."""
+    if list_name:
+        from modules.nsot import listref
+        return os.path.join(listref.resolve(list_name).data_dir, "approval_queue.json")
     from modules.config import get_current_list_data_dir
     return os.path.join(get_current_list_data_dir(), "approval_queue.json")
 
 
-def _load_queue() -> list:
+def _load_queue(list_name: str = "") -> list:
     try:
-        with open(_queue_path(), encoding="utf-8") as fh:
+        with open(_queue_path(list_name), encoding="utf-8") as fh:
             return json.load(fh)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 
-def _save_queue(entries: list) -> None:
-    path = _queue_path()
+def _save_queue(entries: list, list_name: str = "") -> None:
+    path = _queue_path(list_name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(entries, fh, indent=2)
@@ -111,7 +117,7 @@ def add_approval(
     entry = {
         "id":              entry_id,
         "action_type":     action_type,
-        "status":          "pending",        # pending | approved | rejected | expired
+        "status":          "pending",        # pending | approved | rejected | expired | withdrawn
         "created_at":      time.strftime("%Y-%m-%d %H:%M:%S"),
         "created_ts":      time.time(),
         "expires_at":      time.strftime(
@@ -262,6 +268,61 @@ def mark_done(entry_id: str, note: str = "") -> dict:
     _save_queue(entries)
     log.info("approval_queue: [%s] closed — %s", entry_id, entry["context"])
     return {"ok": True, "entry": entry}
+
+
+#: The kind a drift check queues: "record the running config as the golden".
+DRIFT_ACTION = "update_golden_config"
+
+
+def withdraw(entry_id: str, reason: str, by: str, list_name: str = "") -> dict:
+    """Close a pending item that no longer stands, recording WHY and BY WHAT
+    (the operator, 2026-10-01: drift items created before C302 stopped
+    counting a regenerated certificate waited for someone to approve a diff
+    that no longer counted). ``withdrawn`` is its own state: never
+    ``approved`` (nothing was approved) and never ``rejected`` (nobody
+    refused it)."""
+    if not reason or not by:
+        return {"ok": False, "error": "a withdrawal records its reason and what withdrew it"}
+    entries = _expire_old(_load_queue(list_name))
+    entry = next((e for e in entries if e["id"] == entry_id), None)
+    if not entry:
+        return {"ok": False, "error": f"Approval {entry_id!r} not found"}
+    if entry["status"] != "pending":
+        return {"ok": False, "error": f"Approval is already {entry['status']}"}
+    entry.update(status="withdrawn", resolved_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+                 withdrawn_reason=reason, withdrawn_by=by)
+    _save_queue(entries, list_name)
+    log.info("approval_queue: [%s] withdrawn by %s -- %s", entry_id, by, reason)
+    return {"ok": True, "entry": entry}
+
+
+def supersede_drift(hostnames, reason: str, by: str, list_name: str = "",
+                    before_ts: float = None, leave=()) -> list:
+    """Withdraw every PENDING drift item for *hostnames* created before
+    *before_ts* (default now): a newer golden or a clean drift run means the
+    diff it carries no longer describes the device. Returns the ids
+    withdrawn. Never raises: a queue it cannot read leaves the items as they
+    are and says so in the log. *leave* names items a caller was HANDED and
+    closes itself (a capture opened from the queue marks its own item done)."""
+    names = {h for h in (hostnames or []) if h}
+    leave = set(leave or ())
+    if not names:
+        return []
+    cutoff = time.time() if before_ts is None else before_ts
+    try:
+        entries = _load_queue(list_name)
+    except Exception as exc:                   # noqa: BLE001
+        log.error("approval_queue: could not read the queue to supersede %s: %s",
+                  sorted(names), exc)
+        return []
+    done = []
+    for e in entries:
+        if (e.get("status") == "pending" and e.get("action_type") == DRIFT_ACTION
+                and e.get("device_hostname") in names
+                and float(e.get("created_ts") or 0) < cutoff and e["id"] not in leave):
+            if withdraw(e["id"], reason, by, list_name).get("ok"):
+                done.append(e["id"])
+    return done
 
 
 def _execute(entry: dict, actor: str = "") -> dict:

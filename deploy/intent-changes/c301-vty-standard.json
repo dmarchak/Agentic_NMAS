@@ -1,0 +1,70 @@
+{
+  "summary": "vty: one line vty 0 4 stanza with length 0, so whichever vty CVAC uses at boot the result is the same (C301; r1 to r4)",
+  "steps": [
+    {
+      "path": [
+        "lines"
+      ],
+      "before": [
+        {
+          "settings": [
+            "logging synchronous",
+            "stopbits 1"
+          ],
+          "spec": "con 0"
+        },
+        {
+          "settings": [],
+          "spec": "aux 0"
+        },
+        {
+          "settings": [
+            "logging synchronous",
+            "login local",
+            "transport input all"
+          ],
+          "spec": "vty 0"
+        },
+        {
+          "settings": [
+            "logging synchronous",
+            "login local",
+            "length 0",
+            "transport input all"
+          ],
+          "spec": "vty 1"
+        },
+        {
+          "settings": [
+            "logging synchronous",
+            "login local",
+            "transport input all"
+          ],
+          "spec": "vty 2 4"
+        }
+      ],
+      "after": [
+        {
+          "settings": [
+            "logging synchronous",
+            "stopbits 1"
+          ],
+          "spec": "con 0"
+        },
+        {
+          "settings": [],
+          "spec": "aux 0"
+        },
+        {
+          "settings": [
+            "logging synchronous",
+            "login local",
+            "length 0",
+            "transport input all"
+          ],
+          "spec": "vty 0 4"
+        }
+      ]
+    }
+  ]
+}

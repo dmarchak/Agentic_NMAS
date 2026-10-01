@@ -607,7 +607,10 @@ def capture_apply():
             save = save_golden(list_name, items, source="save_all" if fleet else "capture",
                                actor=request_actor(), allow_new=False,
                                inventory_size=len(inventory) if fleet else 0,
-                               skipped=skipped, baseline=None if fleet else False)
+                               skipped=skipped, baseline=None if fleet else False,
+                               # Items handed to this capture close as done below.
+                               leave_items=[i for ids in (data.get("approvals") or {}).values()
+                                            for i in (ids or [])])
             for o in pending:
                 if not save.get("ok"):
                     o.update(outcome="unread", reason=save.get("error") or "the save failed")
