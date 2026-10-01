@@ -122,4 +122,7 @@ class TestRegistry:
 
     def test_every_client_declares_its_keys(self):
         for name, cls in REGISTRY.items():
-            assert cls.name and cls.label and cls.url_key, name
+            # A client that speaks to no HTTP tool (the monitoring profile's
+            # connectors) declares `http = False` and owns plain keys instead.
+            assert cls.name and cls.label, name
+            assert cls.url_key or (getattr(cls, "http", True) is False and cls.plain_keys), name

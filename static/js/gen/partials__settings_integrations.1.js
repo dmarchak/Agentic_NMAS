@@ -76,6 +76,19 @@ const INTEGRATION_SPEC = {
     {key: 'proxmox_backup_storage', label: 'Backup storage', type: 'text', help: 'The storage the vzdump job writes to.'},
     {key: 'proxmox_backup_vmids', label: 'VM IDs imaged', type: 'text', help: 'Comma-separated. Each is reported on its own.'},
     {key: 'proxmox_verify_tls', label: 'Verify TLS', type: 'switch', help: 'Off only for a self-signed certificate you have checked.'}]},
+  // The monitoring profile's connectors (NSOT_PLAN P.9): what each section is
+  // DERIVED from. Set here, validated on save; Test checks what can be checked.
+  monitoring_profile: {icon: '🧭', fields: [
+    {key: 'syslog_host', label: 'Syslog receiver', type: 'text', help: 'The address devices send syslog to (the receiver feeding Loki).'},
+    {key: 'syslog_trap_level', label: 'Syslog level', type: 'select', options: ['emergencies', 'alerts', 'critical', 'errors', 'warnings', 'notifications', 'informational', 'debugging']},
+    {key: 'syslog_origin_id', label: 'Origin id', type: 'text', help: 'hostname: every line names its device; the heartbeat rules key on it.'},
+    {key: 'syslog_source_interface', label: 'Source interface', type: 'text', help: 'Syslog and SNMP traps leave from it (Loopback0 on this fleet).'},
+    {key: 'syslog_heartbeat_seconds', label: 'Heartbeat (s)', type: 'number', help: 'The EEM heartbeat interval; the alert rules are generated from it. 60 or more.'},
+    {key: 'snmp_exporter_config', label: 'snmp_exporter config', type: 'text', help: 'Its config file; the community of the auth module below is read from it, never shown.'},
+    {key: 'snmp_exporter_auth', label: 'Auth module', type: 'text', help: 'The auth Prometheus polls with (public_v2).'},
+    {key: 'snmp_trap_host', label: 'Trap receiver', type: 'text', help: 'Where devices send SNMP traps.'},
+    {key: 'telemetry_receiver', label: 'Telegraf listener', type: 'text', help: 'address:port of its model-driven telemetry listener (IOS-XE streams to it).'},
+    {key: 'ntp_servers', label: 'NTP servers', type: 'list', help: 'Comma-separated.'}]},
 };
 
 function _intField(f, cfg) {
@@ -101,6 +114,11 @@ function _intField(f, cfg) {
       <input type="password" class="form-control form-control-sm" id="${id}" autocomplete="off"
              placeholder="${isSet ? 'Leave blank to keep' : ''}">
       <div class="form-text">Encrypted at rest; never shown or logged.</div></div>`;
+  }
+  if (f.type === 'list') {
+    const shown = Array.isArray(val) ? val.join(', ') : (val == null ? '' : String(val));
+    return `<div class="col-md-6"><label class="form-label fw-semibold">${f.label}</label>
+    <input type="text" class="form-control form-control-sm" id="${id}" value="${shown.replace(/"/g, '&quot;')}">${help}</div>`;
   }
   return `<div class="col-md-6"><label class="form-label fw-semibold">${f.label}</label>
     <input type="${f.type}" class="form-control form-control-sm" id="${id}" value="${val == null ? '' : String(val).replace(/"/g, '&quot;')}">${help}</div>`;
@@ -163,6 +181,8 @@ function _collectIntegration(name) {
     if (!el) continue;
     if (f.type === 'switch') out[f.key] = el.checked;
     else if (f.type === 'secret') { if (el.value) out[f.key] = el.value; }
+    else if (f.type === 'list') out[f.key] = el.value.split(',').map(s => s.trim()).filter(Boolean);
+    else if (f.type === 'number') out[f.key] = el.value === '' ? undefined : Number(el.value);
     else out[f.key] = el.value;
   }
   return out;
