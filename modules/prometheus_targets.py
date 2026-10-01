@@ -485,9 +485,14 @@ def check(client=None, generated=None, directory=None, now=None) -> dict:
 # - `device.write_devices_csv()`, the one writer of a local list's inventory
 #   (onboarding's promotion, adopt, retire, a role edit, Add and Delete);
 # - `inventory.refresh_list()`, a NetBox-sourced list's inventory;
+# - a golden COMMIT in a list's repository (`golden_hook`, a post-commit
+#   hook, so every commit reaches it by construction, C223): a device's
+#   eligibility for every group (SNMP at all, OSPF, OSPFv3, BGP, IP SLA) is
+#   read from its committed golden, so a deploy or capture that gives r6
+#   SNMP or a router OSPF changes the files at once (the operator,
+#   2026-09-30: r6 joined only at the backstop);
 # - a BACKSTOP every `KEEPER_BACKSTOP_SECONDS`, because a change made by
-#   another process (a CLI on the host) has no sender here, and the IP SLA
-#   file follows the committed goldens, which change on a commit.
+#   another process (a CLI on the host) has no sender here.
 # Every run is recorded (`data/prometheus_targets_sync.json`); the job-health
 # row reads it, and compares the files on disk with the inventory, so a run
 # that did not happen or failed is a row, never a silence.
@@ -575,6 +580,29 @@ def inventory_changed(reason: str) -> None:
     with _keeper["lock"]:
         _keeper["reasons"].append(reason)
     _keeper["event"].set()
+
+
+def golden_hook(context: dict, run=None) -> dict:
+    """The post-commit sender: a commit that changed a golden wakes the
+    keeper. Waking on every golden commit, never deciding eligibility here:
+    the regeneration writes only files whose content moved, and one owner
+    decides eligibility (`generate`)."""
+    import subprocess
+
+    repo, sha = context.get("repo") or "", context.get("sha") or ""
+    if not repo or not sha:
+        return {"ok": True, "message": "no commit to read"}
+    p = (run or subprocess.run)(["git", "-C", repo, "diff-tree", "--no-commit-id", "--name-only",
+                                 "-r", "--root", sha], capture_output=True, text=True, timeout=15)
+    if p.returncode != 0:
+        return {"ok": False, "error": f"git diff-tree {sha[:10]} exited {p.returncode}"}
+    goldens = [x for x in p.stdout.split() if x.startswith("golden/")]
+    if not goldens:
+        return {"ok": True, "message": "no golden changed"}
+    inventory_changed(f"{context.get('list_name') or 'a list'}: commit {sha[:10]} changed "
+                      + ", ".join(os.path.basename(g)[:-4] if g.endswith(".cfg") else g
+                                  for g in goldens))
+    return {"ok": True, "message": f"woke the targets keeper ({len(goldens)} golden(s))"}
 
 
 def _keeper_loop(sleep=time.sleep) -> None:

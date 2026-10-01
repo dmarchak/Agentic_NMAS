@@ -666,3 +666,108 @@ class TestTheScriptsReport:
         out = capsys.readouterr().out
         assert "NOT LOADED: the config Prometheus has loaded does not read the generated files" in out
         assert f"loaded config: loaded {RELOADED}" in out
+
+
+# ---------------------------------------------------------------------------
+# The routing groups, round trip (the operator, 2026-09-30): a device whose
+# golden GAINS a protocol joins its group, and leaves when it LOSES it; each
+# change is a minimal edit of a REAL golden.
+# ---------------------------------------------------------------------------
+
+def _edited(host, add="", drop=()):
+    """*host*'s real golden with *add* appended and every stanza starting with
+    one of *drop* removed (its header and indented body)."""
+    out, skipping = [], False
+    for line in _golden(None, host).splitlines(True):
+        if any(line.startswith(d) for d in drop):
+            skipping = True
+            continue
+        if skipping and (line.startswith(" ") or line.strip() == "!"):
+            continue
+        skipping = False
+        out.append(line)
+    return "".join(out) + add
+
+
+def _with(host, text):
+    from modules import prometheus_targets as P
+    return P.generate(_devices(), golden=lambda ref, h: text if h == host else _golden(ref, h))["files"]
+
+
+class TestTheRoutingGroupsRoundTrip:
+    def test_ospf_joined_when_gained_and_left_when_lost(self):
+        assert "s1" not in _names(_generated()["files"]["nmas-snmp-ospf.json"])
+        assert "s1" in _names(_with("s1", _edited("s1", "router ospf 1\n network 192.0.2.0 0.0.0.255 area 0\n"))["nmas-snmp-ospf.json"])
+        assert "r3" in _names(_generated()["files"]["nmas-snmp-ospf.json"])
+        assert "r3" not in _names(_with("r3", _edited("r3", drop=("router ospf",)))["nmas-snmp-ospf.json"])
+
+    def test_ospfv3_joins_on_ios_xe_only(self):
+        add = "ipv6 router ospf 1\n router-id 1.1.1.1\n"
+        assert "s1" not in _names(_with("s1", _edited("s1", add))["nmas-snmp-ospfv3.json"])
+        assert "r6" in _names(_with("r6", _golden(None, "r6") + "snmp-server community x RO\n" + add)
+                              ["nmas-snmp-ospfv3.json"])
+        assert "r3" not in _names(_with("r3", _edited("r3", drop=("ipv6 router ospf",)))
+                                  ["nmas-snmp-ospfv3.json"])
+
+    def test_bgp_joined_and_left(self):
+        assert "r1" in _names(_with("r1", _edited("r1", "router bgp 65009\n bgp log-neighbor-changes\n"))
+                              ["nmas-snmp-bgp.json"])
+        assert "r3" not in _names(_with("r3", _edited("r3", drop=("router bgp",)))["nmas-snmp-bgp.json"])
+
+    def test_ip_sla_joined_and_left(self):
+        assert "s1" in _names(_with("s1", _edited("s1", "ip sla 10\n icmp-echo 192.0.2.1\n"))
+                              ["nmas-snmp-ipsla.json"])
+        assert "r1" not in _names(_with("r1", _edited("r1", drop=("ip sla",)))["nmas-snmp-ipsla.json"])
+
+
+class TestAGoldenCommitWakesTheKeeper:
+    """The operator, 2026-09-30: r6's new golden gave it SNMP and only the
+    300 s backstop caught it. The post-commit hook wakes the keeper for any
+    commit that changed a golden, and for nothing else."""
+
+    @pytest.fixture
+    def repo(self, tmp_path):
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com")
+
+        def git(*a):
+            return subprocess.run(["git", "-C", str(tmp_path), *a], check=True, env=env,
+                                  capture_output=True, text=True).stdout.strip()
+        git("init", "-q")
+        (tmp_path / "golden").mkdir()
+        (tmp_path / "host_vars").mkdir()
+        return tmp_path, git
+
+    def _commit(self, repo, path, text):
+        root, git = repo
+        (root / path).write_text(text)
+        git("add", "-A")
+        git("commit", "-q", "-m", "c")
+        return git("rev-parse", "HEAD")
+
+    def test_a_golden_commit_wakes_and_an_intent_commit_does_not(self, repo, monkeypatch):
+        from modules import prometheus_targets as P
+        woke = []
+        monkeypatch.setattr(P, "inventory_changed", lambda reason: woke.append(reason))
+        sha = self._commit(repo, "golden/r6.cfg", "snmp-server community x RO\n")
+        got = P.golden_hook({"repo": str(repo[0]), "sha": sha, "list_name": "Default"})
+        assert got["ok"] and woke and "r6" in woke[0] and sha[:10] in woke[0]
+        woke.clear()
+        sha = self._commit(repo, "host_vars/r6.yml", "x: 1\n")
+        assert P.golden_hook({"repo": str(repo[0]), "sha": sha})["message"] == "no golden changed"
+        assert woke == []
+
+    def test_the_hook_is_registered_for_every_commit(self):
+        from modules.nsot import hooks
+        hooks.ensure_default_hooks()
+        assert "prometheus-targets" in [h["name"] if isinstance(h, dict) else h for h in hooks.registered()]
+
+    def test_a_wake_reaches_a_running_keeper(self, monkeypatch):
+        from modules import prometheus_targets as P
+        import threading
+        ev = threading.Event()
+        monkeypatch.setitem(P._keeper, "thread", object())
+        monkeypatch.setitem(P._keeper, "event", ev)
+        monkeypatch.setitem(P._keeper, "reasons", [])
+        P.inventory_changed("Default: commit abc changed r6")
+        assert ev.is_set() and P._keeper["reasons"] == ["Default: commit abc changed r6"]

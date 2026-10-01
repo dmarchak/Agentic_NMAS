@@ -209,3 +209,7 @@ def register_default_hooks() -> None:
     # commit is published without waiting for the reader's next cycle.
     register("publication-check", publication_hook, timeout=30)
     register("s3-archive", s3_archive_hook, timeout=60)
+    # A golden commit can change a device's eligibility for a Prometheus
+    # target group: wake the targets keeper (a no-op where it does not run).
+    from modules.prometheus_targets import golden_hook
+    register("prometheus-targets", golden_hook, timeout=15)

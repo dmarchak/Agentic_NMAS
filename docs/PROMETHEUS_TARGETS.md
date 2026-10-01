@@ -43,6 +43,28 @@ stops being scraped.
 
 **Only a device whose committed golden configures SNMP is a target** (the operator, 2026-09-30, C236): r6 was one with no SNMP in its configuration, and Grafana called it unreachable. Its absence is named in the run's notes, and job health's `monitoring:<device>` row says "r6 is not monitored by SNMP" until the monitoring profile (NSOT_PLAN P.9) gives it SNMP. A golden that cannot be read stops the generation, and the files stay as they were.
 
+**When the files are rewritten** (the operator, 2026-09-30: r6's new golden gave it
+SNMP, and only the 300 s backstop caught it). Every group a device belongs to is
+read from its COMMITTED golden, so the keeper is woken by:
+- an inventory write (Add, Delete, a role edit, onboarding's promotion, adopt,
+  retire, a NetBox refresh);
+- **a commit that changes a golden**, through the list repository's post-commit
+  hook (`prometheus-targets`), which every commit reaches by construction (C223):
+  a deploy, a capture, Save All, a restore. One owner decides eligibility
+  (`generate()`); the hook only wakes it, and only files whose content moved are
+  written;
+- the 300 s backstop, for a change another process made.
+
+**What joins a group, and what does not.**
+- A device joins `ospf`, `ospfv3` (IOS-XE only), `bgp` or `ipsla` when its
+  committed golden gains the protocol, and leaves when it loses it; each round
+  trip is a test on a real golden (`TestTheRoutingGroupsRoundTrip`).
+- **A change made by hand on a device joins only once it is captured.** Until a
+  capture commits it, it is drift, drawn as drift, and no target follows it.
+- **A protocol with no group is not covered**: RIP (s1 and r1 run it today),
+  EIGRP and IS-IS each need a generated snmp_exporter module, a job and a group
+  before any of their adjacencies are scraped.
+
 A device with no role in the inventory gets no `role` label, and the run says
 so. The inventory today says `router` for the four switches and nothing for
 r6; the targets carry that as it is (C225).
