@@ -144,6 +144,20 @@ EXEMPLARS = {
         "unit": {"chain": ["ip access-list extended NMASPROBE"],
                  "line": " permit ip host 192.0.2.1 any", "match_in_readback": True},
         "teardown": ["no ip access-list extended NMASPROBE"]}],
+    # A RUNNING operation, and one never scheduled. `no ip sla N` is expected
+    # to take the operation's own schedule line with it (`companions`: lines
+    # the removal may take and still be exact), and nothing else. The target
+    # is a documentation address: one echo a minute that nothing answers,
+    # for the seconds the measurement lasts.
+    "global.ip-sla-operation": [
+        {"setup": ["ip sla 9901", " icmp-echo 192.0.2.13", " frequency 60",
+                   "ip sla schedule 9901 life forever start-time now"],
+         "unit": {"chain": [], "line": "ip sla 9901",
+                  "companions": ["ip sla schedule 9901 "]},
+         "teardown": []},
+        {"setup": ["ip sla 9902", " icmp-echo 192.0.2.14", " frequency 60"],
+         "unit": {"chain": [], "line": "ip sla 9902"},
+         "teardown": []}],
     "bgp.neighbor-remote-as": [{
         "needs": "router bgp", "live": True,
         "setup": ["{bgp}", " neighbor 192.0.2.99 remote-as 64999",
@@ -303,7 +317,9 @@ def plan_for(key: str, bgp: str = LIVE_BGP) -> list:
     out = []
     for ex in EXEMPLARS[key]:
         unit = {"chain": _fill(ex["unit"]["chain"], bgp), "line": ex["unit"]["line"],
-                **({"match_in_readback": True} if ex["unit"].get("match_in_readback") else {})}
+                **({"match_in_readback": True} if ex["unit"].get("match_in_readback") else {}),
+                **({"companions": list(ex["unit"]["companions"])}
+                   if ex["unit"].get("companions") else {})}
         out.append({"setup": _fill(ex["setup"], bgp), "unit": unit,
                     "program": negation_program([unit]),
                     "teardown": _fill(ex["teardown"], bgp), "needs": ex.get("needs", ""),
@@ -318,6 +334,10 @@ def classify(with_scratch: str, after: str, unit: dict, error: str = "") -> dict
     before, now = _lines(with_scratch), _lines(after)
     path = tuple(unit["chain"]) + (unit["line"],)
     expected = {p for p in before if p[:len(path)] == path}
+    # A companion: a global line the removal is EXPECTED to take with the
+    # unit (an IP SLA operation's own schedule), by its prefix.
+    expected |= {p for p in before if len(p) == 1
+                  and any(p[0].startswith(c) for c in unit.get("companions") or [])}
     removed, added = before - now, now - before
     if path in now:
         return {"result": "incomplete", "detail": "the line is still on the device"}
@@ -431,6 +451,8 @@ def main() -> int:
                     err = send(ex["setup"])
                     with_scratch = read()
                     unit = None if err else _locate(ex["unit"], with_scratch)
+                    if unit is not None and ex["unit"].get("companions"):
+                        unit["companions"] = list(ex["unit"]["companions"])
                     if unit is None:
                         rows.append({"result": "failed", "sent_as": key,
                                      "detail": "the scratch did not land: "

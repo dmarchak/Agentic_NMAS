@@ -143,6 +143,12 @@ SHAPES = (
     Shape("named-acl.entry", "ip access-list", "leaf", r"^(\d+ )?(permit|deny|remark) .+$",
           header=r"^ip(v6)? access-list (?:(?:standard|extended) )?(?!\d+$)\S+$"),
     Shape("bgp.neighbor-remote-as", "router bgp", "leaf", r"^neighbor \S+ remote-as \d+$"),
+    # An IP SLA operation (2026-10-01): IOS refuses to modify a RUNNING one,
+    # so changing it is delete, re-create, reschedule (modules/nsot/recreate.py).
+    # `no ip sla N` is expected to take the operation's OWN schedule line with
+    # it (the probe declares that line a companion), and nothing else: exact
+    # means exactly the operation and its schedule.
+    Shape("global.ip-sla-operation", "global", "stanza", r"^ip sla \d+$"),
 )
 
 #: What a measurement found, in words.

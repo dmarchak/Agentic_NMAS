@@ -1429,6 +1429,26 @@ def _stage_verify(ctx: PipelineContext) -> None:
                         " > ".join(list(u["chain"]) + [u["line"].strip()])
                         for u in removals_left))
 
+        # ── Re-created IP SLA operations: each must read back as intent
+        # defines it (the device refuses to edit a running one, so it was
+        # deleted and defined again; recreate.py).
+        recreated = ((ctx.removals or {}).get(ip) or {}).get("recreates") or []
+        recreates_off = []
+        if recreated:
+            from modules.nsot.recreate import unmatched
+            post_cfg = post.get("running_config") or ""
+            if not post_cfg and post.get("running_config_error"):
+                cant_read.append("re-created IP SLA operations: `show running-config`: "
+                                 + post["running_config_error"])
+            elif not post_cfg:
+                issues.append("Re-created IP SLA operation not verified: the post-change "
+                              "config could not be read")
+            else:
+                recreates_off = unmatched(recreated, post_cfg, "new")
+                for u in recreates_off:
+                    issues.append(f"ip sla {u['number']} did not read back as intent defines it: "
+                                  f"expected {u['expected']}, found {u['found'] or 'nothing'}")
+
         ctx.verify_result[ip] = {
             "ok":     not issues and not unmet and not cant_read,
             # Read after the change and not trustworthy (C272): verify did not
@@ -1440,6 +1460,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
             # time and on what basis (C178); absent when BGP was not checked.
             "bgp_watch": record.get("bgp_watch"),
             "removals_left": [u["line"].strip() for u in removals_left],
+            # The re-created IP SLA operations read back, by number.
+            "recreates_checked": [u["number"] for u in recreated],
+            "recreates_off": [u["number"] for u in recreates_off],
             "issues": issues,
             # Declared by intent and not up: verify did not pass, and nothing
             # was rolled back (see above).
@@ -1581,7 +1604,7 @@ ROLLBACK_STATES = {
 ROLLBACK_OK = ("restored", "nothing_to_undo")
 
 
-def _rollback_readback(ctx, dev, pushed, pre_cfg, units=()) -> dict:
+def _rollback_readback(ctx, dev, pushed, pre_cfg, units=(), recreated=()) -> dict:
     """Read the device back after its undo (fresh connection, as the failure
     capture does) and compute the undo AGAIN against what landed now: an
     empty program means the push is gone."""
@@ -1604,6 +1627,14 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg, units=()) -> dict:
         # A removed line that is still missing is an undo still needed.
         from modules.nsot.removal import restore_program
         remaining = remaining + restore_program(list(units), pre_cfg, post or "")
+    if recreated:
+        # A re-created IP SLA operation not back at its OLD definition: its
+        # restore is still needed.
+        from modules.nsot.recreate import undo_program, unmatched
+        off = {u["number"] for u in unmatched(list(recreated), post or "", "old")}
+        if off:
+            remaining = remaining + undo_program(
+                [u for u in recreated if u["number"] in off], pre_cfg)
     if remaining:
         return {"state": "incomplete", "remaining": remaining,
                 "detail": f"{len(remaining)} line(s) of undo still needed after the rollback"}
@@ -1663,6 +1694,14 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             pushed = split_pushed(pushed, removal.get("commands") or [])
             re_add = (restore_program(removal.get("units") or [], pre_cfg, "")
                       if removal.get("units") else [])
+            # Before the removals, the re-created IP SLA operations: undone by
+            # restoring each OLD definition from the snapshot (delete what is
+            # there, put the device's own lines back), never by inverting the
+            # program, whose `no ip sla N` has no line-by-line inverse.
+            from modules.nsot.recreate import undo_program
+            pushed = split_pushed(pushed, removal.get("recreate_commands") or [])
+            recreated = removal.get("recreates") or []
+            restore_ops = undo_program(recreated, pre_cfg) if recreated else []
             # What actually reached the device, from the capture that ran
             # moments ago. On a partial push this is not the same as what was
             # pushed, and undoing a line the device rejected would send a
@@ -1682,7 +1721,7 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             # guard stricter, which is why it is optional there and required
             # here -- this is the caller that knows.
             assert_rollback_provenance(undo, pushed, pre_cfg)
-            undo = undo + re_add
+            undo = undo + restore_ops + re_add
             ctx.rollback_commands[ip] = undo
 
             if not undo:
@@ -1712,7 +1751,7 @@ def _stage_rollback(ctx: PipelineContext) -> None:
                      hostname, len(undo), undo)
             # Sent is not restored: read it back.
             ctx.rollback_outcome[ip] = _rollback_readback(
-                ctx, dev, pushed, pre_cfg, removal.get("units") or [])
+                ctx, dev, pushed, pre_cfg, removal.get("units") or [], recreated)
             if ctx.rollback_outcome[ip]["state"] != "restored":
                 log.error("pipeline[rollback]: %s NOT confirmed restored: %s", hostname,
                           ctx.rollback_outcome[ip]["detail"])

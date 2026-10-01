@@ -342,7 +342,9 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
             none = ("Nothing will be sent: the device already has every line the profile "
                     "supplies." if d.get("profile_scope") else
                     "Nothing will be sent: the device already has every line.")
-        notes = []
+        # A running IP SLA operation re-created (deleted, defined from intent,
+        # rescheduled), with the definition it replaces: before any other note.
+        notes = list(d.get("recreates") or [])
         a = d.get("attribution")
         sc = d.get("profile_scope")
         if sc:
@@ -442,16 +444,23 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
     # Mode B: "merge-only, never removed" is false the moment a removal is
     # selected, so both sentences say what this program does.
     removing_any = any(((d.get("removals") or {}).get("removed")) for d in devices)
+    # Re-creating a running IP SLA operation deletes it first, so "merge-only"
+    # alone would be false the moment one is planned.
+    n_rc = sum(len(d.get("recreates") or []) for d in devices)
+    recreating = (f", re-creating {n_rc} running IP SLA operation(s) intent changes"
+                  if n_rc else "")
     return build(
         action="deploy",
         summary=((f"Apply the network's monitoring profile to the devices you tick: only the "
                   f"profile's lines are sent, "
                   + ("plus the removals you selected" if removing_any else "merge-only")
+                  + recreating
                   + f". {ready} of {n} can receive it now, and for each, exactly the program "
                   "shown is sent, in order.") if scope else
                  (f"Deploy to the devices you tick, "
                   + ("merge-only plus the removals you selected" if removing_any
                      else "merge-only")
+                  + recreating
                   + f": {ready} of {n} can be "
                   "deployed now, and for each, exactly the program shown is sent, in order.")),
         targets=targets, what_not=what_not,
@@ -541,7 +550,8 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
             none = ("Nothing will be sent: the device already matches this ref. It "
                     "is still read back at apply, so the baseline can count it as "
                     "measured.")
-        notes = []
+        # A running IP SLA operation the ref defines differently: re-created.
+        notes = list(d.get("recreates") or [])
         replace = d.get("replace") or []
         if replace and commands:
             notes.append({"title": "What these lines replace on the device",

@@ -165,14 +165,18 @@ def _artifact_for(list_name: str, hostname: str):
 
 def _current_program(artifact, captured: str) -> list:
     """What a fresh plan would send, or ``[]`` if it cannot be computed."""
-    from modules.nsot.deploy import merge_commands, render_for_deploy
+    from modules.nsot.deploy import render_for_deploy
 
     try:
         rendered = render_for_deploy(
             artifact.host_vars, artifact.platform,
             template_root=getattr(artifact, "template_root", "") or None,
             template_name=(artifact.template or "base.j2").split("/")[-1])
-        return merge_commands(rendered, captured)
+        # The program a plan sends, re-creates included (with no removal
+        # selected): a rolled-back re-create is recorded as its program, and
+        # merge_commands alone would never contain it, lifting its own block.
+        full = _program(rendered, captured, [], None, getattr(artifact, "platform", ""))
+        return list(full["commands"])
     except Exception as exc:                  # noqa: BLE001
         # Cannot tell whether this is the failed program. Keep the block:
         # an unreadable answer is not a clean bill of health.
@@ -420,6 +424,17 @@ def plan():
                 sc = entry["profile_scope"]
                 sc["superseded"] = profile_apply.superseded(
                     sc["to_send"] + sc["in_place"], entry["removable"])
+            # A running IP SLA operation intent changes: re-created (deleted,
+            # defined from intent, rescheduled), drawn with what it replaces,
+            # or refused with why; a refused one blocks the device, since the
+            # in-place edit is what the device refuses.
+            from modules.nsot import recreate as _recreate
+            if full["recreate"]["units"]:
+                entry["recreates"] = [_recreate.describe(u) for u in full["recreate"]["units"]]
+            if full["recreate"]["refused"]:
+                entry["deployable"] = False
+                entry["blocking_reasons"] = list(entry.get("blocking_reasons") or []) + [
+                    r["reason"] for r in full["recreate"]["refused"]]
             if full["refused"]:
                 # A removal the person asked for and will not get: the device is
                 # not confirmable with it, and the reason says which and why.
@@ -557,6 +572,8 @@ def apply():
                 if full["refused"]:
                     raise NotAuthorised("a selected removal is refused: " + "; ".join(
                         f"{r['line'].strip()}: {r['reason']}" for r in full["refused"]))
+                if full["recreate"]["refused"]:
+                    raise NotAuthorised("; ".join(r["reason"] for r in full["recreate"]["refused"]))
                 recomputed = full["commands"]
                 device_auth = authorise.get(hostname) or []
                 assert_authorised(recomputed, device_auth, full["keys"])
@@ -761,8 +778,7 @@ def run_targets(list_name: str, targets: list, data: dict,
     """
     from modules.nsot.deploy import (CircuitBreaker, NotAuthorised,
                                      assert_authorised, command_fingerprint,
-                                     merge_commands, plan_batch,
-                                     prepare_for_deploy, run_batch)
+                                     plan_batch, prepare_for_deploy, run_batch)
 
     confirmations = data.get("confirmations") or {}
     command_hashes = data.get("command_hashes") or {}
@@ -780,8 +796,13 @@ def run_targets(list_name: str, targets: list, data: dict,
         expected = command_hashes.get(hostname)
         if expected is not None:
             try:
-                recomputed = merge_commands(
-                    prepare_for_deploy(target)["config"], captured)
+                # The deploy's own program (`_program`), as the preview built it:
+                # a running IP SLA operation is re-created, or the device refused.
+                full = _program(prepare_for_deploy(target)["config"], captured, [], None,
+                                getattr(target, "platform", ""))
+                if full["recreate"]["refused"]:
+                    raise NotAuthorised("; ".join(r["reason"] for r in full["recreate"]["refused"]))
+                recomputed = full["commands"]
                 device_auth = authorise.get(hostname) or []
                 # A restore's re-added secret lines need an authorisation too
                 # (C79), from the same mechanism as a dangerous line.
@@ -896,13 +917,26 @@ def _measure_unchanged(list_name: str, device: dict, hostname: str,
 
 def _program(intended: str, captured: str, selected: list, device: dict,
              platform: str) -> dict:
-    """The deploy program for one device, merge additions then the SELECTED
-    removals: ONE computation for plan, apply and the pipeline's run."""
+    """The deploy program for one device: the merge additions, then the
+    RE-CREATED running IP SLA operations, then the SELECTED removals. ONE
+    computation for plan, apply and the pipeline's run.
+
+    A running IP SLA operation intent changes is never part of the merge: the
+    device refuses to modify it in place, so it is deleted, re-created from
+    intent and rescheduled (`recreate.py`), and refused, naming why, where
+    that delete is not measured for the platform."""
+    from modules.nsot import recreate
     from modules.nsot.deploy import merge_commands
     from modules.nsot.removal import with_removals
 
-    return with_removals(merge_commands(intended, captured), captured, selected,
+    rc = recreate.plan(intended, captured, dialect=platform)
+    # A refused operation is excluded too: its in-place edit is what the device
+    # refuses, so no program, sent or drawn, ever holds it.
+    merge = merge_commands(recreate.exclude(intended, rc["units"] + rc["refused"]), captured)
+    full = with_removals(merge, captured, selected,
                          mgmt_ip=(device or {}).get("ip", ""), dialect=platform)
+    return {**full, "commands": list(merge) + rc["commands"] + list(full["removal_commands"]),
+            "recreate": rc}
 
 
 def _deploy_one(entry, list_name: str, device_rows: dict,
@@ -943,6 +977,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
                     "reason": f"the monitoring profile could not be scoped: {exc}"}
     full = _program(intended, captured, (remove or {}).get(hostname) or [],
                     device, getattr(artifact, "platform", ""))
+    if full["recreate"]["refused"]:
+        return {"device": hostname, "outcome": FAILED, "stage": "recreate",
+                "reason": "; ".join(r["reason"] for r in full["recreate"]["refused"])}
     if full["refused"]:
         return {"device": hostname, "outcome": FAILED, "stage": "removal",
                 "reason": "a selected removal is refused: " + "; ".join(
@@ -1010,8 +1047,13 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     ctx.confirmed_commands = {device.get("ip", ""): commands}
     # The removal half, so rollback undoes it by re-adding the device's own
     # lines and verify reads back that each is gone.
+    # And the re-created IP SLA operations, the block before the removals:
+    # verify reads each back as intent defines it, and rollback restores
+    # each old definition from the pre-change snapshot.
     ctx.removals = {device.get("ip", ""): {"units": full["removed"],
-                                           "commands": full["removal_commands"]}}
+                                           "commands": full["removal_commands"],
+                                           "recreates": full["recreate"]["units"],
+                                           "recreate_commands": full["recreate"]["commands"]}}
     # The batch commits; this device hands its capture back.
     ctx.defer_golden = True
     # What the TARGET intent declares, so verify checks the protocol this

@@ -515,6 +515,37 @@ session needs no reconstruction:
    `tests/fixtures/operational/platform_defaults/staged8_2026-10-01T0244Z/`. `cdp run` is
    removable through Mode B on IOS-XE from the next deploy; IOS was not asked and still
    refuses it. Next: r6's removal from its Device page (C262), then r1 to r4 (C269).
+9. **Can a running IP SLA operation be deleted exactly, so the tool can change it** (the
+   operator, 2026-10-01: s3's probe to r1, every 10 s, slowed to 60 s, not a lab
+   requirement, to take load off the management gateway, C93)? IOS refuses to modify a
+   scheduled entry ("Entry already running and cannot be modified"), so the deploy now
+   changes one by deleting it, re-creating it from intent and rescheduling it
+   (`modules/nsot/recreate.py`): previewed as such with the definition it replaces,
+   verified by reading the operation back, rolled back by restoring the old definition
+   from the pre-change snapshot. The delete, `no ip sla N`, is the removal shape
+   `global.ip-sla-operation`, refused until measured on the device's platform, so today
+   every such change is blocked by name. The probe's exemplars are a scheduled operation
+   to 192.0.2.13 and an unscheduled one to 192.0.2.14 (documentation addresses nothing
+   answers), each deleted and read back; `exact` means the operation and its OWN
+   `ip sla schedule` line went and nothing else. **NOT on s3**: it measures `cisco_ios`
+   on s1, the least loaded switch (clock 0.94), and `cisco_iosxe` on r2 (r1 to r4 run IP
+   SLA too, and the IP SLA policy, P.9 (d4), will change them). Running config only,
+   never saved, the device held and restored, as every run of this probe.
+   1. Dry run on the NMAS host: `scripts/nmas-removal-probe --shape global.ip-sla-operation`.
+   2. `scripts/nmas-removal-probe --list Default --device s1 --shape global.ip-sla-operation
+      --apply --actor <operator> --out /tmp/removal-ipsla-s1.json`, then the same with
+      `--device r2 --out /tmp/removal-ipsla-r2.json`. Exit 2 is NOT RESTORED: stop and read
+      its first line.
+   3. Hand over both files. `exact` is recorded in `removal_measured.json` and allows the
+      re-create on that platform; `broader` (something else went with the operation) keeps
+      it refused, naming what went.
+   4. **Then s3's change, through the tool**: in s3's intent (Device page, Intent tab),
+      change the operation's `frequency 10` to `frequency 60` and commit it; open the
+      deploy for s3. The preview's program is six lines (`no ip sla 1`, the operation as
+      intent defines it, `exit`, its schedule) under "ip sla 1 is running ... What it
+      replaces on the device", and nothing else; confirm it. Verify reads `ip sla 1` back
+      as intent defines it; a read-back that differs fails verify and the rollback puts
+      `frequency 10` back. The operation's counters and history start again.
 
 **The Services mockups reviewed (the operator, 2026-09-30; brief 9b, 14.2, 15.1):**
 - **Every Grafana panel, rendered from the dashboard's own JSON model,** never a chosen few:

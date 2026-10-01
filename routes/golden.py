@@ -634,8 +634,8 @@ def restore_preview():
     """
     from modules.nsot.deploy import (NotAuthorised, assert_authorised,
                                      command_fingerprint, dangerous_in,
-                                     merge_commands, merge_diff,
-                                     prepare_restore, residue_in_context)
+                                     merge_diff, prepare_restore,
+                                     residue_in_context)
     from modules.nsot import normalize
     from modules.nsot.restore import WithdrawnBaseline, build_targets
     from routes.deploy import _capture_hash
@@ -690,7 +690,19 @@ def restore_preview():
             else:
                 prepared = prepare_restore(target)
             diff = merge_diff(prepared["config"], target.captured)
-            commands = merge_commands(prepared["config"], target.captured)
+            # The deploy's own program (one computation, `_program`): a running
+            # IP SLA operation the ref defines differently is re-created, never
+            # edited in place (the device refuses that), or refused with why.
+            from modules.nsot import recreate as _recreate
+            from routes.deploy import _program
+            full = _program(prepared["config"], target.captured, [], None, target.platform)
+            commands = full["commands"]
+            if full["recreate"]["units"]:
+                entry["recreates"] = [_recreate.describe(u) for u in full["recreate"]["units"]]
+            if full["recreate"]["refused"]:
+                entry["deployable"] = False
+                entry["blocking_reasons"] = list(entry.get("blocking_reasons") or []) + [
+                    r["reason"] for r in full["recreate"]["refused"]]
             entry.update({
                 "add": diff["add"],
                 "replace": diff["replace"],

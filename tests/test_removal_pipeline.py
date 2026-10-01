@@ -160,7 +160,9 @@ class TestDeployOne:
         sent = ctx.confirmed_commands["203.0.113.24"]
         assert sent[-3:] == [GI03, " no description retired uplink", "exit"]
         assert ctx.removals["203.0.113.24"] == {
-            "units": [UNIT], "commands": [GI03, " no description retired uplink", "exit"]}
+            "units": [UNIT], "commands": [GI03, " no description retired uplink", "exit"],
+            # No running IP SLA operation is re-created here (recreate.py).
+            "recreates": [], "recreate_commands": []}
 
     def test_no_reason_fails_before_the_pipeline(self, monkeypatch):
         out, ctx = self._run(monkeypatch, [UNIT], [SHUT])
