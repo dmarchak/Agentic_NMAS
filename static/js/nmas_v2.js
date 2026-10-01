@@ -17,7 +17,9 @@
   var KEYS = ['reachability', 'integration_health', 'alerts', 'freshness', 'drift', 'dashboards',
               'job_health', 'ci_verdict', 'app_version', 'netbox', 'remote', 'baselines',
               // A batch deploy run as a job (P.9 d2), and the goldens it commits.
-              'deploy_job', 'goldens'];
+              'deploy_job', 'goldens',
+              // C38's reader: the routing adjacencies intent implies.
+              'adjacencies'];
 
   /* PURE: an age in words, from two times in milliseconds. */
   function ageWords(thenMs, nowMs) {
@@ -86,6 +88,7 @@
   function relayBaselines() { relay('baselines'); }
   function relayDeployJob() { relay('deploy_job'); }
   function relayGoldens() { relay('goldens'); }
+  function relayAdjacencies() { relay('adjacencies'); }
 
   function wireAnnouncements() {
     var NMAS = root.NMAS;
@@ -104,6 +107,7 @@
     NMAS.subscribe('baselines', 'v2Baselines', relayBaselines);
     NMAS.subscribe('deploy_job', 'v2DeployJob', relayDeployJob);
     NMAS.subscribe('goldens', 'v2Goldens', relayGoldens);
+    NMAS.subscribe('adjacencies', 'v2Adjacencies', relayAdjacencies);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

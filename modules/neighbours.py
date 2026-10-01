@@ -226,19 +226,21 @@ def expected(intents: dict, host: str) -> list:
             for _oname, theirs in ospf_links(hv):
                 if theirs.network == mine.network:
                     out.append({"proto": "ospf", "peer": other, "address": str(theirs.ip),
-                                "via": name, "rid": router_id(hv), "managed": True})
+                                "via": name, "rid": router_id(hv), "managed": True,
+                                "network": str(mine.network)})
     for name, mine in ospfv3_links(me):
         for other, hv in sorted(intents.items()):
             if other == host:
                 continue
             if any(t.network == mine.network for _n, t in ospfv3_links(hv)):
                 out.append({"proto": "ospfv3", "peer": other, "address": "",
-                            "via": name, "rid": router_id(hv), "managed": True})
+                            "via": name, "rid": router_id(hv), "managed": True,
+                            "network": str(mine.network)})
     owners = addresses(intents)
     for addr, asn in bgp_peers(me):
         peer = owners.get(addr, "")
         out.append({"proto": "bgp", "peer": peer, "address": str(addr), "via": f"AS {asn}",
-                    "rid": "", "managed": bool(peer)})
+                    "rid": "", "managed": bool(peer), "network": f"ipv{addr.version}"})
     return out
 
 

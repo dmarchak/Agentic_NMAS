@@ -1594,11 +1594,88 @@ def host_steps_source(owed=None) -> dict:
                          checked=f"the last {host_steps.HISTORY} commits of {health._COMMIT[:10]}")
 
 
+def adjacency_source(cached=None) -> dict:
+    """C38: a routing adjacency committed intent implies and the device does
+    not report up, held for two reads (a deploy's settle window passes
+    first). ONE row per link, naming the pair and each side's report; a peer
+    outside management is seen from one side and says so. A protocol nothing
+    scrapes is one unknown row naming the devices, never "all up"."""
+    from modules import reader_job
+    from modules.readers.adjacencies import PERSIST_READS
+
+    started = time.time()
+    got = reader_job.read_cached("adjacencies") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    label = "Routing adjacencies"
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("adjacencies", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    if not v.get("configured"):
+        return source_result("adjacencies", label, read_at=started, took_ms=took,
+                             value_at=value_at, stale_after_seconds=promise, reader="adjacencies",
+                             checked="no Prometheus configured: what the devices report about "
+                                     "their neighbours cannot be read")
+    rows, settling = [], 0
+    for key, a in sorted((v.get("adjacencies") or {}).items()):
+        if int(a.get("reads") or 0) < PERSIST_READS:
+            settling += 1
+            continue
+        devs = a.get("devices") or []
+        sides = "; ".join(
+            f"{s['device']}{(' ' + s['via']) if s.get('via') else ''} reports "
+            + ("it " + s["words"] if s["state"] == "down" else "no such neighbour")
+            for s in a.get("sides") or [])
+        if a.get("managed") and len(devs) == 2:
+            what = f"{a['protocol']} between {devs[0]} and {devs[1]} is not up"
+        else:
+            addr = next((s.get("address") for s in a.get("sides") or [] if s.get("address")), "")
+            what = (f"{a['protocol']} from {devs[0] if devs else '?'} to {addr or 'a peer'} "
+                    "(outside management) is not up")
+        cause = (f"Committed intent implies this adjacency ({a.get('network') or a['protocol']}); "
+                 f"{sides}, as Prometheus last scraped them. Held for {a.get('reads')} reads a "
+                 "minute apart, so it is not a deploy's settle window")
+        first = devs[0] if devs else ""
+        rows.append(row(source="adjacencies", key=key, level="danger", what=what, devices=devs,
+                        since=_ts(a.get("since")), cause=cause,
+                        operands={"list": a.get("list"), "sides": a.get("sides")},
+                        action={"label": f"Open {first}'s Neighbours and check the link and both "
+                                         "ends' routing configuration",
+                                "href": f"/v2/device/{first}?tab=neighbours"}))
+    un = v.get("unmeasured") or []
+    if un:
+        names = ", ".join(sorted({f"{u['device']} ({u['protocol']})" for u in un}))
+        rows.append(row(source="adjacencies", key="unmeasured", level="unknown",
+                        what=f"{len(un)} protocol(s) whose adjacencies cannot be judged",
+                        devices=sorted({u["device"] for u in un}),
+                        cause=f"Intent implies adjacencies Prometheus does not measure: {names}. "
+                              + (un[0].get("why") or ""),
+                        action={"label": "Check the Prometheus targets row: the routing jobs' "
+                                         "files are generated from the goldens"}))
+    for e in v.get("errors") or []:
+        rows.append(row(source="adjacencies", key=f"error:{e[:40]}", level="unknown",
+                        what="A list's committed intent could not be read for its adjacencies",
+                        cause=e, action={"label": "The reason above is what is known",
+                                         "known": False}))
+    return source_result(
+        "adjacencies", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
+        stale_after_seconds=promise, reader="adjacencies",
+        checked=(f"{v.get('checked', 0)} adjacency report(s) over {v.get('devices', 0)} device(s)"
+                 + (f"; {settling} not up for less than {PERSIST_READS} reads, not raised yet"
+                    if settling else "")))
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
            reachability_source, netbox_secrets_source, remote_source, pushed_source,
-           host_steps_source)
+           host_steps_source, adjacency_source)
 
 
 def _attach(rows: list) -> list:

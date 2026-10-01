@@ -7,7 +7,7 @@
 {%- set KIND = {'up': 'ok', 'down': 'danger', 'not_seen': 'danger', 'unexpected': 'warn', 'unknown': 'muted'} -%}
 {%- set WORD = {'up': 'up', 'down': 'down', 'not_seen': 'not reported', 'unexpected': 'not implied by intent', 'unknown': 'not measured'} -%}
 <section class="card neighbours" id="neighbours" hx-get="{{ url_for('device_v2.neighbours', name=device.hostname) }}"
-         hx-trigger="nmas:goldens from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:adjacencies from:body" hx-swap="outerHTML">
   {%- for e in n.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}.</p></div>
   {%- endfor %}

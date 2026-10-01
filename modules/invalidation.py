@@ -63,6 +63,7 @@ VOCABULARY = {
     "intent": "committed intent (host_vars)",
     "templates": "the template library, bindings and template approvals",
     "baselines": "baseline tags",
+    "adjacencies": "the routing adjacencies intent implies, against what each device reports (C38)",
     "remote": "the remote: its push state and verification",
     "drift": "the drift checker's state and last run",
     "approvals": "the approval queue",

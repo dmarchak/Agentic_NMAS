@@ -149,6 +149,10 @@
       html += ' <button type="button" class="btn btn-sm btn-outline-primary py-0 ms-1" '
         + 'data-nmas-open="profile_propose" data-nmas-list="' + esc(a.list || '') + '">Propose…</button>';
     }
+    // A page on the redesign that shows the evidence (C38: a device's Neighbours).
+    if (a.href && /^\/v2\//.test(a.href)) {
+      html += ' <a class="btn btn-sm btn-outline-primary py-0 ms-1" href="' + esc(a.href) + '">Open…</a>';
+    }
     if (a.command) html += (a.open ? ' or on the host' : '') + ': <code>' + esc(a.command) + '</code>';
     if (a.reference) html += ' (' + esc(a.reference) + ')';
     return html;
@@ -324,6 +328,7 @@
         NMAS.subscribe('job_health', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('alerts', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('freshness', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
+        NMAS.subscribe('adjacencies', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('integration_health', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('ci_verdict', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
         NMAS.subscribe('reachability', 'attention', loadAttention, {panel: 'needsAttentionPanel'});
