@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Refuse a commit that changes something installed on the host and says
+nothing about the host (the operator, 2026-09-30).
+
+    scripts/nmas-host-step-check --message .git/COMMIT_EDITMSG   # the staged commit
+    scripts/nmas-host-step-check --range A..B                    # commits already made
+
+A file under HOST_STEP_PATHS is not live when the checkout moves: the updater
+runs a ROOT-OWNED copy of scripts/nmas-deploy and deploy/update/nmas-update,
+the systemd units are rendered and installed by a person, and the topology
+renderer runs from a symlink a service must be restarted to re-read. So a
+commit touching one carries either
+
+    Host-Step: <the step a person runs on the host>
+
+(listed by the Update preview, which refuses until the person says it is
+done), or, when the change needs nothing on the host (a comment, a test-only
+edit),
+
+    Host-Step-None: <why nothing is needed>
+
+which states the decision rather than leaving it to be guessed. Found: between
+af8630a and e7b80c7 scripts/nmas-deploy changed and no step was reported, so
+the root-owned copy silently differed from the checkout.
+
+It is the commit-msg hook (scripts/hooks/commit-msg) and a CI step over the
+pushed range. Exit 0 passes; 1 refuses, naming each commit and path; 2 means
+git could not be asked, which is never a pass.
+"""
+
+import argparse
+import re
+import subprocess
+import sys
+
+#: What is installed on the host by a person, so its change is not live
+#: until a person acts. One list, read by the hook, CI and the tests.
+HOST_STEP_PATHS = (
+    "deploy/update/",
+    "scripts/nmas-deploy",
+    "deploy/systemd/",
+    "deploy/topology/",
+)
+
+TRAILER = re.compile(r"^(Host-Step|Host-Step-None):\s*\S", re.M)
+
+
+class CannotAsk(Exception):
+    pass
+
+
+def git(*args) -> str:
+    try:
+        p = subprocess.run(["git", *args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise CannotAsk(f"git {' '.join(args)}: {exc}") from exc
+    if p.returncode != 0:
+        raise CannotAsk(f"git {' '.join(args)} exited {p.returncode}: {p.stderr.strip()[:200]}")
+    return p.stdout
+
+
+def host_paths(paths) -> list:
+    """The paths among *paths* that need a word about the host."""
+    out = []
+    for p in paths:
+        for h in HOST_STEP_PATHS:
+            if p == h or (h.endswith("/") and p.startswith(h)):
+                out.append(p)
+                break
+    return out
+
+
+def says_host(message: str) -> bool:
+    """Whether *message* carries a Host-Step or Host-Step-None trailer with
+    something after it. Comment lines (git's template) do not count."""
+    body = "\n".join(l for l in message.splitlines() if not l.startswith("#"))
+    return bool(TRAILER.search(body))
+
+
+def problem(paths, message) -> str:
+    """The refusal for one commit, or "" when it passes."""
+    touched = host_paths(paths)
+    if not touched or says_host(message):
+        return ""
+    return (f"changes {', '.join(touched)}, which a person installs on the host, and says "
+            "nothing about the host. Add 'Host-Step: <the step>' (listed by the Update "
+            "preview), or 'Host-Step-None: <why nothing is needed>'")
+
+
+def check_staged(message_file: str) -> list:
+    paths = [p for p in git("diff", "--cached", "--name-only").splitlines() if p]
+    with open(message_file, encoding="utf-8") as fh:
+        message = fh.read()
+    why = problem(paths, message)
+    return [("the commit being made", why)] if why else []
+
+
+def check_range(rng: str) -> list:
+    out = []
+    for sha in git("rev-list", "--no-merges", rng).split():
+        paths = git("diff-tree", "--no-commit-id", "--name-only", "-r", sha).split("\n")
+        message = git("log", "-1", "--format=%B", sha)
+        why = problem([p for p in paths if p], message)
+        if why:
+            out.append((sha[:12], why))
+    return out
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--message", help="the commit message file (the commit-msg hook)")
+    g.add_argument("--range", help="A..B: commits already made (CI)")
+    a = ap.parse_args(argv)
+    try:
+        refused = check_staged(a.message) if a.message else check_range(a.range)
+    except (CannotAsk, OSError) as exc:
+        print(f"nmas-host-step-check: COULD NOT ASK: {exc}", file=sys.stderr)
+        return 2
+    for where, why in refused:
+        print(f"nmas-host-step-check: REFUSED: {where} {why}", file=sys.stderr)
+    if not refused:
+        print("nmas-host-step-check: every commit touching a host-installed file says what "
+              "the host needs" if a.range else "nmas-host-step-check: ok")
+    return 1 if refused else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

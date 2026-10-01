@@ -19,6 +19,7 @@ A person's operation (gate `confirm`, which requires a person): CI decides
 WHAT can run, the person decides WHEN.
 """
 
+import calendar
 import hashlib
 import json
 import logging
@@ -69,6 +70,34 @@ STEPS = (("request", "Request written"), ("started", "Updater started"),
 #: holds it moves the checkout; the other refuses by name. In the checkout's
 #: data/, so the service user can create it and root opens it read-only.
 LOCK = os.path.join(config.DATA_DIR, "update", "lock")
+
+#: UPDATE WHEN CI PASSES (the operator, 2026-09-30): a person confirms the
+#: update while CI is still checking the release, and the app requests it the
+#: moment CI passes. Recorded here, released by the `app-pushed` reader after
+#: each read (it asks CI every 60 s while a verdict is pending), never by a
+#: timer of its own. The request it writes is the person's, bound to the
+#: release they chose: a newer push, a failed or cancelled CI, or any other
+#: gate failing ends the wait in words, and nothing is updated.
+DEFERRED = os.path.join(config.DATA_DIR, "update", "deferred.json")
+DEFERRED_OUTCOME = os.path.join(config.DATA_DIR, "update", "deferred_outcome.json")
+
+#: How long a wait lasts: 2.5x CI's job bound (10 min in ci.yml, itself 2.7x
+#: the slowest measured job, 224 s), because a run can queue before it starts.
+DEFER_BOUND_S = 1500
+
+#: CI's verdict, in a person's words. nmas-deploy's own sentence names the run
+#: and tells a TERMINAL user to run `nmas-deploy --wait`; on this page the
+#: button waits instead, so that sentence is the cause on hover, never the line.
+CI_PERSON = {
+    "verified": "CI passed this release",
+    "pending": ("CI is still checking this release (a check takes about 4 minutes here). "
+                "You can confirm now, and it updates when CI passes"),
+    "failed": "CI found a problem with this release, so it will not be installed. The next "
+              "release fixes it",
+    "cancelled": "CI's check of this release was stopped, usually because a newer release "
+                 "replaced it: check again for the newer one",
+    "could_not_ask": "CI could not be asked about this release just now; Check again asks once more",
+}
 
 OUTCOME_WORDS = {
     "updated": "updated",
@@ -380,9 +409,35 @@ def _stored(cached=None) -> dict:
             "why": got.get("why") or "", "state": got.get("state")}
 
 
+def person_ci(ci: dict, target: str = "") -> str:
+    """The CI gate's line, in a person's words."""
+    if not ci or (target and ci.get("tip") != target):
+        return "CI has not been asked about this release yet; Check again asks now"
+    return CI_PERSON.get(ci.get("state"), f"CI answered {ci.get('state')!r}")
+
+
+def deferred() -> dict:
+    """The wait in force, ``{}`` when none (an unreadable file is said)."""
+    got = _read_json(DEFERRED)
+    if got["state"] == "unreadable":
+        return {"unreadable": got["error"]}
+    return got.get("value") or {}
+
+
+def deferred_outcome() -> dict:
+    """How the last wait ended, ``{}`` when none has."""
+    return _read_json(DEFERRED_OUTCOME).get("value") or {}
+
+
+CI_GATE = "CI passed the target"
+
+
 def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=None,
-         holder=None) -> dict:
-    """What the Update preview draws, with its gates and its hash."""
+         holder=None, waiting=None) -> dict:
+    """What the Update preview draws, with its gates and its hash.
+
+    *waiting* is the wait in force (``deferred()`` when None); the release
+    passes ``{}`` so its own wait does not refuse it."""
     from modules.readers import app_pushed
     from routes import health
 
@@ -406,10 +461,8 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
     gate("origin/main is ahead of the running commit, and fetched", behind,
          app_pushed.words(v) if v else "nothing stored yet")
     ci = v.get("ci") or {}
-    gate("CI passed the target", behind and ci.get("tip") == v.get("tip")
-         and ci.get("state") == "verified",
-         (ci.get("sentence") or "not asked yet") + (f" (asked {ci['asked_at']})"
-                                                     if ci.get("asked_at") else ""))
+    gate(CI_GATE, behind and ci.get("tip") == v.get("tip")
+         and ci.get("state") == "verified", person_ci(ci, v.get("tip") or ""))
     changes = v.get("checkout_changes")
     gate("the checkout has no local changes", changes == [],
          "clean" if changes == [] else ("could not be read" if changes is None
@@ -424,11 +477,16 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
           "inactive": "nmas-update.path is not active"}.get(install["state"], install["state"]))
     running_now = (last.get("value") or {}).get("outcome") == "running"
     held = lock_holder() if holder is None else holder
+    wait = deferred() if waiting is None else waiting
     gate("no update or terminal deploy is waiting or running",
-         not pend and not running_now and not held,
+         not pend and not running_now and not held and not wait,
          ("the updater is running: " + str((last.get("value") or {}).get("step") or "")
           if running_now else f"{len(pend)} request(s) not taken yet" if pend
-          else held or "none"))
+          else held if held
+          else (f"an update to {str(wait.get('target') or '?')[:10]} is waiting for CI, asked "
+                f"by {wait.get('requested_by') or 'someone'}" if wait.get("target")
+                else f"the wait record could not be read ({wait['unreadable']})")
+          if wait else "none"))
     steps = v.get("host_steps") or []
     facts = {"running": running, "target": v.get("tip") or "", "behind": v.get("behind"),
              "commits": v.get("commits") or [], "commits_cut": bool(v.get("commits_cut")),
@@ -440,9 +498,21 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
         {"running": running, "target": facts["target"], "ci": ci.get("state"),
          "steps": [s["sha"] + s["step"] for s in steps]}, sort_keys=True).encode()).hexdigest()[:16]
     ok = all(g["state"] == "pass" for g in gates)
+    # Waitable: every gate passes but CI's, and CI is still checking THIS
+    # target. Then the button reads "Update when CI passes".
+    waitable = (not ok and behind and ci.get("tip") == v.get("tip")
+                and ci.get("state") == "pending"
+                and all(g["state"] == "pass" for g in gates if g["name"] != CI_GATE))
+    ended = deferred_outcome()
+    last_end = (last.get("value") or {}).get("ended_at") or ""
     return {"facts": facts, "gates": gates, "selectable": ok, "hash": digest,
             "why_not": "; ".join(f"{g['name']}: {g['detail']}" for g in gates
                                  if g["state"] != "pass"),
+            "waitable": waitable, "waiting": wait, "ci_words": person_ci(ci, v.get("tip") or ""),
+            # How the last wait ended, when it ended without an update and
+            # after the updater's last record: otherwise "The last update" says it.
+            "wait_ended": (ended if ended and ended.get("outcome") != "requested"
+                           and str(ended.get("ended_at") or "") > last_end else {}),
             "last": last, "install": install}
 
 
@@ -453,29 +523,42 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
 def request(confirmed_hash: str, acknowledged: list, actor: str, **plan_kw) -> dict:
     """Write the request the root-owned updater acts on, after recomputing
     the preview. ``{"ok": False, "reason"}`` when refused; nothing written."""
-    from modules.filestore import write_atomic
-
     p = plan(**plan_kw)
     if not actor:
         return {"ok": False, "reason": "no verified person: an update is a person's step"}
     if not p["selectable"]:
-        return {"ok": False, "reason": "refused: " + p["why_not"], "plan": p}
+        return {"ok": False, "reason": "Not now: " + p["why_not"], "plan": p}
+    bad, ack = _confirmed(p, confirmed_hash, acknowledged)
+    if bad:
+        return {"ok": False, "plan": p, "reason": bad}
+    return _write_request(p, ack, actor)
+
+
+def _confirmed(p: dict, confirmed_hash: str, acknowledged) -> tuple:
+    """(refusal or "", the acknowledged host steps) for a confirm of *p*."""
     if p["hash"] != confirmed_hash:
-        return {"ok": False, "plan": p,
-                "reason": (f"what the preview showed has changed ({confirmed_hash} -> "
-                           f"{p['hash']}): the target, its CI verdict or its host steps moved. "
-                           "Nothing was requested; preview again")}
+        return (f"what the preview showed has changed ({confirmed_hash} -> {p['hash']}): the "
+                "target, its CI verdict or its host steps moved. Nothing was requested; the "
+                "page shows the new preview"), []
     steps = {s["sha"] for s in p["facts"]["host_steps"]}
     ack = sorted(set(a for a in (acknowledged or []) if a in steps))
     if steps - set(ack):
-        return {"ok": False, "plan": p,
-                "reason": "every host step must be done first, and said to be done: "
-                          + "; ".join(f"{s['sha'][:10]}: {s['step']}"
-                                      for s in p["facts"]["host_steps"] if s["sha"] not in ack)}
+        return ("every host step must be done first, and said to be done: "
+                + "; ".join(f"{s['sha'][:10]}: {s['step']}"
+                            for s in p["facts"]["host_steps"] if s["sha"] not in ack)), ack
+    return "", ack
+
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _write_request(p: dict, ack: list, actor: str) -> dict:
+    from modules.filestore import write_atomic
+
     rid = os.urandom(8).hex()
     doc = {"id": rid, "target": p["facts"]["target"], "from": p["facts"]["running"],
-           "requested_by": actor, "requested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                                                time.gmtime()),
+           "requested_by": actor, "requested_at": _now(),
            "acknowledged_host_steps": ack}
     config.secure_dir(STAGING_DIR)
     config.secure_dir(REQUEST_DIR)
@@ -496,10 +579,135 @@ def request(confirmed_hash: str, acknowledged: list, actor: str, **plan_kw) -> d
             "up_bound_s": UP_BOUND_S, "updater_timeout_s": UPDATER_TIMEOUT_S}
 
 
+# ---------------------------------------------------------------------------
+# Update when CI passes
+# ---------------------------------------------------------------------------
+
+def defer(confirmed_hash: str, acknowledged: list, actor: str, **plan_kw) -> dict:
+    """Confirm the update now and have it requested when CI passes. Refused,
+    with nothing recorded, unless CI's check of this target is the ONLY thing
+    in the way."""
+    from modules.filestore import PathLock, write_atomic
+
+    if not actor:
+        return {"ok": False, "reason": "no verified person: an update is a person's step"}
+    with PathLock(DEFERRED):
+        p = plan(**plan_kw)
+        if p["selectable"]:
+            # CI passed between the preview and the click: update now.
+            return request(confirmed_hash, acknowledged, actor, **plan_kw)
+        if not p["waitable"]:
+            return {"ok": False, "plan": p, "reason": "Not now: " + p["why_not"]}
+        bad, ack = _confirmed(p, confirmed_hash, acknowledged)
+        if bad:
+            return {"ok": False, "plan": p, "reason": bad}
+        doc = {"target": p["facts"]["target"], "from": p["facts"]["running"],
+               "requested_by": actor, "requested_at": _now(),
+               "acknowledged_host_steps": ack, "preview_hash": p["hash"],
+               "bound_s": DEFER_BOUND_S}
+        config.secure_dir(os.path.dirname(DEFERRED))
+        write_atomic(DEFERRED, json.dumps(doc, sort_keys=True))
+    _audit(dict(doc, waiting_for_ci=True))
+    log.info("update: %s asked for %s -> %s when CI passes", actor, doc["from"][:10],
+             doc["target"][:10])
+    return {"ok": True, "waiting": True, "target": doc["target"], "from": doc["from"],
+            "bound_s": DEFER_BOUND_S}
+
+
+def stop_waiting(actor: str) -> dict:
+    """End the wait without updating, as *actor*."""
+    from modules.filestore import PathLock
+
+    if not actor:
+        return {"ok": False, "reason": "no verified person"}
+    with PathLock(DEFERRED):
+        d = deferred()
+        if not d:
+            return {"ok": False, "reason": "nothing is waiting for CI"}
+        _end(d, "stopped", f"stopped by {actor}: nothing was updated")
+    return {"ok": True}
+
+
+def _audit(row: dict) -> None:
+    try:
+        with config.open_secure(AUDIT, "a") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    except OSError as exc:
+        log.error("update: %s could not be recorded in %s: %s", row, AUDIT, exc)
+
+
+def _end(d: dict, outcome: str, words: str, request_id: str = "") -> dict:
+    from modules.filestore import write_atomic
+
+    doc = {"outcome": outcome, "words": words, "target": d.get("target") or "",
+           "requested_by": d.get("requested_by") or "", "requested_at": d.get("requested_at") or "",
+           "ended_at": _now(), **({"request_id": request_id} if request_id else {})}
+    write_atomic(DEFERRED_OUTCOME, json.dumps(doc, sort_keys=True))
+    try:
+        os.remove(DEFERRED)
+    except FileNotFoundError:
+        pass
+    _audit(dict(doc, wait_ended=True))
+    (log.info if outcome == "requested" else log.warning)(
+        "update: the wait for CI on %s ended: %s", doc["target"][:10], words)
+    return doc
+
+
+def release_deferred(clock=time.time, **plan_kw):
+    """After each `app-pushed` read: request the waiting update if CI has
+    passed its target, end the wait in words if it never will, else keep
+    waiting. Returns how the wait ended, or None while it continues."""
+    from modules.filestore import PathLock
+
+    with PathLock(DEFERRED):
+        d = deferred()
+        if not d:
+            return None
+        if d.get("unreadable"):
+            return _end({}, "unreadable", f"the wait record could not be read ({d['unreadable']}); "
+                                          "nothing was updated")
+        target = str(d.get("target") or "")
+        short = target[:10]
+        try:
+            asked = calendar.timegm(time.strptime(str(d.get("requested_at")), "%Y-%m-%dT%H:%M:%SZ"))
+        except ValueError:
+            return _end(d, "unreadable", "the wait record has no readable time; nothing was updated")
+        if clock() - asked > int(d.get("bound_s") or DEFER_BOUND_S):
+            return _end(d, "gave_up", f"CI had not passed {short} after "
+                                      f"{int(d.get('bound_s') or DEFER_BOUND_S) // 60} min, so "
+                                      "nothing was updated: Check again, then update")
+        p = plan(waiting={}, **plan_kw)
+        f, ci = p["facts"], p["facts"]["ci"] or {}
+        if f["target"] and f["target"] != target:
+            return _end(d, "superseded", f"a newer release, {f['target'][:10]}, was pushed after "
+                                         f"you asked for {short}, so nothing was updated: the "
+                                         "page shows the newer one")
+        if ci.get("tip") != target or ci.get("state") in ("pending", "could_not_ask", None):
+            return None
+        if ci.get("state") != "verified":
+            return _end(d, f"ci_{ci.get('state')}", person_ci(ci, target)
+                        + f"; nothing was updated (asked for {short})")
+        if not p["selectable"]:
+            return _end(d, "refused", f"CI passed {short}, but it was not updated: "
+                                      + p["why_not"])
+        steps = {s["sha"] for s in f["host_steps"]}
+        ack = sorted(set(d.get("acknowledged_host_steps") or []) & steps)
+        if steps - set(ack):
+            return _end(d, "refused", f"CI passed {short}, but a host step appeared that was not "
+                                      "said to be done, so it was not updated")
+        # The request is the updater's exact fields (its validate() refuses any
+        # other), dated now; the wait itself is in this app's audit and the
+        # outcome record.
+        got = _write_request(p, ack, d.get("requested_by") or "")
+        return _end(d, "requested", f"CI passed {short}; the update was requested",
+                    request_id=got["id"])
+
+
 def status() -> dict:
     """The waiting page's facts: what runs, what is waiting, what the updater
     last said. Never a guess: absent and unreadable are said."""
     from routes import health
 
     return {"running": health._COMMIT or "", "pending": pending(), "outcome": outcome(),
-            "outcome_words": OUTCOME_WORDS}
+            "outcome_words": OUTCOME_WORDS, "waiting": deferred(),
+            "wait_ended": deferred_outcome()}

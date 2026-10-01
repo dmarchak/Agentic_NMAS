@@ -95,6 +95,23 @@
     return {steps: st, done: false, reload: false, failed: false, words: ''};
   }
 
+  /* PURE. UPDATE WHEN CI PASSES: what the page does with /update/status while
+     it waits. *status*: its body or null; *target*: the release waited for.
+     {state: waiting|requested|ended|unknown, id, words}. */
+  function waitOutcome(status, target) {
+    if (!status) return {state: 'unknown', id: '', words: ''};
+    var w = status.waiting || {};
+    if (w.target && w.target === target) return {state: 'waiting', id: '', words: ''};
+    var e = status.wait_ended || {};
+    if (e.target === target && e.outcome === 'requested' && e.request_id) {
+      return {state: 'requested', id: e.request_id, words: ''};
+    }
+    if (e.target === target && e.outcome) {
+      return {state: 'ended', id: '', words: 'The wait for CI ended: ' + (e.words || e.outcome) + '.'};
+    }
+    return {state: 'ended', id: '', words: 'The wait for CI ended, and how is not recorded here: the page shows the release as it is now.'};
+  }
+
   /* Check again's words, PURE (executed in duktape by the tests). */
   function checkLabel(busy) {
     return busy ? 'Checking…' : 'Check again';
@@ -127,7 +144,16 @@
     var A = root.Alpine;
     A.data('update', function () {
       return {
-        phase: 'idle', words: '', refusal: '', started: 0,
+        phase: 'idle', words: '', refusal: '', started: 0, stopping: false,
+        // A wait recorded before this page loaded: follow it.
+        init: function () {
+          var el = this.$root;
+          if (el.getAttribute('data-waiting') === 'yes') {
+            this.phase = 'waiting';
+            this.words = el.getAttribute('data-waiting-words') || '';
+            this.follow();
+          }
+        },
         // Read from $root, the x-data element: see the header.
         get blocked() {
           return this.$root.getAttribute('data-selectable') !== 'yes' || this.phase === 'asking';
@@ -137,7 +163,53 @@
         },
         get showButton() { return this.phase === 'idle' || this.phase === 'asking'; },
         get running() { return this.phase === 'running' || this.phase === 'done'; },
+        get waiting() { return this.phase === 'waiting'; },
+        get stopText() { return this.stopping ? 'Stopping…' : 'Stop waiting'; },
         get refused() { return this.refusal !== ''; },
+        // UPDATE WHEN CI PASSES: the wait ends when the app-pushed reader
+        // releases it, and that reader ANNOUNCES; the page reads the status on
+        // each announcement, never on a timer of its own.
+        follow: function () {
+          var self = this, el = this.$root;
+          el.setAttribute('data-update-hold', 'yes');
+          var target = el.getAttribute('data-target');
+          function heard() {
+            if (self.phase !== 'waiting') return;
+            getJson(el.getAttribute('data-status-url')).then(function (st) {
+              var r = waitOutcome(st, target);
+              if (self.phase !== 'waiting' || r.state === 'waiting' || r.state === 'unknown') return;
+              root.document.body.removeEventListener('nmas:app_version', heard);
+              if (r.state === 'requested') {
+                self.phase = 'running';
+                self.words = '';
+                self.started = Date.now();
+                self.poll(r.id);
+              } else {
+                self.phase = 'idle';
+                self.refusal = r.words;
+                el.removeAttribute('data-update-hold');
+              }
+            });
+          }
+          root.document.body.addEventListener('nmas:app_version', heard);
+        },
+        stopWaiting: function () {
+          var self = this, el = this.$root;
+          self.stopping = true;
+          root.fetch(el.getAttribute('data-apply-url'), {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            body: JSON.stringify({when: 'stop'})
+          }).then(function (r) {
+            return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
+          }).then(function (got) {
+            self.stopping = false;
+            if (got[0] === 200) { root.location.reload(); return; }
+            self.refusal = 'Not stopped: ' + ((got[1] && got[1].error) || ('the server answered HTTP ' + got[0]));
+          }, function (e) {
+            self.stopping = false;
+            self.refusal = 'Not stopped: the request did not reach the app (' + e.message + ')';
+          });
+        },
         confirm: function () {
           var self = this, el = this.$root;
           var boxes = el.querySelectorAll('input[data-host-step]');
@@ -153,7 +225,8 @@
           el.setAttribute('data-update-hold', 'yes');
           root.fetch(el.getAttribute('data-apply-url'), {
             method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-            body: JSON.stringify({hash: el.getAttribute('data-hash'), acknowledged: ack})
+            body: JSON.stringify({hash: el.getAttribute('data-hash'), acknowledged: ack,
+                                  when: el.getAttribute('data-when') || ''})
           }).then(function (r) {
             return r.json().then(function (b) { return [r.status, b]; },
                                  function () { return [r.status, null]; });
@@ -161,6 +234,12 @@
             if (got[0] !== 202) {
               self.phase = 'idle';
               self.refusal = 'Not requested: ' + ((got[1] && got[1].error) || ('the server answered HTTP ' + got[0]));
+              return;
+            }
+            if (got[1] && got[1].waiting) {
+              self.phase = 'waiting';
+              self.words = got[1].message || '';
+              self.follow();
               return;
             }
             self.phase = 'running';
@@ -259,5 +338,6 @@
     root.document.addEventListener('htmx:beforeSwap', holdSwap);
   }
   root.NMAS_UPDATE = {stepStates: stepStates, TERMINAL: TERMINAL, checkLabel: checkLabel,
+                      waitOutcome: waitOutcome,
                       checkLateWords: checkLateWords};
 })(typeof window !== 'undefined' ? window : this);

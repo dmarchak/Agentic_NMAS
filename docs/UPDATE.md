@@ -216,6 +216,41 @@ document's by a test.
 - The row says when the condition began: the later of this release starting and
   the installed copy being written.
 
+**Every commit that changes a host-installed file says what the host needs**
+(the operator, 2026-09-30: between af8630a and e7b80c7 `scripts/nmas-deploy`
+changed in 7551c2a and no step was said, so the updater's root-owned copy
+silently differed). A commit touching `deploy/update/`, `scripts/nmas-deploy`,
+`deploy/systemd/` or `deploy/topology/` carries `Host-Step: <the step>`, or
+`Host-Step-None: <why nothing is needed>` (a comment, a test-only edit), which
+the preview never lists as a step to do. `scripts/nmas-host-step-check` holds the
+list and the rule; the commit-msg hook refuses the commit
+(`ln -sf ../../scripts/hooks/commit-msg .git/hooks/commit-msg`), and CI refuses a
+pushed range with one that bypassed it, so `nmas-deploy` and the Update page
+refuse that release.
+
+## Update when CI passes
+
+When CI is still checking a release and nothing else is in the way, the button
+reads **Update to <target> when CI passes** (the operator, 2026-09-30, instead of
+a refusal telling the person to run `nmas-deploy --wait`). The preview's CI line
+is in a person's words; `nmas-deploy`'s own sentence, which names the run, is
+on hover.
+- **The confirm is the person's, recorded** in `data/update/deferred.json` with
+  the same hash and the same host steps as an update now. No request is written.
+- **The `app-pushed` reader releases it** after each read (it asks CI every
+  60 s while a verdict is pending). CI passed and every other gate still
+  passes: the app writes the person's request, in the updater's exact fields and
+  dated then, and the page that is open follows it on the usual stepper.
+- **Anything else ends the wait in words, and nothing is updated:** CI failed or
+  was cancelled; a newer release was pushed (never installed in its place: the
+  person chose this one); another gate failed; no verdict within 25 min (2.5x
+  CI's job bound). The ending is drawn on the page, and recorded in
+  `data/update/deferred_outcome.json` and the request audit.
+- **Stop waiting** ends it as the person who pressed it. Needs attention's
+  "behind" row says an update is waiting, and by whom.
+- The root-owned updater is unchanged: it re-checks CI itself, as for any
+  request.
+
 ## What it does not do
 
 - It runs nothing from the repository as root.

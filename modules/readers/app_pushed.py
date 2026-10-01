@@ -221,4 +221,13 @@ READER = reader_job.register(reader_job.Reader(
     window="origin/main's tip at the read, against the commit this process loaded",
     announce_if=changed,
     announce_at_least_every=KEEPALIVE_SECONDS,
+    after_store=lambda: _release_waiting_update(),
 ))
+
+
+def _release_waiting_update():
+    """Update when CI passes: the wait is released by THIS reader, which asks
+    CI every run while a verdict is pending (modules/update_op.py)."""
+    from modules import update_op
+
+    return update_op.release_deferred()

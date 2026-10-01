@@ -155,13 +155,16 @@ class TestThePushedRow:
     def test_it_is_one_of_the_landings_sources(self):
         assert attention.pushed_source in attention.SOURCES
 
-    def test_a_failed_ci_run_names_the_deploy_as_its_remedy(self, monkeypatch):
+    def test_a_failed_ci_run_names_the_update_page_as_its_remedy(self, monkeypatch):
+        # The Update page, never a terminal command (the operator, 2026-09-30):
+        # it waits for CI itself when CI is still checking.
         from routes import health
         monkeypatch.setattr(health, "_COMMIT", "a" * 40)
         r = attention.ci_source(cached=_cached({"commit": "a" * 40, "state": "failed",
                                                 "sentence": "run 9 failed: 2 tests"}))
         (row,) = r["rows"]
-        assert row["level"] == "danger" and row["action"]["command"] == "scripts/nmas-deploy --wait"
+        assert row["level"] == "danger" and row["action"]["open"] == "app_update"
+        assert "command" not in row["action"]
 
 
 # ------------------------------------------------------------- the landing

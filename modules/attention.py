@@ -1202,9 +1202,9 @@ def ci_source(cached=None) -> dict:
         rows.append(row(source="ci", key=commit[:10], level=level,
                         what=f"The running commit {commit[:10]}: {words}",
                         cause=v.get("sentence") or "no sentence recorded",
-                        action=({"label": "Deploy a commit CI passed (nmas-deploy refuses one it "
-                                          "did not; a person's step)",
-                                 "command": "scripts/nmas-deploy --wait"}
+                        action=({"label": "Update to a release CI passed: the Update page "
+                                          "waits for CI when it is still checking",
+                                 "open": "app_update"}
                                 if v["state"] in ("failed", "cancelled") else
                                 {"label": "Read nmas-deploy's sentence above: it names the run "
                                           "and what it found", "known": False})))
@@ -1388,6 +1388,15 @@ def pushed_source(cached=None) -> dict:
                       f"({last.get('ended_at') or last.get('at') or '?'}): {last.get('reason')}")
             if last["outcome"] == "rollback_failed":
                 level = "danger"
+        wait = update_op.deferred()
+        if wait.get("target"):
+            # Update when CI passes: the row says the update is coming, and
+            # its action is still the page, where the wait can be stopped.
+            cause += (f". An update to {str(wait["target"])[:10]} is waiting for CI, asked by "
+                      f"{wait.get("requested_by") or "?"} at {wait.get("requested_at") or "?"}: "
+                      "it starts when CI passes")
+            action = dict(action, label=f"Waiting for CI to pass {str(wait["target"])[:10]}: "
+                                        "open the Update page to follow it or stop waiting")
         rows.append(row(source="pushed", key=running[:10], level=level,
                         what=sentence[0].upper() + sentence[1:],
                         since=_ts(v.get("behind_since")),

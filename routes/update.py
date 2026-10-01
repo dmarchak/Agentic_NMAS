@@ -28,9 +28,25 @@ def apply():
     from modules import identity, update_op
 
     data = request.get_json(silent=True) or {}
-    got = update_op.request(str(data.get("hash") or ""),
-                            [str(a) for a in (data.get("acknowledged") or []) if a],
-                            identity.request_actor())
+    when = str(data.get("when") or "")
+    actor = identity.request_actor()
+    if when == "stop":
+        # Stop waiting for CI: nothing is updated.
+        got = update_op.stop_waiting(actor)
+        if not got["ok"]:
+            return jsonify({"ok": False, "error": got["reason"]}), 409
+        return jsonify({"ok": True, "message": "Stopped waiting: nothing was updated."})
+    ack = [str(a) for a in (data.get("acknowledged") or []) if a]
+    if when == "ci":
+        # Update when CI passes: confirmed now, requested by the app the
+        # moment CI passes this release (modules/update_op.py).
+        got = update_op.defer(str(data.get("hash") or ""), ack, actor)
+        if got["ok"] and got.get("waiting"):
+            return jsonify(dict(got, message=(
+                f"Waiting for CI: the update to {got['target'][:10]} starts when CI passes. "
+                "You can leave this page; it is shown here and on Needs attention."))), 202
+    else:
+        got = update_op.request(str(data.get("hash") or ""), ack, actor)
     if not got["ok"]:
         return jsonify({"ok": False, "error": got["reason"]}), 409
     return jsonify(dict(got, message=(

@@ -39,7 +39,9 @@
   {%- else %}
   <dl class="facts">
     <div><dt>What</dt><dd>{% if f.behind is not none %}{{ f.behind }} commit{{ '' if f.behind == 1 else 's' }}{% else %}an unknown number of commits{% endif %} pushed and not running{% if f.behind_since %} <span class="muted">· ahead since {{ stamp(f.behind_since) }} ({{ f.behind_since_basis }})</span>{% endif %}</dd></div>
-    <div><dt>CI for the target</dt><dd>{{ badge(f.ci.state or 'not asked', CI_KIND.get(f.ci.state, 'muted')) }} {{ f.ci.sentence or 'not asked yet' }}{% if f.ci.asked_at %} <span class="muted">· asked {{ stamp(f.ci.asked_at) }}</span>{% endif %}</dd></div>
+    {#- In a person's words; nmas-deploy's own sentence (it names the run, and
+        tells a terminal user to run --wait) is the cause, on hover. -#}
+    <div><dt>CI for the target</dt><dd>{{ badge(f.ci.state or 'not asked', CI_KIND.get(f.ci.state, 'muted')) }} <span id="update-ci-words"{% if f.ci.sentence %} title="{{ f.ci.sentence }}"{% endif %}>{{ p.ci_words }}</span>{% if f.ci.asked_at %} <span class="muted">· asked {{ stamp(f.ci.asked_at) }}</span>{% endif %}</dd></div>
   </dl>
   {%- if f.commits %}
   <h3 class="sub-head">The commits it would run</h3>
@@ -69,15 +71,25 @@
   <div class="confirm" x-data="update" data-hash="{{ p.hash }}" data-target="{{ f.target }}"
        data-apply-url="{{ url_for('update.apply') }}" data-status-url="{{ url_for('update.status') }}"
        data-health-url="{{ url_for('health.health') }}" data-timeout="{{ updater_timeout_s }}"
-       data-selectable="{{ 'yes' if p.selectable and confirm.may else 'no' }}"
-       data-label="Update to {{ f.target[:10] or '?' }}">
+       data-selectable="{{ 'yes' if (p.selectable or p.waitable) and confirm.may else 'no' }}"
+       data-when="{{ 'ci' if p.waitable else '' }}"
+       data-waiting="{{ 'yes' if p.waiting.target else 'no' }}"
+       data-waiting-words="{% if p.waiting.target %}Waiting for CI: the update to {{ p.waiting.target[:10] }} starts when CI passes (asked by {{ p.waiting.requested_by }}, {{ p.waiting.requested_at }}).{% endif %}"
+       data-label="Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}">
     <p>{{ confirm.statement }}</p>
-    {%- if not p.selectable %}<p class="muted" id="update-why-not">Not now: {{ p.why_not }}</p>{% endif %}
+    {%- if p.wait_ended %}
+    <div class="notice notice-warn" id="update-wait-ended">{{ icon('warn') }}<p>The wait for CI ended {{ stamp(p.wait_ended.ended_at) }}: {{ p.wait_ended.words }}.</p></div>
+    {%- endif %}
+    {%- if p.waitable %}<p id="update-when-ci">{{ p.ci_words }}.</p>
+    {%- elif not p.selectable and not p.waiting.target %}<p class="muted" id="update-why-not">Not now: {{ p.why_not }}</p>{% endif %}
     {#- Every stage visible: the button says it is sending, a refusal is shown
         with its reason, and once accepted the stepper follows the updater's own
         steps (its record names the step it is on). -#}
     <button type="button" class="btn btn-primary" id="update-confirm" x-on:click="confirm"
-            x-bind:disabled="blocked" x-show="showButton" x-text="buttonText">Update to {{ f.target[:10] or '?' }}</button>
+            x-bind:disabled="blocked" x-show="showButton" x-text="buttonText">Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}</button>
+    <p class="wait" id="update-waiting" x-show="waiting" x-cloak x-text="words" role="status" aria-live="polite"></p>
+    <button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak x-on:click="stopWaiting"
+            x-bind:disabled="stopping" x-text="stopText">Stop waiting</button>
     <div class="notice notice-danger" x-show="refused" x-cloak role="alert"><p x-text="refusal"></p></div>
     <ol class="stepper" data-stepper x-show="running" x-cloak aria-label="Update progress">
       {%- for key, words in steps %}

@@ -1,0 +1,9 @@
+#!/bin/sh
+# Refuse a commit that changes a file a person installs on the host (the
+# updater, nmas-deploy, the systemd units, the topology renderer) and carries
+# neither a 'Host-Step:' nor a 'Host-Step-None:' trailer (2026-09-30).
+#
+# Install:  ln -sf ../../scripts/hooks/commit-msg .git/hooks/commit-msg
+# CI checks the same rule over every pushed range, so a bypass is refused there.
+ROOT="$(git rev-parse --show-toplevel)"
+exec python3 "$ROOT/scripts/nmas-host-step-check" --message "$1"

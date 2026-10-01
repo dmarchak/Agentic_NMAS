@@ -94,3 +94,20 @@ jobs:
           fi
           echo "checking $RANGE"
           python scripts/check_removed_definitions.py "$RANGE"
+
+      # A commit that changes a file a person installs on the host (the
+      # updater, nmas-deploy, the systemd units, the topology renderer) says
+      # what the host needs: Host-Step or Host-Step-None (2026-09-30). The
+      # commit-msg hook refuses it locally; this refuses a bypass.
+      - name: Every host-installed change says what the host needs
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            RANGE="HEAD~1..HEAD"
+          else
+            RANGE="$BEFORE..$AFTER"
+          fi
+          echo "checking $RANGE"
+          python scripts/nmas-host-step-check --range "$RANGE"

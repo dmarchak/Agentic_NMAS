@@ -159,6 +159,7 @@ class Reader:
     window: str = field(default="")   # what time range the value covers (rule 6)
     announce_if: Callable = None      # (previous value, value) -> announce? (rule 9)
     announce_at_least_every: int = 0  # the keepalive that makes announce_if safe
+    after_store: Callable = None      # run after each stored read, before the announcement
 
 
 _REGISTRY: dict = {}
@@ -383,6 +384,18 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
                  trigger.get("run", "?"), trigger.get("by") or "nobody identified", took,
                  "ok" if not error else "failed, " + doc["last_attempt"]["error"])
 
+    acted = None
+    if reader.after_store is not None:
+        # What acts on the value just stored (the Update page's wait for CI):
+        # before the announcement, so a panel re-drawn by it sees the result.
+        # A failure is logged and never stops the reader. A truthy answer
+        # means it acted, which is announced like a changed value.
+        try:
+            acted = reader.after_store()
+        except Exception as exc:                        # noqa: BLE001
+            log.error("reader %s: its after-store step failed: %s: %s", reader.name,
+                      type(exc).__name__, exc)
+
     should = True
     if announce is not None and not error and reader.announce_if is not None and not requested:
         try:
@@ -390,7 +403,7 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
         except Exception:                               # noqa: BLE001
             moved = True                                # when unsure, announce
         due = started - _LAST_ANNOUNCED.get(reader.name, 0) >= reader.announce_at_least_every
-        should = moved or due
+        should = moved or due or bool(acted)
         if not should:
             _ANNOUNCE["skipped_unchanged"] += 1
     if announce is not None and should:
