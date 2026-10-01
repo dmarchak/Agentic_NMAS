@@ -305,9 +305,16 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
                           + ". Nothing will be recorded for it"),
                 "read_phases": phases}, None
     incoming = golden_body(host, ip, text)
-    diff = [l for l in difflib.unified_diff(current.splitlines(), incoming.splitlines(),
+    # The device's own self-signed certificate is regenerated at boot: drawn as
+    # one labelled line, never as its hex. The golden is recorded verbatim.
+    from modules.nsot.normalize import self_signed_note, strip_self_signed_certs
+    diff = [l for l in difflib.unified_diff(strip_self_signed_certs(current),
+                                             strip_self_signed_certs(incoming),
                                              lineterm="", n=1)
             if not l.startswith(("---", "+++"))]
+    note = self_signed_note(current, incoming)
+    if note:
+        diff.append(note)
     return ({"device": host, "read": True, "error": "", "platform": platform,
              "capture_hash": _capture_hash(text), "changed": incoming != current,
              "diff": diff, "intent": intent_match(repo, list_name, host, text, platform),

@@ -137,7 +137,48 @@ def _strip(text, prefixes, drop_blank=True, drop_bang=False) -> list:
 #: The trustpoint a device generates for ITSELF, named after its own chassis
 #: id. Narrow on purpose: `TP-self-signed-<digits>`, not every trustpoint.
 _SELF_SIGNED = re.compile(
-    r"^crypto pki (?:trustpoint|certificate chain) TP-self-signed-\d+\s*$")
+    r"^crypto pki (?:trustpoint|certificate chain) (TP-self-signed-\d+)\s*$")
+
+#: The words a person reads in place of a regenerated certificate's hex (the
+#: operator, 2026-10-01: "49 lines of hex" in a Save All preview after a
+#: redeploy, where the one thing to know is that the device made a new one).
+CERT_REGENERATED = "regenerated self-signed certificate (expected after a boot)"
+
+
+def _self_signed_block(text) -> tuple:
+    """``(names, lines)``: the device's own self-signed stanzas in *text*, the
+    complement of :func:`strip_self_signed_certs`."""
+    lines = text if isinstance(text, list) else (text or "").splitlines()
+    names, out, inside = [], [], False
+    for line in lines:
+        m = _SELF_SIGNED.match(line.strip()) if not line[:1].isspace() else None
+        if m:
+            inside = True
+            if m.group(1) not in names:
+                names.append(m.group(1))
+            out.append(line)
+            continue
+        if inside and (line[:1].isspace() or not line.strip()):
+            out.append(line)
+            continue
+        inside = False
+    return names, out
+
+
+def self_signed_note(before, after) -> str:
+    """One line naming a change to the device's own self-signed certificate
+    between *before* and *after*, or ``""`` when it did not change. A diff
+    built over :func:`strip_self_signed_certs` carries this line in place of
+    the certificate's hex; the golden itself is recorded verbatim."""
+    old_names, old = _self_signed_block(before)
+    new_names, new = _self_signed_block(after)
+    if [l.rstrip() for l in old if l.strip()] == [l.rstrip() for l in new if l.strip()]:
+        return ""
+    was = ", ".join(old_names) or "none"
+    now = ", ".join(new_names) or "none"
+    what = f"{was} -> {now}" if was != now else f"{now}, its body changed"
+    return (f"~ {CERT_REGENERATED}: {what}; "
+            f"{sum(1 for l in new if l.strip())} line(s) recorded verbatim, not drawn")
 
 
 def strip_self_signed_certs(text) -> list:
