@@ -171,8 +171,12 @@ def _update_ctx() -> dict:
     from modules.outbound import mask_payload
     from modules.preview_confirm import confirm_part
 
+    from modules import host_steps
+    from routes import health
+
     p = update_op.plan()
     return {"p": mask_payload(p), "hist": update_op.history(5),
+            "owed": host_steps.owed(health._COMMIT) if health._COMMIT else None,
             "confirm": confirm_part(request, "confirm"),
             "words": update_op.OUTCOME_WORDS, "up_bound_s": update_op.UP_BOUND_S,
             "steps": update_op.STEPS, "check": check_state(),

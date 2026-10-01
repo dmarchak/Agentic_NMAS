@@ -865,7 +865,7 @@ class TestTheHostStepsAreSaidLast:
         code, _, _ = _run(world, {sha: _run_entry(sha)})
         block = self._last_block(capsys)
         assert code == 0 and block.startswith("HOST STEPS in the commits just deployed (1)")
-        assert f"1. {sha[:10]}: install python3-foo on the host" in block
+        assert f"1. {sha[:10]} (BEFORE the update): install python3-foo on the host" in block
         assert "Not checkable from here: confirm it is done by hand." in block
 
     def test_an_updater_step_still_needed_prints_the_check_and_its_commands(self, world, capsys):

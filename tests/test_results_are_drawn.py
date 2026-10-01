@@ -126,6 +126,10 @@ PAGE_RECORD = {
     # outcome and reason) on the Update page, whose panel route re-reads it.
     "update.apply": ("templates/v2/_update.html", ('id="update-last"', "o.outcome", "o.reason"),
                      "v2.update_panel"),
+    # "It is done" for an AFTER host step: the record drawn back as who said
+    # each step done and when, on the Update page.
+    "update.step_done": ("templates/v2/_update.html", ('id="update-said-done"', "d.by", "d.at"),
+                         "v2.update_panel"),
 }
 
 #: Measured 2026-09-27, each handler read by hand. Only shrinks.

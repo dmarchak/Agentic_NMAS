@@ -1478,10 +1478,43 @@ def remote_source(cached=None) -> dict:
                  f"published: {', '.join(fine) or 'none'}"))
 
 
+def host_steps_source(owed=None) -> dict:
+    """AFTER host steps a release that runs now still owes (modules/host_steps.py:
+    the operator, 2026-09-30, a step that can only be done once the release has
+    landed must never block the update, and must not be forgotten after it).
+    The tool's check answers where there is one; otherwise a person says it is
+    done on the Update page."""
+    from modules import host_steps
+    from routes import health
+
+    started = time.time()
+    label = "Host steps a running release owes"
+    if not health._COMMIT:
+        return source_result("host_steps", label, read_at=started, took_ms=0,
+                             error="the running commit is unknown, so its history cannot be read")
+    got = host_steps.owed(health._COMMIT) if owed is None else owed
+    took = int((time.time() - started) * 1000)
+    if not got["ok"]:
+        return source_result("host_steps", label, read_at=started, took_ms=took,
+                             error=got["error"])
+    rows = [row(source="host_steps", key=s["id"], level="warning",
+                what=f"A host step for {s['sha'][:10]} is still to do: {s['step']}",
+                cause=(f"checked: {s['check_detail']}" if s["check_state"] != "not_checkable"
+                       else "it is done after the update, and nothing can check it"),
+                action={"label": ("Open the Update page and say it is done"
+                                  if s["check_state"] == "not_checkable"
+                                  else "Do it on the host; this row goes when the check reads done"),
+                        "open": "app_update"})
+            for s in got["steps"]]
+    return source_result("host_steps", label, read_at=started, took_ms=took, rows=rows,
+                         checked=f"the last {host_steps.HISTORY} commits of {health._COMMIT[:10]}")
+
+
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
-           reachability_source, netbox_secrets_source, remote_source, pushed_source)
+           reachability_source, netbox_secrets_source, remote_source, pushed_source,
+           host_steps_source)
 
 
 def _attach(rows: list) -> list:

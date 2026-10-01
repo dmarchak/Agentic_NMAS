@@ -466,7 +466,9 @@ class TestTheReaderRecordsWhatThePreviewShows:
         asked = []
         out = P.enrich(str(repos["work"]), v, {}, verdict=lambda r, t: (asked.append(t), (0, "ok"))[1])
         assert [c["subject"] for c in out["commits"]] == ["c2", "c1"]
-        assert out["host_steps"] == [{"sha": repos["shas"][1], "step": "install python3-foo on the host"}]
+        assert [(s["sha"], s["step"], s["when"]) for s in out["host_steps"]] == [
+            (repos["shas"][1], "install python3-foo on the host", "before")]
+        assert out["after_steps"] == []
         assert out["updater_changes"] == [] and out["checkout_changes"] == []
         assert out["ci"]["state"] == "verified" and asked == [repos["shas"][2]]
         assert out["behind_since"] and "first seen by this reader" in out["behind_since_basis"]
@@ -1128,6 +1130,21 @@ class TestClickingTheShippedButton:
                           "return n && getComputedStyle(n).display !== 'none' && n.textContent")
         assert calls["apply"] == [(served_update["hash"], [], "test-person@example.invalid")]
         assert "the preview moved: preview again" in text
+
+    def test_a_ticked_host_step_reaches_the_request(self, served_update):
+        """The operator, 2026-09-30: the box was ticked and the refusal was
+        identical, because the boxes sit in the preview ABOVE the component
+        and the click read them from the component. Ticking must change what
+        is sent."""
+        b, calls = served_update["b"], served_update["calls"]
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("return window.Alpine && document.querySelector('input[data-host-step]') "
+                   "&& !document.querySelector('#update-confirm').disabled")
+        b.click("input[data-host-step]")
+        b.click("#update-confirm")
+        b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
+                   "return n && getComputedStyle(n).display !== 'none' && n.textContent")
+        assert calls["apply"] == [(served_update["hash"], ["c" * 40], "test-person@example.invalid")]
 
     def test_an_accepted_request_draws_the_stepper_from_the_updaters_record(self, served_update):
         b, calls = served_update["b"], served_update["calls"]

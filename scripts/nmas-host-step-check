@@ -11,10 +11,11 @@ the systemd units are rendered and installed by a person, and the topology
 renderer runs from a symlink a service must be restarted to re-read. So a
 commit touching one carries either
 
-    Host-Step: <the step a person runs on the host>
+    Host-Step: [<check>] <the step, done BEFORE the update>
+    Host-Step-After: [<check>] <the step, done once the update runs>
 
-(listed by the Update preview, which refuses until the person says it is
-done), or, when the change needs nothing on the host (a comment, a test-only
+(modules/host_steps.py: a BEFORE step holds the update until done; an AFTER
+step never does and is a Needs attention row until done), or, when the change needs nothing on the host (a comment, a test-only
 edit),
 
     Host-Step-None: <why nothing is needed>
@@ -42,7 +43,7 @@ HOST_STEP_PATHS = (
     "deploy/topology/",
 )
 
-TRAILER = re.compile(r"^(Host-Step|Host-Step-None):\s*\S", re.M)
+TRAILER = re.compile(r"^(Host-Step|Host-Step-After|Host-Step-None):\s*\S", re.M)
 
 
 class CannotAsk(Exception):

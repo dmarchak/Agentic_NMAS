@@ -123,11 +123,11 @@ def enrich(root: str, v: dict, previous: dict = None, verdict=None, git=_git,
     if rc != 0:
         out["commits_error"] = err[:200] or f"git log exited {rc}"
     rc, text, err = git(root, "log", "--format=%H%x1f%B%x1e", f"{running}..{tip}")
-    steps = []
-    for chunk in (text.split("\x1e") if rc == 0 else []):
-        sha, _sep, body = chunk.strip().partition("\x1f")
-        steps += [{"sha": sha, "step": s} for s in HOST_STEP.findall(body)]
-    out["host_steps"] = steps
+    # Each step's KIND (modules/host_steps.py): BEFORE blocks the update,
+    # AFTER never does and is owed once the release runs.
+    from modules import host_steps as HS
+    out["host_steps"] = HS.steps_in(text, when="before") if rc == 0 else []
+    out["after_steps"] = HS.steps_in(text, when="after") if rc == 0 else []
     if rc != 0:
         out["host_steps_error"] = err[:200] or f"git log exited {rc}"
     rc, text, _err = git(root, "diff", "--name-only", running, tip, "--", *UPDATER_SOURCES)

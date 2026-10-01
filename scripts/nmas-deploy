@@ -588,7 +588,9 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
 # Host steps: what a person must still do on this host, said LAST
 # ---------------------------------------------------------------------------
 
-HOST_STEP = re.compile(r"^Host-Step:\s*(.+?)\s*$", re.M)
+#: `Host-Step:` is done BEFORE the update, `Host-Step-After:` once it runs
+#: (modules/host_steps.py); an optional `[check]` names the tool's own check.
+HOST_STEP = re.compile(r"^Host-Step(-After)?:\s*(?:\[([a-z0-9-]+)\]\s*)?(.+?)\s*$", re.M)
 #: A step naming the updater is checked by the updater's own install check.
 UPDATER_STEP = re.compile(r"\bupdater\b", re.I)
 INSTALLED_UPDATER = "/usr/local/sbin/nmas-update"
@@ -602,7 +604,8 @@ def host_steps(repo, head, target):
     out = []
     for chunk in text.split("\x1e"):
         sha, _sep, body = chunk.strip().partition("\x1f")
-        out += [{"sha": sha, "step": s} for s in HOST_STEP.findall(body)]
+        out += [{"sha": sha, "step": s, "when": "after" if after else "before", "check": chk}
+                for after, chk, s in HOST_STEP.findall(body)]
     return out
 
 
@@ -637,8 +640,8 @@ def host_step_report(repo, head, target, check=None):
         lines.append(f"HOST STEPS in the commits just deployed ({len(steps)}): each is yours "
                      "to do on this host.")
     for i, s in enumerate(steps, 1):
-        lines.append(f"  {i}. {s['sha'][:10]}: {s['step']}")
-        if UPDATER_STEP.search(s["step"]):
+        lines.append(f"  {i}. {s['sha'][:10]} ({s.get('when', 'before').upper()} the update): {s['step']}")
+        if s.get("check") == "updater" or UPDATER_STEP.search(s["step"]):
             if checked is None:
                 lines.append("     No updater is installed on this host: nothing to re-install.")
             elif outstanding:
@@ -646,8 +649,12 @@ def host_step_report(repo, head, target, check=None):
                 lines += ["       " + l for l in checked[1].splitlines()]
             else:
                 lines.append("     Done: nmas-update-check reads ok.")
+        elif s.get("check"):
+            lines.append(f"     Checked by the app ([{s['check']}]): its Update page and Needs "
+                         "attention say when it reads done.")
         else:
-            lines.append("     Not checkable from here: confirm it is done by hand.")
+            lines.append("     Not checkable from here: confirm it is done by hand"
+                         + (", then say so on the Update page." if s.get("when") == "after" else "."))
     if outstanding and not any(UPDATER_STEP.search(s["step"]) for s in steps):
         lines.append("HOST STEP OUTSTANDING from an earlier release: the updater's check says:")
         lines += ["  " + l for l in checked[1].splitlines()]

@@ -212,7 +212,12 @@
         },
         confirm: function () {
           var self = this, el = this.$root;
-          var boxes = el.querySelectorAll('input[data-host-step]');
+          // The boxes are drawn in the PREVIEW, above this component: reading
+          // them from $root found none, so a ticked box never reached the
+          // request (the operator, 2026-09-30, a580660's step). Read them from
+          // the preview that holds both.
+          var scope = (el.closest && el.closest('#update-preview')) || el;
+          var boxes = scope.querySelectorAll('input[data-host-step]');
           var ack = [];
           for (var i = 0; i < boxes.length; i++) {
             if (boxes[i].checked) ack.push(boxes[i].getAttribute('data-host-step'));
@@ -267,6 +272,29 @@
             if (r.reload) { root.setTimeout(function () { root.location.reload(); }, 1500); }
             else if (!r.done) { root.setTimeout(function () { self.poll(id); }, 2000); }
           });
+        }
+      };
+    });
+    // "It is done": a person says an AFTER host step no check can answer is
+    // done. Busy on itself; the panel re-draws from the announcement and the
+    // step leaves the list. Words only for a refusal.
+    A.data('stepDone', function () {
+      return {
+        busy: false, said: '',
+        get label() { return this.busy ? 'Recording…' : 'It is done'; },
+        say: function () {
+          var self = this, el = this.$root;
+          self.busy = true;
+          self.said = '';
+          root.fetch(el.getAttribute('data-url'), {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            body: JSON.stringify({sha: el.getAttribute('data-sha'), step: el.getAttribute('data-step')})
+          }).then(function (r) {
+            return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
+          }).then(function (got) {
+            self.busy = false;
+            if (got[0] !== 200) self.said = 'Not recorded: ' + ((got[1] && got[1].error) || ('HTTP ' + got[0]));
+          }, function (e) { self.busy = false; self.said = 'Not recorded: ' + e.message; });
         }
       };
     });

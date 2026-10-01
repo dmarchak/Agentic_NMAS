@@ -184,6 +184,7 @@ GATES = {
     "rotate.preview": _g(N, "computes the rotation plan and READS the device's account line; changes nothing"),
     "breakglass.preview": _g(N, "names the devices and the key's fingerprint an export would hold; reveals no value"),
     "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
+    "update.step_done": _g(C, "records that a person did a host step the tool cannot check: the release's record of what was done on the host"),
     "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),
     "templatize.seed_preview": _g(N, "parses committed goldens from git; writes nothing"),
     "templatize.profile_propose_preview": _g(N, "reads committed intent and compares stored values in memory; writes nothing"),

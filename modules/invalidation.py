@@ -199,6 +199,7 @@ DECLARED = {
     # The Update button: a request is written now; the version moves when the
     # root-owned updater acts, and the page waits on /health for it.
     "update.apply": ("app_version",),
+    "update.step_done": ("app_version",),
     "breakglass.export": Nothing("appends to the export log and the reveal record, which job "
                                  "health's reader reads on its own interval; no panel shows "
                                  "either directly"),

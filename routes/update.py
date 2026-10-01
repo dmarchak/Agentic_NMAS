@@ -55,6 +55,31 @@ def apply():
         "waits on /health for the new commit."))), 202
 
 
+@bp.route("/host-step/done", methods=["POST"])
+def step_done():
+    """A person says an AFTER host step no check can answer is done. Only a
+    step the running release owes, and only one nothing can check: a check's
+    answer is never overridden by a click."""
+    from modules import host_steps, identity
+    from routes import health
+
+    data = request.get_json(silent=True) or {}
+    sha, step = str(data.get("sha") or ""), str(data.get("step") or "")
+    owed = host_steps.owed(health._COMMIT or "")
+    if not owed["ok"]:
+        return jsonify({"ok": False, "error": owed["error"]}), 409
+    match = [s for s in owed["steps"] if s["sha"] == sha and s["step"] == step]
+    if not match:
+        return jsonify({"ok": False, "error": "that step is not one the running release owes"}), 409
+    if match[0]["check_state"] != "not_checkable":
+        return jsonify({"ok": False, "error": ("the tool checks this step itself: "
+                                               + match[0]["check_detail"])}), 409
+    got = host_steps.record_done(sha, step, identity.request_actor())
+    if not got["ok"]:
+        return jsonify({"ok": False, "error": got["reason"]}), 409
+    return jsonify({"ok": True, "message": f"Recorded as done by {got['row']['by']}."})
+
+
 @bp.route("/status", methods=["GET"])
 def status():
     from modules import update_op

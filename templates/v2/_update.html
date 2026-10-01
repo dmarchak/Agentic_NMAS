@@ -51,10 +51,22 @@
   {%- if f.commits_cut %}<p class="muted">Showing the newest {{ f.commits|length }} of {{ f.behind }}.</p>{% endif %}
   {%- endif %}
   {%- if f.host_steps %}
-  <h3 class="sub-head">Host steps this release needs</h3>
-  <p class="muted">Each is done on the host by a person; the updater refuses the release until you say each is done. The tool cannot check them.</p>
+  <h3 class="sub-head">Before the update</h3>
+  <p class="muted">Each is done on the host by a person, before the update runs. Where the tool can check a step it says what it found; tick the others once they are done.</p>
   <ul class="plain-list" id="update-host-steps">
-    {%- for s in f.host_steps %}<li><label><input type="checkbox" data-host-step="{{ s.sha }}"> Done: {{ s.step }} <span class="muted mono">({{ s.sha[:10] }})</span></label></li>{% endfor %}
+    {%- for s in f.host_steps %}
+    {%- if s.check_state == 'done' %}<li data-host-step-state="done">{{ icon('check', 14) }} {{ s.step }} <span class="muted">· checked: {{ s.check_detail }} <span class="mono">({{ s.sha[:10] }})</span></span></li>
+    {%- elif s.check_state == 'not_done' %}<li data-host-step-state="not_done">{{ icon('warn', 14) }} {{ s.step }} <span class="muted">· not done yet, checked: {{ s.check_detail }} <span class="mono">({{ s.sha[:10] }})</span></span></li>
+    {%- else %}<li><label><input type="checkbox" data-host-step="{{ s.sha }}"> Done: {{ s.step }} <span class="muted mono">({{ s.sha[:10] }})</span></label>{% if s.check_state == 'unknown' %} <span class="muted">· the check could not answer: {{ s.check_detail }}</span>{% endif %}</li>
+    {%- endif %}
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  {%- if f.after_steps %}
+  <h3 class="sub-head">After the update</h3>
+  <p class="muted">These never hold the update back. Once it runs, Needs attention lists each until it is done.</p>
+  <ul class="plain-list" id="update-after-steps">
+    {%- for s in f.after_steps %}<li>{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}you say when it is done{% else %}checked by the tool{% endif %} <span class="mono">({{ s.sha[:10] }})</span></span></li>{% endfor %}
   </ul>
   {%- endif %}
   <h3 class="sub-head">What it does NOT do</h3>
@@ -100,6 +112,35 @@
   </div>
   {%- endif %}
 </section>
+
+{#- AFTER steps a release that runs now still owes (modules/host_steps.py):
+    the tool's check where there is one, and "It is done" from a person where
+    there is not. Each is also a Needs attention row. -#}
+{%- if owed and owed.steps %}
+<section class="card" id="update-owed">
+  <div class="card-head"><h2>Still to do on the host</h2></div>
+  <ul class="plain-list" id="update-owed-steps">
+    {%- for s in owed.steps %}<li data-step-id="{{ s.id }}">{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}nothing can check it: say when it is done{% else %}checked: {{ s.check_detail }}{% endif %} <span class="mono">({{ s.sha[:10] }})</span></span>
+      {%- if s.check_state == 'not_checkable' %}
+      <span x-data="stepDone" data-url="{{ url_for('update.step_done') }}" data-sha="{{ s.sha }}" data-step="{{ s.step }}">
+        <button type="button" class="btn btn-sm" x-on:click="say" x-bind:disabled="busy" x-text="label">It is done</button>
+        <span class="muted" x-show="said" x-text="said" x-cloak></span>
+      </span>
+      {%- endif %}</li>{% endfor %}
+  </ul>
+</section>
+{%- endif %}
+{%- if owed and owed.said_done %}
+<section class="card" id="update-said-done">
+  <div class="card-head"><h2>Host steps said done</h2></div>
+  <ul class="plain-list">
+    {%- for d in owed.said_done %}<li>{{ d.step }} <span class="muted">· said done by {{ d.by }}, {{ stamp(d.at) }} <span class="mono">({{ d.sha[:10] }})</span></span></li>{% endfor %}
+  </ul>
+</section>
+{%- endif %}
+{%- if owed and not owed.ok %}
+<div class="notice notice-warn" id="update-owed-unread">{{ icon('warn') }}<p>Whether a release that runs now still owes a host step could not be read: {{ owed.error }}. This is not the same as none being owed.</p></div>
+{%- endif %}
 
 {%- if hist.rows|length > 1 %}
 <section class="card" id="update-history">

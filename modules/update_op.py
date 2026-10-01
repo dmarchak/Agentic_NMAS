@@ -487,10 +487,18 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
                 f"by {wait.get('requested_by') or 'someone'}" if wait.get("target")
                 else f"the wait record could not be read ({wait['unreadable']})")
           if wait else "none"))
-    steps = v.get("host_steps") or []
+    from modules import host_steps as HS
+    # Each BEFORE step checked where the tool can check it (the operator,
+    # 2026-09-30): a step the check finds done needs no box; one it finds not
+    # done blocks, saying what it found; only a step no check can answer is
+    # said done by the person.
+    steps = [dict(s, **{("check_" + k): c for k, c in HS.check(s).items()})
+             for s in (v.get("host_steps") or [])]
+    after = [dict(s, **{("check_" + k): c for k, c in HS.check(s).items()})
+             for s in (v.get("after_steps") or [])]
     facts = {"running": running, "target": v.get("tip") or "", "behind": v.get("behind"),
              "commits": v.get("commits") or [], "commits_cut": bool(v.get("commits_cut")),
-             "ci": ci, "host_steps": steps, "updater_changes": v.get("updater_changes") or [],
+             "ci": ci, "host_steps": steps, "after_steps": after, "updater_changes": v.get("updater_changes") or [],
              "behind_since": v.get("behind_since") or "",
              "behind_since_basis": v.get("behind_since_basis") or "",
              "value_at": stored["value_at"], "state": v.get("state") or ""}
@@ -540,13 +548,33 @@ def _confirmed(p: dict, confirmed_hash: str, acknowledged) -> tuple:
         return (f"what the preview showed has changed ({confirmed_hash} -> {p['hash']}): the "
                 "target, its CI verdict or its host steps moved. Nothing was requested; the "
                 "page shows the new preview"), []
-    steps = {s["sha"] for s in p["facts"]["host_steps"]}
-    ack = sorted(set(a for a in (acknowledged or []) if a in steps))
-    if steps - set(ack):
-        return ("every host step must be done first, and said to be done: "
-                + "; ".join(f"{s['sha'][:10]}: {s['step']}"
-                            for s in p["facts"]["host_steps"] if s["sha"] not in ack)), ack
-    return "", ack
+    return step_gate(p["facts"]["host_steps"], acknowledged)
+
+
+def step_gate(steps: list, acknowledged) -> tuple:
+    """(refusal or "", the acknowledged commits) for the BEFORE steps: a step
+    its check finds done needs nothing; one it finds NOT done refuses, naming
+    what it found, whatever was ticked; any other is said done by the person
+    (their tick). The updater acknowledges by commit, so a commit is
+    acknowledged when every one of its steps is."""
+    said = set(acknowledged or [])
+    blocked, unsaid, ok = [], [], set()
+    for s in steps:
+        state = s.get("check_state") or "not_checkable"
+        if state == "done":
+            continue
+        if state == "not_done":
+            blocked.append(f"{s['sha'][:10]}: {s['step']} (checked: {s.get('check_detail')})")
+        elif s["sha"] not in said:
+            unsaid.append(f"{s['sha'][:10]}: {s['step']}")
+    if blocked:
+        return ("a host step this release needs BEFORE it runs is not done yet, as checked: "
+                + "; ".join(blocked)), []
+    if unsaid:
+        return ("a host step this release needs before it runs has not been ticked as done: "
+                + "; ".join(unsaid)), []
+    ok = sorted({s["sha"] for s in steps})
+    return "", ok
 
 
 def _now() -> str:
@@ -690,11 +718,9 @@ def release_deferred(clock=time.time, **plan_kw):
         if not p["selectable"]:
             return _end(d, "refused", f"CI passed {short}, but it was not updated: "
                                       + p["why_not"])
-        steps = {s["sha"] for s in f["host_steps"]}
-        ack = sorted(set(d.get("acknowledged_host_steps") or []) & steps)
-        if steps - set(ack):
-            return _end(d, "refused", f"CI passed {short}, but a host step appeared that was not "
-                                      "said to be done, so it was not updated")
+        bad, ack = step_gate(f["host_steps"], d.get("acknowledged_host_steps") or [])
+        if bad:
+            return _end(d, "refused", f"CI passed {short}, but it was not updated: {bad}")
         # The request is the updater's exact fields (its validate() refuses any
         # other), dated now; the wait itself is in this app's audit and the
         # outcome record.

@@ -187,11 +187,30 @@ scripts/nmas-update-check
 
 ## A release that needs a host step
 
-A commit whose code needs a person on the host before it can run (a new unit,
-a package, a sudoers change) carries a `Host-Step: <what to do>` trailer, one
-per step. The preview lists each with a box. The updater refuses the release
-until the person has said each is done. The tool cannot verify most host steps:
-the box is the person's statement, and it is recorded in the request.
+A step has a KIND, and is CHECKED by the tool wherever it can be (the
+operator, 2026-09-30: a580660's step installed a file that exists only after the
+update, and the page demanded it be said done before it; the same day the ticked
+box never reached the request, because the click read the boxes from the wrong
+element). `modules/host_steps.py` holds the rule:
+
+```
+Host-Step: [<check>] <text>         BEFORE: the update waits until it is done
+Host-Step-After: [<check>] <text>   AFTER: never blocks; a Needs attention row
+                                    once the release runs, until done
+```
+
+- **`[<check>]` names one of the tool's checks** (`host_steps.CHECKS`):
+  `topology-renderer` (the installed renderer is a symlink to the checkout's, and
+  `rcn-topology.service` started after the file changed) and `updater` (the
+  updater's install check reads ok). A checked step is never ticked: done is
+  measured, and a step the check finds NOT done blocks the update, naming what
+  it found, whatever a box says.
+- **A step with no check** is said done by the person: a box on the preview for a
+  BEFORE step (recorded in the request), and "It is done" on the Update page for
+  an AFTER step (recorded in `data/host_steps_done.jsonl`, 0600, with who and when).
+- **The root-owned updater parses `Host-Step:` alone**, so an AFTER step never
+  reaches it and needs no re-install of the updater.
+- A new step that can be checked gets a check in `CHECKS` with its commit.
 
 **A terminal deploy says the same, LAST on screen** (the operator, 2026-09-30:
 08dbee5 needed the updater re-installed, `nmas-deploy` finished without a word,
