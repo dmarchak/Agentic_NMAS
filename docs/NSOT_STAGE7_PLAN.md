@@ -2704,7 +2704,7 @@ read through one function, and P.8 moves it without the reader changing.
     Templates, NetBox and Credentials, with Help and Settings at the bottom.
     The brief (section 14.1) proposes an OBSERVE heading over Monitoring,
     Logs and DHCP for the integrated services, awaiting sign-off. **The
-    brief's thirty-two findability questions are walked on the BUILT screens**
+    brief's thirty-seven findability questions are walked on the BUILT screens**
     (the first-click test on the mockups was skipped by the operator,
     2026-09-29), and a path longer than the brief's count is a finding.
 11. **Scale:** nothing renders the whole inventory, and `test_scale.py` pins

@@ -180,6 +180,26 @@ python3 -c 'import json; d=json.load(open("<home>/python/Agentic_NMAS/data/start
 Until it is installed, job health's `nmas-startup-check` row reads
 `not_installed`, so the gap is visible rather than silent.
 
+### The topology service (register C256, 2026-09-30)
+
+`rcn-topology.service` runs `/usr/local/bin/rcn-topology.py`, which until
+2026-09-30 was a copy no commit recorded. The repository's copy is
+`deploy/topology/rcn-topology.py`. Install it as a symlink, so the
+checkout is the one copy (the C14 rule), keeping the old file beside it:
+
+```bash
+sudo cp -p /usr/local/bin/rcn-topology.py /usr/local/bin/rcn-topology.py.pre-c256
+sudo ln -sf <home>/python/Agentic_NMAS/deploy/topology/rcn-topology.py /usr/local/bin/rcn-topology.py
+sudo systemctl restart rcn-topology.service
+curl -s http://localhost:8088/graph.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["meta"])'
+```
+
+The last line prints an `islands` count (0 while r6 is not yet polled).
+The old script's meta has no `islands` key, so its absence means the old
+copy is still the one running. A device appears on the map once its golden
+configures SNMP (the generated targets, C232); one with no LLDP link to the
+rest is then drawn in the band at the bottom with its reason.
+
 ## Deploying an update
 
 `scripts/nmas-deploy` fast-forwards the checkout to origin/main ONLY if CI

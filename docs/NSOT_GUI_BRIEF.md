@@ -1035,6 +1035,7 @@ Devices
 History
 OBSERVE
   Monitoring   charts, alerts, the PromQL query, hosts and the lab
+  Topology     the map: layers, weak points, paths (NSOT_PLAN P.11)
   Logs         syslog and traps from Loki, the LogQL query
   DHCP         subnets, pools, leases, reservations
 SOURCE OF TRUTH
@@ -1267,7 +1268,23 @@ both, with costs.
   - **A range past a limit is REFUSED, naming the limit** ("Loki serves at most 30 days 1
     hour; this range is 45 days"), never silently trimmed: a trimmed answer reads as the
     whole range.
-- **Live topology, on the Monitoring page (the operator, 2026-09-30).**
+- **SUPERSEDED the same day (the operator, 2026-09-30): Topology is its own OBSERVE
+  destination, never a tab of Monitoring** (section 14.1; the design is NSOT_PLAN P.11).
+  Monitoring answers "how is it performing", with charts over time; Topology answers "how is
+  it connected, what depends on what, where is the weak point, how do I get from A to B".
+  The map needs the whole screen, a pannable, zoomable canvas with its own controls (layer
+  switches, path trace, the single-point-of-failure highlight), must stay usable on a phone,
+  and is a starting point for navigation. Meraki and Catalyst Center both give topology a page
+  of its own. **One home, several entry points, never a second copy of the map:** the Device
+  page's Neighbours tab draws the device and its direct neighbours with "Open in Topology",
+  centred on it; an alert opens Topology with the device highlighted and what is downstream
+  of it; the deploy preview's what-if links to Topology showing which devices would lose
+  their path. Option (b) below is kept for its measurements and its population rule (the
+  inventory, not the graph), which P.11 inherits; its placement on Monitoring is withdrawn.
+  **The next mockups draw the Topology page** (desktop and phone, with an island, a single
+  point of failure and a path trace).
+- **Live topology, on the Monitoring page (the operator, 2026-09-30; placement superseded
+  above).**
   - **Why the dashboard's topology panel does not render, measured.** `rcn-lab-overview`'s
     "Live topology (NetworkX / LLDP)" is an HTML text panel. Its `<img>` points at the
     topology service's PUBLIC tunnel hostname (`topology.<domain>/topology.svg?cb=$__to`),
@@ -1714,8 +1731,15 @@ page; scent is the first click's label).
 | 30 | Which cable connects r1 to s1? | NetBox > Cables > filter r1 | 3 | ✓ |
 | 31 | Is the containerlab VM up? | Monitoring > Hosts | 2 | ~ ("Monitoring" for a host's status) |
 | 32 | Who silenced the heartbeat alert, and until when? | its Needs attention row (0); Monitoring > Alerts | 0 (2) | ✓ |
+| 33 | How is s3 connected, and to what? | Topology > tap s3 (or Devices > s3 > Neighbours) | 2 (3) | ✓ |
+| 34 | Which device, if it failed, would cut the network in two? | Topology > Weak points | 2 | ✓ |
+| 35 | How does traffic get from r1 to s4, hop by hop? | Topology > Path > r1, s4 | 4 | ✓ |
+| 36 | Why is r6 drawn on its own? | Topology (its reason under it) | 1 | ✓ |
+| 37 | Does the cabling match NetBox? | Topology > Drift (and a Needs attention row when it does not: 0) | 2 (0) | ~ ("Topology" for a NetBox question) |
 
-**All thirty-two questions are the acceptance check on the built screens** (section 13):
+(33 to 37 added 2026-09-30 with Topology's own destination, P.11.)
+
+**All thirty-seven questions are the acceptance check on the built screens** (section 13):
 - each built screen is walked with the questions it answers;
 - the clicks are counted;
 - any path longer than this brief's count is a finding, recorded before the screen is

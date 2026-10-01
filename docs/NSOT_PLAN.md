@@ -4020,6 +4020,19 @@ integrations need, derived from the connectors the network uses, with ONE owner.
     3. r6's SNMP warning clears once its next golden carries SNMP, and it becomes a
        Prometheus target.
   - r6's intent is still never hand-edited.
+- **Next, from the operator's r6 run (2026-09-30):**
+  - **The connectors are the PRIMARY source** (the design's own words, which (b) did not
+    follow: it proposed only what the fleet already agrees on, which is circular on a network
+    the tool has never seen). Each section is derived from its connector's setting (syslog
+    from Loki, SNMP from what the exporter expects, telemetry from the Telegraf endpoint, NTP
+    from its setting, the heartbeat from its alert rules); fleet agreement becomes the
+    CROSS-CHECK that names devices configured differently. Then Apply is one confirmed deploy
+    per device, or a batch from the coverage view, and adopt applies it.
+  - **The SNMP section's next change is SNMPv3** (Stage 9's (L) item, designed there).
+  - **`ip domain name`** is a shared field, in a section of its own outside monitoring and
+    never applied by "Apply monitoring profile": on IOS the SSH key's default label is the
+    host's full name, so a change rides the path the tool reaches the device on. Measured per
+    platform before it is proposed.
 - **Built ahead of it, 2026-09-30:** a device is an SNMP target only when its committed golden
   configures SNMP, and a device missing an integration the network uses is a Needs attention row
   (`modules/monitoring_coverage.py`) whose action names this item. r6's intent is not hand-edited
@@ -4111,6 +4124,96 @@ persist) are enabled only after they are measured on a sandbox device of that pl
 second vendor's write tier and the assistant's pipeline (8.10) both wait on the sandbox.
 - A container platform (Arista cEOS) is far cheaper to hold as a sandbox than another VM on
   this CPU-bound host, which is part of why it is recommended as the second vendor.
+
+### P.11 — Topology: a page of its own, NetworkX for analysis, the app for drawing (SCOPED 2026-09-30, the operator; NOT BUILT)
+
+**The operator's requirement (2026-09-30).** NetworkX is used today to draw a static
+picture, and drawing is its weakest part. Its strength is analysis. So it computes on the
+server, and the app draws the map natively. **Topology is its OWN sidebar destination under
+OBSERVE** (with Monitoring, Logs and DHCP), never a tab of Monitoring. Monitoring answers
+"how is it performing"; Topology answers "how is it connected, what depends on what, where
+is the weak point, how do I get from A to B". The map needs the whole screen, with its own
+controls, and must stay usable on a phone. It is also a starting point for navigation:
+people open it to find a device and go to it. This supersedes the "native interactive map on
+the Monitoring page" of NSOT_GUI_BRIEF 14.2.
+
+**Where the graph data comes from TODAY (measured 2026-09-30):**
+- **Physical links:** Prometheus's LLDP-MIB series (`lldpRemEntry`, `lldpRemPortId`),
+  scraped by the `lldp` job from the GENERATED targets (C232: every device whose golden
+  configures SNMP). 18 rows over 8 devices, no device read.
+- **One-sided reports are normal and are information:** s1 and s2 report only each other,
+  while r1 reports s1 and r2 reports s2. So a link is the UNION of both ends' reports, and a
+  link only one end reports is drawn as such.
+- **State:** `up` per target job; `sysName`.
+- **Routing:** the `ospf`, `ospfv3` and `bgp` jobs already scrape OSPF-MIB's neighbour
+  table, OSPFV3-MIB and `cbgpPeer2Table` (staged run 5's modules). No new collection is
+  needed for the layers.
+- **Link facts:** `ifOperStatus`, `ifHighSpeed` and the octet counters (SNMP), and the
+  telemetry stream where a device streams.
+- **Intended topology:** NetBox's cables, from the import.
+- **Who draws it today:** the topology service, `rcn-topology.py` (C256: an external script
+  until 2026-09-30, now `deploy/topology/`). It reads the LLDP series, builds a NetworkX
+  graph and serves an SVG and `graph.json`. The app fetches the SVG (`routes/topology_view.py`).
+  The legacy Topology tab's `modules/topology.py` is a SECOND discovery, over SSH (CDP,
+  OSPF, BGP, DMVPN); P.11 retires it (one home, section 6a).
+
+**The architecture:**
+- **ONE reader job** (`readers/topology_graph.py`, the 7.2 pattern, 60 s) reads the
+  Prometheus series above and NetBox's cables. It builds one graph per layer and computes
+  the analyses on the server with NetworkX. It stores the result with the time of its value
+  and announces `topology` only on a change.
+- **The routes serve the stored value**, never compute per request (plan §0a).
+- **The page draws it** with vis-network (already vendored and hash-pinned), with positions
+  pinned by node id so the map does not rearrange on every refresh.
+- **The population is the inventory** (the drift checker's lesson):
+  - a managed device the graph lacks is drawn apart, saying why ("not polled: its golden
+    configures no SNMP", "no LLDP neighbours — not directly connected to any other managed
+    device");
+  - a graph node that is not managed (r5, retired) is drawn muted and labelled "not managed".
+- **NetworkX joins `requirements.lock`** (the host has 3.6.1 from apt, read-only check).
+- **The topology service stops drawing.** Once the page is built, the service, its SVG, the
+  Grafana text panel and C231's public hostname go: one owner of discovery (the generated
+  scrape) and one owner of the graph (the reader).
+
+**What it shows, each with its cost** (small: a function and a renderer; moderate: a reader
+or a store and a screen; large: a new collection or a new decision):
+
+| Feature | How | Cost |
+|---|---|---|
+| **Layers**: physical (LLDP), OSPF, OSPFv3, BGP, switchable or overlaid | one graph per layer from the scraped tables; a layer mismatch (OSPF neighbours with no physical link, a link carrying no adjacency it should) drawn as its own state | moderate |
+| **Each link**: both interfaces, speed, state, live traffic | `ifOperStatus`, `ifHighSpeed` and the rate of the octet counters, joined by `ifIndex`; telemetry primary where it measures the same thing (the device dashboard's rule) | moderate |
+| **Islands**: disconnected components, labelled | `connected_components`; every component but the largest is an island, each with its reason (the rule C256 already ships in the service) | small |
+| **Single points of failure** | `articulation_points` and `bridges`, highlighted | small |
+| **Redundancy between two devices** | `local_node_connectivity` (independent paths); 1 reads "one failure from losing contact" | small |
+| **Path trace**: two devices, hop by hop, with interfaces | `shortest_path` on the chosen layer, each hop's ports from the edge; on the routing layer it is the routing protocol's view, never a forwarding claim (*transit in the database is not transit in the forwarding table*) | small |
+| **Criticality**: rank by how much must pass through a device | `betweenness_centrality`, measured at 900 devices with the scale fixture before it runs every 60 s (it is O(VE)) | small, plus that measurement |
+| **Topology drift**: intended (NetBox cables) against observed (LLDP) | missing link, unexpected link, cable on the wrong port; surfaced like config drift, a Needs attention row with its action | moderate |
+| **Change over time** | a snapshot per CHANGE (not per run), kept like the reader's value; a diff of two snapshots: links that appeared or went | moderate |
+| **What-if impact in the deploy preview** | for a program that shuts an interface or removes a routing adjacency (a dangerous line, a Mode B removal), remove the edge from the graph and compute which managed devices lose their path to the MANAGER (its attachment point, s3's Vlan99 today); drawn as a gate, linking to Topology | moderate; ties into P.10's layer 1 |
+
+**One home, several entry points, never a second copy of the map:**
+- the Device page's **Neighbours** tab draws a small local view (the device and its direct
+  neighbours, `ego_graph` radius 1) with "Open in Topology", centred on the device;
+- an **alert** opens Topology with the affected device highlighted, and what is downstream
+  of it (the devices whose only path to the manager crosses it);
+- the deploy preview's **what-if** links to Topology showing which devices would lose their
+  path.
+
+**On a phone:** pan and pinch-zoom; under a set width the default is the list form (each
+device with its links), because a full graph at 390 px is decoration. Path trace is a list
+of hops.
+
+**What it cannot see, stated on the page:** LLDP sees only directly connected neighbours that
+speak LLDP. A device with LLDP off, or a link through a bridge that drops LLDP (r6's
+management segment, deliberately), is not a link in the physical layer.
+
+**Placement, proposed:**
+- The page, the layers, islands, single points of failure, redundancy, path trace and
+  criticality are ONE build, a screen of the redesign's step 4 with the other OBSERVE
+  screens (after P.8, NSOT_GUI_BRIEF 14).
+- Topology drift and change over time follow it.
+- The what-if gate waits on P.10's layer 1, where it belongs.
+- Nothing here waits on a new collection: every series is already scraped.
 
 ### Course labs against the plan (decided 2026-09-26)
 
@@ -5552,7 +5655,43 @@ the environment does.
   - 6.2's per-consumer accounts;
   - `transport input all` (E3);
   - SNMPv3 (C249, the operator, 2026-09-30): nothing the tool runs speaks it, so every
-    device must run a community. REQUIRED before Stage 10's release.
+    device must run a community. REQUIRED before Stage 10's release. **Designed the same
+    day, tied to the monitoring profile (P.9): the profile's SNMP section produces secure SNMP
+    by default.** Our lab's v2c (one shared community, no view, no ACL) is exactly what the
+    program must never generate for a real network.
+    - **authPriv**: SHA-2 authentication where the platform accepts it, else SHA; AES
+      privacy. **Measured per platform first** (IOS-XE 17 and vIOS 15 accept different
+      sets), recorded with evidence the way `removal_measured.json` and
+      `platform_defaults.json` are, and a platform with no measurement is refused, never
+      defaulted.
+    - **Generated names and credentials**, never defaults or guessable values. Held in the
+      credential store under the profile's key, masked everywhere, revealed only through the
+      reveal gate.
+    - **A VIEW** limited to what the monitoring reads (IF-MIB, the CPU and memory tables,
+      OSPF and BGP, LLDP, IP SLA, SNMPv2-MIB's system group), derived from the exporter's
+      generated modules so the two cannot disagree; and **an ACCESS LIST** answering only
+      the collector's address.
+    - **Rotation as an operation**, with credential rotation's safety model: staged before
+      the device changes, proven on the device and at the collector before the old one goes,
+      recoverable at every state between.
+    - **(i) The collector needs the same credentials.** snmp_exporter's `auths` and the trap
+      receiver's users are GENERATED from the store, written for the service that reads them
+      (the `0640` handoff rule), and never in the public repository.
+    - **(ii) A v3 user does not appear in the running config** on Cisco, so a golden cannot
+      show it and verify cannot read it there. What proves a user present and working is
+      measured per platform (`show snmp user`, and an authenticated poll from the collector),
+      and verify reads that.
+    - **(iii) A staged switch-over, never a window with no working SNMP:** add v3 beside
+      v2c; move the collector to v3; confirm data arrives for EVERY device; only then remove
+      the community (its removal is already measured safe on both platforms). This closes
+      C141, and with it the published value's last use.
+    - **Order (the operator's lean, agreed):** r6 and r1 get today's v2c SNMP through the
+      profile now, so monitoring is complete; SNMPv3 is the NEXT profile change, fleet-wide.
+      It does not need to come before the re-proposal: step (iii) begins with v2c present on
+      every device, so completing v2c first is the switch-over's starting state, not work
+      thrown away. The per-device fields and the choice of version (C255) carry over: v3's
+      shared fields are the view, the ACL, the algorithms and the user's group; the user
+      name and its credentials are generated per network and rotated as one.
 
   Added by the triage for the operator to confirm: C44 (a manual pull
   bypasses the deploy gate), C100 (NMAS's NetBox token is the operator's
