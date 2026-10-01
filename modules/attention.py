@@ -377,8 +377,13 @@ def drift_source(status=None, now=None) -> dict:
             {"label": "The reason above is all that is recorded", "known": False},
             "warning", devices=[d["hostname"]], operands={"coverage": coverage})
     for d in last.get("errors") or []:
+        # During a boot the reachability reader saw the device go silent: said
+        # first, so a booting device does not read as a broken one.
+        from modules.readers.reachability import outage_words
+        booting = outage_words(d["hostname"], _ts(last_ts) or now)
         add(f"unreachable:{d['hostname']}", f"{d['hostname']} could not be checked for drift",
-            d.get("reason") or "no reason recorded",
+            (f"{booting[0].upper()}{booting[1:]}. The check said: " if booting else "")
+            + (d.get("reason") or "no reason recorded"),
             {"label": "The reason above is all that is recorded", "known": False},
             "unknown", devices=[d["hostname"]], operands={"coverage": coverage})
     return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,

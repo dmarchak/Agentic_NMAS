@@ -1038,6 +1038,10 @@ def startup_rows(read=None, now: float = None) -> list:
     # to do; quiet for a run or two, a warning once it persists.
     unread = [d for d in devices if d.get("state") not in ("persisted", "not_persisted")]
     if unread:
+        # A device the reachability reader saw go silent was booting, not
+        # broken (the operator, 2026-10-01): said beside the check's reason.
+        from modules.readers.reachability import outage_words
+        booting = {d.get("device"): outage_words(d.get("device"), at) for d in unread}
         first = min((d.get("since") or at) for d in unread)
         persisting = at - first >= UNREAD_PERSISTS_S
         names = ", ".join(d.get("device", "?") for d in unread)
@@ -1058,7 +1062,10 @@ def startup_rows(read=None, now: float = None) -> list:
                                  f"(about {nxt}). If a device stays unreadable, check that it "
                                  "answers (its Device page)"}),
             "detail": "; ".join(
-                f"{d.get('device')}: {startup_check.brief(d.get('detail'))} (since "
+                f"{d.get('device')}: "
+                + (f"{booting[d.get('device')]}; the check said: "
+                   if booting[d.get("device")] else "")
+                + f"{startup_check.brief(d.get('detail'))} (since "
                 f"{time.strftime('%H:%M', time.localtime(d.get('since') or at))})"
                 for d in unread) + f" (checked {when}). Not the same as a startup config "
                                    "that does not carry the credential: that is its own row."})

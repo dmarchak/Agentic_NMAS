@@ -141,10 +141,20 @@ def read(probe_fn=None, targets=None, previous=None, clock=time.time) -> dict:
         threshold = miss_threshold(list_name, hostname)
         answering = misses < threshold
         held = prev and prev.get("answering") == answering and prev.get("since")
+        # The last OUTAGE this reader SAW, kept while the device keeps
+        # answering: a check that failed during a boot says so from it. Only a
+        # transition it watched counts, so the first probe after the app
+        # starts never reads as a device coming back.
+        if prev and prev.get("answering") is False and answering:
+            outage = {"down_from": prev.get("since"), "back_at": _iso(now)}
+        elif prev and answering and prev.get("answering"):
+            outage = {"down_from": prev.get("down_from"), "back_at": prev.get("back_at")}
+        else:
+            outage = {"down_from": None, "back_at": None}
         devices[ip] = {"address": ip, "hostname": hostname, "list": list_name,
                        "answering": answering, "last_result": "answered" if answered else "missed",
                        "claim": claim, "checked_at": _iso(now), "consecutive_misses": misses,
-                       "threshold": threshold, "since": held or _iso(now)}
+                       "threshold": threshold, "since": held or _iso(now), **outage}
         if prev and prev.get("answering") != answering:
             # The transition log C92 was measured from keeps its shape.
             log.info("reachability: %s (%s) answering=%s after %d miss(es)",
@@ -161,6 +171,49 @@ def read(probe_fn=None, targets=None, previous=None, clock=time.time) -> dict:
               "missed_last_probe": sum(1 for d in devices.values()
                                        if d["last_result"] == "missed")}
     return {"devices": devices, "counts": counts}
+
+
+#: How long after a device answered again a failed check is still read as the
+#: boot's: SSH answers last in a vIOS boot (vrnetlab types the whole startup
+#: config into the console first, which on s3 ran to its 900 s bound, C93).
+#: Twice that bound, so a slow boot is still said; a later failure is not.
+BOOT_TAIL_SECONDS = 1800
+
+
+def _epoch(text):
+    import calendar
+    try:
+        return float(calendar.timegm(time.strptime(str(text)[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (TypeError, ValueError):
+        return None
+
+
+def outage_words(hostname: str, at: float, value: dict = None, now: float = None) -> str:
+    """Words for a check that could not read *hostname* at *at* (epoch), from
+    what this reader SAW (the operator, 2026-10-01: drift's and the startup
+    check's "could not be checked" during the redeploy, when this reader knew
+    the device was not answering). ``""`` when nothing it saw explains it."""
+    if value is None:
+        got = reader_job.read_cached("reachability")
+        value = (((got.get("doc") or {}).get("last_good") or {}).get("value")) or {}
+    now = time.time() if now is None else now
+    d = next((x for x in (value.get("devices") or {}).values()
+              if x.get("hostname") == hostname), None)
+    if not d:
+        return ""
+    hm = lambda t: time.strftime("%H:%M", time.gmtime(t))          # noqa: E731
+    if not d.get("answering"):
+        since = _epoch(d.get("since"))
+        if since is None:
+            return ""
+        return (f"not answering SSH yet: {hostname} has not answered the NMAS since "
+                f"{hm(since)} UTC ({int((now - since) // 60)} min)")
+    down, back = _epoch(d.get("down_from")), _epoch(d.get("back_at"))
+    if down is None or back is None or not down - 300 <= at <= back + BOOT_TAIL_SECONDS:
+        return ""
+    return (f"not answering SSH yet: {hostname} did not answer the NMAS from {hm(down)} to "
+            f"{hm(back)} UTC and this ran at {hm(at)}, while it was still coming up "
+            "(SSH answers last in a boot)")
 
 
 def changed(previous: dict, value: dict) -> bool:
