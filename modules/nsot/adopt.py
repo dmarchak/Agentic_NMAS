@@ -588,7 +588,9 @@ def is_adoption_staged(repo: str, hostname: str) -> bool:
 #: The apply's steps, in order. Promotion is LAST, as in onboarding's phase 2:
 #: the inventory row is the claim "this device is managed", and it is made
 #: only when everything before it held.
-APPLY_STEPS = ("confirm", "account", "owner_account", "persist", "golden", "netbox",
+#: The monitoring profile (P.9 step c) after the accounts and before the
+#: save, so the first golden records it.
+APPLY_STEPS = ("confirm", "account", "owner_account", "profile", "persist", "golden", "netbox",
                "promote")
 
 #: What adopt does NOT do, stated at the confirm (a commit records its
@@ -598,7 +600,10 @@ NOT_DOING = (
     "for this operation, and is then used by nothing.",
     "No read-write SNMP community is removed: onboarding removes one only because the "
     "tool put it there, and on this device something real may use it.",
-    "Nothing else in the configuration is changed: the one line sent is the tool's account.",
+    "Nothing else in the configuration is changed: what is sent is the tool's account and, "
+    "where the network has a monitoring profile, the profile's lines the device lacks, each "
+    "listed in the program. A value the device sets differently is kept (it overrides the "
+    "profile), and nothing is removed.",
     "No intent is committed: seed it from the golden afterwards, on the Device page.",
     "No NetBox object that exists now is made deletable: each is recorded as adopted, and "
     "Remove deletes only what the tool created.",
@@ -922,6 +927,15 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
                          "has are gone at the next reload")}
     out["rw_kept"] = _masked(onboard.rw_communities(running))
 
+    # ---- the network's monitoring profile (P.9 step c) --------------------
+    # Computed from THIS capture (the device has no intent yet), masked for the
+    # preview; the truthful program stays in this module.
+    from modules.nsot import profile_apply
+    prof = profile_apply.for_capture(ref.name, hostname, platform, role, running,
+                                     repo=ref.repo_dir)
+    out["profile"] = {k: v for k, v in prof.items() if k != "commands"}
+    out["_profile_commands"] = prof["commands"] if prof.get("applies") else []
+
     # ---- NetBox: what exists (to be recorded as adopted) and what changes ---
     existing = (netbox_existing or _netbox_existing)(hostname)
     if gate("netbox_read", existing.get("ok"), existing.get("error") or (
@@ -942,10 +956,13 @@ def _plan(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplied
         if out.get("_convert"):
             conv = out["_convert"]
             out["program"] = out["program"] + owner_program_masked(conv)
+        if out["_profile_commands"]:
+            out["program"] = out["program"] + list(out["profile"]["masked"])
         out["fingerprint"] = _hash(json.dumps(
             {"list": ref.name, "device": hostname, "ip": mgmt_ip, "platform": platform,
              "tool": tool_username, "resume": out["resume"], "role": role,
              "convert_owner": bool(out.get("_convert")),
+             "profile": (out.get("profile") or {}).get("fingerprint") or "",
              "capture": out["capture_hash"], "startup": out["startup_hash"]},
             sort_keys=True))
     return done()
@@ -1128,7 +1145,7 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
            supplied_enable, tool_username, confirmed_fingerprint, actor, reason,
            convert_supplied=False, read=None, netbox_existing=None, netbox_preview=None, open_session=None,
            verify=None, record=None, persist=None, capture=None, netbox=None,
-           promote=None, record_adoption=None, role="") -> dict:
+           promote=None, record_adoption=None, role="", send_profile=None) -> dict:
     from modules import credentials
     from modules.netbox_guard import get_created, record_adopted
     from modules.nsot import credential_rotation as CR
@@ -1247,8 +1264,36 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
         return _stop("owner_account", (owner or {}).get("detail", "")
                      + ". Nothing further was done")
     if not (user and pw):
-        return _stop("persist", f"the tool's credential for {mgmt_ip} could not be read back "
+        return _stop("profile", f"the tool's credential for {mgmt_ip} could not be read back "
                                 "from the store it was recorded in")
+
+    # ---- the network's monitoring profile (P.9 step c), read back ----------
+    prof = p.get("profile") or {}
+    if not p.get("_profile_commands"):
+        _step("profile", True, "not sent: " + (prof.get("why") or "nothing to send")
+              if not prof.get("applies") else prof.get("why") or "already holds every line")
+    else:
+        sent = (send_profile or onboard.send_profile_program)(
+            mgmt_ip, user, pw, pw, device_type, p["_profile_commands"])
+        result["profile"] = {"sent": len(p["_profile_commands"]), "error": sent.get("error", "")}
+        if not sent.get("ok"):
+            _step("profile", False, sent.get("error") or "the profile program failed")
+            return _stop("profile", (
+                f"the monitoring profile was not applied ({sent.get('error') or 'no reason'}). "
+                f"The tool's account is in the RUNNING config only: do not reload the device. "
+                "Run adopt again to resume"))
+        from modules.nsot import profile_apply
+        back = (capture or onboard.capture_config)(mgmt_ip, user, pw, pw, device_type)
+        left = ([l for l in profile_apply.for_capture(
+                    list_name, hostname, platform, p.get("role", ""), back["config"],
+                    repo=repo).get("masked") or [] if l.strip() != "exit"]
+                if back.get("ok") else None)
+        if left is None or left:
+            why = ("the device could not be read back: " + (back.get("error") or "no reason")
+                   if left is None else "not every line landed: " + "; ".join(left[:3]))
+            _step("profile", False, why)
+            return _stop("profile", why + ". Run adopt again to resume")
+        _step("profile", True, f"{len(p['_profile_commands'])} line(s) sent and read back")
 
     # ---- persist, on the device, read back ----------------------------------
     pers = (persist or onboard.persist_on_device)(mgmt_ip, user, pw, pw, device_type)

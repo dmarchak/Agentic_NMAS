@@ -3963,7 +3963,7 @@ per-list rules and targets, and 7.3 embeds per-list monitoring. The
 NetBox question in (1) is the operator's to answer first, because six keys and
 the inventory adapter move with it.
 
-### P.9 — The monitoring profile (DESIGNED and DECIDED 2026-09-30; steps (a) and (b) BUILT the same day; (c) onboarding BUILT 2026-10-01; NEXT: (c) adopt, then (d))
+### P.9 — The monitoring profile (DESIGNED and DECIDED 2026-09-30; steps (a) and (b) BUILT the same day; (c) onboarding and adopt BUILT 2026-10-01; NEXT: (d))
 
 The operator's requirement (2026-09-30), after r6 was called "unreachable" by an SNMP alert
 when its configuration simply has no SNMP: every device, new and existing, carries what its
@@ -4025,7 +4025,9 @@ integrations need, derived from the connectors the network uses, with ONE owner.
   fingerprint. The profile's program is computed from the device's CAPTURE
   (`profile_apply.for_capture`), sent as phase 2's `profile` step after the RW removal and
   before the save and the first golden, and read back. A device or profile that moved since the
-  preview sends nothing at all. Adopt is next, then (d).
+  preview sends nothing at all. Adopt applies it the same way: computed from the capture its
+  preview reads, in its program and fingerprint, sent as the apply's `profile` step after the
+  accounts and before the save, read back. (d), the batch Apply from the coverage view, is next.
 - **Next, from the operator's r6 run (2026-09-30):**
   - **The connectors are the PRIMARY source** (the design's own words, which (b) did not
     follow: it proposed only what the fleet already agrees on, which is circular on a network

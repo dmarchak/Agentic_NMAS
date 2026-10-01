@@ -61,7 +61,11 @@ the fingerprint from its own capture, sends nothing at all if it moved, sends th
 the RW removal and before the save and the first golden, and reads it back. A template that does
 not reproduce the device sends no profile and says so (the device is onboarded, and Apply
 remains); a line the parser does not model is named and never blocks, since the program never
-touches it. Not built yet: adopt applying it, and the batch Apply from the coverage view.
+touches it. **Adopt applies it too** (the same day): its preview computes the program from the
+capture it reads with the supplied credential, lists it masked in the program and binds it in the
+fingerprint; the apply sends it after the accounts and before the save, reads it back, and the first
+golden records it. A value the device sets differently is kept (the device overrides the profile).
+Not built yet: the batch Apply from the coverage view (d).
 
 **Each section names the connector it is derived from,** and is ABSENT while that
 connector is not configured. "Configure a connector, and devices get the matching config"

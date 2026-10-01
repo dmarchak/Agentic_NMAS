@@ -1932,6 +1932,79 @@ promotion.
   consistent with UTC, but no convention is recorded.
 - Any time or effort estimate for P.5 or P.6: none was found.
 
+### P.9 — The monitoring profile, steps (a) to (c)
+
+*Written 2026-10-01, when step (c) closed. Steps (a) and (b) closed on 2026-09-30 without an
+entry; theirs is reconstructed from the plan, the register and git, and says where that ran
+out. Step (d) is open.*
+
+**1. What it was**
+
+Every device, new and existing, carries what its integrations need (SNMP, syslog, NTP,
+telemetry, LLDP), from ONE owner: a committed profile per network, derived from the connectors
+the network uses. It came from r6 being called "unreachable" by an SNMP alert when its
+configuration simply had no SNMP [NSOT_PLAN.md P.9; MONITORING_PROFILE.md §1].
+
+**2. How it was implemented**
+
+- **(a) The model** [git 38c64ef]: `profiles/monitoring.yml`, data in the parsers' `host_vars`
+  shape; `profile.effective()` is the one merge (the device's own value wins, an empty value
+  never overrides, an exclusion carries its reason), called by every render of intent; the
+  deploy plan attributes `from_profile` lines apart.
+- **(b) Existing devices** [git 39e49d2, 1954ce7]: PROPOSE (derived from the connectors, the
+  fleet the cross-check, confirmed by hash and committed as the person) and APPLY (the deploy
+  scoped to the profile's lines). Connectors got a home in Settings [git 3ffb4ac].
+- **(c) New devices** [git bf13c4e and the adopt commit]: a device being onboarded or adopted
+  has no full intent, so the program is computed from its CAPTURE
+  (`profile_apply.for_capture`: its own parse rendered alone and with the profile). Onboarding's
+  Verify became a preview and a confirm (the operator's decision 1): the preview reads the
+  pending device and draws the RW removal and the profile program, masked, with a fingerprint;
+  phase 2 recomputes it and sends nothing if it moved, then sends the profile after the RW
+  removal and before the save, and reads it back. Adopt does the same from the capture its
+  preview reads with the supplied credential.
+
+**3. Issues it found** (register IDs)
+
+- During (b) and its host run: C253 (LLDP and CDP read from a key no parser writes), C254
+  (what an absent `cdp run`/`lldp run` means, unmeasured), C255 (SNMP never proposed: per-device
+  fields compared), C256 (the topology renderer held outside the repository), C257 (host steps
+  with no kind), C258 (connector settings file-only), C259 (Prometheus targets regenerated on
+  inventory writes only), C260 (the Overview hid golden-versus-intent), C261 (profile screens
+  misdescribing changes), C262 (r6's `cdp run`), and after staged run 8 C269 (r1 to r4 holding
+  `cdp run` in their own intent) [OPEN_FINDINGS.md].
+- During (c): a `to_send` row carried the community unmasked (caught by its own test before
+  commit), and a measurement corrected an assumption: an unmodelled line counts as `unmodeled`,
+  never as a render gap, so it is named and does not block.
+- Outside its scope, found by its first apply on the host: C278 and C280, the publication gate
+  holding four pushes for one more copy of an acknowledged community (r6 gained the fleet's
+  community through the profile).
+
+**4. How each was resolved**
+
+C253, C255, C257 to C261 fixed the day they were found; C254 measured (staged runs) and
+recorded per platform; C256 closed on measurement; C262 removed through Mode B on IOS-XE after
+staged run 8; C269 scheduled as the operator's; C278 and C280 fixed [OPEN_FINDINGS.md].
+
+**5. Numbers**
+
+Commits (rule: subjects naming P.9, the profile or its findings, `git log --since=2026-09-30`):
+13: twelve from 2f3a535 (2026-09-30 12:13, the design) to bf13c4e (2026-10-01 00:27), and the
+adopt commit after it. Elapsed
+about 13 hours, interleaved with the update button's runs, C270 to C280 and C271/C272. Findings
+recorded: 11 in (a) and (b) (C253 to C262, C269), 2 outside its scope (C278, C280), none new
+in (c). **Estimate versus actual: no forecast was made for P.9**, none in the plan, the profile
+design or the register, so there is nothing to check; recorded so the next profile-sized item
+gets one, from a finished stage of the same kind.
+
+**6. Where it left the product**
+
+A new device is monitored at promotion, through onboarding or adopt; an existing one by Apply
+from its row. Not built: (d), the batch Apply from the fleet coverage view, and the profile's
+IP SLA policy. SNMPv3 is the profile's next SNMP change (Stage 9).
+
+*Not recoverable:* the minute-level split of (a) and (b)'s time between the profile and the
+work interleaved with it on 2026-09-30.
+
 ### P.7 and P.8
 
 Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own item before 8.6) and P.8 (per-list settings: two lists are two networks) [NSOT_PLAN.md P.7, P.8]. Entries are written when they close.

@@ -495,7 +495,7 @@ class TestTheOwnersAccountConverted:
             out["reason"]
         assert CLEAR_ADMIN in lab["router"].running and \
             lab["router"].passwords["admin"] == SUPPLIED_PW, "as it was"
-        assert [r["step"] for r in out["remaining"]][:1] == ["persist"]
+        assert [r["step"] for r in out["remaining"]][:1] == ["profile"]
         from modules import credentials
         assert credentials.resolve(IP)["username"] == "nmas", \
             "the tool's account stays recorded: a second way in"
@@ -640,3 +640,67 @@ class TestTheImporterHonoursAPreviewTextOnlyInADryRun:
         with netbox_guard.dry_run():
             scanned = netbox_client._scan_device_from_golden(dev)
         assert "error" not in scanned and scanned["interfaces"]
+
+
+class TestTheMonitoringProfileIsApplied:
+    """P.9 step (c): adopt applies the network's monitoring profile, computed
+    from the capture it reads (`profile_apply.for_capture`, tested on the
+    profile lab in test_profile_new_devices.py; here a stand-in with its
+    shape, so adopt's plumbing is what is under test): in the program and the
+    fingerprint at the preview, sent after the accounts and before the save,
+    read back, and in the first golden."""
+
+    LINE = "snmp-server community <redacted:snmp_community> RO"
+    TRUE = "snmp-server community AdoptProfileValue RO"
+
+    @pytest.fixture
+    def profiled(self, lab, monkeypatch):
+        def for_capture(list_name, hostname, platform, role, capture, *, repo="", doc=None):
+            held = self.TRUE in capture
+            return {"applies": True, "why": "" if not held else "already holds every line",
+                    "commands": [] if held else [self.TRUE],
+                    "masked": [] if held else [self.LINE], "to_send": [], "in_place": [],
+                    "by_section": {"snmp": []}, "sources": {}, "template": {},
+                    "unmodeled": [], "fingerprint": "held" if held else "missing",
+                    "capture_hash": "x"}
+        monkeypatch.setattr("modules.nsot.profile_apply.for_capture", for_capture)
+        sent = []
+
+        def send(ip, user, pw, sec, dt, commands):
+            sent.append(list(commands))
+            lab["router"].running.extend(commands)
+            return {"ok": True, "error": ""}
+        lab["sent_profile"] = sent
+        lab["send"] = send
+        return lab
+
+    def test_the_preview_lists_the_profile_lines_masked_and_binds_them(self, profiled):
+        out = _plan(profiled)
+        assert out["blocking"] == [] and self.LINE in out["program"]
+        assert self.TRUE not in json.dumps(A.public(out))
+        assert any("monitoring profile" in s for s in out["not_doing"])
+
+    def test_the_apply_sends_it_after_the_accounts_reads_it_back_and_records_it(self, profiled):
+        out = _apply(profiled, send_profile=profiled["send"])
+        assert out["ok"] is True, out["reason"]
+        steps = [s["step"] for s in out["steps"]]
+        assert steps.index("profile") == steps.index("owner_account") + 1
+        assert steps.index("profile") < steps.index("persist")
+        assert profiled["sent_profile"] == [[self.TRUE]]
+        assert "1 line(s) sent and read back" in next(
+            s["detail"] for s in out["steps"] if s["step"] == "profile")
+        golden = _git("show", f"HEAD:golden/{HOST}.cfg")
+        assert self.TRUE in golden, "the first golden records the profile"
+
+    def test_a_line_that_did_not_land_stops_before_the_save(self, profiled):
+        out = _apply(profiled, send_profile=lambda *a: {"ok": True, "error": ""})
+        assert out["ok"] is False
+        row = next(s for s in out["steps"] if s["step"] == "profile")
+        assert not row["ok"] and "not every line landed" in row["detail"]
+        assert profiled["router"].saves == 0, "nothing saved over a missing line"
+
+    def test_no_profile_sends_nothing_and_says_so(self, lab):
+        out = _apply(lab)
+        assert out["ok"] is True, out["reason"]
+        row = next(s for s in out["steps"] if s["step"] == "profile")
+        assert row["ok"] and row["detail"].startswith("not sent: ")
