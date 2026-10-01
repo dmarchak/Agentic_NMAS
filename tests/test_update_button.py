@@ -1094,12 +1094,33 @@ def _browser_or_skip():
     return browser
 
 
-@pytest.fixture
-def served_update(monkeypatch, tmp_path):
-    """The real app on loopback with a selectable plan; the request and the
-    updater's record recorded and scripted."""
+@pytest.fixture(scope="module")
+def live_browser():
+    """ONE server and ONE Firefox for this module's browser tests (the
+    operator, 2026-10-01: each test started its own Firefox, about 2.4 s
+    here and more on CI's runner, which HAS a browser, so these run there).
+    Requested only by the tests that click, so a skipped test starts
+    nothing; torn down bounded (tests/browser.py) when the module ends."""
     browser = _browser_or_skip()
     import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        yield browser, srv, b
+
+
+def _between_tests(browser, b):
+    """Leave the page and end its socket.io session, so the next test starts
+    from nothing a previous one left."""
+    try:
+        b.go("about:blank")
+    finally:
+        browser.close_socketio_sessions()
+
+
+@pytest.fixture
+def served_update(monkeypatch, tmp_path, live_browser):
+    """The real app on loopback with a selectable plan; the request and the
+    updater's record recorded and scripted."""
+    browser, srv, b = live_browser
     from modules import update_op
 
     fixed = _plan()
@@ -1113,8 +1134,8 @@ def served_update(monkeypatch, tmp_path):
         return calls["answer"]
     monkeypatch.setattr(update_op, "request", request)
     monkeypatch.setattr(update_op, "status", lambda: calls["status"])
-    with browser.Served(A.app) as srv, browser.Browser() as b:
-        yield {"b": b, "srv": srv, "calls": calls, "hash": fixed["hash"]}
+    yield {"b": b, "srv": srv, "calls": calls, "hash": fixed["hash"]}
+    _between_tests(browser, b)
 
 
 class TestClickingTheShippedButton:
@@ -1189,11 +1210,10 @@ STAMP = "document.querySelector('#installation .check-again').closest('dd').quer
 
 
 @pytest.fixture
-def served_about(scripted_reader):
-    browser = _browser_or_skip()
-    import app as A
-    with browser.Served(A.app) as srv, browser.Browser() as b:
-        yield {"b": b, "srv": srv, **scripted_reader}
+def served_about(scripted_reader, live_browser):
+    browser, srv, b = live_browser
+    yield {"b": b, "srv": srv, **scripted_reader}
+    _between_tests(browser, b)
 
 
 class TestCheckAgainInARealBrowser:

@@ -61,6 +61,19 @@ report_timeout() {
     echo "  ${f##*/running-}: $nodeid (started $(( $(date +%s) - ${started%.*} )) s before the report)" >&2
   done
   [ "$found" -eq 1 ] || echo "  no test was in progress: the hang is outside a test (collection, a fixture's teardown at session end, or the harness)" >&2
+  # When the tests FINISHED (tests/conftest.py writes it as each one does), so
+  # a timeout after the last test says how long the session's end had run.
+  if [ -s "$INFLIGHT/progress-main" ]; then
+    IFS=$'\t' read -r done last < "$INFLIGHT/progress-main"
+    msg="${done} test(s) had finished; the last $(( $(date +%s) - ${last%.*} )) s before the report"
+    echo "  $msg" >&2
+  else
+    msg="no test had finished"
+  fi
+  # In CI the log needs authentication and an annotation does not.
+  if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    echo "::error title=nmas-test timed out::after ${TIMEOUT} s (NMAS_TEST_TIMEOUT): $([ "$found" -eq 1 ] && echo "a test was in progress (see the log)" || echo "no test in progress"); ${msg}"
+  fi
   for f in "$INFLIGHT"/stack-*; do
     [ -s "$f" ] || continue
     echo "--- stacks of ${f##*/stack-} at the SIGTERM ---" >&2

@@ -7,8 +7,12 @@ did nothing. Its component read its attributes through `$el`, the button,
 and disabled itself. Every test had built the pieces without clicking the
 shipped button, and duktape cannot run Alpine. Where a browser is available
 (the laptop), a test serves the real app on loopback, loads the real page,
-and clicks. Where none is (CI), the test SKIPS and says why, and the static
-wiring rule in tests/test_update_button.py still runs.
+and clicks. Where none is, the test SKIPS and says why, and the static wiring
+rule in tests/test_update_button.py still runs. CI's runner HAS one (Firefox,
+and a geckodriver outside any snap), so they run there: run #241's thread dump
+showed this module's live server in a worker (2026-10-01). This file said CI
+skipped them until then. The confined runner on the laptop skips them, since
+snap Firefox cannot start in its namespace.
 
 geckodriver is launched from its own binary, never through /snap/bin: a
 snap-confined process cannot be stopped by the test that started it.
@@ -92,7 +96,45 @@ class Served:
         return f"http://127.0.0.1:{self.port}{path}"
 
     def __exit__(self, *exc):
+        """Down for certain, and bounded (the operator, 2026-10-01: run #241
+        timed out with this server's long-poll threads alive in a worker).
+        The page's socket.io sessions are closed server-side first, so no
+        request thread stays blocked in a long poll; then the server stops,
+        its socket closes, and its thread is joined with a limit."""
+        close_socketio_sessions()
         self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=SHUTDOWN_SECONDS)
+
+
+#: The teardown's bound: a server that does not stop within it is a leak the
+#: session-end guard names.
+SHUTDOWN_SECONDS = 5
+
+
+def close_socketio_sessions() -> int:
+    """Disconnect every engine.io session the app's socket.io server holds,
+    each long poll answered and ended. Returns how many."""
+    try:
+        import app as A
+        eio = A.socketio.server.eio
+    except Exception:                                   # noqa: BLE001
+        return 0
+    # NOT `eio.disconnect(sid)`: it waits for a client to drain the session's
+    # queue, and once the page is gone there is none, so it blocks for ever
+    # (measured 2026-10-01 building this teardown: the hang in miniature).
+    # Closed without waiting, aborted: the long poll's request thread is woken
+    # by the close's sentinel and returns. `wait`/`abort` exist in the host's
+    # pinned 4.3.4 and in later releases alike.
+    sockets = getattr(eio, "sockets", {}) or {}
+    sids = list(sockets)
+    for sid in sids:
+        try:
+            sockets[sid].close(wait=False, abort=True)
+        except Exception:                               # noqa: BLE001
+            pass
+        sockets.pop(sid, None)
+    return len(sids)
 
 
 class Browser:

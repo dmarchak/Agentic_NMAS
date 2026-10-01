@@ -28,11 +28,16 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    # From a measurement, not a round number (the operator, 2026-09-28): the
-    # last seven jobs took 186-224 s end to end (#94-#100); 10 min is 2.7x the
-    # slowest. A hang costs ten minutes, not twenty. The tests step has its own
-    # 300 s bound inside scripts/nmas-test, which names what was running.
-    timeout-minutes: 10
+    # From a measurement, not a round number (the operator, 2026-09-28), and
+    # RE-DERIVED when it moves (2026-10-01): the tests step grew from 207 s
+    # (#224) to 296 s (#236), and #241 crossed scripts/nmas-test's 300 s bound,
+    # which was 2.5x the LAPTOP's serial run and had never been derived for
+    # this runner. The step's own bound is now 2.5x CI's measured 296 s
+    # (NMAS_TEST_TIMEOUT below, 740 s); the job's is that plus the ~35 s of
+    # setup before it, rounded up. Every run now annotates when its last test
+    # finished and how long the session took to end after it, so the next
+    # re-derivation reads both numbers from the public API.
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +83,7 @@ jobs:
       - name: Tests (R1, R4), confined to loopback, coverage reported
         env:
           COVERAGE_CORE: sysmon
+          NMAS_TEST_TIMEOUT: "740"
         run: >
           scripts/nmas-test -q -p no:cacheprovider -n auto
           --cov=modules --cov=routes --cov=app --cov-report=term

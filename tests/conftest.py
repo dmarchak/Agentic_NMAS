@@ -117,6 +117,7 @@ def pytest_sessionstart(session):
                     f"{network_guard.report_line(_NETWORK_STATE)}", returncode=2)
     session.nmas_checkout_data_before = data_tree(_CHECKOUT_DATA_DIR)
     _register_stack_dump(session)
+    session.config._nmas_t0 = __import__("time").time()
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -141,6 +142,41 @@ def pytest_sessionfinish(session, exitstatus):
             _ci_annotate("error", "the session guard failed the run", message)
     if fail:
         session.exitstatus = 1
+    leaked = leaked_threads()
+    if leaked:
+        message = ("the session ended with NON-DAEMON threads still alive, which keep this "
+                   "process from exiting (the operator, 2026-10-01: CI run #241 timed out at "
+                   "the session's end with a live server's threads in a worker): "
+                   + "; ".join(leaked))
+        sys.stderr.write("\n" + message + "\n")
+        _ci_annotate("error", "threads left alive at the session's end", message)
+        session.exitstatus = 1
+
+
+#: How long the session end waits for a non-daemon thread to finish on its own
+#: before naming it: a thread finishing its last second of work is not a leak.
+LEAK_GRACE_SECONDS = 5
+
+
+def leaked_threads(grace: float = LEAK_GRACE_SECONDS) -> list:
+    """Every NON-DAEMON thread but this one still alive after *grace* seconds,
+    named with where it started. A daemon thread cannot hold the process open,
+    so it is not one; a non-daemon one can, and is named instead of becoming
+    a 300 s timeout with nothing in progress."""
+    import threading
+    import time
+
+    me = threading.current_thread()
+    deadline = time.monotonic() + grace
+    alive = []
+    for t in threading.enumerate():
+        if t is me or t.daemon or t is threading.main_thread():
+            continue
+        t.join(timeout=max(0.0, deadline - time.monotonic()))
+        if t.is_alive():
+            target = getattr(t, "_target", None)
+            alive.append(f"{t.name} (target {getattr(target, '__qualname__', target)!s})")
+    return alive
 
 
 def _ci_annotate(level: str, title: str, message: str) -> None:
@@ -501,6 +537,54 @@ def pytest_runtest_logstart(nodeid, location):
         name = f"{location[0]}{nodeid}" if nodeid.startswith("::") else nodeid
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(f"{name}\t{time.time():.0f}\n")
+
+
+def pytest_runtest_logreport(report):
+    """WHEN the tests finished, recorded by the process that sees every report
+    (the controller under xdist, else the one process): the number done and the
+    time of the last, rewritten as each finishes. A timeout with no test in
+    progress then says whether the tests had finished and how long ago, so
+    the time spent at the session's end is a number, not a guess (the
+    operator, 2026-10-01, run #241)."""
+    import time
+
+    if report.when != "teardown" or _is_worker():
+        return
+    _PROGRESS["done"] += 1
+    _PROGRESS["last"] = time.time()
+    path = _inflight_file("progress")
+    if path:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(f"{_PROGRESS['done']}\t{_PROGRESS['last']:.1f}\n")
+
+
+_PROGRESS = {"done": 0, "last": None}
+
+
+def _is_worker() -> bool:
+    return bool(os.environ.get("PYTEST_XDIST_WORKER"))
+
+
+def pytest_unconfigure(config):
+    """The run's two numbers, said last (and annotated in CI, where the log
+    needs authentication and annotations do not): when the last test finished
+    after the start, and how long the session took to END after it
+    (coverage's report, fixture teardown, worker shutdown). The bound is
+    judged against both (the operator: "so we know how close it sits to the
+    limit")."""
+    import time
+
+    t0 = getattr(config, "_nmas_t0", None)
+    if _is_worker() or t0 is None or _PROGRESS["last"] is None:
+        return
+    now = time.time()
+    line = (f"nmas-test timing: {_PROGRESS['done']} test(s); the last finished "
+            f"{_PROGRESS['last'] - t0:.0f} s after the session started, and the session "
+            f"ended {now - _PROGRESS['last']:.0f} s after that ({now - t0:.0f} s in all; "
+            f"the bound is {os.environ.get('NMAS_TEST_TIMEOUT', '300')} s)")
+    import sys
+    sys.stderr.write(line + "\n")
+    _ci_annotate("notice", "suite timing", line)
 
 
 def pytest_runtest_logfinish(nodeid, location):

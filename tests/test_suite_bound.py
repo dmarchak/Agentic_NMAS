@@ -54,3 +54,33 @@ def test_a_run_that_finishes_is_never_reported_as_a_timeout(tmp_path):
     out = _runner(tmp_path, "def test_ok():\n    pass\n")
     assert out.returncode == 0, out.stderr[-800:]
     assert "TIMED OUT" not in out.stderr + out.stdout
+
+
+#: The run #241 shape: every test finishes, then the SESSION'S END outlasts
+#: the bound. A non-daemon thread left running holds the process open.
+HANG_AT_THE_END = ("import threading, time\n\n"
+                   "def test_all_pass():\n"
+                   "    threading.Thread(target=time.sleep, args=(600,), name='held-open',\n"
+                   "                     daemon=False).start()\n")
+
+
+def test_a_hang_after_the_last_test_says_when_the_tests_finished(tmp_path, monkeypatch):
+    """The operator, 2026-10-01: #241 said "no test was in progress" and
+    nothing about when the tests had finished, and the timeout reached only the
+    authenticated log. Now the report says how many finished and how long ago,
+    and in CI it is an annotation."""
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    out = _runner(tmp_path, HANG_AT_THE_END, bound="12")
+    assert out.returncode in (124, 137), (out.returncode, out.stderr[-800:])
+    err = out.stderr
+    assert "no test was in progress" in err
+    assert "1 test(s) had finished; the last" in err, err[-1200:]
+    assert "::error title=nmas-test timed out::" in out.stdout + err
+    # And the session-end guard named the thread before the bound fired.
+    assert "held-open" in err and "NON-DAEMON threads still alive" in err, err[-1200:]
+
+
+def test_a_finished_run_says_its_timing(tmp_path):
+    out = _runner(tmp_path, "def test_ok():\n    pass\n")
+    assert out.returncode == 0
+    assert "nmas-test timing: 1 test(s); the last finished" in out.stderr
