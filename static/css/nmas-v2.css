@@ -495,3 +495,6 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .tl-detail { color: var(--ink-2); overflow-wrap: anywhere; }
 .tl-exception { color: var(--warn); }
 @media (max-width: 640px) { .tl-item { grid-template-columns: 1fr; } .tl-when { grid-row: auto; } }
+/* The device page's Intent tab (step 4). */
+.intent-profile { margin: 6px 0; font-size: 13px; }
+.intent-doc { max-height: 520px; }

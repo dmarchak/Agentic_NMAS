@@ -26,7 +26,7 @@ bp = Blueprint("device_v2", __name__, url_prefix="/v2")
 TABS = [("overview", "Overview"), ("intent", "Intent"), ("history", "History"),
         ("monitoring", "Monitoring"), ("logs", "Logs"), ("netbox", "NetBox"),
         ("neighbours", "Neighbours"), ("ask", "Ask the device")]
-BUILT = ("overview", "history", "monitoring")
+BUILT = ("overview", "intent", "history", "monitoring")
 
 
 def _strict(resp, code=200):
@@ -66,6 +66,10 @@ def _overview_ctx(ref, dev):
     return {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev),
             "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev),
             "hw": device_page.hardware(ref, dev)}
+
+
+def _intent_ctx(ref, dev):
+    return {"device": dev, "list_name": ref.name, "iv": device_page.intent_view(ref, dev)}
 
 
 def _history_ctx(ref, dev):
@@ -111,6 +115,7 @@ def device(name):
            "answer": device_page.answering(dev), "who": _who(),
            "hw": device_page.hardware(ref, dev)}
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
+               _intent_ctx(ref, dev) if tab == "intent" else
                _history_ctx(ref, dev) if tab == "history" else _monitoring_ctx(ref, dev))
     return _strict(render_template("v2/device.html", **ctx))
 
@@ -207,3 +212,14 @@ def history(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_history.html", **_history_ctx(ref, dev)))
+
+
+@bp.route("/device/<name>/intent", methods=["GET"])
+def intent(name):
+    """The Intent tab, read-only: the committed document, its last commit, and
+    what the monitoring profile adds or the device excludes."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_intent.html", **_intent_ctx(ref, dev)))

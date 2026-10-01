@@ -732,3 +732,51 @@ def history(ref, dev: dict, limit: int = None) -> dict:
         cut.append(f"the receipts' newest {limit}")
     events.sort(key=lambda e: _epoch(e["at"]), reverse=True)
     return {"events": events, "errors": errors, "cut": cut, "limit": limit}
+
+
+# ---------------------------------------------------------------------------
+# The Intent tab (NSOT_GUI_BRIEF 3.3, step 4), READ-ONLY for now: what this
+# device is supposed to look like, as COMMITTED (read from git at HEAD, never
+# the working tree, C104), its last intent commit, and what the network's
+# monitoring profile adds on top or the device excludes. Editing stays on
+# today's page until the redesign carries the editor and its form mode.
+# ---------------------------------------------------------------------------
+
+def intent_view(ref, dev: dict) -> dict:
+    """``{"state", "text", "commit", "note", "bootstrap", "profile"}``. *state*
+    is ``committed``, ``never_committed`` or ``unreadable`` (said, never an
+    empty document)."""
+    from modules.nsot import hostvars
+    from modules.nsot import profile as _p
+    from modules.nsot.platform import platform_for_device
+    from modules.redact import redact_text
+
+    host = dev.get("hostname", "")
+    out = {"state": "", "text": "", "commit": {}, "note": "", "bootstrap": False,
+           "profile": {"committed": False, "applies": [], "excluded": {}, "error": ""}}
+    try:
+        text, state = hostvars.committed_at_head(ref.repo_dir, host)
+    except Exception as exc:                          # noqa: BLE001
+        out.update(state="unreadable", note=f"its committed intent could not be read: {exc}")
+        return out
+    if text is None:
+        gap = hostvars.intent_gap_note(ref.repo_dir, host)
+        out.update(state="never_committed", note=str(gap.get("note", "")).replace("**", ""))
+        return out
+    # Committed intent names secret REFERENCES, never values; masked on the
+    # way out all the same, as every config text is.
+    out.update(state="committed", text=redact_text(text))
+    change = hostvars.intent_change(ref.repo_dir, host)
+    out["commit"] = {"sha": change.get("sha", ""), "subject": change.get("subject", "")}
+    try:
+        doc = hostvars.read_committed(ref.repo_dir, host) or {}
+        out["bootstrap"] = bool(hostvars.is_bootstrap_only(doc))
+        prof = _p.read_committed(ref.repo_dir)
+        out["profile"]["committed"] = bool(prof)
+        if prof:
+            out["profile"]["applies"] = sorted(_p.sections_for(
+                prof, platform_for_device(dev) or "", dev.get("role", ""), doc))
+        out["profile"]["excluded"] = _p.excluded(doc)
+    except Exception as exc:                          # noqa: BLE001
+        out["profile"]["error"] = f"{type(exc).__name__}: {exc}"
+    return out
