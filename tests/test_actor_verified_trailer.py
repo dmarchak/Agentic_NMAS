@@ -262,7 +262,7 @@ class TestAnApprovalCommitsItsApprover:
         repo = str(tmp_path / "t" / "config_repo")
         head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
                               capture_output=True, text=True).stdout
-        running = "hostname r2\ninterface Gi2\n load-interval 30\n"
+        running = "hostname r2\ninterface Gi2\n load-interval 30\nend\n"
         device = {"hostname": "r2", "ip": ip, "device_type": "cisco_xe",
                   "platform": "cisco_iosxe"}
         monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(device)])

@@ -33,6 +33,15 @@ dukpy = pytest.importorskip("dukpy")
 NEW = "bp-onboard-c"
 
 
+#: Each stub device answers with ITS OWN hostname, as a real one does: a read
+#: naming another device is refused (modules/config_read.py, 2026-10-01).
+_NAMES = {**{f"203.0.113.{i}": f"r{i}" for i in range(1, 10)}, "203.0.113.60": NEW}
+
+
+def _cfg(ip, extra=""):
+    return f"hostname {_NAMES[ip]}\n!\n{extra}end\n"
+
+
 def _device(name, ip):
     return {"hostname": name, "ip": ip, "username": "u", "password": "p",
             "device_type": "cisco_xe", "platform": "cisco_iosxe"}
@@ -44,7 +53,7 @@ def fleet(monkeypatch):
     from modules import drift_check
 
     nine = [_device(f"r{i}", f"203.0.113.{i}") for i in range(1, 10)]
-    goldens = {d["ip"]: "hostname x\n!\nend\n" for d in nine}
+    goldens = {d["ip"]: _cfg(d["ip"]) for d in nine}
     inventory = list(nine)
 
     monkeypatch.setattr("modules.device.get_current_device_list",
@@ -59,7 +68,7 @@ def fleet(monkeypatch):
     monkeypatch.setattr("modules.connection.get_persistent_connection",
                         lambda d, pool, lock: d["ip"])
     monkeypatch.setattr("modules.commands.run_device_command",
-                        lambda conn, cmd: "hostname x\n!\nend\n")
+                        lambda conn, cmd: _cfg(conn))
     monkeypatch.setattr("modules.approval_queue.add_approval",
                         lambda **kw: {"ok": True})
 
@@ -70,10 +79,9 @@ def fleet(monkeypatch):
             # golden IS a capture. The first version wrote different text and
             # the device read as drifted the moment it was onboarded -- the
             # code being right and the fixture being wrong.
-            "capture": lambda: goldens.__setitem__("203.0.113.60",
-                                                   "hostname x\n!\nend\n"),
+            "capture": lambda: goldens.__setitem__("203.0.113.60", _cfg("203.0.113.60")),
             "capture_stale": lambda: goldens.__setitem__(
-                "203.0.113.60", "hostname x\n!\nip route 0.0.0.0 0.0.0.0 Null0\nend\n")}
+                "203.0.113.60", _cfg("203.0.113.60", "ip route 0.0.0.0 0.0.0.0 Null0\n"))}
 
 
 class TestEnrolmentIsImmediate:

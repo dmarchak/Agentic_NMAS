@@ -40,6 +40,10 @@ _TIMING_PREFIXES = (
     "show platform",
 )
 
+#: A whole configuration: read once, never retried on its session, and judged
+#: before it is returned (modules/config_read.py).
+CONFIG_READS = ("show running-config", "show startup-config")
+
 # Extra read_timeout (seconds) for commands that genuinely take a long time
 # to produce output even with timing-based reads.
 _SLOW_TIMEOUT = 120
@@ -74,6 +78,21 @@ def run_device_command(conn, command: str, adaptive_mode: bool = True,
     logger.debug(f'Executing command: {command}')
     cmd = command.strip()
     cmd_lower = cmd.lower()
+
+    if cmd_lower in CONFIG_READS:
+        # A configuration is never read twice on one session (the operator,
+        # 2026-10-01). The fallback below re-sends the command after a
+        # timeout; for r2's capture the first command's output was still
+        # arriving, so the retry returned the config, the prompt and echoed
+        # command, and the config again, and it was nearly recorded. ONE read,
+        # waited for with the config bound, then judged on its evidence (a
+        # second `end`, a prompt, an echoed command): a stitched text raises
+        # `UnreliableRead`, whoever the caller (modules/config_read.py).
+        from modules import config_read
+
+        output = conn.send_command(cmd, read_timeout=max(read_timeout, config_read.read_timeout()),
+                                   strip_prompt=True, strip_command=True)
+        return config_read.check((output or "").lstrip("\x00"), "", strict=False)
 
     # Commands known on some platforms to cause prompt-detection failures.
     # Still tried prompt-based first (see use_prompt_based below), just with

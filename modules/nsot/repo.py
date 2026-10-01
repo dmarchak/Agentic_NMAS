@@ -31,6 +31,7 @@ import subprocess
 import threading
 import time
 
+from modules.config_read import UnreliableRead
 from modules.nsot import manifest as _manifest
 from modules.nsot import normalize as _normalize
 
@@ -632,10 +633,19 @@ def _guard_content(abs_path: str, hostname: str, incoming: str,
     ``acknowledge_structural_change=True``. Explicit, recorded in the call,
     and impossible to reach by accident.
     """
-    if acknowledge or not os.path.exists(abs_path):
+    previous = None
+    if os.path.exists(abs_path):
+        with open(abs_path, encoding="utf-8") as fh:
+            previous = fh.read()
+    # FIRST, and never acknowledgeable: is this one configuration of this
+    # device at all (the operator, 2026-10-01: r2's capture was two configs
+    # stitched by a retried read, and only the intent comparison noticed).
+    # Every path that records a golden comes through here, so a reader that
+    # skipped its own check is refused anyway.
+    from modules import config_read
+    config_read.check(incoming, hostname, previous, strict=False)
+    if acknowledge or previous is None:
         return
-    with open(abs_path, encoding="utf-8") as fh:
-        previous = fh.read()
 
     lost = lost_sections(previous, incoming)
     if not lost:
@@ -798,9 +808,11 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             for _item, _identity, _rel, abs_path, content in pending:
                 _guard_content(abs_path, _item.hostname, content,
                                acknowledge_structural_change)
-        except GoldenWouldLoseSections as exc:
+        except (GoldenWouldLoseSections, UnreliableRead) as exc:
             log.error("repo: %s", exc)
-            return {"ok": False, "error": str(exc), "changed": [],
+            return {"ok": False, "error": (str(exc) + ". Nothing was recorded"
+                                           if isinstance(exc, UnreliableRead) else str(exc)),
+                    "changed": [],
                     "unchanged": unchanged, "tags": [],
                     "renamed": rename_result["renamed"]}
 

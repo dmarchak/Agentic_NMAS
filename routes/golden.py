@@ -229,7 +229,7 @@ def _read_running(device: dict, phases: dict = None) -> tuple:
     ``read_s`` None: the time was all spent connecting."""
     import time
 
-    from modules.commands import run_device_command
+    from modules import config_read
     from modules.connection import with_temp_connection
 
     marks = {}
@@ -237,7 +237,10 @@ def _read_running(device: dict, phases: dict = None) -> tuple:
     def read(conn):
         marks["read_start"] = time.monotonic()
         try:
-            return run_device_command(conn, "show running-config")
+            # ONE read, waited for and checked: never the general command
+            # runner, whose retry on the same session stitched r2's capture
+            # (2026-10-01, modules/config_read.py).
+            return config_read.read(conn, device.get("hostname", ""))
         finally:
             marks["read_end"] = time.monotonic()
 
@@ -292,6 +295,15 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
         return {"device": host, "read": False, "error": error, "platform": platform,
                 "busy": busy, "read_phases": phases}, None
     current = _captured_config(repo, host)
+    # Judged against the committed golden too: a read far larger than it is
+    # two configurations, whatever else it looks like (modules/config_read.py).
+    from modules import config_read
+    unreliable = config_read.problems(text, host, previous=current)
+    if unreliable:
+        return {"device": host, "read": False, "platform": platform, "busy": busy,
+                "error": (f"{config_read.UNRELIABLE}: " + "; ".join(unreliable)
+                          + ". Nothing will be recorded for it"),
+                "read_phases": phases}, None
     incoming = golden_body(host, ip, text)
     diff = [l for l in difflib.unified_diff(current.splitlines(), incoming.splitlines(),
                                              lineterm="", n=1)

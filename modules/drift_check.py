@@ -220,8 +220,8 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
     from modules.ai_assistant import _golden_record
     from modules.approval_queue import add_approval
     from modules.device import get_current_device_list, load_saved_devices
-    from modules.connection import get_persistent_connection
     from modules.commands import run_device_command
+    from modules.connection import close_persistent_connection, get_persistent_connection
 
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -281,9 +281,20 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
             skip_list.append((hostname, "no golden config saved"))
             return
 
+        from modules import config_read
         try:
             conn    = get_persistent_connection(dev, _pool, _pool_lock)
-            current = run_device_command(conn, "show running-config")
+            # ONE read, checked (modules/config_read.py): a stitched read
+            # would be drift that never happened, or hide drift that did.
+            current = config_read.check(run_device_command(conn, "show running-config"),
+                                        hostname, previous=golden_text)
+        except config_read.UnreliableRead as exc:
+            # The session may still carry the rest of the output: never
+            # reused, or the next command on it reads this one's tail.
+            close_persistent_connection(device_ip, _pool, _pool_lock)
+            log.warning("drift_check: %s", exc)
+            error_list.append((hostname, str(exc)))
+            return
         except Exception as exc:
             log.warning("drift_check: SSH error on %s: %s", device_ip, exc)
             error_list.append((hostname, f"SSH error: {exc}"))

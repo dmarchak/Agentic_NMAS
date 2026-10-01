@@ -20,6 +20,19 @@ from tests.test_capture import build_capture_lab, run_capture_preview
 
 
 
+class _Session:
+    """A device session as the capture now uses it: ONE `send_command`
+    (modules/config_read.py), whose answer is *reply* (a string, or a callable
+    called with the command)."""
+
+    def __init__(self, reply):
+        self.reply = reply
+
+    def send_command(self, command, **kw):
+        assert command == "show running-config", command
+        return self.reply(command) if callable(self.reply) else self.reply
+
+
 def _devices(n):
     return [{"hostname": f"d{i}", "ip": f"203.0.113.{i + 1}"} for i in range(n)]
 
@@ -240,17 +253,13 @@ class TestWhereTheReadTimeWent:
             if cfg["fail_connect"]:
                 raise TimeoutError("TCP connection to device failed")
             try:
-                return func(object())
+                return func(_Session(lambda command: (time.sleep(cfg["read"]),
+                                                      cfg["text"])[1]))
             finally:
                 time.sleep(cfg["close"])
 
-        def run_device_command(conn, command, **kw):
-            assert command == "show running-config"
-            time.sleep(cfg["read"])
-            return "hostname r2\nend\n"
-
+        cfg["text"] = "hostname r2\nend\n"
         monkeypatch.setattr("modules.connection.with_temp_connection", with_temp_connection)
-        monkeypatch.setattr("modules.commands.run_device_command", run_device_command)
         return cfg
 
     def test_the_connect_and_the_read_are_timed_apart(self, slow_link):
@@ -278,9 +287,7 @@ class TestWhereTheReadTimeWent:
         lab = build_capture_lab(monkeypatch, tmp_path)
         monkeypatch.setattr(G, "_read_running", _REAL_READ_RUNNING)
         slow_link["read"] = 0.0
-        text = lab["running"]["r2"]
-        monkeypatch.setattr("modules.commands.run_device_command",
-                            lambda conn, command, **kw: text)
+        slow_link["text"] = lab["running"]["r2"]
         with caplog.at_level(logging.INFO, logger="routes.golden"):
             d = run_capture_preview(lab["client"], {"devices": ["r2"]}).get_json()
         p = d["preview"]
@@ -331,11 +338,9 @@ class TestAnUnreadDeviceSaysWhy:
         def with_temp_connection(dev, func):
             if state["fail"]:
                 raise NetmikoTimeoutException(HOST_SAW)
-            return func(object())
+            return func(_Session(lab["running"]["r2"]))
 
         monkeypatch.setattr("modules.connection.with_temp_connection", with_temp_connection)
-        monkeypatch.setattr("modules.commands.run_device_command",
-                            lambda conn, command, **kw: lab["running"]["r2"])
         lab["state"] = state
         return lab
 

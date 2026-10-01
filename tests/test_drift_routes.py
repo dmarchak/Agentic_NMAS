@@ -144,12 +144,15 @@ class TestTheRunReportsItsCoverageEveryTime:
         # Drift reads the golden through _golden_record (C104: as committed,
         # with a refusal distinct from "no golden").
         monkeypatch.setattr("modules.ai_assistant._golden_record",
-                            lambda ip: {"text": "hostname x\n!\nend\n", "path": "", "commit": "",
+                            lambda ip: {"text": f"hostname r{ip.split(chr(46))[-1]}\n!\nend\n",
+                                        "path": "", "commit": "",
                                         "source": "", "refused": ""})
         monkeypatch.setattr("modules.connection.get_persistent_connection",
                             lambda d, p, l: d["ip"])
         monkeypatch.setattr("modules.commands.run_device_command",
-                            lambda c, cmd: "hostname x\n!\nend\n")
+                            # Each answers with its own hostname, as a real
+                            # device does (modules/config_read.py).
+                            lambda c, cmd: f"hostname r{c.split(chr(46))[-1]}\n!\nend\n")
         return drift_check
 
     def test_a_fully_clean_run_still_states_the_coverage(self, nine_clean):
