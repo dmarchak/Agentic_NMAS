@@ -359,3 +359,42 @@ class TestTheLastUpdateByEitherRoute:
         last = last[:last.index("</section>")]
         assert "1954ce7" in last and "a terminal deploy (nmas-deploy) by op" in last
         assert "updated: " not in last and ": wait" not in last
+
+
+class TestARedrawAfterTheReleaseKeepsTheStepper:
+    """The wait no longer holds the panel (2026-10-01), so a redraw can land
+    between the release and the page hearing of it: the server then draws the
+    request to follow, while its update has not finished."""
+
+    NOW = 1_790_000_000.0
+    AT = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 60))
+    ENDED = {"outcome": "requested", "request_id": "r1", "target": "b" * 40, "ended_at": AT}
+
+    def _f(self, ended=None, last=None, running="a" * 40, now=None):
+        from modules import update_op
+        return update_op.following(self.ENDED if ended is None else ended,
+                                   last or {"state": "absent"}, running,
+                                   clock=lambda: now or self.NOW)
+
+    def test_a_released_request_not_finished_is_followed(self):
+        assert self._f() == "r1"
+        assert self._f(last={"state": "ok", "value": {"id": "r1", "outcome": "running"}}) == "r1"
+
+    def test_finished_running_its_target_or_past_the_limit_is_not(self):
+        from modules import update_op
+        for outcome in update_op.FINISHED:
+            assert self._f(last={"state": "ok", "value": {"id": "r1", "outcome": outcome}}) == ""
+        assert self._f(running="b" * 40) == ""               # the app runs it: no reload loop
+        assert self._f(now=self.NOW + update_op.UPDATER_TIMEOUT_S + 1) == ""
+        assert self._f(ended=dict(self.ENDED, outcome="ci_failed")) == ""
+        assert self._f(ended={}) == ""
+
+    def test_the_panel_draws_it(self, store, monkeypatch):
+        import app as A
+        from modules import update_op
+        real = update_op.plan
+        monkeypatch.setattr(update_op, "plan", lambda **kw: dict(real(**_kw()), following="r1"))
+        html = A.app.test_client().get("/v2/update/panel").get_data(as_text=True)
+        assert 'data-follow-id="r1"' in html
+        monkeypatch.setattr(update_op, "plan", lambda **kw: real(**_kw()))
+        assert "data-follow-id" not in A.app.test_client().get("/v2/update/panel").get_data(as_text=True)

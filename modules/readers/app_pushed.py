@@ -39,7 +39,6 @@ from modules import reader_job
 from modules.readers.remote_publication import LOCAL_GIT_TIMEOUT_S, LS_REMOTE_TIMEOUT_S, _git
 
 INTERVAL_SECONDS = 300
-KEEPALIVE_SECONDS = 1800
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BRANCH = "main"
 
@@ -199,14 +198,6 @@ def words(v: dict) -> str:
     return f"unknown state {state!r}"
 
 
-def changed(previous: dict, value: dict) -> bool:
-    def key(v):
-        v = v or {}
-        return (v.get("running"), v.get("tip"), v.get("state"), v.get("behind"),
-                (v.get("ci") or {}).get("state"))
-    return key(previous) != key(value)
-
-
 READER = reader_job.register(reader_job.Reader(
     name="app-pushed",
     what="whether the running commit is what is pushed: this process's commit against origin/main",
@@ -219,8 +210,6 @@ READER = reader_job.register(reader_job.Reader(
     invalidates=("app_version",),
     remedy="Read the error above: it names what could not be asked",
     window="origin/main's tip at the read, against the commit this process loaded",
-    announce_if=changed,
-    announce_at_least_every=KEEPALIVE_SECONDS,
     after_store=lambda: _release_waiting_update(),
 ))
 

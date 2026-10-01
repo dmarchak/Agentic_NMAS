@@ -145,10 +145,18 @@
     A.data('update', function () {
       return {
         phase: 'idle', words: '', refusal: '', started: 0, stopping: false,
-        // A wait recorded before this page loaded: follow it.
+        // A wait recorded before this page loaded: follow it. An update the
+        // wait released, still running: follow its stepper (a redraw can land
+        // between the release and this component hearing of it).
         init: function () {
           var el = this.$root;
-          if (el.getAttribute('data-waiting') === 'yes') {
+          var follow = el.getAttribute('data-follow-id');
+          if (follow) {
+            el.setAttribute('data-update-hold', 'yes');
+            this.phase = 'running';
+            this.started = Date.now();
+            this.poll(follow);
+          } else if (el.getAttribute('data-waiting') === 'yes') {
             this.phase = 'waiting';
             this.words = el.getAttribute('data-waiting-words') || '';
             this.follow();
@@ -169,25 +177,36 @@
         // UPDATE WHEN CI PASSES: the wait ends when the app-pushed reader
         // releases it, and that reader ANNOUNCES; the page reads the status on
         // each announcement, never on a timer of its own.
+        //
+        // A wait does NOT hold the panel (the operator, 2026-10-01): the
+        // server draws a wait in force, so a redraw comes back waiting, with
+        // the reader's newest answer. Holding it froze "asked 7 min ago" and
+        // swallowed Check again's answer, which arrives as that redraw, so
+        // the button said "No answer after 12 s" about a run that had
+        // answered. Only the stepper and a refusal hold it.
         follow: function () {
           var self = this, el = this.$root;
-          el.setAttribute('data-update-hold', 'yes');
+          el.removeAttribute('data-update-hold');
           var target = el.getAttribute('data-target');
           function heard() {
+            if (!root.document.body.contains(el)) {      // redrawn: the new panel follows
+              root.document.body.removeEventListener('nmas:app_version', heard);
+              return;
+            }
             if (self.phase !== 'waiting') return;
             getJson(el.getAttribute('data-status-url')).then(function (st) {
               var r = waitOutcome(st, target);
               if (self.phase !== 'waiting' || r.state === 'waiting' || r.state === 'unknown') return;
               root.document.body.removeEventListener('nmas:app_version', heard);
               if (r.state === 'requested') {
+                el.setAttribute('data-update-hold', 'yes');
                 self.phase = 'running';
                 self.words = '';
                 self.started = Date.now();
                 self.poll(r.id);
               } else {
-                self.phase = 'idle';
+                self.phase = 'idle';                  // the server draws how it ended
                 self.refusal = r.words;
-                el.removeAttribute('data-update-hold');
               }
             });
           }

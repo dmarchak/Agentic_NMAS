@@ -25,7 +25,6 @@ is by a re-apply, so it does not make the baseline unusable for the rest.
 from modules import reader_job
 
 INTERVAL_SECONDS = 300
-KEEPALIVE_SECONDS = 1800
 
 
 def _repo_for(list_name: str) -> str:
@@ -86,14 +85,6 @@ def read(lists=None, previous=None) -> dict:
     return {"lists": out}
 
 
-def changed(previous: dict, value: dict) -> bool:
-    """Which baseline is usable, per list, moved (the announcement's trigger)."""
-    def usable(v):
-        return {n: (l.get("usable"), l.get("error", ""))
-                for n, l in ((v or {}).get("lists") or {}).items()}
-    return usable(previous) != usable(value)
-
-
 READER = reader_job.register(reader_job.Reader(
     name="baseline-usability",
     what="whether any stored baseline can be re-applied without changing a held credential",
@@ -107,6 +98,4 @@ READER = reader_job.register(reader_job.Reader(
     invalidates=("baselines",),
     remedy="Read the error above: it names the list and what the judgement raised",
     window="the repository at the read: the tags and HEAD",
-    announce_if=changed,
-    announce_at_least_every=KEEPALIVE_SECONDS,
 ))

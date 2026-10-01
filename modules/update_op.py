@@ -577,7 +577,31 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
             # after the updater's last record: otherwise "The last update" says it.
             "wait_ended": (ended if ended and ended.get("outcome") != "requested"
                            and str(ended.get("ended_at") or "") > last_end else {}),
+            "following": following(ended, last, running),
             "last": last, "last_shown": last_update(updater=last), "install": install}
+
+
+#: The updater's outcomes that end a run (its record names one of these last).
+FINISHED = ("updated", "refused", "rolled_back", "rollback_failed", "failed")
+
+
+def following(ended: dict, last: dict, running: str, clock=time.time) -> str:
+    """The request a wait released, while its update has not finished: the
+    page follows its stepper from this id (a redraw can land between the
+    release and the page hearing of it). "" once the updater has finished it,
+    once the app runs its target, or past the updater's own limit."""
+    ended = ended or {}
+    rid = ended.get("request_id") or ""
+    if ended.get("outcome") != "requested" or not rid or ended.get("target") == running:
+        return ""
+    lv = (last or {}).get("value") or {}
+    if lv.get("id") == rid and lv.get("outcome") in FINISHED:
+        return ""
+    try:
+        at = calendar.timegm(time.strptime(str(ended.get("ended_at")), "%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError:
+        return ""
+    return rid if clock() - at <= UPDATER_TIMEOUT_S else ""
 
 
 # ---------------------------------------------------------------------------

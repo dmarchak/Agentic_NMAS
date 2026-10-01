@@ -1182,6 +1182,29 @@ class TestClickingTheShippedButton:
         assert b.js("return document.querySelector('[data-step=fetch]').className") == "step step-done"
         assert b.js("return getComputedStyle(document.querySelector('[data-stepper]')).display") != "none"
 
+    def test_a_wait_in_force_does_not_hold_the_panel(self, served_update, monkeypatch):
+        """The operator, 2026-10-01: with a wait active, Check again said "No
+        answer after 12 s" and the page read "asked 7 min ago". The wait held
+        the whole panel, so the redraw that carries every answer was
+        swallowed. A redraw now lands, and the new panel is still waiting."""
+        from modules import update_op
+        b = served_update["b"]
+        waiting = dict(_plan(), waiting={"target": "b" * 40, "requested_by": "p@example.invalid",
+                                         "requested_at": "2026-10-01T09:00:00Z"},
+                       selectable=False, waitable=False)
+        monkeypatch.setattr(update_op, "plan", lambda **kw: waiting)
+        served_update["calls"]["status"]["waiting"] = waiting["waiting"]
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("var w=document.querySelector('#update-waiting');"
+                   "return window.Alpine && w && getComputedStyle(w).display !== 'none' && w.textContent")
+        assert b.js("return document.querySelector('[data-update-hold]')") is None
+        b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
+             "htmx.trigger(document.body, 'nmas:app_version'); return 1")
+        b.wait_for("var p=document.querySelector('#update-panel'); return p && !p.hasAttribute('data-old')")
+        words = b.wait_for("var w=document.querySelector('#update-waiting');"
+                           "return w && getComputedStyle(w).display !== 'none' && w.textContent")
+        assert words.startswith("Waiting for CI: the update to bbbbbbbbbb starts when CI passes")
+
     def test_check_again_on_about_answers_in_words(self, served_update):
         b = served_update["b"]
         b.go(served_update["srv"].url("/v2/help/about"))
@@ -1363,12 +1386,18 @@ class TestCheckAgain:
 
     def test_an_unchanged_answer_on_request_is_still_announced(self, scripted_reader):
         """The defect: announce_if skipped it, and the page never heard."""
+        import dataclasses
+
         from modules import reader_job
         from modules.readers import app_pushed
-        reader_job.run_once(scripted_reader["reader"], announce=reader_job.announce_via_page)
-        reader_job.run_once(scripted_reader["reader"], announce=reader_job.announce_via_page)
+        # A change-only reader (app-pushed is not one since 2026-10-01: every
+        # run announces); the property is the request path's, for any reader.
+        r = dataclasses.replace(scripted_reader["reader"], announce_if=lambda a, b: False,
+                                announce_at_least_every=10 ** 9)
+        reader_job.run_once(r, announce=reader_job.announce_via_page)
+        reader_job.run_once(r, announce=reader_job.announce_via_page)
         assert len(scripted_reader["announced"]) == 1   # the control: unchanged, not due, skipped
-        got = reader_job.request_run(scripted_reader["reader"], "p@example.invalid",
+        got = reader_job.request_run(r, "p@example.invalid",
                                      announce=reader_job.announce_via_page)
         assert _wait_until(lambda: reader_job._REQUESTS[app_pushed.READER.name]["done"])
         assert got["started"] and len(scripted_reader["announced"]) == 2

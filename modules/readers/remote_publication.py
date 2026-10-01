@@ -33,7 +33,6 @@ import time
 from modules import reader_job
 
 INTERVAL_SECONDS = 120
-KEEPALIVE_SECONDS = 1800
 #: One sample on the host, 2026-09-29: `git ls-remote origin refs/heads/main`
 #: over the SSH alias took 0.99 s, and a second attempt got no answer before
 #: the session closed. So the bound is wider than 2.5x the sample, until there
@@ -232,13 +231,6 @@ def describe(pub: dict, now: float = None) -> dict:
             "detail": asked}
 
 
-def changed(previous: dict, value: dict) -> bool:
-    def key(v):
-        return {n: (l.get("state"), l.get("ahead"), l.get("record"))
-                for n, l in ((v or {}).get("lists") or {}).items()}
-    return key(previous) != key(value)
-
-
 def refresh_hook(context: dict) -> dict:
     """A post-commit hook, registered after the push: re-read at once, so a
     commit or a push is reflected without waiting for the next cycle."""
@@ -260,6 +252,4 @@ READER = reader_job.register(reader_job.Reader(
     invalidates=("remote",),
     remedy="Read the reason above: it names the list and what could not be asked",
     window="the repository and the remote at the read",
-    announce_if=changed,
-    announce_at_least_every=KEEPALIVE_SECONDS,
 ))

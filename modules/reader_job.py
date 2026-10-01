@@ -67,6 +67,12 @@ produced it.
    refuses the first without the second. The page's promise for such a value is
    2.5 keepalives, because the page's copy is legitimately that old; the
    reader's own liveness row still judges the read cycle (C92's reader).
+   **Every other completed check refreshes open pages, changed or not** (the
+   operator, 2026-10-01, rule 13 applied to the schedule): the Update page
+   read "asked 7 min ago" from a reader asking every 300 s, because an
+   unchanged answer was not announced and the page kept its older copy. A
+   reader may skip an unchanged run only where it is named in
+   `CHANGE_ONLY`, with why no page draws what the skipped run would refresh.
 
 10. **A cache is re-derivable, so an UNREADABLE one is replaced, never
     refused.** The opposite of a record (`filestore.read_json_for_write`
@@ -316,6 +322,19 @@ def announce_via_page(keys, name: str, ok: bool) -> None:
 RUNS_KEPT = 20
 SCHEDULED = {"kind": "scheduled"}
 
+#: The readers that may skip announcing an unchanged scheduled run (rule 9),
+#: each with why no page draws what the skipped run would refresh. Every other
+#: reader announces every completed run. `tests/test_reader_job.py` holds the
+#: registered readers with `announce_if` equal to these names.
+CHANGE_ONLY = {
+    "reachability": ("it probes every 5 s, and its pages draw each device's state, never "
+                     "the probe's time: a redraw of every device row each 5 s would change "
+                     "nothing a person reads (its 60 s keepalive proves it alive)"),
+    "grafana-dashboards": ("the Monitoring tab re-renders every chart on its announcement and "
+                           "draws no read time of this reader: a redraw every 5 min would "
+                           "reset every chart on an open page for nothing"),
+}
+
 
 def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = None) -> dict:
     """Read, store, announce. Returns the stored document.
@@ -542,7 +561,14 @@ def request_run(reader: Reader, by: str, announce=None, clock=time.time) -> dict
         entry = {"run": uuid.uuid4().hex[:12], "by": by or "", "since": clock(), "done": False}
         _REQUESTS[reader.name] = entry
 
+    # The bound the page is waiting with, fixed BEFORE the run (the run itself
+    # moves it): a run past it was drawn as "no answer" to the person who
+    # asked, so the log says so (the operator, 2026-10-01: "No answer after
+    # 12 s", and nothing in the app log).
+    bound = answer_bound(reader.name).get("seconds")
+
     def _go():
+        t0 = time.monotonic()
         try:
             run_once(reader, announce=announce, clock=clock,
                      trigger={"kind": "request", "by": entry["by"], "run": entry["run"]})
@@ -551,6 +577,12 @@ def request_run(reader: Reader, by: str, announce=None, clock=time.time) -> dict
                           reader.name, entry["run"], entry["by"] or "nobody identified")
         finally:
             entry["done"] = True
+            took = time.monotonic() - t0
+            if bound and took > bound:
+                log.warning("reader %s: run %s on request by %s answered after %.1f s, past the "
+                            "%d s its page waits: the page said there was no answer",
+                            reader.name, entry["run"], entry["by"] or "nobody identified",
+                            took, bound)
 
     threading.Thread(target=_go, name=f"request:{reader.name}", daemon=True).start()
     return {**entry, "started": True}

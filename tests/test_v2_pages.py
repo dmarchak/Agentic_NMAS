@@ -99,14 +99,16 @@ class TestTheAppPushedReader:
         with pytest.raises(RuntimeError, match="answered nothing"):
             P.judge(str(repos["work"]), repos["shas"][2])
 
-    def test_the_reader_is_declared_and_announces_only_a_change(self):
+    def test_the_reader_is_declared_and_announces_every_run(self):
+        """Every completed check refreshes open pages, changed or not (the
+        operator, 2026-10-01: "asked 7 min ago" from a reader asking every
+        300 s, because an unchanged answer was not announced)."""
         from modules import invalidation, reader_job
         from modules.readers import app_pushed as P
 
         assert "modules.readers.app_pushed" in reader_job.DECLARED_MODULES
         assert P.READER.invalidates == ("app_version",) and "app_version" in invalidation.VOCABULARY
-        a = {"running": "x", "tip": "y", "state": "behind", "behind": 1}
-        assert not P.changed(a, dict(a)) and P.changed(a, dict(a, behind=2))
+        assert P.READER.announce_if is None and P.READER.name not in reader_job.CHANGE_ONLY
 
 
 # ---------------------------------------------------- the Needs attention row

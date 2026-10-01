@@ -86,7 +86,7 @@
        data-health-url="{{ url_for('health.health') }}" data-timeout="{{ updater_timeout_s }}"
        data-selectable="{{ 'yes' if (p.selectable or p.waitable) and confirm.may else 'no' }}"
        data-when="{{ 'ci' if p.waitable else '' }}"
-       data-waiting="{{ 'yes' if p.waiting.target else 'no' }}"
+       data-waiting="{{ 'yes' if p.waiting.target else 'no' }}"{% if p.following %} data-follow-id="{{ p.following }}"{% endif %}
        data-waiting-words="{% if p.waiting.target %}Waiting for CI: the update to {{ p.waiting.target[:10] }} starts when CI passes (asked by {{ p.waiting.requested_by }}, {{ p.waiting.requested_at }}).{% endif %}"
        data-label="Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}">
     <p>{{ confirm.statement }}</p>

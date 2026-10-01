@@ -184,6 +184,65 @@ class TestAnnounce:
         assert h["failed"] == before + 1 and "no socket" in h["last_error"]
 
 
+class TestEveryCompletedCheckRefreshesOpenPages:
+    """The operator, 2026-10-01: the Update page read "asked 7 min ago" from a
+    reader asking every 300 s. An unchanged scheduled answer was not
+    announced, so an open page kept its older copy (rule 13's C244 fix, for
+    the schedule)."""
+
+    def test_only_the_declared_readers_skip_an_unchanged_run(self):
+        skipping = {r.name for r in R.readers() if r.announce_if is not None}
+        assert skipping == set(R.CHANGE_ONLY), skipping
+        assert len(R.readers()) >= 8                       # the population was read
+        for name, why in R.CHANGE_ONLY.items():
+            assert len(why.split()) >= 12, name            # a reason, not a label
+
+    def test_each_scheduled_run_of_the_app_pushed_reader_is_announced(self, monkeypatch):
+        import dataclasses
+        monkeypatch.setattr(R, "_LAST_ANNOUNCED", {})
+        from modules.readers import app_pushed
+        heard = []
+        r = dataclasses.replace(app_pushed.READER, name="t-reader", read=lambda: {"v": 1},
+                                after_store=None)
+        for _ in range(3):
+            R.run_once(r, announce=lambda *a: heard.append(a), clock=Clock())
+        assert len(heard) == 3
+
+    def test_a_change_only_reader_still_skips_the_control(self, monkeypatch):
+        monkeypatch.setattr(R, "_LAST_ANNOUNCED", {})
+        heard = []
+        r = make(lambda: {"v": 1}, announce_if=lambda a, b: False, announce_at_least_every=10 ** 9)
+        R.run_once(r, announce=lambda *a: heard.append(a), clock=Clock())
+        R.run_once(r, announce=lambda *a: heard.append(a), clock=Clock())
+        assert len(heard) == 1
+
+
+class TestARequestedRunPastItsBoundIsLogged:
+    """The operator, 2026-10-01: "No answer after 12 s", and nothing in the app
+    log. A run on request that answers after the bound its page waits says so."""
+
+    def _run(self, monkeypatch, caplog, took_s):
+        import logging
+        caplog.set_level(logging.INFO, logger="modules.reader_job")
+        monkeypatch.setattr(R, "_REQUESTS", {})
+        r = make(lambda: (time.sleep(took_s), {"v": 1})[1])
+        monkeypatch.setattr(R, "answer_bound", lambda name: {"seconds": 1, "basis": "b"})
+        got = R.request_run(r, "p@example.invalid", announce=lambda *a: None)
+        deadline = time.time() + 10
+        while not R._REQUESTS["t-reader"]["done"] and time.time() < deadline:
+            time.sleep(0.02)
+        return got, [m for m in caplog.messages if "past the" in m]
+
+    def test_late_is_logged_naming_the_run_and_the_bound(self, monkeypatch, caplog):
+        got, late = self._run(monkeypatch, caplog, 1.2)
+        assert late and got["run"] in late[0] and "p@example.invalid" in late[0]
+        assert "past the 1 s its page waits" in late[0]
+
+    def test_on_time_logs_no_warning(self, monkeypatch, caplog):
+        _got, late = self._run(monkeypatch, caplog, 0)
+        assert late == []
+
+
 # ---------------------------------------------------------------------------
 # Rule 7: liveness from the store alone
 # ---------------------------------------------------------------------------

@@ -21,7 +21,6 @@ counts only, never a value.
 from modules import reader_job
 
 INTERVAL_SECONDS = 3600
-KEEPALIVE_SECONDS = 6 * 3600
 
 
 def read() -> dict:
@@ -55,13 +54,6 @@ def read() -> dict:
     return {"configured": True, "scanned": len(devices), "devices": held}
 
 
-def changed(previous: dict, value: dict) -> bool:
-    def names(v):
-        return sorted(d.get("name") or "" for d in (v or {}).get("devices") or [])
-    return names(previous) != names(value) or (previous or {}).get("configured") != \
-        (value or {}).get("configured")
-
-
 READER = reader_job.register(reader_job.Reader(
     name="netbox-secrets",
     what="whether NetBox holds a credential in any device's stored config context",
@@ -75,6 +67,4 @@ READER = reader_job.register(reader_job.Reader(
     invalidates=("netbox",),
     remedy="Read the error above: it names what NetBox or the record answered",
     window="NetBox's devices at the read",
-    announce_if=changed,
-    announce_at_least_every=KEEPALIVE_SECONDS,
 ))
