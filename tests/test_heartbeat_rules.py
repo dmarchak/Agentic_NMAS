@@ -346,3 +346,95 @@ class TestAConfigurationChangeIsNotAMeasurement:
     def test_the_config_query_is_anchored_to_the_device(self):
         q = H.config_query_for("s4")
         assert H.host_pattern("s4") in q and "CONFIG_I" in q
+
+
+class TestARestartIsNotAMeasurement:
+    """C299 (the operator, 2026-10-01): the 16:03 check read "STALE RATE s3:
+    window 1337 s, but gaps are now 515.1-757.1 s". The 757.1 s gap spans s3's
+    reboot (the boot, not its clock), under the long-gap cut, and s3 logged no
+    restart line. On s3's REAL arrivals (Loki) and sysUpTime (Prometheus),
+    captured read-only from the host (`tests/fixtures/heartbeat/s3_reboot.json`)."""
+
+    @pytest.fixture(scope="class")
+    def s3(self):
+        import json
+        with open("tests/fixtures/heartbeat/s3_reboot.json", encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def _windows(self, s3):
+        out = []
+        for series in s3["sysUpTime"]:
+            out.extend(H.restart_windows([tuple(v) for v in series["values"]]))
+        return out
+
+    def _check(self, s3, restarts):
+        fresh = H.windows({"s3": H.gaps_from(s3["arrivals"], (), restarts)}, s3["heartbeat_seconds"])
+        return H.check({"s3": (s3["installed_window"], "measured", "uid")}, fresh, {"s3"})
+
+    def test_s3s_uptime_shows_exactly_its_one_reboot(self, s3):
+        from datetime import datetime, timezone
+        wins = self._windows(s3)
+        assert len(wins) == 1
+        after, before = wins[0]
+        # Bracketed by the last sample before (15:24:00) and the boot the
+        # first sample after reports (its uptime 402.91 s at 15:36:00).
+        assert datetime.fromtimestamp(after, timezone.utc).strftime("%H:%M:%S") == "15:24:00"
+        assert datetime.fromtimestamp(before, timezone.utc).strftime("%H:%M:%S") == "15:29:17"
+        # It ends before the first heartbeat after the reboot (15:33:12).
+        assert before < next(a for a in s3["arrivals"] if a > after)
+
+    def test_without_the_exclusion_the_hosts_stale_rate_is_reproduced(self, s3):
+        code, lines = self._check(s3, ())
+        assert code == H.EXIT_STALE
+        assert lines[0].startswith("STALE RATE s3: window 1337 s") and "757.1" in lines[0], lines
+
+    def test_with_it_the_installed_window_is_current(self, s3):
+        code, lines = self._check(s3, self._windows(s3))
+        assert code == H.EXIT_OK, lines
+        assert lines[0].startswith("current    s3: window 1337 s inside"), lines
+
+    def test_only_the_gap_across_the_reboot_is_dropped(self, s3):
+        all_gaps = H.gaps_from(s3["arrivals"])
+        kept = H.gaps_from(s3["arrivals"], (), self._windows(s3))
+        assert len(all_gaps) - len(kept) == 1
+        assert max(all_gaps) not in kept and max(kept) < 600
+
+    def test_an_uptime_that_only_rises_is_no_restart(self, s3):
+        rising = [(t, t) for t in range(0, 6000, 60)]
+        assert H.restart_windows(rising) == []
+
+    def test_whether_it_fired_is_said(self, s3):
+        assert H.restart_words({"s3": self._windows(s3), "r1": []}, "") == (
+            "restarts excluded (the gap across each is the boot, not the interval): s3 (1)")
+        assert H.restart_words({"r1": []}, "").startswith("restarts excluded: none in the last")
+        note = "restarts NOT excluded: Prometheus is not configured"
+        assert H.restart_words({}, note) == note
+
+    def test_prometheus_not_configured_is_a_note_never_no_restarts(self, monkeypatch):
+        monkeypatch.setattr("modules.integrations.prometheus.PrometheusIntegration.is_configured",
+                            lambda self: False)
+        got, note = H.prometheus_restarts(["s3"])
+        assert got == {} and note.startswith("restarts NOT excluded")
+
+    def test_the_check_itself_excludes_it_end_to_end(self, s3, monkeypatch, tmp_path, capsys):
+        # The seam: main() --check asks Prometheus and hands each device's
+        # restarts to the measurement (a helper that works and a caller that
+        # never calls it is this project's commonest shape).
+        rules = tmp_path / "rules.yaml"
+        doc = H.build({"s3": {"basis": "measured", "window": 1337, "lo": 515.1, "hi": 575.5,
+                              "n": 40, "rate": 0.55}}, "uid", 300)
+        rules.write_text(H.render(doc), encoding="utf-8")
+        monkeypatch.setattr(H, "_loki_url", lambda arg: "http://loki.invalid")
+        monkeypatch.setattr(H, "expected_devices", lambda: ({"s3"}, []))
+        monkeypatch.setattr(H, "loki_arrivals", lambda url, h, hours=6, query="":
+                            [] if query else list(s3["arrivals"]))
+        monkeypatch.setattr(H, "prometheus_restarts",
+                            lambda hosts, hours=6: ({"s3": self._windows(s3)}, ""))
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: 300 if key == "syslog_heartbeat_seconds"
+                            else default)
+        monkeypatch.setattr("sys.argv", ["nmas-heartbeat-rules", "--check", "--out", str(rules)])
+        assert H.main() == H.EXIT_OK
+        out = capsys.readouterr().out
+        assert "current    s3: window 1337 s" in out
+        assert "restarts excluded (the gap across each is the boot, not the interval): s3 (1)" in out

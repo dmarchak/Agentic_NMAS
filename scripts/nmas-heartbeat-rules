@@ -123,13 +123,19 @@ def config_query_for(hostname: str) -> str:
 # The measurement
 # ---------------------------------------------------------------------------
 
-def gaps_from(arrivals: list, config_events=()) -> list:
-    """Consecutive arrival gaps, with misses in the history excluded, and
-    every gap spanning one of the device's own configuration changes."""
+def gaps_from(arrivals: list, config_events=(), restarts=()) -> list:
+    """Consecutive arrival gaps, with misses in the history excluded, every
+    gap spanning one of the device's own configuration changes, and every
+    gap overlapping a RESTART (C299): the gap across a reboot is the boot,
+    not the interval. s3's reboot on 2026-10-01 left a 757 s gap among
+    515-575 s ones, under the long-gap cut, and the check read STALE RATE
+    for a clock that had not moved. *restarts* are ``(after, before)``
+    windows in which the device's own sysUpTime fell."""
     times = sorted(arrivals)
     events = sorted(config_events)
     pairs = [(a, b) for a, b in zip(times, times[1:])
-             if not any(a < e <= b for e in events)]
+             if not any(a < e <= b for e in events)
+             and not any(a < hi and b > lo for lo, hi in restarts)]
     raw = [b - a for a, b in pairs]
     if not raw:
         return []
@@ -371,6 +377,63 @@ def expected_devices() -> tuple:
     return expected, not_expected
 
 
+def restart_windows(series: list) -> list:
+    """``[(after, before)]`` from one device's sysUpTime samples
+    ``[(t, value), ...]``: each pair of consecutive samples across which the
+    value FELL. A device whose restart is never logged (s3 logged no
+    ``%SYS-5-RESTART`` in seven days) still restarts its own uptime.
+
+    The window ends where the uptime read at the drop says the device BOOTED
+    (sysUpTime is TimeTicks, hundredths of a second), never at the sample
+    itself: scrapes fail while a device reboots, so s3's bracketing samples
+    were 12 minutes apart (15:24 and 15:36) and the sample-to-sample window
+    also swallowed the first gap after the reboot. A clock slower than real
+    time (s3 runs at about 0.55) only makes the real boot EARLIER than
+    ``t1 - uptime``, so the bound errs toward excluding less."""
+    pts = sorted(series)
+    return [(t0, max(t0, t1 - v1 / 100.0))
+            for (t0, v0), (t1, v1) in zip(pts, pts[1:]) if v1 < v0]
+
+
+def prometheus_restarts(hosts: list, hours: int = LOOKBACK_HOURS) -> tuple:
+    """``({host: [(after, before)]}, note)`` from every device's sysUpTime in
+    Prometheus, ONE query for all of them. Prometheus not configured or not
+    answering is a NOTE the output carries, never a silent "no restarts":
+    the windows are then measured without the exclusion, said as such."""
+    try:
+        from modules.integrations.prometheus import PrometheusIntegration
+        p = PrometheusIntegration()
+        if not p.is_configured():
+            return {}, "restarts NOT excluded: Prometheus is not configured"
+        now = time.time()
+        names = "|".join(re.escape(h) for h in hosts)
+        body = p.session().get(f"{p.url.rstrip('/')}/api/v1/query_range", params={
+            "query": f'sysUpTime{{device=~"{names}"}}', "start": now - hours * 3600,
+            "end": now, "step": 60}, timeout=30).json()
+        if body.get("status") != "success":
+            return {}, f"restarts NOT excluded: Prometheus answered {body.get('error')!r}"
+        out = {}
+        for r in body.get("data", {}).get("result", []):
+            host = r.get("metric", {}).get("device", "")
+            out.setdefault(host, []).extend(
+                restart_windows([(float(t), float(v)) for t, v in r.get("values", [])]))
+        return out, ""
+    except Exception as exc:                   # noqa: BLE001
+        return {}, f"restarts NOT excluded: Prometheus could not be asked ({type(exc).__name__}: {exc})"
+
+
+def restart_words(restarts: dict, note: str) -> str:
+    """The line saying whether the restart exclusion FIRED, and for whom: a
+    clean result cannot prove a mechanism that was not exercised."""
+    if note:
+        return note
+    hit = {h: len(w) for h, w in sorted(restarts.items()) if w}
+    if not hit:
+        return f"restarts excluded: none in the last {LOOKBACK_HOURS} h (sysUpTime read)"
+    return ("restarts excluded (the gap across each is the boot, not the interval): "
+            + ", ".join(f"{h} ({n})" for h, n in hit.items()))
+
+
 def _loki_url(arg: str) -> str:
     if arg:
         return arg
@@ -410,8 +473,10 @@ def main() -> int:
         # computed from the devices that answered is a guess about the rest.
         from modules.fanout import Failed, read_each
         hosts = sorted(expected)
+        restarts, restart_note = prometheus_restarts(hosts)
         got = read_each(lambda h: gaps_from(loki_arrivals(loki, h),
-                                            loki_arrivals(loki, h, query=config_query_for(h))),
+                                            loki_arrivals(loki, h, query=config_query_for(h)),
+                                            restarts.get(h, ())),
                         hosts, name="heartbeat-measure")
         failed = next((g for g in got if isinstance(g, Failed)), None)
         if failed is not None:
@@ -438,6 +503,7 @@ def main() -> int:
               + "; ".join(l.split(":")[0] for l in bad) if bad else
               f"heartbeat windows current for {len(lines)} device(s)")
         print("\n".join(lines))
+        print(restart_words(restarts, restart_note))
         return code
 
     try:
@@ -456,6 +522,7 @@ def main() -> int:
     for name in not_expected:
         print(f"  not expected to heartbeat: {name} -- no complete syslog "
               "block in its committed intent")
+    print(restart_words(restarts, restart_note))
     print(f"wrote {len(fresh)} rule(s) to {args.out}")
     return EXIT_OK
 
