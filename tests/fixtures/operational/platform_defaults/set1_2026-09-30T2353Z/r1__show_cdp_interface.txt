@@ -1,0 +1,4 @@
+
+ cdp enabled interfaces : 0
+ interfaces up          : 0
+ interfaces down        : 0

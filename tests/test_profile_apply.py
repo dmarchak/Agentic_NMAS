@@ -84,7 +84,7 @@ class TestThePropose:
         snmp = next(s for s in p["sections"] if s["section"] == "snmp")
         assert snmp["proposed"] and snmp["holders"] == ["r2"] and snmp["inherit"] == ["r6"]
         assert p["doc"]["sections"]["snmp"]["source"] == "prometheus"
-        assert {"device": "r6", "inherits": ["cdp", "lldp", "snmp"]} in p["effect"]
+        assert {"device": "r6", "inherits": ["lldp", "snmp"]} in p["effect"]
         assert "secrets" not in pp.public(p)
 
     def test_a_connector_not_configured_proposes_nothing_for_it_and_says_why(self, lab):
@@ -300,20 +300,28 @@ class TestEveryDetectorReadsWhatTheParserWrites:
         assert section_value("lldp", {"flags": {"lldp run": False}}) == {"flags": {"lldp run": False}}
         assert section_value("cdp", {"flags": {"aaa new-model": True}}) is None
 
-    def test_lldp_and_cdp_are_proposed_and_r6_inherits_them(self, lab):
+    def test_lldp_is_proposed_and_r6_inherits_it(self, lab):
         from modules.nsot import profile_propose as pp
         p = pp.propose("Lab")
         rows = {s["section"]: s for s in p["sections"]}
         assert rows["lldp"]["proposed"] and rows["lldp"]["inherit"] == ["r6"]
-        assert rows["cdp"]["proposed"] and rows["cdp"]["inherit"] == ["r6"]
         assert p["doc"]["sections"]["lldp"]["data"] == {"flags": {"lldp run": True}}
 
-    def test_the_scoped_apply_to_r6_sends_lldp_and_cdp(self, lab):
+    def test_cdp_is_not_proposed_where_its_line_enables_nothing(self, lab):
+        """Measured (C254): on IOS-XE `cdp run` alone enables no interface (r1:
+        'cdp enabled interfaces : 0'), so "r6 gains CDP" would claim a feature
+        that does not run (the operator, 2026-09-30)."""
+        from modules.nsot import profile_propose as pp
+        cdp = next(s for s in pp.propose("Lab")["sections"] if s["section"] == "cdp")
+        assert not cdp["proposed"] and "alone enables nothing on cisco_iosxe" in cdp["why"]
+        assert "cdp enabled interfaces : 0" in cdp["why"]
+
+    def test_the_scoped_apply_to_r6_sends_lldp_and_not_cdp(self, lab):
         _commit_proposal()
         d = lab["client"].post("/deploy/plan", json={"devices": ["r6"], "scope": "profile",
                                                      "list_name": "Lab"}).get_json()["devices"][0]
         sent = [c.strip() for c in d["commands"]]
-        assert "lldp run" in sent and "cdp run" in sent and "snmp-server contact noc" in sent
+        assert "lldp run" in sent and "cdp run" not in sent and "snmp-server contact noc" in sent
 
 
 def _with_s1(monkeypatch):
@@ -338,20 +346,46 @@ class TestAnAbsentLineMayBeOnByDefault:
     never pushed onto a platform that never prints it."""
 
     def test_the_record_measures_before_it_claims(self):
+        """Every verdict names its device, time and evidence, and its FIXTURE, a
+        real capture that holds the evidence's own words."""
         from modules.nsot import profile_propose as pp
         doc = json.load(open(pp.DEFAULTS_FILE, encoding="utf-8"))
+        fixtures = os.path.join(ROOT, "tests", "fixtures", "operational", "platform_defaults")
         states = [v["state"] for plat in doc["by_dialect"].values() for v in plat.values()]
         assert states and set(states) <= {"on", "off", "not_measured"}
+        verdicts = 0
         for plat in doc["by_dialect"].values():
             for flag, v in plat.items():
-                if v["state"] != "not_measured":        # a verdict carries its evidence
+                if v["state"] != "not_measured" or "runs_alone" in v:
+                    verdicts += 1
+                    for key in ("fixture", "runs_alone_fixture"):
+                        if v.get(key):
+                            assert os.path.exists(os.path.join(fixtures, v[key])), v[key]
+                if v["state"] != "not_measured":
                     assert v.get("evidence") and v.get("device") and v.get("measured_at"), flag
-        assert "nmas-capture-output" in doc["how"]
+        assert verdicts >= 3 and "nmas-capture-output" in doc["how"]
 
-    def test_cdp_absent_on_a_switch_is_not_measured_and_not_applied_there(self, lab, monkeypatch):
+    def test_the_measured_verdicts_are_what_the_captures_say(self):
+        """The record against its own fixtures, read here independently."""
+        from modules.nsot import profile_propose as pp
+        base = os.path.join(ROOT, "tests", "fixtures", "operational", "platform_defaults")
+        s1 = open(os.path.join(base, "set1_2026-09-30T2353Z", "s1__show_cdp_interface.txt")).read()
+        r1 = open(os.path.join(base, "set1_2026-09-30T2353Z", "r1__show_cdp_interface.txt")).read()
+        assert "cdp enabled interfaces : 6" in s1 and "cdp enabled interfaces : 0" in r1
+        assert pp.platform_default("cisco_ios", "cdp run")["state"] == "on"
+        assert pp.platform_default("cisco_iosxe", "cdp run")["runs_alone"] is False
+        # r6's first capture was DURING its push: never a default.
+        assert pp.platform_default("cisco_iosxe", "lldp run")["state"] == "not_measured"
+
+    def test_an_unmeasured_absence_is_said_and_not_applied_there(self, lab, monkeypatch, tmp_path):
+        """With a record that has measured nothing, CDP (held on IOS-XE) is not
+        applied to the switch, and the preview says the default is not measured."""
         from modules.nsot import profile_propose as pp
         from modules.preview_confirm import profile_propose_preview
         _with_s1(monkeypatch)
+        rec = tmp_path / "defaults.json"
+        rec.write_text(json.dumps({"version": 1, "how": "x", "by_dialect": {}}))
+        monkeypatch.setattr(pp, "DEFAULTS_FILE", str(rec))
         p = pp.public(pp.propose("Lab"))
         cdp = next(s for s in p["sections"] if s["section"] == "cdp")
         assert cdp["platforms"] == ["cisco_iosxe"] and cdp["inherit"] == ["r6"]

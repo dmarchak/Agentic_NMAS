@@ -1,23 +1,44 @@
 {
   "version": 1,
-  "what": "Whether a feature the monitoring profile covers is ON when its line is ABSENT from a platform's running configuration. An absent line can mean 'on by default', not 'disabled'. Measured per platform, never assumed; a state not measured is 'not_measured', and nothing reads it as on or off (the rule of removal_measured.json).",
-  "how": "On a device of the platform whose running configuration does NOT carry the line, read it with the tool's read-only probe, on the NMAS host as the service user: scripts/nmas-capture-output --device <name> --command 'show cdp' --command 'show lldp' --out /tmp/nmas-defaults . `show cdp` answers '% CDP is not enabled' or 'Global CDP information'; `show lldp` answers '% LLDP is not enabled' or 'Global LLDP Information'. Record the verdict with the device, the platform, the capture's date and its first line.",
+  "what": "Per platform and flag: whether the feature is ON when its line is ABSENT from the running configuration (`state`), and whether the line ALONE makes it run on the interfaces (`runs_alone`). An absent line can mean 'on by default', not 'disabled'; a present line can enable nothing. Measured per platform, never assumed; a value not measured is 'not_measured', and nothing reads it as on, off, true or false (the rule of removal_measured.json).",
+  "how": "On a device of the platform, read it with the tool's read-only probe, on the NMAS host as the service user: scripts/nmas-capture-output --device <name> --command 'show cdp' --command 'show cdp interface' --command 'show lldp' --command 'show lldp interface' --out /tmp/nmas-defaults . A capture taken while a deploy to that device is running measures the deploy, not the default. Each verdict names its device, its capture time and its fixture file under tests/fixtures/operational/platform_defaults/.",
   "by_dialect": {
     "cisco_ios": {
-      "cdp run": {"state": "not_measured",
-                  "measure_on": "s1 (vIOS L2; its configuration carries no `cdp run`)"},
-      "lldp run": {"state": "not_measured",
-                   "measure_on": "no device of this platform lacks `lldp run` today (s1-s4 all carry it), so it cannot be measured on the current fleet"}
+      "cdp run": {
+        "state": "on",
+        "runs_alone": true,
+        "device": "s1",
+        "measured_at": "2026-09-30T23:53:39Z",
+        "evidence": "s1 carries no `cdp run`; `show cdp` answers 'Global CDP information', and `show cdp interface` lists 6 of 6 interfaces sending CDP ('cdp enabled interfaces : 6')",
+        "fixture": "set1_2026-09-30T2353Z/s1__show_cdp_interface.txt"
+      },
+      "lldp run": {
+        "state": "not_measured",
+        "runs_alone": true,
+        "runs_alone_device": "s3",
+        "runs_alone_evidence": "s3 carries `lldp run`, and `show lldp interface` lists every interface Tx and Rx enabled, with three neighbours",
+        "runs_alone_fixture": "set2_2026-09-30T2355Z/s3__show_lldp_interface.txt",
+        "measure_on": "no device of this platform lacks `lldp run` today (s1-s4 all carry it), so its default cannot be measured on the current fleet"
+      }
     },
     "cisco_iosxe": {
-      "cdp run": {"state": "not_measured",
-                  "measure_on": "r6 (C8000V; its configuration carries neither line)"},
-      "lldp run": {"state": "not_measured",
-                   "measure_on": "r6 (C8000V; its configuration carries neither line)"}
+      "cdp run": {
+        "state": "not_measured",
+        "runs_alone": false,
+        "device": "r1",
+        "measured_at": "2026-09-30T23:53:46Z",
+        "evidence": "r1 carries `cdp run`; `show cdp` answers 'Global CDP information', and `show cdp interface` answers 'cdp enabled interfaces : 0': on this platform `cdp run` alone enables no interface (each needs `cdp enable`). r6 read the same after its push",
+        "fixture": "set1_2026-09-30T2353Z/r1__show_cdp_interface.txt",
+        "measure_on": "a C8000V whose configuration carries no `cdp run`, read when no deploy is running to it (r6's capture of 23:53:43 was taken DURING its push, whose first line was `cdp run`)"
+      },
+      "lldp run": {
+        "state": "not_measured",
+        "runs_alone": true,
+        "runs_alone_device": "r6",
+        "runs_alone_evidence": "after its push of `lldp run`, `show lldp interface` lists Gi1 and Gi2 Tx and Rx enabled",
+        "runs_alone_fixture": "set2_2026-09-30T2355Z/r6__show_lldp_interface.txt",
+        "measure_on": "a C8000V whose configuration carries no `lldp run`, read when no deploy is running to it (r6's 'Status: ACTIVE' of 23:53:43 was taken DURING the push, whose second line was `lldp run`)"
+      }
     }
-  },
-  "observations": [
-    {"what": "r1 (cisco_iosxe) carries `cdp run`, and its `show cdp neighbors detail` lists 0 entries while its `show lldp neighbors detail` lists s3 and s1 on the same links (captured read-only 2026-09-27, tests/fixtures/operational/). No CDP adjacency forms between r1 and the switches; whether the switches run CDP, or r1's interfaces do not enable it, is not established. `show cdp interface` on r1 and `show cdp` on s1 settle it.",
-     "verdict": "none"}
-  ]
+  }
 }

@@ -195,6 +195,25 @@ def propose(list_name: str, get=None) -> dict:
                                for x in variants.values()]
             continue
         (only,) = variants.values()
+        if name in FLAG_SECTIONS:
+            # A line MEASURED to enable nothing alone on a platform is never
+            # proposed there (the operator, 2026-09-30: on IOS-XE `cdp run`
+            # enables no interface, so "r6 gains CDP" claimed a feature that
+            # would not run). A preview never claims what will not happen.
+            dead = {plat: platform_default(plat, FLAG_SECTIONS[name])
+                    for _h, plat, _v in held}
+            dead = {p: d for p, d in dead.items() if d.get("runs_alone") is False}
+            if dead:
+                held = [x for x in held if x[1] not in dead]
+                only = {"value": only["value"], "devices": [h for h, _p, _v in held]}
+                row["runs_nothing"] = {p: d.get("evidence", "measured") for p, d in dead.items()}
+                if not held:
+                    row["why"] = (f"`{FLAG_SECTIONS[name]}` alone enables nothing on "
+                                  + ", ".join(sorted(dead)) + " ("
+                                  + "; ".join(d.get("evidence", "measured")
+                                              for d in dead.values())
+                                  + "), so the profile would claim a feature that does not run")
+                    continue
         holders = sorted(only["devices"])
         holder_plats = sorted({plat for _h, plat, _v in held})
         lacking = [(h, plat) for h, plat, _r, intent in fleet if h not in holders]
