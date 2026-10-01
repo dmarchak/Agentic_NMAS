@@ -1,0 +1,175 @@
+"""The v2 Devices list (NSOT_GUI_BRIEF 3.3; step 4), from `modules/device_list`.
+
+On test_profile_apply's lab (r2's REAL config and intent; r6 in its real
+shape), with real golden commits whose `Intent-Match:` trailers `save_golden`
+computes. The list costs a FIXED number of reads whatever its size (the
+brief's scale rule): one bounded `git log` over `golden/` and one `git
+ls-tree` over `host_vars/`, never a read per device. A device's intent state
+is its state at its last capture, and says so.
+"""
+
+import os
+import re
+
+import pytest
+
+from tests.test_profile_apply import lab  # noqa: F401 (the fixture)
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+R2 = {"hostname": "r2", "ip": "203.0.113.12", "device_type": "cisco_xe",
+      "platform": "cisco_iosxe", "role": "router"}
+R6 = {"hostname": "r6", "ip": "203.0.113.16", "device_type": "cisco_xe",
+      "platform": "cisco_iosxe", "role": "router"}
+
+
+@pytest.fixture
+def inv(lab, monkeypatch):
+    rows = [dict(R2), dict(R6)]
+    monkeypatch.setattr("modules.device.load_saved_devices", lambda path=None: [dict(r) for r in rows])
+    lab["rows"] = rows
+    return lab
+
+
+def _ref():
+    from modules.nsot import listref
+    return listref.resolve("Lab")
+
+
+def _capture(host, text):
+    """A real capture commit: `save_golden` computes its Intent-Match trailer
+    against the intent committed NOW."""
+    from modules.nsot.repo import GoldenItem, save_golden
+    ip = {"r2": R2["ip"], "r6": R6["ip"]}[host]
+    out = save_golden("Lab", [GoldenItem(host, text, ip, platform="cisco_iosxe")],
+                      source="capture", actor="t", baseline=False)
+    assert out.get("commit"), out
+
+
+class TestTheTrailerIsRead:
+    def test_each_shape_save_golden_writes(self):
+        from modules.device_list import _intent_of
+        assert _intent_of("r2", "yes (9 of 9)")["state"] == "at_intent"
+        assert _intent_of("r2", "no: r2 (+1 -1)") == {"state": "departs", "words": "departs (+1 -1)"}
+        assert _intent_of("r6", "no: r2 (+1 -1); r6 (-1)")["words"] == "departs (-1)"
+        assert _intent_of("r6", "no: r2 (+1 -1)")["state"] == "at_intent"     # not named: matched
+        assert _intent_of("r2", "no: r2 (unknown (no committed intent))")["state"] == "unknown"
+        assert _intent_of("r2", "")["state"] == "unrecorded"
+        # A name that is a prefix of another is not that other.
+        assert _intent_of("r1", "no: r10 (+1)")["state"] == "at_intent"
+
+
+class TestTheListing:
+    def test_a_departing_capture_reads_departs_as_of_its_last_capture(self, inv):
+        from modules.device_list import listing
+        _capture("r6", inv["r6"].replace("\nend", "\nlogging buffered 8192\nend"))
+        # r2: an intent edit (an NTP server) and a capture that carries it, so
+        # its newest golden commit records it AT intent (its first golden
+        # predates the intent).
+        from modules.nsot import hostvars
+        from modules.nsot.repo import save_host_vars
+        hv = hostvars.read_committed(inv["repo"], "r2")
+        hv["ntp_servers"] = list(hv.get("ntp_servers") or []) + ["192.0.2.123"]
+        hostvars.write_committed(inv["repo"], hv)
+        assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
+        _capture("r2", inv["captured"].replace("\nend", "\nntp server 192.0.2.123\nend"))
+        d = listing(_ref())
+        rows = {r["name"]: r for r in d["rows"]}
+        assert rows["r6"]["intent"]["state"] == "departs"
+        # The device holds a line its intent lacks: "-1" in the trailer's words.
+        assert rows["r6"]["intent"]["words"] == "departs (-1), as of its last capture"
+        assert rows["r2"]["intent"] == {"state": "at_intent",
+                                        "words": "at intent, as of its last capture"}
+        assert rows["r6"]["captured_iso"] and rows["r6"]["platform"] == "cisco_iosxe"
+        assert d["total"] == 2 and d["counts"]["departs"] == 1 and d["counts"]["at_intent"] == 1
+
+    def test_no_intent_and_no_golden_are_their_own_states(self, inv):
+        from modules.device_list import listing
+        inv["rows"].append({"hostname": "r9", "ip": "192.0.2.9", "platform": "cisco_ios"})
+        rows = {r["name"]: r for r in listing(_ref())["rows"]}
+        assert rows["r9"]["intent"]["state"] == "no_intent" and rows["r9"]["captured_iso"] == ""
+
+    def test_the_reads_are_fixed_whatever_the_size(self, inv, monkeypatch):
+        """The scale rule: two git reads for two devices and for sixty."""
+        from modules import device_list
+        from modules.nsot import repo as R
+        real, calls = R.git, []
+
+        def counting(*a, **k):
+            calls.append(a[1] if len(a) > 1 else "")
+            return real(*a, **k)
+        monkeypatch.setattr(R, "git", counting)
+        device_list.listing(_ref())
+        two = list(calls)
+        calls.clear()
+        inv["rows"] += [{"hostname": f"x{i}", "ip": f"192.0.2.{i}", "platform": "cisco_ios"}
+                        for i in range(60)]
+        device_list.listing(_ref())
+        assert two == calls == ["log", "ls-tree"], (two, calls)
+
+    def test_an_unreadable_history_is_unknown_never_no_golden(self, inv, monkeypatch):
+        from modules import device_list
+        from modules.nsot import repo as R
+        real = R.git
+        monkeypatch.setattr(R, "git", lambda *a, **k: (128, "", "fatal: bad object")
+                            if len(a) > 1 and a[1] == "log" else real(*a, **k))
+        d = device_list.listing(_ref())
+        assert "the golden history could not be read (fatal: bad object)" in d["error"]
+        assert {r["intent"]["state"] for r in d["rows"]} == {"unknown"}
+
+    def test_pending_onboardings_are_rows(self, inv, monkeypatch):
+        from modules import device_list
+        monkeypatch.setattr("modules.nsot.manifest.pending_devices", lambda repo: [{
+            "name": "r7", "mgmt_ip": "", "reserved_address": "203.0.113.17", "state": "in_flight"}])
+        rows = {r["name"]: r for r in device_list.listing(_ref())["rows"]}
+        assert rows["r7"]["pending"] and rows["r7"]["status"]["words"] == "Pending onboarding"
+        assert rows["r7"]["address"] == "awaiting DHCP (203.0.113.17)"
+
+    def test_search_and_filters(self, inv):
+        from modules.device_list import listing
+        _capture("r6", inv["r6"].replace("\nend", "\nlogging buffered 8192\nend"))
+        assert [r["name"] for r in listing(_ref(), q="R6")["rows"]] == ["r6"]
+        assert [r["name"] for r in listing(_ref(), q="203.0.113.12")["rows"]] == ["r2"]
+        assert [r["name"] for r in listing(_ref(), state="departs")["rows"]] == ["r6"]
+        assert listing(_ref(), platform="cisco_ios")["rows"] == []
+
+
+class TestThePage:
+    def _get(self, lab, url):
+        r = lab["client"].get(url)
+        return r, r.get_data(as_text=True)
+
+    def test_the_page_draws_each_row_with_its_link(self, inv):
+        from modules import csp
+        r, html = self._get(inv, "/v2/devices")
+        assert r.status_code == 200 and r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
+        assert not re.search(r"\sstyle=|\son[a-z]+=", html)
+        for host in ("r2", "r6"):
+            assert f'<a href="/v2/device/{host}">{host}</a>' in html
+        assert "<h1>Devices <span class=\"muted\">· 2</span></h1>" in html
+        assert re.search(r'<a class="nav-item active" href="/v2/devices" aria-current="page">', html)
+
+    def test_a_search_says_how_many_it_shows(self, inv):
+        _r, html = self._get(inv, "/v2/devices/table?q=r6")
+        assert html.lstrip().startswith('<section class="card devices" id="devices"')
+        assert "Showing 1 of 2." in html and "/v2/device/r2" not in html
+        _r, html = self._get(inv, "/v2/devices/table?q=nothing")
+        assert 'No device of 2 matches "nothing".' in html
+
+    def test_it_redraws_on_keys_v2_relays(self, inv):
+        from modules import invalidation
+        _r, html = self._get(inv, "/v2/devices/table")
+        keys = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"', html).group(1))
+        src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
+        assert keys == ["reachability", "goldens"]
+        for k in keys:
+            assert k in invalidation.VOCABULARY and f"NMAS.subscribe('{k}'" in src
+
+    def test_the_selection_opens_todays_deploy_for_the_ticked_devices(self, inv):
+        _r, html = self._get(inv, "/v2/devices")
+        form = re.search(r'<form method="get" action="/" class="dev-form">(.*?)</form>', html, re.S)
+        assert form and '<input type="hidden" name="open" value="deploy">' in form.group(1)
+        assert 'name="device" value="r6"' in form.group(1)
+        assert "(today's page)" in form.group(1)
+        src = open(os.path.join(ROOT, "static", "js", "gen", "partials__deploy_wizard.1.js"),
+                   encoding="utf-8").read()
+        assert "q.get('open') === 'deploy'" in src and "openDeployPlan(q.getAll('device')" in src

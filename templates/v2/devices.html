@@ -1,0 +1,30 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon -%}
+{% block title %}Devices · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Devices <span class="muted">· {{ d.total }}</span></h1>
+    <p class="sub">{{ list_name }}: each device's status, address, platform and intent state, read from what the app already keeps.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="{{ url_for('index') }}">Add device (today's page)…</a>
+  </div>
+</div>
+<form class="dev-filters" hx-get="{{ url_for('v2.devices_table') }}" hx-target="#devices" hx-swap="outerHTML"
+      hx-trigger="input changed delay:300ms from:#dev-q, change">
+  <label class="sr" for="dev-q">Search by name or address</label>
+  <input id="dev-q" type="search" name="q" value="{{ d.q }}" placeholder="Search by name or address" autocomplete="off">
+  <label class="sr" for="dev-state">Intent state</label>
+  <select id="dev-state" name="state">
+    <option value="">Every state</option>
+    {%- for s in states %}<option value="{{ s }}"{% if s == d.state %} selected{% endif %}>{{ s | replace('_', ' ') }} ({{ d.counts[s] }})</option>{% endfor %}
+  </select>
+  <label class="sr" for="dev-platform">Platform</label>
+  <select id="dev-platform" name="platform">
+    <option value="">Every platform</option>
+    {%- for p in d.platforms %}<option value="{{ p }}"{% if p == d.platform %} selected{% endif %}>{{ p }}</option>{% endfor %}
+  </select>
+</form>
+{% include "v2/_devices.html" %}
+{% endblock %}

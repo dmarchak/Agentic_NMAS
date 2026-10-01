@@ -34,7 +34,7 @@
     <button type="button" class="icon-btn drawer-close" aria-label="Close the menu" x-on:click="close">{{ icon('x', 20) }}</button>
   </div>
   <a class="nav-item{% if active_nav == 'attention' %} active{% endif %}" href="{{ url_for('v2.landing') }}"{% if active_nav == 'attention' %} aria-current="page"{% endif %}>{{ icon('attention') }}<span class="grow">Needs attention</span><span class="count" hx-get="{{ url_for('device_v2.attention_count') }}" hx-trigger="load, nmas:job_health from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:integration_health from:body, nmas:ci_verdict from:body, nmas:app_version from:body, nmas:reachability from:body, nmas:netbox from:body, nmas:remote from:body, nmas:baselines from:body, nmas:drift from:body" hx-swap="outerHTML"></span></a>
-  <a class="nav-item{% if active_nav == 'devices' %} active{% endif %}" href="{{ url_for('index') }}"{% if active_nav == 'devices' %} aria-current="page"{% endif %}>{{ icon('devices') }}<span>Devices</span></a>
+  <a class="nav-item{% if active_nav == 'devices' %} active{% endif %}" href="{{ url_for('v2.devices') }}"{% if active_nav == 'devices' %} aria-current="page"{% endif %}>{{ icon('devices') }}<span>Devices</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('history') }}<span>History</span></a>
   <div class="nav-head">OBSERVE</div>
   <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>

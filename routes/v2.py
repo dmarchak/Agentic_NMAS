@@ -438,3 +438,34 @@ def profile_apply_job(job):
     from modules import deploy_job
     got = deploy_job.state(job)
     return _strict(render_template("v2/_apply_job.html", j=got, job=job)), (200 if got else 404)
+
+
+# ---------------------------------------------------------------------------
+# Devices (NSOT_GUI_BRIEF 3.3; step 4): the list, from a fixed number of
+# reads whatever its size (modules/device_list.py).
+# ---------------------------------------------------------------------------
+
+def _devices_ctx(req) -> dict:
+    from modules import device_list
+    from modules.nsot import listref
+
+    ref = listref.active()
+    return {"d": device_list.listing(ref, q=req.args.get("q", ""),
+                                     state=req.args.get("state", ""),
+                                     platform=req.args.get("platform", "")),
+            "list_name": ref.name, "states": device_list.STATES}
+
+
+@bp.route("/devices", methods=["GET"])
+def devices():
+    """Devices: every device of the active list, pending onboardings among
+    them, searchable and filtered; ticking rows raises the selection bar."""
+    from flask import request
+    return _page("v2/devices.html", active_nav="devices", **_devices_ctx(request))
+
+
+@bp.route("/devices/table", methods=["GET"])
+def devices_table():
+    """The list alone: searched or filtered, or redrawn when a reader moves it."""
+    from flask import request
+    return _strict(render_template("v2/_devices.html", **_devices_ctx(request)))

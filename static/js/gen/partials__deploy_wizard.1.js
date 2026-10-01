@@ -222,5 +222,10 @@ if (typeof document !== 'undefined' && document.addEventListener) {
     if (q.get('open') === 'profile_apply' && q.get('device')) {
       openProfileApply(q.getAll('device').join(','), q.get('list') || '');
     }
+    // The v2 Devices list's selection bar ("Plan a deploy…"): the devices
+    // ticked there, planned here until v2 carries the deploy.
+    if (q.get('open') === 'deploy' && q.get('device')) {
+      openDeployPlan(q.getAll('device'), {list: q.get('list') || ''});
+    }
   });
 }

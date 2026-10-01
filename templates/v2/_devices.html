@@ -1,0 +1,54 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- The Devices list (NSOT_GUI_BRIEF 3.3), from modules/device_list.listing():
+    a fixed number of reads whatever the list's size. The intent state is the
+    device's state AT ITS LAST CAPTURE (its golden commit's Intent-Match), and
+    says so; the device page's Overview compares it live. Redrawn when the
+    reachability reader or a golden commit moves it. -#}
+{%- set KIND = {'ok': 'ok', 'danger': 'danger', 'warn': 'warn', 'unknown': 'muted'} -%}
+{%- set IKIND = {'at_intent': 'ok', 'departs': 'warn', 'no_intent': 'muted', 'no_golden': 'warn',
+                 'pending': 'info', 'unknown': 'muted', 'unrecorded': 'muted'} -%}
+<section class="card devices" id="devices" hx-get="{{ url_for('v2.devices_table', q=d.q, state=d.state, platform=d.platform) }}"
+         hx-trigger="nmas:reachability from:body, nmas:goldens from:body" hx-swap="outerHTML">
+  {%- if d.error %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ d.error }}.</p></div>
+  {%- endif %}
+  {%- if not d.total %}
+  <p class="cov-head">{{ icon('info') }} {{ d.list }} has no devices yet.</p>
+  {%- elif not d.rows %}
+  <p class="cov-head">{{ icon('info') }} No device of {{ d.total }} matches{% if d.q %} "{{ d.q }}"{% endif %}{% if d.state %}, state {{ d.state | replace('_', ' ') }}{% endif %}{% if d.platform %}, platform {{ d.platform }}{% endif %}.</p>
+  {%- else %}
+  <form method="get" action="{{ url_for('index') }}" class="dev-form">
+    <input type="hidden" name="open" value="deploy">
+    <input type="hidden" name="list" value="{{ d.list }}">
+    {%- if d.rows | length != d.total %}<p class="muted dev-shown">Showing {{ d.rows | length }} of {{ d.total }}.</p>{% endif %}
+    <div class="table-wrap">
+      <table class="table dev-table">
+        <thead><tr>
+          <th scope="col"><span class="sr-only">Select</span></th>
+          <th scope="col">Device</th>
+          <th scope="col">Status</th>
+          <th scope="col">Address</th>
+          <th scope="col">Platform</th>
+          <th scope="col">Intent</th>
+          <th scope="col">Last capture</th>
+        </tr></thead>
+        <tbody>
+          {%- for r in d.rows %}
+          <tr>
+            <td>{%- if not r.pending %}<input type="checkbox" name="device" value="{{ r.name }}" id="dev-{{ r.name }}" aria-label="Select {{ r.name }}">{% endif -%}</td>
+            <th scope="row"><a href="{{ url_for('device_v2.device', name=r.name) }}">{{ r.name }}</a>{% if r.role %}<span class="muted"> · {{ r.role }}</span>{% endif %}</th>
+            <td>{{ badge(r.status.words, KIND.get(r.status.state, 'muted')) }}{% if r.status.since %} <span class="muted">since {{ stamp(r.status.since) }}</span>{% endif %}</td>
+            <td class="mono">{{ r.address }}</td>
+            <td>{{ r.platform or '—' }}</td>
+            <td>{{ badge(r.intent.words, IKIND.get(r.intent.state, 'muted')) }}</td>
+            <td>{% if r.captured_iso %}{{ stamp(r.captured_iso) }}{% else %}<span class="muted">none</span>{% endif %}</td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="dev-actions"><button type="submit" class="btn btn-primary">Plan a deploy for the ticked devices (today's page)…</button>
+      <span class="muted">The deploy is planned on today's page until the redesign carries it.</span></p>
+  </form>
+  {%- endif %}
+</section>

@@ -482,3 +482,9 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .mb-list li { padding: 3px 0; }
 .mb-list .ico { vertical-align: -2px; margin-right: 4px; }
 .mb-action { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0 0; font-size: 13px; }
+/* Devices (NSOT_GUI_BRIEF 3.3). */
+.dev-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.dev-filters input[type="search"] { flex: 1 1 220px; min-width: 0; }
+.dev-table td, .dev-table th { white-space: nowrap; }
+.dev-shown { margin: 0 0 6px; font-size: 13px; }
+.dev-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 0; font-size: 13px; }
