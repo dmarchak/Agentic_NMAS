@@ -1,0 +1,983 @@
+{
+ "captured": "2026-10-01T10:12:18Z",
+ "cbgpPeer2State": {
+  "data": {
+   "result": [
+    {
+     "metric": {
+      "__name__": "cbgpPeer2State",
+      "cbgpPeer2RemoteAddr": "198.51.100.1",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "bgp",
+      "role": "router"
+     },
+     "value": [
+      1790849538.232,
+      "6"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "cbgpPeer2State",
+      "cbgpPeer2RemoteAddr": "198.51.100.3",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "bgp",
+      "role": "router"
+     },
+     "value": [
+      1790849538.232,
+      "6"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "cbgpPeer2State",
+      "cbgpPeer2RemoteAddr": "2001:0DB8:0051:0000:0000:0000:0000:0002",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "bgp",
+      "role": "router"
+     },
+     "value": [
+      1790849538.232,
+      "6"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "cbgpPeer2State",
+      "cbgpPeer2RemoteAddr": "2001:0DB8:0051:0001:0000:0000:0000:0002",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "bgp",
+      "role": "router"
+     },
+     "value": [
+      1790849538.232,
+      "6"
+     ]
+    }
+   ],
+   "resultType": "vector"
+  },
+  "status": "success"
+ },
+ "ospfNbrState": {
+  "data": {
+   "result": [
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.12",
+      "ospfNbrRtrId": "10.255.1.12",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.13",
+      "ospfNbrRtrId": "10.255.1.13",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.14",
+      "ospfNbrRtrId": "10.255.1.14",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.23",
+      "ospfNbrRtrId": "10.255.1.23",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.24",
+      "ospfNbrRtrId": "10.255.1.24",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.11",
+      "ospfNbrRtrId": "10.255.1.11",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.13",
+      "ospfNbrRtrId": "10.255.1.13",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.14",
+      "ospfNbrRtrId": "10.255.1.14",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.23",
+      "ospfNbrRtrId": "10.255.1.23",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.24",
+      "ospfNbrRtrId": "10.255.1.24",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.2.15",
+      "ospfNbrRtrId": "10.255.1.14",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.11",
+      "ospfNbrRtrId": "10.255.1.11",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.12",
+      "ospfNbrRtrId": "10.255.1.12",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.14",
+      "ospfNbrRtrId": "10.255.1.14",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.23",
+      "ospfNbrRtrId": "10.255.1.23",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.24",
+      "ospfNbrRtrId": "10.255.1.24",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.2.14",
+      "ospfNbrRtrId": "10.255.1.13",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.11",
+      "ospfNbrRtrId": "10.255.1.11",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.12",
+      "ospfNbrRtrId": "10.255.1.12",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.13",
+      "ospfNbrRtrId": "10.255.1.13",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.23",
+      "ospfNbrRtrId": "10.255.1.23",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.24",
+      "ospfNbrRtrId": "10.255.1.24",
+      "role": "router"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s3",
+      "instance": "10.255.1.23",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.11",
+      "ospfNbrRtrId": "10.255.1.11",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s3",
+      "instance": "10.255.1.23",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.12",
+      "ospfNbrRtrId": "10.255.1.12",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s3",
+      "instance": "10.255.1.23",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.13",
+      "ospfNbrRtrId": "10.255.1.13",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s3",
+      "instance": "10.255.1.23",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.14",
+      "ospfNbrRtrId": "10.255.1.14",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s3",
+      "instance": "10.255.1.23",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.24",
+      "ospfNbrRtrId": "10.255.1.24",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s4",
+      "instance": "10.255.1.24",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.11",
+      "ospfNbrRtrId": "10.255.1.11",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s4",
+      "instance": "10.255.1.24",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.12",
+      "ospfNbrRtrId": "10.255.1.12",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s4",
+      "instance": "10.255.1.24",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.13",
+      "ospfNbrRtrId": "10.255.1.13",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s4",
+      "instance": "10.255.1.24",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.14",
+      "ospfNbrRtrId": "10.255.1.14",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfNbrState",
+      "device": "s4",
+      "instance": "10.255.1.24",
+      "job": "ospf",
+      "ospfNbrAddressLessIndex": "0",
+      "ospfNbrIpAddr": "10.255.3.23",
+      "ospfNbrRtrId": "10.255.1.23",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.226,
+      "4"
+     ]
+    }
+   ],
+   "resultType": "vector"
+  },
+  "status": "success"
+ },
+ "ospfv3NbrState": {
+  "data": {
+   "result": [
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "2",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484108",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "2",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484109",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "2",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484110",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "2",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484107",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "4"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "2",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484109",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "2",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484110",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "3",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484107",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "3",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484108",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "3",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484110",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "4",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484110",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "3",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484107",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "3",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484108",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "3",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484109",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "ospfv3NbrState",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospfv3",
+      "ospfv3NbrIfIndex": "4",
+      "ospfv3NbrIfInstId": "0",
+      "ospfv3NbrRtrId": "184484109",
+      "role": "router"
+     },
+     "value": [
+      1790849538.229,
+      "8"
+     ]
+    }
+   ],
+   "resultType": "vector"
+  },
+  "status": "success"
+ },
+ "up{job=~\"ospf|ospfv3|bgp\"}": {
+  "data": {
+   "result": [
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospf",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r1",
+      "instance": "10.255.1.11",
+      "job": "ospfv3",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospf",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r2",
+      "instance": "10.255.1.12",
+      "job": "ospfv3",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "bgp",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospf",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r3",
+      "instance": "10.255.1.13",
+      "job": "ospfv3",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "bgp",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospf",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "r4",
+      "instance": "10.255.1.14",
+      "job": "ospfv3",
+      "role": "router"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "s3",
+      "instance": "10.255.1.23",
+      "job": "ospf",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "device": "s4",
+      "instance": "10.255.1.24",
+      "job": "ospf",
+      "role": "switch"
+     },
+     "value": [
+      1790849538.234,
+      "1"
+     ]
+    }
+   ],
+   "resultType": "vector"
+  },
+  "status": "success"
+ }
+}

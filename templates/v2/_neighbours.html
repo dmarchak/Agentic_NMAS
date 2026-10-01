@@ -1,0 +1,45 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- The device page's Neighbours (NSOT_GUI_BRIEF 3.3; register C38), from
+    modules/neighbours.for_device(): the adjacencies committed intent implies,
+    against what the device's own routing tables report through Prometheus.
+    Read from Prometheus, never from the device. A protocol nothing scrapes is
+    "not measured", never "no neighbours". -#}
+{%- set KIND = {'up': 'ok', 'down': 'danger', 'not_seen': 'danger', 'unexpected': 'warn', 'unknown': 'muted'} -%}
+{%- set WORD = {'up': 'up', 'down': 'down', 'not_seen': 'not reported', 'unexpected': 'not implied by intent', 'unknown': 'not measured'} -%}
+<section class="card neighbours" id="neighbours" hx-get="{{ url_for('device_v2.neighbours', name=device.hostname) }}"
+         hx-trigger="nmas:goldens from:body" hx-swap="outerHTML">
+  {%- for e in n.errors %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}.</p></div>
+  {%- endfor %}
+  {%- if not n.configured %}
+  <p class="cov-head">{{ icon('info') }} Prometheus is not configured, so what {{ device.hostname }} reports about its neighbours cannot be read here (Settings &gt; Integrations).</p>
+  {%- endif %}
+  {%- set bad = n.counts.get('down', 0) + n.counts.get('not_seen', 0) %}
+  {%- if n.protocols %}
+  <p class="cov-head">{% if bad %}{{ icon('warn') }} {{ bad }} adjacency(ies) intent implies {{ 'is' if bad == 1 else 'are' }} not up on {{ device.hostname }}.{% else %}{{ icon('check') }} Every adjacency intent implies for {{ device.hostname }} that is measured is up.{% endif %}</p>
+  {%- for p in n.protocols %}
+  <h3 class="nb-proto">{{ p.words }}</h3>
+  {%- if p.why %}<p class="muted">{{ p.why }}.</p>{% endif %}
+  <div class="table-wrap">
+    <table class="table nb-table">
+      <thead><tr><th scope="col">Neighbour</th><th scope="col">Address</th><th scope="col">Via</th><th scope="col">State</th><th scope="col">Reported</th></tr></thead>
+      <tbody>
+        {%- for r in p.rows %}
+        <tr>
+          <th scope="row">{% if r.managed and r.peer %}<a href="{{ url_for('device_v2.device', name=r.peer) }}">{{ r.peer }}</a>{% else %}<span class="muted">outside management</span>{% endif %}</th>
+          <td class="mono">{{ r.address or r.rid or '—' }}</td>
+          <td>{{ r.via or '—' }}</td>
+          <td>{{ badge(WORD.get(r.state, r.state), KIND.get(r.state, 'muted')) }}{% if r.state in ('up', 'down', 'unexpected') %} <span class="muted">{{ r.words }}</span>{% endif %}</td>
+          <td>{% if r.at_iso %}{{ stamp(r.at_iso) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- endfor %}
+  {%- elif n.configured and not n.errors %}
+  <p class="cov-head">{{ icon('info') }} {% if n.no_intent %}{{ device.hostname }} has no committed intent, so no adjacency is expected of it, and its routing tables report none.{% else %}{{ device.hostname }}'s committed intent implies no OSPF, OSPFv3 or BGP adjacency, and its routing tables report none.{% endif %}</p>
+  {%- endif %}
+  {%- if n.rip %}<p class="muted">{{ device.hostname }} runs RIP, which keeps no neighbour table this page reads.</p>{% endif %}
+  <p class="muted nb-limits">Expected from committed intent (shared subnets and the network statements; BGP's named neighbours). Reported by the device's own routing tables as Prometheus last scraped them; nothing here opens a session to the device. An adjacency is one side's report, and a peer outside management is seen from this side only.</p>
+</section>

@@ -26,7 +26,7 @@ bp = Blueprint("device_v2", __name__, url_prefix="/v2")
 TABS = [("overview", "Overview"), ("intent", "Intent"), ("history", "History"),
         ("monitoring", "Monitoring"), ("logs", "Logs"), ("netbox", "NetBox"),
         ("neighbours", "Neighbours"), ("ask", "Ask the device")]
-BUILT = ("overview", "intent", "history", "monitoring")
+BUILT = ("overview", "intent", "history", "monitoring", "neighbours")
 
 
 def _strict(resp, code=200):
@@ -66,6 +66,11 @@ def _overview_ctx(ref, dev):
     return {"device": dev, "list_name": ref.name, "answer": device_page.answering(dev),
             "records": device_page.records(ref, dev), "checks": device_page.checks(ref, dev),
             "hw": device_page.hardware(ref, dev)}
+
+
+def _neighbours_ctx(ref, dev):
+    from modules import neighbours
+    return {"device": dev, "list_name": ref.name, "n": neighbours.for_device(ref, dev)}
 
 
 def _intent_ctx(ref, dev):
@@ -116,7 +121,8 @@ def device(name):
            "hw": device_page.hardware(ref, dev)}
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
                _intent_ctx(ref, dev) if tab == "intent" else
-               _history_ctx(ref, dev) if tab == "history" else _monitoring_ctx(ref, dev))
+               _history_ctx(ref, dev) if tab == "history" else
+               _neighbours_ctx(ref, dev) if tab == "neighbours" else _monitoring_ctx(ref, dev))
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -223,3 +229,15 @@ def intent(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_intent.html", **_intent_ctx(ref, dev)))
+
+
+@bp.route("/device/<name>/neighbours", methods=["GET"])
+def neighbours(name):
+    """The Neighbours tab (C38): the adjacencies committed intent implies,
+    against what the device reports through Prometheus. Opens no session to
+    the device."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_neighbours.html", **_neighbours_ctx(ref, dev)))

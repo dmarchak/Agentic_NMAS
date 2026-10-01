@@ -498,3 +498,6 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 /* The device page's Intent tab (step 4). */
 .intent-profile { margin: 6px 0; font-size: 13px; }
 .intent-doc { max-height: 520px; }
+/* The device page's Neighbours tab (step 4, C38). */
+.nb-proto { font-size: 14px; margin: 14px 0 4px; }
+.nb-limits { margin-top: 12px; font-size: 12px; }
