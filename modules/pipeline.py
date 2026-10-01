@@ -197,6 +197,10 @@ class PipelineContext:
     #: ip -> what the device actually looked like after a failed push, diffed
     #: against the pre-change snapshot. Populated before any rollback runs.
     failure_state: dict = field(default_factory=dict)
+    #: ip -> the IP SLA operations that same read-back found (recreate.operations),
+    #: so a rollback restores only an operation the push reached. Kept apart
+    #: from failure_state, which the result returns.
+    failure_sla: dict = field(default_factory=dict)
     #: ip -> the exact rollback program sent, reported verbatim.
     rollback_commands: dict = field(default_factory=dict)
     #: ip -> why a rollback could not complete.
@@ -1562,6 +1566,8 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
             post = with_temp_connection(
                 dev, lambda c: c.send_command("show running-config",
                                               read_timeout=timeout))
+            from modules.nsot.recreate import operations as _sla_ops
+            ctx.failure_sla[ip] = _sla_ops(post)
             pre = _load_pre_change_file(ip) or ""
             pre_lines = [l.rstrip() for l in pre.splitlines()]
             post_lines = [l.rstrip() for l in post.splitlines()]
@@ -1642,6 +1648,17 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg, units=(), recreated=()) -> dic
             "detail": "read back: nothing of the push remains"}
 
 
+def _unrestorable_is_incomplete(ctx, ip: str, unrestorable: list) -> None:
+    """A re-created operation whose old definition could not be put back
+    leaves the device NOT back, whatever else the undo did: never drawn as
+    restored or as nothing to undo."""
+    if unrestorable and ctx.rollback_outcome.get(ip, {}).get("state") in (
+            "restored", "nothing_to_undo"):
+        ctx.rollback_outcome[ip] = {
+            "state": "incomplete", "remaining": [f"ip sla {n}" for n in unrestorable],
+            "detail": ctx.rollback_failures.get(ip) or "a re-created operation could not be restored"}
+
+
 def _stage_rollback(ctx: PipelineContext) -> None:
     """
     Restore the pre-change running-config on every device that was successfully pushed.
@@ -1698,9 +1715,31 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             # restoring each OLD definition from the snapshot (delete what is
             # there, put the device's own lines back), never by inverting the
             # program, whose `no ip sla N` has no line-by-line inverse.
-            from modules.nsot.recreate import undo_program
+            from modules.nsot.recreate import moved, operations, undo_program
             pushed = split_pushed(pushed, removal.get("recreate_commands") or [])
             recreated = removal.get("recreates") or []
+            sla_not_undone = []
+            if recreated and ip in ctx.failure_sla:
+                # Undo what LANDED: an operation the device still holds as it
+                # was was never deleted (the push stopped before its
+                # `no ip sla N`), and restoring it would delete and re-create a
+                # running operation nothing touched. With no read-back, every
+                # one is restored, the conservative answer as for additions.
+                reached = moved(recreated, ctx.failure_sla[ip])
+                sla_not_undone = [f"ip sla {u['number']} (never deleted: the push stopped "
+                                  "before it)" for u in recreated if u not in reached]
+                recreated = reached
+            # An operation the live snapshot lacks (deleted by hand after the
+            # capture) cannot be put back from it: named, and never allowed to
+            # stop the rest of the undo.
+            have = operations(pre_cfg)
+            unrestorable = [u["number"] for u in recreated
+                            if not (have.get(u["number"]) or {}).get("body")]
+            recreated = [u for u in recreated if u["number"] not in unrestorable]
+            if unrestorable:
+                ctx.rollback_failures[ip] = (
+                    "not in the pre-change snapshot, so the old definition cannot be put "
+                    "back: " + ", ".join(f"ip sla {n}" for n in unrestorable))
             restore_ops = undo_program(recreated, pre_cfg) if recreated else []
             # What actually reached the device, from the capture that ran
             # moments ago. On a partial push this is not the same as what was
@@ -1710,8 +1749,8 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             landed = state.get("landed") if state.get("landed") is not None else None
             undo = rollback_commands(pushed, pre_cfg, landed=landed)
             _applied, rejected = landed_leaves(pushed, landed)
-            if rejected:
-                ctx.rollback_not_undone[ip] = [e.line for e in rejected]
+            if rejected or sla_not_undone:
+                ctx.rollback_not_undone[ip] = [e.line for e in rejected] + sla_not_undone
                 log.info("pipeline[rollback]: %s — %d line(s) not undone, never "
                          "applied: %s", hostname, len(rejected),
                          [e.line for e in rejected])
@@ -1728,6 +1767,7 @@ def _stage_rollback(ctx: PipelineContext) -> None:
                 log.info("pipeline[rollback]: %s — nothing to undo", hostname)
                 ctx.rollback_outcome[ip] = {"state": "nothing_to_undo", "remaining": [],
                                             "detail": ROLLBACK_STATES["nothing_to_undo"]}
+                _unrestorable_is_incomplete(ctx, ip, unrestorable)
                 continue
 
             # Rollback is EXEMPT from the dangerous-command gate, structurally:
@@ -1752,6 +1792,7 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             # Sent is not restored: read it back.
             ctx.rollback_outcome[ip] = _rollback_readback(
                 ctx, dev, pushed, pre_cfg, removal.get("units") or [], recreated)
+            _unrestorable_is_incomplete(ctx, ip, unrestorable)
             if ctx.rollback_outcome[ip]["state"] != "restored":
                 log.error("pipeline[rollback]: %s NOT confirmed restored: %s", hostname,
                           ctx.rollback_outcome[ip]["detail"])

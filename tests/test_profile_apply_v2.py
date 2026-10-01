@@ -151,6 +151,28 @@ class TestTheConfirm:
         assert "2 of 2 device(s) deployed" in frag and "every device in the batch appears here" in frag
         assert "hx-trigger" not in frag, "a finished batch listens for nothing"
 
+    def test_the_golden_commit_names_the_person_who_confirmed(self, ready, monkeypatch):
+        """The review's finding, 2026-10-01: the job thread has no request, so
+        `request_actor()` there reads `unauthenticated`, and the batch's golden
+        commit named nobody while the receipts named the person. The actor
+        the confirm verified is carried into the commit."""
+        import routes.deploy as rd
+        from modules import identity
+        from modules.nsot import capture_job
+        self._spy(monkeypatch)
+        committed = []
+        monkeypatch.setattr(rd, "_commit_batch_golden",
+                            lambda ln, report, **kw: committed.append(kw.get("actor")) or {})
+        seen = []
+        real = identity.request_actor
+        monkeypatch.setattr(identity, "request_actor", lambda: seen.append(real()) or seen[-1])
+        _r, page = _page(ready, devices=("r6",))
+        out = _confirm(ready, _body(page)).get_json()
+        assert capture_job.wait(out["job"], 20)
+        person = seen[0]
+        assert person and person != "unauthenticated", seen
+        assert committed == [person], (committed, person)
+
     def test_while_it_runs_each_device_reads_where_the_batch_is(self, ready, monkeypatch):
         from modules.nsot import capture_job
         gate = threading.Event()
@@ -185,6 +207,11 @@ class TestTheConfirm:
         assert reached == [("r2", "profile")]
         _rr, frag = _get(ready, out["url"])
         assert "the exact command list changed since you confirmed" in frag
+        # Its progress row reads refused, never "not reached" (the breaker's
+        # words): the review's finding, 2026-10-01.
+        from modules import deploy_job
+        steps = {s["device"]: s for s in deploy_job.state(out["job"])["steps"]}
+        assert steps["r6"]["state"] == "done" and steps["r6"]["outcome"] == "refused", steps["r6"]
 
     def test_the_confirm_refuses_what_carries_nothing(self, ready):
         r = _confirm(ready, {"order": ["r6"], "confirmations": {"r6": "x"},

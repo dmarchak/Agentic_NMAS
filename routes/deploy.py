@@ -670,7 +670,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             _merge_refusals(report, refused)
 
         report["golden"] = _commit_batch_golden(
-            list_name, report, **({"label": "after the monitoring profile was applied"} if scope else {}))
+            list_name, report, actor=actor or "",
+            **({"label": "after the monitoring profile was applied"} if scope else {}))
         report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
                                              command_hashes, actor=actor,
                                              actor_kind=actor_kind)
@@ -1239,7 +1240,7 @@ def _write_restored_intent(list_name: str, report: dict,
 
 
 def _commit_batch_golden(list_name: str, report: dict, label: str = "",
-                         source_ref: str = "") -> dict:
+                         source_ref: str = "", actor: str = "") -> dict:
     """One commit for the batch, naming exactly the devices that succeeded.
 
     A batch is an event, and the record should say so. Three per-device commits
@@ -1317,7 +1318,10 @@ def _commit_batch_golden(list_name: str, report: dict, label: str = "",
     # ("no commit carries Source: restore") held whether or not a restore
     # had ever run: a lookup that could not miss.
     result = save_golden(list_name, items, source="restore" if source_ref else "pipeline",
-                         actor=request_actor(),
+                         # The person carried in by a job (deploy_job): outside a
+                         # request `request_actor()` reads `unauthenticated`, and
+                         # the commit would record nobody behind the deploy.
+                         actor=actor or request_actor(),
                          message=subject, pipeline_id=batch_id,
                          baseline=earned["baseline"], allow_new=False,
                          baseline_reasons=(None if earned["baseline"]

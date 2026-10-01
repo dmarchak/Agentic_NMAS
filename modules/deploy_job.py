@@ -84,6 +84,18 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
                                  command_hashes, authorise=authorise, remove=remove,
                                  scope=scope, actor=actor, actor_kind=actor_kind,
                                  on_device=on_device)
+        # A device refused at apply (its program moved) or skipped as drifted
+        # never reaches the batch's own loop, so no event names it: it is
+        # recorded from the report, or its row would read "not reached", the
+        # circuit breaker's words, for a refusal.
+        with _lock:
+            p = _progress.get(job_id)
+            for r in (report.get("results") or []) if p is not None else []:
+                name = r.get("device")
+                if name in p["order"] and name not in p["done"]:
+                    p["done"][name] = {"outcome": r.get("outcome", ""),
+                                       "stage": r.get("stage", ""),
+                                       "reason": r.get("reason", ""), "took_s": 0}
         return mask_payload({"ok": True, "list": list_name, **report})
 
     job = capture_job.start(list_name, label, actor, work, kind=KIND,

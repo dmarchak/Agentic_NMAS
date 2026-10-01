@@ -387,6 +387,95 @@ class TestRollbackRestoresTheOldDefinition:
         assert sent == [UNDO]
         assert ctx.rollback_outcome["192.0.2.31"]["state"] == "restored"
 
+    # The review's finding (2026-10-01): the undo is what LANDED. The failure
+    # capture's read-back (kept as parsed operations, `failure_sla`) decides
+    # which re-created operations the push reached.
+    def _with_failure_read(self, monkeypatch, device_now, pre=S3):
+        import modules.ai_assistant as A
+        import modules.connection as C
+        import modules.pipeline as P
+        from modules.nsot.recreate import operations
+        ctx = _ctx()
+        ctx.push_results = {"192.0.2.31": {"ok": False}}
+        ctx.confirmed_commands = {"192.0.2.31": list(PROGRAM)}
+        ctx.removals = {"192.0.2.31": {"units": [], "commands": [], "recreates": _units(),
+                                     "recreate_commands": list(PROGRAM)}}
+        if device_now is not None:
+            ctx.failure_state = {"192.0.2.31": {"landed": [], "lost": []}}
+            ctx.failure_sla = {"192.0.2.31": operations(device_now)}
+        sent = []
+        monkeypatch.setattr(A, "_load_pre_change_file", lambda ip: pre)
+        monkeypatch.setattr(C, "get_persistent_connection", lambda *a: object())
+        monkeypatch.setattr(P, "_restore_config", lambda conn, cmds: sent.append(list(cmds)))
+
+        def temp(dev, func):
+            class _Back:
+                def send_command(self, _c, read_timeout=None):
+                    return pre
+            return func(_Back())
+        monkeypatch.setattr(C, "with_temp_connection", temp)
+        P._stage_rollback(ctx)
+        return ctx, sent
+
+    def test_the_failure_capture_keeps_the_operations_apart_from_its_result(self, monkeypatch):
+        """The seam: the read-back after a failed push records the device's
+        IP SLA operations where the rollback reads them, and not in the
+        failure state the result returns."""
+        import modules.ai_assistant as A
+        import modules.connection as C
+        import modules.pipeline as P
+        ctx = _ctx()
+        ctx.push_results = {"192.0.2.31": {"ok": False}}
+        monkeypatch.setattr(A, "_load_pre_change_file", lambda ip: S3)
+        monkeypatch.setattr(C, "close_persistent_connection", lambda *a, **k: None)
+
+        def temp(dev, func):
+            class _Back:
+                def send_command(self, _c, read_timeout=None):
+                    return SIXTY
+            return func(_Back())
+        monkeypatch.setattr(C, "with_temp_connection", temp)
+        P._capture_failure_state(ctx)
+        ops = ctx.failure_sla["192.0.2.31"]
+        assert any("frequency 60" in l for l in ops["1"]["body"]), ops
+        assert "ip_sla" not in str(ctx.failure_state) and "failure_sla" not in ctx.failure_state.get(
+            "192.0.2.31", {})
+
+    def test_an_operation_the_push_never_reached_is_left_alone(self, monkeypatch):
+        """The push stopped before `no ip sla 1`: the device still runs the old
+        definition, so restoring it would delete and re-create a running
+        operation nothing touched."""
+        ctx, sent = self._with_failure_read(monkeypatch, device_now=S3)
+        assert sent == []
+        assert ctx.rollback_outcome["192.0.2.31"]["state"] == "nothing_to_undo"
+        assert any("ip sla 1 (never deleted" in x for x in ctx.rollback_not_undone["192.0.2.31"])
+
+    def test_an_operation_the_push_reached_is_restored(self, monkeypatch):
+        ctx, sent = self._with_failure_read(monkeypatch, device_now=SIXTY)
+        assert sent == [UNDO]
+
+    def test_deleted_and_not_re_created_is_restored(self, monkeypatch):
+        ctx, sent = self._with_failure_read(monkeypatch, device_now=_without_sla_1(S3))
+        assert sent == [UNDO]
+
+    def test_no_read_back_restores_every_one(self, monkeypatch):
+        """The conservative answer, as for additions."""
+        _ctx_, sent = self._with_failure_read(monkeypatch, device_now=None)
+        assert sent == [UNDO]
+
+    def test_a_snapshot_without_the_operation_is_named_never_a_crash(self, monkeypatch):
+        ctx, sent = self._with_failure_read(monkeypatch, device_now=SIXTY,
+                                            pre=_without_sla_1(S3))
+        assert "ip sla 1" in ctx.rollback_failures["192.0.2.31"]
+        assert "cannot be put back" in ctx.rollback_failures["192.0.2.31"]
+        assert all("no ip sla 1" not in c for cmds in sent for c in cmds)
+        # The rest of the undo went on (the control: stopping on it reads
+        # "failed"), and the device is never drawn as back: "incomplete",
+        # naming the operation, never "nothing to undo" or "restored".
+        out = ctx.rollback_outcome["192.0.2.31"]
+        assert out["state"] == "incomplete" and out["remaining"] == ["ip sla 1"], out
+        assert ctx.final_status == "rollback_failed"
+
     def test_still_the_new_definition_after_the_undo_is_incomplete(self, monkeypatch):
         ctx, _sent = self._run(monkeypatch, readback=SIXTY)
         out = ctx.rollback_outcome["192.0.2.31"]
@@ -443,3 +532,21 @@ class TestOneComputation:
                     if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "merge_commands":
                         calls.append(f"{name}:{fn.name}")
         assert calls == ["deploy.py:_program"], calls
+
+
+def _without_sla_1(config: str) -> str:
+    """*config* with `ip sla 1`'s stanza and its schedule removed (a minimal
+    edit of s3's REAL config: the operation deleted, nothing else moved)."""
+    out, skip = [], False
+    for line in config.splitlines():
+        if line.rstrip() == "ip sla 1":
+            skip = True
+            continue
+        if skip and line.startswith(" "):
+            continue
+        skip = False
+        if line.startswith("ip sla schedule 1 "):
+            continue
+        out.append(line)
+    assert "ip sla 1" not in out
+    return "\n".join(out) + "\n"

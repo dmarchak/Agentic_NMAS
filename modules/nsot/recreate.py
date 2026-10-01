@@ -169,11 +169,24 @@ def undo_program(units: list, pre_config: str) -> list:
     return commands
 
 
+def moved(units: list, ops: dict) -> list:
+    """The units whose operation, in the parsed *ops* (``operations()`` of a
+    read-back), is no longer its OLD definition: the ones the push reached,
+    so the ones a rollback must restore. One the device still holds as it was
+    was never deleted, and restoring it would delete and re-create a running
+    operation the push never touched (its counters and history reset)."""
+    off = {u["number"] for u in _unmatched_ops(units, ops, "old")}
+    return [u for u in units or [] if u["number"] in off]
+
+
 def unmatched(units: list, config: str, side: str) -> list:
     """The units whose operation *config* does not show as their *side*
     (``new`` after the change, ``old`` after a rollback), each with what it
     shows instead."""
-    now = operations(config)
+    return _unmatched_ops(units, operations(config), side)
+
+
+def _unmatched_ops(units: list, now: dict, side: str) -> list:
     out = []
     for u in units or []:
         n, want = u["number"], u[side]
