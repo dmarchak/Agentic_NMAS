@@ -178,6 +178,8 @@ GATES = {
                                     "capture preview; records nothing"),
     "golden.migrate_plan": _g(N, "a dry run"),
     "onboard.plan": _g(N, "builds a plan; creates nothing"),
+    "onboard.verify_preview": _g(N, "reads the pending device and computes what Verify would "
+                                    "send (P.9 step c); sends nothing"),
     "templatize.bulk_preview": _g(N, "computes a preview; writes nothing"),
     "templatize.preview_committed_edit": _g(N, "renders an edit; writes nothing"),
     "retire.preview": _g(N, "computes the retire plan and reads the export log; writes nothing"),

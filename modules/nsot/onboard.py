@@ -2545,7 +2545,9 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
 #: `promoted` is therefore not a state a partial run can reach. See
 #: `test_onboard_phase_two.py`, whose control moves promotion earlier and
 #: asserts the suite notices.
-PHASE_TWO_STEPS = ("verify", "capture", "rotate", "remove_rw", "persist",
+#: The monitoring profile is sent after the RW removal and before the save
+#: and the first golden (P.9 step c), so the first golden records it.
+PHASE_TWO_STEPS = ("verify", "capture", "rotate", "remove_rw", "profile", "persist",
                    "golden", "netbox", "promote")
 
 
@@ -2585,6 +2587,122 @@ def capture_config(mgmt_ip: str, username: str, password: str, secret: str,
             f"the capture was {len(config.splitlines())} lines — that is a "
             f"failed read, not a configuration")}
     return {"ok": True, "config": config, "error": ""}
+
+
+def _phase_two_fingerprint(config: str, profile: dict, rw_remove: list) -> str:
+    """What Verify's confirm is bound to (P.9 step c): the capture the plan
+    read, the profile's program computed from it, and the RW lines it
+    removes. Recomputed from the capture phase 2 takes, so a device or a
+    profile that moved since the preview sends nothing."""
+    import hashlib
+
+    h = hashlib.sha256()
+    for part in (hashlib.sha256((config or "").encode()).hexdigest(),
+                 (profile or {}).get("fingerprint") or "no-profile-program",
+                 "\n".join(rw_remove or [])):
+        h.update(part.encode())
+        h.update(b"\0")
+    return h.hexdigest()[:16]
+
+
+def _profile_for(repo: str, list_name: str, hostname: str, entry: dict, config: str) -> dict:
+    from modules.nsot import profile_apply
+
+    return profile_apply.for_capture(list_name, hostname, entry.get("platform", ""),
+                                     entry.get("role", ""), config, repo=repo)
+
+
+def phase_two_plan(repo: str, hostname: str, list_name: str, *, online=None, reach=None,
+                   capture=None) -> dict:
+    """VERIFY'S PREVIEW (P.9 step c; the operator's decision 1, 2026-09-30:
+    "Verify becomes a preview and a confirm, because phase 2 now sends a
+    program"). It READS the device, as Verify always has, and sends nothing:
+    it reaches it, captures it with the staged credential, and computes what
+    phase 2 would send, which is the RW removal and the network's monitoring
+    profile (`profile_apply.for_capture`). The rotation's program is the
+    rotation's own, its password never shown.
+
+    ``{"ok", "reason", "verify", "mgmt_ip", "platform", "role", "rw",
+    "profile", "fingerprint"}``. ``profile`` carries the masked program and
+    never the truthful one; the fingerprint is what Verify's confirm sends
+    back. One device, one capture: synchronous, like the persist preview."""
+    from modules.nsot import manifest as _m
+    from modules.redact import redact_positional
+
+    out = {"ok": False, "device": hostname, "list": list_name, "reason": ""}
+    identity, entry = _m.find_by_name(repo, hostname)
+    if not identity:
+        out["reason"] = f"'{hostname}' is not in this list's manifest"
+        return out
+    if entry.get("verified_at"):
+        out["reason"] = f"'{hostname}' is already promoted: phase 2 has run for it"
+        return out
+    if not entry.get("onboarded_at"):
+        # Refused before anything is reached: Verify is onboarding's phase 2,
+        # and a managed device is changed through the deploy path.
+        out["reason"] = (f"'{hostname}' is not being onboarded: Verify is phase 2 of "
+                         "onboarding, and nothing was reached")
+        return out
+    platform = entry.get("platform", "")
+    try:
+        from modules.nsot.platform import netmiko_type_for_dialect
+
+        device_type = netmiko_type_for_dialect(platform)
+    except Exception as exc:                   # noqa: BLE001
+        out["reason"] = f"no Netmiko driver for '{platform}': {exc}"
+        return out
+    seen = verify_device(repo, hostname, list_name, mgmt_ip=entry.get("mgmt_ip", ""),
+                         device_type=device_type, online=online, reach=reach)
+    out["verify"] = seen
+    if not seen.get("answered"):
+        out["reason"] = seen.get("error") or "the device did not answer"
+        return out
+    mgmt_ip = seen.get("mgmt_ip") or entry.get("mgmt_ip", "")
+    from modules import credentials
+
+    found = credentials.resolve(mgmt_ip) or {}
+    cap = (capture or capture_config)(mgmt_ip, found.get("username", "admin"),
+                                      found.get("password", ""), found.get("secret", ""),
+                                      device_type)
+    if not cap.get("ok"):
+        out["reason"] = cap.get("error") or "the capture failed"
+        return out
+    config = cap["config"]
+    rw = rw_removal_plan(config)
+    prof = _profile_for(repo, list_name, hostname, entry, config)
+    out.update(ok=True, mgmt_ip=mgmt_ip, platform=platform, role=entry.get("role", ""),
+               capture_lines=len(config.splitlines()),
+               rw={"remove": [redact_positional(l) for l in rw["remove"]],
+                   "keep": len(rw["keep"])},
+               profile={k: v for k, v in prof.items() if k != "commands"},
+               fingerprint=_phase_two_fingerprint(config, prof, rw["remove"]))
+    return out
+
+
+def send_profile_program(mgmt_ip: str, username: str, password: str, secret: str,
+                         device_type: str, commands: list) -> dict:
+    """Send the confirmed profile program, once, on its own session. Its
+    errors are read with the deploy's pattern, so a rejected line is a failed
+    step, never a success. ``{"ok", "error"}``."""
+    from modules.connection import connection_params
+    from modules.pipeline import IOS_ERROR_PATTERN
+
+    try:
+        from modules.connection import open_ssh
+
+        conn = open_ssh(connection_params(
+            {"device_type": device_type, "ip": mgmt_ip, "username": username},
+            password=password, secret=secret), owner="onboard:profile")
+        try:
+            conn.enable()
+            conn.send_config_set(commands, read_timeout=_read_timeout(),
+                                 error_pattern=IOS_ERROR_PATTERN)
+        finally:
+            conn.disconnect()
+    except Exception as exc:                   # noqa: BLE001
+        log.error("phase2: the profile program failed for %s: %s", mgmt_ip, exc)
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "error": ""}
 
 
 def _credential_form(line: str) -> str:
@@ -2787,7 +2905,8 @@ def _holds_the_device(func):
 def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
                   actor_kind: str = "", online=None, reach=None,
                   capture=None, rotate=None, remove_rw=None, persist=None,
-                  save=None, netbox=None, promote=None) -> dict:
+                  save=None, netbox=None, promote=None, confirmed: str = None,
+                  send_profile=None) -> dict:
     """Finish onboarding a pending device. **`ok` means all of it.**
 
     Returns ``{"ok", "steps", "remaining", "reason", ...}`` with one entry
@@ -2923,6 +3042,20 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
         return _stop("capture", cap.get("error") or "the capture failed")
     config = cap["config"]
 
+    # WHAT WAS CONFIRMED (P.9 step c): the preview's fingerprint, recomputed
+    # from THIS capture. A device or a profile that moved since the preview
+    # sends nothing at all, not even the rotation. With no confirmation (a
+    # caller that never previewed) the profile is not sent, and says so.
+    profile = _profile_for(repo, list_name, hostname, entry, config)
+    result["profile_plan"] = {k: v for k, v in profile.items() if k != "commands"}
+    if confirmed is not None:
+        now = _phase_two_fingerprint(config, profile, rw_removal_plan(config)["remove"])
+        if now != confirmed:
+            return _stop("rotate", (
+                f"the device or the monitoring profile changed since the preview "
+                f"(confirmed {confirmed}, now {now}): nothing was sent. Preview "
+                f"Verify again"))
+
     # ---- 3. rotate, and record in the same act ---------------------------
     # A DEVICE DICT CARRIES ITS CREDENTIALS FERNET-ENCRYPTED, like a CSV row.
     #
@@ -2998,6 +3131,42 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
                  f"{len(rw.get('removed') or [])} removed, "
                  f"{len(rw.get('kept') or [])} kept"):
         return _stop("remove_rw", rw.get("error") or "the removal failed")
+
+    # ---- 4a. the network's monitoring profile (P.9 step c) ------------------
+    # Sent here, after the RW removal and before the save and the first
+    # golden, so the device is monitored at promotion and its first golden
+    # records it. Read back: a line that did not land fails the step.
+    if confirmed is None:
+        _step("profile", True, "not sent: Verify was not previewed, so no profile program "
+                               "was confirmed. Apply it from the device's page")
+    elif not profile.get("applies"):
+        _step("profile", True, "not sent: " + (profile.get("why") or "it does not apply"))
+    elif not profile.get("commands"):
+        _step("profile", True, profile.get("why") or "already holds every profile line")
+    else:
+        sent = (send_profile or send_profile_program)(mgmt_ip, user, pw, sec, device_type,
+                                                      profile["commands"])
+        result["profile"] = {"sent": len(profile["commands"]), "error": sent.get("error", "")}
+        if not sent.get("ok"):
+            _step("profile", False, sent.get("error") or "the profile program failed")
+            return _stop("profile", (
+                f"the monitoring profile was not applied ({sent.get('error') or 'no reason'}). "
+                "The credential is rotated and recorded, and the device is still pending: "
+                "Verify again re-plans and sends what is missing"))
+        back = (capture or capture_config)(mgmt_ip, user, pw, sec, device_type)
+        left = (_profile_for(repo, list_name, hostname, entry, back["config"]).get("masked")
+                if back.get("ok") else None)
+        if left is None:
+            _step("profile", False, "sent, and the device could not be read back: "
+                                    + (back.get("error") or "no reason"))
+            return _stop("profile", "the profile's lines could not be read back, so whether "
+                                    "they landed is unknown: Verify again re-plans")
+        left = [l for l in left if l.strip() != "exit"]
+        if left:
+            _step("profile", False, "not every line landed: " + "; ".join(left[:3]))
+            return _stop("profile", "the device does not hold every profile line it was sent: "
+                                    + "; ".join(left[:3]))
+        _step("profile", True, f"{len(profile['commands'])} line(s) sent and read back")
 
     # ---- 4b. persist ON THE DEVICE, after both changes phase 2 makes -----
     # PROMOTION MUST NOT REPORT SUCCESS UNTIL THE DEVICE'S OWN STARTUP CONFIG

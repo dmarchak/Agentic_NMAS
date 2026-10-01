@@ -101,6 +101,132 @@ def by_section(sections: dict, render_with, own_render: str) -> dict:
     return out
 
 
+def for_capture(list_name: str, hostname: str, platform: str, role: str, capture: str,
+                *, repo: str = "", doc=None) -> dict:
+    """THE PROFILE FOR A DEVICE WITH NO INTENT YET (P.9 step c): onboarding's
+    phase 2 and adopt, which reach a device whose committed intent is
+    onboarding's bootstrap or nothing. Computed from the device's CAPTURE,
+    the way `template_report` measures a template: its own parse rendered
+    alone, and rendered with the profile; the profile's missing lines are
+    what `scoped()` keeps.
+
+    ``{"applies", "why", "commands", "masked", "to_send", "in_place",
+    "by_section", "sources", "template", "fingerprint"}``. ``commands`` is the
+    TRUTHFUL program (the profile's secrets resolved, in memory): a caller
+    returns ``masked`` and the fingerprint, never it. ``applies`` False is
+    not an error: ``why`` says what was not done and what to do, and the
+    device is onboarded without it (the coverage row and Apply remain).
+
+    Refuses to guess: a template that does not reproduce the device as it
+    is, a profile secret with no stored value and a scope the device's own
+    stanzas would carry each leave ``applies`` False, naming why."""
+    import hashlib
+    import os
+
+    from modules import credentials
+    from modules.nsot import profile as _profile, roundtrip, templates_repo
+    from modules.nsot.deploy import assert_sendable, command_fingerprint, merge_commands, \
+        render_for_deploy
+    from modules.nsot.parsers import get_parser
+    from modules.redact import redact_positional
+
+    out = {"applies": False, "why": "", "commands": [], "masked": [], "to_send": [],
+           "in_place": [], "by_section": {}, "sources": {}, "template": {},
+           "fingerprint": ""}
+    if not repo:
+        from modules.config import get_list_data_dir
+        repo = os.path.join(get_list_data_dir(list_name), "config_repo")
+    if doc is None:
+        doc = _profile.read_committed(repo)
+    if not doc:
+        out["why"] = (f"{list_name} has no committed monitoring profile, so there is nothing "
+                      "to apply: propose the network's profile, then apply it from the "
+                      "device's page")
+        return out
+    own = get_parser(platform).parse(capture or "")
+    sections = _profile.sections_for(doc, platform, role, own)
+    if not sections:
+        out["why"] = (f"no section of {list_name}'s monitoring profile applies to "
+                      f"{hostname} (platform {platform}, role {role or 'none'})")
+        return out
+    src = templates_repo.render_source(repo, hostname, platform)
+    out["template"] = {"template": src["template"], "from": src["from"]}
+
+    def render(doc_):
+        return render_for_deploy(doc_, platform, template_root=src["root"],
+                                 template_name=src["name"])
+
+    own_render = render(own)
+    rep = roundtrip.compare(capture, own_render, own)
+    gaps = [f"{rep[k]} {words}" for k, words in (
+        ("missing_from_render", "line(s) it does not reproduce"),
+        ("extra_in_render", "line(s) it invents"),
+        ("reordered_sections", "section(s) it reorders")) if rep.get(k)]
+    if gaps:
+        out["why"] = (f"the template {src['template']} does not reproduce {hostname} as it is ("
+                      + ", ".join(gaps) + "), so a program computed from it is not trusted: "
+                      "seed its intent once it is managed, then apply the profile from its page")
+        return out
+
+    values, missing = {}, []
+    for ref in sorted(set().union(*(_profile.secret_refs(d) for d in sections.values()))):
+        value = (credentials.get_template_secret(
+                     credentials.template_secret_key(list_name, hostname, ref))
+                 or credentials.get_template_secret(credentials.profile_secret_key(list_name, ref)))
+        if value:
+            values[ref] = value
+        else:
+            missing.append(ref)
+    if missing:
+        out["why"] = (f"the profile names secret(s) with no stored value: {', '.join(missing)}; "
+                      "propose the profile again to store the network's value")
+        return out
+
+    def with_profile(doc_):
+        eff = _profile.effective(own, doc_, platform, role)
+        eff["secrets"] = {**(own.get("secrets") or {}), **values}
+        return render(eff)
+
+    try:
+        sc = scoped(with_profile(doc), own_render, capture)
+    except ScopeRefused as exc:
+        out["why"] = str(exc)
+        return out
+    commands = merge_commands(sc["config"], capture)
+    if commands:
+        assert_sendable(commands)
+
+    def render_with(secs):
+        return with_profile({"version": doc.get("version"),
+                             "sections": {k: doc["sections"][k] for k in secs}})
+
+    def _masked_rows(rows):
+        return [{"chain": [redact_positional(c) for c in r["chain"]],
+                 "line": redact_positional(r["line"])} for r in rows]
+
+    # Lines the parser does not model are left alone by this program (it sends
+    # only the profile's lines), so they never block it; they are NAMED, masked,
+    # because a monitoring line in a form the parser does not model is one the
+    # profile's line will sit beside.
+    out["unmodeled"] = [redact_positional(u.get("line", "")) for u in own.get("unmodeled") or []]
+    out.update({
+        "applies": True, "commands": commands,
+        "masked": [redact_positional(c) for c in commands],
+        # Masked: the caller returns these, and a community sits in a line.
+        "to_send": _masked_rows(sc["to_send"]), "in_place": _masked_rows(sc["in_place"]),
+        "by_section": {k: [{"chain": list(c), "line": redact_positional(l)} for c, l in rows]
+                       for k, rows in by_section(sections, render_with, own_render).items()},
+        "sources": {k: (doc["sections"][k].get("source") or "") for k in sections},
+        "capture_hash": hashlib.sha256((capture or "").encode()).hexdigest()[:16],
+    })
+    # Bound to the program AND the capture it was computed against, so a
+    # device that moved, or a profile that changed, refuses the confirm.
+    out["fingerprint"] = command_fingerprint(commands + ["#capture " + out["capture_hash"]])
+    if not commands:
+        out["why"] = f"{hostname} already holds every line the profile supplies"
+    return out
+
+
 def superseded(profile_lines: list, removable: list) -> list:
     """The removable lines on the device that the profile SUPERSEDES: a line of
     the same measured removal shape as one the profile supplies (an old

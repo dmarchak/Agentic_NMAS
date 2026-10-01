@@ -275,6 +275,7 @@ HELD_BY_CALLER = {
                                              "every target for the run (acquire_many)",
     "modules/pipeline.py:_restore_config": "the deploy and restore applies (acquire_many)",
     "modules/nsot/onboard.py:remove_rw_communities": "run_phase_two (@_holds_the_device)",
+    "modules/nsot/onboard.py:send_profile_program": "run_phase_two (@_holds_the_device)",
     # C203, fixed 2026-09-29: credential_rotation.persist() holds the device
     # itself now, so the CLI rotation's save is held as well.
     "modules/nsot/onboard.py:persist_on_device": (

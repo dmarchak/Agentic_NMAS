@@ -53,8 +53,15 @@ derives each section from its connector's settings:
 The fleet is then the CROSS-CHECK. A device holding another version is named with what it
 gains and what it keeps (its own value wins), and a device whose own stored secret differs is
 named (values never shown). A section whose connector is empty falls back to what the fleet
-agrees on, and its basis says so. CDP has no connector. Not built yet: the batch Apply from the
-coverage view, and adopt and onboarding applying it ((c) and (d)).
+agrees on, and its basis says so. CDP has no connector. **Onboarding applies it (step (c),
+2026-10-01):** Verify is a preview and a confirm. The preview reads the pending device and
+computes the profile's program from its CAPTURE (`profile_apply.for_capture`: its own parse
+rendered alone and with the profile, since its intent is only the bootstrap); phase 2 recomputes
+the fingerprint from its own capture, sends nothing at all if it moved, sends the program after
+the RW removal and before the save and the first golden, and reads it back. A template that does
+not reproduce the device sends no profile and says so (the device is onboarded, and Apply
+remains); a line the parser does not model is named and never blocks, since the program never
+touches it. Not built yet: adopt applying it, and the batch Apply from the coverage view.
 
 **Each section names the connector it is derived from,** and is ABSENT while that
 connector is not configured. "Configure a connector, and devices get the matching config"

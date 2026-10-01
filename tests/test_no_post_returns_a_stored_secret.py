@@ -94,6 +94,9 @@ def _bodies(v):
         "onboard.plan": (200, ("json", {"list_name": LIST, "hostname": "r8",
                                         "platform": "cisco_ios"}),
                          "a plan for a new device; creates nothing"),
+        "onboard.verify_preview": (409, ("json", {"list_name": LIST}),
+                                   "r1 is managed, never onboarded: refused by name before "
+                                   "anything is reached"),
         "remote.verify": (200, ("json", {}),
                           "no remote configured: a configured one would start ssh, which the "
                           "harness refuses and counts as a failure; the remote is an alias "

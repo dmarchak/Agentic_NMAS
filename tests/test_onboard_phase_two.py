@@ -121,7 +121,7 @@ class TestEveryStepIsReportedAndOkMeansAllOfIt:
         assert out["ok"] is False
         assert out["reason"] == "the device refused"
         not_run = {r["step"] for r in out["steps"] if r["detail"] == "did not run"}
-        assert not_run == {"remove_rw", "persist", "golden", "netbox", "promote"}, not_run
+        assert not_run == {"remove_rw", "profile", "persist", "golden", "netbox", "promote"}, not_run
         assert {r["step"] for r in out["remaining"]} == not_run
 
     def test_ok_is_false_if_any_step_is_false(self, world):

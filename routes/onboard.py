@@ -315,18 +315,50 @@ def verify(hostname):
         list_name = _target_list(data, "verify")
     except NoTargetList as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # Verify is a preview and a confirm (P.9 step c): phase 2 sends a program
+    # (the RW removal and the monitoring profile), and a program nobody was
+    # shown is what the confirm exists to prevent.
+    fingerprint = (data.get("fingerprint") or "").strip()
+    if not fingerprint:
+        return jsonify({"ok": False, "error": (
+            "Verify confirms what its preview showed, and no preview fingerprint was "
+            "sent: open Verify's preview first")}), 400
 
     from modules.nsot.onboard import run_phase_two
 
     repo = _repo_for(list_name)
     try:
         out = run_phase_two(repo, hostname, list_name, actor=ident.actor,
-                            actor_kind=ident.kind)
+                            actor_kind=ident.kind, confirmed=fingerprint)
     except Exception as exc:                   # noqa: BLE001
         log.exception("onboard: verify failed for %r", hostname)
         out = {"ok": False, "reason": f"phase 2 raised: {exc}", "steps": []}
     return jsonify(_recorded_run(repo, "verify", list_name, hostname, ident.actor, out)), \
         (200 if out.get("ok") else 409)
+
+
+@bp.route("/verify/<hostname>/preview", methods=["POST"])
+def verify_preview(hostname):
+    """Verify's preview (P.9 step c): reach the device, read it, and show what
+    phase 2 will send (the RW removal and the network's monitoring profile,
+    masked) with the fingerprint Verify's confirm sends back. Sends nothing."""
+    data = request.get_json(silent=True) or {}
+    try:
+        list_name = _target_list(data, "verify")
+    except NoTargetList as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    from modules import outbound, preview_confirm
+    from modules.nsot.onboard import phase_two_plan
+
+    plan = phase_two_plan(_repo_for(list_name), hostname, list_name)
+    if not plan.get("ok"):
+        seen = plan.get("verify") or {}
+        return jsonify(outbound.mask_payload({
+            "ok": False, "error": plan.get("reason") or "the preview could not be made",
+            "state": seen.get("state", ""), "causes": seen.get("causes") or []})), 409
+    return jsonify(outbound.mask_payload({
+        "ok": True, "preview": preview_confirm.onboard_verify_preview(
+            plan, preview_confirm.confirm_part(request))}))
 
 
 @bp.route("/abandon/<hostname>", methods=["POST"])

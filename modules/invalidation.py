@@ -235,6 +235,8 @@ DECLARED = {
                                       "job ANNOUNCES capture_preview when it finishes "
                                       "(ANNOUNCERS, C188)"),
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
+    "onboard.verify_preview": Nothing("reads one device and computes what Verify would send; "
+                                      "it writes nothing"),
     "golden.restore_preview": Nothing("a preview computes the program a restore would send"),
     "golden.migrate_plan": Nothing("the migration's dry run; it writes nothing by design"),
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),

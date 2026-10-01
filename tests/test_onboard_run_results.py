@@ -91,7 +91,7 @@ class TestTheRoutesDrawFromTheRecordedRow:
                             lambda repo, host, lst, **k: {
                                 "ok": False, "reason": "the capture timed out",
                                 "mgmt_ip": "192.0.2.7", "steps": _steps(1)})
-        r = _client().post("/onboard/verify/r7", json={"list_name": "probe"})
+        r = _client().post("/onboard/verify/r7", json={"list_name": "probe", "fingerprint": "f"})
         assert r.status_code == 409
         d = r.get_json()
         rows = read_runs(str(lab / "probe" / "config_repo"))["rows"]
@@ -110,7 +110,7 @@ class TestTheRoutesDrawFromTheRecordedRow:
         # without the failure ever happening.
         monkeypatch.setattr("modules.nsot.onboard.runs_path",
                             lambda repo: str(lab / "probe"))
-        d = _client().post("/onboard/verify/r7", json={"list_name": "probe"}).get_json()
+        d = _client().post("/onboard/verify/r7", json={"list_name": "probe", "fingerprint": "f"}).get_json()
         assert d["result"]["record"]["statement"].startswith("THE RUN RECORD WAS NOT WRITTEN")
 
     def test_an_abandon_is_recorded_and_a_dry_run_is_not(self, lab, monkeypatch):

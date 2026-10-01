@@ -3963,7 +3963,7 @@ per-list rules and targets, and 7.3 embeds per-list monitoring. The
 NetBox question in (1) is the operator's to answer first, because six keys and
 the inventory adapter move with it.
 
-### P.9 — The monitoring profile (DESIGNED and DECIDED 2026-09-30; steps (a) and (b) BUILT the same day; NEXT: the operator's r6 run, then (c))
+### P.9 — The monitoring profile (DESIGNED and DECIDED 2026-09-30; steps (a) and (b) BUILT the same day; (c) onboarding BUILT 2026-10-01; NEXT: (c) adopt, then (d))
 
 The operator's requirement (2026-09-30), after r6 was called "unreachable" by an SNMP alert
 when its configuration simply has no SNMP: every device, new and existing, carries what its
@@ -4020,6 +4020,12 @@ integrations need, derived from the connectors the network uses, with ONE owner.
     3. r6's SNMP warning clears once its next golden carries SNMP, and it becomes a
        Prometheus target.
   - r6's intent is still never hand-edited.
+- **Step (c), onboarding, BUILT 2026-10-01** (MONITORING_PROFILE.md section 2): Verify is a
+  preview (`POST /onboard/verify/<host>/preview`, `onboard.phase_two_plan`) and a confirm by
+  fingerprint. The profile's program is computed from the device's CAPTURE
+  (`profile_apply.for_capture`), sent as phase 2's `profile` step after the RW removal and
+  before the save and the first golden, and read back. A device or profile that moved since the
+  preview sends nothing at all. Adopt is next, then (d).
 - **Next, from the operator's r6 run (2026-09-30):**
   - **The connectors are the PRIMARY source** (the design's own words, which (b) did not
     follow: it proposed only what the fleet already agrees on, which is circular on a network

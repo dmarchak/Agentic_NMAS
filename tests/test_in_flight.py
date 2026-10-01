@@ -152,7 +152,10 @@ class TestTheWiring:
         for rel, route in self.APPLIES.items():
             src = open(os.path.join(ROOT, rel)).read()
             # The fetch itself: the route's first mention can be a comment.
-            at = src.index("fetch('" + route)
+            # The APPLY's fetch, never a preview's on the same prefix (Verify's
+            # preview, P.9 step c, reads one device and runs nothing long).
+            at = next(m.start() for m in re.finditer(re.escape("fetch('" + route), src)
+                      if "/preview" not in src[m.start():m.start() + 120])
             before = src.rfind("inFlightBusy(true)", 0, at)
             assert before != -1 and at - before < 400, f"{rel}: not marked busy"
             after = re.search(r"finally\s*\{\s*inFlightBusy\(false\)", src[at:])

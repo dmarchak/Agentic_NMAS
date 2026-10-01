@@ -932,6 +932,85 @@ def onboard_preview(plan: dict, bootstrap_config: str, confirm: dict) -> dict:
                  titles={"program": "What will be created (on no device)"})
 
 
+def onboard_verify_preview(plan: dict, confirm: dict) -> dict:
+    """Verify's preview (P.9 step c), from `onboard.phase_two_plan()`: what
+    phase 2 sends besides the rotation (the RW removal and the network's
+    monitoring profile, masked), what it does not do, and the fingerprint the
+    confirm sends back. Phase 2 recomputes the fingerprint from its own capture
+    and sends nothing at all if it moved."""
+    plan = plan or {}
+    host = plan.get("device") or "(no name)"
+    prof = plan.get("profile") or {}
+    rw = plan.get("rw") or {}
+    sending = [l for l in prof.get("masked") or [] if l.strip() != "exit"]
+    if not prof.get("applies"):
+        prof_words = "not apply the monitoring profile (" + (prof.get("why") or "it does not "
+                                                               "apply") + ")"
+    elif not sending:
+        prof_words = "send no monitoring-profile line (" + (prof.get("why") or "it holds them") + ")"
+    else:
+        prof_words = (f"apply the network's monitoring profile ({len(sending)} line(s): "
+                      + ", ".join(sorted((prof.get("by_section") or {}).keys())) + ")")
+    summary = (f"Verify {host}: it answered at {plan.get('mgmt_ip') or '?'}. Phase 2 will rotate "
+               f"its bootstrap credential, remove {len(rw.get('remove') or [])} read-write "
+               f"community line(s), {prof_words}, save it, record its first golden, create its "
+               f"NetBox record and add it to the inventory.")
+    what_not = [
+        {"target": host, "kind": "credential", "lines": [],
+         "text": "The rotation's program is its own and is not drawn: its password is "
+                 "generated on the host and never sent to the browser."},
+        {"target": host, "kind": "merge_only", "lines": [],
+         "text": "Nothing else on the device is removed: only the read-write community "
+                 "lines below. The profile's lines are added beside what the device holds."},
+    ]
+    if prof.get("unmodeled"):
+        what_not.append({"target": host, "kind": "unmodeled", "lines": list(prof["unmodeled"]),
+                         "text": "Lines the template does not model are left exactly as they "
+                                 "are; a monitoring line in this list will sit beside the "
+                                 "profile's"})
+    if not prof.get("applies") and prof.get("why"):
+        what_not.append({"target": host, "kind": "profile", "lines": [],
+                         "text": "The monitoring profile is not applied: " + prof["why"]})
+    lines = list(rw.get("remove") or []) + list(prof.get("masked") or [])
+    gates = [gate("the device answered", "pass", (plan.get("verify") or {}).get("state", "")),
+             gate("read with the staged credential", "pass",
+                  f"{plan.get('capture_lines') or 0} lines"),
+             # Not applied is not a refusal of Verify: the device is onboarded
+             # without it, and the coverage row offers Apply afterwards.
+             gate("the monitoring profile's program", "pass" if prof.get("applies")
+                  else "not_applicable",
+                  prof.get("why") or ("computed through " + (prof.get("template") or {}).get(
+                      "template", "the network's template") + ", which reproduces the device")),
+             gate("the device and the profile unchanged since this preview", "at_apply",
+                  "phase 2 reads the device again and sends nothing if what it reads, or the "
+                  "profile, moved")]
+    template = (prof.get("template") or {}).get("template") or "(no profile program)"
+    target = {
+        "name": host, "state": "ready", "selectable": True,
+        "select_data": {"list": plan.get("list") or "", "fingerprint": plan.get("fingerprint")},
+        "program": {"lines": lines, "dangerous": [], "authorised": [], "authorisation_error": "",
+                    "caption": "What phase 2 sends besides the rotation: the read-write "
+                               "community removal, then the monitoring profile's lines",
+                    "unit": "line(s) sent", "notes": [],
+                    "none": "Nothing besides the rotation: no read-write community to remove "
+                            "and no profile line to send."},
+        "operands": [
+            {"name": "Address", "value": plan.get("mgmt_ip") or ""},
+            {"name": "Platform", "value": plan.get("platform") or ""},
+            {"name": "Role", "value": plan.get("role") or "none"},
+            {"name": "Template", "value": template},
+            {"name": "Profile sections", "value": ", ".join(
+                f"{k} ({len(v)})" for k, v in sorted((prof.get("by_section") or {}).items()))
+             or "none"},
+            {"name": "Read-write communities kept", "value": str(rw.get("keep") or 0)},
+        ],
+        "gates": gates,
+    }
+    return build(action="onboard_verify", summary=summary, targets=[target],
+                 what_not=what_not, nothing_left_out="", confirm=confirm,
+                 titles={"program": "What Verify sends"})
+
+
 def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
     """A NetBox Remove, drawn by the result component (7.1, C121), from the
     ROW that records it, so the result at apply and the one read back later

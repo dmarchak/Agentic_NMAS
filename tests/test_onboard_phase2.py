@@ -630,6 +630,7 @@ class TestARefusalNamesTheCallersOperation:
                         f"operation, so it would use the onboarding message")
                     seen[node.name] = inner.args[1].value
         assert seen == {"bootstrap": "bootstrap", "verify": "verify",
+                        "verify_preview": "verify",
                         "abandon": "abandon", "plan": "plan",
                         "create": "create"}, seen
 

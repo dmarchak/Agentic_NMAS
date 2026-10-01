@@ -632,7 +632,9 @@ class TestTheVerifyFailureStaysOnScreen:
         from tests.js_source import read_shipped
 
         js = self._js()
-        start = js.index("async function onboardVerify")
+        # The CONFIRM (P.9 step c: Verify opens a preview first, and its confirm
+        # sends the fingerprint), and every function after it up to Abandon.
+        start = js.index("async function onboardVerifyConfirm")
         end = js.index("async function onboardAbandon")
         code = js[start:end].replace("async function", "function").replace("await ", "")
         assert "await" not in code
@@ -647,7 +649,7 @@ class TestTheVerifyFailureStaysOnScreen:
         function loadOnboardPending(l) { calls.push('reload:' + l); }
         function inFlightBusy(on) { calls.push('busy:' + on); }
         """ + code + """
-        onboardVerify('bp-ztp-a', 'ztp-a');
+        onboardVerifyConfirm('bp-ztp-a', 'ztp-a', 'a1b2c3d4e5f60718');
         ({calls: calls, html: banner.innerHTML})
         """)
         return dukpy.evaljs(harness, payload=payload)

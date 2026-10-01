@@ -45,6 +45,9 @@ CONFIG_TASKS = {
     ("modules/pipeline.py", "_push_via_netmiko"): ("config", "deploy push"),
     ("modules/pipeline.py", "_restore_config"): ("config", "rollback"),
     ("modules/nsot/onboard.py", "remove_rw_communities"): ("config", "RW community removal"),
+    # P.9 step (c): a PENDING device is in no inventory, so the deploy pipeline
+    # cannot target it; phase 2 sends the confirmed profile program itself.
+    ("modules/nsot/onboard.py", "send_profile_program"): ("config", "monitoring profile at onboarding"),
     ("scripts/nmas-removal-probe", "main"): ("config", "removal probe"),
 }
 
