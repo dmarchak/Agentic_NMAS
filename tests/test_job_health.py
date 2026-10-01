@@ -52,6 +52,82 @@ def test_the_measured_shape_is_failing_with_its_own_reason():
     assert s["last_error"].endswith("nmas-clab-targets: command not found"), s["last_error"]
 
 
+STARTUP = {"unit": "nmas-startup-check", "max_age_minutes": 180, "what": "startup"}
+
+
+def _startup_run(ts, lines, status="2/INVALIDARGUMENT"):
+    """A run in the host's journal shape: the 07:04 run's own lines."""
+    return "\n".join(
+        [_line(ts - 60, "systemd[1]: Starting nmas-startup-check.service - NMAS: every device's ...")]
+        + [_line(ts - 1, f"nmas-startup-check[789418]: {l}") for l in lines]
+        + [_line(ts, f"systemd[1]: nmas-startup-check.service: Main process exited, code=exited, "
+                     f"status={status}"),
+           _line(ts, "systemd[1]: nmas-startup-check.service: Failed with result 'exit-code'.")])
+
+
+class TestTheLastErrorIsTheFailure:
+    """The operator, 2026-10-01: the Critical row read "last error: Default s1
+    PERSISTED the startup config carries username admin ...", a SUCCESS line,
+    because no line of the 07:04 run matched a failure and the run's FIRST line
+    was quoted."""
+
+    RUN_0704 = ["Default    s1         PERSISTED      the startup config carries username "
+                "admin privilege 15 secret 9 <value>",
+                "Default    r2         UNKNOWN        could not ask: ReadTimeout:",
+                "Pattern not detected: 'show\\\\ running\\\\-config\\\\ \\\\|\\\\ include\\\\ "
+                "\\\\^username' in output.",
+                "persisted: 8, unknown: 1"]
+
+    def test_a_run_whose_output_names_no_failure_never_quotes_a_line_of_it(self):
+        s = J.job_status(STARTUP, NOW, _runner(LOADED, _startup_run(NOW - 60, self.RUN_0704)))
+        assert s["state"] == "never_succeeded"
+        assert "PERSISTED" not in s["last_error"] and "s1" not in s["last_error"]
+        assert s["last_error"] == ("no line of its output names the failure (it exited with "
+                                   "status 2/INVALIDARGUMENT); read it with: journalctl -u "
+                                   "nmas-startup-check.service -n 50 --no-pager")
+        assert "last error: no line of its output names the failure" in s["detail"]
+
+    def test_the_scripts_own_failed_line_is_quoted(self):
+        lines = self.RUN_0704[:1] + ["persisted: 8, not_persisted: 1",
+                                     "FAILED: 1 device(s) would boot a credential NMAS does not "
+                                     "hold: r9"]
+        s = J.job_status(STARTUP, NOW, _runner(LOADED, _startup_run(NOW - 60, lines, "1/FAILURE")))
+        assert s["last_error"] == "FAILED: 1 device(s) would boot a credential NMAS does not hold: r9"
+
+    def test_the_exit_status_is_the_runs_own(self):
+        """A status from an earlier run never names a later one's."""
+        journal = "\n".join([_startup_run(NOW - 3600, ["x"], "1/FAILURE"),
+                             _line(NOW - 120, "systemd[1]: Starting nmas-startup-check.service"),
+                             _line(NOW - 60, "systemd[1]: nmas-startup-check.service: Failed with "
+                                             "result 'timeout'.")])
+        s = J.job_status(STARTUP, NOW, _runner(LOADED, journal))
+        assert "status" not in s["last_error"] and "names the failure" in s["last_error"]
+
+
+def test_the_startup_script_prints_its_failure_last(monkeypatch, capsys):
+    import importlib.machinery
+    import importlib.util
+
+    from modules.nsot import startup_check
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "scripts", "nmas-startup-check")
+    loader = importlib.machinery.SourceFileLoader("nmas_startup_check_lastline", path)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    devs = [{"list": "L", "device": "r9", "state": "not_persisted", "detail": "old line"},
+            {"list": "L", "device": "s1", "state": "unknown", "detail": "timeout"}]
+    monkeypatch.setattr(startup_check, "run_check",
+                        lambda: {"devices": devs, "counts": {"not_persisted": 1, "unknown": 1}})
+    assert mod.main() == 1
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last == "FAILED: 1 device(s) would boot a credential NMAS does not hold: r9"
+    monkeypatch.setattr(startup_check, "run_check",
+                        lambda: {"devices": devs[1:], "counts": {"unknown": 1}})
+    assert mod.main() == 2
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last == "FAILED: no device could be read, so nothing was checked (s1)"
+
+
 def test_a_unit_that_does_not_exist_is_never_ok():
     """Measured: systemd reports Result=success for a not-found unit."""
     show = "LoadState=not-found\nActiveState=inactive\nResult=success\nExecMainStatus=0\n"

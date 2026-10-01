@@ -41,6 +41,9 @@ NON_GUI = {
                                "refuses rather than guessing when it cannot"),
     "POST /freshness/gate": ("scripts/nmas-oxidized-freshness",
                              "the sanitiser's pre-write gate (exit 0/1/2)"),
+    "POST /jobs/finished": ("scripts/nmas-job-finished",
+                            "systemd's OnSuccess/OnFailure for each host job: read job "
+                            "health now, not at the reader's next run"),
     "GET /favicon.ico": (None, "requested by browsers by convention; no page "
                                "references it and none needs to"),
 }

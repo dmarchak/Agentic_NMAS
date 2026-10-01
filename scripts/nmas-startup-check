@@ -29,10 +29,19 @@ def main(argv=None) -> int:
         print(f"{d['list']:<10} {d['device']:<10} {d['state'].upper():<14} {brief(d['detail'])}")
     counts = out["counts"]
     print("\n" + ", ".join(f"{k}: {v}" for k, v in sorted(counts.items())))
+    # The failure in its own words, LAST: job health quotes the first line of a
+    # failed run that names a failure, and a device row names none.
+    named = lambda state: ", ".join(d["device"] for d in out["devices"] if d["state"] == state)
     if counts.get("not_persisted"):
+        print(f"FAILED: {counts['not_persisted']} device(s) would boot a credential NMAS does "
+              f"not hold: {named('not_persisted')}")
         return 1
     read = sum(v for k, v in counts.items() if k != "unknown")
-    return 0 if read else 2
+    if not read:
+        print(f"FAILED: no device could be read, so nothing was checked "
+              f"({named('unknown') or 'the inventory is empty'})")
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

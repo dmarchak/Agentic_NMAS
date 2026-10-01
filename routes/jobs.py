@@ -22,3 +22,41 @@ bp = Blueprint("jobs", __name__, url_prefix="/jobs")
 def jobs_health():
     from modules.job_health import health
     return jsonify(health())
+
+
+@bp.route("/finished", methods=["POST"])
+def job_finished():
+    """A host job just ended: read job health NOW, not at the reader's next run.
+
+    The operator, 2026-10-01: the startup check succeeded at 07:23, `nmas-jobs`
+    read ok at 07:25, and Needs attention showed its old Critical row until the
+    reader's next scheduled run about 07:30. Each job's unit names
+    `nmas-job-finished@%N.service` in `OnSuccess=` and `OnFailure=`, which
+    systemd starts after the job's result is recorded (a job a person starts by
+    hand included), and that unit's `scripts/nmas-job-finished` posts here. The
+    run is recorded with its cause (`job_finished`, by the unit) and announced
+    whatever it found, so an open page redraws. It reads, and moves nothing; a
+    second post while a run is going joins that run. Only a declared job's
+    unit is accepted, so the cause recorded is one this app knows."""
+    from flask import request
+
+    from modules import job_health, reader_job
+    from modules.readers import job_health_reader
+
+    unit = str((request.get_json(silent=True) or {}).get("unit") or "").strip()
+    unit = unit[:-len(".service")] if unit.endswith(".service") else unit
+    declared = sorted(j["unit"] for j in job_health.JOBS)
+    if unit not in declared:
+        return jsonify({"ok": False, "error": (
+            f"{unit or 'no unit'} is not a job this app reads; the declared jobs are "
+            + ", ".join(declared))}), 400
+    if not reader_job.running(job_health_reader.READER.name):
+        return jsonify({"ok": False, "error": (
+            "the reader jobs do not run in this process, so nothing was read; the app's own "
+            f"reader reads job health every {job_health_reader.INTERVAL_SECONDS} s")}), 409
+    got = reader_job.request_run(job_health_reader.READER, unit, kind="job_finished",
+                                 announce=reader_job.announce_via_page)
+    log.info("jobs: %s finished; job health %s (run %s)", unit,
+             "read now" if got["started"] else "already being read", got["run"])
+    return jsonify({"ok": True, "unit": unit, "started": got["started"], "run": got["run"]}), \
+        (202 if got["started"] else 200)

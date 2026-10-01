@@ -65,6 +65,10 @@ import re as _re
 _NAMES_A_FAILURE = _re.compile(
     r"not found|REFUSED|FAILED|ERROR|Error|Traceback|denied|No such", _re.I)
 
+#: systemd's own record of how the main process ended:
+#: "Main process exited, code=exited, status=2/INVALIDARGUMENT".
+_EXIT_STATUS = _re.compile(r"Main process exited, code=\w+, status=(\S+)")
+
 
 def _run(cmd: list) -> tuple:
     try:
@@ -125,13 +129,23 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
     # own output is collected, and the error is its first line that names a
     # failure -- here `nmas-clab-targets: command not found` -- falling back
     # to the run's first line.
+    #
+    # And NEVER a line that names nothing (the operator, 2026-10-01): the
+    # startup check's 07:04 run failed with no line matching, and its FIRST
+    # line was quoted, "s1 PERSISTED the startup config carries ...", a
+    # success presented as the error. With no line naming a failure the row
+    # says so, with the exit status systemd recorded and where to read more.
     last_ok, last_fail, streak, last_error = None, None, 0, ""
     streak_start = None
     run_lines: list = []
+    exit_status = ""
     for ts, text in rows:
         if "systemd[" in text:
             if "Starting " in text or "Started " in text:
-                run_lines = []
+                run_lines, exit_status = [], ""
+            status = _EXIT_STATUS.search(text)
+            if status:
+                exit_status = status.group(1)
         elif text.strip():
             run_lines.append(text.split(": ", 1)[-1].strip())
         if "Deactivated successfully" in text:
@@ -141,8 +155,11 @@ def job_status(job: dict, now: float = None, run=None) -> dict:
                 streak_start = ts
             last_fail, streak = ts, streak + 1
             named = [l for l in run_lines if _NAMES_A_FAILURE.search(l)]
-            last_error = (named or run_lines or [""])[0]
-            run_lines = []
+            last_error = named[0] if named else (
+                "no line of its output names the failure"
+                + (f" (it exited with status {exit_status})" if exit_status else "")
+                + f"; read it with: journalctl -u {unit} -n 50 --no-pager")
+            run_lines, exit_status = [], ""
 
     def ago(ts):
         return f"{int((now - ts) // 60)} min ago" if ts else "never"

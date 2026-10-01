@@ -1237,6 +1237,37 @@ class TestClickingTheShippedButton:
                      "return s ? getComputedStyle(s).display : 'absent'")
         assert shown in ("none", "absent"), shown
 
+    def test_a_redraw_with_no_wait_draws_no_stop_waiting(self, served_update, monkeypatch):
+        """C279, reproduced by the operator (2026-10-01): a hard reload drew
+        the panel right, and Check again's answer, arriving as a REDRAW,
+        brought "Stop waiting" back with `data-waiting="no"`. Only the
+        elements with an id lost Alpine's `display: none`: htmx's settle step
+        copies `class` and `style` from the old element with the same id and
+        then restores the server's attributes, which carry no `style`, so
+        Alpine's hiding was removed and nothing re-ran `x-show`. The earlier
+        test loaded a fresh page and could not see it. CI is running for the
+        target and no wait is in force, as on the host."""
+        import time
+
+        from modules import update_op
+        b = served_update["b"]
+        p = dict(_plan(), waiting={}, selectable=False, waitable=True)
+        monkeypatch.setattr(update_op, "plan", lambda **kw: p)
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("var c=document.querySelector('#update-confirm');"
+                   "return window.Alpine && c && getComputedStyle(c).display !== 'none'")
+        hidden = ("var w=document.querySelector('#update-waiting'),"
+                  "s=document.querySelector('#update-stop-waiting');"
+                  "return [getComputedStyle(w).display, getComputedStyle(s).display]")
+        assert b.js(hidden) == ["none", "none"]
+        b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
+             "htmx.trigger(document.body, 'nmas:app_version'); return 1")
+        b.wait_for("var p=document.querySelector('#update-panel'); return p && !p.hasAttribute('data-old')"
+                   " && window.Alpine && document.querySelector('.confirm')._x_dataStack")
+        time.sleep(0.5)                       # well past htmx's settle delay (20 ms)
+        assert b.js("return document.querySelector('.confirm').getAttribute('data-waiting')") == "no"
+        assert b.js(hidden) == ["none", "none"]
+
     def test_check_again_on_about_answers_in_words(self, served_update):
         b = served_update["b"]
         b.go(served_update["srv"].url("/v2/help/about"))
@@ -1244,6 +1275,26 @@ class TestClickingTheShippedButton:
         b.click(".check-again button")
         said = b.wait_for("return document.querySelector('.check-again .check-late').textContent")
         assert said.startswith("Not asked: the reader jobs do not run in this process")
+
+
+def test_htmx_settles_no_attribute_alpine_owns():
+    """C279's cause, as a rule over every v2 page: htmx's settle step copies an
+    old element's `class` and `style` onto the new one with the same id and
+    then restores the server's, removing what Alpine set (`x-show`'s
+    `display: none`, an `x-bind:class`). The v2 frame settles nothing. The
+    population it protects: elements with an id whose style or class Alpine
+    drives (floor 2: Stop waiting and its words)."""
+    base = open(os.path.join(ROOT, "templates", "v2", "base.html"), encoding="utf-8").read()
+    meta = re.search(r"<meta name=\"htmx-config\" content='([^']*)'>", base)
+    assert meta, "the v2 frame has no htmx-config"
+    assert json.loads(meta.group(1)).get("attributesToSettle") == []
+    exposed = []
+    for name in sorted(os.listdir(os.path.join(ROOT, "templates", "v2"))):
+        text = open(os.path.join(ROOT, "templates", "v2", name), encoding="utf-8").read()
+        for tag in re.findall(r"<[a-z]+\b[^>]*>", text):
+            if re.search(r'\sid="', tag) and re.search(r"\s(x-show|x-bind:class|x-bind:style|:class|:style)=", tag):
+                exposed.append((name, re.search(r'\sid="([^"]*)"', tag).group(1)))
+    assert ("_update.html", "update-stop-waiting") in exposed and len(exposed) >= 2, exposed
 
 
 def _record_runs(took_ms, value_at=None):

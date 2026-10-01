@@ -249,6 +249,8 @@ DECLARED = {
                                "startup check's record; contacts no device and writes nothing"),
     "update.check": Nothing("starts the app-pushed reader, which announces app_version itself "
                             "when it finishes"),
+    "jobs.job_finished": Nothing("starts the job-health reader, which announces job_health "
+                                 "itself when it finishes"),
     "retire.preview": Nothing("computes the retire plan from the repository, the CSV, the credential store, the settings and the export log; writes nothing"),
     "templatize.revert_preview": Nothing("computes the revert of one intent commit from git; "
                                          "writes nothing"),

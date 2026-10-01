@@ -188,6 +188,7 @@ GATES = {
     "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
     "update.step_done": _g(C, "records that a person did a host step the tool cannot check: the release's record of what was done on the host"),
     "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),
+    "jobs.job_finished": _g(N, "a host job ended: runs the job-health reader now; reads systemd and the stores, moves nothing, and accepts only a declared job's unit"),
     "templatize.seed_preview": _g(N, "parses committed goldens from git; writes nothing"),
     "templatize.profile_propose_preview": _g(N, "reads committed intent and compares stored values in memory; writes nothing"),
     "templatize.revert_preview": _g(N, "computes a revert from git; writes nothing"),

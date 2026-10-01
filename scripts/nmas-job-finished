@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Tell the app a host job just ended, so job health is read NOW.
+
+Run by systemd, never by hand: each NMAS job unit names
+`nmas-job-finished@%N.service` in `OnSuccess=` and `OnFailure=`, which systemd
+starts once the job's result is recorded (deploy/systemd/). The operator,
+2026-10-01: a startup check that succeeded at 07:23 stayed Critical on Needs
+attention until the job-health reader's next run, about 07:30.
+
+    nmas-job-finished nmas-startup-check
+
+It posts the unit's name to the app's `/jobs/finished` and prints what the app
+answered. It sends nothing else, and the app accepts only a declared job.
+NMAS_URL names the app (default http://127.0.0.1:5000, the host's own).
+
+Exit codes: 0 the app is reading job health; 1 the app refused (the reason
+printed); 2 the app could not be asked. The job's own result is not affected:
+it was recorded before this ran.
+"""
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+#: The app answers on the host's loopback in under 3 ms (`/health`, 8 requests,
+#: measured 2026-10-01), and this route only starts a thread: the reader's 9.8 s
+#: read happens after it answers. The bound is short ON PURPOSE rather than
+#: from that figure: a post that times out costs only the wait for the
+#: reader's next scheduled read (300 s), never the job's result.
+TIMEOUT_S = 5
+
+
+def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 1 or not argv[0].strip():
+        print("usage: nmas-job-finished <unit>", file=sys.stderr)
+        return 2
+    unit = argv[0].strip()
+    url = os.environ.get("NMAS_URL", "http://127.0.0.1:5000").rstrip("/") + "/jobs/finished"
+    req = urllib.request.Request(url, data=json.dumps({"unit": unit}).encode(), method="POST",
+                                 headers={"Content-Type": "application/json",
+                                          "Accept": "application/json",
+                                          "User-Agent": "nmas-automation/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+            body = json.loads(resp.read().decode() or "{}")
+            print(f"{unit}: job health is being read now (run {body.get('run', '?')}"
+                  + ("" if body.get("started") else ", joining a read already going") + ")")
+            return 0
+    except urllib.error.HTTPError as exc:
+        try:
+            why = json.loads(exc.read().decode() or "{}").get("error") or ""
+        except ValueError:
+            why = ""
+        print(f"{unit}: the app refused (HTTP {exc.code}): {why or 'no reason given'}",
+              file=sys.stderr)
+        return 1
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        print(f"{unit}: the app at {url} could not be asked ({exc}); job health is read at the "
+              "reader's next run instead", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

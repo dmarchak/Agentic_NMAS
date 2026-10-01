@@ -2,6 +2,10 @@
 # are placeholders. Render it, never copy it:
 [Unit]
 Description=NMAS: restore the newest NetBox backup into a scratch postgres and compare
+# When it ends, either way, the app reads job health at once
+# (nmas-job-finished@.service; /jobs/finished).
+OnSuccess=nmas-job-finished@%N.service
+OnFailure=nmas-job-finished@%N.service
 After=docker.service
 Requires=docker.service
 

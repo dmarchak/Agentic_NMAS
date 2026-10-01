@@ -1,0 +1,21 @@
+# TEMPLATE (2026-10-01): the repository is public, so the host's user and paths
+# are placeholders. Render it, never copy it:
+# A host job ended: tell the app, so job health is read now instead of at the
+# job-health reader's next run (a fixed problem stayed Critical for about
+# five minutes, 2026-10-01). Each NMAS job unit names this in OnSuccess= and
+# OnFailure= with its own name as the instance (%N), and systemd starts it
+# once the job's result is recorded, a job a person starts by hand included.
+# It posts the unit's name to the app's /jobs/finished and changes nothing.
+#   scripts/nmas-render-units --out /tmp/nmas-units deploy/systemd/nmas-job-finished@.service
+#   sudo install -m 0644 /tmp/nmas-units/nmas-job-finished@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+[Unit]
+Description=NMAS: %i finished, so job health is read now
+
+[Service]
+Type=oneshot
+User=@NMAS_USER@
+Group=@NMAS_USER@
+WorkingDirectory=@NMAS_CHECKOUT@
+ExecStart=@NMAS_CHECKOUT@/scripts/nmas-job-finished %i
+TimeoutStartSec=30

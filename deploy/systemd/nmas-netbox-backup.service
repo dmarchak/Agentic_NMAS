@@ -9,6 +9,10 @@
 #   sudo systemctl enable --now nmas-netbox-backup.timer nmas-netbox-restore-test.timer
 [Unit]
 Description=NMAS: back up NetBox (dump + media + config; encrypted copies shipped)
+# When it ends, either way, the app reads job health at once
+# (nmas-job-finished@.service; /jobs/finished).
+OnSuccess=nmas-job-finished@%N.service
+OnFailure=nmas-job-finished@%N.service
 Wants=network-online.target
 After=network-online.target docker.service
 Requires=docker.service

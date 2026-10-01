@@ -345,7 +345,10 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
     (rule 7). *trigger* is what caused this run (rule 13): the schedule when
     omitted."""
     trigger = dict(trigger or SCHEDULED)
-    requested = trigger.get("kind") == "request"
+    # Asked for (a person's request, or a host job that finished): logged, and
+    # announced even when the answer did not change, because something is
+    # waiting on it. Every such run carries its run id.
+    requested = bool(trigger.get("run"))
     started = clock()
     t0 = time.monotonic()
     value, error = None, ""
@@ -399,8 +402,9 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
         _filestore.write_atomic(path, json.dumps(doc, indent=1, sort_keys=True))
     if requested:
         # Rule 13: "did my click run, and how long did it take" in the log too.
-        log.info("reader %s: run %s on request by %s took %d ms: %s", reader.name,
-                 trigger.get("run", "?"), trigger.get("by") or "nobody identified", took,
+        log.info("reader %s: run %s on %s by %s took %d ms: %s", reader.name,
+                 trigger.get("run", "?"), trigger.get("kind"),
+                 trigger.get("by") or "nobody identified", took,
                  "ok" if not error else "failed, " + doc["last_attempt"]["error"])
 
     acted = None
@@ -548,10 +552,13 @@ _REQUESTS: dict = {}
 _REQUESTS_LOCK = threading.Lock()
 
 
-def request_run(reader: Reader, by: str, announce=None, clock=time.time) -> dict:
+def request_run(reader: Reader, by: str, announce=None, clock=time.time,
+                kind: str = "request") -> dict:
     """Run *reader* once now, on its own thread, for *by*. One at a time per
     reader: a second request while one runs gets that run back
-    (``started: False``), so its page waits for the same answer."""
+    (``started: False``), so its page waits for the same answer. *kind* is the
+    cause recorded (rule 13): ``request`` for a person, ``job_finished`` for a
+    host job that just ended (*by* naming the unit)."""
     import uuid
 
     with _REQUESTS_LOCK:
@@ -571,7 +578,7 @@ def request_run(reader: Reader, by: str, announce=None, clock=time.time) -> dict
         t0 = time.monotonic()
         try:
             run_once(reader, announce=announce, clock=clock,
-                     trigger={"kind": "request", "by": entry["by"], "run": entry["run"]})
+                     trigger={"kind": kind, "by": entry["by"], "run": entry["run"]})
         except Exception:                               # noqa: BLE001
             log.exception("reader %s: run %s on request by %s raised; nothing was stored",
                           reader.name, entry["run"], entry["by"] or "nobody identified")
@@ -630,6 +637,8 @@ def trigger_words(trigger: dict, viewer: str = "") -> str:
         return "the scheduled check"
     if kind == "after_commit":
         return "re-read after a commit"
+    if kind == "job_finished":
+        return f"re-read when {trigger.get('by') or 'a host job'} finished"
     return "what started it was not recorded" if not kind else f"started by {kind}"
 
 
