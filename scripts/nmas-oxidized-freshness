@@ -184,10 +184,11 @@ def main() -> int:
         # gated `approve`). A curl from this host has no Access assertion and is
         # refused, and no screen calls that route yet (register D9). So this
         # names what is needed rather than a command that cannot succeed.
-        print("  POST /freshness/authorise {device, fingerprint, reason} as a "
-              "verified person, through the tunnel.", file=sys.stderr)
-        print("  A curl from the NMAS host is refused (no Access assertion), and "
-              "there is no screen for it yet (register D9).", file=sys.stderr)
+        print("  To record what the device runs as approved: Capture it from its "
+              "Device page (or Save All).", file=sys.stderr)
+        print("  To let this one divergence through instead: POST /freshness/authorise "
+              "{device, fingerprint, reason} as a verified person through the tunnel; "
+              "no screen calls it yet (register D9).", file=sys.stderr)
         return EXIT_BLOCKED
     return EXIT_OK
 

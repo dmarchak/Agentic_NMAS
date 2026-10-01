@@ -657,3 +657,46 @@ class TestEveryStateHasWords:
         from modules import attention
         words, level = attention._JOB_STATES["will_not_fit"]
         assert "will_not_fit" not in words and level == "warning"
+
+
+class TestAGateVerdictIsTheCauseNeverItsAdvice:
+    """C306 (2026-10-01): clab-sync was blocked by the freshness gate for r3,
+    and its row quoted the gate's ADVICE ("A curl from the NMAS host is
+    refused (no Access assertion) ..."), which read as the job being locked
+    out of the app. The 22:06 run's own lines, from the host's journal."""
+
+    RUN_2206 = [
+        "Map: 9 device(s) from http://192.0.2.10:5000",
+        "All files converted and validated.",
+        "BLOCKED: r3",
+        "Either save a golden for what is on the device, or authorise this exact divergence:",
+        "  POST /freshness/authorise {device, fingerprint, reason} as a verified person, "
+        "through the tunnel.",
+        "  A curl from the NMAS host is refused (no Access assertion), and there is no screen "
+        "for it yet (register D9).",
+        "9 of 9 checked: 8 approved, 1 unapproved, 0 poll race, 0 authorised, 0 inconclusive",
+        "  STOP r3     unapproved",
+        "REFUSED - one or more devices carry a change nobody approved.",
+    ]
+
+    def _journal(self):
+        return "\n".join(
+            [_line(NOW - 3, "systemd[1]: Starting clab-sync.service - Sync Oxidized configs...")]
+            + [_line(NOW - 2, f"clab-sync[3208867]: {l}") for l in self.RUN_2206]
+            + [_line(NOW, "systemd[1]: clab-sync.service: Main process exited, code=exited, "
+                          "status=1/FAILURE"),
+               _line(NOW, "systemd[1]: clab-sync.service: Failed with result 'exit-code'.")])
+
+    def test_the_blocked_verdict_is_quoted(self):
+        s = J.job_status(JOB, NOW, _runner(LOADED, self._journal()))
+        assert s["last_error"] == "BLOCKED: r3"
+
+    def test_blocked_in_prose_is_not_a_verdict(self):
+        assert not J._NAMES_A_FAILURE.search("the port was blocked by nothing")
+        assert J._NAMES_A_FAILURE.search("BLOCKED: r3")
+
+    def test_the_gate_s_advice_no_longer_reads_as_a_refusal(self):
+        src = open("scripts/nmas-oxidized-freshness", encoding="utf-8").read()
+        advice = src[src.index('print(f"\\nBLOCKED:'):src.index("return EXIT_BLOCKED")]
+        assert "is refused" not in advice
+        assert "Device page (or Save All)" in advice

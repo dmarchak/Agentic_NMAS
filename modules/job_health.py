@@ -61,8 +61,12 @@ JOURNAL_DAYS = 14
 
 import re as _re
 
+#: ``BLOCKED:`` opening a line is a gate's verdict (the clab sync's freshness
+#: gate, C306): case-sensitive and anchored, since "blocked" is English too.
+#: Without it the quote fell through to the gate's ADVICE two lines later
+#: ("A curl from the NMAS host is refused ..."), read as an identity lockout.
 _NAMES_A_FAILURE = _re.compile(
-    r"not found|REFUSED|FAILED|ERROR|Error|Traceback|denied|No such", _re.I)
+    r"(?-i:^BLOCKED:)|not found|REFUSED|FAILED|ERROR|Error|Traceback|denied|No such", _re.I)
 
 #: systemd's own record of how the main process ended:
 #: "Main process exited, code=exited, status=2/INVALIDARGUMENT".

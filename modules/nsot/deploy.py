@@ -836,6 +836,88 @@ def landed_leaves(pushed: list, landed) -> tuple:
     return applied, rejected
 
 
+#: A terminal-line stanza header: ``line vty 0 4``, ``line con 0``.
+_LINE_RANGE = __import__("re").compile(r"^line\s+(\S+)\s+(\d+)(?:\s+(\d+))?\s*$")
+
+
+def _line_range(header: str):
+    """``(type, first, last)`` for a top-level ``line`` header, else None."""
+    m = _LINE_RANGE.match((header or "").rstrip())
+    if not m:
+        return None
+    lo = int(m.group(2))
+    return m.group(1), lo, int(m.group(3)) if m.group(3) else lo
+
+
+def _pre_line_stanzas(pre_config: str) -> list:
+    """``[(header, (type, first, last), [children])]`` of the pre-change config."""
+    out, current = [], None
+    for raw in (pre_config or "").splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        if line[:1].isspace():
+            if current is not None:
+                current[2].append(line)
+            continue
+        rng = _line_range(line)
+        current = (line, rng, []) if rng else None
+        if current is not None:
+            out.append(current)
+    return out
+
+
+def line_range_held(header: str, pre_config: str) -> bool:
+    """Does the device already have every terminal line *header* names?
+
+    **A terminal line is never created by configuring it** (C307, 2026-10-01):
+    IOS has con 0, aux 0 and its vty lines whether or not the config names
+    them, and prints one stanza per run of lines with the same settings. So
+    ``line vty 0 4`` over a device showing ``line vty 0``, ``line vty 1`` and
+    ``line vty 2 4`` is the same five lines regrouped, and undoing it as a
+    creation sent ``no line vty 0 4`` -- the lines the tool manages through."""
+    rng = _line_range(header)
+    if rng is None or not (pre_config or "").strip():
+        return False
+    kind, lo, hi = rng
+    held = set()
+    for _h, (k, a, b), _c in _pre_line_stanzas(pre_config):
+        if k == kind:
+            held.update(range(a, b + 1))
+    return all(n in held for n in range(lo, hi + 1))
+
+
+def _overlapping_stanzas(header: str, pre_config: str) -> list:
+    kind, lo, hi = _line_range(header)
+    return [(h, c) for h, (k, a, b), c in _pre_line_stanzas(pre_config)
+            if k == kind and a <= hi and b >= lo]
+
+
+def _line_range_undo(header: str, children: list, pre_config: str) -> list:
+    """``[(chain, command)]`` undoing *children* (the landed lines pushed under
+    a held line range): each setting not every line in the range already
+    carried is negated on the whole range, then each pre-change stanza the
+    range overlaps is re-sent verbatim, putting back the per-line values the
+    negation took. Nothing when every pushed setting was already on every
+    line (the push changed nothing)."""
+    kind, lo, hi = _line_range(header)
+    stanzas = _pre_line_stanzas(pre_config)
+    per_line = {n: set() for n in range(lo, hi + 1)}
+    for _h, (k, a, b), c in stanzas:
+        if k != kind:
+            continue
+        for n in range(max(a, lo), min(b, hi) + 1):
+            per_line[n].update(x.strip() for x in c)
+    negate = [c for c in children
+              if not all(c.strip() in per_line[n] for n in per_line)]
+    if not negate:
+        return []
+    out = [([header], f"{' ' * (len(c) - len(c.lstrip()))}no {c.strip()}") for c in negate]
+    for h, c in _overlapping_stanzas(header, pre_config):
+        out.extend(([h], child) for child in c)
+    return out
+
+
 def created_containers(pushed: list, pre_config: str) -> set:
     """``{(chain, line)}`` for every section this push BROUGHT INTO EXISTENCE.
 
@@ -869,7 +951,8 @@ def created_containers(pushed: list, pre_config: str) -> set:
             continue
         key = (tuple(ifnames.canonicalise_line(c) for c in entry["chain"]),
                ifnames.canonicalise_line(entry["line"]))
-        if key not in present:
+        if key not in present and not (not entry["chain"]
+                                       and line_range_held(entry["line"], pre_config)):
             created.add(key)
     return created
 
@@ -980,6 +1063,16 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
         return any(canon_chain[:len(prefix)] == prefix
                    for prefix in under_created)
 
+    # Terminal lines the device already had, regrouped by the push (C307):
+    # undone per line, never as a creation and never per setting alone.
+    held_ranges = {}
+    landed_seen = (None if landed is None else
+                   {ifnames.canonicalise_line(l).strip() for l in landed})
+    for entry in program_structure(pushed):
+        if not entry["chain"] and not entry["leaf"] \
+                and line_range_held(entry["line"], pre_config):
+            held_ranges.setdefault(entry["line"].rstrip(), [])
+
     for entry in program_structure(pushed):
         line = entry["line"]
         chain = list(entry["chain"])
@@ -987,6 +1080,14 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
         canonical = ifnames.canonicalise_line(line)
         key = (tuple(ifnames.canonicalise_line(c) for c in chain), canonical)
 
+        if len(chain) == 1 and chain[0].rstrip() in held_ranges:
+            # Landed is TEXT new since the snapshot, and every setting here may
+            # already be text under the old stanzas: the range's own header is
+            # the evidence. IOS prints `line vty 0 4` exactly when all its
+            # lines now match, which is what the push did.
+            if entry["leaf"] and (landed_seen is None or chain[0].strip() in landed_seen):
+                held_ranges[chain[0].rstrip()].append(line)
+            continue
         if _is_implied(chain):
             continue                      # removing the container removes it
 
@@ -1015,6 +1116,9 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
         elif previous is None:
             pending.append((chain, f"{' ' * indent}no {line.strip()}"))
         # previous == canonical: the pushed line was already there, nothing to do
+
+    for header, children in held_ranges.items():
+        pending.extend(_line_range_undo(header, children, pre_config))
 
     def _close():
         for _level in reversed(open_chain):
@@ -1195,10 +1299,30 @@ def assert_rollback_provenance(rollback: list, pushed: list,
         else:
             pushed_ancestry.add((chain, canonical))
 
+    # A fifth, also only with *pre_config* (C307): a pre-change terminal-line
+    # stanza that a pushed, already-held line range overlaps, re-sent
+    # verbatim, which is how the per-line values a range negation took are
+    # put back. Its header and its own children only, read from pre_config.
+    restored_stanzas = {}
+    if pre_config is not None:
+        for entry in program_structure(pushed):
+            if not entry["chain"] and not entry["leaf"] \
+                    and line_range_held(entry["line"], pre_config):
+                for h, c in _overlapping_stanzas(entry["line"], pre_config):
+                    restored_stanzas[h.rstrip()] = {x.rstrip() for x in c}
+
     orphans = []
     for entry in program_structure(rollback):
         chain = tuple(ifnames.canonicalise_line(c) for c in entry["chain"])
         canonical = ifnames.canonicalise_line(entry["line"])
+        raw_chain = tuple(c.rstrip() for c in entry["chain"])
+
+        if not entry["leaf"] and entry["line"].rstrip() in restored_stanzas \
+                and (chain, canonical) not in pushed_ancestry:
+            continue
+        if entry["leaf"] and len(raw_chain) == 1 and raw_chain[0] in restored_stanzas \
+                and entry["line"].rstrip() in restored_stanzas[raw_chain[0]]:
+            continue
 
         if not entry["leaf"]:
             if (chain, canonical) not in pushed_ancestry:
