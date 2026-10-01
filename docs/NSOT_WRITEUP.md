@@ -2005,6 +2005,19 @@ IP SLA policy. SNMPv3 is the profile's next SNMP change (Stage 9).
 *Not recoverable:* the minute-level split of (a) and (b)'s time between the profile and the
 work interleaved with it on 2026-09-30.
 
+**Step (d), in progress (added 2026-10-01, overnight, while the detail is in hand; the entry
+closes with (d4)).** (d1) Monitoring > Coverage in v2 [git 2986b5c]. (d2) the batch Apply as a
+v2 preview showing the rollout order (reorderable), one confirm, and a batch run as a job that
+shows each device's step as it goes [git a6753de], its confirm clicked in a real browser
+[git 460fe67]; building it made the deploy plan and apply one function each
+(`routes.deploy.plan_devices`, `apply_batch`), called by the old routes and the job alike.
+(d3) a device's Monitoring tab opens with what it is monitored by, with Apply where the profile
+supplies a gap [git 3f27cb4]. Issues found: none new in (d2) or (d3); C290 (a running IP SLA
+operation cannot be edited in place) was designed and built the same night as (d4)'s
+prerequisite [git 1215d3e], its delete refused until staged run 9 measures it. Commits: 4 from
+03:42 to 03:51 local (UTC-6) on 2026-10-01. Not recoverable: when (d2)'s build began (it
+was written in a session summarised before its first commit, after C290's at 03:21). (d4), the profile's IP SLA policy, waits on staged run 9.
+
 ### P.7 and P.8
 
 Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own item before 8.6) and P.8 (per-list settings: two lists are two networks) [NSOT_PLAN.md P.7, P.8]. Entries are written when they close.
@@ -2734,6 +2747,28 @@ The landing page drew every section 1a source from stored or cached values, each
    - No estimate was made, deliberately: no front-end build of this kind had finished to forecast from. This is the first, and the review fixes are its second commit.
    - Not recoverable: the build's start time. The backend was written in a session summarised before the first commit.
 6. **Where it left the product.** Option A decided. One device page tab pair works in the new design with the operator's identity; the rest of the redesign builds on it. The device dashboards show data once the generated targets are installed.
+
+#### 7.D step 4, part one — The Devices list and the device page's tabs (open: Ask the device)
+
+*Written 2026-10-01 at about 10:45 UTC, overnight and without the operator, as the part closed short of one tab; the step stays open.*
+
+1. **What it was.** The operator's item 5 for the night: the remaining step-4 work under the GUI brief, the Devices list and the device page's tabs. Under the night's rule (no session to any device beyond the app's own jobs, s3 being CPU-starved), every tab reads a store or a service the app already polls, never a device.
+2. **How it was implemented.**
+   - **Devices** [git f1863ba]: every device with status, address, platform and its intent state AS OF ITS LAST CAPTURE (the golden commit's `Intent-Match:` trailer), in a fixed number of reads (one bounded `git log`, one `ls-tree`), pending onboardings as rows.
+   - **History** [git c752d89]: golden commits, intent commits and receipts as one timeline.
+   - **Intent**, read-only [git fb5320d]: the document committed at HEAD, its last commit, the profile sections it inherits.
+   - **Neighbours** [git 204f2e2], C38: the adjacencies the fleet's committed intent implies (OSPF by shared subnet under the network statements, passive interfaces excluded; OSPFv3; BGP's named neighbours), against Prometheus's `ospfNbrState`, `ospfv3NbrState` and `cbgpPeer2State`.
+   - **Logs** [git 9428155]: the device's syslog from Loki, matched by origin-id, heartbeats folded by their exact form.
+   - **NetBox** [git aa061be]: the record and who owns it by NMAS's provenance.
+   - C38's second consumer [git f66e8ee]: a reader runs the Neighbours comparison fleet-wide and Needs attention names a down link once per pair, after two reads.
+3. **Issues encountered.**
+   - The passive-interface test could not fail at first: no fleet device had OSPF on s3's management segment, so the fixture could not exhibit it. A test now builds one from r1's intent.
+   - The first prefix test for Logs (`r30`) could not fail either, since the substring stage already excluded it; it uses `br3`.
+   - Measured beside them, from the night's captures: s3's heartbeats arrive about nine minutes apart for a five-minute timer and its own timestamps read Sep 27 (its slow clock, C93); NetBox holds `ios` for every device (A4, now drawn on the NetBox tab).
+   - No new register row: each was a known one.
+4. **How they were resolved.** Both vacuous tests replaced and shown failing under a control; A4 drawn, its writer unchanged (7.6).
+5. **Numbers.** Seven commits, f1863ba (03:59 local, UTC-6) to f66e8ee (04:42), about 45 minutes of commits after the Devices list's build began in the session before it. Every new check carries a control that fails only the test aimed at it (twelve controls across the seven). The fixtures are real answers captured read-only from the host (Prometheus, Loki, NetBox), the host's own addresses replaced. **No forecast was made for step 4**, so there is nothing to check; the page-per-tab rate here (one tab in 6 to 10 minutes of commit time, on a pattern the spike established) is the measurement the next forecast should start from. Not recoverable: when the Devices list's build began (the session was summarised before its first commit).
+6. **Where it left the product.** The v2 device page draws every tab but Ask the device, which sends commands to a device and waits for a session with the operator awake. Needs attention names a down adjacency. None of it is deployed yet.
 
 ## Part III. Side campaigns
 
