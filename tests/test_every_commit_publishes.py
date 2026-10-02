@@ -33,7 +33,7 @@ CHOKEPOINT = ("modules/nsot/repo.py", "commit")
 #: Callers that commit with publish_now=False and are NOT required to publish,
 #: with the reason.
 DEFERS_WITHOUT_PUBLISHING = {
-    ("modules/nsot/repo.py", "init_repo"): (
+    ("modules/nsot/repo.py", "_init_repo_locked"): (
         "its first commit and its .gitignore top-up run only on a write path, whose own "
         "commit follows and pushes the branch, carrying them"),
 }
@@ -152,7 +152,7 @@ class TestOneCommit:
                     continue
                 if not _calls_in(fns[where], ("publish",)):
                     missing.append(f"{p}:{call.lineno} in {where}")
-        # Floor: save_golden (twice), _commit_paths and init_repo (twice) defer.
+        # Floor: save_golden (twice), _commit_paths and _init_repo_locked (twice) defer.
         assert len(seen) >= 5, seen
         assert not missing, "a commit deferred and never published: " + "; ".join(missing)
 
@@ -214,8 +214,9 @@ class TestItPublishesForReal:
         path, fired = repo_dir
         with open(os.path.join(path, "host_vars", "x.yml"), "w") as fh:
             fh.write("hostname: x\n")
-        _repo.git(path, "add", "host_vars/x.yml")
-        rc, sha, _ = _repo.commit(path, "x\n\nSource: test\nActor: t\n", source="test")
+        with _repo.repo_lock(path):
+            _repo.git(path, "add", "host_vars/x.yml")
+            rc, sha, _ = _repo.commit(path, "x\n\nSource: test\nActor: t\n", source="test")
         head = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"],
                               capture_output=True, text=True).stdout.strip()
         assert rc == 0 and sha == head
@@ -230,7 +231,8 @@ class TestItPublishesForReal:
         from modules.nsot import repo as _repo
 
         path, fired = repo_dir
-        rc, sha, _ = _repo.commit(path, "nothing staged")
+        with _repo.repo_lock(path):
+            rc, sha, _ = _repo.commit(path, "nothing staged")
         assert rc != 0 and sha == "" and fired == []
 
     def test_abandon_hands_its_commit_to_the_hooks(self, repo_dir):

@@ -382,7 +382,7 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
 
             # Same discipline as save_golden: an unchanged file is not
             # rewritten, so it cannot contribute a phantom diff.
-            if _repo._content_changed(target_abs, content):
+            if _file_differs(target_abs, content):
                 with open(target_abs, "w", encoding="utf-8", newline="\n") as fh:
                     fh.write(content)
 
@@ -463,6 +463,17 @@ def apply(list_name: str, actor: str = "nmas") -> dict:
     return {"ok": True, "list": list_name, "migrated": migrated,
             "merges": merges, "device_uids": backfilled,
             "committed": created_commit, "marker": marker, "report": report}
+
+
+def _file_differs(path: str, content: str) -> bool:
+    """Whether the WORKING file differs from *content*: the migration writes the working
+    tree, and an unchanged file is not rewritten (no phantom diff). The golden save compares
+    what is committed instead (repo._content_changed)."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read() != content
+    except OSError:
+        return True
 
 
 def backfill_device_uids() -> dict:

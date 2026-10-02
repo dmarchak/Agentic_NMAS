@@ -1782,8 +1782,6 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
         try:
             from modules.nsot import repo as _repo
 
-            os.remove(path)
-
             # `git()` RETURNS (rc, stdout, stderr) and never raises -- 127
             # when git is missing, 124 on timeout. Discarding it would have
             # this step report success on a commit that never happened,
@@ -1793,19 +1791,22 @@ def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
             # The ONE path this step removed. `add -A` staged the whole
             # repository, so anything else left in the working tree (a golden
             # a failed save had written) was committed as "abandon" (C104).
-            rc, _out, err = _repo.git(repo, "add", "-A", "--", rel)
-            if rc == 0:
-                # Through the ONE commit, which publishes (C223): this commit
-                # called git directly and never reached the push hook, so it
-                # stayed on the host while onboarding's commit went out.
-                rc, _out, err = _repo.commit(
-                    repo, f"abandon: {hostname} - onboarding withdrawn\n\n"
-                          f"Source: onboarding\nActor: {actor or 'unknown'}\n",
-                    list_name=list_name, paths=(rel,),
-                    git_config=("user.email=nmas@local", "user.name=NMAS"),
-                    source="onboarding", actor=actor or "unknown")
-                if rc != 0:
-                    _repo.git(repo, "reset", "-q", "--", rel)
+            # Staged and committed under the repository lock, across processes (R1).
+            with _repo.repo_lock(repo):
+                os.remove(path)
+                rc, _out, err = _repo.git(repo, "add", "-A", "--", rel)
+                if rc == 0:
+                    # Through the ONE commit, which publishes (C223): this commit
+                    # called git directly and never reached the push hook, so it
+                    # stayed on the host while onboarding's commit went out.
+                    rc, _out, err = _repo.commit(
+                        repo, f"abandon: {hostname} - onboarding withdrawn\n\n"
+                              f"Source: onboarding\nActor: {actor or 'unknown'}\n",
+                        list_name=list_name, paths=(rel,),
+                        git_config=("user.email=nmas@local", "user.name=NMAS"),
+                        source="onboarding", actor=actor or "unknown")
+                    if rc != 0:
+                        _repo.git(repo, "reset", "-q", "--", rel)
             if rc != 0:
                 raise RuntimeError(err or f"git exited {rc}")
             _step("intent", True, f"removed {rel} and committed the removal")

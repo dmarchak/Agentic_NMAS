@@ -19,8 +19,10 @@ Design points:
   ``git log --follow -- golden/<new>.cfg`` working across a rename.
 * **Identity, not filename.** Devices resolve through ``.nsot/manifest.json``.
 
-Concurrency: one lock per repo serialises every git invocation in-process, and
-a stale ``index.lock`` is detected and removed. Post-commit hooks run on a
+Concurrency: ONE lock per repository, held across processes (`RepoLock`, CONCURRENCY_AUDIT
+R1), from the first working-tree write to the last tag: the app and every host CLI share it.
+`stage_exactly` and `commit` refuse outside it. A stale ``index.lock`` is detected and
+removed; readers take no optional lock (`GIT_OPTIONAL_LOCKS=0`). Post-commit hooks run on a
 background thread and never hold the lock.
 """
 
@@ -40,8 +42,6 @@ log = logging.getLogger(__name__)
 GIT_TIMEOUT = 30
 STALE_LOCK_SECONDS = 120
 
-_repo_locks: dict = {}
-_locks_guard = threading.Lock()
 
 #: `Source:` names the workflow and is free text by design (CLAUDE.md), so
 #: any lowercase slug is recorded AS GIVEN. It used to be a list, and anything
@@ -69,11 +69,87 @@ class GoldenItem:
         return _manifest.identity_for(self.netbox_id, self.device_uid)
 
 
-def repo_lock(repo: str) -> threading.Lock:
-    with _locks_guard:
-        if repo not in _repo_locks:
-            _repo_locks[repo] = threading.Lock()
-        return _repo_locks[repo]
+#: A wait for the repository lock longer than this is logged naming the holder: a commit
+#: takes well under a second here, and a Save All's whole save a few seconds.
+REPO_LOCK_WAIT_LOG_SECONDS = 5.0
+
+
+class RepoLock:
+    """The ONE lock on a list's repository, held ACROSS PROCESSES (CONCURRENCY_AUDIT R1).
+
+    It was a `threading.Lock` per repository, so a host CLI (`nmas-retire`, the rotation,
+    `nmas-golden-state`, the repair scripts) committing at the same moment as the app was
+    serialised by nothing: another writer's staged file could ride into this commit under
+    this person's `Actor:` (C175's defect, recreated), or `stage_exactly` refused naming the
+    other person's in-flight file. Now a `filestore.PathLock` on ``<repo>.lock`` (beside the
+    repository, never inside it, so `git init` still sees no `.git`): an RLock in the process
+    and a `flock` across processes, re-entrant per thread, released by the kernel when its
+    holder dies. The holder (process, thread, since) is recorded beside it, and a wait
+    longer than `REPO_LOCK_WAIT_LOG_SECONDS` is logged naming who held it.
+    """
+
+    def __init__(self, repo: str):
+        from modules.filestore import PathLock
+        self.repo = os.path.abspath(repo)
+        self._lock = PathLock(self.repo)
+
+    @property
+    def holder_path(self) -> str:
+        return self.repo + ".lock.holder"
+
+    def held(self) -> bool:
+        """Whether THIS thread holds it."""
+        return self._lock.depth() > 0
+
+    def _holder(self) -> str:
+        try:
+            with open(self.holder_path, encoding="utf-8") as fh:
+                return fh.read().strip()
+        except OSError:
+            return ""
+
+    def __enter__(self):
+        first = not self.held()
+        before = self._holder() if first else ""
+        started = time.monotonic()
+        self._lock.__enter__()
+        if first:
+            waited = time.monotonic() - started
+            if waited > REPO_LOCK_WAIT_LOG_SECONDS:
+                log.warning("repo: waited %.1f s for the repository lock on %s, held by %s",
+                            waited, self.repo, before or "a holder that recorded nothing")
+            try:
+                from modules.config import open_secure
+                with open_secure(self.holder_path, "w", encoding="utf-8") as fh:
+                    fh.write(f"pid {os.getpid()} thread {threading.current_thread().name} "
+                             f"since {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n")
+            except OSError as exc:
+                log.warning("repo: the lock's holder could not be recorded: %s", exc)
+        return self
+
+    def __exit__(self, *exc):
+        if self._lock.depth() == 1:
+            try:
+                os.remove(self.holder_path)
+            except OSError:
+                pass
+        return self._lock.__exit__(*exc)
+
+
+def repo_lock(repo: str) -> RepoLock:
+    """The repository's lock: hold it from the first working-tree write to the last tag."""
+    return RepoLock(repo)
+
+
+class LockNotHeld(RuntimeError):
+    """A stage or commit outside the repository lock (CONCURRENCY_AUDIT R1)."""
+
+
+def _require_lock(repo: str, what: str) -> None:
+    if not RepoLock(repo).held():
+        raise LockNotHeld(f"{what} outside the repository lock: stage and commit under "
+                          "`with repo_lock(repo):`, or another process's commit can carry "
+                          "this one's files, or this one theirs")
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +188,9 @@ def _git_env() -> dict:
         "GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email,
         "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email,
         "GIT_TERMINAL_PROMPT": "0",
+        # A read (status, diff) never takes the index lock to refresh stat data, so a
+        # reader cannot make a writer in another process fail on `index.lock` (R24).
+        "GIT_OPTIONAL_LOCKS": "0",
     })
     return env
 
@@ -241,7 +320,11 @@ def stage_exactly(repo: str, paths: list) -> list:
     staged by hand would ride along just as an unstaged edit did under
     `add -A <dir>`. On a refusal nothing this call staged stays staged. A
     path that is on disk nowhere and not tracked has nothing to stage and is
-    skipped (a file this commit deletes is still staged as a deletion)."""
+    skipped (a file this commit deletes is still staged as a deletion).
+
+    Refused outside the repository lock: the index check and the commit that follows
+    must be one step, or another process stages between them (R1)."""
+    _require_lock(repo, "staging")
     wanted = [_rel(p) for p in paths if p]
     for p in wanted:
         if p in WHOLE_TREES or os.path.isdir(os.path.join(repo, p)):
@@ -266,6 +349,15 @@ def stage_exactly(repo: str, paths: list) -> list:
     return wanted
 
 
+def _staged_among(repo: str, paths: list) -> list:
+    """Which of *paths* the index holds now: the commit names exactly these, so it can
+    never carry a file it did not stage, even one staged by something that bypassed the
+    repository lock, such as a person's `git add` on the host (CONCURRENCY_AUDIT R1, 3)."""
+    _rc, out, _err = git(repo, "diff", "--cached", "--name-only")
+    staged = set(l for l in (out or "").splitlines() if l.strip())
+    return [p for p in (_rel(x) for x in paths) if p in staged]
+
+
 def unstage(repo: str, paths: list) -> None:
     """Unstage exactly *paths*: never a blanket reset of a tree."""
     if paths:
@@ -273,8 +365,14 @@ def unstage(repo: str, paths: list) -> None:
 
 
 def init_repo(repo: str) -> bool:
-    """Create the repo and its NSoT layout. Idempotent."""
+    """Create the repo and its NSoT layout. Idempotent. Under the repository lock (it
+    commits; re-entrant, so a caller already holding it holds it still)."""
     os.makedirs(repo, exist_ok=True)
+    with repo_lock(repo):
+        return _init_repo_locked(repo)
+
+
+def _init_repo_locked(repo: str) -> bool:
     if not os.path.isdir(os.path.join(repo, ".git")):
         rc, _, _ = git(repo, "init", "-b", "main")
         if rc != 0:
@@ -360,14 +458,13 @@ def golden_body(hostname: str, mgmt_ip: str, config_text: str) -> str:
     return f"! Golden config — {hostname} ({mgmt_ip})\n{body}\n"
 
 
-def _content_changed(path: str, new_content: str) -> bool:
-    if not os.path.exists(path):
-        return True
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return fh.read() != new_content
-    except OSError:
-        return True
+def _content_changed(repo: str, rel: str, new_content: str) -> bool:
+    """Whether *new_content* differs from what is COMMITTED at *rel* (CONCURRENCY_AUDIT
+    R25). It compared the working file, so a hand edit or another writer's uncommitted
+    file equal to this capture read as "unchanged" and nothing was committed, while HEAD
+    still held the old golden: the save reported a record it never made."""
+    rc, out, _err = git_raw(repo, "show", f"HEAD:{rel}")
+    return rc != 0 or out != new_content
 
 
 # ---------------------------------------------------------------------------
@@ -814,6 +911,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
     rename_result = apply_pending_renames(repo, actor)
 
     changed, unchanged, pending = [], [], []
+    tag_failures = []
     with repo_lock(repo):
         init_repo(repo)
         os.makedirs(os.path.join(repo, "golden"), exist_ok=True)
@@ -841,7 +939,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                                     netbox_id=item.netbox_id,
                                     platform=item.platform, golden=rel)
 
-            if not _content_changed(abs_path, content):
+            if not _content_changed(repo, rel, content):
                 unchanged.append(item.hostname)
                 continue
 
@@ -992,13 +1090,14 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                 if _rc == 0 and head:
                     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
                     baseline_tag = _unique_tag(repo, f"baseline/{stamp}", head)
-                    if git(repo, "tag", "-a", baseline_tag, "-m",
-                           _baseline_message(
-                               f"network baseline — no changes; all "
-                               f"{len(unchanged)} capture(s) verified equal to "
-                               f"HEAD, via {source}", operational))[0] == 0:
+                    if _make_tag(repo, baseline_tag,
+                                 _baseline_message(
+                                     f"network baseline — no changes; all "
+                                     f"{len(unchanged)} capture(s) verified equal to "
+                                     f"HEAD, via {source}", operational), tag_failures):
                         tags.append(baseline_tag)
-                        tags += _golden_state_tag(repo, stamp, head, operational)
+                        tags += _golden_state_tag(repo, stamp, head, operational,
+                                                  tag_failures)
                         log.info("repo: baseline %s at existing HEAD %s "
                                  "(%d device(s) verified equal)",
                                  baseline_tag, head[:12], len(unchanged))
@@ -1023,7 +1122,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             return {"ok": True, "commit": decision_commit, "changed": [],
                     "refused": refused,
                     "decision_only": bool(decision_commit),
-                    "unchanged": unchanged, "tags": tags,
+                    "unchanged": unchanged, "tags": tags, "tag_failures": tag_failures,
                     "baseline": baseline_tag, "baseline_denied": denied,
                     "intent": intent,
                     "renamed": rename_result["renamed"],
@@ -1082,7 +1181,8 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         trailers.extend(extra_trailers or [])
 
         commit_message = f"{subject}\n\n" + "\n".join(trailers) + "\n"
-        rc, _, err = commit(repo, commit_message, publish_now=False)
+        rc, _, err = commit(repo, commit_message, publish_now=False,
+                            paths=_staged_among(repo, own))
         if rc != 0:
             _undo_golden_writes(repo, before, own)
             return {"ok": False, "error": f"commit failed: {err}",
@@ -1099,8 +1199,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         tags = []
         for c in changed:
             tag = _unique_tag(repo, f"golden/{_safe_name(c['hostname'])}/{stamp}", sha)
-            if git(repo, "tag", "-a", tag, "-m",
-                   f"golden {c['hostname']} via {source}")[0] == 0:
+            if _make_tag(repo, tag, f"golden {c['hostname']} via {source}", tag_failures):
                 tags.append(tag)
         # A baseline marks the state of the network at a moment. That is true
         # of a completed batch regardless of how many devices it changed, so a
@@ -1110,11 +1209,11 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         baseline_tag = ""
         if earned:
             baseline_tag = _unique_tag(repo, f"baseline/{stamp}", sha)
-            if git(repo, "tag", "-a", baseline_tag, "-m",
-                   _baseline_message(f"network baseline — {len(changed)} device(s) "
-                                     f"via {source}", operational))[0] == 0:
+            if _make_tag(repo, baseline_tag,
+                         _baseline_message(f"network baseline — {len(changed)} device(s) "
+                                           f"via {source}", operational), tag_failures):
                 tags.append(baseline_tag)
-                tags += _golden_state_tag(repo, stamp, sha, operational)
+                tags += _golden_state_tag(repo, stamp, sha, operational, tag_failures)
             else:
                 baseline_tag = ""
 
@@ -1135,6 +1234,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
     return {"ok": True, "commit": sha, "changed": [c["hostname"] for c in changed],
             "refused": refused,
             "unchanged": unchanged, "tags": tags, "baseline": baseline_tag,
+            "tag_failures": tag_failures,
             "baseline_denied": denied, "intent": intent,
             "renamed": rename_result["renamed"], "error": ""}
 
@@ -1161,7 +1261,8 @@ def _baseline_message(first_line: str, operational: dict = None) -> str:
     return message
 
 
-def _golden_state_tag(repo: str, stamp: str, sha: str, operational: dict = None) -> list:
+def _golden_state_tag(repo: str, stamp: str, sha: str, operational: dict = None,
+                      failures: list = None) -> list:
     """``golden-state/<stamp>`` at the same commit, ONLY when the snapshot says
     every device is working. A listing of these tags is the list of moments
     the network was known good; a baseline without one made the weaker claim."""
@@ -1170,11 +1271,23 @@ def _golden_state_tag(repo: str, stamp: str, sha: str, operational: dict = None)
     from modules.nsot.golden_state import claim_lines
 
     tag = _unique_tag(repo, f"golden-state/{stamp}", sha)
-    if git(repo, "tag", "-a", tag, "-m",
-           "golden state — configured and working\n\n"
-           + "\n".join(claim_lines(operational)))[0] == 0:
+    if _make_tag(repo, tag, "golden state — configured and working\n\n"
+                 + "\n".join(claim_lines(operational)),
+                 failures if failures is not None else []):
         return [tag]
     return []
+
+
+def _make_tag(repo: str, tag: str, message: str, failures: list) -> bool:
+    """Create an annotated tag; a failure is REPORTED, never dropped (CONCURRENCY_AUDIT
+    R24): it is logged and added to *failures*, which the save returns as
+    `tag_failures`. A dropped baseline tag read as a baseline never earned."""
+    rc, _out, err = git(repo, "tag", "-a", tag, "-m", message)
+    if rc == 0:
+        return True
+    failures.append(f"{tag}: {err or f'git exited {rc}'}")
+    log.error("repo: tag %s could not be created: %s", tag, err or f"git exited {rc}")
+    return False
 
 
 def _read_bytes(path: str):
@@ -1270,8 +1383,11 @@ def commit(repo: str, message: str, *, list_name: str = "", paths=(), allow_empt
     an AST scan of the program and its scripts with a floor), and a caller that
     defers publishing must call :func:`publish` itself.
 
-    Returns ``(rc, sha, stderr)``; ``sha`` is empty when the commit failed.
+    Returns ``(rc, sha, stderr)``; ``sha`` is empty when the commit failed. Refused
+    outside the repository lock, which the caller holds from its first write (R1); the
+    sha is read under it, so it is this commit's and never a later one's (R24).
     """
+    _require_lock(repo, "a commit")
     config_args = [a for kv in git_config for a in ("-c", kv)]
     flags = ["--allow-empty"] if allow_empty else []
     tail = ["--", *paths] if paths else []
@@ -1312,7 +1428,8 @@ def _commit_paths(list_name: str, paths: list, subject: str, trailers: list,
 
         message = f"{subject}\n\n" + "\n".join(
             trailers + [f"Source: {source}"]) + "\n"
-        rc, _, err = commit(repo, message, publish_now=False)
+        rc, _, err = commit(repo, message, publish_now=False,
+                            paths=_staged_among(repo, paths))
         if rc != 0:
             # Unstaged, never left for another commit to carry. The file stays
             # on disk: it is the person's edit, and the status bar names it.

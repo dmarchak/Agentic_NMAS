@@ -178,3 +178,25 @@ def test_refusals(world):
     assert "reason is required" in RT.plan("Lab", "r5", "")["refusals"][0]
     assert "nothing to retire" in RT.plan("Lab", "zz", "x")["refusals"][0]
     assert "no device list" in RT.plan("Nope", "r5", "x")["refusals"][0]
+
+
+def test_a_failed_commit_puts_back_only_its_own_paths(world, monkeypatch):
+    """CONCURRENCY_AUDIT R25: the undo reset and checked out the WHOLE `host_vars`, `golden`
+    and `.nsot` trees, so another device's uncommitted edit (a person's, or another
+    writer's) was thrown away by a retire that failed. It puts back only what retire
+    touched: r5's files and the manifest."""
+    R, repo = world["R"], world["repo"]
+    p = RT.plan("Lab", "r5", "retired")
+
+    def edit_then_fail(*a, **k):
+        # A person edits r4 by hand while retire runs (a hand edit takes no lock).
+        with open(os.path.join(repo, "golden", "r4.cfg"), "a") as fh:
+            fh.write("! a hand edit nobody committed\n")
+        return {"ok": False, "error": "boom"}
+
+    monkeypatch.setattr(R, "_commit_paths", edit_then_fail)
+    out = RT.apply("Lab", "r5", reason="retired", actor="op",
+                   confirmed_hash=p["hash"], breakglass=_bg())
+    assert out["ok"] is False and out["failed_at"] == "commit", out
+    assert "a hand edit nobody committed" in open(os.path.join(repo, "golden", "r4.cfg")).read()
+    assert os.path.exists(os.path.join(repo, "golden", "r5.cfg"))

@@ -92,9 +92,15 @@ def _git(repo: str, *args) -> tuple[int, str, str]:
 
 def init_config_repo(list_name: str) -> bool:
     """Initialise (or verify) the git repo for a device list.  Idempotent."""
+    from modules.nsot.repo import repo_lock
+
     repo = _repo_dir(list_name)
     os.makedirs(repo, exist_ok=True)
+    with repo_lock(repo):                  # across processes (CONCURRENCY_AUDIT R1)
+        return _init_locked(repo, list_name)
 
+
+def _init_locked(repo: str, list_name: str) -> bool:
     if os.path.isdir(os.path.join(repo, ".git")):
         return True
 

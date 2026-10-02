@@ -4406,6 +4406,14 @@ operations at once, and failure injection (a process killed mid-operation, a loc
 a hung holder). **Placement:** the fixes land before 9.S runs more than one worker; findings
 that affect today's single-process install (two users or two tabs) are scheduled now, by risk.
 
+**Progress.** 2026-10-02: **R1, R24 and R25 fixed** (the list repository's lock is one
+`flock` across processes, held from the first write to the last tag, staging and commit
+refused outside it, a commit naming the paths it staged; readers take no optional git lock;
+a failed tag reported; a save compares HEAD; retire's undo puts back only its own paths),
+with a test that runs a real second process. Next, in the operator's order: R4, R5, R13,
+R19, R20, R28; R2 (two people editing one intent) remains, since the intent file is still
+written before the lock is taken.
+
 ### P.16 — Build or adopt the job machinery (DECIDED 2026-10-02, the operator; NOT STARTED; an evaluation, placed BEFORE Stage 10's release)
 
 The stepper showed the tool has grown pieces of a job runner: systemd timers, job health,

@@ -62,26 +62,34 @@ def _still_uncommitted(lab):
     return all(p in status for p in lab["planted"])
 
 
+def _locked_stage(repo, paths):
+    """Staging is refused outside the repository lock (R1): every real caller holds it."""
+    from modules.nsot.repo import repo_lock, stage_exactly
+
+    with repo_lock(repo):
+        return stage_exactly(repo, paths)
+
+
 class TestStageExactly:
     @pytest.mark.parametrize("tree", ["golden", "host_vars", "templates", ".nsot", "golden/"])
     def test_a_tree_is_refused(self, lab, tree):
         from modules.nsot.repo import StagesMoreThanItWrote, stage_exactly
 
         with pytest.raises(StagesMoreThanItWrote, match="directory"):
-            stage_exactly(lab["repo"], [tree])
+            _locked_stage(lab["repo"], [tree])
 
     def test_any_directory_is_refused(self, lab):
         from modules.nsot.repo import StagesMoreThanItWrote, stage_exactly
 
         with pytest.raises(StagesMoreThanItWrote):
-            stage_exactly(lab["repo"], ["templates/cisco_ios"])
+            _locked_stage(lab["repo"], ["templates/cisco_ios"])
 
     def test_a_path_staged_by_hand_refuses_and_is_left_staged(self, lab):
         from modules.nsot.repo import StagesMoreThanItWrote, stage_exactly
 
         _git(lab["repo"], "add", "--", "host_vars/s1.yml")
         with pytest.raises(StagesMoreThanItWrote, match="host_vars/s1.yml"):
-            stage_exactly(lab["repo"], ["host_vars/r2.yml"])
+            _locked_stage(lab["repo"], ["host_vars/r2.yml"])
         assert _git(lab["repo"], "diff", "--cached", "--name-only") == "host_vars/s1.yml"
 
 

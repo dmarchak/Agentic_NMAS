@@ -653,36 +653,40 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
         done.append("declare")
 
     if "commit" in pending:
-        try:
-            for rel in p["files"]:
-                rc, _o, err = R.git(repo, "rm", "--quiet", "--", rel)
-                if rc != 0:
-                    raise RuntimeError(f"git rm {rel}: {err}")
-            if p["identity"]:
-                rel = manifest.release(repo, p["identity"], list_name, actor,
-                                       against="index", retained=("netbox",))
-                if not rel.get("ok"):
-                    raise RuntimeError(rel.get("error"))
-            trailers = [f"Actor: {actor}", "Tool: nmas-retire",
-                        f"Retired-Device: {hostname}", f"Reason: {reason}"]
-            trailers += [f"Not-Done: {n}" for n in p["not_doing"]]
-            # Exactly what retire removed and the manifest, never the trees
-            # (C175): another device's uncommitted edit must not leave with r5.
-            result = R._commit_paths(list_name, list(p["files"]) + [R.MANIFEST_REL],
-                                     f"retire: {hostname} -- {reason}",
-                                     trailers, "retire")
-            if not result.get("ok"):
-                raise RuntimeError(result.get("error"))
-            commit = result.get("commit", "")
-            done.append("commit")
-        except Exception as exc:               # noqa: BLE001
-            # Put the tree back, or the next plan sees no files and no
-            # identity, counts this step as done, and refuses on the dirty
-            # tree it left: a half-state with no way forward.
-            R.git(repo, "reset", "-q", "HEAD", "--", "host_vars", "golden", ".nsot")
-            R.git(repo, "checkout", "-q", "HEAD", "--", "host_vars", "golden",
-                  ".nsot/manifest.json")
-            return fail("commit", exc)
+        # The removal, the manifest release, the commit and any undo under the repository
+        # lock, across processes (CONCURRENCY_AUDIT R1); the undo puts back ONLY the paths
+        # retire touched (R25: it reset whole trees, taking another writer's work too).
+        own = list(p["files"]) + [R.MANIFEST_REL]
+        with R.repo_lock(repo):
+            try:
+                for rel in p["files"]:
+                    rc, _o, err = R.git(repo, "rm", "--quiet", "--", rel)
+                    if rc != 0:
+                        raise RuntimeError(f"git rm {rel}: {err}")
+                if p["identity"]:
+                    rel = manifest.release(repo, p["identity"], list_name, actor,
+                                           against="index", retained=("netbox",))
+                    if not rel.get("ok"):
+                        raise RuntimeError(rel.get("error"))
+                trailers = [f"Actor: {actor}", "Tool: nmas-retire",
+                            f"Retired-Device: {hostname}", f"Reason: {reason}"]
+                trailers += [f"Not-Done: {n}" for n in p["not_doing"]]
+                # Exactly what retire removed and the manifest, never the trees
+                # (C175): another device's uncommitted edit must not leave with r5.
+                result = R._commit_paths(list_name, list(p["files"]) + [R.MANIFEST_REL],
+                                         f"retire: {hostname} -- {reason}",
+                                         trailers, "retire")
+                if not result.get("ok"):
+                    raise RuntimeError(result.get("error"))
+                commit = result.get("commit", "")
+                done.append("commit")
+            except Exception as exc:               # noqa: BLE001
+                # Put the tree back, or the next plan sees no files and no
+                # identity, counts this step as done, and refuses on the dirty
+                # tree it left: a half-state with no way forward.
+                R.git(repo, "reset", "-q", "HEAD", "--", *own)
+                R.git(repo, "checkout", "-q", "HEAD", "--", *own)
+                return fail("commit", exc)
 
     if "legacy" in pending:
         try:
