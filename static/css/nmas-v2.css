@@ -495,15 +495,6 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .cov-pick { width: 28px; }
 .cov-actions { margin: 12px 0 0; }
 
-/* Needs attention's information (2026-10-01): not a problem, so drawn apart and quiet. */
-.att-notes { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
-.att-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px;
-  padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); }
-.att-note > .ico { color: var(--accent); }
-.att-note-what { font-weight: 500; }
-.att-how { flex-basis: 100%; font-size: 12px; color: var(--ink-2); }
-.att-how p { margin: 4px 0 0; }
-
 /* Monitoring > Coverage's batch Apply (P.9 d2): the preview, the rollout
    order, each device's program, and the job's progress and result. */
 .apply-what { margin: 0 0 12px; font-weight: 600; }

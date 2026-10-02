@@ -38,12 +38,12 @@ def _health(journal, **rows):
 # ---------------------------------------------------------------------------
 
 class TestTheRowRefusesASilentPart:
-    GOOD = dict(source="s", key="k", what="x is failing", cause="because y",
-                action={"label": "do z"}, level="danger")
+    GOOD = dict(source="drift", kind="drifted", key="k", what="x is failing",
+                cause="because y", action={"label": "do z"}, level="danger")
 
     def test_a_complete_row_carries_every_part_and_an_empty_triage_slot(self):
         r = A.row(**self.GOOD, devices=["r1", ""], since=NOW, operands={"a": 1})
-        assert r["id"] == "s:k" and r["devices"] == ["r1"]
+        assert r["id"] == "drift:k" and r["devices"] == ["r1"]
         assert r["since"].endswith("Z") and r["triage"] is None
         assert r["action"] == {"known": True, "label": "do z"}
 
@@ -883,7 +883,8 @@ class TestTheHealthyPageIsOneLine:
         alone = _panel(page)
         assert "Grafana alerts&#39;s value is older" in alone or \
             "Grafana alerts's value is older" in alone
-        page["rows"] = [A.row(source="job_health", key="reader:grafana-alerts", what="x",
+        page["rows"] = [A.row(source="job_health", kind="job", key="reader:grafana-alerts",
+                              what="x",
                               cause="stopped", action={"label": "restart"}, level="warning")]
         covered = _panel(page)
         assert "value is older than its source promises" not in covered

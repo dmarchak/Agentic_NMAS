@@ -244,12 +244,11 @@ class TestAnUnreadableDeviceIsNotTheCriticalFinding:
         assert "next run" in row["action"]["label"]
         assert "Things you might try" not in row["detail"]
         assert "terminal width 511" in row["detail"]
-        assert A._job_action(row).get("known") is not False
+        # Expected for a run, nothing to do yet (the operator, 2026-10-02):
+        # job health's finding on Needs attention, never a row there.
         src = A.job_health_source(health=lambda: {"jobs": rows})
-        (drawn,) = src["rows"]
-        assert drawn["level"] == "unknown" and drawn["since"]
-        assert drawn["devices"] == row["devices"]
-        assert "No remedy is recorded" not in drawn["action"]["label"]
+        assert src["rows"] == []
+        assert "could not read 7 of 9 device(s) this hour" in src["checked"]
 
     def test_it_becomes_a_warning_once_it_persists_with_the_check_to_run(self):
         from modules import attention as A

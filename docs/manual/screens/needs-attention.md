@@ -9,6 +9,10 @@ The landing page answers one question: does anything need you?
 - **When something is wrong**, one row per thing, worst first: what it is, which devices,
   since when, the cause, and the ONE action that deals with it. A source that did not answer,
   or whose value is older than it promised, is itself a row.
+- **Never a fact with nothing to do.** Every row names something wrong and an action you can
+  take. Something true that needs nothing, such as a new release being available, a lab
+  startup file left by a retired device, or a check that missed a booting device once, is
+  said under "What was checked", beside the source that found it, or on its own page.
 - **Recent changes**: the last deploys and restores, from their receipts.
 
 ## Where the rows come from {#sources}

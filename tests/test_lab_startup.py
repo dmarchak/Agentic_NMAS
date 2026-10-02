@@ -247,8 +247,10 @@ class TestNeedsAttention:
         assert f"A redeploy boots {CDIR}/r3.cfg" in row["cause"]
         assert "`ip domain lookup source-interface Loopback0`" in row["cause"]
         assert "capture" not in row["action"]["label"]
-        info = rows[f"{CDIR}/r5.cfg is a startup file no managed device owns"]
-        assert info["level"] == "info" and "remove" not in json.dumps(info)
+        # r5's leftover file is a fact in the check's finding, never a row
+        # (the operator, 2026-10-02).
+        assert not any("r5.cfg" in r["what"] for r in res["rows"])
+        assert f"{CDIR}/r5.cfg (whether the topology still boots it was not read)" in res["checked"]
         assert "7 holding what the sync builds" in res["checked"]
 
     def test_a_credential_row_carries_no_value(self):
@@ -289,13 +291,16 @@ class TestNeedsAttention:
         assert res["checked"] == ("8 device(s) compared over 1 lab(s), 8 holding what the sync "
                                   "builds")
 
-    def test_the_topology_s_file_reads_as_used_by_it_and_never_offers_removal(self):
+    def test_the_topology_s_file_is_the_check_s_finding_and_never_a_row(self):
+        """True, nothing wrong, nothing to do (the operator, 2026-10-02): said
+        in the lab check's own finding, under What was checked, never offering
+        removal and never a Needs attention row."""
         t = TestTheComparison()
         res = self._source(_check(t._with_topology(t.TOPOLOGY)))
-        row = next(r for r in res["rows"] if "r5.cfg" in r["what"])
-        assert row["what"] == f"{CDIR}/r5.cfg is used by the topology, owned by no managed device"
-        assert "rcn-lab1.clab.yml declares node r5" in row["cause"]
-        assert "remove" not in json.dumps(row) and row["level"] == "info"
+        assert not any("r5.cfg" in r["what"] for r in res["rows"])
+        assert (f"{CDIR}/r5.cfg, used by the topology (rcn-lab1.clab.yml declares node r5), "
+                "owned by no managed device") in res["checked"]
+        assert "remove" not in res["checked"]
 
     def test_not_configured_is_said(self):
         res = self._source({"configured": False, "devices": []})

@@ -35,10 +35,90 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: Worst first. The browser draws the level; it never decides it. `info` is
-#: NOT a problem (the operator, 2026-10-01: "a new release being available
-#: isn't a problem"): drawn apart, and never counted as needing attention.
-LEVELS = ("danger", "warning", "unknown", "info")
+#: Worst first. The browser draws the level; it never decides it. There is no
+#: information level (the operator, 2026-10-02): a fact nobody can act on
+#: ("a new release is available", "a retired device's lab file is still
+#: there") is true and is not wrong, so it belongs on its own page's detail,
+#: and every row here names something wrong and what a person does about it.
+LEVELS = ("danger", "warning", "unknown")
+
+#: EVERY kind of row a source can emit, with what is wrong and the action a
+#: person takes (the operator, 2026-10-02: "every Needs attention row must name
+#: something wrong AND an action a person can take"). `row()` refuses a kind not
+#: declared here, so a new kind arrives with its action or not at all; a scan
+#: holds every `row(` call in this module to a declared kind, both ways. The
+#: row's own action names the specifics; this is the kind's contract.
+#: Source ``*`` is a kind any source emits.
+ROW_KINDS = {
+    ("*", "unreadable"): ("a source could not be read, so what it would show is unknown",
+                          "find why it cannot be read: the cause names what failed"),
+    ("job_health", "job"): ("a job or check is failing, stale, not installed or could not ask",
+                            "its own remedy, or read its output on the host, or install it"),
+    ("drift", "disabled"): ("drift checking is switched off", "switch it back on"),
+    ("drift", "never"): ("drift has never been checked", "run a drift check"),
+    ("drift", "failed"): ("the last drift check failed", "run it again and read its reason"),
+    ("drift", "stale"): ("the last drift check is old", "run a drift check"),
+    ("drift", "drifted"): ("a device differs from its golden", "capture it, or put it back"),
+    ("drift", "skipped"): ("a device was not checked for drift",
+                           "capture its golden, or clear what the reason names and run again"),
+    ("drift", "unreachable"): ("a device could not be checked for drift",
+                               "check it answers, then run a drift check"),
+    ("approvals", "pending"): ("an approval is waiting for a person", "review it"),
+    ("onboarding", "credential"): ("a pending device's staged credential cannot be found",
+                                   "abandon it and onboard it again"),
+    ("onboarding", "overdue"): ("a device onboarded long ago was never reached",
+                                "verify it, or abandon it"),
+    ("rollback", "record"): ("the rolled-back record cannot be read, blocking every plan",
+                             "repair it from its preserved copy"),
+    ("rollback", "blocked"): ("a device's next plan is blocked by a rolled-back change",
+                              "revert the failed intent, or authorise a retry"),
+    ("deploys", "failed"): ("the last deploy or restore to a device did not succeed",
+                            "read its receipt, then plan again"),
+    ("baseline", "denied"): ("the last baseline was not earned", "resolve each departure, then Save All"),
+    ("baseline", "unusable"): ("no stored baseline can be re-applied", "take a current baseline"),
+    ("authorisations", "repeated"): ("one line is authorised again and again",
+                                     "read the reasons; move the line into intent, or its cause"),
+    ("grafana", "stalled"): ("Grafana stopped evaluating a rule group", "check its scheduler"),
+    ("grafana", "incident"): ("an alert is firing", "check its path, or read the rule"),
+    ("grafana", "rule"): ("a rule reads no data or cannot evaluate", "read its query in Grafana"),
+    ("grafana", "heartbeat-floor"): ("a device has no heartbeat rule Grafana shows",
+                                     "regenerate the rules, then check the reader's role"),
+    ("freshness", "not-compared"): ("Oxidized's copies could not be compared",
+                                    "check Oxidized answers; the comparison runs again"),
+    ("freshness", "unapproved"): ("Oxidized holds a change nobody approved",
+                                  "capture it if wanted, or put it back"),
+    ("freshness", "inconclusive"): ("whether Oxidized's copy is approved cannot be told",
+                                    "decide whether its copy is wanted: capture it, or put it back"),
+    ("integrations", "down"): ("an integration is down", "check it at its configured URL"),
+    ("ci", "verdict"): ("the running commit has no CI pass",
+                        "update to a release CI passed, or find why CI could not be asked"),
+    ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
+    ("netbox-secrets", "held"): ("NetBox holds a credential in a device's context",
+                                 "mask it, remove it by hand, or repair the record first"),
+    ("pushed", "release"): ("the host runs a release that is wrong to keep running",
+                            "update, or find where the running commit came from"),
+    ("remote", "publication"): ("a list's history is not on its remote",
+                                "push, acknowledge, repair the remote, or verify it"),
+    ("host_steps", "owed"): ("a host step a release asked for is not done", "do it, then say so"),
+    ("adjacencies", "link"): ("an adjacency intent implies is not up",
+                              "check the link and both ends"),
+    ("adjacencies", "unmeasured"): ("adjacencies cannot be judged", "check the Prometheus targets"),
+    ("adjacencies", "error"): ("a list's intent could not be read for its adjacencies",
+                               "fix the intent file the reason names"),
+    ("lab-startup", "moved"): ("a device moved since the baseline its lab file is built from",
+                               "Save All earns a new baseline"),
+    ("lab-startup", "differs"): ("a lab startup file is not what the sync builds",
+                                 "read the lab sync's job-health row"),
+    ("lab-startup", "not_built"): ("the sync builds no file for a device",
+                                   "Save All earns a baseline that holds it"),
+    ("lab-startup", "missing"): ("a managed device has no lab startup file", "check the sync's run"),
+    ("lab-startup", "unknown"): ("lab startup files could not be compared",
+                                 "check the lab host answers"),
+}
+
+#: Words that say there is nothing to do: an action is a thing a person does.
+NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
+                 "is all that is recorded", "no remedy is recorded", "whole of what is known")
 
 
 class RowRefused(ValueError):
@@ -51,10 +131,15 @@ def _iso(ts) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
-def row(*, source: str, key: str, what: str, cause: str, action: dict,
+def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict,
         level: str, devices=(), since=None, operands: dict = None,
         attach_to: str = None) -> dict:
     """The only constructor for a Needs attention row.
+
+    *kind* names the row's declared kind (ROW_KINDS): what is wrong and the
+    action a person takes. An undeclared kind, an information level, or an
+    action whose words say there is nothing to do is refused: a fact nobody
+    can act on goes to its own page's detail, never here.
 
     *attach_to* names another row's id this one is ABOUT (a queued drift
     item is about its device's drift row). The page merges it into that row
@@ -67,9 +152,17 @@ def row(*, source: str, key: str, what: str, cause: str, action: dict,
     if missing:
         raise RowRefused(f"a Needs attention row without {', '.join(missing)} "
                          "says something is wrong and not why or what to do")
+    if (source, kind) not in ROW_KINDS and ("*", kind) not in ROW_KINDS:
+        raise RowRefused(f"row kind {source}/{kind} is not declared in ROW_KINDS with what "
+                         "is wrong and the action a person takes")
     if level not in LEVELS:
-        raise RowRefused(f"level {level!r} is not one of {LEVELS}")
-    return {"id": f"{source}:{key}", "source": source, "what": what,
+        raise RowRefused(f"level {level!r} is not one of {LEVELS}: a fact nobody acts on "
+                         "belongs on its own page's detail, not in Needs attention")
+    said = str(action["label"]).lower()
+    if any(p in said for p in NOT_AN_ACTION):
+        raise RowRefused(f"the action {action['label']!r} says there is nothing to do: a row "
+                         "with no action belongs on its own page's detail")
+    return {"id": f"{source}:{key}", "source": source, "kind": kind, "what": what,
             "devices": [d for d in devices if d], "since": _iso(since),
             "cause": cause, "operands": dict(operands or {}),
             "action": {"known": True, **action}, "level": level,
@@ -113,13 +206,13 @@ def source_result(source: str, label: str, *, read_at: float, took_ms: int,
         return {"source": source, "label": label, "state": "unreadable",
                 "read_at": _iso(read_at), "value_at": None, "took_ms": took_ms,
                 "checked": "nothing: the read failed",
-                "rows": [row(source=source, key="unreadable", level="unknown",
+                "rows": [row(source=source, kind="unreadable", key="unreadable", level="unknown",
                              what=f"{label} could not be read",
                              cause=(f"{error}. This is not the same as nothing needing "
                                     "attention: whatever this source would show is "
                                     "unknown until it can be read"),
-                             action={"label": "Find why the source cannot be read; "
-                                              "the cause above is all that is known",
+                             action={"label": "Find why the source cannot be read: "
+                                              "the cause above names what failed",
                                      "known": False})]}
     if not checked:
         raise RowRefused(f"source {source!r} read without saying what it looked at: "
@@ -199,14 +292,31 @@ def _job_action(job: dict) -> dict:
                     "reference": "docs/DEPLOY_LINUX.md"}
         return {"label": "Read the job's own output on the host",
                 "command": f"journalctl -u {unit}.service -n 50 --no-pager"}
-    # A row with no action of its own is a state with no remedy to name (an
-    # `unknown`: the check could not ask), and it says so rather than
-    # inventing one.
-    return {"label": "No remedy is recorded for this state: the cause above is the "
-                     "whole of what is known", "known": False}
+    # A row with no remedy of its own: the action its STATE implies, never
+    # "nothing is known" (the operator, 2026-10-02: every row has an action).
+    return dict(_STATE_ACTIONS.get(state, _STATE_ACTIONS["*"]), known=False)
+
+
+#: The action a job-health row's state implies when its check names none.
+_STATE_ACTIONS = {
+    "unknown": {"label": "Find why the check could not ask: its detail above names what it "
+                         "read, and it asks again on its next run"},
+    "stale": {"label": "Find why the check has not run: run it by hand on the host, or read "
+                       "its timer's own row"},
+    "unset_guard": {"label": "Set it in Settings, or declare it not applicable on the host "
+                             "(settings_not_applicable) with a reason"},
+    "contradiction": {"label": "Clear the setting, or withdraw its not-applicable declaration: "
+                               "only one can be true"},
+    "*": {"label": "Fix what its detail above names: the file, setting or service the "
+                   "check read"},
+}
 
 
 JOB_HEALTH_READER = "job-health"
+#: Job-health states that are expected and need nothing yet: the startup check
+#: missing a device for one run (it is booting, or slow; a warning once it
+#: persists, as `unread_persisting`). Said in the source's finding, not a row.
+EXPECTED_JOB_STATES = ("unread",)
 
 
 def job_health_source(health=None, now=None, cached=None, readers_now=None) -> dict:
@@ -264,17 +374,22 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
                      "detail": f"the readers could not be judged: {type(exc).__name__}: {exc}"}]
         jobs += live
     took = int((time.time() - started) * 1000)
-    rows = []
+    rows, expected = [], []
     for job in jobs:
         state = job.get("state", "")
         if state in J.OK_STATES:
+            continue
+        if state in EXPECTED_JOB_STATES:
+            # Expected and nothing to do yet (the operator, 2026-10-02): said in
+            # this source's finding, never as a row.
+            expected.append(job.get("headline") or f"{job.get('unit', '?')}: {state}")
             continue
         # An unmapped state is drawn LOUD with its own name: a state added
         # to job_health later must not arrive here as something quieter.
         words, level = _JOB_STATES.get(state, (f"reads {state}", "danger"))
         device = job.get("device") or job.get("address")
         rows.append(row(
-            source="job_health", key=job.get("unit", "?"),
+            source="job_health", kind="job", key=job.get("unit", "?"),
             # A row may name its own headline, in the reader's words ("r6 is not
             # monitored by SNMP"); otherwise the unit and its state's words.
             what=job.get("headline") or f"{job.get('unit', '?')} {words}",
@@ -283,11 +398,13 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             cause=job.get("detail") or f"state {state}, with no detail recorded",
             operands={"job": job.get("what", ""), "state": state},
             action=_job_action(job), level=level))
-    n_ok = len(jobs) - len(rows)
+    n_ok = len(jobs) - len(rows) - len(expected)
     return source_result("job_health", "Job health", read_at=started, took_ms=took,
                          rows=rows, value_at=value_at, stale_after_seconds=promise,
                          reader=JOB_HEALTH_READER if promise else None, detail=where,
-                         checked=f"{len(jobs)} job-health row(s), {n_ok} ok")
+                         checked=f"{len(jobs)} job-health row(s), {n_ok} ok"
+                                 + (f"; expected, nothing to do yet: {'; '.join(expected)}"
+                                    if expected else ""))
 
 
 # ---------------------------------------------------------------------------
@@ -330,7 +447,8 @@ def drift_source(status=None, now=None) -> dict:
     rows = []
 
     def add(key, what, cause, action, level, devices=(), since=None, operands=None):
-        rows.append(row(source="drift", key=f"{lst}:{key}", what=what, cause=cause,
+        rows.append(row(source="drift", kind=key.split(":", 1)[0], key=f"{lst}:{key}",
+                        what=what, cause=cause,
                         action=action, level=level, devices=devices, since=since,
                         operands={"list": lst, **(operands or {})}))
 
@@ -374,7 +492,8 @@ def drift_source(status=None, now=None) -> dict:
             d.get("reason") or "no reason recorded",
             {"label": "Capture its golden from its Device page, or with Save All's "
                       "no-golden scope"} if no_golden else
-            {"label": "The reason above is all that is recorded", "known": False},
+            {"label": "Clear what the reason names, then run a drift check from the "
+                      "Drift panel", "known": False},
             "warning", devices=[d["hostname"]], operands={"coverage": coverage})
     for d in last.get("errors") or []:
         # During a boot the reachability reader saw the device go silent: said
@@ -384,7 +503,8 @@ def drift_source(status=None, now=None) -> dict:
         add(f"unreachable:{d['hostname']}", f"{d['hostname']} could not be checked for drift",
             (f"{booting[0].upper()}{booting[1:]}. The check said: " if booting else "")
             + (d.get("reason") or "no reason recorded"),
-            {"label": "The reason above is all that is recorded", "known": False},
+            {"label": "Check the device answers (its status on Devices), then run a drift "
+                      "check from the Drift panel", "known": False},
             "unknown", devices=[d["hostname"]], operands={"coverage": coverage})
     return source_result("drift", "Drift", read_at=started, took_ms=took, rows=rows,
                          value_at=last_ts,
@@ -437,7 +557,7 @@ def approvals_source(read=None) -> dict:
         host = e.get("device_hostname") or e.get("device_ip") or ""
         drift_item = e.get("action_type") in _DRIFT_ITEM_TYPES and host
         rows.append(row(
-            source="approvals", key=e.get("id") or "?",
+            source="approvals", kind="pending", key=e.get("id") or "?",
             what=f"An approval is waiting: {e.get('description') or e.get('action_type')}",
             cause=(e.get("context") or "queued with no context recorded")
                   + "; nothing is done until a person approves it",
@@ -482,7 +602,7 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
         since = _ts(d.get("onboarded_at"))
         if d.get("credential_findable") is False:
             rows.append(row(
-                source="onboarding", key=f"{lst}:{name}:credential", level="danger",
+                source="onboarding", kind="credential", key=f"{lst}:{name}:credential", level="danger",
                 what=f"{name} cannot be verified: its staged credential cannot be found",
                 cause=("the credential staged for it is not where verification looks, so "
                        "Verify would try a profile the device refuses; nothing has reached "
@@ -492,7 +612,7 @@ def pending_onboarding_source(pending=None, now=None) -> dict:
         elif state in ("overdue", "stale"):
             hours = int((d.get("age_seconds") or 0) // 3600)
             rows.append(row(
-                source="onboarding", key=f"{lst}:{name}", level="warning",
+                source="onboarding", kind="overdue", key=f"{lst}:{name}", level="warning",
                 what=f"{name} was onboarded {hours} h ago and has never been reached",
                 cause=("it is in the manifest and git and not in the inventory: nothing "
                        "polls, backs up or drift-checks it until Verify reaches it"),
@@ -543,7 +663,7 @@ def rollback_source(notes=None) -> dict:
     if got.get("unreadable"):
         # One row for the list: the record blocks EVERY plan, and a row per
         # device would be one event counted N times.
-        rows.append(row(source="rollback", key=f"{lst}:record", level="danger",
+        rows.append(row(source="rollback", kind="record", key=f"{lst}:record", level="danger",
                         what=f"Every plan on {lst} is blocked: the rolled-back record "
                              "cannot be read",
                         cause=got["unreadable"],
@@ -553,7 +673,7 @@ def rollback_source(notes=None) -> dict:
     for host, note in sorted((got.get("applies") or {}).items()):
         unknown = note.get("applicability") == "unknown"
         rows.append(row(
-            source="rollback", key=f"{lst}:{host}", level="unknown" if unknown else "warning",
+            source="rollback", kind="blocked", key=f"{lst}:{host}", level="unknown" if unknown else "warning",
             what=(f"{host}'s rolled-back change may still block its next plan" if unknown
                   else f"{host}'s next plan is blocked: its intent still sends what was "
                        "rolled back"),
@@ -624,7 +744,7 @@ def deploy_source(read=None) -> dict:
             if r.get("matches_confirmed") is False else "") if x) or \
             f"its receipt records {outcome or 'no outcome'} with no reason"
         rows.append(row(
-            source="deploys", key=f"{lst}:{host}",
+            source="deploys", kind="failed", key=f"{lst}:{host}",
             level="danger" if r.get("sent") else "warning",
             what=f"The last {r.get('action') or 'deploy'} to {host}: "
                  f"{OUTCOME_WORDS.get(outcome, outcome.replace('_', ' ') or 'no outcome')}",
@@ -702,7 +822,7 @@ def baseline_source(log_fn=None) -> dict:
     usability = _baseline_usability_row(lst, blocker=blocker)
     if decision.startswith("denied") and not usability["rows"]:
         rows.append(row(
-            source="baseline", key=f"{lst}:last", level="warning",
+            source="baseline", kind="denied", key=f"{lst}:last", level="warning",
             what=f"The network's last baseline was not earned ({source_line or 'a save'})",
             # The decision's OWN commit and time: a Save All that changed
             # nothing since decided without a commit to carry it, so this can
@@ -766,7 +886,7 @@ def _baseline_usability_row(lst: str, cached=None, blocker: dict = None) -> dict
                         "a baseline if each is at its committed intent; if not, it records "
                         "the denial and names the device and its lines"})
     return {"rows": [row(
-        source="baseline", key=f"{lst}:unusable", level="warning",
+        source="baseline", kind="unusable", key=f"{lst}:unusable", level="warning",
         what=("No stored baseline can be re-applied, and a new one cannot be earned yet"
               if blocker else "No stored baseline can be re-applied"),
         cause=cause,
@@ -814,7 +934,7 @@ def authorisation_source(counts=None) -> dict:
             if e.get("count", 0) < REPEAT_THRESHOLD:
                 continue
             rows.append(row(
-                source="authorisations", key=f"{lst}:{device}:{line}", level="warning",
+                source="authorisations", kind="repeated", key=f"{lst}:{device}:{line}", level="warning",
                 what=f"{line.strip()!r} has been authorised {e['count']} times on {device}",
                 cause=(f"last by {e.get('last_actor') or 'an unrecorded actor'} at "
                        f"{e.get('last_at') or 'an unrecorded time'}, stated reason: "
@@ -963,7 +1083,8 @@ def grafana_source(cached=None) -> dict:
     rows = []
 
     def add(key, what, cause, action, level, **kw):
-        rows.append(row(source="grafana", key=key, what=what, cause=cause, action=action,
+        rows.append(row(source="grafana", kind=key.split(":", 1)[0], key=key, what=what,
+                        cause=cause, action=action,
                         level=level, **kw))
 
     # Grafana answering and not evaluating reads exactly like a healthy
@@ -1105,11 +1226,14 @@ def freshness_source(cached=None) -> dict:
                              error=f"the stored comparison holds no answer for list {lst}")
     rows = []
     if not report.get("ok"):
-        rows.append(row(source="freshness", key=f"{lst}:not-compared", level="unknown",
+        rows.append(row(source="freshness", kind="not-compared", key=f"{lst}:not-compared",
+                        level="unknown",
                         what=f"Freshness could not be compared for {lst}",
                         cause=(report.get("error") or report.get("defect") or "no reason recorded")
                               + ". This is not the same as nothing having diverged",
-                        action={"label": "The reason above is what is known", "known": False}))
+                        action={"label": "Check Oxidized answers at the URL in Settings > "
+                                         "Integrations; the comparison runs again every 5 "
+                                         "minutes", "known": False}))
         return source_result("freshness", "Freshness", read_at=started, took_ms=took,
                              rows=rows, value_at=value_at, stale_after_seconds=promise,
                              checked=f"list {lst}: not compared")
@@ -1120,7 +1244,7 @@ def freshness_source(cached=None) -> dict:
             continue
         extra = [redact_text(l) for l in (d.get("only_right") or [])[:3]]
         rows.append(row(
-            source="freshness", key=f"{lst}:{d.get('device')}",
+            source="freshness", kind=verdict, key=f"{lst}:{d.get('device')}",
             what=(f"{d.get('device')}: Oxidized holds a change nobody approved"
                   if verdict == "unapproved" else
                   f"{d.get('device')}: whether Oxidized's copy is approved cannot be told"),
@@ -1132,7 +1256,8 @@ def freshness_source(cached=None) -> dict:
             action=({"label": "Capture the device's golden if the change is wanted, or put "
                               "it back; a redeploy before then boots it"}
                     if verdict == "unapproved" else
-                    {"label": "The reason above is what is known", "known": False}),
+                    {"label": "Decide whether Oxidized's copy is wanted: capture the device's "
+                              "golden if so, or put the device back", "known": False}),
             level="warning" if verdict == "unapproved" else "unknown"))
     c = report.get("counts") or {}
     return source_result(
@@ -1169,7 +1294,7 @@ def integrations_source(cached=None) -> dict:
     for i in v.get("integrations") or []:
         if i.get("state") != "down":
             continue
-        rows.append(row(source="integrations", key=i.get("name", "?"), level="danger",
+        rows.append(row(source="integrations", kind="down", key=i.get("name", "?"), level="danger",
                         what=f"{i.get('label')} is not answering",
                         cause=f"its health probe failed: {i.get('message') or 'no reason recorded'}",
                         operands={"probe_ms": i.get("took_ms")},
@@ -1227,15 +1352,16 @@ def ci_source(cached=None) -> dict:
     rows = []
     if v.get("state") in _CI_ROWS:
         words, level = _CI_ROWS[v["state"]]
-        rows.append(row(source="ci", key=commit[:10], level=level,
+        rows.append(row(source="ci", kind="verdict", key=commit[:10], level=level,
                         what=f"The running commit {commit[:10]}: {words}",
                         cause=v.get("sentence") or "no sentence recorded",
                         action=({"label": "Update to a release CI passed: the Update page "
                                           "waits for CI when it is still checking",
                                  "open": "app_update"}
                                 if v["state"] in ("failed", "cancelled") else
-                                {"label": "Read nmas-deploy's sentence above: it names the run "
-                                          "and what it found", "known": False})))
+                                {"label": "Find why CI has no verdict: nmas-deploy's sentence "
+                                          "above names the run and what it found",
+                                 "known": False})))
     return source_result("ci", "Running commit's CI", read_at=started, took_ms=took, rows=rows,
                          value_at=value_at, stale_after_seconds=promise, reader="ci-verdict",
                          checked=f"{commit[:10]}: {v.get('state')}")
@@ -1271,7 +1397,7 @@ def reachability_source(cached=None) -> dict:
     if down:
         names = [d.get("hostname") or d.get("address") for d in down]
         rows.append(row(
-            source="reachability", key="not-answering", level="danger",
+            source="reachability", kind="not-answering", key="not-answering", level="danger",
             what=(f"{names[0]} is not answering" if len(down) == 1
                   else f"{len(down)} devices are not answering"),
             devices=names, since=_ts(down[0].get("since")),
@@ -1333,7 +1459,9 @@ def netbox_secrets_source(cached=None) -> dict:
         if d.get("record_unreadable"):
             cause += (f". Whether NMAS wrote it cannot be told: the modification record is "
                       f"unreadable ({d['record_unreadable']})")
-            action = {"label": "The reason above is what is known", "known": False}
+            action = {"label": "Repair data/netbox_modified.json from its preserved "
+                               ".corrupt- copy: until it reads, NMAS will not mask NetBox's "
+                               "context", "known": False}
         elif d.get("wrote"):
             cause += f". NMAS wrote this context ({d['wrote']}), so it may mask it"
             action = {"label": "Mask it with the import's own masking, read back",
@@ -1343,7 +1471,7 @@ def netbox_secrets_source(cached=None) -> dict:
             cause += "will not change it"
             action = {"label": f"Remove the credential lines from {name}'s config context in "
                                "NetBox by hand"}
-        rows.append(row(source="netbox-secrets", key=f"netbox:{d.get('id')}", level="danger",
+        rows.append(row(source="netbox-secrets", kind="held", key=f"netbox:{d.get('id')}", level="danger",
                         what=f"NetBox holds a credential for {name}", devices=[name],
                         cause=cause, operands={"netbox_id": d.get("id")}, action=action))
     return source_result(
@@ -1367,7 +1495,8 @@ BEHIND_TOO_LONG_S = 20 * 3600
 
 def pushed_level(v: dict, now: float = None) -> tuple:
     """``(level, why)`` for the app-pushed row. An update being available is
-    INFORMATION; it is a WARNING only when something is actually wrong: CI
+    INFORMATION, and makes no row (``"info"``: said on About and the Update
+    page); it is a WARNING only when something is actually wrong: CI
     failed for the release, the tip could not be fetched, the host has run
     behind for longer than BEHIND_TOO_LONG_S, or the running commit is not on
     the remote at all. *why* names the reason ("" for information)."""
@@ -1456,8 +1585,9 @@ def pushed_source(cached=None) -> dict:
                       f"{last.get('requested_by') or '?'}, "
                       f"{update_op.OUTCOME_WORDS.get(last['outcome'], last['outcome'])} "
                       f"({last.get('ended_at') or last.get('at') or '?'}): {last.get('reason')}")
-            if last["outcome"] == "rollback_failed":
-                level = "danger"
+            # An update tried and not done is wrong (the host stays behind
+            # what a person asked for); a failed rollback is worse.
+            level = "danger" if last["outcome"] == "rollback_failed" else "warning"
         wait = update_op.deferred()
         if wait.get("target"):
             # Update when CI passes: the row says the update is coming, and
@@ -1469,10 +1599,14 @@ def pushed_source(cached=None) -> dict:
                                         "open the Update page to follow it or stop waiting")
         what = (update_words(v) if v["state"] in ("behind", "behind_unfetched")
                 else sentence[0].upper() + sentence[1:])
-        rows.append(row(source="pushed", key=running[:10], level=level,
-                        what=what,
-                        since=_ts(v.get("behind_since")),
-                        cause=cause, action=action))
+        # A release being available is not wrong (the operator, 2026-10-02):
+        # it is said on Help > About and the Update page, and here only once
+        # something is (pushed_level names what).
+        if level != "info":
+            rows.append(row(source="pushed", kind="release", key=running[:10], level=level,
+                            what=what,
+                            since=_ts(v.get("behind_since")),
+                            cause=cause, action=action))
     return source_result("pushed", label, read_at=started, took_ms=took, rows=rows,
                          value_at=value_at, stale_after_seconds=promise, reader="app-pushed",
                          checked=app_pushed.words(v))
@@ -1549,10 +1683,11 @@ def remote_source(cached=None) -> dict:
         else:
             what = f"Whether {name}'s history is on {remote} is not known"
             since = None
-            action = {"label": "Read the reason: it names what could not be asked. A remote "
-                               "that cannot be asked also cannot be pushed to"}
+            action = {"label": "Verify the remote from History's header: it names what "
+                               "could not be asked. A remote that cannot be asked also "
+                               "cannot be pushed to"}
         rows.append(row(
-            source="remote", key=f"{name}:{said['state']}", level=(
+            source="remote", kind="publication", key=f"{name}:{said['state']}", level=(
                 "danger" if said["level"] == "danger" else "warning"),
             what=what, cause=f"{name}: {said['clause']}. {said['detail']}".strip(),
             action=action, since=since,
@@ -1585,7 +1720,7 @@ def host_steps_source(owed=None) -> dict:
     if not got["ok"]:
         return source_result("host_steps", label, read_at=started, took_ms=took,
                              error=got["error"])
-    rows = [row(source="host_steps", key=s["id"], level="warning",
+    rows = [row(source="host_steps", kind="owed", key=s["id"], level="warning",
                 what=(f"A host step for {', '.join(x[:10] for x in s.get('shas') or [s['sha']])}"
                       f" is still to do: {s['step']}"),
                 cause=(f"checked: {s['check_detail']}" if s["check_state"] != "not_checkable"
@@ -1647,7 +1782,7 @@ def adjacency_source(cached=None) -> dict:
                  f"{sides}, as Prometheus last scraped them. Held for {a.get('reads')} reads a "
                  "minute apart, so it is not a deploy's settle window")
         first = devs[0] if devs else ""
-        rows.append(row(source="adjacencies", key=key, level="danger", what=what, devices=devs,
+        rows.append(row(source="adjacencies", kind="link", key=key, level="danger", what=what, devices=devs,
                         since=_ts(a.get("since")), cause=cause,
                         operands={"list": a.get("list"), "sides": a.get("sides")},
                         action={"label": f"Open {first}'s Neighbours and check the link and both "
@@ -1656,7 +1791,7 @@ def adjacency_source(cached=None) -> dict:
     un = v.get("unmeasured") or []
     if un:
         names = ", ".join(sorted({f"{u['device']} ({u['protocol']})" for u in un}))
-        rows.append(row(source="adjacencies", key="unmeasured", level="unknown",
+        rows.append(row(source="adjacencies", kind="unmeasured", key="unmeasured", level="unknown",
                         what=f"{len(un)} protocol(s) whose adjacencies cannot be judged",
                         devices=sorted({u["device"] for u in un}),
                         cause=f"Intent implies adjacencies Prometheus does not measure: {names}. "
@@ -1664,9 +1799,11 @@ def adjacency_source(cached=None) -> dict:
                         action={"label": "Check the Prometheus targets row: the routing jobs' "
                                          "files are generated from the goldens"}))
     for e in v.get("errors") or []:
-        rows.append(row(source="adjacencies", key=f"error:{e[:40]}", level="unknown",
+        rows.append(row(source="adjacencies", kind="error", key=f"error:{e[:40]}",
+                        level="unknown",
                         what="A list's committed intent could not be read for its adjacencies",
-                        cause=e, action={"label": "The reason above is what is known",
+                        cause=e, action={"label": "Fix the intent file the reason names: "
+                                                  "it must parse for its links to be judged",
                                          "known": False}))
     return source_result(
         "adjacencies", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
@@ -1684,7 +1821,7 @@ def _moved_row(d: dict, name: str, base: str) -> dict:
     lines = [f"`{l.strip()}`" for l in (m.get("only_golden") or [])[:3]] + \
             [f"`{l.strip()}`" for l in (m.get("only_file") or [])[:3]]
     return row(
-        source="lab-startup", key=f"moved:{d.get('list')}:{name}", level="warning",
+        source="lab-startup", kind="moved", key=f"moved:{d.get('list')}:{name}", level="warning",
         what=f"A redeploy returns {name} to {base}",
         devices=[name], operands={"list": d.get("list"), "file": d.get("file") or ""},
         cause=(f"{name}'s current golden differs from its golden at {base} "
@@ -1739,7 +1876,7 @@ def lab_startup_source(cached=None) -> dict:
                 parts.append("the same lines in another order")
             base = d.get("baseline") or "the newest earned baseline"
             rows.append(row(
-                source="lab-startup", key=f"differs:{d.get('list')}:{name}",
+                source="lab-startup", kind="differs", key=f"differs:{d.get('list')}:{name}",
                 level="danger" if d.get("credentials") else "warning",
                 what=(f"{name}'s lab startup file is not what {base} builds"
                       + (": a credential differs" if d.get("credentials") else "")),
@@ -1749,10 +1886,9 @@ def lab_startup_source(cached=None) -> dict:
                        "else: " + ". ".join(parts)
                        + (". A redeploy would boot a credential the tool no longer holds"
                           if d.get("credentials") else "")),
-                action={"label": ("Nothing to do if the baseline or a credential changed in the "
-                                  "last 30 minutes: the next clab sync writes the file. Otherwise "
-                                  "the sync has not run since, or refused: read its job-health "
-                                  "row")}))
+                action={"label": ("Read the clab sync's job-health row: it has not run since "
+                                  "the change, or it refused. A baseline or credential changed "
+                                  "in the last 30 minutes is written by its next run")}))
             moved = d.get("since_baseline") or {}
             if moved.get("state") == "differs":
                 rows.append(_moved_row(d, name, base))
@@ -1762,7 +1898,7 @@ def lab_startup_source(cached=None) -> dict:
             continue
         if d.get("state") == "not_built":
             rows.append(row(
-                source="lab-startup", key=f"not_built:{d.get('list')}:{name}", level="warning",
+                source="lab-startup", kind="not_built", key=f"not_built:{d.get('list')}:{name}", level="warning",
                 what=f"The clab sync builds no startup file for {name}",
                 devices=[name], operands={"list": d.get("list"), "file": where},
                 cause=d.get("why") or "the sync's source names no reason",
@@ -1771,7 +1907,7 @@ def lab_startup_source(cached=None) -> dict:
             continue
         if d.get("state") == "missing":
             rows.append(row(
-                source="lab-startup", key=f"missing:{d.get('list')}:{name}", level="warning",
+                source="lab-startup", kind="missing", key=f"missing:{d.get('list')}:{name}", level="warning",
                 what=f"{name} has no lab startup file", devices=[name],
                 operands={"list": d.get("list"), "file": where},
                 cause=(f"{where} does not exist, so a redeploy boots {name} on the image's own "
@@ -1781,35 +1917,37 @@ def lab_startup_source(cached=None) -> dict:
     unknown = [d for d in v.get("devices") or [] if d.get("state") == "unknown"]
     if unknown:
         rows.append(row(
-            source="lab-startup", key="unknown", level="unknown",
+            source="lab-startup", kind="unknown", key="unknown", level="unknown",
             what=f"{len(unknown)} device(s) whose lab startup file could not be compared",
             devices=sorted({d["device"] for d in unknown}),
             cause="; ".join(sorted({f"{d['device']}: {d.get('why') or '?'}" for d in unknown})),
-            action={"label": "The reason above is what is known", "known": False}))
-    for u in v.get("unowned") or []:
-        node, by = u.get("node") or u["file"], u.get("declared_by")
-        if by:
-            what = f"{u['file']} is used by the topology, owned by no managed device"
-            cause = (f"{', '.join(by)} declares node {node}, so a redeploy boots this file for "
-                     f"it, and no list manages {node}: the tool keeps no golden for it and "
-                     "checks nothing about it")
-        elif by == []:
-            what = f"{u['file']} is a startup file nothing boots"
-            cause = (f"No node of {', '.join(u.get('topologies') or []) or 'the lab topology'} is "
-                     f"named {node}, and no list manages it")
-        else:
-            what = f"{u['file']} is a startup file no managed device owns"
-            cause = (f"No device of lab {u.get('lab')!r} in any list is named for it; whether "
-                     "the topology still boots it was not read")
-        rows.append(row(source="lab-startup", key=f"unowned:{u['file']}", level="info",
-                        what=what, cause=cause,
-                        action={"label": "Nothing to do: it is information"}))
+            action={"label": "Check the lab host answers SSH from the NMAS (its address in "
+                             "Settings); the check reads it again every 10 minutes",
+                    "known": False}))
+    # A file no managed device owns (r5's, after its retirement) is a FACT, not
+    # something wrong, and there is nothing to do about it (the operator,
+    # 2026-10-02): it is said in this check's own finding, never as a row.
+    unowned = "; ".join(unowned_words(u) for u in v.get("unowned") or [])
     counted = v.get("checked", 0)
     return source_result(
         "lab-startup", label, rows=rows, **common,
         checked=(f"{counted} device(s) compared over {v.get('labs', 0)} lab(s), "
                  f"{sum(1 for d in v.get('devices') or [] if d.get('state') == 'matches')} "
-                 "holding what the sync builds"))
+                 "holding what the sync builds"
+                 + (f". Startup files no managed device owns (expected after a retirement; "
+                    f"nothing to do): {unowned}" if unowned else "")))
+
+
+def unowned_words(u: dict) -> str:
+    """A lab startup file no managed device owns, in one clause: whether the
+    lab's topology still boots it, from the topology, never guessed."""
+    node, by = u.get("node") or u["file"], u.get("declared_by")
+    if by:
+        return (f"{u['file']}, used by the topology ({', '.join(by)} declares node {node}), "
+                "owned by no managed device")
+    if by == []:
+        return f"{u['file']}, which nothing boots"
+    return f"{u['file']} (whether the topology still boots it was not read)"
 
 
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
@@ -1854,11 +1992,8 @@ def needs_attention(sources=None) -> dict:
     rows = _attach([r for res in results for r in res["rows"]])
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
     unreadable = [res["label"] for res in results if res["state"] != "read"]
-    # Information is not something that needs attention (the operator,
-    # 2026-10-01): it is drawn apart and never counted in the headline.
-    acting = [r for r in rows if r["level"] != "info"]
-    if acting:
-        headline = f"{len(acting)} thing(s) need attention"
+    if rows:
+        headline = f"{len(rows)} thing(s) need attention"
     else:
         headline = "Nothing needs attention"
     return {"ok": True, "headline": headline, "rows": rows,

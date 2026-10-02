@@ -1070,9 +1070,9 @@ def startup_rows(read=None, now: float = None) -> list:
             "action": ({"label": "Check that each answers SSH from the host (its Device page "
                                  "shows whether it is answering), then run the check by hand",
                         "command": "python3 scripts/nmas-startup-check"} if persisting else
-                       {"label": f"Nothing to do yet: it reads them again at the next run "
-                                 f"(about {nxt}). If a device stays unreadable, check that it "
-                                 "answers (its Device page)"}),
+                       {"label": f"Wait for the next run (about {nxt}), which reads them "
+                                 "again. If a device stays unreadable, check that it answers "
+                                 "(its Device page)"}),
             "detail": "; ".join(
                 f"{d.get('device')}: "
                 + (f"{booting[d.get('device')]}; the check said: "

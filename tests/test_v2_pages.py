@@ -129,21 +129,17 @@ class TestThePushedRow:
                          monkeypatch=monkeypatch)
         assert r["rows"] == [] and "was the tip of origin/main when last asked" in r["checked"]
 
-    def test_an_update_available_is_information_whose_action_is_the_update_button(self, monkeypatch):
-        """The operator, 2026-10-01: "Update available" read like a fault. It is
-        information, in a person's words, with how it was checked in the cause."""
+    def test_an_update_available_is_not_a_row(self, monkeypatch):
+        """A release being available is true and not wrong (the operator,
+        2026-10-02): no row; the source's finding says it, and About and the
+        Update page offer it."""
         import time
-        r = self._source({"running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 2,
-                          "branch": "main", "behind_since": time.strftime(
-                              "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 600))},
-                         monkeypatch=monkeypatch)
-        (row,) = r["rows"]
-        assert row["level"] == "info"
-        assert row["what"] == "Update available — aaaaaaa → bbbbbbb (2 new commits)"
-        assert row["cause"].startswith("origin/main was asked with git ls-remote at ")
-        # The operator, 2026-09-30: the app knows it is behind, so its action
-        # is the Update operation, never a terminal command.
-        assert row["action"]["open"] == "app_update" and "command" not in row["action"]
+        value = {"running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 2,
+                 "branch": "main", "behind_since": time.strftime(
+                     "%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 600))}
+        r = self._source(value, monkeypatch=monkeypatch)
+        assert r["rows"] == []
+        assert r["checked"].startswith("when last asked, the host ran 2 commits behind")
 
     @pytest.mark.parametrize("extra,why", [
         ({"ci": {"tip": "b" * 40, "state": "failed"}}, "CI failed for bbbbbbb"),
@@ -157,22 +153,11 @@ class TestThePushedRow:
         (row,) = self._source(value, monkeypatch=monkeypatch)["rows"]
         assert row["level"] == "warning" and row["cause"].startswith(why[0].upper() + why[1:])
 
-    def test_ci_passing_or_still_checking_and_a_recent_release_stay_information(self, monkeypatch):
+    def test_ci_passing_or_still_checking_and_a_recent_release_make_no_row(self, monkeypatch):
         for ci in ({"tip": "b" * 40, "state": "verified"}, {"tip": "b" * 40, "state": "pending"},
                    {"tip": "c" * 40, "state": "failed"}):        # another commit's failure
-            (row,) = self._source({"running": "a" * 40, "tip": "b" * 40, "state": "behind",
-                                   "behind": 1, "ci": ci}, monkeypatch=monkeypatch)["rows"]
-            assert row["level"] == "info" and row["what"].endswith("(1 new commit)"), ci
-
-    def test_info_is_never_counted_as_needing_attention(self, monkeypatch):
-        """The sidebar's count is rows that ask for action."""
-        import app as A
-        from modules import attention as att
-        rows = [att.row(source="pushed", key="a", level="info", what="Update available",
-                        cause="asked", action={"label": "Update", "open": "app_update"})]
-        monkeypatch.setattr(att, "needs_attention", lambda: {"rows": rows})
-        html = A.app.test_client().get("/v2/attention-count").get_data(as_text=True)
-        assert 'count-zero' in html
+            assert self._source({"running": "a" * 40, "tip": "b" * 40, "state": "behind",
+                                 "behind": 1, "ci": ci}, monkeypatch=monkeypatch)["rows"] == [], ci
 
     def test_not_on_the_remote_names_no_deploy(self, monkeypatch):
         r = self._source({"running": "a" * 40, "tip": "b" * 40, "state": "not_on_remote",
@@ -233,29 +218,10 @@ class TestTheLanding:
         assert "Nothing needs attention" in text and "none reports anything a person must do" in text
         assert '<details class="evidence">' in html and "9 devices probed" in text
 
-    def test_information_is_drawn_apart_and_never_counted(self, landing):
-        """The operator, 2026-10-01: an update being available is not a problem.
-        The landing says nothing needs attention, and draws the update quietly
-        below, its Update… button beside it and how it was checked behind a
-        disclosure."""
-        landing["page"] = _page([attention.row(
-            source="pushed", key="a", level="info",
-            what="Update available — 1a587a6 → 2986b5c (2 new commits)",
-            cause="origin/main was asked with git ls-remote at 2026-10-01T08:00:00Z",
-            action={"label": "Preview the commits and CI's verdict for 2986b5c, then confirm",
-                    "open": "app_update"})])
-        html = _client().get("/v2/").get_data(as_text=True)
-        assert "<strong>Nothing needs attention</strong>" in html
-        assert 'class="att att-info"' not in html               # not drawn as an item
-        note = re.search(r'<article class="att-note"[^>]*>(.*?)</article>', html, re.S).group(1)
-        assert "Update available — 1a587a6 → 2986b5c (2 new commits)" in note
-        assert re.search(r'<a class="btn btn-small btn-outline" href="/v2/update"[^>]*>Update…</a>', note)
-        assert re.search(r"<details class=\"att-how\"><summary>How this was checked</summary>"
-                         r"<p>origin/main was asked with git ls-remote", note)
-
     def test_a_row_draws_its_level_cause_devices_and_one_action(self, landing):
         landing["page"] = _page([attention.row(
-            source="reachability", key="s3", level="danger", what="s3 is not answering",
+            source="reachability", kind="not-answering", key="s3", level="danger",
+            what="s3 is not answering",
             cause="Three probes in a row missed it.", devices=["s3"], since=1790000000,
             action={"label": "Check the device's console", "command": "nmas-host clab -- uptime"})])
         html = _client().get("/v2/").get_data(as_text=True)
@@ -266,8 +232,9 @@ class TestTheLanding:
         assert 'class="att att-danger"' in html
 
     def test_an_action_with_no_known_remedy_is_drawn_as_such(self, landing):
-        landing["page"] = _page([attention.row(source="x", key="k", level="unknown", what="W",
-                                               cause="C", action={"label": "No remedy", "known": False})])
+        landing["page"] = _page([attention.row(
+            source="drift", kind="unreachable", key="k", level="unknown", what="W", cause="C",
+            action={"label": "Check the device answers", "known": False})])
         assert 'class="att-label muted"' in _client().get("/v2/").get_data(as_text=True)
 
     def test_a_source_that_could_not_be_read_is_named(self, landing):
@@ -276,7 +243,7 @@ class TestTheLanding:
 
     def test_a_secret_a_row_quotes_is_masked(self, landing):
         landing["page"] = _page([attention.row(
-            source="job_health", key="k", level="warning", what="a job failed",
+            source="job_health", kind="job", key="k", level="warning", what="a job failed",
             cause="its output: snmp-server community Pl4ntedC0mmunity RO",
             action={"label": "read it"})])
         html = _client().get("/v2/").get_data(as_text=True)
