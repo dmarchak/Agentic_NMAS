@@ -144,7 +144,7 @@ REF="${REF:-HEAD}"
 # applied: the map carries a host too, and an explicit CLAB= must still win.
 CLAB_FROM_ENV="${CLAB+yes}"
 CLAB="${CLAB:-}"
-STAGE="/tmp/oxidized-staged"
+STAGE="${STAGE:-/tmp/oxidized-staged}"
 NMAS_URL="${NMAS_URL:-}"
 # HELPERS ARE RESOLVED BESIDE THIS SCRIPT, NEVER THROUGH PATH.
 #
@@ -230,7 +230,11 @@ done
 # One ask is one consistent snapshot; a per-device ask is N chances to become
 # unreachable mid-run, and a partial map is worse than none.
 # ---------------------------------------------------------------------------
-declare -A NODE CFGDIR PLATFORM LAB
+# Every associative array is ASSIGNED empty, never only declared: under
+# `set -u` bash calls a declared-but-empty one unbound, so `${#X[@]}` on it
+# aborts the command (2026-10-02: the nothing-to-copy exit crashed on
+# NOT_BUILT, the run carried on past it and exited 1 on its best outcome).
+declare -A NODE=() CFGDIR=() PLATFORM=() LAB=()
 DEVICES=()
 
 map="$("$TARGETS" --url "$NMAS_URL")" || {
@@ -421,8 +425,15 @@ if ! "$SOURCE" --out "$SRCDIR"; then
   echo "Oxidized's copy, so a redeploy cannot boot a change nobody approved."
   exit 2
 fi
+BASE_TAG=""; BASE_COMMIT=""
 IFS=$'\t' read -r _ BASE_TAG BASE_COMMIT < <(grep '^# baseline' "$SRCDIR/sources.tsv")
-declare -A SOURCE_STATE SOURCE_WHY NOT_BUILT
+if [ -z "$BASE_TAG" ]; then
+  echo "REFUSED - the startup source named no baseline ($SRCDIR/sources.tsv has no"
+  echo "'# baseline' line): nothing is written, since what the files would be built"
+  echo "from is unknown."
+  exit 2
+fi
+declare -A SOURCE_STATE=() SOURCE_WHY=() NOT_BUILT=()
 while IFS=$'\t' read -r h st why; do
   case "$h" in ''|'#'*) continue ;; esac
   SOURCE_STATE[$h]="$st"; SOURCE_WHY[$h]="$why"
@@ -702,7 +713,14 @@ done
 
 if [ $((changed + newfiles)) -eq 0 ]; then
   echo
-  echo "Nothing to copy - the clab VM already holds what $BASE_TAG builds."
+  # Says what was checked, never "updated for 0 of 0" (the operator).
+  labs_here=$(destinations | wc -l)
+  case "$labs_here" in
+    1) echo "The lab already holds $BASE_TAG; nothing to update." ;;
+    2) echo "Both labs already hold $BASE_TAG; nothing to update." ;;
+    *) echo "All $labs_here labs already hold $BASE_TAG; nothing to update." ;;
+  esac
+  [ ${#NOT_BUILT[@]} -eq 0 ] || echo "(${#NOT_BUILT[@]} device(s) NOT BUILT, named above.)"
   ssh -n "$CLAB" "rm -rf $STAGE"
   # The exit that stranded r6 (C15) said "Nothing to do" and returned 0. A
   # refusal above is something to do, and job health must see it.

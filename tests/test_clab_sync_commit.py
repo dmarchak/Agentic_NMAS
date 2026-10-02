@@ -280,14 +280,14 @@ def test_a_clean_destination_is_left_alone(tmp_path):
 def test_a_refusal_exits_nonzero_on_the_nothing_to_copy_path():
     """The whole point: the defect was an exit 0 hiding an unversioned
     change, and a refusal that exited 0 would reproduce it."""
-    block = _between('  echo "Nothing to copy', "  exit 0")
+    block = _between('if [ $((changed + newfiles)) -eq 0 ]; then', "  exit 0")
     assert "[ ${#REFUSED_DIRTY[@]} -eq 0 ] || exit 3" in block
     tail = TEXT[TEXT.index('[ ${#failed[@]} -eq 0 ] || exit 3'):]
     assert "[ ${#REFUSED_DIRTY[@]} -eq 0 ] || exit 3" in tail
 
 
 def test_reconcile_runs_before_the_early_exit_and_before_the_copy():
-    assert TEXT.index("\nreconcile\n") < TEXT.index('echo "Nothing to copy')
+    assert TEXT.index("\nreconcile\n") < TEXT.index('if [ $((changed + newfiles)) -eq 0 ]; then')
     assert TEXT.index("\nreconcile\n") < TEXT.index("# Back up, copy, verify, commit")
 
 
