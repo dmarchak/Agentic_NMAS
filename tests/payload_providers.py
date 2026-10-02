@@ -276,9 +276,12 @@ def capture_preview_start(mp, tmp):
 def golden_panel(mp, tmp, path):
     """The golden panel's reads against a repository with baselines in every
     state and a legacy store holding a retired device and an unknown one."""
-    from tests.test_golden_panel_says_what_to_do import build_golden_panel_lab
+    from tests.test_golden_panel_says_what_to_do import build_golden_panel_lab, rotate_r1
 
     lab = build_golden_panel_lab(mp, tmp)
+    # r1 rotated after every baseline, so each carries a stale credential the
+    # restore's own guard refuses (C315: the lists were empty in every row).
+    rotate_r1(lab["repo"])
     return _ok(lab["client"].get(path))
 
 

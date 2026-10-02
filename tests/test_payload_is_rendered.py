@@ -387,6 +387,14 @@ UNDRAWN = {
          "the per-device detail and the two subsets behind the stale list; the row "
          "draws the stale devices and the ones an account would be added back on, "
          "and the restore preview names each refusal. 7.5 (Versions) draws them"),
+        # C315 (2026-10-02): reached once the provider rotated r1 after every
+        # baseline. `credential_detail` is keyed by DEVICE, so `r1` is a
+        # device name read as a field; inside it, the credential's FORM at the
+        # ref and at HEAD (`secret 9`), never a value.
+        ("at_head at_ref r1",
+         "credential_detail's contents: the account's form at the ref and at HEAD, keyed "
+         "by device. The row names the stale device and not the forms; 7.5 (Versions) "
+         "draws them"),
         ("subject", "the tag's subject; the row is named by its tag"),
         ("list", "the list the withdrawal record belongs to; the panel is that list's")],
     "GET /golden/migrate/plan": [
@@ -510,6 +518,10 @@ PHANTOM = {
 S_ = "strings"
 R_ = "records"
 _STRINGS = "items are strings: an empty list hides no field"
+_DEPLOY_CHECKS = ("verify's lists of sentences; the fixture's refused row carries none and its "
+                  "deployed row holds each empty. All five drawn with content, through the "
+                  "receipt and the shipped renderer, in test_deploy_receipts.py "
+                  "(TestEveryCheckListIsDrawnWithContent)")
 
 #: EVERY collection a provider's payload holds EMPTY, declared (the operator's
 #: rule, 2026-09-27: A CHECK IS ONLY AS GOOD AS THE STATE ITS FIXTURE CAN
@@ -635,6 +647,30 @@ EMPTY_IN_FIXTURE = {
         "does (C79), and the restore provider reaches it"),
     "POST /golden/restore/preview preview.targets[].program.prior.lines": (R_, "the "
         "preview's copy of the aggregate; reached in test_authorised_lines.py"),
+    # C315 (2026-10-02): eighteen more the first-item-then-intersection walker
+    # hid, each empty in one row and ABSENT from another, never held.
+    **{f"{route} {base}.{k}": (S_, _DEPLOY_CHECKS)
+       for route, base in (("GET /deploy/receipts", "changes[].result.targets[].checks"),
+                           ("POST /deploy/apply", "result.targets[].checks"))
+       for k in ("from_intent", "intent_unmet", "issues", "pending_convergence",
+                 "unreadable")},
+    "POST /deploy/apply results[].pending_convergence": (S_, _DEPLOY_CHECKS),
+    "POST /deploy/apply results[].verify.issues": (S_, _DEPLOY_CHECKS),
+    "GET /golden/baselines baselines[].credential_silent": (S_, "device names; empty by "
+        "design on every path since C75 and C79 (a stale account is guarded, which this "
+        "provider reaches for r1), and asserted empty on the real fleet configs"),
+    "GET /golden/baselines baselines[].credential_refused": (S_, "device names; the intent "
+        "guard refuses a ref whose intent names a secret the store lost, and no ref in "
+        "this lab commits intent"),
+    "GET /golden/baselines baselines[].missing_devices": (S_, "device names; every baseline "
+        "here holds the whole inventory. A partial one is drawn in test_restore_scope.py"),
+    "GET /golden/baselines baselines[].no_intent": (S_, "device names; every device here "
+        "has a golden at every baseline it is counted in"),
+    "GET /onboard/pending pending[].last_run.result.record.tags": (S_, "an onboarding run "
+        "makes no tag"),
+    "POST /golden/restore/preview devices[].prior_authorised.lines": (R_, "the restore "
+        "plan's per-device copy of the aggregate, the state the deploy plan's own entry "
+        "declares; reached through real receipts in test_authorised_lines.py"),
 }
 # 14 -> 13: `GET /netbox/status status` is reached (a stored import, C85).
 # 13 -> 15: the onboarding review on the component (7.1) has no concept to
@@ -657,7 +693,11 @@ EMPTY_IN_FIXTURE = {
 # both are reached in test_removal_pipeline.py.
 # 25 -> 24: 2c's tick boxes put a residue item in the base plan, so
 # `preview.what_not.items` is reached rather than declared empty.
-EMPTY_RECORDS_CEILING = 24
+# 24 -> 25: C315's corrected walker (empty in SOME row and held in none, not
+# the intersection) found the restore plan's per-device copy of C140's
+# aggregate, the same state the deploy plan's entry already declares. New
+# coverage: the walker had hidden it, the fixture did not stop reaching it.
+EMPTY_RECORDS_CEILING = 25
 
 
 def _empty_paths(obj, path=""):
@@ -676,9 +716,34 @@ def _empty_paths(obj, path=""):
     elif isinstance(obj, list):
         if not obj:
             out.append(path)
-        per_item = [set(_empty_paths(v, path + "[]")) for v in obj]
-        if per_item:
-            out += sorted(set.intersection(*per_item))
+        # Empty in SOME item and holding something in NONE (C315, 2026-10-02).
+        # The intersection over every item read a key ABSENT from one item as
+        # reached: a refused device's checks carry no `issues`, so the
+        # deployed row's empty `issues` disappeared, and 21 empty collections
+        # were hidden that way. An item that does not carry a path says
+        # nothing about it.
+        empty = set().union(*[set(_empty_paths(v, path + "[]")) for v in obj]) if obj else set()
+        held = set().union(*[_held_paths(v, path + "[]") for v in obj]) if obj else set()
+        out += sorted(empty - held)
+    return out
+
+
+def _held_paths(obj, path=""):
+    """Every path in *obj* that holds something: a scalar, or a non-empty
+    collection."""
+    out = set()
+    if isinstance(obj, dict):
+        if obj and path:
+            out.add(path)
+        for k, v in obj.items():
+            out |= _held_paths(v, f"{path}.{k}" if path else k)
+    elif isinstance(obj, list):
+        if obj:
+            out.add(path)
+        for v in obj:
+            out |= _held_paths(v, path + "[]")
+    else:
+        out.add(path)
     return out
 
 
@@ -711,7 +776,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 106  # -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 109  # +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

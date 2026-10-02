@@ -214,6 +214,41 @@ class TestTheResultScreenSaysWhatWasChecked:
         assert "matches the program you confirmed" in s4
 
 
+class TestEveryCheckListIsDrawnWithContent:
+    """C315 (2026-10-02): the payload check hid five of a row's check lists
+    as reached, because the fixture's refused row carries none of them and
+    its deployed row holds each EMPTY. Two (`issues`, `pending_convergence`)
+    had never been drawn with content by any test. One row holding all five,
+    through the receipt and the SHIPPED renderer."""
+
+    LISTS = {"issues": "ospf neighbours dropped from 6 to 5 on r3",
+             "intent_unmet": "ospfv3 is declared by intent and was not up after",
+             "unreadable": "bgp at its 180 s hold time could not be read",
+             "pending_convergence": "rip has not converged yet (settle window 90 s)"}
+
+    def test_each_list_reaches_the_screen(self):
+        from modules.preview_confirm import operation_result
+        from tests.payload_render import render_result
+
+        verify = {"ok": False, "checked_protocols": ["bgp", "ospf", "ospfv3"],
+                  "from_intent": ["ospfv3"], "declared_protocols": ["bgp", "ospf", "ospfv3"],
+                  "pre": {"routing_protocols": {"bgp": 1, "ospf": 6}, "routes": 30,
+                          "interfaces_up": 5},
+                  "post": {"routing_protocols": {"bgp": 1, "ospf": 5}, "routes": 30,
+                           "interfaces_up": 5},
+                  **{k: [v] for k, v in self.LISTS.items() if k != "pending_convergence"}}
+        rows = _rows([_sent(verify=verify,
+                            pending_convergence=[self.LISTS["pending_convergence"]])])
+        checks = rows[0]["checks"]
+        assert all(checks[k] == [v] for k, v in self.LISTS.items()), checks
+        assert checks["from_intent"] == ["ospfv3"]
+        html = render_result(operation_result(rows, {"results": []}, {"ok": True, "path": "x"},
+                                              "deploy"))
+        for k, v in self.LISTS.items():
+            assert v in html, f"{k} was carried and not drawn"
+        assert "data-pr-from-intent" in html and "not running before: ospfv3" in html
+
+
 class TestTheRestorePathWritesThemToo:
     def test_run_targets_writes_receipts_after_its_commit(self):
         """Both apply paths, from the start (the operator: the receipt lands

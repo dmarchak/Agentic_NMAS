@@ -26,6 +26,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIST = "Lab"
 INVENTORY = [{"hostname": "r1", "ip": "203.0.113.1", "platform": "cisco_ios"},
              {"hostname": "r2", "ip": "203.0.113.2", "platform": "cisco_ios"}]
+#: Every device's account at every baseline; `rotate_r1()` moves r1's after them.
+ACCOUNT = "username admin privilege 15 secret 9 $9$Zq7baselinehash$abcdefghijklmnop"
+ROTATED = "username admin privilege 15 secret 9 $9$Zq7rotatedhash$qrstuvwxyz012345"
+
+
+def rotate_r1(repo):
+    """A rotation committed after every baseline (C315's provider): each one
+    now predates r1's credential, so the panel's stale and guarded lists hold
+    r1, the state the payload check's fixture had never reached."""
+    path = os.path.join(repo, "golden", "r1.cfg")
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text.replace(ACCOUNT, ROTATED))
+    return _commit(repo, "golden: r1 credential rotation\n\nSource: rotation\nActor: t")
 
 
 def _commit(repo, msg):
@@ -60,7 +75,7 @@ def build_golden_panel_lab(monkeypatch, tmp_path):
     R.init_repo(repo)
     for d in INVENTORY:
         with open(os.path.join(repo, "golden", f"{d['hostname']}.cfg"), "w") as fh:
-            fh.write(f"hostname {d['hostname']}\n")
+            fh.write(f"hostname {d['hostname']}\n{ACCOUNT}\n")
     shas = {}
     shas["old"] = _commit(repo, "golden: baseline via save_all\n\nSource: save_all\nActor: t")
     _tag(repo, "baseline/20260921T000000Z", shas["old"])
