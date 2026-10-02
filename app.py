@@ -2521,6 +2521,14 @@ def bulk_reload():
                     # SEND, READ, DECIDE; success is the session DROPPING, which
                     # every other command would call a failure (C153).
                     from modules.device_reload import reload_device
+                    # The tool's own reload is a PLANNED restart (the restarts reader
+                    # tells planned from unplanned by this record), written before the
+                    # reload is sent, so a fast boot is never read as unexpected.
+                    from modules import restarts as _restarts
+                    _t = _time.time()
+                    _restarts.record_planned([dev["hostname"]], _t, _t + 1200, _actor,
+                                             "reloaded from the tool's Reload action",
+                                             "bulk_reload", list_name=_list_name)
                     with _device_lock(dev["ip"]):
                         outcome = reload_device(conn)
                 try:

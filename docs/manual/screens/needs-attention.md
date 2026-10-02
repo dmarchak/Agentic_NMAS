@@ -20,5 +20,5 @@ The landing page answers one question: does anything need you?
 Background readers keep each source's value: job health (the host's scheduled checks), drift,
 approvals, pending onboardings, rollback blocks, Grafana's alerts (a device's heartbeat
 stopping is one), Oxidized freshness, integrations, reachability, routing adjacencies,
-baselines, the remote's publication, the lab's startup files and the app's own version. A
+baselines, the remote's publication, the lab's startup files, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.

@@ -775,6 +775,25 @@ def history(ref, dev: dict, limit: int = None) -> dict:
                        "sha": r.get("golden_commit", ""), "outcome": r.get("outcome", "")})
     if len(got.get("rows") or []) >= limit:
         cut.append(f"the receipts' newest {limit}")
+    # Every restart, planned or not (the operator, 2026-10-02), from the restarts reader's
+    # record: what the device said, and whether the tool did it or was told.
+    from modules import restarts as _restarts
+    rs = _restarts.events(device=host, list_name=ref.name)
+    if rs["state"] == "unreadable":
+        errors.append(f"the restart record could not be read: {rs.get('error', '')}")
+    for r in rs["rows"][:limit]:
+        events.append({"at": r.get("at", ""), "kind": "restart",
+                       "what": ("Restarted as planned" if r.get("planned") else
+                                "Restarted unexpectedly"),
+                       "who": r.get("planned_by", ""),
+                       "detail": (("reason: " + r["reason"]) if r.get("reason") else
+                                  f"reason not read ({r.get('reason_error') or 'no answer'})")
+                                 + (f"; crash file {r['crash_file']}" if r.get("crash_file") else "")
+                                 + (f"; planned: {r['planned_why']}" if r.get("planned_why") else ""),
+                       "sha": "", "outcome": "crash" if r.get("crash_file") else
+                       ("planned" if r.get("planned") else "unplanned")})
+    if len(rs["rows"]) > limit:
+        cut.append(f"the restarts' newest {limit}")
     events.sort(key=lambda e: _epoch(e["at"]), reverse=True)
     return {"events": events, "errors": errors, "cut": cut, "limit": limit}
 

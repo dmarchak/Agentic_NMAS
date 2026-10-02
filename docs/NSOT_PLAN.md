@@ -4426,6 +4426,32 @@ and what the tool has". Each costed against:
 A recommendation with evidence, written before anything changes. Nothing is adopted or
 removed by this item; a decision to adopt becomes its own plan item.
 
+### P.17 — Onboarding classic IOS (DECIDED 2026-10-02, the operator; NOT BUILT; placed with Stage 10's multi-vendor item)
+
+Register C332: classic IOS cannot be onboarded by ANY method today. The platform is blocked
+pending a measurement of how a fresh classic-IOS node boots a bootstrap config, so static and
+DHCP refuse it at plan time, and classic-IOS ZTP has no code at all (P.6 built IOS-XE's
+AutoInstall only). It is placed with Stage 10's multi-vendor item because it is the same work
+in miniature: a platform's boot path measured on a throwaway (the probe runbook's shape), its
+bootstrap render, its ZTP mechanism if it has one, and the wizard's refusal lifted only for
+what was measured. Until then the onboarding page says classic IOS is not onboardable, by
+name, never by a silent absence (it does: docs/manual/how-it-works/onboard.md).
+
+### P.18 — Phase two without the lab (DECIDED 2026-10-02, the operator; NOT BUILT; placed BEFORE Stage 10's release, with 10's lab-boundary work)
+
+Register C332's other half, and C333's: onboarding's phase two rotates the bootstrap
+credential through the persistence chain, whose preflight requires the lab's root-owned
+Oxidized helper, and a rotation needs an Oxidized reload and fetch, a lab target and the clab
+sync to call itself finished. So a network with no lab (any real one) cannot finish an
+onboarding or a rotation: a LAB integration inside a PRODUCT workflow, which the Stage 10
+rule forbids (CLAUDE.md, "Nothing lab- or person-specific in the PRODUCT"). The product's
+definition of "persisted" is the device's own save read back (`onboard.persist_on_device`,
+C53), which needs no lab. The Oxidized and startup-file stages become the OPTIONAL lab
+integration: run when it is configured, said as not applicable when it is not, never a
+reason a product operation stops. Placed with Stage 10's lab-boundary work
+(NSOT_STAGE10_PLAN 6.0), and before the release, because the release is what a network with
+no lab installs.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported

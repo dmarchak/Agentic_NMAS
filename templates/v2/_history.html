@@ -1,11 +1,13 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, info -%}
 {#- The device page's History (NSOT_GUI_BRIEF 3.3): one timeline from
     device_page.history(): golden commits (each names its workflow), intent
-    commits, and deploy and restore receipts, newest first. A record that
+    commits, deploy and restore receipts, and every restart (planned or not, with the
+    device's own reason), newest first. A record that
     could not be read is said; a cut timeline says where it was cut. -#}
-{%- set KIND = {'golden': ('golden', 'info'), 'intent': ('intent', 'muted'), 'receipt': ('receipt', 'ok')} -%}
+{%- set KIND = {'golden': ('golden', 'info'), 'intent': ('intent', 'muted'), 'receipt': ('receipt', 'ok'),
+                 'restart': ('restart', 'warn')} -%}
 <section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname) }}"
-         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }}</p>
   {%- for e in h.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}: the timeline below lacks it, which is not the same as nothing having happened.</p></div>
@@ -16,7 +18,8 @@
   <ol class="timeline">
     {%- for e in h.events %}
     {%- set k = KIND.get(e.kind, (e.kind, 'muted')) %}
-    {%- set failed = e.kind == 'receipt' and e.outcome and e.outcome != 'deployed' %}
+    {%- set failed = (e.kind == 'receipt' and e.outcome and e.outcome != 'deployed')
+                     or (e.kind == 'restart' and e.outcome == 'crash') %}
     <li class="tl-item">
       <span class="tl-when">{{ stamp(e.at) }}</span>
       <span class="tl-what">{{ badge(k[0], 'danger' if failed else k[1]) }} <strong>{{ e.what }}</strong>{% if e.who %}<span class="muted"> by {{ e.who }}</span>{% endif %}</span>

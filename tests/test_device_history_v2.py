@@ -92,4 +92,4 @@ class TestTheTab:
         assert not re.search(r"\sstyle=|\son[a-z]+=", frag)
         assert frag.lstrip().startswith('<section class="card history" id="history"')
         keys = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"', frag).group(1))
-        assert keys == ["goldens", "deploy_job"]
+        assert keys == ["goldens", "deploy_job", "restarts"]

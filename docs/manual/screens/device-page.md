@@ -26,7 +26,16 @@ today's page until plan 7.3.
 ## History {#history-tab}
 
 One timeline for the device: its golden commits (each naming its workflow and who), its intent
-commits, and its deploy and restore receipts. A record that could not be read is said.
+commits, its deploy and restore receipts, and every restart. A record that could not be read is
+said.
+
+A restart is found where the device's uptime counter fell (SNMP, read each minute), never by
+subtracting its uptime from the clock: a slow device clock runs its uptime slow too, so that
+subtraction places a restart hours from where it was. Each shows the device's own reason for
+its last reload and the crash file it saved, if any, and whether it was planned: the tool's own
+reload is, and so is a window the tool was told about beforehand
+(`scripts/nmas-planned-restart` on the host). Anything else is unplanned, and is also on Needs
+attention for seven days.
 
 ## Monitoring {#monitoring-tab}
 

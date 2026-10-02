@@ -103,6 +103,8 @@ ROW_KINDS = {
     ("adjacencies", "link"): ("an adjacency intent implies is not up",
                               "check the link and both ends"),
     ("adjacencies", "unmeasured"): ("adjacencies cannot be judged", "check the Prometheus targets"),
+    ("restarts", "unplanned"): ("a device restarted and nothing planned it",
+                                "read the device's reason and crash file, and check the host then"),
     ("adjacencies", "error"): ("a list's intent could not be read for its adjacencies",
                                "fix the intent file the reason names"),
     ("lab-startup", "moved"): ("a device moved since the baseline its lab file is built from",
@@ -1734,6 +1736,59 @@ def host_steps_source(owed=None) -> dict:
                          checked=f"the last {host_steps.HISTORY} commits of {health._COMMIT[:10]}")
 
 
+def restart_source(cached=None) -> dict:
+    """An UNPLANNED restart (the operator, 2026-10-02: five passed silently): one row per
+    restart for `restarts.ATTENTION_DAYS` days, DANGER when the device saved a crash file,
+    naming the device's own reason. A planned one (the tool's reload, or a window it was
+    told) is in the device's History and is no row."""
+    from modules import reader_job
+    from modules import restarts as R
+
+    started = time.time()
+    got = reader_job.read_cached("restarts") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    label = "Device restarts"
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("restarts", label, read_at=started, took_ms=took,
+                             error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    value_at, promise = _ts(good.get("value_at")), doc.get("stale_after_seconds")
+    if not v.get("configured"):
+        return source_result("restarts", label, read_at=started, took_ms=took,
+                             value_at=value_at, stale_after_seconds=promise, reader="restarts",
+                             checked="no Prometheus configured: a restart cannot be seen")
+    rows = []
+    for r in v.get("recent_unplanned") or []:
+        crash = r.get("crash_file", "")
+        action = (f"Read the crash file ({crash}) and check the host at that time" if crash else
+                  "Read the device's log around then and check the host at that time")
+        rows.append(row(source="restarts", kind="unplanned",
+                        key=f"{r.get('list', '')}|{r['device']}|{r['at']}",
+                        level="danger" if crash else "warning", what=R.words(r),
+                        devices=[r["device"]], since=_ts(r.get("at")),
+                        cause=(f"Its uptime counter reset (found {r.get('seen_at', '?')} in "
+                               "Prometheus's sysUpTime), and no reload by the tool and no planned "
+                               f"window covers it. Shown for {R.ATTENTION_DAYS} days from the "
+                               "restart; every restart stays in the device's History."),
+                        operands={"list": r.get("list"), "reason": r.get("reason"),
+                                  "crash_file": crash},
+                        action={"label": action,
+                                "href": f"/v2/device/{r['device']}?tab=history"}))
+    cut = " (the read window was cut at 48 h)" if v.get("cut") else ""
+    return source_result(
+        "restarts", label, read_at=started, took_ms=took, rows=rows, value_at=value_at,
+        stale_after_seconds=promise, reader="restarts",
+        checked=(f"sysUpTime of {v.get('devices', 0)} device(s) over the last "
+                 f"{int(v.get('window', 0)) // 60} min{cut}"
+                 + (f"; not managed, not judged: {', '.join(v['unmanaged'])}"
+                    if v.get("unmanaged") else "")))
+
+
 def adjacency_source(cached=None) -> dict:
     """C38: a routing adjacency committed intent implies and the device does
     not report up, held for two reads (a deploy's settle window passes
@@ -1954,7 +2009,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
            reachability_source, netbox_secrets_source, remote_source, pushed_source,
-           host_steps_source, adjacency_source, lab_startup_source)
+           host_steps_source, adjacency_source, lab_startup_source, restart_source)
 
 
 def _attach(rows: list) -> list:

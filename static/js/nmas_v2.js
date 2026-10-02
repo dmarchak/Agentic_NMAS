@@ -21,7 +21,9 @@
               // C38's reader: the routing adjacencies intent implies.
               'adjacencies',
               // The lab startup files against the goldens (modules/lab_startup.py).
-              'lab_startup'];
+              'lab_startup',
+              // A device restart, planned or not (modules/restarts.py).
+              'restarts'];
 
   /* PURE: an age in words, from two times in milliseconds. */
   function ageWords(thenMs, nowMs) {
@@ -92,6 +94,7 @@
   function relayGoldens() { relay('goldens'); }
   function relayAdjacencies() { relay('adjacencies'); }
   function relayLabStartup() { relay('lab_startup'); }
+  function relayRestarts() { relay('restarts'); }
 
   function wireAnnouncements() {
     var NMAS = root.NMAS;
@@ -112,6 +115,7 @@
     NMAS.subscribe('goldens', 'v2Goldens', relayGoldens);
     NMAS.subscribe('adjacencies', 'v2Adjacencies', relayAdjacencies);
     NMAS.subscribe('lab_startup', 'v2LabStartup', relayLabStartup);
+    NMAS.subscribe('restarts', 'v2Restarts', relayRestarts);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
