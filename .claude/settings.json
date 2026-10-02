@@ -1,4 +1,11 @@
 {
+  "permissions": {
+    "deny": [
+      "mcp__claude_ai_Gmail",
+      "mcp__claude_ai_Google_Calendar",
+      "mcp__claude_ai_Google_Drive"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -7,6 +14,10 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/hooks/claude-no-heredoc-interpreter"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/hooks/claude-no-host-writes"
           }
         ]
       }

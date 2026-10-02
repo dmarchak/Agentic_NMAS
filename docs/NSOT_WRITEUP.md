@@ -286,10 +286,10 @@ Later findings against this phase's mechanisms:
 - B3: orphaned credential overrides [OPEN_FINDINGS B3].
 - The default source filter `{"status": "active"}` combined with a
   ping-derived NetBox status could remove a device permanently from a NetBox
-  list [CLAUDE.md "The status write is a SELF-SEALING loop"]. No register ID
+  list [docs/LESSONS.md#populations-by-property "The status write is a SELF-SEALING loop"]. No register ID
   located.
 - A bare `load_saved_devices()` read a pre-lists file and returned zero rows
-  [CLAUDE.md "`load_saved_devices()`'s no-argument default"]. No register ID
+  [docs/LESSONS.md#survey-first-and-constrain-the-shape "`load_saved_devices()`'s no-argument default"]. No register ID
   located.
 
 **4. How they were resolved**
@@ -383,7 +383,7 @@ Later: C104 (readers took the working tree), C175 (writers staged whole
 trees), C91 (a committing Save All took a baseline with a device skipped),
 C83 (every subject said "baseline"), C23 (restore preview population), C25,
 C161, C18 [OPEN_FINDINGS]. The golden enumerator still listed the legacy
-directory [CLAUDE.md "One enumerator"].
+directory [docs/ARCHITECTURE.md "One enumerator"].
 
 **4. How they were resolved**
 
@@ -424,7 +424,7 @@ identity-keyed history and tagged baselines.
 - docs/NSOT_WRITEUP_NOTES.md: "Phase 0", "Phase 1", "Phase 2" and the
   sections after them to "The one that was caught".
 - docs/NSOT_PLAN.md: header and §6 Phases 0 to 2; headings list.
-- CLAUDE.md: "NetBox write safety", "Inventory sources", "Golden config
+- docs/ARCHITECTURE.md: "NetBox write safety", "Inventory sources", "Golden config
   repository", "Settings".
 - docs/OPEN_FINDINGS.md: intro, section list, rows A3, B3, C8, C18, C23,
   C25, C59, C83, C91, C100, C104, C130, C131, C134, C135, C136, C149, C155,
@@ -587,7 +587,7 @@ deployed it.
 Give each network its own template library, let a person edit and preview a
 template against captured config, and put a gate in front of any deploy: a
 template must be approved, and a render must be provably deployable
-[git 6735f97; CLAUDE.md "Template library and the deploy gate"]. Nothing in 3b
+[git 6735f97; docs/ARCHITECTURE.md "Template library and the deploy gate"]. Nothing in 3b
 opened a socket [git 6735f97].
 
 **2. How it was implemented**
@@ -682,7 +682,7 @@ unless the template reproduced the device and a person had approved it.
 Wire `PipelineRunner` to the interface so that committed intent, rendered
 through an approved template, reaches a device: merge-only, confirmed by hash,
 verified, rolled back on failure, and recorded as a golden. "The only part of
-the NSoT work that reaches a device" [CLAUDE.md "Deploy from template";
+the NSoT work that reaches a device" [docs/ARCHITECTURE.md "Deploy from template";
 git 3be6550].
 
 **2. How it was implemented**
@@ -969,7 +969,7 @@ r6 [git 7f79b87].
   [git 117fce1].
 - Deferred: `write_and_stage` to the Git-tab retirement [PLAN 3.3]; it is still
   in `modules/config_git.py` today. `detect_config_drift` to Stage 8.2
-  [CLAUDE.md "Known defects deferred"].
+  [docs/NSOT_PLAN.md "Known defects deferred"].
 - Negative controls, each shown failing against reverted code: 7 of 14 on the
   enumerator, 10 of 11 on the population, 10 of 17 on scheduling
   [git 117fce1]; 13 of 15 on the routes [git 456897f].
@@ -1015,7 +1015,7 @@ how many devices it checked out of how many exist.
 - docs/NSOT_PLAN.md: "Phase 3" and its 3c amendments; section 9, Stage 1, STAGE
   2, "Queued from the Stage 2 session", 3.3 and "STAGE 3.3 COMPLETE"; the
   Stage 8 note on `detect_config_drift`.
-- CLAUDE.md: "Templatization (Phase 3a)", "Template library and the deploy gate
+- docs/ARCHITECTURE.md: "Templatization (Phase 3a)", "Template library and the deploy gate
   (Phase 3b)", "Deploy from template (Phase 3c)", the rcn-lab1 paragraph, the
   drift entries.
 - docs/OPEN_FINDINGS.md: rows C62–C68, C63, C76, C78, C96, C107, C108, C112,
@@ -1706,7 +1706,7 @@ Per-device fidelity stays where it already ran, per plan [NSOT_PLAN.md P.5].
   revocation [git 61b98a2].
 - **The migration refuses every deploy until a person re-approves.** Observed on
   the host after deploying P.5: every deploy refused until the operator
-  re-approved both templates, with all nine devices round-tripping [CLAUDE.md,
+  re-approved both templates, with all nine devices round-tripping [docs/ARCHITECTURE.md,
   "Approval is the TEMPLATE"; git 8ff6698].
 - **The concept table still described scheme 2.** The Stage 7 concept
   `approval-binds-a-set` asked the screen to state something false after P.5.
@@ -2500,7 +2500,7 @@ The landing page drew every section 1a source from stored or cached values, each
 
 1. **What it was.** Onboarding left a device with only a bootstrap intent. A device with no full committed intent is `bootstrap`, and it cannot be deployed. So nothing onboarded could ever be deployed to. Seeding closes that path: a device's first full intent is parsed from its committed golden, once.
 2. **How it was implemented.** `modules/nsot/seed.py` parses the committed golden (`HEAD`, never the working file) into host_vars. It previews the document against the intent committed now and binds the confirm to a hash of the document and the golden. At apply it parses again and makes one commit of exactly the seeded files (`Source: seed`, a `Seeded-From:` trailer naming the golden). Only absent or bootstrap-only intent is seeded. What the template does not model is named in the preview and never blocks here. It is the Device page's "Seed intent" (`static/js/nmas_seed.js`), and it replaced four extraction routes, which now answer 404 [CLAUDE.md module map; `tests/test_seed_intent.py` row].
-3. **Issues encountered.** C148 was the finding it fixed: it blocked the central loop, and the first triage had filed it as 7.3 work [CLAUDE.md "Open findings register"]. Not recoverable in this entry: whether building it surfaced other findings. This entry was backfilled from the commit and the docs, not written at close.
+3. **Issues encountered.** C148 was the finding it fixed: it blocked the central loop, and the first triage had filed it as 7.3 work [docs/NSOT_PLAN.md "Open findings register"]. Not recoverable in this entry: whether building it surfaced other findings. This entry was backfilled from the commit and the docs, not written at close.
 4. **How they were resolved.** C148 fixed by `195fdbe`.
 5. **Numbers.** One commit, `195fdbe`, 2026-09-28 16:53: 27 files, +1,155 −196, and a 374-line test file [git 195fdbe]. Not recoverable: an estimate.
 6. **Where it left the product.** An onboarded device can reach deployable intent from the interface.
@@ -2801,7 +2801,7 @@ It started on 2026-09-23. The onboarding wizard refused to create a device, the 
 - **`modules/filestore.py`** made that fix generic once [2449206]. It provides `PathLock`, `write_atomic` and `read_json_for_write`. The credential store, the NetBox created-object record, `rolled_back.json` and `devices.csv` all moved onto it.
 - **The sweep.**
   - The first survey was static: 27 loaders that read an unreadable file as empty [3a946bb]. It was scoped by format (JSON), so it missed `devices.csv`.
-  - The second survey listed every place the program writes a file, 85 of them. That is the population the property itself defines, and it found C160 [2449206; CLAUDE.md "A SURVEY SCOPED BY FORMAT…"].
+  - The second survey listed every place the program writes a file, 85 of them. That is the population the property itself defines, and it found C160 [2449206; docs/LESSONS.md#the-sweep-stopping-rule "A SURVEY SCOPED BY FORMAT…"].
 - **Controls.** Every fix has a control that removes the property and fails only its own test; 2449206 has eight [commit message]. The lost-update tests run the writers as separate processes.
 
 **3. Issues encountered**
@@ -3125,12 +3125,12 @@ Collected from what the project already records, with citations in brackets. "CL
 
 **Pattern.** A check's population is defined by something that usually
 coincides with the property, not by the property itself, so it stops covering
-the property when the proxy moves [CLAUDE.md "A GATE TABLE KEYED ON HTTP METHOD
+the property when the proxy moves [docs/LESSONS.md#populations-by-property "A GATE TABLE KEYED ON HTTP METHOD
 MISSES A GET THAT CHANGES A DEVICE"].
 
 **Instances, in order** (the operator's list, 2026-09-26, extended since):
 - The drift checker enumerated the legacy golden store, not the inventory
-  (Phase 3.3, fixed 2026-09-23) [CLAUDE.md "The drift check's population is the
+  (Phase 3.3, fixed 2026-09-23) [docs/LESSONS.md#populations-by-property "The drift check's population is the
   inventory"].
 - The NetBox census compared identity (`id:display`), not assignment, so a
   moved address read as unchanged [CLAUDE.md, same list].
@@ -3150,7 +3150,7 @@ MISSES A GET THAT CHANGES A DEVICE"].
 - "The tool knows every change by construction" (8.7, 2026-09-27): changes
   through the tool standing in for changes to the device.
 - The first store-hardening sweep listed JSON loaders and missed devices.csv
-  (C160, 2026-09-28) [CLAUDE.md "A SURVEY SCOPED BY FORMAT FINDS WHAT SHARES
+  (C160, 2026-09-28) [docs/LESSONS.md#the-sweep-stopping-rule "A SURVEY SCOPED BY FORMAT FINDS WHAT SHARES
   THE FORMAT"].
 
 **Corollary** (the operator's): a proxy population is a dependency on
@@ -3217,24 +3217,24 @@ passes" [CLAUDE.md, P.4 step 4].
 - C110 (2026-09-27): "no commit carries `Source: restore`" could not have come
   out otherwise; C111 the second half.
 - The integration status "never probes" control passed on the error handling
-  (2026-09-28) [CLAUDE.md "A CONTROL THAT WORKS BY BREAKING SOMETHING MUST
+  (2026-09-28) [docs/LESSONS.md#every-check-shown-able-to-fail "A CONTROL THAT WORKS BY BREAKING SOMETHING MUST
   CHECK THE BREAK WAS OBSERVED"].
 - C120 (2026-09-27): a control's mutation survived in bytecode.
 - C194 (2026-09-28/29): the removal probe did not record whether its repair
-  ran [CLAUDE.md "A clean result cannot prove a mechanism that was not
+  ran [docs/LESSONS.md#every-check-shown-able-to-fail "A clean result cannot prove a mechanism that was not
   exercised"].
 - A check whose NAME claims more than its code (2026-09-28): the daily
   restore test decrypts nothing, and its pass was read as proof the encrypted
   copies can be read (C144); `nmas-breakglass verify` proved the record opens
   and was claimed to settle whether it was current (C182); a backup key's
   export matched by hash on both hosts and could not be imported (B8)
-  [CLAUDE.md "A CHECK THAT THE ARTEFACT ARRIVED CANNOT SEE WHETHER IT WORKS
+  [docs/LESSONS.md#confirm-the-result "A CHECK THAT THE ARTEFACT ARRIVED CANNOT SEE WHETHER IT WORKS
   THERE"].
 - C221 (2026-09-29): the break-glass row read "current" because an export
   was WRITTEN; the file had been deleted before it reached anywhere.
 
 **Mechanical answers.** Floors on every scan (`_the_scan_finds_something`)
-[CLAUDE.md "An assertion over a set difference passes vacuously"]; about 180
+[docs/LESSONS.md#floors-and-independent-controls "An assertion over a set difference passes vacuously"]; about 180
 built-in controls in 72 files, run every time, and about 330 one-off mutation
 controls [TESTING.md "Negative controls"]; restore a mutation from a copy,
 never git; `PYTHONDONTWRITEBYTECODE=1` in `scripts/nmas-test` (C120); a
@@ -3243,17 +3243,17 @@ control is valid only when the aimed tests fail, not by crashing [CLAUDE.md].
 #### 4. Absent versus unreadable
 
 **Pattern.** A reader that turns an unreadable store into an empty one lets
-the next write persist the emptiness [CLAUDE.md "Absent and unreadable are
+the next write persist the emptiness [docs/LESSONS.md#subsets-and-distinct-states "Absent and unreadable are
 different facts, and collapsing them erased the settings file"].
 
 **Instances:**
 - The settings erasure, 2026-09-23: truncate in place, `{}` on unreadable,
-  107 defaults reseeded, Cloudflare Access config blanked [CLAUDE.md "Five
+  107 defaults reseeded, Cloudflare Access config blanked [docs/LESSONS.md#many-people-tabs-and-processes "Five
   defensible mechanisms composed into an invisible failure"].
 - The NetBox modification record would have been erased the same way;
   "Absent and unreadable are different facts, for the third time in this
   project" [CLAUDE.md, §21].
-- `/onboard/pending` must answer `ok: false`, not an empty list [CLAUDE.md "A
+- `/onboard/pending` must answer `ok: false`, not an empty list [docs/LESSONS.md#subsets-and-distinct-states "A
   banner that renders 'none pending' because the query FAILED"].
 - C130 (2026-09-28): a failed NetBox read treated as "gone", so a preview
   forgot provenance.
@@ -3274,7 +3274,7 @@ lift a guard [CLAUDE.md `modules/filestore.py`].
 **Instances:**
 - C20 (2026-09-25): settings; a shared temp name and no lock left the file
   unreadable in 2 of 2 runs. It was introduced by `4f8a0f1`, the fix for the
-  erasure [CLAUDE.md "Every read-modify-write of `user_settings.json` holds
+  erasure [docs/ARCHITECTURE.md "Every read-modify-write of `user_settings.json` holds
   `config.settings_lock()`"].
 - C157 (2026-09-28): the credential store had the three erasure ingredients;
   without the flock, 37 to 47% of writes were lost [CLAUDE.md, `test_
@@ -3298,7 +3298,7 @@ the path locked, not the lock object (C158) [CLAUDE.md].
 #### 6. A fixture that cannot exhibit the case
 
 **Pattern.** The assertions are exact, and the input can never reach them
-[CLAUDE.md "A FIXTURE THAT CANNOT EXHIBIT THE CASE — a third variety"].
+[docs/LESSONS.md#fixtures-that-reach-the-case "A FIXTURE THAT CANNOT EXHIBIT THE CASE — a third variety"].
 
 **Instances:**
 - `TestMergeCommands.RUNNING` held every container, so the duplicate stanza
@@ -3308,19 +3308,19 @@ the path locked, not the lock object (C158) [CLAUDE.md].
 - `nmas-seed-status`: tests used absolute paths, the host a relative one (C6).
 - C64, C65 (2026-09-27): BGP and RIP samples typed from memory.
 - The `/deploy/apply` payload provider only produced a refusal; the undrawn
-  list rose 99 to 106 once it produced a deployed row [CLAUDE.md "A CHECK IS
+  list rose 99 to 106 once it produced a deployed row [docs/LESSONS.md#fixtures-that-reach-the-case "A CHECK IS
   ONLY AS GOOD AS THE STATE ITS FIXTURE CAN REACH"].
 - C72 (2026-09-27): fourteen empty record collections.
 - C96 and C85: fixtures that never reached a drift run or a stored import.
 - M4 (2026-09-27): tests built an AF_INET socket; systemd hands over a
   dual-stack IPv6 one.
 - 7.1 step 5: a fixture that could not DISTINGUISH two states, r2's password
-  equalling its account name [CLAUDE.md "A fixture can fail to DISTINGUISH
+  equalling its account name [docs/LESSONS.md#fixtures-that-reach-the-case "A fixture can fail to DISTINGUISH
   two states"].
 
 **Mechanical answers.** Parser tests from captures only; `EMPTY_IN_FIXTURE`
 with a ceiling (C72); "build a renderer's test input from the route"; real
-pieces allowed in a constructed arrangement [CLAUDE.md "A fixture sometimes
+pieces allowed in a constructed arrangement [docs/LESSONS.md#fixtures-that-reach-the-case "A fixture sometimes
 has to build a state the live fleet does not currently offer"].
 
 #### 7. A gate keyed on something that moves for unrelated reasons
@@ -3338,7 +3338,7 @@ KEYED ON SOMETHING THAT MOVES..."].
    2026-09-26), found while a credential was exposed.
 
 A related case: the onboarding approval gate that no first device could
-satisfy (4C.8) [CLAUDE.md "Template approval is an ADVISORY on the onboarding
+satisfy (4C.8) [docs/LESSONS.md#populations-by-property "Template approval is an ADVISORY on the onboarding
 path"].
 
 **Mechanical answers.** Scheme 3: the template closure hash, per-device
@@ -3349,7 +3349,7 @@ changed".
 #### 8. Computed, carried, drawn nowhere
 
 **Pattern.** The server computes a value, the payload carries it, and nothing
-draws it [CLAUDE.md "The edge caches HTML and not JSON"; "four defects of the
+draws it [docs/LESSONS.md#a-stated-problem-is-a-hypothesis "The edge caches HTML and not JSON"; "four defects of the
 shape" in one night].
 
 **Instances:**
@@ -3373,7 +3373,7 @@ real payloads (`test_agent_panel_renders.py`); `test_payload_is_rendered.py`
 #### 9. "Success" meaning no exception reached the top
 
 **Pattern.** `ok` or `success` recorded that the code did not crash, not that
-the work happened [CLAUDE.md "'Success' must mean something happened"].
+the work happened [docs/NSOT_PLAN.md "'Success' must mean something happened"].
 
 **Instances, as counted by CLAUDE.md:**
 1. The background agent: 27 runs, zero tool calls, one `success: true` with
@@ -3397,7 +3397,7 @@ result; `FALSE_GREEN` and `GREEN_TOASTS` in `test_results_are_drawn.py`.
 #### 10. A rule keyed on the platform when it was about the deployment
 
 **Pattern.** A rule true of every device that existed when it was written
-fails for the first device that arrives by another route [CLAUDE.md "A RULE
+fails for the first device that arrives by another route [docs/LESSONS.md#nothing-lab-specific-in-the-product "A RULE
 KEYED ON THE PLATFORM WHEN IT WAS REALLY ABOUT THE DEPLOYMENT", P.6,
 2026-09-27].
 
@@ -3432,10 +3432,10 @@ A document or a status says a thing is done, built or scheduled, and the thing i
   to explain it [NOTES "A named pattern"; CLAUDE.md]. Answer: parse, never
   grep; `check_removed_definitions.py` tells a use from a mention.
 - **Matching a name, a prefix or a mention.** C61, C87, C101 (twice), C103, and
-  the one-home check keyed on spelling [CLAUDE.md "When a check matches a
+  the one-home check keyed on spelling [docs/LESSONS.md#populations-by-property "When a check matches a
   NAME, a PREFIX or a MENTION"].
 - **The seam.** "A test that constructs its own subject cannot notice that the
-  caller does not", nine instances by Phase 2 DHCP [CLAUDE.md "Running the
+  caller does not", nine instances by Phase 2 DHCP [docs/LESSONS.md#walk-the-path-for-real "Running the
   tool is how defects are found"]. Answer:
   `test_server_reads_nothing_the_form_cannot_send.py`, the entry-point sweep,
   `assert_dialect()`.
@@ -3446,25 +3446,25 @@ A document or a status says a thing is done, built or scheduled, and the thing i
   Four in one week, on the rolled-back block and its revert [NOTES "Method,
   not code"].
 - **Two places answer the same question.** Drift checkers, golden enumerators,
-  BGP readers (C64, C69) [CLAUDE.md "When two places answer the same question
+  BGP readers (C64, C69) [docs/LESSONS.md#one-owner-one-home "When two places answer the same question
   about a device"].
 - **A preview runs the real code.** C130 and C134 [CLAUDE.md]. Answer:
   `TestNoPreviewWritesTheStore`.
 - **The instrument is the variable.** `ugrep` file order (C20), bytecode
-  (C120), a 420-character register dump (C106) [CLAUDE.md "An investigation's
+  (C120), a 420-character register dump (C106) [docs/LESSONS.md#a-stated-problem-is-a-hypothesis "An investigation's
   instrument can be the variable"].
 - **A claim about all time from a short window.** Three instances; the first
-  the operator's (2026-09-28), and the third, the same day, the implementation's own [CLAUDE.md "A claim about ALL TIME
+  the operator's (2026-09-28), and the third, the same day, the implementation's own [docs/LESSONS.md#truncated-reads-and-whole-records "A claim about ALL TIME
   needs a window that covers all time"].
 - **A bound nobody chose, or chosen "to be safe".** A suite wrapper waiting
   1500 s on a 121 s run and a 20 min CI job bound on 224 s jobs (2026-09-28);
   Netmiko's default 10 s connect timeout, set by nothing, below s3's measured
   13.7 s, so a device that was never failing was reported unreadable (C205,
-  2026-09-29) [CLAUDE.md "A BOUND CHOSEN 'TO BE SAFE'"]. Answer: a bound is a
+  2026-09-29) [docs/LESSONS.md#bounds-from-measurement "A BOUND CHOSEN 'TO BE SAFE'"]. Answer: a bound is a
   small multiple of a measurement, written beside it, and a bound that fires
   names what was running.
 - **A message describing a state that did not occur.** The sixth in one
-  session was DHCP's `bootstrap_artifact` [CLAUDE.md "COMPLETENESS IS JUDGED
+  session was DHCP's `bootstrap_artifact` [docs/LESSONS.md#refusals-name-both-operands "COMPLETENESS IS JUDGED
   PER SOURCE"].
 
 ### Rate measurements
@@ -3478,7 +3478,7 @@ A document or a status says a thing is done, built or scheduled, and the thing i
   (763649e to 995498a), 14 rows (C129 to C142), "7.1's rate exactly". "The
   rate is a property of the WORK, not of a stage." [S7, same]
 - **Findings per day.** 39 new on 2026-09-26, 43 on 2026-09-27; almost every
-  one came from building and running [CLAUDE.md "In this project building is
+  one came from building and running [docs/LESSONS.md#writeup-entries-and-forecasts "In this project building is
   how surveying happens"].
 - **Estimate against actual.** Measured partway through 7.1: "13 hours and 32
   commits", and the rest of Stage 7 "three to four more efforts that size"
@@ -3521,12 +3521,12 @@ A document or a status says a thing is done, built or scheduled, and the thing i
   running it, carrying 15 distinct defects; the suite caught none of the 15.
   Suite green throughout, 3,276 to 3,360 tests. 9 of 15 were written that
   day, 4 the day before, 1 four days earlier, 1 five months earlier. The suite
-  caught three regressions by name while the fixes were made [CLAUDE.md
+  caught three regressions by name while the fixes were made [docs/LESSONS.md#walk-the-path-for-real
   "Running the tool is how defects are found"; docs/PHASE2_DHCP.md §10].
 - **Stage 4C probe.** Seven defects live in code the suite passed; the suite
   had "2,700+ tests" [NOTES "What the Stage 4C probe found"].
 - **The branch site, 2026-09-24.** "Ten defects surfaced walking the deploy
-  path end to end for the first time", suite green throughout [CLAUDE.md "A
+  path end to end for the first time", suite green throughout [docs/LESSONS.md#walk-the-path-for-real "A
   path that has never carried anything fails on first use"].
 - **P.3, 2026-09-26.** Scoped as five items; it found eleven more nobody had
   scoped [NOTES "What P.3 cost and bought"].
@@ -3563,7 +3563,7 @@ A document or a status says a thing is done, built or scheduled, and the thing i
     [PLAN P.4].
   - 2026-09-28 laptop: 5025 passed, 42 s with `-n auto` on 24 cores against
     121 s serial; CI jobs 186 to 224 s [CLAUDE.md "Tests"].
-  - 5344 passed on the tree of `e986e66` [CLAUDE.md "A CHECK THAT READS A FILE
+  - 5344 passed on the tree of `e986e66` [docs/LESSONS.md#gate-results-from-this-run "A CHECK THAT READS A FILE
     SOME EARLIER RUN WROTE"].
   - The first pristine-checkout run gave 5 failures and 19 errors (found
     2026-09-26) [TESTING.md].
@@ -3583,14 +3583,14 @@ A document or a status says a thing is done, built or scheduled, and the thing i
 - **Phase 3a, 2026-09-20.** Config parsed to host_vars and round-tripped; r1
   92.2% modelled and s1 100%, both 100% fidelity; 507 tests [NOTES "Phase
   3a"]. Later: 100% modelled on all nine under the depth-aware comparison
-  [CLAUDE.md "Templatization"].
+  [docs/ARCHITECTURE.md "Templatization"].
 - **Phase 3b, 2026-09-20.** (No summary was recorded at the time: composed at
   backfill from CLAUDE.md's description and the commit date.) A per-network template library with an approval
   gate and a computed deployability gate; nothing in 3b opened a socket
-  [CLAUDE.md "Template library and the deploy gate"; git `6735f97`].
+  [docs/ARCHITECTURE.md "Template library and the deploy gate"; git `6735f97`].
 - **Phase 3c, 2026-09-20.** (No summary was recorded at the time: composed at
   backfill, likewise.) Deploy from committed intent, merge-only, confirmed
-  by hash: "The only part of the NSoT work that reaches a device" [CLAUDE.md
+  by hash: "The only part of the NSoT work that reaches a device" [docs/ARCHITECTURE.md
   "Deploy from template"; git `3be6550`].
 - **Stage 2, 2026-09-22.** The rcn-lab1 redeploy ban lifted by a successful
   redeploy [PLAN "STAGE 2 ... COMPLETE"].
@@ -3599,14 +3599,14 @@ A document or a status says a thing is done, built or scheduled, and the thing i
 - **Stage 4C, 2026-09-23.** "Half-run": the wizard had not yet proved
   end-to-end onboarding or Remove, and had found seven defects [NOTES "What
   the Stage 4C probe found"]. A later clean run proved onboarding end to end
-  and left its teardown unprovable; its date is Not recorded [CLAUDE.md "A
+  and left its teardown unprovable; its date is Not recorded [docs/LESSONS.md#absence-as-a-finding "A
   teardown that cannot be measured has not passed"].
 - **The branch site, 2026-09-24.** "The first configuration this tool
   AUTHORED": two devices, intent written by hand, previewed, confirmed,
-  merge-only, verified [CLAUDE.md "The branch site landed"; git `8c948bd`].
+  merge-only, verified [docs/LESSONS.md#walk-the-path-for-real "The branch site landed"; git `8c948bd`].
 - **Phase 2 DHCP, 2026-09-24.** Proven: a device the tool never addressed was
   found by its Kea lease, then reached, captured, rotated, cleaned, recorded
-  and promoted [CLAUDE.md "PHASE 2 IS PROVEN"].
+  and promoted [docs/LESSONS.md#from-things-to-keep-in-mind "PHASE 2 IS PROVEN"].
 - **P.1, 2026-09-25.** Complete: switch syslog restored, nine devices
   heartbeating on per-device measured windows, a silenced s4 alerting alone
   [PLAN "P.1 COMPLETE"].

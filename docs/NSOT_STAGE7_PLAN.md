@@ -3020,7 +3020,9 @@ side campaigns is not recoverable from git without a classification nobody recor
 One list for lab sessions. Times are estimates from the nearest run already done (R1's
 onboarding, the staged probe runs). Each run's full steps are where it points.
 
-**Session 1: short, on the fleet (about 2 h).**
+**Session 1: short, on the fleet (about 2 h).** (The planned-restart correction for the
+2026-10-01 15:20 to 17:10 window is DONE, run by the operator on 2026-10-02: "as a
+correction, covering 9 restart(s) already seen".)
 
 | Run | Prerequisites | Time | Steps |
 |---|---|---|---|
@@ -3031,7 +3033,6 @@ onboarding, the staged probe runs). Each run's full steps are where it points.
 | Staged run 4: `global.ntp-server` and `global.snmp-server-host` measured | r2 and s4; the probe changes running config only | 20 min | section 1g, staged run 4 |
 | Staged run 9: the IP SLA operation's delete measured, then s3's probe to 60 s | s1 and r2 for the probe (never s3); then s3 through the tool | 45 min | section 1g, staged run 9 |
 | C262 and C269: `cdp run` | r6's Device page (Mode B), then r1 to r4's intent and one batch deploy | 40 min | the register rows |
-| The planned-restart correction | `--correction` for the 2026-10-01 15:20 to 17:10 window | 5 min | `scripts/nmas-planned-restart --help` |
 | The browser break-glass export | the laptop holding `nmas-breakglass`; a passphrase | 15 min | 7.3's break-glass notes; verify `--against` the host's digests |
 
 **Session 2: one throwaway C8000v, start to end (about 4 to 5 h).** One device, onboarded

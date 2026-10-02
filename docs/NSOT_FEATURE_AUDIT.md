@@ -758,7 +758,7 @@ The project's own rule, from 3b's correction of scheme 1: **key a gate on
 the property it claims to protect.** Scheme 1 hashed each device's
 host_vars, and a successful deploy revoked its own approval. Scheme 2's set
 term is the same shape, one level up: onboarding one device revokes
-everyone's approval (D2, and CLAUDE.md "Onboarding revokes its platform's
+everyone's approval (D2, and docs/LESSONS.md#populations-by-property "Onboarding revokes its platform's
 template approval at CREATE"). Adopting 500 would do it 500 times.
 
 **Recommended, not decided: scheme 3.**

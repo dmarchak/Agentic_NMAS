@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook: refuse a Bash command that would deploy, or write in a
+checkout, ON A LAB HOST (the operator, 2026-10-02; rules_audit check 5).
+
+Deploys are the operator's (`nmas-deploy --wait`), and the agent never pulls, pushes or
+writes in the live checkout on the host: an untracked file there aborts the operator's pull
+and leaves the app a mix of versions. Until now that lived only in CLAUDE.md and memory.
+
+Wired in `.claude/settings.json` (matcher `Bash`), like claude-no-heredoc-interpreter.
+Claude Code passes the tool call as JSON on stdin; exit 2 refuses it with the message on
+stderr; exit 0 lets it run; an input the hook cannot read exits 1 (shown as a hook error,
+the call allowed), because a broken hook must not stop every command.
+
+**What is refused:** a command that reaches a host (`nmas-host <host> -- ...`, or `ssh`)
+and, in the part run there, names `nmas-deploy` or a git verb that writes (pull, push,
+fetch, checkout, switch, reset, commit, merge, rebase, stash, clean, am, apply,
+cherry-pick, revert, restore, rm, mv, add, tag, branch, init, clone, gc, worktree).
+**What is not:** reading on the host (`git log`, `git status`, `git show`, `nmas-deploy` is
+never a read), and git on the laptop's own checkout (pushing from here is the agent's job).
+"""
+
+import json
+import re
+import shlex
+import sys
+
+WRITE_VERBS = {"pull", "push", "fetch", "checkout", "switch", "reset", "commit", "merge",
+               "rebase", "stash", "clean", "am", "apply", "cherry-pick", "revert", "restore",
+               "rm", "mv", "add", "tag", "branch", "init", "clone", "gc", "worktree"}
+SEPARATORS = {";", "&&", "||", "&", "|", ";;"}
+GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
+
+MESSAGE = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-host-writes): this "
+    "command runs {what} on a lab host. Deploys are the operator's (`nmas-deploy --wait`), "
+    "and the agent never pulls, pushes or writes in the host's checkout (CLAUDE.md, \"Deploys "
+    "are the operator's\"). Read on the host, push from the laptop, and name the sha for the "
+    "operator to deploy.")
+
+
+def _tokens(command):
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|")
+        lex.whitespace_split = True
+        return list(lex)
+    except ValueError:
+        return command.split()
+
+
+def _remote_part(tokens):
+    """The tokens run on a host: everything after `nmas-host <host> --`, or after `ssh`'s
+    destination; None when the command reaches no host."""
+    for i, tok in enumerate(tokens):
+        base = tok.rsplit("/", 1)[-1]
+        if base == "nmas-host":
+            rest = tokens[i + 1:]
+            if "--" in rest:
+                return rest[rest.index("--") + 1:]
+            return None
+        if base == "ssh":
+            j = i + 1
+            while j < len(tokens) and tokens[j].startswith("-"):
+                j += 2 if tokens[j] in ("-p", "-i", "-l", "-o", "-J", "-F", "-L", "-R") else 1
+            return tokens[j + 1:] if j < len(tokens) else None
+    return None
+
+
+def _flatten(tokens):
+    """A remote command is often one quoted string ('cd x && git pull'): split it again."""
+    out = []
+    for tok in tokens:
+        out.extend(_tokens(tok) if (" " in tok or ";" in tok or "&" in tok) else [tok])
+    return out
+
+
+def offence(command):
+    remote = _remote_part(_tokens(command))
+    if remote is None:
+        return None
+    words = _flatten(remote)
+    for i, tok in enumerate(words):
+        base = tok.rsplit("/", 1)[-1]
+        if base == "nmas-deploy":
+            return "nmas-deploy"
+        if base == "git":
+            j = i + 1
+            while j < len(words) and words[j].startswith("-"):
+                j += 2 if words[j] in GIT_OPTS_WITH_VALUE else 1
+            if j < len(words) and words[j] in WRITE_VERBS:
+                return f"git {words[j]}"
+    return None
+
+
+def main():
+    try:
+        call = json.load(sys.stdin)
+        command = (call.get("tool_input") or {}).get("command") or ""
+    except (ValueError, AttributeError) as exc:
+        print(f"claude-no-host-writes: could not read the tool call: {exc}", file=sys.stderr)
+        return 1
+    what = offence(command)
+    if what:
+        print(MESSAGE.format(what=what), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

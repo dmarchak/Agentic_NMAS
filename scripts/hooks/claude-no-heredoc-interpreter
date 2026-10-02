@@ -11,7 +11,7 @@ through a shell heredoc was the agent's habit, and it slipped three times, each
 right after saying it would stop, so memory was not the fix. The hazard is
 structural: a heredoc body is ended by the first line equal to its delimiter, so
 text that contains that line (a runbook's own heredocs) ends it early and the
-rest runs as shell. That happened on 2026-09-25 (CLAUDE.md, "Never pass document
+rest runs as shell. That happened on 2026-09-25 (docs/LESSONS.md#text-through-file-tools, "Never pass document
 text through a shell heredoc"). The file tools carry text with no delimiter at
 all.
 

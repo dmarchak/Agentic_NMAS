@@ -764,7 +764,7 @@ and two ES-module islands. No build step.**
      builder's model-to-text. Drawing is the library's, and is judged by a person.
   4. **Bootstrap:** the mockups' design system does not need it, and its CSS fights the
      tokens. It is retired page by page, with Alpine and the `<dialog>` element in place of
-     its modals and dropdowns. CLAUDE.md's "Bootstrap 5 only" convention is rewritten when
+     its modals and dropdowns. docs/LESSONS.md#strict-pages-and-vendored-libraries's "Bootstrap 5 only" convention is rewritten when
      this is decided.
 - **The islands' size, from the measured dashboards:**
   - **The panel renderer:** seven panel types, dashboard variables (319 of 343 queries use

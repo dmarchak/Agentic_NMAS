@@ -8,7 +8,7 @@ POST sweep failed twice on gw1, passed in 28 simulated schedules here, and
 the public API serves no log saying what gw1 had run).
 
 Kept in its own module because importing `tests.conftest` for it would run
-conftest a second time (CLAUDE.md, "an instrument that re-executes its setup
+conftest a second time (docs/LESSONS.md#floors-and-independent-controls, "an instrument that re-executes its setup
 can move what it measures")."""
 
 import collections

@@ -620,7 +620,7 @@ All of this section is **(opinion)**.
 - **Identity is its own problem.** Grafana ships a separate utility whose jobs include logging an
   unattended kiosk device in ([grafana-kiosk](https://github.com/grafana/grafana-kiosk)), and Auvik tells
   users to raise the session timeout for a large display. Here identity is a Cloudflare Access assertion,
-  so an unattended wall needs the Access service-token path and must be able to change nothing (CLAUDE.md,
+  so an unattended wall needs the Access service-token path and must be able to change nothing (docs/LESSONS.md#route-gates-and-verified-identity,
   "Automation uses a Cloudflare Access service token"; "A verified service is still not a person")
   (inference).
 - **Colour only on what is wrong.** Secondary descriptions of ISA-101 high-performance HMI use a grey

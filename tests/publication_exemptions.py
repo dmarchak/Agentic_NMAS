@@ -26,11 +26,11 @@ REASONS = {
 
 #: (path, line hash) -> (reason key, rules excused)
 EXEMPT = {
-    # CLAUDE.md
-    ('CLAUDE.md', 'a126bf59a559'): ('VRNETLAB', ('address',)),
-    ('CLAUDE.md', '41fddedeca84'): ('VRNETLAB', ('address',)),
-    ('CLAUDE.md', '78d35b5cb4c8'): ('VRNETLAB', ('address',)),
-    ('CLAUDE.md', 'd70a0a321f4c'): ('VRNETLAB', ('address',)),
+    # docs/LESSONS.md (moved from CLAUDE.md, 2026-10-02)
+    ('docs/LESSONS.md', 'a126bf59a559'): ('VRNETLAB', ('address',)),
+    ('docs/LESSONS.md', '41fddedeca84'): ('VRNETLAB', ('address',)),
+    ('docs/LESSONS.md', '78d35b5cb4c8'): ('VRNETLAB', ('address',)),
+    ('docs/LESSONS.md', 'd70a0a321f4c'): ('VRNETLAB', ('address',)),
     # app.py
     ('app.py', '5e26ffc61b4b'): ('EXAMPLE', ('address',)),
     # docs/NSOT_WRITEUP.md

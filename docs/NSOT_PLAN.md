@@ -4455,13 +4455,40 @@ credential through the persistence chain, whose preflight requires the lab's roo
 Oxidized helper, and a rotation needs an Oxidized reload and fetch, a lab target and the clab
 sync to call itself finished. So a network with no lab (any real one) cannot finish an
 onboarding or a rotation: a LAB integration inside a PRODUCT workflow, which the Stage 10
-rule forbids (CLAUDE.md, "Nothing lab- or person-specific in the PRODUCT"). The product's
+rule forbids (docs/LESSONS.md#nothing-lab-specific-in-the-product, "Nothing lab- or person-specific in the PRODUCT"). The product's
 definition of "persisted" is the device's own save read back (`onboard.persist_on_device`,
 C53), which needs no lab. The Oxidized and startup-file stages become the OPTIONAL lab
 integration: run when it is configured, said as not applicable when it is not, never a
 reason a product operation stops. Placed with Stage 10's lab-boundary work
 (NSOT_STAGE10_PLAN 6.0), and before the release, because the release is what a network with
 no lab installs.
+
+### P.20 — The rest of the CLAUDE.md audit's proposed checks (RECORDED 2026-10-02, the operator; NOT BUILT; ranked)
+
+The CLAUDE.md consolidation (2026-10-02) marked each standing rule with where it is enforced and
+ranked the checks worth building for those that are not. The first five are BUILT (2026-10-02):
+CLAUDE.md citing real checks (`tests/test_claude_md.py`), one commit gate (`scripts/nmas-gate`),
+every gated route declaring its five stages (`modules/operation_stages.py`), the signed-off
+screens registry (`tests/signed_off_screens.py`), and the agent guards in `.claude/settings.json`.
+The rest, in the order to build them:
+
+1. **v2 population checks:** every `/v2/` route (page and fragment) answers under
+   `csp.STRICT_POLICY` (today checked page by page); the "a write path carries its list, only a
+   read derives the active one" scan extended from four modules and onboarding to every gated
+   view.
+2. **State that does not hold across processes** (P.15's follow-up): a scan for module-level
+   mutable state and `threading` locks in the program, each declared (with why it is safe in one
+   process, or the fix) or moved to a cross-process mechanism, so 9.S's workers inherit a list,
+   not a surprise.
+3. **Failures surfaced, operands named:** C8's rule (every handler around a NetBox write
+   records, re-raises, retries or refuses) extended to `modules/integrations/` and
+   `modules/readers/`; refusals built through one helper that requires both operands, so a
+   guard cannot report a cause without what it compared.
+4. **Interface states:** every v2 control that starts work declares its busy state (checked by
+   the component rule, as `$el`/`$root` are); browser-test fixtures fill every column a test
+   photographs or clicks (the C338 Baseline column was empty in the fixture that photographed it).
+5. **Closed items have their writeup entries:** every item NSOT_WRITEUP.md's status table marks
+   closed has an entry carrying all six parts (acceptance item 14).
 
 **P.19, SDN controller support, is recorded at the END of this plan** (after Stage 10, whose
 platform-driver layer it depends on).
@@ -6566,3 +6593,241 @@ devices that are not controllers (Arista eAPI, NETCONF, gNMI), so it is built on
 **The lab is course-specific; the product support is not** (NSOT_STAGE10_PLAN 6.0b's note):
 the VMs, their names and the course belong to the lab-tooling area, and the controller
 drivers belong to the product.
+
+---
+
+## Sequencing notes and deferred defects (moved from CLAUDE.md on 2026-10-02)
+
+docs/NSOT_PLAN.md's "Open findings register" and "Known defects deferred to later phases"
+sections, moved verbatim. They are a SNAPSHOT of decisions as each was recorded: their
+status sentences ("7.1 next", "steps 3 and 4 are next") are superseded by this plan's
+own sections and the register's Count. The register's rules live in OPEN_FINDINGS.md.
+
+### Open findings register
+
+**[docs/OPEN_FINDINGS.md](docs/OPEN_FINDINGS.md) is the list of things
+measured, recorded and not fixed, with no line item in any stage.** Each was
+written into prose beside the thing it was found next to — the right place to
+explain *why* it is true and the wrong place to keep a list, because prose
+accumulates invisibly and knowing what is outstanding required having been
+present when each was recorded. **Its *Count* section is the ONE statement
+of how many rows are open and in which bucket, and this file points there
+rather than restating it** (the operator, 2026-09-28: a restatement goes
+stale by construction; this file listed C17 as an open 7.2 gate a day after
+the register closed it, and the line was quoted from here as fact). **The
+open count is DEFERRED work**: a row a stage owns lives in *Scheduled*, and
+`test_register_hygiene.py` refuses an open row placed in a stage (26 of 61
+had been). Every live row opens its status with its bucket, and
+`test_register_hygiene.py` refuses one without it: **a new finding gets its
+bucket the turn it is recorded, with the criterion applied.** The first
+triage was a one-time sort, and the functional/lab/minor split replaced the
+severity axis for every later row, so C148 (blocking the central loop) was
+filed as work for 7.3. B8 (the backups' only decryption key on one laptop)
+closed on measurement. **The operator's decision, 2026-09-28: this is a lab, so the work is
+features, functionality and design, and security is DEFERRED, not
+abandoned.** The plan is the functional path (R1, R2b, 7.2 from C54, 7.3
+with C50, then 7.4 onward). NSOT_PLAN's Stage 9 holds hardening, labelled
+(L) "safe here because it is a lab" (FIRST on a real network) or (M)
+minor, with the triggers that make (L) urgent again. Before the triage: **59 open at 2026-09-27**, counted from the rows: 53 recorded only in
+prose, 6 in the plan without a stage. C3 and C4 are closed; A1 and C5 are
+scheduled as NSOT_PLAN P.2 and 6.5. The earlier "15" was off by one,
+because it adjusted a previous count instead of counting.
+
+**Sequencing decided 2026-09-25** ([docs/NSOT_PLAN.md](docs/NSOT_PLAN.md)):
+**Stage 5 is folded into 7.3** (renumbered from "7.5" on 2026-09-27:
+NSOT_STAGE7_PLAN.md governs, and monitoring is the Device page), so the
+views are built once, with its paragraph enumerated as 7.3-a…f, and 7.3-f
+already done by P.1. Two standalone items come **before Stage
+7**: **P.1** switch syslog (stopped 2026-09-09; a pipeline defect, not a
+screen) and **P.2** NetBox backup with a tested restore (A1). The service
+unit's hardening is **6.5**. **P.1 COMPLETE 2026-09-25**: a silenced s4 alerted alone, 1,118 s after its last heartbeat, between its second and third missed heartbeat as designed; nine devices heartbeating on per-device measured windows. **P.1 measured first**: nothing stopped. Every device
+has run `logging trap critical` since 8 Sep, and the pipeline delivers
+exactly what that level sends. It needs a trap-level decision and a
+per-device EEM heartbeat, not a repair. **Decided**: `notifications` in
+intent; an EEM 300 s watchdog heartbeat; heartbeat, trap level, host and
+source-interface as ONE template block that onboarding gives every device;
+Grafana alert rules generated from NetBox, with NoData = alerting. **P.2 is
+built** ([docs/NETBOX_BACKUP.md](docs/NETBOX_BACKUP.md)); its first live
+restore test failed correctly (`docker exec` without `-i`), which the mocked
+seam could not have shown. An item leaves by being fixed,
+scheduled or closed with a reason — never by being forgotten, and anything
+recorded as *"not applied"*, *"noted, not yet addressed"* or *"left open"*
+belongs there the same day it is written.
+
+**Stage 7 is rethought, and P.3 and P.4 come first** (decided 2026-09-26).
+[docs/NSOT_STAGE7_PLAN.md](docs/NSOT_STAGE7_PLAN.md) governs Stage 7. It is
+organised around the task list
+([docs/NSOT_TASKS.md](docs/NSOT_TASKS.md)), never around subsystems, and
+written against the feature audit
+([docs/NSOT_FEATURE_AUDIT.md](docs/NSOT_FEATURE_AUDIT.md)) and the CI design
+([docs/NSOT_CI.md](docs/NSOT_CI.md)). **P.3** makes every device-changing
+path guarded or gone (B12, B11, D5, D4, C23); **accepted 2026-09-26** at
+`5b087c4`, every item observed and all eleven controls firing, and
+**COMPLETE** once the operator's tunnel deploy committed with `Actor-Verified:
+access` on two paths. **P.4** cuts Jenkins: steps 1 and 2 are built
+(2026-09-26); steps 3 and 4 (GitHub Actions, `nmas-deploy` gating) are next. The
+agent becomes an on-call responder (Stage 8): it triages autonomously,
+PROPOSES fixes as ordinary plans, and never confirms its own.
+
+**P.5 COMPLETE (template approval scheme 3). P.6 COMPLETE 2026-09-27: Lab 8
+is demonstrated end to end** (ZTP: a reservation the tool wrote, a config
+the tool served, a device reached, rotated, saved, promoted, and reboot-safe;
+teardown clean). The ledger is in [docs/P6_ZTP.md](docs/P6_ZTP.md) section
+8. **Stage 7.0 is BUILT (2026-09-27)**, awaiting its host check (the three
+panels updating live): reachability, invalidation, payload-to-render and
+the nine-concept harness, each with a measured allowlist that only shrinks
+([docs/NSOT_STAGE7_PLAN.md](docs/NSOT_STAGE7_PLAN.md), "7.0 built"). 7.1
+next. The gate list is **CONFIRMED 2026-09-27** and lives in
+[docs/NSOT_PLAN.md](docs/NSOT_PLAN.md) (the Stage 7 dependency notes); each
+gate's current state is its row in the register. **Neither is restated
+here**: the copy that was here listed C17 and E4 as open 7.2 gates for a
+day after both had closed on measurement, and was quoted as fact
+(2026-09-28). Two records of one fact, the wrong one nearer to hand.
+Stage 8's triage trigger is decided as a READ, never an inbound push
+(NSOT_PLAN 8.6): one reader job caches Grafana's alert instances; the
+page and the agent both consume it; grouping is on the ONSET
+(`startsAt` minus the rule's window), because per-device windows fire one
+Loki outage up to 536 s apart.
+**Two agent designs argued and recorded 2026-09-27, neither built**
+(NSOT_PLAN 8.7, 8.8):
+- **8.7, the agent closing drift: PROPOSE-ONLY.** The class ("re-apply a
+  program a person already confirmed") fails the autonomy test. The one
+  instance on record, s4's timer removed by hand for P.1's acceptance, passes
+  all six of its conditions. The alert-triggered drift check (now in 8.6)
+  makes a revert arrive in seconds, during the repair that caused the alert.
+  `reassert` is named, with `Actor-Verified: delegated`, so a grant cannot
+  arrive under another name. The answer is **"not yet", with a checklist**
+  (the device logs its own config changes to the tool, the tool's account
+  is used by the pipeline alone, every other writer is attributable, deploy
+  receipts exist), so a later review checks the list instead of re-arguing
+  it. Recent human activity withholds even the proposal.
+- **8.8, a second reading before confirm: ADVISORY.** It is cheap and never
+  blocks. Its states can never draw green (`warns`, `no_warnings: not a
+  clearance`, `not_reviewed`). Its warnings cite program lines and carry no
+  remedy, which is the structural answer to injection through device text.
+  The deterministic management-path flag is built first.
+  Its warnings, and its CLEARANCES, are triage context (8.6): "reviewed,
+  no warnings, then broke" is surfaced preferentially, and a quiet deploy
+  counts only as far as something was watching.
+- **C60, the deploy record, now gates 8.6, 8.7 and 8.8.** It is a receipt
+  at apply (proposed for 7.1) plus a follow-up window that closes the row
+  and states WHAT WAS WATCHING (a job behind 7.1). No model is involved.
+  Handing that history to the model is a later decision, and the test for
+  it is whether a person learns anything from the last fifty rows.
+- **The terminal is REMOVED, not split** (decided 2026-09-27,
+  NSOT_FEATURE_AUDIT 3b, superseding 3a's split). A source of truth has no
+  pane that goes to the device directly: whatever happens in it happens to
+  the network and not to the record, and even read-only the affordance
+  teaches the wrong habit. Its audit log showed it was never used for a
+  read, only for the one hand change that broke r2. It goes in 7.8 with its
+  routes, socket events, session code and tab; the Device page's allowlisted
+  command box (7.3) is the one way to ask a device a question; break-glass
+  is the console plus the break-glass record; the `break_glass` gate kind
+  retires with it. The C61 allowlist goes on `/run_command` and
+  `bulk_execute` as planned.
+Stage 6 does not close first. 6.1, a live exposure, is fixed on its own
+schedule, and 6.2 comes before Stage 8. NSOT_STAGE7_PLAN.md's numbering
+holds.
+
+**Authorization is decided, and built later**
+([docs/NSOT_AUTHORIZATION.md](docs/NSOT_AUTHORIZATION.md), 2026-09-26).
+Today any verified person may do every gate kind.
+- **Roles:** viewer; operator (`author` + `confirm`); approver (`approve`);
+  administrator (`configure`). `reveal`, `break_glass` and `publish_remote`
+  are grants to named people.
+- **The gate kind `approve` must split into `author` and `approve`** before
+  any role map, because today one kind covers both editing a template and
+  approving it.
+- **Separation of duties is per ARTIFACT** (a revision's author may not
+  approve it), from VERIFIED attribution only.
+- **The mode and the map are host-side**, like the gates.
+- **Stage 7 draws every gated control from `may`**, disabled with its reason
+  when refused, never hidden.
+
+### Known defects deferred to later phases
+
+Verified, deliberately not fixed yet. Recorded in full in
+[docs/NSOT_WRITEUP_NOTES.md](docs/NSOT_WRITEUP_NOTES.md); the AI-side items
+are **Stage 8** in [docs/NSOT_PLAN.md](docs/NSOT_PLAN.md), which is last by
+design so the tool library describes a finished system.
+
+- AI prompt examples reference another project's PE/P/MPLS topology (Stage 8.5)
+- **The AI tool layer has no pre-execution authority gate.** `execute_tool()`
+  dispatches on the tool name; `request_approval` is a tool the model
+  *chooses* to call, not an interception. The agent cannot mint identities
+  because `resolve_identity(allow_new=False)` enforces that at the identity
+  layer — not because anything checks what the agent may do. Stage 8.3 makes
+  the allowlist real in code (no credential rotation, no template approval,
+  no remote push, no baseline re-apply, no deploy apply).
+  **P.3 step 8 (2026-09-26) removed what it could reach meanwhile.**
+  - **24 tools are removed from the list AND the dispatch:** device push,
+    restore and replay, commits, self-modification, self-writing knowledge
+    and the CCIE base, report files, and writes to the tool's own settings.
+  - **The three `execute_*` tools run only read-only commands**
+    (`_read_only_refusal`: show, ping, traceroute, dir, more). Config mode,
+    every other verb and a line break are refused, checked before any
+    session opens. **The check was the first word only until C61
+    (2026-09-27)**: `| redirect tftp://` let a "show" send the device's
+    config to another host, and `| redirect flash:` wrote to the device, so
+    "cannot change a device" was false in two directions. It is the whole
+    command now, in `modules/readonly_commands.py`.
+  - The Jenkins tools are P.4's. The prompt still names the removed tools 77
+    times (C30, Stage 8.5).
+- **The unguarded golden replay was reachable from TWO GUI buttons, not only the AI** (register D5). **Fixed by P.3 step 3**: both buttons open the guarded restore preview at HEAD, and the two routes are gone. The AI's tool of the same name was removed by step 8.
+- **(REMOVED by P.3 step 8.)** `restore_golden_config` was a fourth config-push path: whole golden
+  replayed in config mode with no confirm hash, no merge-only check, no ASCII
+  guard, no dangerous-line authorisation, no snapshot, no rollback, no
+  breaker, and `device_ips: ["all"]` targets the fleet. The same shape was
+  removed from the approval queue's `revert_to_golden`, which hands off to
+  the confirmed restore path; the AI's copy was not part of that correction
+  (Stage 8.3).
+- **`detect_config_drift` is a third drift implementation**, carrying the
+  pre-3.3b shape — no inventory accounting, no named skips (Stage 8.2).
+- **The background agent was not dormant — it was FAILING, for four weeks.**
+  Last recorded run 2026-08-28 23:26, `tool_call_count` 0, failing at the
+  first API call with `anthropic-workspace-id is required…`. The record lived
+  only in `data/agent_activity.json`; the log line was INFO with
+  `success=False` inside the format string; and the badge said **Active, in
+  green**, because the status logic had four states and none of them was
+  *broken*. `background_agent_enabled` is now **false** in the settings file
+  — set before the rotated API key (created in a workspace) could
+  accidentally repair it and wake a month-old tool library against a rebuilt
+  system. It stays off until Stage 8.
+- **"Success" must mean something happened.** Measured across the agent's
+  whole recorded history: **27 runs, `tool_call_count` zero in every one**,
+  and the single `success: true` had no tools, no summary and no errors.
+  `success` meant *"no exception reached the top of `run_background_task`"* —
+  a fact about the interpreter, not about the network — and a backward
+  failure streak stopped dead on that entry, which is why the badge showed
+  nothing even after the route was fixed. **Diagnosed, not inferred:** the
+  loop breaks on `_user_is_active()` **without appending anything**, while
+  the model-side `interrupted` event a few lines below always appended. One
+  exit path recorded and the other did not. Runs now carry an `outcome` —
+  `ok` / `failed` / `interrupted` / `inconclusive` — with a reason; `success`
+  derives from it; and the streak counts back to the last run that actually
+  **worked**, so an interrupted or inconclusive run neither ends it nor
+  inflates the failure count. Historical entries are classified from what
+  they carry, and land in `inconclusive` rather than being guessed as
+  interrupted.
+- **Nothing in the AI tool library has ever executed in production** — zero
+  tool calls across all 27 recorded runs, now reported as
+  `health.tool_calls_total` and stated on the panel. **Stage 8 is therefore
+  not "check the tools still fit"; it is their first run.**
+- **Agent failures surface, like `last_push_failure`.**
+  `agent_runner.failure_health()` computes the streak from the activity log;
+  `get_status()` carries it plus `enabled`; a failed run logs at **ERROR**
+  naming the error and the streak; the badge turns red with the count; the
+  **tab** badge shows it so it is visible without opening the tab.
+  **`same_error` is the load-bearing field** — one failure is an incident, a
+  dozen identical ones is a configuration problem that will not fix itself.
+- The `missing_golden_configs` trigger that fired the last failed run was
+  **stale**: it came from the legacy enumeration, so the devices it named as
+  missing a golden **had** one in `config_repo/`. Fixed by 3.3a; pinned by a
+  test, because it is the trigger that fires first when the agent returns.
+- **A test needle shorter than its haystack's noise is a coin, not a check.**
+  `test_the_ciphertext_is_not_the_plaintext` asserted `b"r1"` — two bytes —
+  absent from 953 bytes of ciphertext, and failed **1.40%** of runs against
+  1.45% predicted by chance (measured, 2000 trials). Needles are now ≥4 bytes
+  and the short ones are excluded deliberately, with a test pinning the
+  exclusion. Same cause as `redact.py`'s 8-character floor from the other
+  direction: there a short value corrupts, here it cries wolf.

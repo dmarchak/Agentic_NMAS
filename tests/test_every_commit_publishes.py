@@ -37,6 +37,13 @@ DEFERS_WITHOUT_PUBLISHING = {
         "its first commit and its .gitignore top-up run only on a write path, whose own "
         "commit follows and pushes the branch, carrying them"),
 }
+#: Commits in ANOTHER repository than a list's NSoT repository (the one the push hook serves),
+#: with the reason. Each must still be found by the scan (no ghosts).
+OTHER_REPOSITORY = {
+    ("scripts/nmas-gate", "main"): (
+        "the developer's commit gate commits in the APPLICATION's own repository, never a "
+        "list's, and pushes it itself with --push"),
+}
 
 
 def _program_files():
@@ -137,7 +144,10 @@ class TestOneCommit:
         assert [(p, f) for p, f, _ in sites if (p, f) == CHOKEPOINT], \
             "the scan did not find the chokepoint's own git commit: it is blind"
         stray = [f"{p}:{line} in {f or '<module>'}" for p, f, line in sites
-                 if (p, f) != CHOKEPOINT]
+                 if (p, f) != CHOKEPOINT and (p, f) not in OTHER_REPOSITORY]
+        found = {(p, f) for p, f, _ in sites}
+        assert set(OTHER_REPOSITORY) <= found, ("a declared other-repository commit the scan no "
+                                                f"longer sees: {set(OTHER_REPOSITORY) - found}")
         assert not stray, ("a commit outside repo.commit() never reaches the push hook "
                            "(C223): " + "; ".join(stray))
 

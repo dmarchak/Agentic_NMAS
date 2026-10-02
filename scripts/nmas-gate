@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""The commit gate, as ONE program (the operator, 2026-10-02: five rules about the gate lived
+only in CLAUDE.md and in memory, each behind a past incident). In order, each step able to stop
+everything after it:
+
+  1. stage:         git add -A (the gate tests what it commits, C224);
+  2. stage guard:   scripts/nmas-stage-guard refuses a secret or a stray, and lists new files;
+  3. the suite:     CI's command in CI's interpreter (docs/TESTING.md, "CI's interpreter
+                    here"), its WHOLE output kept in a result file that is removed FIRST, so a
+                    run that did not happen leaves nothing to read (e986e66);
+  4. the verdict:   from that file AND the exit status: the last line must read "N passed"
+                    with no failure or error anywhere (a pipe into tail decides nothing,
+                    195fdbe; d0ce454 shipped two failures);
+  5. browser tests: optional (--browser), unconfined, the same verdict rule;
+  6. the message:   its first line must start with --expect (a failed write leaves the
+                    previous message, df17b55, 17e9c7d), and "@SUITE@" in it is replaced by
+                    the run's own result line (a count is never written before the run that
+                    makes it, 71ed99e);
+  7. commit:        git commit -F, the hooks running as usual;
+  8. push:          optional (--push), naming the pushed sha.
+
+    scripts/nmas-gate --message MSG --expect "Subject prefix" [--browser] [--push]
+
+Exit 0 committed; 1 refused at a step (named, with where its evidence is kept); 2 usage.
+For tests only, NMAS_GATE_SUITE and NMAS_GATE_BROWSER replace the two commands.
+"""
+import argparse
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 "
+         "scripts/nmas-test -q -p no:cacheprovider -n 2 --cov=modules --cov=routes --cov=app "
+         "--cov-report= -rEf")
+BROWSER_TESTS = ("tests/test_update_button.py tests/test_profile_apply_v2.py tests/test_manual.py "
+                 "tests/test_v2_layout_in_a_browser.py")
+BROWSER = "{py} -m pytest -q -p no:cacheprovider -rEf " + BROWSER_TESTS
+DEFAULT_PY = os.path.expanduser("~/.local/share/nmas-py312/bin/python")
+#: The last line of a run that passed: "7592 passed, 28 skipped in 181.19s (0:03:01)".
+PASSED_LINE = re.compile(r"^\d+ passed(, \d+ (skipped|deselected|xfailed|xpassed))* in [\d.]+s")
+FAILED_ANY = re.compile(r"^(FAILED|ERROR) |\b\d+ (failed|errors?)\b", re.M)
+
+
+def say(msg):
+    print(f"nmas-gate: {msg}", flush=True)
+
+
+def refuse(step, why, evidence=None):
+    say(f"REFUSED at {step}: {why}" + (f" (the whole output: {evidence})" if evidence else ""))
+    sys.exit(1)
+
+
+def git(repo, *args, check=True):
+    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    if check and r.returncode != 0:
+        refuse("git " + args[0], (r.stderr or r.stdout).strip()[:400])
+    return r
+
+
+def verdict(path, rc):
+    """None if the run in *path* passed, else why not. A file that is not there is a run that
+    did not happen, never a pass."""
+    if not os.path.isfile(path):
+        return "no result file: the run did not happen"
+    text = open(path, encoding="utf-8", errors="replace").read()
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    last = lines[-1] if lines else ""
+    if rc != 0:
+        return f"the run exited {rc}; its last line: {last[:200]!r}"
+    if FAILED_ANY.search(text):
+        return f"a failure or error is reported; its last line: {last[:200]!r}"
+    if not PASSED_LINE.match(last):
+        return f"the last line does not say what passed: {last[:200]!r}"
+    return None
+
+
+def run_to_file(cmd, repo, path):
+    try:
+        os.remove(path)                    # step 3's rule: nothing from an earlier run survives
+    except FileNotFoundError:
+        pass
+    with open(path, "w", encoding="utf-8") as fh:
+        rc = subprocess.run(cmd, shell=True, cwd=repo, stdout=fh, stderr=subprocess.STDOUT).returncode
+    return rc
+
+
+def last_line(path):
+    lines = [ln for ln in open(path, encoding="utf-8", errors="replace").read().splitlines()
+             if ln.strip()]
+    return lines[-1] if lines else ""
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--message", required=True, help="the commit message file")
+    ap.add_argument("--expect", required=True, help="what its first line must start with")
+    ap.add_argument("--browser", action="store_true", help="also run the browser tests, unconfined")
+    ap.add_argument("--push", action="store_true", help="push after committing")
+    ap.add_argument("--repo", default=None, help="the repository (default: this checkout)")
+    ap.add_argument("--python", default=os.environ.get("NMAS_GATE_PYTHON", DEFAULT_PY),
+                    help="CI's interpreter (default: the venv scripts/nmas-ci-env builds)")
+    a = ap.parse_args(argv)
+    if not a.expect.strip():
+        ap.error("--expect must name the subject: an empty prefix matches every message")
+    repo = a.repo or subprocess.run(["git", "-C", HERE, "rev-parse", "--show-toplevel"],
+                                    capture_output=True, text=True).stdout.strip()
+    gitdir = git(repo, "rev-parse", "--absolute-git-dir").stdout.strip()
+
+    # 6 (checked early as well as at the end: a wrong message should not cost a suite run).
+    def first_line():
+        try:
+            return open(a.message, encoding="utf-8").readline().rstrip("\n")
+        except OSError as exc:
+            refuse("the message", f"cannot read {a.message}: {exc}")
+    if not first_line().startswith(a.expect):
+        refuse("the message", f"its first line is {first_line()!r}, not one starting {a.expect!r}: "
+                              "a failed write leaves the previous message in place")
+
+    say("1. git add -A")
+    git(repo, "add", "-A")
+    say("2. the stage guard")
+    guard = subprocess.run([sys.executable, os.path.join(HERE, "nmas-stage-guard"),
+                            "--repo", repo], capture_output=True, text=True)
+    sys.stdout.write(guard.stdout)
+    if guard.returncode != 0:
+        refuse("the stage guard", (guard.stderr or guard.stdout).strip()[-400:])
+
+    suite_out = os.path.join(gitdir, "nmas-gate-suite.out")
+    say("3. the suite, CI's command in CI's interpreter")
+    cmd = os.environ.get("NMAS_GATE_SUITE") or SUITE.format(py=shlex.quote(a.python))
+    rc = run_to_file(cmd, repo, suite_out)
+    why = verdict(suite_out, rc)
+    say(f"4. the suite: {last_line(suite_out) if os.path.isfile(suite_out) else '(no output)'}")
+    if why:
+        refuse("the suite", why, suite_out)
+
+    browser_line = ""
+    if a.browser:
+        browser_out = os.path.join(gitdir, "nmas-gate-browser.out")
+        say("5. the browser tests, unconfined")
+        cmd = os.environ.get("NMAS_GATE_BROWSER") or BROWSER.format(py=shlex.quote(a.python))
+        rc = run_to_file(cmd, repo, browser_out)
+        why = verdict(browser_out, rc)
+        browser_line = last_line(browser_out) if os.path.isfile(browser_out) else ""
+        say(f"   {browser_line or '(no output)'}")
+        if why:
+            refuse("the browser tests", why, browser_out)
+
+    say("6. the message")
+    if not first_line().startswith(a.expect):
+        refuse("the message", f"its first line changed during the run to {first_line()!r}")
+    body = open(a.message, encoding="utf-8").read()
+    result = last_line(suite_out) + (f"; browser tests: {browser_line}" if browser_line else "")
+    body = body.replace("@SUITE@", result)
+    final = os.path.join(gitdir, "nmas-gate-message.txt")
+    with open(final, "w", encoding="utf-8") as fh:
+        fh.write(body)
+
+    say("7. commit")
+    git(repo, "commit", "-q", "-F", final)
+    sha = git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
+    say(f"   committed {sha}: {body.splitlines()[0]}")
+    if a.push:
+        say("8. push")
+        git(repo, "push", "-q")
+        say(f"   pushed {sha}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

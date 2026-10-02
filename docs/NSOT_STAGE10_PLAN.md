@@ -630,7 +630,7 @@ configs.
 Arista EOS once section 12's second vendor is proven. Real hardware is untested and the
 statement says so.
 
-**How a platform is added** (the multi-vendor story, CLAUDE.md "one parser module per
+**How a platform is added** (the multi-vendor story, docs/ARCHITECTURE.md "one parser module per
 platform"):
 1. a parser module in `modules/nsot/parsers/`;
 2. a template directory;
