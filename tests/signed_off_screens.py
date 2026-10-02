@@ -25,6 +25,13 @@ SIGNED_OFF = {
     "history.html": ("2026-10-02", "modules/fleet_history.py: NSOT_GUI_BRIEF 3.4, the mockup "
                                    "signed off 2026-10-02"),
     "help.html": ("2026-10-02", "NSOT_GUI_BRIEF 10b, the manual's mockup"),
+    "apply.html": ("2026-10-02", "the stepper mockup (\"Applying to 3 devices... in the order you "
+                                 "set\"), signed off 2026-10-02, with the rollout order decided "
+                                 "at the 2026-09-29 review. 7.4's selection may change it; then "
+                                 "it needs a new mockup"),
+    "update.html": ("2026-10-02", "reviewed IN USE: designed in docs/UPDATE.md, used on the host "
+                                  "repeatedly and corrected through C243, C244, C246, C268, "
+                                  "C274, C279 and C285. Its next change gets a mockup"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
     "tab:monitoring": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the device "
                                      "page's service sections)"),
@@ -47,14 +54,9 @@ UNSIGNED = {
                        "removed: replaced by the monitoring templates (C322, NSOT_GUI_BRIEF 14)"),
     "ip_sla.html": ("built 2026-10-01 (P.9 d4) with no mockup",
                     "removed: replaced by the monitoring templates (C322)"),
-    "apply.html": ("the batch Apply (P.9 d2, 2026-10-01): its rollout order was decided at the "
-                   "2026-09-29 review, the screen itself never mocked",
-                   "a mockup with 7.4's selection, which will share it"),
-    "update.html": ("the Update page (2026-09-30), designed in docs/UPDATE.md, never mocked",
-                    "a mockup when it is next changed"),
     "pending.html": ("a pending onboarding's page (C291, 2026-10-01), built so every Devices "
                      "link answers", "a mockup with 7.4's onboarding on v2"),
     "not_found.html": ("the 404 page, no mockup", "kept: a page with nothing to sign off"),
 }
 
-UNSIGNED_CEILING = 7
+UNSIGNED_CEILING = 5
