@@ -23,12 +23,10 @@ import pytest
 
 #: route -> what it creates. The finding, not an allowance.
 KNOWN_WRITERS = {
-    "/ai/approvals": "the approval queue file",
     "/ai/playbooks": "the playbooks directory",
     "/ai/topology_context": "the topology cache",
     "/backup_stats": "the backups directory",
     "/configure/audit_latest": "the pipeline audit directory",
-    "/drift/status": "the approval queue file",
     "/golden/migrate/plan": "the list directory",
     "/templates": "the whole template library, seeded",
     # migrate() RUNS on every GET of this panel and WRITES when the stored
@@ -96,9 +94,10 @@ def writers(monkeypatch):
 
 def test_the_sweep_can_see_a_writer(writers):
     """Floor: a sweep that saw nothing is indistinguishable from one that
-    could not see. The approval queue is a writer this harness has measured."""
+    could not see. The backups directory is a writer this harness has measured (the
+    approval queue was, until its reads stopped writing: CONCURRENCY_AUDIT R4)."""
     assert len(writers["_swept"]) >= 60, len(writers["_swept"])
-    assert "/ai/approvals" in writers
+    assert "/backup_stats" in writers
 
 
 def test_no_new_get_writes(writers):

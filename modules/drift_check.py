@@ -265,6 +265,7 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
     """
     from modules.ai_assistant import _golden_record
     from modules.approval_queue import add_approval
+    from modules.filestore import StoreUnreadable
     from modules.device import get_current_device_list, load_saved_devices
     from modules.commands import run_device_command
     from modules.connection import close_persistent_connection, get_persistent_connection
@@ -390,15 +391,21 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
         log.info("drift_check: drift on %s (%d diff lines)", hostname, len(diff))
         drifted_list.append((hostname, len(diff)))
 
-        add_approval(
-            action_type     = "update_golden_config",
-            description     = f"Config drift detected on {hostname} — {len(diff)} changed lines",
-            device_ip       = device_ip,
-            device_hostname = hostname,
-            diff            = diff_text,
-            action_params   = {"device_ip": device_ip, "hostname": hostname},
-            context         = f"Detected by {triggered_by} drift check",
-        )
+        try:
+            add_approval(
+                action_type     = "update_golden_config",
+                description     = f"Config drift detected on {hostname} — {len(diff)} changed lines",
+                device_ip       = device_ip,
+                device_hostname = hostname,
+                diff            = diff_text,
+                action_params   = {"device_ip": device_ip, "hostname": hostname},
+                context         = f"Detected by {triggered_by} drift check",
+            )
+        except StoreUnreadable as exc:
+            # The drift is recorded (it is in this run's result); the queue that would
+            # carry its approval cannot be read, and Needs attention says so.
+            log.error("drift_check: %s drifted and its approval could not be queued: %s",
+                      hostname, exc)
 
     max_w = min(len(devices), 6)
     with __import__("concurrent.futures", fromlist=["ThreadPoolExecutor"]).ThreadPoolExecutor(

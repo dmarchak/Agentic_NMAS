@@ -36,19 +36,55 @@ def _queue_path(list_name: str = "") -> str:
     return os.path.join(get_current_list_data_dir(), "approval_queue.json")
 
 
+# The store's concurrency (CONCURRENCY_AUDIT R4, 2026-10-02). It truncated in place with no
+# lock, read an unreadable file as an empty queue, and its READS wrote it: the main page polls
+# the queue from every tab every 30 s, so a torn read followed by that save erased the queue,
+# and `resolve()` saved a stale list twice around its execution, overwriting whatever the
+# drift run (up to six threads) added in between. Now every read-modify-write holds ONE
+# cross-process lock (`filestore.PathLock`), writes replace the file atomically, an
+# unreadable queue refuses every write (kept as `.corrupt-<ts>`) and is its own answer to a
+# read, and reads write nothing (expiry applies in memory; a write persists it).
+
+def _lock(list_name: str = ""):
+    from modules.filestore import PathLock
+    return PathLock(lambda: _queue_path(list_name))
+
+
 def _load_queue(list_name: str = "") -> list:
-    try:
-        with open(_queue_path(list_name), encoding="utf-8") as fh:
-            return json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError):
+    """The queue for a read-modify-write, under `_lock()`: [] when ABSENT; raises
+    `filestore.StoreUnreadable` (the file preserved) when it cannot be read."""
+    from modules.filestore import StoreUnreadable, read_json_for_write
+    entries = read_json_for_write(_queue_path(list_name), empty=[])
+    if not isinstance(entries, list):
+        raise StoreUnreadable("approval_queue.json does not hold a list, so nothing was "
+                              "written: saving would have replaced it")
+    return entries
+
+
+def _read(list_name: str = "") -> list:
+    """The queue for a READ: writes nothing. [] when absent; an unreadable queue raises
+    `filestore.StoreUnreadable`, because "no approval is waiting" and "the queue could not
+    be read" must not share an answer."""
+    from modules.filestore import StoreUnreadable
+    path = _queue_path(list_name)
+    if not os.path.exists(path):
         return []
+    try:
+        with open(path, encoding="utf-8") as fh:
+            entries = json.load(fh)
+        if not isinstance(entries, list):
+            raise ValueError("not a list")
+    except (OSError, ValueError) as exc:
+        raise StoreUnreadable(f"the approval queue could not be read "
+                              f"({type(exc).__name__})") from exc
+    return entries
 
 
 def _save_queue(entries: list, list_name: str = "") -> None:
-    path = _queue_path(list_name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(entries, fh, indent=2)
+    """Replace the queue atomically (a temp per write, then `os.replace`): never a
+    truncate in place, which a concurrent read could catch half-written."""
+    from modules.filestore import write_atomic
+    write_atomic(_queue_path(list_name), json.dumps(entries, indent=2))
 
 
 def _expire_old(entries: list) -> list:
@@ -100,6 +136,13 @@ def add_approval(
       'update_golden_config'  — save current running-config as new golden for device
       'revert_to_golden'      — restore golden config to device (destructive)
     """
+    with _lock():
+        return _add_locked(action_type, description, device_ip, device_hostname, diff,
+                           action_params, context)
+
+
+def _add_locked(action_type, description, device_ip, device_hostname, diff, action_params,
+                context) -> str:
     entries = _expire_old(_load_queue())
 
     # Deduplicate: don't add if there is already a pending entry for the same
@@ -164,17 +207,15 @@ def read_pending() -> tuple:
 
 
 def get_pending() -> list:
-    """Return all pending (not yet resolved, not expired) approval requests."""
-    entries = _expire_old(_load_queue())
-    _save_queue(entries)
-    return [e for e in entries if e.get("status") == "pending"]
+    """Return all pending (not yet resolved, not expired) approval requests. A READ: it
+    writes nothing (expiry applies in memory) and raises `StoreUnreadable` for a queue it
+    cannot read."""
+    return [e for e in _expire_old(_read()) if e.get("status") == "pending"]
 
 
 def get_all(limit: int = 100) -> list:
-    """Return all entries (newest first), including resolved and expired ones."""
-    entries = _expire_old(_load_queue())
-    _save_queue(entries)
-    return list(reversed(entries))[:limit]
+    """Return all entries (newest first), including resolved and expired ones. A READ."""
+    return list(reversed(_expire_old(_read())))[:limit]
 
 
 def get_pending_count() -> int:
@@ -182,6 +223,16 @@ def get_pending_count() -> int:
 
 
 def resolve(entry_id: str, action: str, actor: str = "") -> dict:
+    """An unreadable queue is a refusal naming it (`unreadable`), never an
+    empty queue and never a raise at the route (CONCURRENCY_AUDIT R4)."""
+    from modules.filestore import StoreUnreadable
+    try:
+        return _resolve_unguarded(entry_id=entry_id, action=action, actor=actor)
+    except StoreUnreadable as exc:
+        return {"ok": False, "error": str(exc), "unreadable": True}
+
+
+def _resolve_unguarded(entry_id: str, action: str, actor: str = "") -> dict:
     """
     Resolve an approval entry.
 
@@ -190,19 +241,23 @@ def resolve(entry_id: str, action: str, actor: str = "") -> dict:
     If approved, executes the action immediately and returns the result.
     Returns {"ok": True, "entry": {...}, "execution": {...}}
     """
-    entries = _expire_old(_load_queue())
-    entry   = next((e for e in entries if e["id"] == entry_id), None)
-    if not entry:
-        return {"ok": False, "error": f"Approval {entry_id!r} not found"}
-    if entry["status"] != "pending":
-        return {"ok": False, "error": f"Approval is already {entry['status']}"}
+    # Compare-and-set under the lock: two approvers at once, the second is told it is
+    # already decided, and the save writes the queue as it is NOW, never a stale copy.
+    with _lock():
+        entries = _expire_old(_load_queue())
+        entry   = next((e for e in entries if e["id"] == entry_id), None)
+        if not entry:
+            return {"ok": False, "error": f"Approval {entry_id!r} not found"}
+        if entry["status"] != "pending":
+            return {"ok": False, "error": f"Approval is already {entry['status']}"}
 
-    entry["status"]      = "approved" if action == "approve" else "rejected"
-    entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    # WHO decided, from the route's verified identity (C81). The executor
-    # attributes what it commits to this person.
-    entry["resolved_by"] = actor
-    _save_queue(entries)
+        entry["status"]      = "approved" if action == "approve" else "rejected"
+        entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        # WHO decided, from the route's verified identity (C81). The executor
+        # attributes what it commits to this person.
+        entry["resolved_by"] = actor
+        _save_queue(entries)
+        entry = dict(entry)
 
     execution = {}
     if action == "approve":
@@ -214,12 +269,10 @@ def resolve(entry_id: str, action: str, actor: str = "") -> dict:
         # change was made that nobody has sent yet — and would hide the item
         # from the operator who still has to act on it.
         if execution.get("needs_confirmation"):
-            entry["status"] = "pending"
-            entry["resolved_at"] = None
-            entry["context"] = (
-                "Awaiting confirmation: the command list is computed fresh and "
-                "must be confirmed before anything is sent.")
-            _save_queue(entries)
+            entry = _update_after(entry_id, entry["status"], {
+                "status": "pending", "resolved_at": None,
+                "context": ("Awaiting confirmation: the command list is computed fresh and "
+                            "must be confirmed before anything is sent.")}) or entry
             log.info("approval_queue: %s handed to its confirmed operation (%s)",
                      entry.get("device_hostname", entry["id"]),
                      "capture" if execution.get("capture") else "restore")
@@ -230,10 +283,9 @@ def resolve(entry_id: str, action: str, actor: str = "") -> dict:
         # A silent "approved" with a failed execution would let the drift check
         # generate the same approval again on the next restart.
         if execution.get("error"):
-            entry["status"]      = "pending"
-            entry["resolved_at"] = None
-            entry["context"]     = f"Last attempt failed: {execution['error']}"
-            _save_queue(entries)
+            entry = _update_after(entry_id, entry["status"], {
+                "status": "pending", "resolved_at": None,
+                "context": f"Last attempt failed: {execution['error']}"}) or entry
             log.warning(
                 "approval_queue: execution failed for %s — reverted to pending: %s",
                 entry.get("device_hostname", entry["id"]), execution["error"],
@@ -242,11 +294,38 @@ def resolve(entry_id: str, action: str, actor: str = "") -> dict:
     return {"ok": True, "entry": entry, "execution": execution}
 
 
+def _update_after(entry_id: str, expected_status: str, fields: dict):
+    """After an execution that ran OUTSIDE the lock: re-read the queue under it and update
+    ONE entry, only if it still has the status this resolve gave it. Everything else in
+    the queue (an item the drift run added meanwhile) is kept as it is now. Returns the
+    entry, or None when it moved (said in the log, never overwritten)."""
+    with _lock():
+        entries = _load_queue()
+        entry = next((e for e in entries if e.get("id") == entry_id), None)
+        if entry is None or entry.get("status") != expected_status:
+            log.warning("approval_queue: [%s] moved while it executed (now %s); left as "
+                        "it is", entry_id, (entry or {}).get("status", "gone"))
+            return None
+        entry.update(fields)
+        _save_queue(entries)
+        return dict(entry)
+
+
 # ---------------------------------------------------------------------------
 # Action executors — called when user approves
 # ---------------------------------------------------------------------------
 
 def mark_done(entry_id: str, note: str = "", actor: str = "") -> dict:
+    """An unreadable queue is a refusal naming it (`unreadable`), never an
+    empty queue and never a raise at the route (CONCURRENCY_AUDIT R4)."""
+    from modules.filestore import StoreUnreadable
+    try:
+        return _mark_done_unguarded(entry_id=entry_id, note=note, actor=actor)
+    except StoreUnreadable as exc:
+        return {"ok": False, "error": str(exc), "unreadable": True}
+
+
+def _mark_done_unguarded(entry_id: str, note: str = "", actor: str = "") -> dict:
     """Close an item whose work completed elsewhere.
 
     A confirm-ending item is finished by the restore or capture it handed off
@@ -255,20 +334,21 @@ def mark_done(entry_id: str, note: str = "", actor: str = "") -> dict:
     operator learns to clear the queue by rejecting things — which is the habit
     that makes an approval queue worthless.
     """
-    entries = _expire_old(_load_queue())
-    entry = next((e for e in entries if e["id"] == entry_id), None)
-    if not entry:
-        return {"ok": False, "error": f"Approval {entry_id!r} not found"}
-    if entry["status"] != "pending":
-        return {"ok": False, "error": f"Approval is already {entry['status']}"}
+    with _lock():
+        entries = _expire_old(_load_queue())
+        entry = next((e for e in entries if e["id"] == entry_id), None)
+        if not entry:
+            return {"ok": False, "error": f"Approval {entry_id!r} not found"}
+        if entry["status"] != "pending":
+            return {"ok": False, "error": f"Approval is already {entry['status']}"}
 
-    entry["status"] = "approved"
-    entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    # WHO confirmed the operation that finished it (C326: an item closed here
-    # recorded nobody, unlike one resolve() closes).
-    entry["resolved_by"] = actor
-    entry["context"] = note or "Completed via its confirmed operation"
-    _save_queue(entries)
+        entry["status"] = "approved"
+        entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        # WHO confirmed the operation that finished it (C326: an item closed here
+        # recorded nobody, unlike one resolve() closes).
+        entry["resolved_by"] = actor
+        entry["context"] = note or "Completed via its confirmed operation"
+        _save_queue(entries)
     log.info("approval_queue: [%s] closed — %s", entry_id, entry["context"])
     return {"ok": True, "entry": entry}
 
@@ -278,6 +358,16 @@ DRIFT_ACTION = "update_golden_config"
 
 
 def withdraw(entry_id: str, reason: str, by: str, list_name: str = "") -> dict:
+    """An unreadable queue is a refusal naming it (`unreadable`), never an
+    empty queue and never a raise at the route (CONCURRENCY_AUDIT R4)."""
+    from modules.filestore import StoreUnreadable
+    try:
+        return _withdraw_unguarded(entry_id=entry_id, reason=reason, by=by, list_name=list_name)
+    except StoreUnreadable as exc:
+        return {"ok": False, "error": str(exc), "unreadable": True}
+
+
+def _withdraw_unguarded(entry_id: str, reason: str, by: str, list_name: str = "") -> dict:
     """Close a pending item that no longer stands, recording WHY and BY WHAT
     (the operator, 2026-10-01: drift items created before C302 stopped
     counting a regenerated certificate waited for someone to approve a diff
@@ -286,15 +376,16 @@ def withdraw(entry_id: str, reason: str, by: str, list_name: str = "") -> dict:
     refused it)."""
     if not reason or not by:
         return {"ok": False, "error": "a withdrawal records its reason and what withdrew it"}
-    entries = _expire_old(_load_queue(list_name))
-    entry = next((e for e in entries if e["id"] == entry_id), None)
-    if not entry:
-        return {"ok": False, "error": f"Approval {entry_id!r} not found"}
-    if entry["status"] != "pending":
-        return {"ok": False, "error": f"Approval is already {entry['status']}"}
-    entry.update(status="withdrawn", resolved_at=time.strftime("%Y-%m-%d %H:%M:%S"),
-                 withdrawn_reason=reason, withdrawn_by=by)
-    _save_queue(entries, list_name)
+    with _lock(list_name):
+        entries = _expire_old(_load_queue(list_name))
+        entry = next((e for e in entries if e["id"] == entry_id), None)
+        if not entry:
+            return {"ok": False, "error": f"Approval {entry_id!r} not found"}
+        if entry["status"] != "pending":
+            return {"ok": False, "error": f"Approval is already {entry['status']}"}
+        entry.update(status="withdrawn", resolved_at=time.strftime("%Y-%m-%d %H:%M:%S"),
+                     withdrawn_reason=reason, withdrawn_by=by)
+        _save_queue(entries, list_name)
     log.info("approval_queue: [%s] withdrawn by %s -- %s", entry_id, by, reason)
     return {"ok": True, "entry": entry}
 
@@ -313,7 +404,7 @@ def supersede_drift(hostnames, reason: str, by: str, list_name: str = "",
         return []
     cutoff = time.time() if before_ts is None else before_ts
     try:
-        entries = _load_queue(list_name)
+        entries = _read(list_name)
     except Exception as exc:                   # noqa: BLE001
         log.error("approval_queue: could not read the queue to supersede %s: %s",
                   sorted(names), exc)

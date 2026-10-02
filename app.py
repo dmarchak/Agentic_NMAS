@@ -3202,8 +3202,13 @@ def drift_status():
     """Return drift checker status and last-run result."""
     from modules.drift_check import get_checker
     from modules.approval_queue import get_pending_count
+    from modules.filestore import StoreUnreadable
     status = get_checker().status()
-    status["pending_approvals"] = get_pending_count()
+    try:
+        status["pending_approvals"] = get_pending_count()
+    except StoreUnreadable as exc:
+        status["pending_approvals"] = None
+        status["pending_approvals_error"] = str(exc)
     return jsonify(status)
 
 
@@ -3730,9 +3735,15 @@ def ai_approvals_list():
     regardless of AI state so the user can approve/reject config drift.
     """
     from modules.approval_queue import get_pending, get_all, get_pending_count
+    from modules.filestore import StoreUnreadable
     show_all = request.args.get("all") == "1"
     limit    = min(int(request.args.get("limit", 50)), 200)
-    entries  = get_all(limit) if show_all else get_pending()
+    try:
+        entries = get_all(limit) if show_all else get_pending()
+    except StoreUnreadable as exc:
+        # Never an empty list: "nothing is waiting" and "the queue could not be read"
+        # are different answers (CONCURRENCY_AUDIT R4).
+        return jsonify({"ok": False, "error": str(exc)}), 503
     # Masked on the way out (register C56): a queued diff is device config,
     # and this returned it raw. The diff is advisory context, never what is
     # sent, so masking it costs the approver nothing.
@@ -3755,7 +3766,7 @@ def ai_approval_approve(entry_id: str):
     # The VERIFIED person, so what the approval commits names them (C81).
     result = resolve(entry_id, "approve", actor=request_actor())
     if not result.get("ok"):
-        return jsonify(result), 404
+        return jsonify(result), (503 if result.get("unreadable") else 404)
     # Masked like the list's GET (C327): the entry carries the queued diff and the
     # execution its `advisory_diff`, device config both, and these went out raw.
     from modules.redact import redact_payload
@@ -3769,7 +3780,7 @@ def ai_approval_reject(entry_id: str):
     from modules.identity import request_actor
     result = resolve(entry_id, "reject", actor=request_actor())
     if not result.get("ok"):
-        return jsonify(result), 404
+        return jsonify(result), (503 if result.get("unreadable") else 404)
     from modules.redact import redact_payload
     return jsonify(redact_payload(result))         # the entry's diff, masked (C327)
 
@@ -3788,8 +3799,13 @@ def ai_approval_approve_all():
     """
     from modules.approval_queue import get_pending
 
+    from modules.filestore import StoreUnreadable
     devices, approvals, individual = [], {}, []
-    for entry in get_pending():
+    try:
+        pending = get_pending()
+    except StoreUnreadable as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 503
+    for entry in pending:
         host = entry.get("device_hostname") or entry.get("device_ip", "")
         if entry.get("action_type") == "update_golden_config" and host:
             if host not in approvals:

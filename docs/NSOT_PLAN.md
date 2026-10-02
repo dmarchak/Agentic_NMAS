@@ -4410,7 +4410,10 @@ that affect today's single-process install (two users or two tabs) are scheduled
 `flock` across processes, held from the first write to the last tag, staging and commit
 refused outside it, a commit naming the paths it staged; readers take no optional git lock;
 a failed tag reported; a save compares HEAD; retire's undo puts back only its own paths),
-with a test that runs a real second process. Next, in the operator's order: R4, R5, R13,
+with a test that runs a real second process. **R4 fixed** the same day (the approval queue:
+one lock across processes, an atomic replace, an unreadable queue refusing every write and
+answering every read with its reason, reads that write nothing, `resolve` updating only its
+own item after its execution). Next, in the operator's order: R5, R13,
 R19, R20, R28; R2 (two people editing one intent) remains, since the intent file is still
 written before the lock is taken.
 

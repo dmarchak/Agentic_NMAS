@@ -617,12 +617,16 @@ class TestTheQueuedDiffNeverReachesADevice:
         from modules import approval_queue
 
         path = tmp_path / "approval_queue.json"
-        monkeypatch.setattr(approval_queue, "_queue_path", lambda: str(path))
-        monkeypatch.setattr(approval_queue, "_load_queue",
-                            lambda: [dict(self.ENTRY)])
+        monkeypatch.setattr(approval_queue, "_queue_path", lambda *a: str(path))
         saved = {}
+        # A store that keeps what was saved: `resolve` re-reads it under the lock after
+        # its execution (CONCURRENCY_AUDIT R4), as the real one does.
+        monkeypatch.setattr(approval_queue, "_load_queue",
+                            lambda *a: [dict(e) for e in saved.get("entries",
+                                                                   [dict(self.ENTRY)])])
         monkeypatch.setattr(approval_queue, "_save_queue",
-                            lambda entries: saved.update({"entries": entries}))
+                            lambda entries, *a: saved.update(
+                                {"entries": [dict(e) for e in entries]}))
         monkeypatch.setattr("modules.inventory.is_stale", lambda ip, ln="": False)
         return approval_queue, saved
 
