@@ -219,7 +219,7 @@ class TestApplyIsOneShotAndOneCommit:
         R.save_host_vars("Lab", ["s2"], message="host_vars: s2 ntp")
         out = BI.apply("Lab", repo, ["s1", "s2"], P1_MOVE, preview["hash"],
                        render=_render, summary="x", actor="t")
-        assert out["ok"] is False and "changed since you previewed" in out["error"]
+        assert out["ok"] is False and "that hash doesn't match the preview" in out["error"]
         assert "syslog" not in hostvars.read_committed(repo, "s1")["logging"] \
             or not hostvars.read_committed(repo, "s1")["logging"]["syslog"]
 
@@ -301,3 +301,34 @@ class TestAFailedCommitLeavesNothingWritten:
         status = subprocess.run(["git", "-C", repo, "status", "--porcelain", "--", "host_vars"],
                                 capture_output=True, text=True).stdout
         assert status == "", status
+
+
+class TestThePreviewShowsWhatEachStanzaGains:
+    """The operator, 2026-10-01: the vty standardisation's preview showed
+    only headings, because each setting line already existed under another
+    stanza, and a mistyped --apply hash read "the intent changed"."""
+
+    R1 = open("tests/fixtures/configs/fleet/r1.cfg", encoding="utf-8").read()
+    ONE = "line vty 0 4\n logging synchronous\n login local\n length 0\n transport input all\n"
+
+    def _after(self):
+        import re
+        return re.sub(r"(?ms)^line vty 0\n.*?^line vty 2 4\n(?: [^\n]*\n)*", self.ONE, self.R1)
+
+    def test_the_regrouped_vty_lines_are_shown_under_each_header(self):
+        from modules.nsot.bulk_intent import _render_delta
+        d = _render_delta(self.R1, self._after())
+        assert d["added"] == ["line vty 0 4", " logging synchronous", " login local",
+                              " length 0", " transport input all"]
+        assert d["removed"][:5] == ["line vty 0", " logging synchronous", " login local",
+                                    " transport input all", "line vty 1"]
+        assert "line vty 2 4" in d["removed"]
+
+    def test_a_changed_line_inside_a_kept_stanza_is_drawn_under_it(self):
+        from modules.nsot.bulk_intent import _render_delta
+        before = "router ospf 1\n passive-interface default\n network 192.0.2.0 0.0.0.255 area 0\n"
+        after = before.replace("area 0", "area 1")
+        assert _render_delta(before, after) == {
+            "added": ["router ospf 1", " network 192.0.2.0 0.0.0.255 area 1"],
+            "removed": ["router ospf 1", " network 192.0.2.0 0.0.0.255 area 0"]}
+

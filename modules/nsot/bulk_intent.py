@@ -145,9 +145,34 @@ def _blob(text: str) -> str:
 
 
 def _render_delta(before: str, after: str) -> dict:
-    b, a = before.splitlines(), after.splitlines()
-    return {"added": [l for l in a if l not in set(b)],
-            "removed": [l for l in b if l not in set(a)]}
+    """Lines added and removed, each judged IN ITS STANZA, each drawn under
+    its stanza's header (the operator, 2026-10-01). Compared as bare text, the
+    vty standardisation showed only headings: ` length 0` under the new
+    `line vty 0 4` already existed under `line vty 1`, so no setting line
+    was "added" and the preview read as four header lines."""
+    from modules.nsot.deploy import _section_chains
+
+    def entries(text):
+        return [(tuple(c), l.rstrip()) for l, c in _section_chains(text)
+                if l.strip() and l.strip() != "!"]
+
+    b, a = entries(before), entries(after)
+
+    def shown(seq, other):
+        out, drawn, others = [], set(), set(other)
+        for chain, line in seq:
+            if (chain, line) in others:
+                continue
+            for depth in range(len(chain)):
+                head = chain[:depth + 1]
+                if head not in drawn:
+                    drawn.add(head)
+                    out.append(head[-1])
+            drawn.add(chain + (line,))
+            out.append(line)
+        return out
+
+    return {"added": shown(a, b), "removed": shown(b, a)}
 
 
 def plan(repo: str, devices: list, steps: list, *, render, eligible=None,
@@ -285,10 +310,13 @@ def apply(list_name: str, repo: str, devices: list, steps: list,
     if not report["ok"]:
         return report
     if report["hash"] != confirmed_hash:
+        # The comparison this made, never a guess at why its operands differ
+        # (the operator, 2026-10-01: a mistyped hash read "the intent changed").
         return {"ok": False, "error": (
-            "the intent changed since you previewed "
-            f"({confirmed_hash} -> {report['hash']}). Nothing was written. "
-            "Re-run the preview and confirm what it shows now."),
+            f"that hash doesn't match the preview: you gave {confirmed_hash}, and the "
+            f"preview computed now gives {report['hash']}. Nothing was written. A hash "
+            "from another preview, a typing slip, or intent that moved since all read "
+            "this way: re-run the preview and apply with the hash it prints."),
             "confirmed_hash": confirmed_hash, "current_hash": report["hash"]}
     if not report["accepted"]:
         return {"ok": False, "error": "no device accepted the change",

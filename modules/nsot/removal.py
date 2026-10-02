@@ -585,9 +585,35 @@ def removable(target: str, captured: str, *, mgmt_ip: str, dialect: str) -> list
     out = []
     for c in candidates(target, captured):
         judged = removal_program(captured, [c], mgmt_ip=mgmt_ip, dialect=dialect)
-        out.append({**c, "why_not": (judged["refused"][0]["reason"]
-                                     if judged["refused"] else "")})
+        why = judged["refused"][0]["reason"] if judged["refused"] else ""
+        merged = _merges_into(c, target) if why else ""
+        out.append({**c, "why_not": (
+            f"these merge into `{merged}` once its settings are applied: IOS keeps every "
+            "terminal line and prints one stanza per run of lines with the same settings, "
+            "so nothing is removed" if merged else why)})
     return out
+
+
+def _merges_into(unit: dict, target: str) -> str:
+    """The target's `line` stanza covering every terminal line *unit*'s header
+    names, or ``""`` (the operator, 2026-10-01: r1's `line vty 0`, `1` and
+    `2 4` were offered as "cannot be removed; change its settings instead"
+    while intent's `line vty 0 4` was about to regroup them)."""
+    from modules.nsot.deploy import _line_range
+
+    if unit.get("chain") or unit.get("kind") != "stanza":
+        return ""
+    rng = _line_range(unit["line"])
+    if rng is None:
+        return ""
+    kind, lo, hi = rng
+    for line, chain in _chains(target):
+        if chain:
+            continue
+        got = _line_range(line)
+        if got and got[0] == kind and got[1] <= lo and got[2] >= hi:
+            return line.strip()
+    return ""
 
 
 def split_pushed(pushed: list, removal_commands: list) -> list:

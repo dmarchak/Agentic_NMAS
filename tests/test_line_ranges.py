@@ -122,3 +122,30 @@ class TestTheGuard:
         pre, _i, prog = r1
         with pytest.raises(RollbackNotInverse):
             assert_rollback_provenance(rollback_commands(prog, pre), prog)
+
+
+class TestThePreviewSaysTheyMerge:
+    """The operator, 2026-10-01: r1's preview offered `line vty 0`, `1` and
+    `2 4` as "a line stanza cannot be removed; change its settings instead",
+    while intent's `line vty 0 4` was about to regroup them."""
+
+    def test_r1s_split_stanzas_merge_into_intents_one(self, r1):
+        from modules.nsot.removal import removable
+        pre, intended, _program = r1
+        why = {c["line"]: c["why_not"] for c in removable(intended, pre, mgmt_ip="",
+                                                          dialect="cisco_iosxe")
+               if c["line"].startswith("line vty")}
+        assert sorted(why) == ["line vty 0", "line vty 1", "line vty 2 4"]
+        for text in why.values():
+            assert text.startswith("these merge into `line vty 0 4` once its settings are "
+                                   "applied") and "nothing is removed" in text
+
+    def test_a_line_stanza_intent_does_not_cover_keeps_its_reason(self, r1):
+        from modules.nsot.removal import removable
+        pre, intended, _program = r1
+        narrow = intended.replace("line vty 0 4\n", "line vty 0 3\n")
+        why = {c["line"]: c["why_not"] for c in removable(narrow, pre, mgmt_ip="",
+                                                          dialect="cisco_iosxe")}
+        assert why["line vty 2 4"] == ("a line stanza cannot be removed; change its settings "
+                                       "instead")
+        assert why["line vty 1"].startswith("these merge into `line vty 0 3`")
