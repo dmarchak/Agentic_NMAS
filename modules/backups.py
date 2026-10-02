@@ -9,8 +9,10 @@ between any two stored configs.  All paths are scoped to the currently active
 device list so switching lists gives each list its own backup history.
 """
 
+import logging
 import os
 import json
+import re
 from datetime import datetime
 from typing import List, Dict, Optional
 import difflib
@@ -96,10 +98,36 @@ def get_backup_history(ip: Optional[str] = None, limit: int = 50) -> List[Dict]:
     return backups[:limit]
 
 
+log = logging.getLogger(__name__)
+
+#: What a backup file is called: the name save_config_backup() writes, nothing else.
+_BACKUP_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*\.cfg$")
+
+
+def backup_path(filename: str) -> Optional[str]:
+    """The path of the backup *filename* in the current list's backups folder, or None.
+
+    THE ONE resolver for a name a request supplies (C324, 2026-10-02): compare joined the
+    form's names onto the folder unchecked, so ``../../key.key`` read the Fernet key and an
+    absolute path read any file the service can, from an ungated route. A name with a
+    separator, a leading dot, or anything but a backup's ``.cfg`` name is refused, and so is a
+    real path outside the folder (a symlink planted inside it)."""
+    if not filename or os.path.basename(filename) != filename or not _BACKUP_NAME.match(filename):
+        log.warning("backups: refused a name that is not a backup file name")
+        return None
+    folder = os.path.realpath(get_backups_dir())
+    path = os.path.realpath(os.path.join(folder, filename))
+    if os.path.dirname(path) != folder:
+        log.warning("backups: refused a backup name resolving outside the backups folder")
+        return None
+    return path
+
+
 def get_backup_content(filename: str) -> Optional[str]:
-    """Read the content of a backup file from the current list's backup directory."""
-    filepath = os.path.join(get_backups_dir(), filename)
-    if not os.path.exists(filepath):
+    """Read the content of a backup file from the current list's backup directory; None
+    for a name ``backup_path()`` refuses or a file that is not there."""
+    filepath = backup_path(filename)
+    if filepath is None or not os.path.isfile(filepath):
         return None
     with open(filepath, "r", encoding="utf-8") as f:
         return f.read()
@@ -119,9 +147,10 @@ def compare_configs(config1: str, config2: str) -> str:
 
 def delete_backup(filename: str) -> bool:
     """Delete a backup file and remove it from the index."""
-    backups_dir = get_backups_dir()
     index_file  = get_backup_index_file()
-    filepath    = os.path.join(backups_dir, filename)
+    filepath    = backup_path(filename)
+    if filepath is None:
+        return False
 
     try:
         if os.path.exists(filepath):
