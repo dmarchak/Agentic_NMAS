@@ -4336,6 +4336,44 @@ feature's closure is approved, decided when built.
 template and its measured removals ARE platform capabilities. Before Stage 10's drivers, which
 consume it.
 
+### P.13 — Software image management (DECIDED 2026-10-02, the operator; NOT BUILT; placed after Stage 7, before Stage 10's drivers)
+
+**Why.** The generic file actions (upload, download, delete, TFTP browsing, on the device page
+and the bulk selection) are removed (docs/CUTOVER.md): no arbitrary file transfer. Devices
+still need files for two purposes, and each gets a purpose-built operation. ZTP delivery is
+onboarding's own (P.6's responder serves a pending device its config, rendered per request).
+Software images are this item.
+- **An image library**: the approved images, each with its checksum, its platform and model,
+  and who approved it. An image not in the library is never sent.
+- **Transfer**: an operation (preview, confirm, result, record). It checks the device's free
+  space first, copies the image, then verifies it ON THE DEVICE (`verify /md5` against the
+  library's checksum). A copy that does not verify is removed and reported.
+- **Upgrade**: sets the boot variable to a verified image, then reloads through P.14's
+  gates.
+- **Platform capabilities, like everything else**: how a platform copies, verifies and sets
+  its boot image is declared per platform, measured on the lab's platforms first; a platform
+  that declares none is refused, naming it.
+
+### P.14 — Reload, as a gated device-page operation (DECIDED 2026-10-02, the operator; NOT BUILT; one of 7.3's device actions)
+
+Reload stays, as an operation on the device page, offered only once its gates pass. Each
+gate is drawn by name with what it found:
+1. **Running against startup**: unsaved changes REFUSE the reload, or offer a save first
+   (Persist, previewed). Nothing in running is lost.
+2. **Running against the golden and against intent**: drift is shown, and must be resolved or
+   acknowledged with a stated reason.
+3. **The startup configuration carries the credential the tool holds** (the startup check).
+4. **The boot image exists, and the boot variable points at it.**
+5. **No operation holds the device.**
+6. **BLAST RADIUS, shown prominently**: what else loses reachability while the device is down,
+   from the management path and the topology (rebooting s3 cuts off everything behind it).
+
+Then: a stated reason, the confirm, the reload (send, read, decide: C153), a wait bounded by
+the device's measured boot times, and the checks that it is back: answering, its
+configuration equal to its golden, its routing settled (verify's settle windows). Recorded
+with the reason and who. Admin-only once Stage 9 has roles. The bulk reload (`/bulk_reload`) is
+removed with the bulk file actions.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported

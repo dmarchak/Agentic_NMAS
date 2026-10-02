@@ -541,9 +541,14 @@ normal read-only API, and the product never names it. **Recommended: `lab/` in t
 repository**, excluded from the release by the release's explicit include list, rather than
 its own repository: it shares CI, the publication check and the test harness, and a second
 repository would duplicate those or run without them. The lab-specifics check refuses the
-product importing from `lab/`. The first member is the lab redeploy script (queued after the
-Coverage redraw; its pre-flight was shown to the operator as a mockup first), with its own
-README for the containerlab specifics; the manual's "Recovering and redeploying" section
+product importing from `lab/`. The first member is the lab redeploy script (queued after History and the
+Coverage redraw; its pre-flight approved by the operator 2026-10-02), with its own README for
+the containerlab specifics. **Its devices come from what the person onboarded, never from the
+containerlab topology** (the operator's correction, 2026-10-02): the lab tooling's own
+configuration names which managed devices a redeploy covers (rcn-lab1: r1 to r4 and s1 to s4;
+r6 is its own lab), and the script checks them against the product's inventory, refusing a
+device the product does not manage. It needs two read-only answers from the product: "can
+this network be recovered now?" and the declared list of boot-generated differences; the manual's "Recovering and redeploying" section
 describes the generic procedure. `scripts/oxidized-to-config.sh`, `scripts/nmas-clab-targets`
 and `scripts/nmas-host` move there (a host step each: the host's symlinks and units point at
 `scripts/`).

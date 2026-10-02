@@ -59,7 +59,7 @@ and built.
 | Inventory order | `/inventory/order/<list>`, `/reorder` | REMOVE, 7.8 | Drag-reorder removed for sortable columns (the operator, 2026-09-29) |
 | Device lists | `/device_lists` (3), `/select_device_list` | PLANNED, 7.4 | Devices > Networks |
 | List data | `/list/golden_configs`, `/list/drift_status`, `/list/change_log` | REMOVE, 7.8 | Superseded by Devices, Needs attention and History |
-| List variables, compliance policy | `/list/variables` (4), `/list/compliance_policy` (2) | UNDECIDED | No page calls them (measured 2026-10-02); the AI agent's tools read the same store directly, so whether the store survives is Stage 8's question |
+| List variables, compliance policy | `/list/variables` (4), `/list/compliance_policy` (2) | REMOVE, 7.8 | Superseded by intent, drift, group intent and the monitoring templates (the operator, 2026-10-02); Stage 8 re-establishes how the agent works |
 | Refresh hostnames | `/refresh_hostnames` | PLANNED, 7.4 | Devices |
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` (2) | PLANNED, 7.7 | Results are Needs attention rows (built); the schedule and "check now" go to Settings > Checks |
 | Freshness authorisations | `/freshness/authorise`, `/freshness/authorisations` | PLANNED, History | History > Authorisations (signed off) |
@@ -72,9 +72,10 @@ and built.
 | Reachability | `/status/<ip>`, `/connection_status/<ip>` | REMOVE, 7.8 | The reachability reader (C92) is what v2 draws |
 | Device regions | `/devices/regions` | REMOVE, 7.8 | Today's device list; `/v2/devices` replaces it |
 | Backups | `/device/<ip>/backup_config`, `/backup_history`, `/backup_stats`, `/compare_backups`, `/delete_backup/<f>`, `/download_backup/<f>` | REMOVE, 7.8 | The backup store retires after section 6a's prerequisite (no render reads a backup) |
-| Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | UNDECIDED | File management on a device has no decided v2 home; the one-home check lists it as a duplicate of the bulk file actions |
+| Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | REMOVE, 7.8 | No arbitrary file transfer (the operator, 2026-10-02). Replaced by purpose-built operations: ZTP delivery in onboarding, and software image management (NSOT_PLAN P.13). **Before removing**: check what ZTP serves today (the lab's configs folder holds a TFTP-written file) and keep that path working |
 | Bulk operations | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | PLANNED, 7.4 | Devices selection, read-only commands only (C61's allowlist) |
-| Bulk file and reload | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download`, `/bulk_reload` | UNDECIDED | As device files; reload has no decided home |
+| Bulk file actions | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download` | REMOVE, 7.8 | As device files |
+| Reload | `/bulk_reload` | REMOVE, 7.8; replaced by P.14 | Reload becomes a gated device-page operation (NSOT_PLAN P.14: unsaved changes, drift, the boot credential and image, no holder, the blast radius) |
 | Ask the device | `/run_command/<ip>` | PLANNED, 7.3 | The device page's "Ask the device" tab (allowlisted) |
 | Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal is removed (NSOT_FEATURE_AUDIT 3b) |
 | Configure | `/configure/*` (6) | PLANNED, 7.9 | The Configure forms, a parallel track |
@@ -94,13 +95,12 @@ and built.
 | The AI chat panel (every page) | PLANNED, Stage 8 | |
 | Settings modal | PLANNED, 7.7 | Settings |
 
-## The undecided rows (questions for the operator)
+## Decided 2026-10-02
 
-1. **Device files and bulk file actions** (upload, download, delete, TFTP): keep with a home
-   (the device page, and the Devices selection), or remove?
-2. **Reload** (`/bulk_reload`): an operation with a home (Device Actions, previewed and
-   confirmed), or removed?
-3. **List variables and the compliance policy**: kept for the agent (Stage 8), or removed?
+The three undecided rows were answered by the operator: the generic file actions go,
+replaced by purpose-built operations (ZTP delivery in onboarding; P.13's image
+library, transfer and upgrade); reload stays as a gated device-page operation
+(P.14); the list variables and the compliance policy go. No row is UNDECIDED.
 
 ## What the manual must cover
 
