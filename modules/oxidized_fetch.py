@@ -12,9 +12,14 @@ adopt, onboarding, rotation), so ONE post-commit hook reaches them all: each
 device whose golden the commit changed is asked for with Oxidized's own
 ``GET /node/next/<node>``, which moves it to the head of the fetch queue, and
 the request is recorded per list (``oxidized_fetch_requests.json``, the newest
-per device) so the lab startup row can say "fetch requested" with its time.
-A capture that changed a golden asks too: the device moved before it, and
-Oxidized's copy is just as old.
+per device). A capture that changed a golden asks too: the device moved
+before it, and Oxidized's copy is just as old.
+
+**Since plan item 4 (the same night) the lab's startup files are built from
+the newest earned baseline, not from Oxidized**, so the lab startup row no
+longer waits on Oxidized and its "Oxidized hasn't fetched" wording is gone.
+The fetch still serves what reads Oxidized's copy: the freshness signal on
+Needs attention and the clab sync's cross-check (what each device runs now).
 
 It asks; it never waits. Whether the fetch happened is Oxidized's own record
 (``nodes.json``), read where it is needed. A rotation's persist chain still

@@ -31,6 +31,7 @@ def _function(name: str) -> str:
 
 
 GIT_ID = 'GIT_ID=(-c user.name=clab-sync -c user.email=clab-sync@nmas.invalid)'
+BASE_TAG = "baseline/20261001T235242Z"
 COMMIT_BLOCK = _between("unversioned=()", 'do NOT run the git init recipe."\nfi')
 RECONCILE = _between("declare -A REFUSED_DIRTY=()", "# <<< reconcile")
 
@@ -50,12 +51,14 @@ def _git(env, *args, check=True):
 def _harness(tmp_path, devices: dict, body: str, oxidized: str = ""):
     """*devices* is {name: configs_dir}. The Oxidized repo, if given, is what
     GIT reads; every device's Oxidized node is its own name, kind router."""
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
     decl = "\n".join(f"DEVICES+=({n!r}); CFGDIR[{n}]={str(d)!r}; "
                      f"NODE[{n}]={n!r}; PLATFORM[{n}]=cisco_iosxe"
                      for n, d in devices.items())
     script = f"""
 set -uo pipefail
-ts=now; CLAB=clab; SRC_SHA=abc1234; REF=HEAD
+ts=now; CLAB=clab; SRC_SHA=abc1234; REF=HEAD; BASE_TAG={BASE_TAG}; OUT={str(out)!r}
 ssh() {{ bash -c "${{@: -1}}"; }}
 declare -A NODE CFGDIR PLATFORM
 DEVICES=()
@@ -221,6 +224,22 @@ def test_a_pre_c313_file_is_reproduced_for_the_version_its_header_names(tmp_path
     r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
                  'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
     assert f"own output for Oxidized {old}" in r.stdout and "refused=0" in r.stdout, r.stdout
+
+
+def test_a_stranded_write_of_this_runs_own_baseline_build_is_recorded_late(tmp_path):
+    """Plan item 4: the file the run would write from the baseline is the job's own."""
+    ox, _sha = _oxidized(tmp_path, "r6", RUNNING)
+    d = _lab(tmp_path, "r6")
+    built = _job_output(tmp_path, "r6", ox, _sha).replace("ip address", "description b\n ip address")
+    (tmp_path / "out").mkdir(exist_ok=True)
+    (tmp_path / "out" / "r6.cfg").write_text(built)
+    (d / "r6.cfg").write_text(built)
+    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
+                 'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
+    assert f"own output for {BASE_TAG}" in r.stdout and "refused=0" in r.stdout, r.stdout + r.stderr
+    log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1", "--format=%s").stdout.strip()
+    assert log == (f"startup from {BASE_TAG} (recorded late: an earlier run wrote it and its "
+                   "commit failed): r6")
 
 
 def test_a_hand_edit_is_refused_neither_committed_nor_overwritten(tmp_path):
@@ -474,7 +493,7 @@ echo "COPY=${{COPY[*]}}"
         r = _harness(tmp_path, {"r6": d}, COMMIT_BLOCK)
         assert f"{d}: committed" in r.stdout, r.stdout + r.stderr
         log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1", "--format=%s").stdout
-        assert log.strip() == "harvest from oxidized abc1234 (now): r6"
+        assert log.strip() == f"startup from {BASE_TAG} (now): r6"
 
 
 class TestConfigBody:
@@ -494,3 +513,95 @@ class TestConfigBody:
     def test_another_devices_header_is_kept(self, tmp_path):
         text = "!\n! r2 - from Oxidized HEAD abc\n!\nhostname r1\n"
         assert self._body(tmp_path, "r1", text) == text
+
+
+class TestTheFilesAreBuiltFromTheBaseline:
+    """Plan item 4: the SHIPPED build loop, executed under bash. The source
+    helper is a stub writing what `nmas-startup-source` writes (each device's
+    file and sources.tsv); Oxidized is a real repository, read only for the
+    cross-check."""
+
+    BUILD = _between("# >>> build", "# <<< build")
+    CROSS = _between("# >>> cross-check", "# <<< cross-check")
+
+    def _run(self, tmp_path, sources: dict, oxidized: dict, tail=""):
+        ox = tmp_path / "oxidized"
+        for name, text in oxidized.items():
+            ox, _sha = _oxidized(tmp_path, name, text)
+        src = tmp_path / "src"
+        src.mkdir()
+        rows = [f"# baseline\t{BASE_TAG}\tabcdef0123456789"]
+        for n, text in sources.items():
+            if text is None:
+                rows.append(f"{n}\trefused\t{BASE_TAG} holds no golden for {n}")
+            else:
+                (src / f"{n}.cfg").write_text(text)
+                rows.append(f"{n}\tok\tcredentials from its current golden: accounts")
+        tsv = "\\n".join(rows) + "\\n"
+        stub = tmp_path / "source-stub"
+        stub.write_text("#!/bin/bash\nout=$2\ncp " + str(src) + "/*.cfg \"$out\"/ 2>/dev/null\n"
+                        "printf '" + tsv + "' > \"$out/sources.tsv\"\n")
+        stub.chmod(0o755)
+        out = tmp_path / "out"
+        out.mkdir()
+        decl = "\n".join(f"DEVICES+=({n!r}); NODE[{n}]={n!r}; PLATFORM[{n}]=cisco_iosxe"
+                          for n in sources)
+        script = f"""
+set -uo pipefail
+REF=HEAD; OUT={str(out)!r}; RAW={str(tmp_path / 'raw')!r}; SRCDIR={str(tmp_path / 'srcdir')!r}
+SOURCE={str(stub)!r}
+mkdir -p "$RAW" "$SRCDIR"
+declare -A NODE PLATFORM
+DEVICES=()
+{decl}
+GIT=(git -C {str(ox)!r})
+{_function("kind_for")}
+{_function("sanitise")}
+{_function("render_device")}
+{self.BUILD}
+echo "DEVICES=${{DEVICES[*]}}"
+echo "NOT_BUILT_LIST=$NOT_BUILT_LIST"
+{tail}
+"""
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                              env=_env(tmp_path), cwd=str(tmp_path))
+
+    def test_each_file_is_the_baseline_s_render_and_a_device_it_lacks_is_not_built(self, tmp_path):
+        r = self._run(tmp_path, {"r6": RUNNING, "r7": None}, {"r6": RUNNING})
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert f"Building from {BASE_TAG} (abcdef0123)" in r.stdout
+        assert f"NOT BUILT - {BASE_TAG} holds no golden for r7" in r.stdout
+        assert "DEVICES=r6\n" in r.stdout and "NOT_BUILT_LIST=r7\n" in r.stdout
+        assert (tmp_path / "out" / "r6.cfg").read_text().startswith("hostname r6")
+        assert not (tmp_path / "out" / "r7.cfg").exists()
+
+    def test_the_file_comes_from_the_baseline_not_from_oxidized(self, tmp_path):
+        later = RUNNING.replace("ip address", "description changed by hand\n ip address")
+        r = self._run(tmp_path, {"r6": RUNNING}, {"r6": later})
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "description changed by hand" not in (tmp_path / "out" / "r6.cfg").read_text()
+
+    def test_the_cross_check_names_a_device_that_moved_and_never_blocks(self, tmp_path):
+        later = RUNNING.replace("ip address", "description changed by hand\n ip address")
+        r = self._run(tmp_path, {"r6": RUNNING}, {"r6": later}, tail=self.CROSS + "\necho DONE")
+        assert r.returncode == 0 and "DONE" in r.stdout, r.stdout + r.stderr
+        assert ("r6   DIFFERS from what runs now: it runs 1 line(s) the file lacks, and the "
+                "file holds 0 it") in r.stdout
+        assert f"does not. A redeploy boots {BASE_TAG}, not what r6 runs;" in r.stdout
+
+    def test_the_cross_check_says_a_device_that_runs_its_file(self, tmp_path):
+        r = self._run(tmp_path, {"r6": RUNNING}, {"r6": RUNNING}, tail=self.CROSS)
+        assert "r6   runs what its file boots" in r.stdout, r.stdout + r.stderr
+
+    def test_no_source_refuses_writing_nothing(self, tmp_path):
+        stub = tmp_path / "fail-stub"
+        stub.write_text("#!/bin/bash\necho 'UNPROVEN: Default has no earned baseline' >&2\nexit 2\n")
+        stub.chmod(0o755)
+        out = tmp_path / "out"
+        out.mkdir()
+        script = (f"set -uo pipefail\nREF=HEAD; OUT={str(out)!r}; SRCDIR={str(tmp_path)!r}; "
+                  f"SOURCE={str(stub)!r}; DEVICES=(r6); GIT=(git)\n" + self.BUILD)
+        r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                           env=_env(tmp_path), cwd=str(tmp_path))
+        assert r.returncode == 2 and "no startup source could be built" in r.stdout
+        assert "has no earned baseline" in r.stderr and list(out.iterdir()) == []

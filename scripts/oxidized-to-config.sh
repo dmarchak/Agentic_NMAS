@@ -2,8 +2,9 @@
 # ---------------------------------------------------------------------------
 # oxidized-to-config.sh
 #
-# Turns Oxidized's stored device configs into replayable containerlab
-# startup-configs.
+# Turns each device's newest EARNED baseline (credentials from its current
+# golden) into replayable containerlab startup-configs; Oxidized's copy is the
+# cross-check.
 #
 #   RUN ON THE NMAS VM (where Oxidized lives):
 #     ./oxidized-to-config.sh
@@ -60,10 +61,10 @@
 #   step that will eventually not happen.
 #
 # WHY A SANITISER IS STILL NEEDED
-#   Oxidized's ios model strips very little. Its stored config still contains
-#   the full crypto PKI certificate chains, the clab-mgmt VRF and management
-#   interface, licensing state, and its own metadata header. Replay that as a
-#   startup-config and vrnetlab will fight its own bootstrap.
+#   A golden is a captured running config, so it carries what a running
+#   config carries: the device's certificate chains, vrnetlab's management
+#   VRF and interface, licensing state. Replay that as a startup-config and
+#   vrnetlab will fight its own bootstrap.
 #
 #   It also has a blind spot that is easy to miss: a running-config records
 #   "shutdown" on a down interface but records NOTHING on an up one. Harvest
@@ -73,32 +74,64 @@
 #   The sanitiser therefore re-injects "no shutdown" into any interface block
 #   that carries an address and does not explicitly say shutdown.
 #
-# THE FRESHNESS GATE - WHAT OXIDIZED HAS MAY NOT BE WHAT ANYBODY APPROVED
-#   Oxidized polls. A redeploy replays what it last polled, so a change
-#   somebody made on a device at 2am and never approved becomes what that
-#   device boots with - silently, and durably, from this script.
+# WHAT THE SANITISER REMOVES, AND WHY (the rules in sanitise() below)
+#   "! comment" lines      provenance (a store's header), never configuration
+#   banner blocks          vrnetlab types the file into the console and waits
+#                          for a prompt; the ^C delimiter breaks that match
+#                          and HANGS the boot
+#   crypto pki trustpoint, the device's own self-signed certificate: the
+#   certificate chain      device makes a new one at boot (C302), and a
+#                          certificate body cannot be typed back in
+#   crypto key lines       keys are not configuration
+#   vrf definition         vrnetlab's management plumbing, which its own
+#     clab-mgmt, Gi1       bootstrap sets; two copies fight
+#     (routers), ip/ipv6
+#     route vrf clab-mgmt
+#   call-home,             Cisco's call-home, which reaches out to Cisco (D4)
+#     service call-home
+#   version, boot markers, image and hardware state the device reports, not
+#   license, platform,     configuration it takes from a file
+#     diagnostic bootup,
+#     memory free low-watermark, Building/Current configuration
+#   ip ssh maxstartups,    no reason was recorded when these rules were
+#     ip tftp source-interface,  written (ip domain name example.com is
+#     ip domain name example.com  vrnetlab's default); kept as found
+#   end, blank lines       structure; one `end` is appended
+#   And it ADDS: `no shutdown` (above); on switches `no logging console`
+#   (where the config lacks it; no reason was recorded) and the SSH host
+#   key's generation, which no config holds.
 #
-#   Before anything is copied, the NMAS is asked whether each raw config is
-#   equivalent to that device's golden. The finding is that the CONTENT
-#   DIFFERS; the timestamp only says which way. Oxidized newer = a change
-#   nobody approved. Golden newer = the approved state moved and Oxidized has
-#   not polled yet, which is a race and not a finding.
+# WHAT NO CONFIG SOURCE RESTORES (a redeploy makes these anew, whatever the
+# file holds)
+#   RSA host keys          SSH's key is generated at boot, so its fingerprint
+#                          changes: a client that pinned it refuses
+#   certificate keys       the self-signed certificate and its key (RESTCONF's)
+#                          are new, by design (C302)
+#   SNMPv3 users           their localized keys never appear in a running
+#                          config (this fleet uses v2c; a v3 user is lost)
 #
-#   IT SENDS THE RAW CONFIG, NOT THE SANITISED ONE. The sanitised file is a
-#   derived artefact - this script's own header line, the re-injected
-#   "no shutdown", the appended "crypto key generate rsa" - so comparing it
-#   against a golden would report every rule below as drift, for ever, on
-#   every device.
+# THE SOURCE IS THE NEWEST EARNED BASELINE (plan item 4, the operator's
+# decision, 2026-10-01)
+#   Oxidized polls, so building from its copy made a change somebody made on
+#   a device at 2am and never approved what that device booted, and one such
+#   change held every device's file back (C306, C309). Each file is now built
+#   by scripts/nmas-startup-source from the list's newest baseline that
+#   EARNED its tag (every device at its committed intent, not withdrawn),
+#   with every credential family (accounts, enable, SNMP communities) taken
+#   from the device's CURRENT golden, so a rotation since the baseline is
+#   never undone by a redeploy. A device the baseline does not hold is NOT
+#   BUILT, named, and every other device is still written; the run then
+#   exits 3 so job health sees it.
 #
-#   If the NMAS cannot be asked, this STOPS, exactly as it does for the map.
-#   ONLY exit 1 means drifted; only 0 means clean; every other code -- a
-#   missing helper (127) included -- is could-not-ask and says so. The first
-#   version collapsed that at the caller, so a helper that was not on PATH
-#   was announced as "a change nobody approved".
+#   Oxidized's copy is the CROSS-CHECK: each device's file against what it
+#   runs now, REPORTED, never a block. A difference means a redeploy returns
+#   the device to the baseline; Save All earns a new one that carries the
+#   change. The app's freshness reader still asks whether Oxidized's copy is
+#   the approved one, for Needs attention.
 #
-#   There is no --force: the way through is an authorisation per device, tied
-#   to the fingerprint of what differs and recorded with who and why. A flag
-#   would cover the next divergence too.
+#   The file is configuration only: the baseline is named in the lab
+#   commit's message (C313), and a file whose configuration did not move is
+#   neither copied nor committed.
 #
 # ALWAYS review 'git diff configs/' before redeploying.
 # ---------------------------------------------------------------------------
@@ -128,11 +161,11 @@ NMAS_URL="${NMAS_URL:-}"
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 HERE="$(dirname "$SELF")"
 TARGETS="${TARGETS:-$HERE/nmas-clab-targets}"
-FRESH="${FRESH:-$HERE/nmas-oxidized-freshness}"
+SOURCE="${SOURCE:-$HERE/nmas-startup-source}"
 # The committer's identity, on EVERY commit this job makes (see the commit
 # step): used by the reconcile below as well as the per-lab commit.
 GIT_ID=(-c user.name=clab-sync -c user.email=clab-sync@nmas.invalid)
-for helper in "$TARGETS" "$FRESH" "$HERE/nmas-host"; do
+for helper in "$TARGETS" "$SOURCE" "$HERE/nmas-host"; do
   if [ ! -x "$helper" ]; then
     echo "REFUSED - helper not found or not executable: $helper"
     echo "  (resolved beside this script, $SELF -- not through PATH, which"
@@ -161,11 +194,11 @@ if [ -z "$NMAS_URL" ]; then
   NMAS_URL="http://$LAB_VALUE:5000"
 fi
 
-# The RAW configs, kept so the gate compares the exact bytes this run read.
-# Re-reading them for the gate would be a second `git show` and a second
-# chance for Oxidized to have polled in between - the gate would then approve
-# a copy this script is not writing.
+# Oxidized's copy of each device, read once: the CROSS-CHECK below (what the
+# device runs now against what its file will boot).
 RAW="$(mktemp -d)"
+# Each device's source, built from the newest earned baseline (plan item 4).
+SRCDIR="$(mktemp -d)"
 # What each lab holds NOW, read once per device, compared here (C313).
 CUR="$(mktemp -d)"
 # The app re-reads what this job writes as soon as it ends, success or not
@@ -173,7 +206,7 @@ CUR="$(mktemp -d)"
 # sync and its rows stood for ten). Its unit lives outside the repository, so
 # the job tells the app itself; the timer's own result is unaffected.
 finished() {
-  rm -rf "$RAW" "$CUR"
+  rm -rf "$RAW" "$CUR" "$SRCDIR"
   NMAS_URL="$NMAS_URL" "$HERE/nmas-job-finished" clab-sync \
     || echo "(the app could not be told this sync finished; its readers catch up on their own schedule)"
 }
@@ -376,8 +409,27 @@ destinations() {
   for n in "${DEVICES[@]}"; do echo "${CFGDIR[$n]}"; done | sort -u
 }
 
+# >>> build
+# THE SOURCE IS THE NEWEST EARNED BASELINE (plan item 4, the operator's
+# decision, 2026-10-01), every credential from the device's CURRENT golden
+# (C309). Oxidized's copy is read only for the cross-check. A device the
+# baseline does not hold is NOT BUILT, named with its reason, and every other
+# device is still written (C309: one device used to hold every file back).
+if ! "$SOURCE" --out "$SRCDIR"; then
+  echo "REFUSED - no startup source could be built (the reason is above): nothing"
+  echo "is written. The files are built only from an earned baseline, never from"
+  echo "Oxidized's copy, so a redeploy cannot boot a change nobody approved."
+  exit 2
+fi
+IFS=$'\t' read -r _ BASE_TAG BASE_COMMIT < <(grep '^# baseline' "$SRCDIR/sources.tsv")
+declare -A SOURCE_STATE SOURCE_WHY NOT_BUILT
+while IFS=$'\t' read -r h st why; do
+  case "$h" in ''|'#'*) continue ;; esac
+  SOURCE_STATE[$h]="$st"; SOURCE_WHY[$h]="$why"
+done < "$SRCDIR/sources.tsv"
 SRC_SHA="$("${GIT[@]}" rev-parse --short "$REF" 2>/dev/null || echo unknown)"
-echo "Reading $REPO at $REF ($SRC_SHA)"
+echo "Building from $BASE_TAG (${BASE_COMMIT:0:10}); credentials from each device's current"
+echo "golden; cross-checked against Oxidized at $REF ($SRC_SHA)"
 echo
 fail=0
 
@@ -388,12 +440,18 @@ for n in "${DEVICES[@]}"; do
   fi
   printf '%-4s ' "$n"
 
-  raw="$("${GIT[@]}" show "${REF}:${NODE[$n]}" 2>/dev/null)"
+  if [ "${SOURCE_STATE[$n]:-}" != ok ]; then
+    NOT_BUILT[$n]="${SOURCE_WHY[$n]:-the startup source names no such device}"
+    echo "NOT BUILT - ${NOT_BUILT[$n]}"
+    rm -f "$OUT/${n}.cfg"
+    continue
+  fi
+  raw="$(cat "$SRCDIR/${n}.cfg")"
   if ! grep -q '^hostname' <<<"$raw"; then
-    echo "SKIPPED - nothing stored for ${NODE[$n]}"
+    echo "SKIPPED - the baseline's golden for $n holds no hostname"
     fail=1; continue
   fi
-  printf '%s\n' "$raw" > "$RAW/${n}.cfg"
+  "${GIT[@]}" show "${REF}:${NODE[$n]}" > "$RAW/${n}.cfg" 2>/dev/null || : > "$RAW/${n}.cfg"
 
   render_device "$n" "$kind" "$raw" > "$OUT/${n}.cfg"
 
@@ -443,6 +501,12 @@ if [ $fail -ne 0 ]; then
   exit 1
 fi
 echo "All files converted and validated."
+# The devices not built leave the run here, each already named.
+built=()
+for n in "${DEVICES[@]}"; do [ -n "${NOT_BUILT[$n]:-}" ] || built+=("$n"); done
+NOT_BUILT_LIST="$(IFS=,; echo "${!NOT_BUILT[*]}")"
+DEVICES=("${built[@]}")
+# <<< build
 
 # ---------------------------------------------------------------------------
 # Account for every mapped device BEFORE anything is copied. A device the
@@ -453,76 +517,44 @@ echo "All files converted and validated."
 # worth knowing and is not a reason to stop a sync.
 # ---------------------------------------------------------------------------
 echo
-if ! "$TARGETS" --url "$NMAS_URL" --reconcile "$OUT"; then
+if ! "$TARGETS" --url "$NMAS_URL" --reconcile "$OUT" --not-built "$NOT_BUILT_LIST"; then
   echo
   echo "PROBLEMS ABOVE - nothing will be copied."
   exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# THE FRESHNESS GATE - the last moment before an unapproved state becomes
-# what a device boots with.
-#
-# Run in BOTH modes. --no-deploy writes nothing, but "these configs carry a
-# change nobody approved" is the same fact either way, and a check that only
-# runs on the path that writes is a check nobody sees until it blocks them.
-#
-# Exit 2 (could not run) and exit 1 (something blocks) are handled the same
-# way here - stop - and are REPORTED differently, because "the fleet has
-# drifted" and "I could not tell you whether it has" are the two most
-# different answers this can give.
+# THE CROSS-CHECK (plan item 4): what each device runs NOW, by Oxidized's last
+# copy, against what its file will boot. REPORTED, never a block: the file is
+# built from an earned baseline, approved by construction, so the question the
+# old freshness gate asked ("is Oxidized's copy the approved one") no longer
+# decides what is written. The app's freshness reader still asks it, for
+# Needs attention. A difference here means a redeploy returns the device to
+# the baseline: a change made since is not carried until a new baseline is
+# earned (Save All).
 # ---------------------------------------------------------------------------
 echo
+# >>> cross-check
 echo "=========================================================="
-echo " Is Oxidized's copy the approved one?"
+echo " Cross-check: does each device run what its file boots? ($BASE_TAG)"
 echo "=========================================================="
-"$FRESH" --url "$NMAS_URL" --raw-dir "$RAW"
-gate_rc=$?
-
-# ONLY 1 IS DRIFTED. ONLY 0 IS CLEAN. EVERYTHING ELSE IS COULD-NOT-ASK.
-#
-# This was `elif [ $gate_rc -ne 0 ]` -> "a change nobody approved", so every
-# code the helper does not define was reported as drift. Measured
-# 2026-09-24: the helper was not on PATH, the shell returned **127**, and the
-# run printed "command not found" followed by "one or more devices carry a
-# change nobody approved" -- sending the reader to look at their devices for
-# a missing binary. The helper defines 0/1/2 precisely to keep those apart
-# and the caller undid it one line later, which is where an exit code is
-# actually read.
-#
-# Third instance of two outcomes of different severity sharing a report,
-# after the census's missing baseline exiting 1 and "Not a git repo, or
-# nothing to commit".
-case $gate_rc in
-  0) ;;
-  1)
-    echo
-    echo "REFUSED - one or more devices carry a change nobody approved."
-    echo "Nothing will be copied. Either save a golden for what is on the"
-    echo "device, or authorise that exact divergence (the command is above)."
-    exit 1
-    ;;
-  127)
-    # A missing binary is never drift. Named separately because the generic
-    # could-not-ask message would send the reader to the NMAS, and the NMAS
-    # is fine.
-    echo
-    echo "REFUSED - '$FRESH' is not installed or not on PATH (exit 127)."
-    echo "This is NOT a finding about your devices: nothing was compared."
-    echo "Install it, or point FRESH= at it:"
-    echo "    FRESH=/path/to/nmas-oxidized-freshness $0"
-    exit 2
-    ;;
-  *)
-    echo
-    echo "REFUSED - the approval check could not run (exit $gate_rc from"
-    echo "'$FRESH'). Nothing will be copied."
-    echo "Not proceeding unchecked: a comparison that did not happen is not a"
-    echo "comparison that passed. This says nothing about whether the fleet"
-    echo "has drifted -- only that nobody asked."
-    exit 2
-    ;;
-esac
+for n in "${DEVICES[@]}"; do
+  if [ ! -s "$RAW/${n}.cfg" ]; then
+    printf '  %-4s not cross-checked - Oxidized holds no copy of %s\n' "$n" "${NODE[$n]}"
+    continue
+  fi
+  kind="$(kind_for "${PLATFORM[$n]}")"
+  d="$(diff <(render_device "$n" "$kind" "$(cat "$RAW/${n}.cfg")") "$OUT/${n}.cfg")"
+  if [ -z "$d" ]; then
+    printf '  %-4s runs what its file boots\n' "$n"
+  else
+    printf '  %-4s DIFFERS from what runs now: it runs %s line(s) the file lacks, and the file holds %s it\n' \
+      "$n" "$(grep -c '^<' <<<"$d")" "$(grep -c '^>' <<<"$d")"
+    printf '       does not. A redeploy boots %s, not what %s runs;\n' "$BASE_TAG" "$n"
+    printf '       earn a new baseline (Save All) to carry the change.\n'
+  fi
+done
+# <<< cross-check
 
 [ "$DEPLOY" = no ] && { echo "--no-deploy set, stopping here."; exit 0; }
 
@@ -593,7 +625,10 @@ reconcile() {
       candidates="$("${GIT[@]}" log --format=%h -n "$RECONCILE_DEPTH" "$REF" -- "${NODE[$n]}" 2>/dev/null)"
     fi
     found=""
-    if [ -n "$kind" ]; then
+    if [ -n "${BASE_TAG:-}" ] && [ -s "$OUT/${n}.cfg" ] \
+         && [ "$body" = "$(cat "$OUT/${n}.cfg")" ]; then
+      found="$BASE_TAG"                  # this run's own output (plan item 4)
+    elif [ -n "$kind" ]; then
       for c in $candidates; do
         raw="$("${GIT[@]}" show "${c}:${NODE[$n]}" 2>/dev/null)"
         [ -n "$raw" ] || continue
@@ -601,8 +636,9 @@ reconcile() {
       done
     fi
     if [ -n "$found" ]; then
-      if out="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') && git add -- '$rel' && git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $found (recorded late: an earlier run wrote it and its commit failed): $n' -- '$rel'" 2>&1)"; then
-        printf '  %-4s RECORDED LATE - its uncommitted file was this job'"'"'s own output for Oxidized %s\n' "$n" "$found"
+      if out="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') && git add -- '$rel' && git ${GIT_ID[*]} commit -q -m '$( [ "$found" = "${BASE_TAG:-}" ] && echo "startup from" || echo "harvest from oxidized") $found (recorded late: an earlier run wrote it and its commit failed): $n' -- '$rel'" 2>&1)"; then
+        printf '  %-4s RECORDED LATE - its uncommitted file was this job'"'"'s own output for %s\n' "$n" \
+          "$( [ "$found" = "${BASE_TAG:-}" ] && echo "$found" || echo "Oxidized $found")"
       else
         REFUSED_DIRTY[$n]="its own uncommitted output could not be committed - git said: ${out%%$'\n'*}"
       fi
@@ -666,11 +702,12 @@ done
 
 if [ $((changed + newfiles)) -eq 0 ]; then
   echo
-  echo "Nothing to copy - the clab VM already matches Oxidized."
+  echo "Nothing to copy - the clab VM already holds what $BASE_TAG builds."
   ssh -n "$CLAB" "rm -rf $STAGE"
   # The exit that stranded r6 (C15) said "Nothing to do" and returned 0. A
   # refusal above is something to do, and job health must see it.
   [ ${#REFUSED_DIRTY[@]} -eq 0 ] || exit 3
+  [ ${#NOT_BUILT[@]} -eq 0 ] || exit 3
   exit 0
 fi
 
@@ -896,7 +933,7 @@ while read -r dir; do
     git rev-parse --git-dir >/dev/null 2>&1 || { echo norepo; exit 0; }; \
     err=\$(git add --$files 2>&1) || { printf 'addfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"; exit 0; }; \
     git diff --cached --quiet --$files && { echo unchanged; exit 0; }; \
-    err=\$(git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $SRC_SHA ($ts):$names' --$files 2>&1) \
+    err=\$(git ${GIT_ID[*]} commit -q -m 'startup from $BASE_TAG ($ts):$names' --$files 2>&1) \
       && echo committed \
       || printf 'commitfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"")"
   kind="${outcome%% *}"
@@ -969,3 +1006,4 @@ echo "each affected lab."
 [ ${#FAILED_DIRS[@]} -eq 0 ] || exit 3
 [ ${#failed[@]} -eq 0 ] || exit 3
 [ ${#REFUSED_DIRTY[@]} -eq 0 ] || exit 3
+[ ${#NOT_BUILT[@]} -eq 0 ] || exit 3

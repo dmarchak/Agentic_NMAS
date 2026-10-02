@@ -167,6 +167,10 @@ def main() -> int:
     ap.add_argument("--reconcile", default="",
                     help="compare the map against a LOCAL sanitizer output "
                          "directory and account for every device")
+    ap.add_argument("--not-built", default="",
+                    help="with --reconcile: comma-separated devices the caller "
+                         "deliberately built no file for (it names each reason); "
+                         "counted apart, never as a missing file")
     ap.add_argument("--strict", action="store_true",
                     help="with --reconcile: an unmapped file blocks too")
     ap.add_argument("--group", action="store_true",
@@ -215,7 +219,8 @@ def main() -> int:
 
     if args.reconcile:
         return _reconcile(args.reconcile, rows, strict=args.strict,
-                          declared=declared)
+                          declared=declared,
+                          not_built={h for h in args.not_built.split(",") if h})
 
     if args.group:
         # ONE LINE PER DESTINATION, so the caller's unit of work can be a
@@ -246,7 +251,7 @@ def main() -> int:
 
 
 def _reconcile(directory: str, rows: list, strict: bool = False,
-               declared: dict = None) -> int:
+               declared: dict = None, not_built=frozenset()) -> int:
     """Account for every device in the map AND every file in *directory*.
 
     **The population question, asked in both directions.** The sanitizer's
@@ -278,8 +283,12 @@ def _reconcile(directory: str, rows: list, strict: bool = False,
     mapped = {r[0] for r in rows}
 
     declared = declared or {}
+    # A device the caller built nothing for ON PURPOSE (the baseline does not
+    # hold it, plan item 4) is its own bucket, named by the caller with its
+    # reason: the sync writes every other device rather than none (C309).
+    skipped = sorted((mapped & set(not_built)) - files)
     produced = sorted(mapped & files)
-    no_file = sorted(mapped - files)
+    no_file = sorted(mapped - files - set(skipped))
     # A DECLARED file is a decision (a retired device's frozen startup
     # config), not a gap: reported with its reason, never as unmapped, so the
     # unmapped line keeps meaning "nobody accounted for this".
@@ -291,6 +300,9 @@ def _reconcile(directory: str, rows: list, strict: bool = False,
 
     print(f"map: {len(mapped)} device(s)   {here}: {len(files)} file(s)")
     print(f"  produced : {len(produced)}")
+    if skipped:
+        print(f"  not built: {len(skipped)} — {' '.join(skipped)} (each named "
+              "above with its reason)")
     if no_file:
         print(f"  NO FILE  : {len(no_file)} — {' '.join(no_file)}")
         print("             the sanitizer produced nothing for these, so "
@@ -310,7 +322,7 @@ def _reconcile(directory: str, rows: list, strict: bool = False,
 
     # The totals are checked, so a bucket that silently swallowed a device
     # is a defect rather than a rounding difference.
-    accounted = len(produced) + len(no_file)
+    accounted = len(produced) + len(no_file) + len(skipped)
     if accounted != len(mapped):
         print(f"  DEFECT   : {len(mapped)} mapped device(s) but "
               f"{accounted} accounted for", file=sys.stderr)

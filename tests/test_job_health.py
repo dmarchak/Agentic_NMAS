@@ -695,6 +695,27 @@ class TestAGateVerdictIsTheCauseNeverItsAdvice:
         assert not J._NAMES_A_FAILURE.search("the port was blocked by nothing")
         assert J._NAMES_A_FAILURE.search("BLOCKED: r3")
 
+    def test_a_device_the_baseline_does_not_hold_is_quoted(self):
+        """Plan item 4: the sync builds from the earned baseline and exits 3
+        naming a device it built nothing for; every other device is written."""
+        lines = ["Map: 9 device(s) from http://192.0.2.10:5000",
+                 "Building from baseline/20261001T235242Z (abcdef0123); credentials from each "
+                 "device's current",
+                 "r7   NOT BUILT - baseline/20261001T235242Z holds no golden for r7 (onboarded "
+                 "since, or renamed): earn a new baseline (Save All) to build its file",
+                 "All files converted and validated.",
+                 "Startup-configs updated for 1 of 1 lab(s)."]
+        journal = "\n".join(
+            [_line(NOW - 3, "systemd[1]: Starting clab-sync.service - Sync Oxidized configs...")]
+            + [_line(NOW - 2, f"clab-sync[1]: {l}") for l in lines]
+            + [_line(NOW, "systemd[1]: clab-sync.service: Main process exited, code=exited, "
+                          "status=3/NOTIMPLEMENTED"),
+               _line(NOW, "systemd[1]: clab-sync.service: Failed with result 'exit-code'.")])
+        s = J.job_status(JOB, NOW, _runner(LOADED, journal))
+        assert s["last_error"].startswith("r7   NOT BUILT - baseline/20261001T235242Z holds no")
+        assert not J._NAMES_A_FAILURE.search("it was not built yet")
+        assert J._NAMES_A_FAILURE.search("UNPROVEN: Default has no earned baseline")
+
     def test_the_gate_s_advice_no_longer_reads_as_a_refusal(self):
         src = open("scripts/nmas-oxidized-freshness", encoding="utf-8").read()
         advice = src[src.index('print(f"\\nBLOCKED:'):src.index("return EXIT_BLOCKED")]

@@ -1676,6 +1676,24 @@ def adjacency_source(cached=None) -> dict:
                     if settling else "")))
 
 
+def _moved_row(d: dict, name: str, base: str) -> dict:
+    """A device whose current golden has moved since the baseline its file is
+    built from: a redeploy returns it there (plan item 4's cross-check, from
+    the record)."""
+    m = d.get("since_baseline") or {}
+    lines = [f"`{l.strip()}`" for l in (m.get("only_golden") or [])[:3]] + \
+            [f"`{l.strip()}`" for l in (m.get("only_file") or [])[:3]]
+    return row(
+        source="lab-startup", key=f"moved:{d.get('list')}:{name}", level="warning",
+        what=f"A redeploy returns {name} to {base}",
+        devices=[name], operands={"list": d.get("list"), "file": d.get("file") or ""},
+        cause=(f"{name}'s current golden differs from its golden at {base} "
+               f"(+{m.get('only_golden_count', 0)} / -{m.get('only_file_count', 0)} lines"
+               + (": " + "; ".join(lines) if lines else "") + "), and the lab startup file "
+               f"is built from {base}"),
+        action={"label": "Save All earns a new baseline that carries what it runs now"})
+
+
 def lab_startup_source(cached=None) -> dict:
     """A device whose lab startup file is not what its committed golden would
     produce (the operator, 2026-10-01): a redeploy boots the file, so the
@@ -1709,51 +1727,49 @@ def lab_startup_source(cached=None) -> dict:
         if d.get("state") == "differs":
             parts = []
             if d.get("only_golden_count"):
-                parts.append(f"{d['only_golden_count']} line(s) the golden has and the file "
+                parts.append(f"{d['only_golden_count']} line(s) the build has and the file "
                              "lacks: " + "; ".join(f"`{l.strip()}`" for l in d["only_golden"][:5]))
             if d.get("only_file_count"):
-                parts.append(f"{d['only_file_count']} line(s) the file has and the golden "
+                parts.append(f"{d['only_file_count']} line(s) the file has and the build "
                              "lacks: " + "; ".join(f"`{l.strip()}`" for l in d["only_file"][:5]))
             if d.get("credentials"):
                 parts.append("a credential differs in value: "
                              + "; ".join(f"`{l.strip()}`" for l in d["credentials"]))
             if d.get("reordered"):
                 parts.append("the same lines in another order")
-            lag = d.get("lag") or {}
-            if lag.get("behind"):
-                # C314: the golden moved after Oxidized's last fetch, so the
-                # file is behind, not wrong: nobody's change to capture.
-                hm = lambda t: str(t)[11:16]                     # noqa: E731
-                asked = (f" — fetch requested at {hm(lag['requested_at'])} UTC"
-                         if lag.get("requested_at") else "")
-                last = (f"its last fetch was at {hm(lag['fetched_at'])} UTC"
-                        if lag.get("fetched_at") else "Oxidized holds no fetch of it")
-                rows.append(row(
-                    source="lab-startup", key=f"behind:{d.get('list')}:{name}", level="warning",
-                    what=(f"Oxidized hasn't fetched {name} since its change at "
-                          f"{hm(lag['golden_at'])} UTC{asked}"),
-                    devices=[name], operands={"list": d.get("list"), "file": where},
-                    cause=(f"{name}'s golden changed at {hm(lag['golden_at'])} UTC and {last}; "
-                           f"the clab sync writes {where} from Oxidized's copy, so the file is "
-                           "behind until Oxidized fetches it: " + ". ".join(parts)),
-                    action={"label": ("Nothing to do: the next clab sync after Oxidized's fetch "
-                                      "rewrites the file. Do not redeploy the lab before then"
-                                      + ("" if lag.get("requested_at") else
-                                         "; no fetch was requested, so it waits for "
-                                         "Oxidized's own schedule"))}))
-                continue
+            base = d.get("baseline") or "the newest earned baseline"
             rows.append(row(
-                source="lab-startup", key=f"differs:{d.get('list')}:{name}", level="warning",
-                what=f"{name}'s lab startup file is not what its golden would produce",
+                source="lab-startup", key=f"differs:{d.get('list')}:{name}",
+                level="danger" if d.get("credentials") else "warning",
+                what=(f"{name}'s lab startup file is not what {base} builds"
+                      + (": a credential differs" if d.get("credentials") else "")),
                 devices=[name], operands={"list": d.get("list"), "file": where},
-                cause=(f"A redeploy boots {where}, which the clab sync writes from Oxidized's "
-                       "copy; rendered through the same sanitiser, the committed golden gives "
-                       "something else: " + ". ".join(parts)),
-                action={"label": (f"If {name} runs what should be kept, capture it; if the "
-                                  "golden is right, the file is behind and the next clab sync "
-                                  "rewrites it from Oxidized"),
-                        "href": f"/v2/device/{name}"}))
-        elif d.get("state") == "missing":
+                cause=(f"A redeploy boots {where}. The clab sync builds it from {base}, every "
+                       f"credential from {name}'s current golden, and the file holds something "
+                       "else: " + ". ".join(parts)
+                       + (". A redeploy would boot a credential the tool no longer holds"
+                          if d.get("credentials") else "")),
+                action={"label": ("Nothing to do if the baseline or a credential changed in the "
+                                  "last 30 minutes: the next clab sync writes the file. Otherwise "
+                                  "the sync has not run since, or refused: read its job-health "
+                                  "row")}))
+            moved = d.get("since_baseline") or {}
+            if moved.get("state") == "differs":
+                rows.append(_moved_row(d, name, base))
+            continue
+        if d.get("state") == "matches" and (d.get("since_baseline") or {}).get("state") == "differs":
+            rows.append(_moved_row(d, name, d.get("baseline") or "the newest earned baseline"))
+            continue
+        if d.get("state") == "not_built":
+            rows.append(row(
+                source="lab-startup", key=f"not_built:{d.get('list')}:{name}", level="warning",
+                what=f"The clab sync builds no startup file for {name}",
+                devices=[name], operands={"list": d.get("list"), "file": where},
+                cause=d.get("why") or "the sync's source names no reason",
+                action={"label": "Save All earns a baseline that holds it, and the next clab "
+                                 "sync builds its file"}))
+            continue
+        if d.get("state") == "missing":
             rows.append(row(
                 source="lab-startup", key=f"missing:{d.get('list')}:{name}", level="warning",
                 what=f"{name} has no lab startup file", devices=[name],
@@ -1783,7 +1799,7 @@ def lab_startup_source(cached=None) -> dict:
         "lab-startup", label, rows=rows, **common,
         checked=(f"{counted} device(s) compared over {v.get('labs', 0)} lab(s), "
                  f"{sum(1 for d in v.get('devices') or [] if d.get('state') == 'matches')} "
-                 "matching their golden"))
+                 "holding what the sync builds"))
 
 
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,

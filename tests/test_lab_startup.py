@@ -43,7 +43,12 @@ def _legacy(h, sha="a" * 40):
     return f"!\n! {h} - from Oxidized HEAD {sha}\n!\n" + _synced(h)
 
 
-def _check(files, hosts=HOSTS, golden=None, target=None, reads=None):
+TAG = "baseline/20261001T235242Z"
+
+
+def _check(files, hosts=HOSTS, golden=None, target=None, reads=None, source=None):
+    """The check, its SOURCE (what the sync builds from: plan item 4) the fleet
+    config itself unless given, and the current golden the same unless given."""
     ref = SimpleNamespace(name="Lab")
     devices = [(ref, {"hostname": h, "platform": DIALECT[h]}) for h in hosts]
 
@@ -55,6 +60,7 @@ def _check(files, hosts=HOSTS, golden=None, target=None, reads=None):
     return L.check(population=lambda: devices,
                    golden=golden or (lambda r, h: _golden(h)),
                    reader=reader,
+                   source=source or (lambda r, h: {"text": _golden(h), "tag": TAG}),
                    target=target or (lambda ln, h: {"host": "lab-host", "configs_dir": CDIR,
                                                     "lab": "default", "named": True}))
 
@@ -112,10 +118,32 @@ class TestTheComparison:
         files = {f"{h}.cfg": _synced(h) for h in HOSTS + ["r5"]}
         assert _check(files)["unowned"] == [{"lab": "default", "file": f"{CDIR}/r5.cfg"}]
 
-    def test_no_golden_is_unknown_never_a_match(self):
+    def test_a_device_the_baseline_does_not_hold_is_not_built_with_the_sync_s_reason(self):
         files = {f"{h}.cfg": _synced(h) for h in HOSTS}
-        d = _by(_check(files, golden=lambda r, h: "" if h == "s1" else _golden(h)))["s1"]
-        assert d["state"] == "unknown" and "no committed golden" in d["why"]
+
+        def source(r, h):
+            if h == "s1":
+                raise L.SourceRefused(f"{TAG} holds no golden for s1 (onboarded since)")
+            return {"text": _golden(h), "tag": TAG}
+
+        d = _by(_check(files, source=source))["s1"]
+        assert d["state"] == "not_built" and "holds no golden for s1" in d["why"]
+
+    def test_a_file_is_compared_with_what_the_baseline_builds_and_names_it(self):
+        r = _check({f"{h}.cfg": _synced(h) for h in HOSTS})
+        assert {d["baseline"] for d in r["devices"]} == {TAG}
+
+    def test_a_device_moved_since_the_baseline_is_said_while_its_file_matches(self):
+        files = {f"{h}.cfg": _synced(h) for h in HOSTS}
+        moved = lambda r, h: (_golden(h).replace("hostname r3\n", "hostname r3\nip domain "  # noqa: E731
+                                                 "lookup source-interface Loopback0\n")
+                              if h == "r3" else _golden(h))
+        d = _by(_check(files, golden=moved))
+        assert d["r3"]["state"] == "matches"
+        assert d["r3"]["since_baseline"]["state"] == "differs"
+        assert d["r3"]["since_baseline"]["only_golden"] == [
+            "ip domain lookup source-interface Loopback0"]
+        assert d["r1"]["since_baseline"]["state"] == "matches"
 
     def test_a_platform_the_sanitiser_has_no_rules_for_is_unknown(self):
         out = L.compare("x1", "junos", "hostname x1\n", "hostname x1\n")
@@ -181,13 +209,14 @@ class TestNeedsAttention:
             "hostname r3\n", "hostname r3\nip domain lookup source-interface Loopback0\n"))
         res = self._source(_check(files))
         rows = {r["what"]: r for r in res["rows"]}
-        row = rows["r3's lab startup file is not what its golden would produce"]
+        row = rows[f"r3's lab startup file is not what {TAG} builds"]
         assert row["level"] == "warning" and row["devices"] == ["r3"]
         assert f"A redeploy boots {CDIR}/r3.cfg" in row["cause"]
         assert "`ip domain lookup source-interface Loopback0`" in row["cause"]
+        assert "capture" not in row["action"]["label"]
         info = rows[f"{CDIR}/r5.cfg is a startup file no managed device owns"]
         assert info["level"] == "info"
-        assert "7 matching their golden" in res["checked"]
+        assert "7 holding what the sync builds" in res["checked"]
 
     def test_a_credential_row_carries_no_value(self):
         files = {f"{h}.cfg": _synced(h) for h in HOSTS}
@@ -196,11 +225,36 @@ class TestNeedsAttention:
         res = self._source(_check(files))
         assert "a credential differs in value" in json.dumps(res)
         assert "Zq7Unrelated" not in json.dumps(res)
+        row = next(r for r in res["rows"] if r["devices"] == ["r2"])
+        assert row["level"] == "danger" and row["what"].endswith(": a credential differs")
+        assert "a credential the tool no longer holds" in row["cause"]
+
+    def test_a_device_moved_since_the_baseline_is_a_row_saying_a_redeploy_returns_it(self):
+        moved = lambda r, h: (_golden(h).replace("hostname r3\n", "hostname r3\nip domain "  # noqa: E731
+                                                 "lookup source-interface Loopback0\n")
+                              if h == "r3" else _golden(h))
+        res = self._source(_check({f"{h}.cfg": _synced(h) for h in HOSTS}, golden=moved))
+        assert [r["what"] for r in res["rows"]] == [f"A redeploy returns r3 to {TAG}"]
+        row = res["rows"][0]
+        assert "+1 / -0 lines: `ip domain lookup source-interface Loopback0`" in row["cause"]
+        assert row["action"]["label"] == "Save All earns a new baseline that carries what it runs now"
+
+    def test_a_device_not_built_is_a_row_with_the_sync_s_reason(self):
+        def source(r, h):
+            if h == "s1":
+                raise L.SourceRefused(f"{TAG} holds no golden for s1 (onboarded since)")
+            return {"text": _golden(h), "tag": TAG}
+
+        res = self._source(_check({f"{h}.cfg": _synced(h) for h in HOSTS}, source=source))
+        row = next(r for r in res["rows"] if r["devices"] == ["s1"])
+        assert row["what"] == "The clab sync builds no startup file for s1"
+        assert "holds no golden for s1" in row["cause"]
 
     def test_all_matching_is_no_row_and_says_what_was_compared(self):
         res = self._source(_check({f"{h}.cfg": _synced(h) for h in HOSTS}))
         assert res["rows"] == []
-        assert res["checked"] == "8 device(s) compared over 1 lab(s), 8 matching their golden"
+        assert res["checked"] == ("8 device(s) compared over 1 lab(s), 8 holding what the sync "
+                                  "builds")
 
     def test_not_configured_is_said(self):
         res = self._source({"configured": False, "devices": []})

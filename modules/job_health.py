@@ -66,7 +66,8 @@ import re as _re
 #: Without it the quote fell through to the gate's ADVICE two lines later
 #: ("A curl from the NMAS host is refused ..."), read as an identity lockout.
 _NAMES_A_FAILURE = _re.compile(
-    r"(?-i:^BLOCKED:)|not found|REFUSED|FAILED|ERROR|Error|Traceback|denied|No such", _re.I)
+    r"(?-i:^BLOCKED:)|(?-i:NOT BUILT -)|(?-i:^UNPROVEN:)|not found|REFUSED|FAILED|ERROR|Error"
+    r"|Traceback|denied|No such", _re.I)
 
 #: systemd's own record of how the main process ended:
 #: "Main process exited, code=exited, status=2/INVALIDARGUMENT".

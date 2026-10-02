@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Write each device's lab startup SOURCE for the clab sync (plan item 4).
+
+The source is the list's newest EARNED baseline, with every credential family
+taken from the device's CURRENT golden (`modules/nsot/startup_source.py`).
+Runs on the NMAS host beside the checkout, reading the list's repository
+directly: the files hold credentials, so no HTTP route serves them (B11, C77).
+
+    nmas-startup-source --out DIR [--list NAME]
+
+Writes DIR/<host>.cfg for each device it can build (0600) and DIR/sources.tsv:
+a `# baseline<TAB><tag><TAB><commit>` line, then one `<host><TAB>ok|refused
+<TAB><detail>` line per device. Exit 0 with a baseline (a device refused is a
+row, never the run), 2 when there is none or it could not be read.
+"""
+
+import argparse
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+EXIT_OK, EXIT_UNPROVEN = 0, 2
+
+
+def _write(path: str, text: str) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(text)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--list", dest="list_name", default="")
+    args = ap.parse_args(argv)
+    try:
+        from modules.config import get_current_list_name
+        from modules.nsot.startup_source import build
+        list_name = args.list_name or get_current_list_name()
+        got = build(list_name)
+    except Exception as exc:                       # noqa: BLE001
+        print(f"UNPROVEN: the startup sources could not be built: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        return EXIT_UNPROVEN
+    if not got["ok"]:
+        print(f"UNPROVEN: {got['error']}", file=sys.stderr)
+        return EXIT_UNPROVEN
+    os.makedirs(args.out, exist_ok=True)
+    rows = [f"# baseline\t{got['baseline']['tag']}\t{got['baseline']['commit']}"]
+    for host, d in sorted(got["devices"].items()):
+        if d["state"] == "ok":
+            _write(os.path.join(args.out, f"{host}.cfg"), d["text"])
+            detail = ("credentials from its current golden: " + ", ".join(d["replaced"])
+                      if d["replaced"] else "no credential lines")
+            if d.get("nested"):
+                detail += ("; a secret inside a stanza differs from the current one and is "
+                           "the baseline's: " + "; ".join(d["nested"]))
+            rows.append(f"{host}\tok\t{detail}")
+        else:
+            rows.append(f"{host}\trefused\t{d['why']}")
+    _write(os.path.join(args.out, "sources.tsv"), "\n".join(rows) + "\n")
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

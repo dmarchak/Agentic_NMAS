@@ -1,11 +1,16 @@
-"""Does each device's LAB STARTUP FILE hold what its committed golden would
-produce? (the operator, 2026-10-01, after the afternoon's redeploy).
+"""Does each device's LAB STARTUP FILE hold what the clab sync builds for it?
+(the operator, 2026-10-01, after the afternoon's redeploy; its source since
+plan item 4, the same night).
 
 A containerlab node boots the file in its lab's ``configs/`` directory, which
-the clab sync writes from Oxidized's last copy through the sanitiser
-(``scripts/oxidized-to-config.sh``). So a redeploy boots whatever that file
-holds, approved or not, and the record the tool keeps is the committed golden.
-This compares the two the only way that is exact: the golden is rendered
+the clab sync writes through the sanitiser (``scripts/oxidized-to-config.sh``)
+from the list's newest EARNED baseline, every credential taken from the
+device's current golden (``modules/nsot/startup_source.py``, the sync's own
+helper's computation). So a redeploy boots that file, and this asks two
+questions of it: is the file what the sync builds now (a difference is a sync
+that has not run since, or could not), and has the device moved since the
+baseline (``since_baseline``: a redeploy would return it there). Compared the
+only way that is exact: the source is rendered
 through the SANITISER'S OWN functions (``kind_for``, ``sanitise``,
 ``render_device``, lifted from the script as the clab sync test does, one
 implementation) and compared line for line with the file's configuration
@@ -118,79 +123,56 @@ def read_lab(host: str, configs_dir: str) -> dict:
     return out
 
 
-def oxidized_lag():
-    """``(ref, host, device) -> dict``: whether Oxidized has fetched *host* since
-    its golden last changed (C314). The clab sync writes the file from
-    Oxidized's copy, so a golden newer than Oxidized's last successful fetch
-    explains a difference without anybody's change. Oxidized's index is read
-    ONCE per check, each list's request record once; the golden's commit time
-    per device, and only for a device whose file differs. ``{}`` when
-    Oxidized is not configured or cannot be asked (nothing is claimed)."""
-    from modules import oxidized_fetch
-    from modules.integrations.oxidized import OxidizedIntegration
-    from modules.nsot import manifest
-    from modules.nsot.credential_rotation import as_utc
+class SourceRefused(RuntimeError):
+    """The sync builds no file for this device (no earned baseline, or the
+    baseline does not hold it); the reason is the sync's own."""
+
+
+def baseline_source():
+    """``(ref, host) -> {"text", "tag"}``: what the clab sync writes FROM for
+    *host* (plan item 4): its golden at the list's newest earned baseline,
+    every credential from its current golden (`startup_source`, the sync's
+    own helper's computation). Built once per list per check. Raises
+    `SourceRefused` with the sync's reason when it builds nothing."""
+    from modules.nsot import startup_source
 
     cache = {}
 
-    def times():
-        if "times" not in cache:
-            client = OxidizedIntegration(timeout=10)
-            got = client.node_times() if client.is_configured() else {"ok": False}
-            cache["times"] = got.get("times") if got.get("ok") else None
-        return cache["times"]
+    def source(ref, host):
+        if ref.name not in cache:
+            cache[ref.name] = startup_source.build(ref.name)
+        got = cache[ref.name]
+        if not got.get("ok"):
+            raise SourceRefused(got.get("error") or "no startup source")
+        d = got["devices"].get(host)
+        if d is None:
+            got["devices"].update(startup_source.build(ref.name, hosts=[host])["devices"])
+            d = got["devices"][host]
+        if d["state"] != "ok":
+            raise SourceRefused(d["why"])
+        return {"text": d["text"], "tag": got["baseline"]["tag"]}
 
-    def lag(ref, host, dev):
-        fetched = times()
-        if fetched is None:
-            return {}
-        _ident, entry = manifest.find_by_name(ref.repo_dir, host)
-        if not entry:
-            return {}
-        rel = os.path.relpath(manifest.golden_path_for(ref.repo_dir, entry), ref.repo_dir)
-        p = subprocess.run(["git", "-C", ref.repo_dir, "log", "-1", "--format=%cI", "HEAD",
-                            "--", rel], capture_output=True, text=True, timeout=15)
-        if p.returncode != 0 or not p.stdout.strip():
-            return {}
-        golden_at = as_utc(p.stdout.strip())
-        node = oxidized_fetch.node_for(host, dev.get("ip") or entry.get("mgmt_ip") or "")
-        stamp = fetched.get(node) or ""
-        try:
-            fetched_at = as_utc(stamp) if stamp else None
-        except ValueError:
-            fetched_at = None
-        if ("req", ref.name) not in cache:
-            try:
-                cache[("req", ref.name)] = oxidized_fetch.requests_for(ref.name)
-            except Exception as exc:                   # noqa: BLE001
-                log.warning("lab startup: %s's fetch requests could not be read: %s",
-                            ref.name, exc)
-                cache[("req", ref.name)] = {}
-        req = cache[("req", ref.name)].get(host) or {}
-        requested_at = None
-        if req.get("ok") and req.get("at"):
-            when = as_utc(req["at"])
-            requested_at = when if when >= golden_at else None
-        iso = lambda t: t.strftime("%Y-%m-%dT%H:%M:%SZ") if t else None      # noqa: E731
-        return {"golden_at": iso(golden_at), "fetched_at": iso(fetched_at),
-                "requested_at": iso(requested_at),
-                "behind": fetched_at is None or fetched_at < golden_at}
-
-    return lag
+    return source
 
 
-def check(population=None, golden=None, reader=None, target=None, lag=None) -> dict:
-    """Every device's startup file against its golden. Injected for tests:
-    *population* ``() -> [(ref, device)]``, *golden* ``(ref, host) -> text``,
-    *reader* ``(host, dir) -> {file: text}``, *target* ``(list, host) -> dict``,
-    *lag* ``(ref, host, device) -> dict`` (``oxidized_lag()``)."""
+def check(population=None, golden=None, reader=None, target=None, source=None) -> dict:
+    """Every device's startup file against what the sync builds for it.
+    Injected for tests: *population* ``() -> [(ref, device)]``, *golden*
+    ``(ref, host) -> text`` (the CURRENT golden), *reader* ``(host, dir) ->
+    {file: text}``, *target* ``(list, host) -> dict``, *source* ``(ref, host)
+    -> {"text", "tag"}`` (``baseline_source()``).
+
+    Each compared device also carries ``since_baseline``: its current golden
+    against the baseline's, through the same sanitiser. A difference is a
+    device a redeploy returns to the baseline (the sync's cross-check, from
+    the record rather than from Oxidized)."""
     from modules.nsot.credential_rotation import clab_target_for
     from modules.nsot.platform import platform_for_device
     from modules.prometheus_targets import inventory, read_golden
 
     population, golden = population or inventory, golden or read_golden
     reader, target = reader or read_lab, target or clab_target_for
-    lag = lag or oxidized_lag()
+    source = source or baseline_source()
     labs, devices, errors, hosted = {}, [], [], False
     for ref, dev in population():
         host = dev.get("hostname") or ""
@@ -224,17 +206,26 @@ def check(population=None, golden=None, reader=None, target=None, lag=None) -> d
                 row.update(state="missing")
                 continue
             try:
-                text = golden(ref, row["device"])
-            except Exception as exc:               # noqa: BLE001
-                row.update(state="unknown", why=f"its committed golden could not be read: {exc}")
+                src = source(ref, row["device"])
+            except SourceRefused as exc:
+                row.update(state="not_built", why=str(exc))
                 continue
-            row.update(compare(row["device"], platform_for_device(dev), text, files[name]))
-            if row.get("state") == "differs":
-                try:
-                    row["lag"] = lag(ref, row["device"], dev)
-                except Exception as exc:           # noqa: BLE001
-                    log.warning("lab startup: %s's Oxidized lag could not be read: %s",
-                                row["device"], exc)
+            except Exception as exc:               # noqa: BLE001
+                row.update(state="unknown", why=f"its startup source could not be built: {exc}")
+                continue
+            dialect = platform_for_device(dev)
+            row["baseline"] = src["tag"]
+            row.update(compare(row["device"], dialect, src["text"], files[name]))
+            try:
+                now = golden(ref, row["device"])
+                moved = compare(row["device"], dialect, now,
+                                render_expected(row["device"], dialect, src["text"]))
+            except Exception as exc:               # noqa: BLE001
+                row["since_baseline"] = {"state": "unknown", "why": str(exc)}
+            else:
+                row["since_baseline"] = {k: moved.get(k) for k in
+                                         ("state", "only_golden_count", "only_file_count",
+                                          "only_golden", "only_file") if k in moved}
         unowned += [{"lab": lab["lab"], "file": f"{cdir}/{f}"}
                     for f in sorted(files) if f not in owned]
     return {"configured": hosted, "devices": devices, "unowned": unowned, "errors": errors,

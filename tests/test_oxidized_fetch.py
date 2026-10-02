@@ -1,14 +1,13 @@
 """C314 (the operator, 2026-10-01): after a change the tool waited for
 Oxidized's hourly poll, and the lab startup row suggested a capture for a
 device that was exactly as recorded. Every golden-changing commit now asks
-Oxidized to fetch those devices (`GET /node/next/<node>`), recorded per list,
-and the row says "Oxidized hasn't fetched r3 since its change at HH:MM —
-fetch requested at HH:MM".
+Oxidized to fetch those devices (`GET /node/next/<node>`), recorded per list.
+(The lab startup row's "Oxidized hasn't fetched" wording went the same night:
+plan item 4 builds the files from the earned baseline, not from Oxidized.)
 
 Through a REAL commit in the capture lab (r2's real golden); Oxidized is a
 fake client recording what was asked."""
 
-import json
 import subprocess
 from types import SimpleNamespace
 
@@ -113,97 +112,3 @@ class TestAChangedGoldenAsksOxidized:
         from modules.nsot import hooks
         assert "oxidized-fetch" in hooks.ensure_default_hooks()
 
-
-class TestTheLagIsRead:
-    """`oxidized_lag()` against the real repository: the golden's commit time
-    beside Oxidized's last fetch and the request record."""
-
-    def _lag(self, lab, monkeypatch, fetched):
-        from modules import lab_startup as L
-
-        class Ox:
-            def __init__(self, timeout=10):
-                pass
-
-            def is_configured(self):
-                return True
-
-            def node_times(self):
-                return {"ok": True, "times": fetched}
-
-        monkeypatch.setattr("modules.integrations.oxidized.OxidizedIntegration", Ox)
-        ref = SimpleNamespace(name="Lab", repo_dir=lab["repo"])
-        return L.oxidized_lag()(ref, "r2", {"hostname": "r2", "ip": "203.0.113.12"})
-
-    def _golden_at(self, lab):
-        return subprocess.run(["git", "-C", lab["repo"], "log", "-1", "--format=%cI", "HEAD",
-                               "--", "golden/r2.cfg"], capture_output=True, text=True,
-                              check=True).stdout.strip()
-
-    def test_a_fetch_older_than_the_golden_is_behind_with_the_request_named(self, lab,
-                                                                             monkeypatch):
-        from modules import oxidized_fetch as F
-        sha = _commit_r2(lab, lab["captured"] + "!\n")
-        F.request("Lab", [("r2", "203.0.113.12")], "t", client=FakeOxidized())
-        lag = self._lag(lab, monkeypatch, {"203.0.113.12": "2020-01-01 00:00:00 UTC"})
-        assert lag["behind"] is True and lag["fetched_at"] == "2020-01-01T00:00:00Z"
-        assert lag["requested_at"] is not None and sha
-
-    def test_a_fetch_after_the_golden_is_not_behind(self, lab, monkeypatch):
-        _commit_r2(lab, lab["captured"] + "!\n")
-        lag = self._lag(lab, monkeypatch, {"203.0.113.12": "2099-01-01 00:00:00 UTC"})
-        assert lag["behind"] is False
-
-    def test_no_fetch_at_all_is_behind_and_a_request_before_the_change_is_not_one(
-            self, lab, monkeypatch):
-        from modules import oxidized_fetch as F
-        F.request("Lab", [("r2", "203.0.113.12")], "t", client=FakeOxidized(),
-                  clock=lambda: 1_000_000_000)
-        _commit_r2(lab, lab["captured"] + "!\n")
-        lag = self._lag(lab, monkeypatch, {})
-        assert lag["behind"] is True and lag["fetched_at"] is None
-        assert lag["requested_at"] is None
-        from modules.nsot.credential_rotation import as_utc
-        assert as_utc(lag["golden_at"]) == as_utc(self._golden_at(lab))
-
-
-class TestTheRowSaysOxidizedIsBehind:
-    @staticmethod
-    def _value(lag):
-        return {"configured": True, "labs": 1, "checked": 1, "unowned": [],
-                "devices": [{"list": "Lab", "device": "r3", "lab": "default",
-                             "file": "labs/lab/configs/r3.cfg", "state": "differs",
-                             "reordered": False, "credentials": [],
-                             "only_golden": [" length 0"], "only_golden_count": 1,
-                             "only_file": [], "only_file_count": 0, "lag": lag}]}
-
-    @staticmethod
-    def _rows(value):
-        from modules import attention
-        cached = {"state": "ok", "doc": {"last_good": {"value": value, "value_at": 1_790_000_000},
-                                         "stale_after_seconds": 1500}}
-        return attention.lab_startup_source(cached=cached)["rows"]
-
-    def test_behind_with_a_request_names_both_times_and_suggests_no_capture(self):
-        rows = self._rows(self._value({"golden_at": "2026-10-01T22:10:05Z",
-                                       "fetched_at": "2026-10-01T21:58:00Z",
-                                       "requested_at": "2026-10-01T22:10:07Z", "behind": True}))
-        assert [r["what"] for r in rows] == [
-            "Oxidized hasn't fetched r3 since its change at 22:10 UTC — fetch requested at "
-            "22:10 UTC"]
-        text = json.dumps(rows)
-        assert "its last fetch was at 21:58 UTC" in text and "capture" not in text
-        assert rows[0]["action"]["label"].startswith("Nothing to do")
-
-    def test_behind_with_no_request_says_it_waits_for_oxidized(self):
-        rows = self._rows(self._value({"golden_at": "2026-10-01T22:10:05Z", "fetched_at": None,
-                                       "requested_at": None, "behind": True}))
-        assert rows[0]["what"] == "Oxidized hasn't fetched r3 since its change at 22:10 UTC"
-        assert "Oxidized holds no fetch of it" in rows[0]["cause"]
-        assert "no fetch was requested" in rows[0]["action"]["label"]
-
-    def test_not_behind_is_still_the_difference_row(self):
-        for lag in ({"behind": False, "golden_at": "x"}, {}):
-            rows = self._rows(self._value(lag))
-            assert rows[0]["what"] == "r3's lab startup file is not what its golden would produce"
-            assert "capture it" in rows[0]["action"]["label"]
