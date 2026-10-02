@@ -13,9 +13,16 @@
 </div>
 <div class="help-grid">
   {% with current=doc.slug %}{% include "v2/_helpnav.html" %}{% endwith %}
-  <article class="help-body manual">
+  <article class="help-body manual{% if doc.lead %} has-lead{% endif %}">
     <h2 class="manual-title">{{ doc.title }}</h2>
+    {%- if doc.lead %}
+    <div class="manual-cols">
+      <div class="manual-text">{{ doc.html | safe }}</div>
+      <aside class="manual-lead" aria-label="Diagram">{{ doc.lead | safe }}</aside>
+    </div>
+    {%- else %}
     {{ doc.html | safe }}
+    {%- endif %}
   </article>
 </div>
 {% endblock %}

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
 {#- The Devices list (NSOT_GUI_BRIEF 3.3), from modules/device_list.listing():
     a fixed number of reads whatever the list's size. The intent state is the
     device's state AT ITS LAST CAPTURE (its golden commit's Intent-Match), and
@@ -47,7 +47,7 @@
         </tbody>
       </table>
     </div>
-    <p class="dev-actions"><button type="submit" class="btn btn-primary">Plan a deploy for the ticked devices (today's page)…</button>
+    <p class="dev-actions"><button type="submit" class="btn btn-primary" data-op="deploy">Plan a deploy for the ticked devices (today's page)…</button>{{ how('deploy') }}
       <span class="muted">The deploy is planned on today's page until the redesign carries it.</span></p>
   </form>
   {%- endif %}

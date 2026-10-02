@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
 {#- History (NSOT_GUI_BRIEF 3.4; the mockup signed off 2026-10-02): the remote's
     state, then the network's commits, its baselines, and the Oxidized
     divergences people authorised. modules/fleet_history.py: a fixed number of
@@ -67,7 +67,7 @@
         <td>{%- if r.withdrawn %}<span class="muted">no: withdrawn</span>
             {%- elif r.usable %}{{ badge('yes', 'ok') }}
             {%- else %}{{ badge('no', 'warn') }} <span class="muted">it predates a credential change on {{ r.stale | join(', ') }}</span>{% endif %}</td>
-        <td>{% if not r.withdrawn %}<a href="{{ url_for('index') }}">Re-apply (today's page)…</a>{% endif %}</td>
+        <td>{% if not r.withdrawn %}<a data-op="restore" href="{{ url_for('index') }}">Re-apply (today's page)…</a>{{ how('restore', compact=True, op='re-apply') }}{% endif %}</td>
       </tr>
     {%- endfor %}
     </tbody></table></div>

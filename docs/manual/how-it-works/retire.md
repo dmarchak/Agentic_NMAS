@@ -1,28 +1,124 @@
 # Retire a device
 
 Retiring takes a device out of management completely, in one recorded act, keeping its
-history. It is the only way a device leaves: deleting a row would leave it half-managed.
+history. It is the only way a device leaves: deleting a row would leave it half-managed and
+destroy the only stored copy of its credential. Retiring sends nothing to the device; it
+changes the tool's own records, and NetBox's stored copy of the device's credentials where
+the tool wrote them.
+
+![Retiring: nothing is sent to the device; the tool masks NetBox's stored credentials first, clears the credential override, declares the lab startup file unmapped, commits the removal of the golden and intent (history keeps both), deletes the legacy file if it survives elsewhere, and deletes the inventory row last, only against a break-glass export holding the current credential.](diagrams/retire.svg)
+
+## How you start it {#start}
+
+On today's Device page, the **Retire…** button (the new device page's Actions menu links
+there). You type a reason and preview; the reason is part of the plan's hash, so a reason
+edited after the preview must be previewed again. Confirming sends that hash back to be
+checked. On the host, `nmas-retire --list <list> --device <device>
+--reason "<why>"` prints the same plan and a hash; `nmas-retire ... --apply <hash> --actor
+<you> --breakglass <file>` carries it out, reading the break-glass passphrase from the
+terminal. Both run the same code.
 
 ## The preview
 
-The preview lists every step and every refusal at once, and what retiring does NOT do:
+The preview reads and writes nothing, and contacts no device. It lists every step (done or
+to do) and every refusal at once, each check drawn as a gate by name, and what retiring does
+NOT do. It refuses when:
 
-- **The credential must be safe to drop.** The latest break-glass export must hold the
-  device's current credential, because after retiring, the tool no longer holds it.
-- **NetBox's stored credentials**: if NetBox holds the device's credential lines and NMAS
-  wrote them, they are masked first and read back; if writes are off, retiring is refused,
-  naming it.
-- **What else still points at it**, each said as read: a heartbeat alert rule, Prometheus
-  still scraping its address.
+- **There is no reason.** It goes into the commit and the history.
+- **The list's inventory is NetBox's.** Retire the device in NetBox instead.
+- **The device is not in the list**, or is **pending onboarding** (use Abandon, which also
+  reverses what onboarding created).
+- **Uncommitted changes** under `host_vars/`, `golden/` or the manifest would ride into the
+  retire commit, or the credential store cannot be checked.
+- **NetBox cannot be read, or holds the device's credentials and cannot be masked.** NetBox
+  is read over its REST API: the device of that exact name and its stored config context.
+  If NetBox is configured and cannot be read, or its context cannot be checked, retiring is
+  refused ("could not read" is not "nothing there"). If the context holds an unmasked
+  credential and the tool's modification record shows the tool wrote that context, the
+  credential is masked as the first step; if NetBox writes are off, retiring is refused,
+  naming `nmas-netbox-mask-context` as the other way to mask it. If the tool did NOT write
+  that context, it cannot mask it: retiring proceeds, says so, and a Needs attention row
+  stays until someone removes it in NetBox.
+- **The credential is not safe to drop.** Deleting the inventory row removes the only stored
+  copy of the device's credential. The Device page reads the break-glass EXPORT LOG on the
+  host: the newest export of this list must have recorded a digest of this device's current
+  credential (an export taken before the last rotation does not count). Export one first
+  from the [break-glass export](breakglass-export).
+- **Another operation holds the device.**
+
+The preview also reads, and states as read, what still watches the device after it leaves:
+the generated heartbeat rules file (does a Grafana heartbeat rule name it) and Prometheus's
+active targets (is its address still scraped). An advisory says when its golden carries the
+`NMAS-HEARTBEAT` applet, which stays on the device: the tool cannot remove it.
 
 ## The apply
 
-One commit, as you, with your reason: the device's golden and intent removed from the
-current tree (they stay in history), its manifest entry and inventory row removed, its
-credentials dropped, and a `Not-Done:` line for each thing deliberately kept: the NetBox
-record, Oxidized still polling, the startup file frozen.
+The plan is computed again; a different hash refuses with nothing done. Holding the device,
+the steps run in this order, each skipped if already done, so a run that stops part way is
+finished by running it again:
+
+1. **Mask NetBox's stored credentials** (`netbox_mask`). Read: NetBox's device and its
+   stored config context (REST API). Sent: nothing to the device; to NetBox, the context
+   rewritten with the import's own masking. Recorded: the write in the tool's NetBox
+   modification record, as you, with the plan's hash as its authority; then read back. Only
+   when the preview made it a step. First, so a failed mask stops the retirement with
+   nothing else done: once the device leaves, no import reaches it again.
+2. **Clear the credential override** (`override`). Read: the credential store. Sent:
+   nothing. Recorded: the device's override removed from the credential store, if it had
+   one.
+3. **Declare its lab startup file unmapped** (`declare`) (lab integration). Read: the
+   settings. Sent: nothing. Recorded: a setting naming the device's startup file as
+   deliberately unmapped, with the lab, your reason, you and the time. The lab's sync runs on
+   the lab host and asks the tool over HTTP for its map of devices to startup files; once
+   the device has left the manifest it is not in that map, so its startup file is no longer
+   written, and the map's answer carries the declaration, which the sync's reconcile reports
+   for the leftover file instead of a gap. Without a lab nothing reads it.
+4. **One commit** (`commit`). Read: the repository. Sent: nothing. Recorded: `git rm` of the
+   device's `host_vars/<device>.yml` and `golden/<device>.cfg`, its identity released from
+   the manifest (NetBox kept, said), committed as you with `Retired-Device:`, `Reason:` and
+   one `Not-Done:` trailer per thing deliberately kept. Only those paths are staged. Both
+   files stay in history. The post-commit hooks then push the commit to the remote and, the
+   golden having changed, ask Oxidized to fetch the device (lab integration; it asks and
+   never waits). A failed commit puts the tree back.
+5. **The legacy file** (`legacy`). Read: the deprecated `golden_configs/` store and the
+   repository. Sent: nothing. Recorded: the device's legacy file deleted, only when its
+   content survives in the repository (the migration's verbatim backup or an equivalent
+   committed golden), and the step says where. A file whose lines exist nowhere else is
+   kept and named.
+6. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
+   Recorded: the device's row deleted from the list's inventory. LAST, and only against a
+   break-glass record holding this device's current credential, because the row is the
+   only stored copy. Deleting it also tells the app's Prometheus target keeper the
+   inventory changed, so the generated scrape files drop the device where the app writes
+   them.
+
+Nothing is sent to the device at any step.
+
+## What retiring does not do
+
+Each is correct, and each is named in the commit and on the screen so it is not mistaken
+for an omission:
+
+- The NetBox device is kept: NetBox records what exists, not what the tool manages. If the
+  tool created it, Remove could still delete it, as a separate decision.
+- A template approval is not withdrawn: an approval is of the template, never of its
+  devices.
+- Its Grafana heartbeat rule stays until the rules are regenerated on the host; the hourly
+  check names it EXTRA meanwhile.
+- Prometheus: the preview says what it read for the device's address. (The code's sentence
+  still calls the scrape targets hand-kept, from before the app generated them from the
+  inventory.)
+- Oxidized keeps polling it (lab integration): the tool does not write its device list, so
+  its config history continues.
+- Its lab startup file freezes at its last sync (lab integration).
+- Its running configuration is not changed, and its backups are kept.
+- A session the app has pooled to it is closed by the app's idle reaper within two minutes,
+  not by retiring.
 
 ## Two ways in, two kinds of evidence
 
 The Device page's Retire trusts the break-glass EXPORT LOG, because it cannot reach a file
-on your laptop, and says so. The command on the host (`nmas-retire`) opens the record itself.
+on your laptop, and says so: the log records what an export wrote, and cannot show the file
+still exists or that its passphrase is known. The command on the host (`nmas-retire`) opens
+the record itself, with the passphrase you type, and refuses unless the record holds this
+device's current username and password for this list.

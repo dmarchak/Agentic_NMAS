@@ -32,6 +32,7 @@
   --scrim: rgba(20, 32, 43, 0.4);
   --series-0: #1E5E8C; --series-1: #D97706; --series-2: #0B6B45;
   --series-3: #6B4C9A; --series-4: #4A5260; --series-5: #0E7490;
+  --gold: #8A6A00; --gold-soft: #FBF3DD; --lab: #6B4FA0; --lab-soft: #EFEAF7;
   color-scheme: light;
 }
 
@@ -58,6 +59,7 @@
     --scrim: rgba(0, 0, 0, 0.55);
     --series-0: #5AA2D8; --series-1: #F59E0B; --series-2: #4CC38A;
     --series-3: #A98BD8; --series-4: #A9B3BE; --series-5: #2BB3CF;
+    --gold: #D9B44A; --gold-soft: #2E2610; --lab: #B39DDB; --lab-soft: #2A2240;
     color-scheme: dark;
   }
 }
@@ -77,6 +79,7 @@
   --scrim: rgba(0, 0, 0, 0.55);
   --series-0: #5AA2D8; --series-1: #F59E0B; --series-2: #4CC38A;
   --series-3: #A98BD8; --series-4: #A9B3BE; --series-5: #2BB3CF;
+  --gold: #D9B44A; --gold-soft: #2E2610; --lab: #B39DDB; --lab-soft: #2A2240;
   color-scheme: dark;
 }
 
@@ -400,13 +403,51 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .manual figure.diagram { margin: 14px 0; }
 .manual figure.diagram svg { width: 100%; height: auto; max-width: 720px; }
 .manual figcaption { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+.manual-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; align-items: start; }
+.manual-lead figure.diagram { margin: 0; padding: 14px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-card); }
+.manual-lead figure.diagram svg { max-width: 440px; }
+@media (min-width: 1180px) {
+  .manual.has-lead { max-width: 1240px; }
+  .manual-cols { grid-template-columns: minmax(0, 1fr) 440px; }
+  .manual-lead { position: sticky; top: 16px; order: 2; }
+}
+.help-panel-manual figure.diagram { margin: 0 0 12px; }
+.help-panel-manual figure.diagram svg { max-width: 100%; }
+/* The manual's diagram key (NSOT_GUI_BRIEF 10b): every diagram is drawn from these
+   classes only, by modules/manual_diagrams.py, so they follow the light or dark choice. */
 .dg-box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
-.dg-key { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
-.dg-warn { fill: var(--warn-soft); stroke: var(--warn-mark); stroke-width: 1.5; }
-.dg-text { fill: var(--ink); font-family: var(--sans); font-size: 13px; }
-.dg-small { fill: var(--ink-2); font-family: var(--sans); font-size: 11.5px; }
-.dg-line { stroke: var(--ink-2); stroke-width: 1.5; fill: none; }
-.dg-arrow { fill: var(--ink-2); }
+.dg-dev { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.dg-devoff { fill: var(--surface-2); stroke: var(--ink-3); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.dg-intent { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 1.5; }
+.dg-golden { fill: var(--gold-soft); stroke: var(--gold); stroke-width: 1.5; }
+.dg-repo { fill: var(--surface); stroke: var(--ink-2); stroke-width: 1.5; }
+.dg-store { fill: var(--surface); stroke: var(--ink-2); stroke-width: 1.2; }
+.dg-bar { fill: var(--ink-2); }
+.dg-svc { fill: var(--surface); stroke: var(--ink-2); stroke-width: 1.2; }
+.dg-labf { fill: var(--lab-soft); stroke: var(--lab); stroke-width: 1.4; stroke-dasharray: 5 3; }
+.dg-labtag { fill: var(--lab); }
+.dg-labtx { fill: var(--surface); font-family: var(--sans); font-size: 9px; font-weight: 700; letter-spacing: .06em; }
+.dg-band { fill: var(--surface-2); stroke: var(--line-2); }
+.dg-lane { stroke: var(--line); stroke-dasharray: 3 4; }
+.dg-tx { fill: var(--ink); font-family: var(--sans); font-size: 12.5px; }
+.dg-tb { fill: var(--ink); font-family: var(--sans); font-size: 12.5px; font-weight: 600; }
+.dg-sm { fill: var(--ink-2); font-family: var(--sans); font-size: 11px; }
+.dg-hd { fill: var(--ink-3); font-family: var(--sans); font-size: 10.5px; letter-spacing: .08em; }
+.dg-send { stroke: var(--accent); stroke-width: 2.4; fill: none; }
+.dg-sendh { fill: var(--accent); }
+.dg-read { stroke: var(--ink-2); stroke-width: 1.5; fill: none; stroke-dasharray: 5 3; }
+.dg-readh { fill: none; stroke: var(--ink-2); stroke-width: 1.5; }
+.dg-rec { stroke: var(--ink); stroke-width: 1.5; fill: none; }
+.dg-rech { fill: var(--ink); }
+.dg-undo { stroke: var(--warn-mark); stroke-width: 2.2; fill: none; stroke-dasharray: 6 3; }
+.dg-undoh { fill: var(--warn-mark); }
+.dg-no { fill: var(--surface); stroke: var(--ink-3); stroke-width: 1.6; }
+.dg-nol { stroke: var(--ink-3); stroke-width: 1.6; }
+.dg-num { fill: var(--accent); }
+.dg-numt { fill: var(--on-accent); font-family: var(--sans); font-size: 10.5px; font-weight: 600; }
+.dg-person { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 1.4; }
+.dg-clock { fill: none; stroke: var(--ink-2); stroke-width: 1.4; }
 .info-link { display: inline-flex; vertical-align: middle; color: var(--ink-3); margin-left: 6px; }
 .info-link:hover, .info-link:focus-visible { color: var(--accent); }
 .help-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); background: var(--surface);
@@ -414,7 +455,7 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .help-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line);
   font-weight: 600; }
 .help-panel-body { padding: 14px 18px 24px; overflow-y: auto; }
-.help-panel-page { font-size: 12px; color: var(--ink-2); margin: 0 0 4px; }
+.help-panel-page { font-size: 12px; color: var(--ink-2); margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; }
 .help-panel-more { font-size: 13px; margin-top: 14px; }
 .tab-help { grid-column: 1 / -1; margin: 0 0 -4px; text-align: right; }
 /* History (routes/v2.history_page). */
@@ -552,3 +593,19 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .log-table td { vertical-align: top; }
 /* A stat reading outside its valid range: words, never the number. */
 .stat-measuring { font-size: 14px; color: var(--ink-2); font-weight: 500; }
+
+/* Help's index marks a page whose action or screen is still on today's app (brief 10b). */
+.helpnav-item { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.helpnav-mark { font-size: 10.5px; color: var(--ink-2); background: var(--muted-soft); border-radius: 8px;
+  padding: 0 6px; white-space: nowrap; }
+
+/* "How does this work?" beside an action (brief 10b): the words beside a button, the (i)
+   alone on a menu row or a small control. */
+.how-link { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-size: 12.5px;
+  color: var(--accent); text-decoration: none; vertical-align: middle; white-space: nowrap; }
+.how-link:hover span, .how-link:focus-visible span { text-decoration: underline; }
+.how-link.compact { margin-left: 4px; color: var(--ink-3); }
+.how-link.compact:hover, .how-link.compact:focus-visible { color: var(--accent); }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.menu-row .menu-item { flex-grow: 1; }
+.menu-row .how-link.compact { margin: 0 6px 0 0; }

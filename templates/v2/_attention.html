@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp -%}
+{%- from "v2/_macros.html" import icon, stamp, how -%}
 {#- Needs attention's list: attention.needs_attention(), masked (routes/v2._attention).
     Re-fetched when any reader it draws from announces (nmas_v2.js relays each key). -#}
 {%- set LEVEL_WORDS = {'danger': 'Critical', 'warning': 'Warning', 'unknown': 'Unknown'} -%}
@@ -45,9 +45,9 @@
         <span class="cmd"><code>{{ r.action.command }}</code><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ r.action.command }}" x-on:click="copy" x-text="label">Copy</button></span>
         {%- endif %}
         {%- if r.action.reference %}<span class="muted">({{ r.action.reference }})</span>{% endif %}
-        {%- if r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" href="{{ url_for('v2.update') }}">Update…</a>
-        {%- elif r.action.open == 'profile_apply' %}<a class="btn btn-small btn-outline" href="{{ url_for('v2.profile_apply', device=r.action.device, list=r.action.list) }}">Preview the apply…</a>
-        {%- elif r.action.open == 'profile_propose' %}<a class="btn btn-small btn-outline" href="{{ url_for('index', open='profile_propose', list=r.action.list) }}">Propose on today's page</a>
+        {%- if r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" data-op="update" href="{{ url_for('v2.update') }}">Update…</a>{{ how('update', compact=True, op='the update') }}
+        {%- elif r.action.open == 'profile_apply' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" href="{{ url_for('v2.profile_apply', device=r.action.device, list=r.action.list) }}">Preview the apply…</a>{{ how('monitoring-templates', compact=True, op='the apply') }}
+        {%- elif r.action.open == 'profile_propose' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" href="{{ url_for('index', open='profile_propose', list=r.action.list) }}">Propose on today's page</a>{{ how('monitoring-templates', compact=True, op='the proposal') }}
         {%- elif r.action.open %}<a class="btn btn-small" href="{{ url_for('index') }}">Open on today's page</a>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
       </div>

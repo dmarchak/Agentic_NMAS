@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, stamp -%}
+{%- from "v2/_macros.html" import icon, stamp, how -%}
 {#- Monitoring > Coverage (P.9 (d), NSOT_GUI_BRIEF 14.3). Every cell's state is
     decided by modules/monitoring_coverage.fleet(); this draws it, in words and
     an icon, never colour alone. The answer first: all covered is one line that
@@ -64,12 +64,12 @@
       </table>
     </div>
     {%- if offered %}
-    <p class="cov-actions"><button type="submit" class="btn btn-primary">Preview applying the profile…</button></p>
+    <p class="cov-actions"><button type="submit" class="btn btn-primary" data-op="monitoring-templates">Preview applying the profile…</button>{{ how('monitoring-templates') }}</p>
     {%- endif %}
   </form>
   {%- if c.ip_sla_missing and c.profile.committed %}
   <p class="cov-actions" id="cov-ipsla">IP SLA: {{ c.ip_sla_missing | length }} device(s) run no probe ({{ c.ip_sla_missing | join(', ') }}). Probes are suggested from the profile's policy and sent from their own page, never by the profile's Apply.
-    <a class="btn" href="{{ url_for('v2.ip_sla', list=c.list, device=c.ip_sla_missing) }}">Suggest IP SLA probes for them…</a></p>
+    <a class="btn" data-op="monitoring-templates" href="{{ url_for('v2.ip_sla', list=c.list, device=c.ip_sla_missing) }}">Suggest IP SLA probes for them…</a>{{ how('monitoring-templates', compact=True, op='an IP SLA probe') }}</p>
   {%- endif %}
   {%- endif %}
 </section>

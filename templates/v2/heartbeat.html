@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, info -%}
+{%- from "v2/_macros.html" import icon, badge, info, how -%}
 {#- The heartbeat re-measure (NSOT_PLAN P.7; routes/v2._heartbeat_ctx), reached
     ONLY from the heartbeat check's Needs attention row, never a tab: every
     device's heartbeat window, installed against measured now, with what each
@@ -55,7 +55,7 @@
        data-label="Write the re-measured windows" data-busy="Measuring again and writing…">
     <p>Measured again at the confirm; a measurement that moved since this preview writes nothing. Writing changes no alert until the file is installed on the host, which this page then names.</p>
     {%- if plan.needs %}
-    <button type="button" class="btn btn-primary" id="hb-confirm" x-on:click="post" x-bind:disabled="busy" x-text="label">Write the re-measured windows</button>
+    <button type="button" class="btn btn-primary" id="hb-confirm" data-op="monitoring-templates" x-on:click="post" x-bind:disabled="busy" x-text="label">Write the re-measured windows</button>{{ how('monitoring-templates', 'the-heartbeat') }}
     {%- else %}
     <p class="muted">Nothing to write: a re-measure would move windows by seconds and cost a Grafana restart for nothing.</p>
     {%- endif %}

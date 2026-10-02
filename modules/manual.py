@@ -37,21 +37,33 @@ MANUAL_DIR = os.path.join(ROOT, "docs", "manual")
 
 #: Every page, in the Help navigation's order: (slug, title, group, file).
 #: The slug is the URL (``/v2/help/<slug>``); "about" is the installation page.
+H = "How it works"
 PAGES = (
     ("getting-started", "The model: intent, golden, device", "Getting started", "getting-started.md"),
-    ("deploy", "Deploy a change", "How it works", "how-it-works/deploy.md"),
-    ("capture", "Capture and Save All", "How it works", "how-it-works/capture.md"),
-    ("restore", "Restore and re-apply a baseline", "How it works", "how-it-works/restore.md"),
-    ("removal", "Remove a line (Mode B)", "How it works", "how-it-works/removal.md"),
-    ("rotate", "Rotate a credential", "How it works", "how-it-works/rotate.md"),
-    ("persist", "Persist", "How it works", "how-it-works/persist.md"),
-    ("seed", "Seed intent", "How it works", "how-it-works/seed.md"),
-    ("onboard", "Onboard a device", "How it works", "how-it-works/onboard.md"),
-    ("adopt", "Adopt a device", "How it works", "how-it-works/adopt.md"),
-    ("retire", "Retire a device", "How it works", "how-it-works/retire.md"),
-    ("monitoring-templates", "Apply a monitoring template", "How it works",
-     "how-it-works/monitoring-templates.md"),
-    ("update", "Update the app", "How it works", "how-it-works/update.md"),
+    ("deploy", "Deploy a change", H, "how-it-works/deploy.md"),
+    ("capture", "Capture and Save All", H, "how-it-works/capture.md"),
+    ("restore", "Restore and re-apply a baseline", H, "how-it-works/restore.md"),
+    ("removal", "Remove a line (Mode B)", H, "how-it-works/removal.md"),
+    ("revert-retry", "Revert or retry after a rollback", H, "how-it-works/revert-retry.md"),
+    ("rotate", "Rotate a credential", H, "how-it-works/rotate.md"),
+    ("persist", "Persist", H, "how-it-works/persist.md"),
+    ("seed", "Seed intent", H, "how-it-works/seed.md"),
+    ("bulk-intent", "Edit intent in bulk", H, "how-it-works/bulk-intent.md"),
+    ("onboard", "Onboard a device", H, "how-it-works/onboard.md"),
+    ("adopt", "Adopt a device", H, "how-it-works/adopt.md"),
+    ("retire", "Retire a device", H, "how-it-works/retire.md"),
+    ("drift-check", "Check drift", H, "how-it-works/drift-check.md"),
+    ("approvals", "Approve a queued action", H, "how-it-works/approvals.md"),
+    ("netbox-import", "Import into NetBox, or remove", H, "how-it-works/netbox-import.md"),
+    ("breakglass-export", "Export the break-glass record", H, "how-it-works/breakglass-export.md"),
+    ("publish-remote", "Publish to the remote: push and verify", H, "how-it-works/publish-remote.md"),
+    ("monitoring-templates", "Apply a monitoring template", H, "how-it-works/monitoring-templates.md"),
+    ("update", "Update the app", H, "how-it-works/update.md"),
+    ("drift", "Drift", "Concepts", "concepts/drift.md"),
+    ("baselines", "How a baseline is earned", "Concepts", "concepts/baselines.md"),
+    ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
+    ("credentials-lifecycle", "Credentials: rotate and persist", "Concepts",
+     "concepts/credentials-lifecycle.md"),
     ("needs-attention", "Needs attention", "Screens", "screens/needs-attention.md"),
     ("devices", "Devices", "Screens", "screens/devices.md"),
     ("device-page", "The device page", "Screens", "screens/device-page.md"),
@@ -62,10 +74,23 @@ PAGES = (
     ("templates", "Templates", "Screens", "screens/templates.md"),
     ("netbox", "NetBox", "Screens", "screens/netbox.md"),
     ("credentials", "Credentials", "Screens", "screens/credentials.md"),
+    ("approvals-screen", "Approvals", "Screens", "screens/approvals.md"),
+    ("backups", "Backups", "Screens", "screens/backups.md"),
     ("settings", "Settings", "Screens", "screens/settings.md"),
     ("help", "Help", "Screens", "screens/help.md"),
 )
-GROUPS = ("Getting started", "How it works", "Screens")
+GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
+
+#: Pages whose action or screen is still on TODAY'S app (the redesign has not carried it
+#: yet). Help's index marks each, so a person knows where to go (the operator, 2026-10-02:
+#: onboarding's page existed and nothing said its action lived on today's app). A page
+#: leaves this set in the commit that builds its screen in v2.
+ON_TODAYS_APP = frozenset((
+    "deploy", "capture", "restore", "removal", "revert-retry", "rotate", "persist", "seed",
+    "bulk-intent", "onboard", "adopt", "retire", "drift-check", "approvals", "netbox-import",
+    "breakglass-export", "logs", "dhcp", "templates", "netbox", "credentials",
+    "approvals-screen", "backups", "settings",
+))
 
 #: Every sidebar destination (its label in ``templates/v2/base.html``) and the
 #: Screens page it opens.
@@ -131,8 +156,9 @@ def page(slug: str) -> dict:
 
 
 def nav() -> list:
-    """The Help navigation: ``[{"group", "pages": [{"slug", "title"}]}]``."""
-    return [{"group": g, "pages": [{"slug": s, "title": t} for s, t, gg, _f in PAGES if gg == g]}
+    """The Help navigation: ``[{"group", "pages": [{"slug", "title", "todays_app"}]}]``."""
+    return [{"group": g, "pages": [{"slug": s, "title": t, "todays_app": s in ON_TODAYS_APP}
+                                   for s, t, gg, _f in PAGES if gg == g]}
             for g in GROUPS]
 
 
@@ -212,14 +238,19 @@ def diagram(name: str) -> str:
         text = fh.read()
     if re.search(r"<script|\son[a-z]+=|style=|javascript:", text, re.I):
         raise ManualError(f"diagrams/{name}.svg carries script or inline style")
-    return text[text.index("<svg"):]
+    # The file is a standalone SVG (with its namespace); inline it without one.
+    return text[text.index("<svg"):].replace(' xmlns="http://www.w3.org/2000/svg"', "", 1)
 
 
 def render(text: str) -> dict:
-    """``{"html", "title", "anchors", "links", "sections"}``. *sections* maps
-    each anchor (an ``##`` heading) to its own HTML, for the side panel."""
+    """``{"html", "title", "anchors", "links", "sections", "lead", "diagrams"}``.
+    *sections* maps each anchor (an ``##`` heading) to its own HTML, for the side
+    panel. *lead* is the page's first diagram when it comes before any section
+    (the brief 10b: drawn first in the panel, and beside the text on the page);
+    *diagrams* names every diagram the page draws."""
     lines = text.splitlines()
-    blocks, anchors, links = [], [], []
+    blocks, anchors, links, drawn = [], [], [], []
+    lead = ""
     title = ""
     current = None          # (anchor, [html]) of the open ## section
     sections = {}
@@ -293,8 +324,14 @@ def render(text: str) -> dict:
             flush_para()
             flush_list()
             desc, name = d.groups()
-            emit(f'<figure class="diagram">{diagram(name)}<figcaption>{_inline(desc, links)}'
-                 "</figcaption></figure>")
+            fig = (f'<figure class="diagram">{diagram(name)}<figcaption>'
+                   f'<strong>The diagram in words.</strong> {_inline(desc, links)}'
+                   "</figcaption></figure>")
+            drawn.append(name)
+            if current is None and not lead:
+                lead = fig
+            else:
+                emit(fig)
             i += 1
             continue
         b = _BULLET.match(line)
@@ -321,6 +358,7 @@ def render(text: str) -> dict:
     flush_para()
     flush_list()
     return {"html": "\n".join(blocks), "title": title, "anchors": anchors, "links": links,
+            "lead": lead, "diagrams": drawn,
             "sections": {a: "\n".join(h for h in body) for a, (_a, body) in sections.items()}}
 
 
@@ -337,8 +375,9 @@ def section(slug: str, anchor: str = "") -> dict:
     or the whole page when no anchor is given. An unknown anchor raises."""
     out = load(slug)
     if not anchor:
-        return {"slug": slug, "title": out["title"], "html": out["html"], "anchor": ""}
+        return {"slug": slug, "title": out["title"], "html": out["html"], "anchor": "",
+                "lead": out["lead"]}
     if anchor not in out["sections"]:
         raise ManualError(f"the manual page {slug!r} has no section {anchor!r}")
     return {"slug": slug, "title": out["title"], "html": out["sections"][anchor],
-            "anchor": anchor}
+            "anchor": anchor, "lead": out["lead"]}

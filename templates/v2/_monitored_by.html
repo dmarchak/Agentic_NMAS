@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon -%}
+{%- from "v2/_macros.html" import icon, how -%}
 {#- What a device is monitored by (P.9 step d3; NSOT_GUI_BRIEF 14.3): each
     integration the network uses, read from the device's committed golden by
     monitoring_coverage.fleet() (Coverage's own cells), in words and an icon;
@@ -20,7 +20,7 @@
     {%- endfor %}
   </ul>
   {%- if r.supplies and r.selectable %}
-  <p class="mb-action"><a class="btn btn-primary" href="{{ url_for('v2.profile_apply', list=mb.list, device=dev_name) }}">Apply monitoring profile…</a>
+  <p class="mb-action"><a class="btn btn-primary" data-op="monitoring-templates" href="{{ url_for('v2.profile_apply', list=mb.list, device=dev_name) }}">Apply monitoring profile…</a>{{ how('monitoring-templates') }}
     <span class="muted">The network's monitoring profile supplies what {{ dev_name }} lacks; the preview shows exactly what would be sent.</span></p>
   {%- elif r.gaps and not r.selectable %}
   <p class="muted">The profile cannot be applied here: {{ r.why_not }}.</p>

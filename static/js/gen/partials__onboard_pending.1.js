@@ -111,7 +111,8 @@ function pendingBannerHtml(data) {
 
   return `<div class="alert ${tone} py-2 px-3 mb-0">
     <div class="fw-semibold mb-1">${rows.length} device(s) onboarded and not
-      yet reached</div>
+      yet reached <a class="fw-normal small ms-2" href="/v2/help/onboard" target="_blank"
+        rel="noopener" data-manual="onboard">&#9432; How does this work?</a></div>
     <div class="small mb-1"><strong>Config</strong> re-renders the file the
       node boots with, from the staged credential — it is available only
       until that credential is rotated, because after rotation the device

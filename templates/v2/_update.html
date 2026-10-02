@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, check_again -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, check_again, how -%}
 {#- The Update operation (modules/update_op.py): the last outcome, the preview
     in its parts, and the confirm, which then waits on /health. Re-fetched when
     the `app-pushed` reader announces. -#}
@@ -98,11 +98,11 @@
     {#- Every stage visible: the button says it is sending, a refusal is shown
         with its reason, and once accepted the stepper follows the updater's own
         steps (its record names the step it is on). -#}
-    <button type="button" class="btn btn-primary" id="update-confirm" x-on:click="confirm"
-            x-bind:disabled="blocked" x-show="showButton" x-text="buttonText">Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}</button>
+    <button type="button" class="btn btn-primary" id="update-confirm" data-op="update" x-on:click="confirm"
+            x-bind:disabled="blocked" x-show="showButton" x-text="buttonText">Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}</button>{{ how('update') }}
     <p class="wait" id="update-waiting" x-show="waiting" x-cloak x-text="words" role="status" aria-live="polite"></p>
-    <button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak x-on:click="stopWaiting"
-            x-bind:disabled="stopping" x-text="stopText">Stop waiting</button>
+    <button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak data-op="update" x-on:click="stopWaiting"
+            x-bind:disabled="stopping" x-text="stopText">Stop waiting</button>{{ how('update', 'update-when-ci-passes', compact=True, op='waiting for CI') }}
     <div class="notice notice-danger" x-show="refused" x-cloak role="alert"><p x-text="refusal"></p></div>
     <ol class="stepper" data-stepper x-show="running" x-cloak aria-label="Update progress">
       {%- for key, words in steps %}
@@ -124,7 +124,7 @@
     {%- for s in owed.steps %}<li data-step-id="{{ s.id }}">{{ s.step }} <span class="muted">· {% if s.check_state == 'not_checkable' %}nothing can check it: say when it is done{% else %}checked: {{ s.check_detail }}{% endif %} <span class="mono">({% for x in s.shas or [s.sha] %}{{ x[:10] }}{{ ", " if not loop.last }}{% endfor %})</span></span>
       {%- if s.check_state == 'not_checkable' %}
       <span x-data="stepDone" data-url="{{ url_for('update.step_done') }}" data-sha="{{ s.sha }}" data-step="{{ s.step }}">
-        <button type="button" class="btn btn-sm" x-on:click="say" x-bind:disabled="busy" x-text="label">It is done</button>
+        <button type="button" class="btn btn-sm" data-op="update" x-on:click="say" x-bind:disabled="busy" x-text="label">It is done</button>{{ how('update', 'the-preview', compact=True, op='a host step') }}
         <span class="muted" x-show="said" x-text="said" x-cloak></span>
       </span>
       {%- endif %}</li>{% endfor %}

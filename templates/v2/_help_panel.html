@@ -1,9 +1,11 @@
 {#- One manual section for the side help panel (NSOT_GUI_BRIEF 10a): the same
     file the Help page renders, sliced at the section the info link names. -#}
 {%- if sec %}
-<p class="help-panel-page">{{ sec.title }}</p>
-<div class="manual">{{ sec.html | safe }}</div>
-<p class="help-panel-more"><a href="{{ url_for('v2.help_page', slug=sec.slug) }}{{ '#' ~ sec.anchor if sec.anchor }}">Open in Help</a></p>
+{%- set open_url = url_for('v2.help_page', slug=sec.slug) ~ ('#' ~ sec.anchor if sec.anchor else '') %}
+<p class="help-panel-page"><span>{{ sec.title }}</span> <a href="{{ open_url }}">Open in the manual</a></p>
+{#- The brief 10b, as signed off: the diagram first, then the steps. -#}
+<div class="manual help-panel-manual">{{ sec.lead | safe }}{{ sec.html | safe }}</div>
+<p class="help-panel-more"><a href="{{ open_url }}">Open in the manual</a> <span class="muted">This panel and the manual are one page.</span></p>
 {%- else %}
 <p class="muted">This help link names a section the manual does not have ({{ error }}). The manual's own check refuses that, so this is a defect to report.</p>
 {%- endif %}

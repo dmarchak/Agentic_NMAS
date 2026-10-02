@@ -35,7 +35,7 @@ A deploy ADDS the lines intent has and the device lacks, and changes nothing els
 device has and intent lacks is reported as residue and left in place. Removing a line is its
 own operation, chosen line by line (see [Remove a line (Mode B)](removal)).
 
-![Merge versus replace: a merge sends only the lines intent has and the device lacks, and leaves the device's other lines in place; a replace would remove every line intent does not name, which NMAS never does.](diagrams/merge-vs-replace.svg)
+![Merge versus replace: a merge sends only the lines intent has and the device lacks, and leaves the device's other lines in place; a replace would remove every line intent does not name, which NMAS never does.](diagrams/merge-and-mode-b.svg)
 
 ## Preview, confirm, result
 
@@ -55,7 +55,7 @@ A baseline tag (`baseline/<time>`) names one commit at which every device's gold
 intent were recorded, and says what that moment EARNED: whether every device was measured at
 its committed intent.
 
-![What a baseline contains: one commit holding every device's golden and every device's intent, named by the tag baseline/<time>, with what it earned recorded on the commit.](diagrams/baseline-contents.svg)
+![What a baseline contains: one commit holding every device's golden and every device's intent, named by the tag baseline/<time>, with what it earned recorded on the commit.](diagrams/baselines.svg)
 
 Re-applying a baseline sends each device what it lacks from that moment (see
 [Restore and re-apply a baseline](restore)). Credentials are always the ones held NOW:

@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
 {%- set active_nav = 'devices' -%}
 {#- A pending device's page (NSOT_GUI_BRIEF 3.3): onboarded (phase 1: its
     commit and its staged credential) and not yet reached, so it is in no
@@ -29,7 +29,7 @@
     <div><dt>Address source</dt><dd>{{ p.address_source }}{% if p.mgmt_mac %} <span class="muted mono">· {{ p.mgmt_mac }}</span>{% endif %}</dd></div>
     <div><dt>Next</dt><dd>Boot it with its bootstrap config, then Verify: reaching it is the verification, and only then is it rotated, captured and added to the inventory.</dd></div>
   </dl>
-  <p class="dev-actions"><a class="btn btn-primary" href="{{ url_for('index') }}">Verify, Abandon or get the bootstrap config (today's page)…</a>
+  <p class="dev-actions"><a class="btn btn-primary" data-op="onboard" href="{{ url_for('index') }}">Verify, Abandon or get the bootstrap config (today's page)…</a>{{ how('onboard', 'phase-two-verify') }}
     <span class="muted">The pending banner on today's page carries all three until the redesign does.</span></p>
 </section>
 {% endblock %}

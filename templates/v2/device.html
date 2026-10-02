@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, info -%}
+{%- from "v2/_macros.html" import icon, badge, info, how -%}
 {%- set active_nav = 'devices' -%}
 {% block title %}{{ device.hostname }} · NMAS{% endblock %}
 {% block main %}
@@ -13,16 +13,16 @@
     <p class="sub"><span title="{{ ('from ' ~ hw.model_from ~ (', commit ' ~ hw.model_commit if hw.model_commit else '')) if hw.model else hw.model_from }}">{{ hw.model or 'model not recorded' }}</span> · <span title="from {{ hw.platform_from or 'nowhere: no platform recorded' }}">{{ hw.platform or 'platform not recorded' }}</span> · <span class="mono">{{ device.ip }}</span> · signs in as <span class="mono">{{ device.username or '?' }}</span> · network {{ list_name }}</p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-primary" href="{{ url_for('manage_device', ip=device.ip) }}">Plan a deploy…</a>
+    <a class="btn btn-primary" data-op="deploy" href="{{ url_for('manage_device', ip=device.ip) }}">Plan a deploy…</a>{{ how('deploy') }}
     <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="btn btn-outline" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
       <div class="menu" role="menu" x-show="isOpen" x-cloak>
         <p class="menu-note">These open on today's device page, where they are built.</p>
-        {% for label in ['Capture now…', 'Persist…', 'Rotate the credential…', 'Seed intent…', 'Restore from…'] %}
-        <a role="menuitem" class="menu-item" href="{{ url_for('manage_device', ip=device.ip) }}">{{ label }}</a>
+        {% for label, op, words in [('Capture now…', 'capture', 'capture'), ('Persist…', 'persist', 'persist'), ('Rotate the credential…', 'rotate', 'rotation'), ('Seed intent…', 'seed', 'seeding'), ('Restore from…', 'restore', 'restore')] %}
+        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('manage_device', ip=device.ip) }}">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
         {% endfor %}
         <div class="menu-rule"></div>
-        <a role="menuitem" class="menu-item danger" href="{{ url_for('manage_device', ip=device.ip) }}">Retire…</a>
+        <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('manage_device', ip=device.ip) }}">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
       </div>
     </div>
   </div>

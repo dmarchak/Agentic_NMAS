@@ -4,7 +4,7 @@
   {%- for g in nav %}
   <p class="helpnav-head">{{ g.group }}</p>
   {%- for p in g.pages %}
-  <a class="helpnav-item{% if p.slug == current %} on{% endif %}" href="{{ url_for('v2.help_page', slug=p.slug) }}"{% if p.slug == current %} aria-current="page"{% endif %}>{{ p.title }}</a>
+  <a class="helpnav-item{% if p.slug == current %} on{% endif %}" href="{{ url_for('v2.help_page', slug=p.slug) }}"{% if p.slug == current %} aria-current="page"{% endif %}><span>{{ p.title }}</span>{% if p.todays_app %}<span class="helpnav-mark" title="Its action or screen is on today's app until the redesign carries it; this page opens from there too.">today's app</span>{% endif %}</a>
   {%- endfor %}
   {%- endfor %}
   <p class="helpnav-head">About</p>

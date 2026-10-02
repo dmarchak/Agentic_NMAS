@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, info -%}
+{%- from "v2/_macros.html" import icon, info, how -%}
 {% block title %}Devices · NMAS{% endblock %}
 {% block main %}
 <div class="page-head">
@@ -8,7 +8,7 @@
     <p class="sub">{{ list_name }}: each device's status, address, platform and intent state, read from what the app already keeps.</p>
   </div>
   <div class="page-actions">
-    <a class="btn" href="{{ url_for('index') }}">Add device (today's page)…</a>
+    <a class="btn" data-op="onboard" href="{{ url_for('index') }}">Add device (today's page)…</a>{{ how('onboard') }}
   </div>
 </div>
 <form class="dev-filters" hx-get="{{ url_for('v2.devices_table') }}" hx-target="#devices" hx-swap="outerHTML"

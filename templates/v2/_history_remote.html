@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
 {#- History's header: the remote's one sentence (remote_publication.describe,
     never composed here), what is uncommitted, and Push now and Verify, each
     busy on itself. Redrawn when the remote is re-read. -#}
@@ -17,12 +17,12 @@
     {%- if remote.d.state not in ('no_remote', 'not_read') %}
     <div class="hist-remote-actions">
       <span x-data="remotePost" data-kind="verify" data-url="{{ url_for('remote.verify') }}" data-label="Verify the remote" data-busy="Verifying…">
-        <button type="button" class="btn" x-on:click="go" x-bind:disabled="busy" x-text="label">Verify the remote</button>
+        <button type="button" class="btn" data-op="publish-remote" x-on:click="go" x-bind:disabled="busy" x-text="label">Verify the remote</button>{{ how('publish-remote', 'verify', compact=True, op='verifying the remote') }}
         <span x-bind:class="saidClass" x-text="said"></span>
       </span>
       {%- if remote.d.state in ('ahead', 'held', 'tags_not_pushed', 'no_branch') %}
       <span x-data="remotePost" data-kind="push" data-url="{{ url_for('remote.push') }}" data-label="Push now" data-busy="Pushing…">
-        <button type="button" class="btn btn-primary" x-on:click="go" x-bind:disabled="busy" x-text="label">Push now</button>
+        <button type="button" class="btn btn-primary" data-op="publish-remote" x-on:click="go" x-bind:disabled="busy" x-text="label">Push now</button>{{ how('publish-remote') }}
         <span x-bind:class="saidClass" x-text="said"></span>
       </span>
       {%- endif %}

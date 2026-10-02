@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Write the manual's diagrams from modules/manual_diagrams.py (NSOT_GUI_BRIEF 10b).
+
+Every file in docs/manual/diagrams/ is generated: run this after changing a diagram, then
+commit both. `--check` writes nothing and exits 1 naming each file that differs from what
+the module draws (tests/test_manual.py runs the same comparison), and names any SVG in the
+folder the module does not draw.
+"""
+import argparse
+import os
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def main() -> int:
+    from modules import manual_diagrams as D
+    from modules.manual import MANUAL_DIR
+
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--check", action="store_true", help="compare only; write nothing")
+    args = ap.parse_args()
+    folder = os.path.join(MANUAL_DIR, "diagrams")
+    os.makedirs(folder, exist_ok=True)
+    differ = []
+    for name in sorted(D.DIAGRAMS):
+        path = os.path.join(folder, f"{name}.svg")
+        text = D.draw(name)
+        current = open(path, encoding="utf-8").read() if os.path.isfile(path) else None
+        if current == text:
+            continue
+        differ.append(name)
+        if not args.check:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(text)
+            print(f"wrote diagrams/{name}.svg")
+    strays = sorted(f for f in os.listdir(folder)
+                    if f.endswith(".svg") and f[:-4] not in D.DIAGRAMS)
+    for f in strays:
+        print(f"diagrams/{f} is not drawn by modules/manual_diagrams.py: remove it or add it there")
+    if args.check:
+        for name in differ:
+            print(f"diagrams/{name}.svg differs from what the module draws")
+        return 1 if (differ or strays) else 0
+    if not differ:
+        print("every diagram is current")
+    return 1 if strays else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

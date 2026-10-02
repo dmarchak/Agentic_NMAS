@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, info -%}
+{%- from "v2/_macros.html" import icon, badge, info, how -%}
 {#- IP SLA probes (P.9 d4, the ADD path; routes/v2._ip_sla_ctx), reached from
     Coverage's IP SLA cells until it folds into the profile's proposal: the
     profile's policy, then the probes it suggests for the devices chosen on
@@ -41,7 +41,7 @@
       <input type="number" name="frequency" min="10" max="3600" value="{{ policy.section.frequency or default_frequency }}"> seconds
     </label>
     <p class="muted">One probe every 10 s cost s3 about 12% of its CPU (measured, 2026-10-01); the default is every {{ default_frequency }} s. The policy is committed to the profile as you; it adds no probe by itself.</p>
-    <button type="button" class="btn" x-on:click="post" x-bind:disabled="busy" x-text="label">{{ 'Change the policy' if policy.words else 'Set the policy' }}</button>
+    <button type="button" class="btn" data-op="monitoring-templates" x-on:click="post" x-bind:disabled="busy" x-text="label">{{ 'Change the policy' if policy.words else 'Set the policy' }}</button>{{ how('monitoring-templates') }}
     <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
   </div>
   {%- endif %}
@@ -76,7 +76,7 @@ ip sla schedule {{ s.schedule }}</pre>
     </fieldset>
     {%- endfor %}
     <p class="muted">Nothing is sent from here: the commit records the probes in each device's intent as you, and the next page previews the exact program for each device before anything reaches it.</p>
-    <button type="button" class="btn btn-primary" id="ipsla-commit" x-on:click="post" x-bind:disabled="busy" x-text="label">Commit the ticked probes to intent, then preview sending them</button>
+    <button type="button" class="btn btn-primary" id="ipsla-commit" data-op="monitoring-templates" x-on:click="post" x-bind:disabled="busy" x-text="label">Commit the ticked probes to intent, then preview sending them</button>{{ how('monitoring-templates') }}
     <p class="apply-refused" x-show="hasError" x-text="error" x-cloak></p>
   </div>
   {%- else %}

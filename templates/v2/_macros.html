@@ -42,6 +42,15 @@
 <a class="info-link" href="{{ url_for('v2.help_page', slug=slug) }}{{ '#' ~ section if section }}" hx-get="{{ url_for('v2.help_panel', slug=slug, section=section) if section else url_for('v2.help_panel', slug=slug) }}" hx-target="#help-panel-body" hx-swap="innerHTML" x-on:click="openHelp" title="{{ label }}" aria-label="{{ label }}" data-manual="{{ slug }}{{ '#' ~ section if section }}">{{ icon('info', 16) }}</a>
 {%- endmacro %}
 
+{#- "How does this work?" beside an ACTION (NSOT_GUI_BRIEF 10b, signed off 2026-10-02): the
+    words beside a button, or the (i) alone on a menu row (compact), its accessible name saying
+    which operation. It is placed right after the control it explains, which carries
+    data-op="<the same page>"; tests/test_manual.py holds every action to that. -#}
+{% macro how(slug, section='', compact=False, op='') -%}
+{%- set words = 'How does ' ~ op ~ ' work?' if op else 'How does this work?' -%}
+<a class="how-link{{ ' compact' if compact }}" href="{{ url_for('v2.help_page', slug=slug) }}{{ '#' ~ section if section }}" hx-get="{{ url_for('v2.help_panel', slug=slug, section=section) if section else url_for('v2.help_panel', slug=slug) }}" hx-target="#help-panel-body" hx-swap="innerHTML" x-on:click="openHelp" data-manual="{{ slug }}{{ '#' ~ section if section }}"{% if compact %} title="How does this work?" aria-label="{{ words }}"{% endif %}>{{ icon('info', 15) }}{% if not compact %}<span>{{ words }}</span>{% endif %}</a>
+{%- endmacro %}
+
 {% macro stamp(iso, words='', note='') -%}
 {%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or iso }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}
