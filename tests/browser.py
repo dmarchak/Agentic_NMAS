@@ -140,7 +140,11 @@ def close_socketio_sessions() -> int:
 class Browser:
     """One headless Firefox session; stopped on exit, geckodriver with it."""
 
-    def __init__(self):
+    def __init__(self, prefs: dict = None):
+        """*prefs* are Firefox preferences for the session: a phone's width is
+        `{"layout.css.devPixelsPerPx": "2.0"}` in a window twice as wide, because
+        geckodriver will not make a window narrower than about 500 px."""
+        self.prefs = dict(prefs or {})
         self.port = free_port()
         # The profile geckodriver writes must be readable by Firefox: snap
         # Firefox has a PRIVATE /tmp, so a profile in the host's /tmp is
@@ -171,7 +175,7 @@ class Browser:
                     raise
                 time.sleep(0.2)
         self.session = self._call("POST", "/session", {"capabilities": {"alwaysMatch": {
-            "moz:firefoxOptions": {"args": ["-headless"]}}}})["sessionId"]
+            "moz:firefoxOptions": {"args": ["-headless"], "prefs": self.prefs}}}})["sessionId"]
         return self
 
     def go(self, url: str) -> None:

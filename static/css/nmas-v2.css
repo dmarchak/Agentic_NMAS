@@ -286,6 +286,16 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line-2); vertical-align: top; overflow-wrap: anywhere; }
 .table-wrap { overflow-x: auto; scrollbar-color: var(--line) transparent; }
 .u-legend { display: none; }
+/* The bar never runs past its width, at any width (the operator, 2026-10-02, on a real phone;
+   measured past the edge at 1024 px too, "Not identified" pushing the avatar off): the search
+   box, the status and the name give way, in that order of room, and the avatar stays. */
+.topbar > * { flex-shrink: 0; }
+.topbar > .jump { flex-shrink: 1; min-width: 60px; }
+.topbar > .strip { flex-shrink: 1; min-width: 0; overflow: hidden; }
+.strip-item { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.topbar > .who { flex-shrink: 1; min-width: 28px; }
+.who-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .avatar { flex-shrink: 0; }
 
 /* ---- phone: a drawer, one column, a thumb-sized bar ---- */
 @media (max-width: 860px) {
@@ -298,7 +308,7 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   .topbar { padding: 0 12px; gap: 10px; height: 52px; background: var(--side); color: #FFF; border-bottom: none; }
   .net-label, .who-name, .live-word, .jump kbd { display: none; }
   .net { color: #FFF; }
-  .jump { width: auto; flex: 1 1 auto; background: var(--side-on); border-color: var(--side-on); color: var(--side-ink); }
+  .jump { width: auto; flex: 1 1 0; min-width: 0; background: var(--side-on); border-color: var(--side-on); color: var(--side-ink); }
   .jump input { color: #FFF; }
   .topbar > .grow { display: none; }
   .strip { color: var(--side-ink); }
@@ -315,12 +325,11 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   .menu-wide { width: calc(100vw - 32px); }
   h1 { font-size: 22px; }
 }
-@media (max-width: 480px) {
-  .strip-item { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; }
-  .who { display: none; }
-  /* The jump box gives way first: it had no floor below its 300 px, so the status ran off. */
-  .jump { min-width: 0; flex: 1 1 0; }
-  .topbar .strip { min-width: 0; overflow: hidden; }
+@media (max-width: 640px) {
+  /* The status is its icon alone, its words on hover; a long network name is cut. */
+  .strip-words { display: none; }
+  .net { max-width: 28vw; overflow: hidden; text-overflow: ellipsis; }
+  .topbar { gap: 8px; }
 }
 /* A selector never wider than its row: a long dashboard title is cut with an ellipsis,
    its whole name on hover (2026-10-02, the phone ran it off the screen). */
@@ -507,6 +516,8 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .hist-meta { display: contents; }
 .hist-when { white-space: nowrap; }
 .hist-what, .hist-who, .hist-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* No cell of a one-line row can push past the row's edge, whatever it holds. */
+.hist-sum > *, .hist-meta > * { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .hist-row > .hist-detail { padding: 0 0 10px 26px; }
 @media (max-width: 640px) {
   .hist-head { display: none; }

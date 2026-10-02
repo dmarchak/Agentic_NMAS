@@ -44,7 +44,7 @@
 {% include "v2/_history_commits.html" %}
 {%- elif tab == 'baselines' %}
 <p class="tab-help">{{ info('history', 'baselines', 'About baselines') }}</p>
-<section class="card" id="hist-baselines" hx-get="{{ url_for('v2.history_page', tab='baselines') }}" hx-select="#hist-baselines" hx-trigger="nmas:baselines from:body" hx-swap="outerHTML">
+<section class="card" id="hist-baselines" hx-disinherit="*" hx-get="{{ url_for('v2.history_page', tab='baselines') }}" hx-select="#hist-baselines" hx-trigger="nmas:baselines from:body" hx-swap="outerHTML">
   {%- if b.error %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>The baselines could not be judged: {{ b.error }}. Not the same as there being none.</p></div>
   {%- elif not b.baselines and b_at %}

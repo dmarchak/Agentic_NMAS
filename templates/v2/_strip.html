@@ -1,4 +1,4 @@
 {%- from "v2/_macros.html" import icon -%}
-{%- if not read %}<span class="strip-item muted" title="{{ why }}">{{ icon('dot', 14) }}Integrations not probed yet</span>
-{%- elif down %}<span class="strip-item warn" title="{% for r in down %}{{ r.label }}: {{ r.message }}&#10;{% endfor %}">{{ icon('warn', 14) }}Integrations {{ rows|length - down|length }} of {{ rows|length }} · {{ down|map(attribute='label')|join(', ') }} down</span>
-{%- else %}<span class="strip-item ok" title="probed {{ value_at }}">{{ icon('check', 14) }}Integrations {{ rows|length }} of {{ rows|length }}</span>{% endif -%}
+{%- if not read %}<span class="strip-item muted" title="Integrations not probed yet: {{ why }}">{{ icon('dot', 14) }}<span class="strip-words">Integrations not probed yet</span></span>
+{%- elif down %}<span class="strip-item warn" title="Integrations {{ rows|length - down|length }} of {{ rows|length }}&#10;{% for r in down %}{{ r.label }}: {{ r.message }}&#10;{% endfor %}">{{ icon('warn', 14) }}<span class="strip-words">Integrations {{ rows|length - down|length }} of {{ rows|length }} · {{ down|map(attribute='label')|join(', ') }} down</span></span>
+{%- else %}<span class="strip-item ok" title="Integrations {{ rows|length }} of {{ rows|length }}, probed {{ value_at }}">{{ icon('check', 14) }}<span class="strip-words">Integrations {{ rows|length }} of {{ rows|length }}</span></span>{% endif -%}
