@@ -201,3 +201,23 @@ def test_the_command_sent_is_the_declared_one():
     from modules import restarts
     src = open(restarts.__file__, encoding="utf-8").read()
     assert f'"{restarts.REASON_COMMAND}"' in src
+
+
+class TestTheCommand:
+    def _main(self):
+        from importlib.machinery import SourceFileLoader
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts",
+                            "nmas-planned-restart")
+        return SourceFileLoader("nmas_planned_restart", path).load_module().main
+
+    def test_a_past_window_is_recorded_from_its_start(self, store):
+        from modules.restarts import _read_jsonl, _data
+        assert self._main()(["Lab", "*", "--from", "2026-10-01T15:20Z", "--minutes", "110",
+                             "--why", "the lab redeploy", "--by", "operator@example.com"]) == 0
+        row = _read_jsonl(_data("planned_restarts.jsonl"))["rows"][0]
+        assert row["from"] == "2026-10-01T15:20:00Z" and row["until"] == "2026-10-01T17:10:00Z"
+        assert row["devices"] == ["*"] and row["via"] == "nmas-planned-restart"
+
+    def test_a_time_that_is_not_one_is_refused(self, store):
+        assert self._main()(["Lab", "s3", "--from", "yesterday", "--minutes", "5",
+                             "--why", "a hand reload"]) == 1

@@ -3,10 +3,12 @@
 
     nmas-planned-restart <list> <device>... --minutes 30 --why "redeploying the lab"
     nmas-planned-restart <list> '*' --minutes 45 --why "lab redeploy" --by <operator>
+    nmas-planned-restart <list> '*' --from 2026-10-01T15:20Z --minutes 110 --why "..."
 
 The restarts reader (modules/readers/restarts.py) calls a restart UNPLANNED unless the tool
 performed it or was told beforehand; this is the telling, for a redeploy or a hand reload.
-The window starts now and lasts --minutes; a restart up to 15 minutes after its end is still
+The window starts now (or at --from, a UTC time, to record a planned restart that already
+happened, before the restarts reader first reads it) and lasts --minutes; a restart up to 15 minutes after its end is still
 the plan's (a boot takes minutes). `*` covers every device of the list. The record
 (planned_restarts.jsonl, 0600) names who (the login on this host unless --by names the
 person), why, and that it came from this command. Nothing else is written, and no device is
@@ -33,12 +35,21 @@ def main(argv=None) -> int:
     ap.add_argument("--minutes", type=int, required=True, help="how long the window lasts")
     ap.add_argument("--why", default="", help="why, as a sentence")
     ap.add_argument("--by", default="", help="the person (default: this host's login)")
+    ap.add_argument("--from", dest="start", default="",
+                    help="when the window began, UTC (e.g. 2026-10-01T15:20Z); default now")
     args = ap.parse_args(argv)
     if args.minutes <= 0 or args.minutes > 24 * 60:
         print("refused: --minutes is between 1 and 1440", file=sys.stderr)
         return 1
     from modules import restarts
     now = time.time()
+    if args.start:
+        now = restarts._epoch(args.start if args.start.endswith(("Z", "+00:00"))
+                              else args.start + "Z")
+        if not now:
+            print(f"refused: --from {args.start!r} is not a UTC time like 2026-10-01T15:20Z",
+                  file=sys.stderr)
+            return 1
     by = args.by or f"{getpass.getuser()} (host login, not a verified identity)"
     out = restarts.record_planned(args.devices, now, now + args.minutes * 60, by, args.why,
                                   "nmas-planned-restart", list_name=args.list)
