@@ -284,7 +284,7 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 8px 12px 8px 0;
   border-bottom: 1px solid var(--line); }
 .table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line-2); vertical-align: top; overflow-wrap: anywhere; }
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; scrollbar-color: var(--line) transparent; }
 .u-legend { display: none; }
 
 /* ---- phone: a drawer, one column, a thumb-sized bar ---- */
@@ -490,7 +490,33 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .remote-said.ok { color: var(--ok); }
 .remote-said.bad { color: var(--danger); }
 .hist-filter { display: flex; flex-direction: column; gap: 2px; }
-.hist-table details summary { cursor: pointer; }
+/* The commit list: one line per commit (a grid row in its summary), the detail under it at
+   full width. Below 640 px the line stacks: when, what, then workflow, who and baseline. */
+.hist-list { font-size: 13px; }
+.hist-list { --cols: 14px 110px minmax(0, 1fr) 120px minmax(0, 240px) 120px; }
+.hist-list.hist-bl { --cols: 14px minmax(0, 1fr) 90px 110px 140px 200px; }
+.hist-list.hist-au { --cols: 14px 70px 100px minmax(0, 220px) minmax(0, 1fr) 140px; }
+.hist-head, .hist-sum { display: grid; gap: 12px; align-items: baseline; grid-template-columns: var(--cols); }
+.hist-head { font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 8px 0;
+  border-bottom: 1px solid var(--line); }
+.hist-row { border-bottom: 1px solid var(--line-2); }
+.hist-sum { padding: 8px 0; cursor: pointer; list-style: none; }
+.hist-sum::-webkit-details-marker { display: none; }
+.hist-sum::before { content: "\25B8"; color: var(--ink-3); }
+.hist-row[open] > .hist-sum::before { content: "\25BE"; }
+.hist-meta { display: contents; }
+.hist-when { white-space: nowrap; }
+.hist-what, .hist-who, .hist-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-row > .hist-detail { padding: 0 0 10px 26px; }
+@media (max-width: 640px) {
+  .hist-head { display: none; }
+  .hist-sum { grid-template-columns: 14px minmax(0, 1fr); row-gap: 2px; }
+  .hist-when, .hist-what, .hist-meta { grid-column: 2; }
+  .hist-list.hist-bl .hist-what { overflow-wrap: anywhere; white-space: normal; }
+  .hist-meta .hist-why { display: none; }
+  .hist-when { font-size: 12px; color: var(--ink-2); }
+  .hist-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; min-width: 0; }
+}
 .hist-detail { padding: 8px 0 2px; display: flex; flex-direction: column; gap: 4px; }
 .hist-detail p { margin: 0; }
 .hist-diff { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line-2);
@@ -597,15 +623,40 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .dev-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .dev-filters input[type="search"] { flex: 1 1 220px; min-width: 0; }
 .dev-table td, .dev-table th { white-space: nowrap; }
+/* At phone width a device is a stacked block, never a table scrolled sideways with its intent
+   and last measurement off-screen (the operator, 2026-10-02). */
+@media (max-width: 640px) {
+  .dev-table thead { display: none; }
+  .dev-table, .dev-table tbody { display: block; }
+  .dev-table tr { display: grid; grid-template-columns: 28px minmax(0, 1fr); column-gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid var(--line-2); }
+  .dev-table td, .dev-table th { grid-column: 2; white-space: normal; padding: 1px 0; border: 0; }
+  .dev-table tr > td:first-child { grid-column: 1; grid-row: 1 / span 6; }
+  .dev-table td[data-label]::before { content: attr(data-label) " "; color: var(--ink-2); }
+}
 .dev-shown { margin: 0 0 6px; font-size: 13px; }
 .dev-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 0; font-size: 13px; }
 /* The device page's History (step 4). */
 .timeline { list-style: none; margin: 0; padding: 0; font-size: 13px; }
-.tl-item { display: grid; grid-template-columns: 110px 1fr; gap: 2px 12px; padding: 7px 0; border-bottom: 1px solid var(--line); }
-.tl-when { grid-row: span 2; color: var(--ink-2); }
-.tl-detail { color: var(--ink-2); overflow-wrap: anywhere; }
+/* One line per row; the full wording expands UNDER it at full width, never in a column. */
+.tl-item { border-bottom: 1px solid var(--line); }
+.tl-sum { display: grid; grid-template-columns: 14px 120px minmax(0, 1fr); gap: 12px; align-items: baseline;
+  padding: 7px 0; cursor: pointer; list-style: none; }
+.tl-sum::-webkit-details-marker { display: none; }
+.tl-sum::before { content: "\25B8"; color: var(--ink-3); }
+.tl-row[open] > .tl-sum::before { content: "\25BE"; }
+.tl-when { color: var(--ink-2); white-space: nowrap; }
+.tl-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-mark { color: var(--ink-2); }
+.tl-more { padding: 0 0 9px 26px; color: var(--ink-2); overflow-wrap: anywhere; }
+.tl-more p { margin: 0 0 4px; }
 .tl-exception { color: var(--warn); }
-@media (max-width: 640px) { .tl-item { grid-template-columns: 1fr; } .tl-when { grid-row: auto; } }
+@media (max-width: 640px) {
+  .tl-sum { grid-template-columns: 14px minmax(0, 1fr); row-gap: 2px; }
+  .tl-when { grid-column: 2; font-size: 12px; }
+  .tl-line { grid-column: 2; }
+  .tl-more { padding-left: 26px; }
+}
 /* The device page's Intent tab (step 4). */
 .intent-profile { margin: 6px 0; font-size: 13px; }
 .intent-doc { max-height: 520px; }

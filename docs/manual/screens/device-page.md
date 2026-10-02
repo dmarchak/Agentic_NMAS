@@ -29,6 +29,10 @@ One timeline for the device: its golden commits (each naming its workflow and wh
 commits, its deploy and restore receipts, and every restart. A record that could not be read is
 said.
 
+Each entry is one line: when, what, any marks (corrected, acknowledged, crash file, record known
+wrong) and who. Open it for the full wording underneath: the reason, the correction or
+acknowledgement with who and why, and how the person was identified.
+
 A restart is found where the device's uptime counter fell (SNMP, read each minute), never by
 subtracting its uptime from the clock: a slow device clock runs its uptime slow too, so that
 subtraction places a restart hours from where it was. Each shows the device's own reason for

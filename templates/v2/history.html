@@ -52,25 +52,34 @@
   {%- elif not b_at %}
   <p class="cov-head">{{ icon('info') }} The baselines have not been read yet (the check runs in the background).</p>
   {%- else %}
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th scope="col">Baseline</th><th scope="col">Taken</th><th scope="col">Earned</th><th scope="col">Can be re-applied</th><th scope="col"></th></tr></thead>
-    <tbody>
+  {#- One line per baseline; why it was denied or withdrawn and what it predates open UNDER it
+      (the operator, 2026-10-02: the reasons squeezed the tag and the action into narrow cells). -#}
+  <div class="hist-list hist-bl">
+    <div class="hist-head" aria-hidden="true"><span></span><span>Baseline</span><span>Taken</span><span>Earned</span><span>Can be re-applied</span><span></span></div>
     {%- for r in b.baselines %}
-      <tr data-baseline="{{ r.tag }}">
-        <td class="mono">{{ r.tag }}</td>
-        <td>{{ stamp(r.created) }}</td>
-        <td>{%- if r.withdrawn %}{{ badge('withdrawn', 'danger') }} <span class="muted">{{ r.withdrawn_why }}</span>
-            {%- elif r.decision == 'earned' %}{{ badge('earned', 'ok') }}
-            {%- elif r.decision == 'denied' %}{{ badge('denied', 'warn') }} <span class="muted">{{ r.decision_detail }}</span>
-            {%- elif r.decision == 'unrecorded' %}{{ badge('not recorded', 'muted') }}
-            {%- else %}<span class="muted">not read yet</span>{% endif %}</td>
-        <td>{%- if r.withdrawn %}<span class="muted">no: withdrawn</span>
-            {%- elif r.usable %}{{ badge('yes', 'ok') }}
-            {%- else %}{{ badge('no', 'warn') }} <span class="muted">it predates a credential change on {{ r.stale | join(', ') }}</span>{% endif %}</td>
-        <td>{% if not r.withdrawn %}<a data-op="restore" href="{{ url_for('index') }}">Re-apply (today's page)…</a>{{ how('restore', compact=True, op='re-apply') }}{% endif %}</td>
-      </tr>
+    <details class="hist-row" data-baseline="{{ r.tag }}">
+      <summary class="hist-sum"><span class="hist-what mono">{{ r.tag }}</span><span class="hist-when">{{ stamp(r.created) }}</span>
+        <span class="hist-meta"><span>
+          {%- if r.withdrawn %}{{ badge('withdrawn', 'danger') }}
+          {%- elif r.decision == 'earned' %}{{ badge('earned', 'ok') }}
+          {%- elif r.decision == 'denied' %}{{ badge('denied', 'warn') }}
+          {%- elif r.decision == 'unrecorded' %}{{ badge('not recorded', 'muted') }}
+          {%- else %}<span class="muted">not read yet</span>{% endif %}</span><span>
+          {%- if r.withdrawn %}<span class="muted">no: withdrawn</span>
+          {%- elif r.usable %}{{ badge('yes', 'ok') }}
+          {%- else %}{{ badge('no', 'warn') }}{% endif %}</span><span class="nowrap">
+          {%- if not r.withdrawn %}<a data-op="restore" href="{{ url_for('index') }}">Re-apply (today's page)…</a>{{ how('restore', compact=True, op='re-apply') }}{% endif %}</span></span></summary>
+      <div class="hist-detail">
+        {%- if r.withdrawn %}<p>Withdrawn: {{ r.withdrawn_why }}</p>
+        {%- elif r.decision == 'earned' %}<p>Earned: its commit recorded <code>Baseline: earned</code>.</p>
+        {%- elif r.decision == 'denied' %}<p>Denied: {{ r.decision_detail }}</p>
+        {%- elif r.decision == 'unrecorded' %}<p class="muted">Its commit recorded no baseline decision (it predates 2026-09-28).</p>{% endif %}
+        {%- if not r.withdrawn and not r.usable %}<p>Not re-appliable: it predates a credential change on {{ r.stale | join(', ') }}, and the restore never changes a credential a device holds.</p>
+        {%- elif r.usable %}<p>Can be re-applied: no device's credential has changed since it was taken.</p>{% endif %}
+      </div>
+    </details>
     {%- endfor %}
-    </tbody></table></div>
+  </div>
   <p class="muted small">Judged {{ stamp(b_at) }}, in the background, whenever a commit or a tag moves.</p>
   {%- endif %}
 </section>
@@ -82,19 +91,17 @@
   {%- elif not auth.rows %}
   <p class="cov-head">{{ icon('info') }} No Oxidized divergence has been authorised in {{ ref.name }}.</p>
   {%- else %}
-  <div class="table-wrap"><table class="table">
-    <thead><tr><th scope="col">Device</th><th scope="col">Authorised</th><th scope="col">By</th><th scope="col">Reason</th><th scope="col">Expires</th></tr></thead>
-    <tbody>
+  {#- One line per authorisation; the stated reason opens UNDER it at full width. -#}
+  <div class="hist-list hist-au">
+    <div class="hist-head" aria-hidden="true"><span></span><span>Device</span><span>Authorised</span><span>By</span><span>Reason</span><span>Expires</span></div>
     {%- for a in auth.rows %}
-      <tr>
-        <td><a href="{{ url_for('device_v2.device', name=a.device) }}">{{ a.device }}</a></td>
-        <td>{{ stamp(a.at) }}</td>
-        <td>{{ a.actor }}</td>
-        <td>{{ a.reason }}</td>
-        <td>{% if a.expired %}{{ badge('expired', 'muted') }}{% else %}{{ stamp(a.expires_at) }}{% endif %}</td>
-      </tr>
+    <details class="hist-row">
+      <summary class="hist-sum"><span class="hist-what"><a href="{{ url_for('device_v2.device', name=a.device) }}">{{ a.device }}</a></span><span class="hist-when">{{ stamp(a.at) }}</span>
+        <span class="hist-meta"><span class="hist-who">{{ a.actor }}</span><span class="hist-why muted">{{ a.reason }}</span><span>{% if a.expired %}{{ badge('expired', 'muted') }}{% else %}expires {{ stamp(a.expires_at) }}{% endif %}</span></span></summary>
+      <div class="hist-detail"><p>Stated reason: {{ a.reason }}</p><p class="muted">By {{ a.actor }}</p></div>
+    </details>
     {%- endfor %}
-    </tbody></table></div>
+  </div>
   {%- endif %}
 </section>
 {%- endif %}

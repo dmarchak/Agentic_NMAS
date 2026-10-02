@@ -191,7 +191,7 @@ class TestAcknowledgingARestart:
                               csv_path="")
         ev = [e for e in device_page.history(ref, {"hostname": "s3"})["events"]
               if e["kind"] == "restart"][0]
-        assert ev["what"] == "Restarted unexpectedly, acknowledged"
+        assert ev["what"] == "Restarted unexpectedly" and "acknowledged" in ev["marks"]
         assert ev["outcome"] == "crash", "acknowledging never makes it planned"
         assert ev["acknowledged"]["by"] == "test-person@example.invalid"
         assert ev["acknowledged"]["why"] == "expected during the backup window"

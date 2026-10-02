@@ -14,7 +14,9 @@ redraws once the remote is read again.
 ## Commits {#commits}
 
 Every commit in the network's repository, newest first, for the time you choose (7 days by
-default):
+default). Each commit is one line, and opens underneath at full width; the Baselines and
+Authorisations tabs work the same way, with each baseline's reasons and each authorisation's
+stated reason under its line:
 
 - **What**: the commit's subject. Open a row for the devices and files it changed, its
   `Intent-Match:` (whether each capture matched its intent), and **Show the change**: the

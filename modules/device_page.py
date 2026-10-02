@@ -798,8 +798,10 @@ def history(ref, dev: dict, limit: int = None) -> dict:
             r.get("at", ""), acks["rows"])
         events.append({"at": r.get("at", ""), "kind": "restart",
                        "what": ("Restarted as planned" if r.get("planned") else
-                                "Restarted unexpectedly, acknowledged" if ack else
                                 "Restarted unexpectedly"),
+                       "marks": ([m for m, on in (("corrected", r.get("planned_correction")),
+                                                  ("acknowledged", ack),
+                                                  ("crash file", r.get("crash_file"))) if on]),
                        "who": r.get("planned_by", "") or (ack or {}).get("by", ""),
                        "acknowledged": ({"by": ack.get("by"), "why": ack.get("why"),
                                          "at": ack.get("at")} if ack else None),
@@ -812,8 +814,21 @@ def history(ref, dev: dict, limit: int = None) -> dict:
                        ("planned" if r.get("planned") else "unplanned")})
     if len(rs["rows"]) > limit:
         cut.append(f"the restarts' newest {limit}")
+    for e in events:
+        # The row's ONE line (the operator, 2026-10-02: a long note squeezed into a narrow
+        # column made a row many times taller than its neighbours): what, its marks and the
+        # person's short name. The full wording, who with how they were identified, expands
+        # under the row at full width.
+        e.setdefault("marks", ["record known wrong"] if e.get("exception") else [])
+        e["who_short"] = short_who(e.get("who", ""))
     events.sort(key=lambda e: _epoch(e["at"]), reverse=True)
     return {"events": events, "errors": errors, "cut": cut, "limit": limit}
+
+
+def short_who(who: str) -> str:
+    """A person's name for a one-line summary: "alex" for "alex (host login, not a
+    verified identity)". How they were identified is said in full where the row expands."""
+    return (who or "").split(" (", 1)[0].strip()
 
 
 # ---------------------------------------------------------------------------

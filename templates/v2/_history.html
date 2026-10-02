@@ -20,13 +20,22 @@
     {%- set k = KIND.get(e.kind, (e.kind, 'muted')) %}
     {%- set failed = (e.kind == 'receipt' and e.outcome and e.outcome != 'deployed')
                      or (e.kind == 'restart' and e.outcome == 'crash') %}
+    {#- ONE line per row (what, its marks, who); the full wording expands under it at full
+        width (the operator, 2026-10-02: a long note in a narrow column made a row many times
+        taller than its neighbours). -#}
     <li class="tl-item">
-      <span class="tl-when">{{ stamp(e.at) }}</span>
-      <span class="tl-what">{{ badge(k[0], 'danger' if failed else k[1]) }} <strong>{{ e.what }}</strong>{% if e.who %}<span class="muted"> by {{ e.who }}</span>{% endif %}</span>
-      <span class="tl-detail">{{ e.detail }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</span>
-      {%- if e.acknowledged %}<span class="tl-detail">Acknowledged by {{ e.acknowledged.by }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why }}</span>{% endif %}
-      {%- if e.correction %}<span class="tl-detail">Planned by a window recorded after the restart was seen, as a correction: {{ e.correction }}</span>{% endif %}
-      {%- if e.exception %}<span class="tl-detail tl-exception">This commit's record is known to be wrong: {{ e.exception }}</span>{% endif %}
+      <details class="tl-row">
+        <summary class="tl-sum"><span class="tl-when">{{ stamp(e.at) }}</span><span class="tl-line">{{ badge(k[0], 'danger' if failed else k[1]) }} <strong>{{ e.what }}</strong>
+          {%- for m in e.marks or [] %}<span class="tl-mark"> · {{ m }}</span>{% endfor %}
+          {%- if e.who_short %}<span class="muted"> · {{ e.who_short }}</span>{% endif %}</span></summary>
+        <div class="tl-more">
+          <p>{{ e.detail }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</p>
+          {%- if e.who %}<p class="muted">By {{ e.who }}</p>{% endif %}
+          {%- if e.correction %}<p>Planned by a window recorded after the restart was seen, as a correction: {{ e.correction }}</p>{% endif %}
+          {%- if e.acknowledged %}<p>Acknowledged by {{ e.acknowledged.by }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why }}</p>{% endif %}
+          {%- if e.exception %}<p class="tl-exception">This commit's record is known to be wrong: {{ e.exception }}</p>{% endif %}
+        </div>
+      </details>
     </li>
     {%- endfor %}
   </ol>

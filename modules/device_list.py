@@ -129,7 +129,11 @@ def _intent_of(host: str, trailer: str) -> dict:
         return {"state": "at_intent", "words": "at intent"}
     detail = m.group(1)
     if detail.startswith("unknown"):
-        return {"state": "unknown", "words": detail}
+        # A short word in the row and the reason on its hover (the operator, 2026-10-02: the
+        # whole sentence in a no-wrap badge pushed Last measured off the table). The trailer's
+        # nested parenthesis is cut by the pattern above, so the reason is taken whole here.
+        why = detail[len("unknown"):].strip().lstrip("(").strip()
+        return {"state": "unknown", "words": "unknown", "why": why or "not established"}
     return {"state": "departs", "words": f"departs ({detail})"}
 
 

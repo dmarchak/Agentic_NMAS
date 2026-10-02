@@ -150,6 +150,16 @@ def client(repo, monkeypatch):
     return A.app.test_client()
 
 
+def _rows(html):
+    """Each History list row's one-line summary and the detail under it, as text."""
+    import html as _h
+    import re
+    text = lambda s: " ".join(_h.unescape(re.sub(r"<[^>]+>", " ", s)).split())  # noqa: E731
+    rows = re.findall(r'<details class="hist-row"[^>]*>\s*<summary class="hist-sum">(.*?)</summary>'
+                      r'\s*<div class="hist-detail">(.*?)</div>\s*</details>', html, re.S)
+    return [text(s) for s, _d in rows], [text(d) for _s, d in rows]
+
+
 class TestThePage:
     def test_the_page_draws_the_rows_under_the_strict_policy(self, client):
         from modules import csp
@@ -182,6 +192,13 @@ class TestThePage:
         assert 'data-baseline="baseline/20261001T235242Z"' in html
         assert "it records r2 broken by hand" in html and "predates a credential change on s1" in html
         assert "not recorded" in html
+        # One line per baseline; its reasons open UNDER it (the operator, 2026-10-02: they had
+        # squeezed the tag and the action into narrow cells).
+        summaries, details = _rows(html)
+        assert len(summaries) == 3
+        assert all("broken by hand" not in s and "predates" not in s for s in summaries)
+        assert "it records r2 broken by hand" in details[1]
+        assert "predates a credential change on s1" in details[2]
 
     def test_the_baselines_tab_before_any_read_says_so(self, client, monkeypatch):
         from modules import reader_job
@@ -197,6 +214,8 @@ class TestThePage:
              "expired": True}])
         html = client.get("/v2/history?tab=authorisations").get_data(as_text=True)
         assert "an approved change not yet captured" in html and "expired" in html
+        summaries, details = _rows(html)
+        assert "Stated reason: an approved change not yet captured" in details[0]
 
     def test_the_remote_header_says_the_sentence(self, client):
         html = client.get("/v2/history/remote").get_data(as_text=True)

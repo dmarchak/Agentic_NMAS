@@ -12,27 +12,25 @@
   <p class="cov-head">{{ icon('info') }} No commit matches{% if f.device %} device {{ f.device }}{% endif %}{% if f.person %}, person {{ f.person }}{% endif %}{% if f.workflow %}, workflow {{ f.workflow }}{% endif %}{% if f.since %} in the last {{ f.since }} day(s){% endif %}.</p>
   {%- else %}
   <p class="muted small hist-count">{% if c.cut %}Showing the newest {{ c.rows | length }} · <a href="{{ url_for('v2.history_page', tab='commits', device=f.device, person=f.person, workflow=f.workflow, since=f.since, limit=c.limit * 2) }}">Show more</a>{% else %}{{ c.rows | length }} commit(s){% endif %}</p>
-  <div class="table-wrap"><table class="table hist-table">
-    <thead><tr><th scope="col">When</th><th scope="col">What</th><th scope="col">Workflow</th><th scope="col">Who</th><th scope="col">Baseline</th></tr></thead>
-    <tbody>
+  {#- ONE line per commit; its files, devices and masked change open UNDER it at full width
+      (the operator, 2026-10-02: an expansion inside the What column squeezed the change into
+      a narrow cell). The summary is the row; the head names its columns. -#}
+  <div class="hist-list">
+    <div class="hist-head" aria-hidden="true"><span></span><span>When</span><span>What</span><span>Workflow</span><span>Who</span><span>Baseline</span></div>
     {%- for r in c.rows %}
-      <tr data-commit="{{ r.short }}">
-        <td class="nowrap">{{ stamp(r.at) }}</td>
-        <td><details class="hist-row">
-          <summary>{{ r.subject }} <code class="muted">{{ r.short }}</code></summary>
-          <div class="hist-detail">
-            {%- if r.exception %}<p class="notice notice-warn">{{ icon('warn') }} This commit's record is known to be wrong: {{ r.exception }}.</p>{% endif %}
-            {%- if r.intent_match %}<p class="small"><span class="muted">Intent-Match:</span> {{ r.intent_match }}</p>{% endif %}
-            {%- if r.devices %}<p class="small"><span class="muted">Devices:</span> {% for d in r.devices %}<a href="{{ url_for('device_v2.device', name=d, tab='history') }}">{{ d }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
-            {%- if r.files %}<p class="small"><span class="muted">Files:</span> <span class="mono">{{ r.files | join(', ') }}</span></p>{% else %}<p class="small muted">No file changed (a decision recorded on its own).</p>{% endif %}
-            <div id="diff-{{ r.short }}"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_commit', sha=r.sha) }}" hx-target="#diff-{{ r.short }}" hx-swap="innerHTML">Show the change</button></div>
-          </div>
-        </details></td>
-        <td>{% if r.workflow %}{{ badge(r.workflow, 'warn' if r.source == 'rotation' else 'muted') }}{% endif %}</td>
-        <td>{{ r.who }}{% if r.how %} <span class="muted small">({{ r.how }})</span>{% endif %}</td>
-        <td>{% if r.baseline.state %}{{ badge(r.baseline.words, BKIND.get(r.baseline.state, 'muted')) }}{% if r.baseline.tag %} <span class="mono small muted">{{ r.baseline.tag }}</span>{% endif %}{% endif %}</td>
-      </tr>
+    <details class="hist-row" data-commit="{{ r.short }}">
+      <summary class="hist-sum"><span class="hist-when">{{ stamp(r.at) }}</span><span class="hist-what">{{ r.subject }} <code class="muted">{{ r.short }}</code></span>
+        <span class="hist-meta"><span class="hist-wf">{% if r.workflow %}{{ badge(r.workflow, 'warn' if r.source == 'rotation' else 'muted') }}{% endif %}</span><span class="hist-who">{{ r.who }}{% if r.how %} <span class="muted small">({{ r.how }})</span>{% endif %}</span><span class="hist-base">{% if r.baseline.state %}{{ badge(r.baseline.words, BKIND.get(r.baseline.state, 'muted')) }}{% endif %}</span></span></summary>
+      <div class="hist-detail">
+        {%- if r.exception %}<p class="notice notice-warn">{{ icon('warn') }} This commit's record is known to be wrong: {{ r.exception }}.</p>{% endif %}
+        {%- if r.baseline.tag %}<p class="small"><span class="muted">Baseline:</span> <span class="mono">{{ r.baseline.tag }}</span></p>{% endif %}
+        {%- if r.intent_match %}<p class="small"><span class="muted">Intent-Match:</span> {{ r.intent_match }}</p>{% endif %}
+        {%- if r.devices %}<p class="small"><span class="muted">Devices:</span> {% for d in r.devices %}<a href="{{ url_for('device_v2.device', name=d, tab='history') }}">{{ d }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+        {%- if r.files %}<p class="small"><span class="muted">Files:</span> <span class="mono">{{ r.files | join(', ') }}</span></p>{% else %}<p class="small muted">No file changed (a decision recorded on its own).</p>{% endif %}
+        <div id="diff-{{ r.short }}"><button type="button" class="btn btn-small" hx-get="{{ url_for('v2.history_commit', sha=r.sha) }}" hx-target="#diff-{{ r.short }}" hx-swap="innerHTML">Show the change</button></div>
+      </div>
+    </details>
     {%- endfor %}
-    </tbody></table></div>
+  </div>
   {%- endif %}
 </section>

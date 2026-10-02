@@ -30,8 +30,8 @@
 {%- endif %}</svg>
 {%- endmacro %}
 
-{% macro badge(text, kind='neutral', ico='') -%}
-<span class="badge badge-{{ kind }}">{% if ico %}{{ icon(ico, 13) }}{% endif %}{{ text }}</span>
+{% macro badge(text, kind='neutral', ico='', title='') -%}
+<span class="badge badge-{{ kind }}"{% if title %} title="{{ title }}"{% endif %}>{% if ico %}{{ icon(ico, 13) }}{% endif %}{{ text }}</span>
 {%- endmacro %}
 
 {#- The info link (NSOT_GUI_BRIEF 10a): opens the manual's page *slug* (and its

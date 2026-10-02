@@ -41,8 +41,8 @@
             <td>{{ badge(r.status.words, KIND.get(r.status.state, 'muted')) }}{% if r.status.since %} <span class="muted">since {{ stamp(r.status.since) }}</span>{% endif %}</td>
             <td class="mono">{{ r.address }}</td>
             <td>{{ r.platform or '—' }}</td>
-            <td>{{ badge(r.intent.words, IKIND.get(r.intent.state, 'muted')) }}{% if r.measured %} <span class="muted dev-measured">by {{ r.measured.words }}</span>{% endif %}</td>
-            <td>{% if r.measured %}{{ stamp(r.measured.iso, note=('the golden changed in this measurement' if r.measured.changed else 'golden last changed ' ~ (r.golden_changed.iso if r.golden_changed else 'before the last ' ~ d.bound ~ ' golden commits') ~ (' (' ~ r.golden_changed.sha ~ ')' if r.golden_changed else '')) ~ '; measurement ' ~ r.measured.sha) }}{% else %}<span class="muted">none</span>{% endif %}</td>
+            <td data-label="Intent:">{{ badge(r.intent.words, IKIND.get(r.intent.state, 'muted'), title=r.intent.why) }}{% if r.measured %} <span class="muted dev-measured">by {{ r.measured.words }}</span>{% endif %}</td>
+            <td data-label="Last measured:">{% if r.measured %}{{ stamp(r.measured.iso, note=('the golden changed in this measurement' if r.measured.changed else 'golden last changed ' ~ (r.golden_changed.iso if r.golden_changed else 'before the last ' ~ d.bound ~ ' golden commits') ~ (' (' ~ r.golden_changed.sha ~ ')' if r.golden_changed else '')) ~ '; measurement ' ~ r.measured.sha) }}{% else %}<span class="muted">none</span>{% endif %}</td>
           </tr>
           {%- endfor %}
         </tbody>

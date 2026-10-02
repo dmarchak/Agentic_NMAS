@@ -44,7 +44,41 @@ class TestTheTimeline:
         r, html = _get(lab, "/v2/device/r3/history")
         assert r.status_code == 200
         text = _text(html)
-        assert "Golden recorded (capture)" in text and "by operator@example.com" in text
+        assert "Golden recorded (capture)" in text
+        summary = _text(re.search(r'<summary class="tl-sum">(.*?)</summary>', html, re.S).group(1))
+        assert "Golden recorded (capture)" in summary and "· operator@example.com" in summary
+        more = _text(re.search(r'<div class="tl-more">(.*?)</div>', html, re.S).group(1))
+        assert "By operator@example.com" in more
+
+    def test_a_long_note_expands_under_its_row_and_never_widens_the_summary(self, lab, monkeypatch):
+        """The operator, 2026-10-02: r1's redeploy restart carried its reason, the window's
+        why, a correction and who with how identified, in a narrow left column, so its row was
+        many times taller than its neighbours. ONE line per row (what, marks, short who); the
+        full wording expands UNDER it at full width."""
+        from modules import device_page
+        long_note = "the redeploy was planned; the tool could not record a window until 30c2fd4"
+        monkeypatch.setattr(device_page, "history", lambda ref, dev, limit=None: {
+            "events": [{"at": "2026-10-01T16:58:00Z", "kind": "restart",
+                        "what": "Restarted as planned", "marks": ["corrected"],
+                        "who": "alex (host login, not a verified identity)",
+                        "who_short": "alex", "correction": long_note,
+                        "detail": "reason: Reload Command; planned: lab redeploy",
+                        "sha": "", "outcome": "planned"}],
+            "errors": [], "cut": [], "limit": 50})
+        r, html = _get(lab, "/v2/device/r3/history")
+        summary = _text(re.search(r'<summary class="tl-sum">(.*?)</summary>', html, re.S).group(1))
+        assert summary.strip().endswith("Restarted as planned · corrected · alex"), summary
+        assert long_note not in summary and "host login" not in summary
+        more = _text(re.search(r'<div class="tl-more">(.*?)</div>', html, re.S).group(1))
+        for words in (long_note, "By alex (host login, not a verified identity)",
+                      "reason: Reload Command"):
+            assert words in more
+
+    def test_the_short_name_drops_only_how_the_person_was_identified(self):
+        from modules.device_page import short_who
+        assert short_who("alex (host login, not a verified identity)") == "alex"
+        assert short_who("operator@example.com") == "operator@example.com"
+        assert short_who("") == ""
 
     def test_three_records_newest_first(self, lab):
         time.sleep(1.1)                      # the intent commit is a second later than the golden

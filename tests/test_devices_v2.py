@@ -54,6 +54,11 @@ class TestTheTrailerIsRead:
         assert _intent_of("r6", "no: r2 (+1 -1); r6 (-1)")["words"] == "departs (-1)"
         assert _intent_of("r6", "no: r2 (+1 -1)")["state"] == "at_intent"     # not named: matched
         assert _intent_of("r2", "no: r2 (unknown (no committed intent))")["state"] == "unknown"
+        # A short word in the row; the reason, whole, on its hover (the operator, 2026-10-02).
+        got = _intent_of("r2", "no: r2 (unknown (no committed intent: nothing says what "
+                               "this device should be))")
+        assert got["words"] == "unknown"
+        assert got["why"] == "no committed intent: nothing says what this device should be"
         assert _intent_of("r2", "")["state"] == "unrecorded"
         # A name that is a prefix of another is not that other.
         assert _intent_of("r1", "no: r10 (+1)")["state"] == "at_intent"
