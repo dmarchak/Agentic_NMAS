@@ -181,6 +181,20 @@ class TestRefusalsAndTheCheck:
         assert "2 Prometheus datasources and none is the default (Prom A a1, Prom B b2)" \
             in str(exc.value)
 
+    def test_the_hourly_check_reads_the_installed_file_and_job_health_watches_it(self):
+        """C304's last part (2026-10-01): the check the heartbeat has. It reads
+        the PROVISIONED copy, since the checkout's file can be current while
+        Grafana runs an older one."""
+        unit = open("deploy/systemd/nmas-telemetry-check.service", encoding="utf-8").read()
+        assert ("scripts/nmas-telemetry-rules --check --out "
+                "/etc/grafana/provisioning/alerting/nmas-telemetry.yaml") in unit
+        assert "OnFailure=nmas-job-finished@%N.service" in unit
+        timer = open("deploy/systemd/nmas-telemetry-check.timer", encoding="utf-8").read()
+        assert "OnCalendar=hourly" in timer
+        from modules import job_health as J
+        job = next(j for j in J.JOBS if j["unit"] == "nmas-telemetry-check")
+        assert job["max_age_minutes"] == 180 and "C304" in job["remedy"]["reference"]
+
     def test_the_generated_file_is_never_committed(self):
         import subprocess
         r = subprocess.run(["git", "check-ignore", "-q",

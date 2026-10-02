@@ -53,6 +53,13 @@ JOBS = (
                          "window previewed, confirmed, then the one host step that installs them",
                 "href": "/v2/monitoring/heartbeat",
                 "reference": "NSOT_PLAN P.7"}},
+    {"unit": "nmas-telemetry-check", "max_age_minutes": 180,
+     "what": "every streaming device's telemetry alert rule is installed in Grafana, hourly (C304)",
+     # A missing or extra rule is fixed by regenerating the file and installing
+     # it (the C304 host step); the datasource is read from Grafana (C318).
+     "remedy": {"label": "Regenerate the telemetry rules and install them: "
+                         "scripts/nmas-telemetry-rules, then the install in C304's host step",
+                "reference": "docs/OPEN_FINDINGS.md C304"}},
     {"unit": "nmas-startup-check", "max_age_minutes": 180,
      "what": "every device's startup config carries the credential NMAS holds, hourly (C53)"},
 )

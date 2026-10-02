@@ -1,0 +1,23 @@
+# TEMPLATE (2026-10-01): the repository is public, so the host's user and paths
+# are placeholders. Render it, never copy it:
+# OPEN_FINDINGS C304: every device whose committed configuration streams
+# telemetry has its alert rule INSTALLED in Grafana (the provisioned file,
+# not the checkout's generated copy). A missing or extra rule fails this
+# unit, and job_health shows it.
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-telemetry-check.service deploy/systemd/nmas-telemetry-check.timer && sudo install -m 0644 "$d/nmas-telemetry-check.service" "$d/nmas-telemetry-check.timer" /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now nmas-telemetry-check.timer
+[Unit]
+Description=NMAS: every streaming device's telemetry alert rule is installed
+# When it ends, either way, the app reads job health at once
+# (nmas-job-finished@.service; /jobs/finished).
+OnSuccess=nmas-job-finished@%N.service
+OnFailure=nmas-job-finished@%N.service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@NMAS_USER@
+Group=@NMAS_USER@
+ExecStart=@NMAS_CHECKOUT@/scripts/nmas-telemetry-rules --check --out /etc/grafana/provisioning/alerting/nmas-telemetry.yaml
+TimeoutStartSec=5min
