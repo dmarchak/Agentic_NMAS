@@ -10,6 +10,7 @@ No test here opens a socket: ``deploy_one`` is injected.
 """
 
 import hashlib
+import modules.pipeline as _P  # the run's pre-change reader (C331)
 
 import pytest
 
@@ -781,9 +782,9 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
                 # The device kept the interface line, rejected the description.
                 return "hostname s4\ninterface GigabitEthernet0/1\n"
 
-        orig = (A._load_pre_change_file, C.with_temp_connection,
+        orig = (_P._pre_change, C.with_temp_connection,
                 C.get_persistent_connection, P._restore_config)
-        A._load_pre_change_file = lambda ip: "hostname s4\n"
+        _P._pre_change = lambda _ctx, ip: "hostname s4\n"
         C.with_temp_connection = lambda dev, func: func(_Fresh())
         C.get_persistent_connection = lambda dev, pool, lock: object()
         P._restore_config = lambda conn, cmds: sent.extend(cmds)
@@ -791,7 +792,7 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
             _capture_failure_state(ctx)
             _stage_rollback(ctx)
         finally:
-            (A._load_pre_change_file, C.with_temp_connection,
+            (_P._pre_change, C.with_temp_connection,
              C.get_persistent_connection, P._restore_config) = orig
 
         state = ctx.failure_state["10.0.0.1"]
@@ -831,9 +832,9 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
                 return ("hostname s4\ninterface GigabitEthernet0/1\n"
                         " description x\n")
 
-        orig = (A._load_pre_change_file, C.with_temp_connection,
+        orig = (_P._pre_change, C.with_temp_connection,
                 C.get_persistent_connection, P._restore_config)
-        A._load_pre_change_file = lambda ip: "hostname s4\n"
+        _P._pre_change = lambda _ctx, ip: "hostname s4\n"
         C.with_temp_connection = lambda dev, func: func(_Fresh())
         C.get_persistent_connection = lambda dev, pool, lock: object()
         P._restore_config = lambda conn, cmds: sent.extend(cmds)
@@ -841,7 +842,7 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
             _capture_failure_state(ctx)
             _stage_rollback(ctx)
         finally:
-            (A._load_pre_change_file, C.with_temp_connection,
+            (_P._pre_change, C.with_temp_connection,
              C.get_persistent_connection, P._restore_config) = orig
 
         assert ctx.rollback_performed is True

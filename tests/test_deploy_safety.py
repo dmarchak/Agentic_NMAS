@@ -5,6 +5,7 @@ before any connection is attempted.
 """
 
 import pytest
+import modules.pipeline as _P  # the run's pre-change reader (C331)
 
 from modules.nsot import convergence, deploy
 from modules.nsot.deploy import (
@@ -846,16 +847,16 @@ class TestRollbackIsExemptFromTheDangerousGate:
         ctx.push_results = {"10.0.0.1": {"ok": True}}
         ctx.confirmed_commands = {"10.0.0.1": ["interface GigabitEthernet0/0",
                                                " no shutdown", "exit"]}
-        originals = (P._restore_config, A._load_pre_change_file,
+        originals = (P._restore_config, _P._pre_change,
                      C.get_persistent_connection)
         P._restore_config = lambda conn, cmds: None
-        A._load_pre_change_file = lambda ip: (
+        _P._pre_change = lambda _ctx, ip: (
             "interface GigabitEthernet0/0\n shutdown\n")
         C.get_persistent_connection = lambda dev, pool, lock: object()
         try:
             _stage_rollback(ctx)
         finally:
-            (P._restore_config, A._load_pre_change_file,
+            (P._restore_config, _P._pre_change,
              C.get_persistent_connection) = originals
 
         assert ctx.rollback_dangerous["10.0.0.1"] == ["shutdown"]

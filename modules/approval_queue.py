@@ -246,7 +246,7 @@ def resolve(entry_id: str, action: str, actor: str = "") -> dict:
 # Action executors — called when user approves
 # ---------------------------------------------------------------------------
 
-def mark_done(entry_id: str, note: str = "") -> dict:
+def mark_done(entry_id: str, note: str = "", actor: str = "") -> dict:
     """Close an item whose work completed elsewhere.
 
     A confirm-ending item is finished by the restore or capture it handed off
@@ -264,6 +264,9 @@ def mark_done(entry_id: str, note: str = "") -> dict:
 
     entry["status"] = "approved"
     entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    # WHO confirmed the operation that finished it (C326: an item closed here
+    # recorded nobody, unlike one resolve() closes).
+    entry["resolved_by"] = actor
     entry["context"] = note or "Completed via its confirmed operation"
     _save_queue(entries)
     log.info("approval_queue: [%s] closed — %s", entry_id, entry["context"])

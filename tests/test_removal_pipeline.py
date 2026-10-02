@@ -225,7 +225,7 @@ class TestRollbackPutsTheLineBack:
         ctx.confirmed_commands = {"10.0.0.1": list(pushed or self.PUSHED)}
         ctx.removals = {"10.0.0.1": {"units": [UNIT], "commands": list(self.PUSHED)}}
         sent = []
-        monkeypatch.setattr(A, "_load_pre_change_file", lambda ip: CAPTURE)
+        monkeypatch.setattr("modules.pipeline._pre_change", lambda _ctx, ip: CAPTURE)
         monkeypatch.setattr(C, "get_persistent_connection", lambda *a: object())
         monkeypatch.setattr(P, "_restore_config", lambda conn, cmds: sent.append(list(cmds)))
 

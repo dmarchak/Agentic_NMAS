@@ -401,34 +401,3 @@ def validate_restored_intent(repo: str, hostname: str, intent: dict,
     return gaps
 
 
-def invalidate_queued_restores(reason: str = "") -> dict:
-    """Reject any restore approvals the old path queued.
-
-    Those entries carry whole-config text for an executor that pushes it
-    directly — no confirm hash, no ASCII guard, no provenance, no
-    ``error_pattern``, no failure capture, no rollback. Executing one after the
-    switch would send exactly the payload this rebuild exists to stop sending.
-
-    Rejected with a reason rather than deleted, so the queue shows what
-    happened.
-    """
-    from modules.approval_queue import get_pending, resolve
-
-    reason = reason or ("superseded: restore now goes through the confirmed "
-                        "deploy path; re-run it from the Baselines panel")
-    rejected = []
-    for entry in get_pending():
-        if entry.get("action_type") != "revert_to_golden":
-            continue
-        try:
-            resolve(entry["id"], "reject")
-            rejected.append({"id": entry["id"],
-                             "hostname": entry.get("device_hostname", ""),
-                             "reason": reason})
-        except Exception as exc:              # noqa: BLE001
-            log.error("restore: could not reject queued item %s: %s",
-                      entry.get("id"), exc)
-    if rejected:
-        log.warning("restore: rejected %d queued restore approval(s) — %s",
-                    len(rejected), reason)
-    return {"ok": True, "rejected": rejected, "reason": reason}

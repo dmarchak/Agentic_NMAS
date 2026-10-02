@@ -380,7 +380,7 @@ class TestRollbackRestoresTheOldDefinition:
         ctx.removals = {"192.0.2.31": {"units": [], "commands": [], "recreates": _units(),
                                      "recreate_commands": list(PROGRAM)}}
         sent = []
-        monkeypatch.setattr(A, "_load_pre_change_file", lambda ip: S3)
+        monkeypatch.setattr("modules.pipeline._pre_change", lambda _ctx, ip: S3)
         monkeypatch.setattr(C, "get_persistent_connection", lambda *a: object())
         monkeypatch.setattr(P, "_restore_config", lambda conn, cmds: sent.append(list(cmds)))
 
@@ -415,7 +415,7 @@ class TestRollbackRestoresTheOldDefinition:
             ctx.failure_state = {"192.0.2.31": {"landed": [], "lost": []}}
             ctx.failure_sla = {"192.0.2.31": operations(device_now)}
         sent = []
-        monkeypatch.setattr(A, "_load_pre_change_file", lambda ip: pre)
+        monkeypatch.setattr("modules.pipeline._pre_change", lambda _ctx, ip: pre)
         monkeypatch.setattr(C, "get_persistent_connection", lambda *a: object())
         monkeypatch.setattr(P, "_restore_config", lambda conn, cmds: sent.append(list(cmds)))
 
@@ -437,7 +437,7 @@ class TestRollbackRestoresTheOldDefinition:
         import modules.pipeline as P
         ctx = _ctx()
         ctx.push_results = {"192.0.2.31": {"ok": False}}
-        monkeypatch.setattr(A, "_load_pre_change_file", lambda ip: S3)
+        monkeypatch.setattr("modules.pipeline._pre_change", lambda _ctx, ip: S3)
         monkeypatch.setattr(C, "close_persistent_connection", lambda *a, **k: None)
 
         def temp(dev, func):

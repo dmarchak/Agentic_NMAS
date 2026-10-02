@@ -660,7 +660,6 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
     Aborts the pipeline if any device is unreachable.
     """
     from modules.connection import get_persistent_connection
-    from modules.ai_assistant import _save_pre_change_file, _get_running_config_for_golden
 
     errors: list[str] = []
 
@@ -679,11 +678,24 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
                               "change, so nothing was sent: " + "; ".join(bad))
                 continue
 
-            # Also save the running-config so Stage 5 can diff and Stage 8 can roll back.
-            running_cfg = _get_running_config_for_golden(ip, hostname)
+            # The running config Stage 5 diffs and Stage 8 rolls back to, read on THIS
+            # run's session for THIS run's device (C331, 2026-10-02: it was read by
+            # looking the address up in the ACTIVE list, stored under the active
+            # list's folder and read back by address, so a list switch during a
+            # deploy, or two lists sharing an address, gave the rollback another
+            # device's config or none).
+            running_cfg = ""
+            try:
+                from modules.commands import run_device_command
+                running_cfg = run_device_command(
+                    get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock),
+                    "show running-config") or ""
+            except Exception as cfg_exc:          # noqa: BLE001
+                log.warning("pipeline[4/pre_snapshot]: %s running-config read failed: %s",
+                            hostname, cfg_exc)
             if running_cfg:
-                _save_pre_change_file(ip, hostname, running_cfg)
                 snap["running_config"] = running_cfg
+                _record_pre_change(ctx, dev, running_cfg)
             else:
                 log.warning("pipeline[4/pre_snapshot]: could not fetch running-config for %s", hostname)
 
@@ -707,6 +719,30 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
             f"Pre-snapshot failed for {len(errors)} device(s) — aborting before deploy:\n"
             + "\n".join(errors)
         )
+
+
+def _pre_change(ctx, ip: str) -> str:
+    """THE pre-change running config of *ip*: what Stage 4 read in THIS run (C331).
+    Never a file looked up by address in whichever list is active."""
+    return (((ctx.pre_snapshots or {}).get(ip)) or {}).get("running_config", "") or ""
+
+
+def _record_pre_change(ctx, dev: dict, text: str) -> None:
+    """Keep the pre-change config as evidence in the CARRIED list's folder, 0600 (it
+    holds the device's credentials). Nothing in the run reads it back: `_pre_change`
+    is the run's own copy. A failed write is logged and changes nothing."""
+    from modules.config import get_list_data_dir, open_secure
+    from modules.ai_assistant import _safe_device_name
+    host = dev.get("hostname") or dev.get("ip", "")
+    try:
+        path = os.path.join(get_list_data_dir(_list_of(ctx)), "pre_change",
+                            f"{_safe_device_name(host)}.cfg")
+        with open_secure(path, "w", encoding="utf-8") as fh:
+            fh.write(f"! Pre-change snapshot — {host} ({dev.get('ip', '')})\n"
+                     f"! Captured: {time.strftime('%Y-%m-%d %H:%M:%S')}\n!\n"
+                     + text.strip() + "\n")
+    except Exception as exc:                  # noqa: BLE001
+        log.warning("pipeline: the pre-change evidence for %s was not written: %s", host, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -1566,7 +1602,6 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
 
     A fresh SSH handshake costs nothing on a path that only runs on failure.
     """
-    from modules.ai_assistant import _load_pre_change_file
     from modules.connection import close_persistent_connection, with_temp_connection
 
     for ip, result in ctx.push_results.items():
@@ -1590,7 +1625,7 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
                                               read_timeout=timeout))
             from modules.nsot.recreate import operations as _sla_ops
             ctx.failure_sla[ip] = _sla_ops(post)
-            pre = _load_pre_change_file(ip) or ""
+            pre = _pre_change(ctx, ip)
             pre_lines = [l.rstrip() for l in pre.splitlines()]
             post_lines = [l.rstrip() for l in post.splitlines()]
             pre_set, post_set = set(pre_lines), set(post_lines)
@@ -1684,9 +1719,8 @@ def _unrestorable_is_incomplete(ctx, ip: str, unrestorable: list) -> None:
 def _stage_rollback(ctx: PipelineContext) -> None:
     """
     Restore the pre-change running-config on every device that was successfully pushed.
-    Uses the file written by _save_pre_change_file in Stage 4.
+    Uses this run's own copy, read by Stage 4 (`_pre_change`, C331).
     """
-    from modules.ai_assistant  import _load_pre_change_file
     from modules.connection    import get_persistent_connection
 
     # Every device a push was ATTEMPTED on, not only the ones that succeeded.
@@ -1707,7 +1741,7 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             continue
         hostname = dev.get("hostname", ip)
         try:
-            pre_cfg = _load_pre_change_file(ip)
+            pre_cfg = _pre_change(ctx, ip)
             if not pre_cfg:
                 log.error(
                     "pipeline[rollback]: no pre-change file for %s — cannot restore", hostname

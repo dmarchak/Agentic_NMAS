@@ -84,19 +84,6 @@ def _load_list_devices(list_name: str):
 
 
 
-def _maybe_permit_writes(data: dict) -> None:
-    """Honour an explicit request to turn on the master write switch.
-
-    This is a deliberate, separately-labelled operator decision — "writes are
-    permitted at all" — not the confirmation of the operation. The operation
-    itself is still authorized one-shot by a token.
-    """
-    from modules.config import set_user_setting
-    if data.get("permit_writes"):
-        set_user_setting("netbox_allow_writes", True)
-        log.info("netbox_safety: operator turned on the NetBox master write switch")
-
-
 def _authorize(data: dict, operation: str, list_name: str, recompute) -> tuple:
     """Check the master switch, consume the token, and re-verify the plan.
 
@@ -107,8 +94,13 @@ def _authorize(data: dict, operation: str, list_name: str, recompute) -> tuple:
     from modules.netbox_guard import writes_allowed
 
     # 1. Master switch — a persistent operator decision, checked first so an
-    #    unauthorized instance cannot burn a token.
-    if not writes_allowed():
+    #    unauthorized instance cannot burn a token. A person may ask to turn it on
+    #    with this confirm (`permit_writes`), and it is turned on only AFTER the
+    #    token and the plan below both pass (C330, 2026-10-02: it was turned on
+    #    first, so an expired token or a moved plan still left the switch on,
+    #    written with no actor).
+    permit = bool(data.get("permit_writes")) and not writes_allowed()
+    if not writes_allowed() and not permit:
         return False, {
             "ok": False, "blocked": True,
             "error": "NetBox writes are not permitted for this instance. Turn on "
@@ -138,6 +130,14 @@ def _authorize(data: dict, operation: str, list_name: str, recompute) -> tuple:
                     operation, list_name)
         return False, {"ok": False, "stale": True, "error": err}, 409
 
+    if permit:
+        from modules.settings_schema import write_settings
+        written = write_settings({"netbox_allow_writes": True}, actor=_actor())
+        if not written.get("ok", True):
+            return False, {"ok": False, "error": "the master switch could not be turned on: "
+                           + str(written.get("error") or written)}, 500
+        log.info("netbox_safety: %s turned on the NetBox master write switch with a "
+                 "confirmed %s", _actor(), operation)
     return True, None, 0
 
 
@@ -202,8 +202,6 @@ def apply_import():
         return jsonify({"ok": False, "error": "Device list not found"}), 404
     if not devices:
         return jsonify({"ok": False, "error": f"List '{list_name}' has no devices"}), 400
-
-    _maybe_permit_writes(data)
 
     from modules import op_progress
 
@@ -312,8 +310,6 @@ def apply_import_all():
     if not payload:
         return jsonify({"ok": False, "error": "No device lists have any devices"}), 400
 
-    _maybe_permit_writes(data)
-
     from modules import op_progress
 
     pid = _progress_start(data, "re-checked, then imported", "every list")
@@ -392,8 +388,6 @@ def apply_removal():
     if data.get("forget_only"):
         return jsonify(_recorded_removal(list_name, remove_list_from_netbox(
             list_name, forget_only=True, actor=_actor()), forget_only=True))
-
-    _maybe_permit_writes(data)
 
     def _recompute():
         preview = remove_list_from_netbox(list_name, dry_run=True, actor=_actor())

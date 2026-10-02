@@ -9,6 +9,7 @@ Run with:  python -m pytest tests/test_pipeline.py -v
 """
 
 import threading
+import modules.pipeline as _P  # the run's pre-change reader (C331)
 import pytest
 
 from modules.pipeline import (
@@ -689,11 +690,11 @@ class TestRollbackFiresOnAMidPushFailure:
         import modules.pipeline as P
 
         original, orig_load, orig_conn, orig_temp = (P._restore_config,
-                                                     A._load_pre_change_file,
+                                                     _P._pre_change,
                                                      C.get_persistent_connection,
                                                      C.with_temp_connection)
         P._restore_config = lambda conn, cmds: sent.extend(cmds)
-        A._load_pre_change_file = lambda ip: (
+        _P._pre_change = lambda _ctx, ip: (
             "interface GigabitEthernet0/0\n description core\n")
         C.get_persistent_connection = lambda dev, pool, lock: object()
 
@@ -705,7 +706,7 @@ class TestRollbackFiresOnAMidPushFailure:
             _stage_rollback(ctx)
         finally:
             P._restore_config = original
-            A._load_pre_change_file = orig_load
+            _P._pre_change = orig_load
             C.get_persistent_connection = orig_conn
             C.with_temp_connection = orig_temp
 
@@ -763,14 +764,14 @@ class TestFailureStateIsCaptured:
                 self.read_timeout = read_timeout
                 return running_after
 
-        orig_load = A._load_pre_change_file
+        orig_load = _P._pre_change
         orig_temp = C.with_temp_connection
-        A._load_pre_change_file = lambda ip: pre
+        _P._pre_change = lambda _ctx, ip: pre
         C.with_temp_connection = lambda dev, func: func(_Conn())
         try:
             _capture_failure_state(ctx)
         finally:
-            A._load_pre_change_file = orig_load
+            _P._pre_change = orig_load
             C.with_temp_connection = orig_temp
         return ctx.failure_state["10.0.0.1"]
 
@@ -788,15 +789,15 @@ class TestFailureStateIsCaptured:
             def send_command(self, _cmd, read_timeout=None):
                 return "hostname R1\n"
 
-        orig = (A._load_pre_change_file, C.with_temp_connection,
+        orig = (_P._pre_change, C.with_temp_connection,
                 C.get_persistent_connection)
-        A._load_pre_change_file = lambda ip: "hostname R1\n"
+        _P._pre_change = lambda _ctx, ip: "hostname R1\n"
         C.with_temp_connection = lambda dev, func: func(_Conn())
         C.get_persistent_connection = lambda *a: used_pool.append(1)
         try:
             _capture_failure_state(ctx)
         finally:
-            (A._load_pre_change_file, C.with_temp_connection,
+            (_P._pre_change, C.with_temp_connection,
              C.get_persistent_connection) = orig
 
         assert used_pool == [], "the capture reused the failed pooled session"
@@ -878,15 +879,15 @@ class TestFailureStateIsCaptured:
 
         ctx = _ctx()
         ctx.push_results = {"10.0.0.1": {"ok": False}}
-        orig = (A._load_pre_change_file, C.with_temp_connection, S.get_setting)
-        A._load_pre_change_file = lambda ip: "hostname R1\n"
+        orig = (_P._pre_change, C.with_temp_connection, S.get_setting)
+        _P._pre_change = lambda _ctx, ip: "hostname R1\n"
         C.with_temp_connection = lambda dev, func: func(_Conn())
         S.get_setting = lambda key, default=None: (
             999 if key == "nsot_config_read_timeout" else default)
         try:
             _capture_failure_state(ctx)
         finally:
-            (A._load_pre_change_file, C.with_temp_connection,
+            (_P._pre_change, C.with_temp_connection,
              S.get_setting) = orig
 
         assert seen["read_timeout"] == 999
@@ -1003,7 +1004,7 @@ class TestARollbackSaysWhatItAchieved:
         ctx = _ctx()
         ctx.push_results = {"10.0.0.1": {"ok": False}}
         ctx.confirmed_commands = {"10.0.0.1": list(self.PUSHED)}
-        monkeypatch.setattr(A, "_load_pre_change_file", lambda ip: pre)
+        monkeypatch.setattr("modules.pipeline._pre_change", lambda _ctx, ip: pre)
         monkeypatch.setattr(C, "get_persistent_connection", lambda *a: object())
         monkeypatch.setattr(P, "_restore_config", restore or (lambda conn, cmds: None))
 

@@ -3742,7 +3742,10 @@ def ai_approval_approve(entry_id: str):
     result = resolve(entry_id, "approve", actor=request_actor())
     if not result.get("ok"):
         return jsonify(result), 404
-    return jsonify(result)
+    # Masked like the list's GET (C327): the entry carries the queued diff and the
+    # execution its `advisory_diff`, device config both, and these went out raw.
+    from modules.redact import redact_payload
+    return jsonify(redact_payload(result))
 
 
 @app.route("/ai/approvals/<entry_id>/reject", methods=["POST"])
@@ -3753,7 +3756,8 @@ def ai_approval_reject(entry_id: str):
     result = resolve(entry_id, "reject", actor=request_actor())
     if not result.get("ok"):
         return jsonify(result), 404
-    return jsonify(result)
+    from modules.redact import redact_payload
+    return jsonify(redact_payload(result))         # the entry's diff, masked (C327)
 
 
 @app.route("/ai/approvals/approve_all", methods=["POST"])

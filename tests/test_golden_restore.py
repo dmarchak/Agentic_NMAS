@@ -243,35 +243,6 @@ class TestRestoreGoesThroughTheConfirmedPath:
         with pytest.raises(ScopeRefused):
             src.read("templates/cisco_ios/base.j2")
 
-    def test_queued_restore_items_are_rejected_not_executed(self, monkeypatch):
-        from modules.nsot import restore
-
-        pending = [{"id": "a1", "action_type": "revert_to_golden",
-                    "device_hostname": "s4"},
-                   {"id": "b2", "action_type": "update_golden_config",
-                    "device_hostname": "s3"}]
-        resolved = []
-        import modules.approval_queue as Q
-        monkeypatch.setattr(Q, "get_pending", lambda: pending)
-        monkeypatch.setattr(Q, "resolve",
-                            lambda entry_id, action: resolved.append((entry_id, action)))
-
-        outcome = restore.invalidate_queued_restores()
-
-        assert resolved == [("a1", "reject")], (
-            "only queued restores are rejected, and they are rejected not run")
-        assert [r["hostname"] for r in outcome["rejected"]] == ["s4"]
-        assert "superseded" in outcome["reason"]
-
-    def test_the_reason_tells_the_operator_what_to_do(self, monkeypatch):
-        from modules.nsot import restore
-        import modules.approval_queue as Q
-        monkeypatch.setattr(Q, "get_pending", lambda: [
-            {"id": "a1", "action_type": "revert_to_golden", "device_hostname": "s4"}])
-        monkeypatch.setattr(Q, "resolve", lambda entry_id, action: None)
-        assert "Baselines panel" in restore.invalidate_queued_restores()["reason"]
-
-
 class TestBaselineCoverage:
     def test_baseline_tree_contains_every_device(self, lab):
         """Baselines cover everything inherently — the tagged tree has them all."""
@@ -505,9 +476,8 @@ class TestRevertHandsOffToTheConfirmedPath:
     Every `-` line applied verbatim, every `+` line turned into `no <command>` —
     unbounded negation, with no confirm hash, no `assert_no_mask()`, no
     sendability check, no failure capture and no rollback.
-    `invalidate_queued_restores()` already rejected these items *from the
-    Baselines panel*, which left the other direction open: approving one
-    through the normal queue UI still reached the executor.
+    The restore route also rejected every pending revert on each use (removed
+    with C326); approving one through the normal queue UI reached the executor.
     """
 
     ENTRY = {"id": "abc123", "action_type": "revert_to_golden",
@@ -711,13 +681,11 @@ class TestTheQueuedDiffNeverReachesADevice:
 
         closed = {}
 
-        def _mark_done(entry_id, note=""):
+        def _mark_done(entry_id, note="", actor=""):
             closed["id"] = entry_id
             return {"ok": True}
         monkeypatch.setattr("modules.approval_queue.mark_done", _mark_done)
         monkeypatch.setattr(golden, "_active_list", lambda data=None: "Lab")
-        monkeypatch.setattr("modules.nsot.restore.invalidate_queued_restores",
-                            lambda: {"rejected": []})
         monkeypatch.setattr("modules.nsot.restore.build_targets",
                             lambda *a, **k: ([object()], []))
 
@@ -764,8 +732,6 @@ class TestTheQueuedDiffNeverReachesADevice:
                             lambda ln, devices=None, skipped=None: {
                                 "inventory_size": 0, "partial": False,
                                 "denominator": 0, "scope_words": "in this list"})
-        monkeypatch.setattr("modules.nsot.restore.invalidate_queued_restores",
-                            lambda: {"rejected": []})
         monkeypatch.setattr("modules.nsot.restore.build_targets",
                             lambda *a, **k: ([object()], []))
         monkeypatch.setattr("routes.deploy.run_targets",

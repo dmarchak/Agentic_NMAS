@@ -416,7 +416,7 @@ def _close_handed_off(approvals: dict, outcomes: list) -> dict:
             if host in recorded:
                 out = mark_done(entry_id, f"Recorded {host}'s running config as its golden "
                                           f"through the capture operation, confirmed by "
-                                          f"{request_actor()}")
+                                          f"{request_actor()}", actor=request_actor())
                 (closed if out.get("ok") else left).append(entry_id)
             else:
                 left.append(entry_id)
@@ -882,14 +882,16 @@ def _intent_preview(list_name: str, target) -> dict:
 def restore_apply():
     """Re-apply a ref through the confirmed deploy path.
 
-    Not the approval queue. That path pushed whole-config text with none of the
-    guarantees built since: no confirm hash, no ASCII guard, no provenance, no
-    ``error_pattern``, no failure capture, no rollback. Any entry it left
-    queued is rejected on first use of this route, because executing one now
-    would send exactly the payload this replaced.
+    Not the approval queue, whose old executor pushed whole-config text with
+    none of the guarantees built since. That executor is gone: approving a
+    queued revert now hands off to THIS route (`_exec_revert_golden`), so a
+    queued item is a request for this operation, never a payload. Until C326
+    (2026-10-02) this route still rejected every pending revert on each use,
+    the one being acted on included, so an approved revert ended "rejected"
+    with no person and no reason, and any restore rejected other devices'.
     """
-    from modules.nsot.restore import (WithdrawnBaseline, build_targets,
-                                      invalidate_queued_restores)
+    from modules.identity import request_actor
+    from modules.nsot.restore import WithdrawnBaseline, build_targets
     from routes.deploy import run_targets
 
     data = request.get_json(silent=True) or {}
@@ -902,7 +904,6 @@ def restore_apply():
                         "error": "Nothing confirmed — re-apply refused"}), 400
 
     list_name = _active_list(data)
-    invalidated = invalidate_queued_restores()
     try:
         targets, skipped = build_targets(list_name, ref, list(confirmations),
                                          un_onboard=data.get("un_onboard"),
@@ -915,8 +916,7 @@ def restore_apply():
 
     report = run_targets(list_name, targets, data,
                          label=f"re-apply {ref}", source_ref=ref, skipped=skipped)
-    report.update({"ref": ref, "mode": "re-apply", "skipped": skipped,
-                   "invalidated_queue_items": invalidated["rejected"]})
+    report.update({"ref": ref, "mode": "re-apply", "skipped": skipped})
 
     # Close the queue item that handed off to this, but ONLY for devices that
     # actually succeeded. An item left pending for ever teaches the operator to
@@ -933,7 +933,7 @@ def restore_apply():
         if succeeded:
             closed = mark_done(approval_id,
                                f"Re-applied {ref} to {', '.join(succeeded)} "
-                               "through the confirmed deploy path")
+                               "through the confirmed deploy path", actor=request_actor())
             report["approval_closed"] = closed.get("ok", False)
         else:
             report["approval_closed"] = False

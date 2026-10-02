@@ -148,21 +148,8 @@ class TestPlanReverification:
 class TestMasterSwitchIndependence:
     """Confirming must never turn the master switch on by itself."""
 
-    def test_confirming_does_not_flip_the_switch(self, monkeypatch):
-        written = {}
-        monkeypatch.setattr("modules.config.set_user_setting",
-                            lambda k, v: written.__setitem__(k, v))
-        from routes.netbox_safety import _maybe_permit_writes
-        _maybe_permit_writes({"token": "abc"})           # a plain confirmation
-        assert written == {}, "confirming an operation changed a persistent setting"
-
-    def test_explicit_permit_flag_is_honoured(self, monkeypatch):
-        written = {}
-        monkeypatch.setattr("modules.config.set_user_setting",
-                            lambda k, v: written.__setitem__(k, v))
-        from routes.netbox_safety import _maybe_permit_writes
-        _maybe_permit_writes({"permit_writes": True})
-        assert written == {"netbox_allow_writes": True}
+    # The switch moving only with a confirm that passes, and never with a plain one, is
+    # driven through the real routes in test_netbox_switch_after_confirm.py (C330).
 
     def test_master_switch_checked_before_token_is_burned(self, monkeypatch):
         """An unauthorized instance must not consume the operator's token."""
