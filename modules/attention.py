@@ -1719,6 +1719,29 @@ def lab_startup_source(cached=None) -> dict:
                              + "; ".join(f"`{l.strip()}`" for l in d["credentials"]))
             if d.get("reordered"):
                 parts.append("the same lines in another order")
+            lag = d.get("lag") or {}
+            if lag.get("behind"):
+                # C314: the golden moved after Oxidized's last fetch, so the
+                # file is behind, not wrong: nobody's change to capture.
+                hm = lambda t: str(t)[11:16]                     # noqa: E731
+                asked = (f" — fetch requested at {hm(lag['requested_at'])} UTC"
+                         if lag.get("requested_at") else "")
+                last = (f"its last fetch was at {hm(lag['fetched_at'])} UTC"
+                        if lag.get("fetched_at") else "Oxidized holds no fetch of it")
+                rows.append(row(
+                    source="lab-startup", key=f"behind:{d.get('list')}:{name}", level="warning",
+                    what=(f"Oxidized hasn't fetched {name} since its change at "
+                          f"{hm(lag['golden_at'])} UTC{asked}"),
+                    devices=[name], operands={"list": d.get("list"), "file": where},
+                    cause=(f"{name}'s golden changed at {hm(lag['golden_at'])} UTC and {last}; "
+                           f"the clab sync writes {where} from Oxidized's copy, so the file is "
+                           "behind until Oxidized fetches it: " + ". ".join(parts)),
+                    action={"label": ("Nothing to do: the next clab sync after Oxidized's fetch "
+                                      "rewrites the file. Do not redeploy the lab before then"
+                                      + ("" if lag.get("requested_at") else
+                                         "; no fetch was requested, so it waits for "
+                                         "Oxidized's own schedule"))}))
+                continue
             rows.append(row(
                 source="lab-startup", key=f"differs:{d.get('list')}:{name}", level="warning",
                 what=f"{name}'s lab startup file is not what its golden would produce",

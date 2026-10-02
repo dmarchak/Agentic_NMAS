@@ -270,3 +270,7 @@ def register_default_hooks() -> None:
     # target group: wake the targets keeper (a no-op where it does not run).
     from modules.prometheus_targets import golden_hook
     register("prometheus-targets", golden_hook, timeout=15)
+    # A commit that changed a golden asks Oxidized to fetch those devices now,
+    # never at its next hourly poll (C314).
+    from modules.oxidized_fetch import golden_hook as oxidized_fetch_hook
+    register("oxidized-fetch", oxidized_fetch_hook, timeout=30)
