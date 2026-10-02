@@ -1,4 +1,34 @@
 let _intentModal = null, _intentCM = null, _intentHost = '';
+/* The version this editor opened (CONCURRENCY_AUDIT R2): the save sends it back and is
+   refused, with nothing written, when somebody committed this device's intent since. */
+let _intentBase = '';
+
+/* What a save draws: committed, nothing to commit, or the refusal when the intent moved
+   since it was opened, with who moved it and both changes against what was opened. */
+function _intentSaveHtml(d) {
+  if (d.ok && d.changed === false) {
+    return {status: '<span class="text-muted">' + _iEsc(d.message) + '</span>', diff: ''};
+  }
+  if (d.ok) {
+    return {status: '<span class="text-success">Committed '
+              + _iEsc((d.commit || '').slice(0, 8)) + '.</span> '
+              + 'Deploy plan for this device will now show exactly this change.',
+            diff: ''};
+  }
+  let diff = '';
+  if (d.stage === 'moved') {
+    const pre = '<pre class="small bg-body-tertiary p-2 rounded" style="max-height:260px;overflow:auto">';
+    if (d.their_change) {
+      diff += '<h6 class="fw-semibold mb-1">What changed since you opened it</h6>'
+            + pre + _iEsc(d.their_change) + '</pre>';
+    }
+    if (d.your_change) {
+      diff += '<h6 class="fw-semibold mb-1 mt-3">Your edit, not saved</h6>'
+            + pre + _iEsc(d.your_change) + '</pre>';
+    }
+  }
+  return {status: '<span class="text-danger">' + _iEsc(d.error) + '</span>', diff: diff};
+}
 
 function _iEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
@@ -54,6 +84,7 @@ async function showIntentEditor(hostname) {
       return;
     }
     _intentSetText(d.yaml);
+    _intentBase = d.base || '';
     document.getElementById('intentEditorStatus').textContent =
       'Edit, then Check & show diff. Commit unlocks once the check passes.';
     /* CodeMirror measures character and gutter widths when it initialises.
@@ -174,15 +205,13 @@ async function commitIntentEdit() {
                           {method: 'POST',
                            headers: {'Content-Type': 'application/json'},
                            body: JSON.stringify({yaml: _intentText(),
-                                                 summary: summary})});
+                                                 summary: summary,
+                                                 base: _intentBase})});
     const d = await r.json();
-    if (!d.ok) {
-      status.innerHTML = '<span class="text-danger">' + _iEsc(d.error) + '</span>';
-      return;
-    }
-    status.innerHTML = '<span class="text-success">Committed '
-      + _iEsc((d.commit || '').slice(0, 8)) + '.</span> '
-      + 'Deploy plan for this device will now show exactly this change.';
+    const drawn = _intentSaveHtml(d);
+    status.innerHTML = drawn.status;
+    if (drawn.diff) document.getElementById('intentEditorDiff').innerHTML = drawn.diff;
+    if (d.ok && d.base) _intentBase = d.base;
     _intentArm(false);
   } catch (e) {
     status.innerHTML = '<span class="text-danger">' + _iEsc(e.message) + '</span>';

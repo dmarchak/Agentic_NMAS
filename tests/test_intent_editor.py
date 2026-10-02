@@ -94,6 +94,11 @@ def world(tmp_path, monkeypatch):
             "hostvars": hostvars}
 
 
+def _base(world):
+    """The version the editor opened, as its GET hands it out (CONCURRENCY_AUDIT R2)."""
+    return world["client"].get("/templatize/committed/s4").get_json()["base"]
+
+
 def _preview(world, text):
     return world["client"].post("/templatize/committed/s4/preview",
                                 json={"yaml": text})
@@ -188,7 +193,7 @@ class TestTextPreservesWhatAModelWouldDrop:
         assert "unmodeled" in text
         edited = text.replace("uplink", "uplink to core")
         world["client"].post("/templatize/committed/s4",
-                             json={"yaml": edited, "summary": "retitle uplink"})
+                             json={"base": _base(world), "yaml": edited, "summary": "retitle uplink"})
         after = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         assert "some-construct nobody modelled" in after, (
             "the unmodeled block vanished -- the failure it was built to "
@@ -198,7 +203,7 @@ class TestTextPreservesWhatAModelWouldDrop:
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         edited = text.replace("uplink", "uplink to core")
         world["client"].post("/templatize/committed/s4",
-                             json={"yaml": edited, "summary": "retitle"})
+                             json={"base": _base(world), "yaml": edited, "summary": "retitle"})
         after = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         assert after == edited, "the text was translated on the way through"
 
@@ -213,7 +218,7 @@ class TestTheLoopCloses:
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         out = world["client"].post(
             "/templatize/committed/s4",
-            json={"yaml": text.replace("uplink", "uplink to core"),
+            json={"base": _base(world), "yaml": text.replace("uplink", "uplink to core"),
                   "summary": "retitle the uplink"})
         assert out.get_json()["ok"] is True
         subject = subprocess.run(
@@ -224,7 +229,7 @@ class TestTheLoopCloses:
     def test_a_summary_is_required(self, world):
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         out = world["client"].post("/templatize/committed/s4",
-                                   json={"yaml": text, "summary": "  "})
+                                   json={"base": _base(world), "yaml": text, "summary": "  "})
         assert out.status_code == 400
         assert "says nothing in a log" in out.get_json()["error"]
 
@@ -236,7 +241,7 @@ class TestTheLoopCloses:
 
         text = open(os.path.join(world["repo"], "host_vars", "s4.yml")).read()
         world["client"].post("/templatize/committed/s4",
-                             json={"yaml": text.replace("uplink", "uplink to core"),
+                             json={"base": _base(world), "yaml": text.replace("uplink", "uplink to core"),
                                    "summary": "retitle"})
         committed = hostvars.read_committed(world["repo"], "s4")
         descriptions = [i.get("description") for i in committed["interfaces"]]

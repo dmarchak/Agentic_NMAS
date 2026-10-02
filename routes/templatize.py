@@ -264,14 +264,98 @@ def read_committed(hostname):
     from modules.nsot import hostvars
 
     repo = _repo_for(_active_list())
-    # What is COMMITTED, from git (C104): the editor opens what deploy reads.
-    text, _state = hostvars.committed_at_head(repo, hostname)
+    # What is COMMITTED, from git (C104): the editor opens what deploy reads. The text is
+    # read FROM the blob it names as its BASE, the version the save sends back
+    # (CONCURRENCY_AUDIT R2), so a commit landing between two reads of HEAD cannot pair one
+    # version's text with another's base.
+    base = hostvars.committed_blob(repo, hostname)
+    text = hostvars.blob_text(repo, base) if base else None
     if text is None:
         return jsonify({"ok": False, "committed": False, "error": (
             f"'{hostname}' has no committed intent. Extract it, review the "
             "diff, and commit before it can be deployed.")}), 404
     return jsonify({"ok": True, "hostname": hostname, "committed": True,
-                    "yaml": text})
+                    "yaml": text, "base": base})
+
+
+def _validate_edit(hostname: str, text: str):
+    """``(parsed, None)`` or ``(None, refusal)``: the editor's checks, run by the preview
+    AND the save (CONCURRENCY_AUDIT R2: the unknown-interface-key refusal ran only in the
+    preview, so a save never previewed, or edited after it, skipped it)."""
+    import yaml
+
+    from modules.nsot import hostvars
+
+    # 1. Parse. A mark gives line and column; without one the error is still
+    #    reported rather than swallowed, because "invalid somewhere" beats a
+    #    silent refusal.
+    try:
+        parsed = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        return None, (jsonify({
+            "ok": False, "stage": "yaml",
+            "line": (mark.line + 1) if mark else None,
+            "column": (mark.column + 1) if mark else None,
+            "error": getattr(exc, "problem", None) or str(exc)}), 400)
+
+    if not isinstance(parsed, dict):
+        return None, (jsonify({"ok": False, "stage": "schema", "line": 1, "column": 1,
+                        "error": "host_vars must be a YAML mapping"}), 400)
+
+    # 2. Schema, such as it is: the document names its own device. A mismatch
+    #    here is how one device's intent lands in another's file.
+    named = parsed.get("hostname")
+    if named and named != hostname:
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.strip().startswith("hostname:")), 1)
+        return None, (jsonify({"ok": False, "stage": "schema", "line": line,
+                        "column": 1,
+                        "error": f"this document names {named!r}; a host_vars "
+                                 f"file names its own device, and editing "
+                                 f"{hostname}'s must say {hostname!r}"}), 400)
+
+    # 2b. UNKNOWN INTERFACE KEYS — the silent half.
+    #
+    # `StrictUndefined` catches a MISSING key and can never catch a MISSPELLED
+    # one: `descripton` is simply never read, the line does not render, and
+    # nothing says a word. That is the failure a human author actually has,
+    # and it is the one the render cannot report — so it is reported here,
+    # with the line, like a YAML error.
+    unknown = hostvars.unknown_interface_keys(parsed)
+    if unknown:
+        first_key = unknown[0][1]
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.strip().startswith(f"{first_key}:")), 1)
+        names = ", ".join(sorted({f"{key!r} (interfaces[{i}])"
+                                  for i, key in unknown}))
+        return None, (jsonify({
+            "ok": False, "stage": "schema", "line": line, "column": 1,
+            "error": (f"nothing reads {names}. An interface key that is not "
+                      "one of the known thirty is silently ignored — the line "
+                      "simply does not render — so it is refused here rather "
+                      "than at the device. Omitting a key is fine and needs "
+                      "no action; misspelling one does.")}), 400)
+
+    # 2c. THE SYSLOG BLOCK IS WHOLE OR ABSENT (NSOT_PLAN P.1). Refused here,
+    #     with the line, rather than at the commit -- same reason as 2b.
+    problems = hostvars.syslog_block_problems(parsed)
+    if problems:
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.strip().startswith("syslog:")), 1)
+        return None, (jsonify({"ok": False, "stage": "schema", "line": line,
+                        "column": 1, "error": "; ".join(problems)}), 400)
+
+    # 3. The secret guards, BEFORE anything is rendered or written. Same two
+    #    checks `write_committed_text()` applies, run here so the editor
+    #    refuses rather than the commit.
+    try:
+        hostvars.assert_printable(text, hostname)
+        hostvars.assert_no_secret_values(text, hostname)
+    except Exception as exc:                  # noqa: BLE001
+        return None, (jsonify({"ok": False, "stage": "secrets",
+                        "error": str(exc)}), 400)
+    return parsed, None
 
 
 @bp.route("/committed/<path:hostname>/preview", methods=["POST"])
@@ -299,8 +383,6 @@ def preview_committed_edit(hostname):
     ``vs_device``   render of the edited text vs the device's capture — what
                     a deploy would push
     """
-    import yaml
-
     from modules.nsot import hostvars, roundtrip
 
     data = request.get_json(silent=True) or {}
@@ -310,75 +392,9 @@ def preview_committed_edit(hostname):
     if not isinstance(text, str) or not text.strip():
         return jsonify({"ok": False, "error": "No host_vars document sent"}), 400
 
-    # 1. Parse. A mark gives line and column; without one the error is still
-    #    reported rather than swallowed, because "invalid somewhere" beats a
-    #    silent refusal.
-    try:
-        parsed = yaml.safe_load(text) or {}
-    except yaml.YAMLError as exc:
-        mark = getattr(exc, "problem_mark", None)
-        return jsonify({
-            "ok": False, "stage": "yaml",
-            "line": (mark.line + 1) if mark else None,
-            "column": (mark.column + 1) if mark else None,
-            "error": getattr(exc, "problem", None) or str(exc)}), 400
-
-    if not isinstance(parsed, dict):
-        return jsonify({"ok": False, "stage": "schema", "line": 1, "column": 1,
-                        "error": "host_vars must be a YAML mapping"}), 400
-
-    # 2. Schema, such as it is: the document names its own device. A mismatch
-    #    here is how one device's intent lands in another's file.
-    named = parsed.get("hostname")
-    if named and named != hostname:
-        line = next((n for n, l in enumerate(text.splitlines(), 1)
-                     if l.strip().startswith("hostname:")), 1)
-        return jsonify({"ok": False, "stage": "schema", "line": line,
-                        "column": 1,
-                        "error": f"this document names {named!r}; a host_vars "
-                                 f"file names its own device, and editing "
-                                 f"{hostname}'s must say {hostname!r}"}), 400
-
-    # 2b. UNKNOWN INTERFACE KEYS — the silent half.
-    #
-    # `StrictUndefined` catches a MISSING key and can never catch a MISSPELLED
-    # one: `descripton` is simply never read, the line does not render, and
-    # nothing says a word. That is the failure a human author actually has,
-    # and it is the one the render cannot report — so it is reported here,
-    # with the line, like a YAML error.
-    unknown = hostvars.unknown_interface_keys(parsed)
-    if unknown:
-        first_key = unknown[0][1]
-        line = next((n for n, l in enumerate(text.splitlines(), 1)
-                     if l.strip().startswith(f"{first_key}:")), 1)
-        names = ", ".join(sorted({f"{key!r} (interfaces[{i}])"
-                                  for i, key in unknown}))
-        return jsonify({
-            "ok": False, "stage": "schema", "line": line, "column": 1,
-            "error": (f"nothing reads {names}. An interface key that is not "
-                      "one of the known thirty is silently ignored — the line "
-                      "simply does not render — so it is refused here rather "
-                      "than at the device. Omitting a key is fine and needs "
-                      "no action; misspelling one does.")}), 400
-
-    # 2c. THE SYSLOG BLOCK IS WHOLE OR ABSENT (NSOT_PLAN P.1). Refused here,
-    #     with the line, rather than at the commit -- same reason as 2b.
-    problems = hostvars.syslog_block_problems(parsed)
-    if problems:
-        line = next((n for n, l in enumerate(text.splitlines(), 1)
-                     if l.strip().startswith("syslog:")), 1)
-        return jsonify({"ok": False, "stage": "schema", "line": line,
-                        "column": 1, "error": "; ".join(problems)}), 400
-
-    # 3. The secret guards, BEFORE anything is rendered or written. Same two
-    #    checks `write_committed_text()` applies, run here so the editor
-    #    refuses rather than the commit.
-    try:
-        hostvars.assert_printable(text, hostname)
-        hostvars.assert_no_secret_values(text, hostname)
-    except Exception as exc:                  # noqa: BLE001
-        return jsonify({"ok": False, "stage": "secrets",
-                        "error": str(exc)}), 400
+    parsed, refused = _validate_edit(hostname, text)
+    if refused:
+        return refused
 
     # The same capture the Template preview uses, from the same helpers --
     # one composition, so the editor's diff and the preview's diff cannot
@@ -481,6 +497,13 @@ def edit_committed(hostname):
     re-extracting — that makes intent a function of current state and can only
     ever produce an empty diff. Edit what the network is supposed to be, commit
     it, and the render diff *is* the change.
+
+    **Saved against the version the person opened** (CONCURRENCY_AUDIT R2). The GET hands
+    out ``base``, the blob at HEAD; the save sends it back, and under the repository lock a
+    HEAD that moved since is refused with both blobs, who moved it and both changes, with
+    nothing written. Before, the last writer won silently: a stale editor put its whole
+    document back over another person's commit, and the write happened before the lock, so
+    one person's commit could carry the other's text.
     """
     from modules.nsot import hostvars, repo as repo_service
 
@@ -489,6 +512,7 @@ def edit_committed(hostname):
     repo = _repo_for(list_name)
     text = data.get("yaml")
     summary = (data.get("summary") or "").strip()
+    base = (data.get("base") or "").strip()
 
     if not isinstance(text, str) or not text.strip():
         return jsonify({"ok": False, "error": "No host_vars document sent"}), 400
@@ -496,26 +520,83 @@ def edit_committed(hostname):
         return jsonify({"ok": False, "error": (
             "A one-line summary is required — it becomes the commit subject, "
             "and 'host_vars: s4' on its own says nothing in a log.")}), 400
-    if hostvars.committed_at_head(repo, hostname)[0] is None:
-        return jsonify({"ok": False, "error": (
-            f"'{hostname}' has no committed intent yet. Commit the extraction "
-            "first, so the edit has a reviewed baseline to diff against.")}), 404
+    if not base:
+        return jsonify({"ok": False, "stage": "base", "error": (
+            f"Not saved: this editor did not say which version of {hostname}'s intent it "
+            "opened, so the save could replace a commit made since. Nothing was written. "
+            "Reload the page, open the editor again and make the edit there.")}), 400
+    _parsed, refused = _validate_edit(hostname, text)
+    if refused:
+        return refused
 
-    try:
-        hostvars.write_committed_text(repo, hostname, text)
-    except hostvars.SecretLeak as exc:
-        log.error("templatize: refused host_vars edit for %s: %s", hostname, exc)
-        return jsonify({"ok": False, "error": str(exc)}), 400
-    except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+    with repo_service.repo_lock(repo):
+        current = hostvars.committed_blob(repo, hostname)
+        if current is None:
+            return jsonify({"ok": False, "error": (
+                f"'{hostname}' has no committed intent yet. Commit the extraction "
+                "first, so the edit has a reviewed baseline to diff against.")}), 404
+        if current != base:
+            return _intent_moved(repo, hostname, base, current, text)
+        committed_text = hostvars.blob_text(repo, current) or ""
+        if (text if text.endswith("\n") else text + "\n") == committed_text:
+            return jsonify({"ok": True, "hostname": hostname, "changed": False,
+                            "commit": "", "base": current,
+                            "message": "Nothing to commit: the document is what is "
+                                       "already committed."})
+        try:
+            hostvars.write_committed_text(repo, hostname, text)
+        except hostvars.SecretLeak as exc:
+            log.error("templatize: refused host_vars edit for %s: %s", hostname, exc)
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
 
-    result = repo_service.save_host_vars(
-        list_name, [hostname], actor=request_actor(),
-        message=f"host_vars: {hostname} {summary}")
+        result = repo_service.save_host_vars(
+            list_name, [hostname], actor=request_actor(),
+            message=f"host_vars: {hostname} {summary}")
+        after = hostvars.committed_blob(repo, hostname)
     return jsonify({"ok": result.get("ok", False), "hostname": hostname,
-                    "commit": result.get("commit", ""),
+                    "changed": bool(result.get("commit")),
+                    "commit": result.get("commit", ""), "base": after or current,
                     "message": result.get("message", ""),
                     "error": result.get("error", "")})
+
+
+def _intent_moved(repo: str, hostname: str, base: str, current: str, text: str):
+    """The refusal when HEAD moved after the editor opened: both blobs named, who moved it,
+    what they changed and what this edit changes, each against what was opened. 409."""
+    import difflib
+
+    from modules.nsot import hostvars
+
+    opened = hostvars.blob_text(repo, base)
+    now = hostvars.blob_text(repo, current) or ""
+    last = hostvars.last_intent_commit(repo, hostname)
+    by = (f"{last.get('by') or 'someone'} in {last.get('commit')} "
+          f"(\"{last.get('subject')}\", {last.get('at')})") if last else "a commit"
+
+    def diff(a, b, left, right):
+        return "".join(difflib.unified_diff(a.splitlines(True), b.splitlines(True),
+                                            fromfile=left, tofile=right))
+
+    if opened is None:
+        their = your = ""
+        what = (f"the version this editor says it opened ({base[:12]}) is not in the "
+                "repository, so the two changes cannot be shown")
+    else:
+        their = diff(opened, now, f"what you opened ({base[:8]})",
+                     f"committed now ({current[:8]})")
+        your = diff(opened, text if text.endswith("\n") else text + "\n",
+                    f"what you opened ({base[:8]})", "your edit")
+        what = "their change and yours are below"
+    return jsonify({
+        "ok": False, "stage": "moved", "hostname": hostname,
+        "base": base, "current": current, "last_commit": last,
+        "their_change": their, "your_change": your,
+        "error": (f"Not saved: {hostname}'s intent changed after you opened it. You opened "
+                  f"{base[:8]}; committed now is {current[:8]}, by {by}. Nothing was "
+                  f"written; {what}. Reload the editor to make your edit on their "
+                  "version.")}), 409
 
 
 # ---------------------------------------------------------------------------

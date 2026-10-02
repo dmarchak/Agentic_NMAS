@@ -433,6 +433,44 @@ def committed_at_head(repo: str, hostname: str) -> tuple:
     return raw, COMMITTED
 
 
+def committed_blob(repo: str, hostname: str):
+    """The git blob id of *hostname*'s intent at HEAD, or None when none is committed.
+
+    The editor's BASE (CONCURRENCY_AUDIT R2): the editor's GET hands it out with the text, the
+    save sends it back, and a save whose base is no longer HEAD's blob is refused. Without it
+    the last writer won silently: a person who opened r2 before another person's commit put
+    their whole document back over it, and both saw success.
+    """
+    from modules.nsot.repo import git
+
+    rc, out, _ = git(repo, "rev-parse", "--verify", "-q",
+                     f"HEAD:{COMMITTED_REL}/{_safe_hostname(hostname)}.yml")
+    return out if rc == 0 and out else None
+
+
+def blob_text(repo: str, blob: str):
+    """A blob's text, verbatim, or None when the object is not in the repository."""
+    from modules.nsot.repo import git_raw
+
+    rc, out, _ = git_raw(repo, "cat-file", "blob", blob)
+    return out if rc == 0 else None
+
+
+def last_intent_commit(repo: str, hostname: str) -> dict:
+    """The newest commit that changed *hostname*'s intent: its short sha, time, actor and
+    subject (`by`, the commit's `Actor:`), or {} when git has none (a refusal names who moved it)."""
+    from modules.nsot.repo import git
+
+    rc, out, _ = git(repo, "log", "-1",
+                     "--format=%h%x1f%cI%x1f%(trailers:key=Actor,valueonly)%x1f%s",
+                     "--", f"{COMMITTED_REL}/{_safe_hostname(hostname)}.yml")
+    parts = out.split("\x1f") if rc == 0 and out else []
+    if len(parts) < 4:
+        return {}
+    return {"commit": parts[0], "at": parts[1], "by": parts[2].strip(),
+            "subject": parts[3]}
+
+
 def intent_gap_note(repo: str, hostname: str) -> dict:
     """What the editor SAYS for a device with no committed intent.
 

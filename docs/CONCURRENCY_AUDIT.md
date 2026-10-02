@@ -105,7 +105,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | # | Risk | Area | Write path | Writes | Protection today | Cross-process | Verdict | Today | Fix |
 |---|---|---|---|---|---|---|---|---|---|
 | R1 | h | git | Every commit to a list's repository (`save_golden`, `_commit_paths`, renames, migrate); abandon and retire stage outside | index, commits, tags | `threading.Lock` per repo; `stage_exactly` checks once; `commit()` takes the whole index | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Cross-process lock held from first write to last tag, holder recorded; commit explicit paths; every stager inside |
-| R2 | h | intent | Intent editor save | `host_vars/<dev>.yml`, one commit | none: no base, write before the lock, save not bound to preview | no | UNSAFE | yes | Base blob from the open; compare at HEAD under the lock; 409 with three-way diff |
+| R2 | h | intent | Intent editor save | `host_vars/<dev>.yml`, one commit | none: no base, write before the lock, save not bound to preview | no | FIXED 2026-10-02 (was UNSAFE; tests/test_intent_editor_concurrency.py) | yes | Base blob from the open; compare at HEAD under the lock; 409 with three-way diff |
 | R3 | h | stores, live | The server-wide active list (`device_lists.json` `current_list`) | the registry, and which list every derived write lands in | none; truncate in place; a torn read answers "Default" | no | UNSAFE | yes | Active list per session; every write carries its list; locked atomic registry |
 | R4 | h | approvals | Approval queue store | `approval_queue.json` | none; GETs write it; unreadable reads as `[]`; `resolve` saves a stale list twice | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approval_queue_store.py) | yes | PathLock, atomic write, refuse unreadable, pure reads, compare-and-set; SQLite WAL candidate |
 | R5 | h | locks, live | An operation interrupted by a process exit, including the two restart routes (added on review) | devices already pushed; no receipt, no golden, no rollback | none: Update gates and the restart routes ignore held devices; crash staging unread; leftover lock file unread | n/a | UNSAFE | yes | Refuse Update, restarts and `nmas-deploy` while any device is held (or retire the restart routes); per-device receipts; draw the interrupted state |
@@ -123,7 +123,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R17 | m | intent | Settings forms | `user_settings.json`, `.env` | file safe; forms resend every field; `.env` unlocked | yes (file) | UNSAFE | yes | Send changed fields only, with the value as loaded |
 | R18 | m | git, stores, locks | `remote.json` and the post-commit push | the remote, `remote.json` | thread per commit; unlocked read-modify-write; unreadable reads as "no remote" | no | UNSAFE | yes | One publisher per repository; PathLock; push an explicit sha |
 | R19 | m | stores, live, approvals | Drift state and overlapping drift runs | `drift_state.json`, queue items | one RLock in one function; truncate; legacy re-adoption; Check now overlaps | no | UNSAFE | yes | PathLock; refuse unreadable; one drift run at a time across processes |
-| R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | UNSAFE | yes | Never reject the item named by `approval_id` |
+| R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | FIXED 2026-10-02 as C326 (was UNSAFE; tests/test_approved_revert_closes.py) | yes | Never reject the item named by `approval_id` |
 | R21 | m | locks, confirms, live | Every NetBox writer: the tab's import and Remove, onboarding phase two, adopt, retire's mask, the mask script (widened on review) | NetBox, sync status | nothing refuses a second writer; status truncate; tokens in memory | partly | UNSAFE | yes | Per-list NetBox lock with holder, taken by every writer; shared token store |
 | R22 | m | stores | Kea ZTP fragment | the fragment, Kea's running config | none | no | UNSAFE | yes | PathLock from read to read-back |
 | R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | UNSAFE | yes | Hold the hostname; bind Abandon to its dry run |
@@ -169,6 +169,13 @@ content under someone else's name. The only two-writer test uses threads
 (tests/test_golden_repo.py:260-280). Correction applied: `nmas-inventory-role` does not
 commit. Under one process, two browser users are serialised; the exposure today is a host CLI
 or the unlocked abandon and retire stagers.
+
+*FIXED 2026-10-02 (tests/test_intent_editor_concurrency.py):* the GET hands out the blob at
+HEAD as `base`, with the text read from that blob; the save sends it back and, under the
+repository lock, a moved HEAD is refused (409) naming both blobs and who moved it, with both
+changes against what was opened and nothing written. The save runs the preview's checks
+(`_validate_edit`), writes inside the lock, and an unchanged save says nothing was committed.
+The text below is the finding as audited.
 
 **R2. Two people editing the same intent: the last writer wins, silently** (intent-1,
 intent-2, intent-3, git-8, stores-3, confirms-1). The editor's GET returns only the text
@@ -389,6 +396,9 @@ drop `disabled`. `POST /drift/check/sync` never sets `_running` (app.py:3208-321
 scheduler sets it only for itself, drift_check.py:607-613), so two people pressing Check now
 run two full passes, and the queue's check-then-append dedupe
 (approval_queue.py:103-136) can add two items for one device.
+
+*FIXED 2026-10-02 as register C326 (tests/test_approved_revert_closes.py), before this row was
+marked: the restore no longer rejects pending revert items, and an approved one closes as done.*
 
 **R20. A restore rejects the very approval item it was handed** (approvals-4).
 `restore_apply` calls `invalidate_queued_restores()` first (routes/golden.py:905), which
