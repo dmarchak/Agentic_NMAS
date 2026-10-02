@@ -515,6 +515,58 @@ The wizard can be left and resumed. Each step is also its Settings screen afterw
 
 ## 6. What comes out, or becomes optional
 
+### 6.0 The standing rule, and the check (the operator, 2026-10-02)
+
+The release contains nothing that exists only because of the operator's lab or personal
+setup. **From 2026-10-02 the rule applies when a thing is WRITTEN, so this stage is a check,
+not an archaeology dig:** anything lab- or person-specific either lives in the lab-tooling
+area outside the product (`lab/`, below), or is an OPTIONAL integration that is off unless
+configured (and documented as such), or is a value in the local, gitignored configuration
+(`data/`). Never a hard-coded assumption in the product.
+
+- **The check**: `tests/test_lab_specifics.py` scans the product (its code, its scripts,
+  `deploy/` and the manual it ships) for the lab's names and values (containerlab, clab,
+  vrnetlab, the lab's name, the course code, the lab's dashboard UIDs, its 10.255.x
+  addresses). Every file holding one is in its `INVENTORY` with the count of such lines, a
+  category and a disposition, EXACT both ways: a new file, a grown count, a shrunk count not
+  lowered, and a ghost each fail. Measured 2026-10-02: **45 files, 369 lines.** That table
+  is the code half of this inventory; it is not repeated here.
+- **Acceptance**: the release tree holds no line the check finds, and every item below has
+  its disposition carried out.
+
+### 6.0a The lab-tooling area: `lab/` at the repository root (recommended)
+
+Lab tooling is person-run, talks to the product only as an outside client through its
+normal read-only API, and the product never names it. **Recommended: `lab/` in this
+repository**, excluded from the release by the release's explicit include list, rather than
+its own repository: it shares CI, the publication check and the test harness, and a second
+repository would duplicate those or run without them. The lab-specifics check refuses the
+product importing from `lab/`. The first member is the lab redeploy script (queued after the
+Coverage redraw; its pre-flight was shown to the operator as a mockup first), with its own
+README for the containerlab specifics; the manual's "Recovering and redeploying" section
+describes the generic procedure. `scripts/oxidized-to-config.sh`, `scripts/nmas-clab-targets`
+and `scripts/nmas-host` move there (a host step each: the host's symlinks and units point at
+`scripts/`).
+
+### 6.0b The full inventory, by category
+
+| Category | Item | Disposition |
+|---|---|---|
+| Lab platforms | containerlab: clab-sync (`oxidized-to-config.sh`), its map (`nmas-clab-targets`, `/clab/sync_targets`), the lab-startup check (C303: `modules/lab_startup.py`, its reader, its Needs attention rows), the persist chain's startup-file stages, `clab_*` settings, `manifest.clab_lab`, retire's startup step, the r5.cfg topology reading (C320) | **Optional lab integration** (off unless `clab_host` is set; documented), out of the release |
+| Lab platforms | vrnetlab's boot behaviour (console replay, the injected user, the RW community) in `bootstrap_config.py` and `onboard.py`; the launch patches and probe topologies | **Generic**: a declared deployment profile ("this platform replays its startup over a console", "this deployment injects a user"), vrnetlab one profile among others; the patches and topologies move to `lab/` |
+| Lab platforms | Proxmox (`integrations/proxmox.py`, image jobs, ZFS rows) | **Optional integration**, out of the release (as 6 says) |
+| Lab platforms | the lab host and `scripts/nmas-host`, `nmas-lab-tunnel`, `data/lab_hosts.json` | **Move to `lab/`** |
+| The operator's access | Cloudflare Access and the tunnel (`identity.py`'s verification, 5 settings) | **Optional identity provider** (2.2) |
+| The operator's access | the break-glass laptop workflow as written | **Rewritten generic** (6's row) |
+| The lab's specifics | addresses (10.255.x in `deploy/rsyslog/`, the P.1 change record, examples), hostnames r1 to r6 and s1 to s4 in examples, the ZTP segment (subnet 255), the lab and course names, the dashboard UIDs (`rcn-lab-overview`, `rcn-lab1-snmp`), Oxidized's layout (router.db, its group names) | **Local configuration** (gitignored) or **removed**; defaults neutral |
+| Hardware workarounds | s3's slow clock (per-device heartbeat windows), vIOS timings and bounds (the 35 s connect bound from s3's 13.7 s, the 120 s config-read bound, the reachability miss threshold of 3, IP SLA's measured CPU cost) | **Keep the general mechanism; make each tuning a setting or a measurement per install**, its measured value the lab's local configuration |
+| The operator's records | the findings register, the write-up and its notes, the staged-run instructions, the lab runbooks and probe documents | **Stay in this repository, out of the release** |
+| Defaults, fixtures, docs | settings defaults holding the lab's values (`clab_configs_dir`, `netbox_excluded_vrfs = ["clab-mgmt"]`), test fixtures holding the lab's configs and addresses, docs that work only with the lab's values | **Neutral defaults**; fixtures ship sanitised (6's tests note); docs rewritten for an installer |
+
+The table in 6 below is the first inventory (2026-09-30), kept: 6.0b supersedes its
+dispositions where they differ (containerlab is an optional integration while the lab uses
+it, and out of the release).
+
 The inventory, measured 2026-09-30 over 863 tracked files.
 
 | Group | What | In the release |
