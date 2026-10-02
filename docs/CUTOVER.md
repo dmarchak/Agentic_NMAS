@@ -39,8 +39,9 @@ and built.
 | Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | PLANNED, 7.3 and 7.4 | Device Actions "Capture now…" and Devices "Save All" |
 | Restore, baselines | `/golden/restore/preview`, `/apply`, `/golden/restore_points/<host>`, `/golden/baselines` | PLANNED, History (signed off 2026-10-02) and 7.3 | History > Baselines (re-apply); Device Actions "Restore from…" |
 | Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | PLANNED, History | History's commit rows and the device page's History tab (reveal a version, a person, audited) |
-| Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | PLANNED, History | History > Commits |
-| Remote | `/remote/status`, `/push`, `/auto-push`, `/verify`, `/verify-write`, `/preview`, `/acknowledge`, `/adopt` | PLANNED, History | History's header (push, verify) and its remote section |
+| Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | BUILT | History > Commits (2026-10-02): the log, its filters and each commit's masked change |
+| Remote | `/remote/push`, `/remote/verify` | BUILT | History's header (2026-10-02): the remote's sentence, Push now and Verify |
+| Remote, the rest | `/remote/status`, `/auto-push`, `/verify-write`, `/preview`, `/acknowledge`, `/adopt` | PLANNED, History | History's remote section: connect, acknowledge publication, the write probe, auto-push |
 | Renames | `/golden/renames`, `/golden/renames/sync` | PLANNED, 7.4 | Devices, with Refresh Hostnames |
 | Legacy golden store, migration | `/golden/legacy_store`, `/golden/migrate/plan`, `/golden/migrate/apply` | REMOVE, 7.8 | Its retirement condition (`legacy_only_goldens()` empty) has held on the host since 2026-09-28 (plan 7.8) |
 | Persist, rotate, retire | `/persist/*`, `/rotate/*`, `/retire/*` | PLANNED, 7.3 | Device Actions (built on today's page; the v2 menu links there) |
@@ -62,7 +63,8 @@ and built.
 | List variables, compliance policy | `/list/variables` (4), `/list/compliance_policy` (2) | REMOVE, 7.8 | Superseded by intent, drift, group intent and the monitoring templates (the operator, 2026-10-02); Stage 8 re-establishes how the agent works |
 | Refresh hostnames | `/refresh_hostnames` | PLANNED, 7.4 | Devices |
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` (2) | PLANNED, 7.7 | Results are Needs attention rows (built); the schedule and "check now" go to Settings > Checks |
-| Freshness authorisations | `/freshness/authorise`, `/freshness/authorisations` | PLANNED, History | History > Authorisations (signed off) |
+| Freshness authorisations | `/freshness/authorisations` | BUILT | History > Authorisations (2026-10-02) |
+| Authorise a divergence | `/freshness/authorise` | PLANNED, 7.6 | Source of truth, beside the divergence it authorises |
 | Break-glass export | `/breakglass/preview`, `/export` | PLANNED, 7.7 | Settings, and Needs attention's break-glass row (which links to today's page now) |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | PLANNED, 7.7 | Settings > Diagnostics |
 | Settings | `/settings` (2), `/settings/integrations/*` (5), `/save_tftp_server` | PLANNED, 7.7 | Settings, split |

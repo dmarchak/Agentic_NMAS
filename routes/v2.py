@@ -152,6 +152,124 @@ def about():
     return _page("v2/about.html", inst=installation(), nav=manual.nav(), active_nav="help")
 
 
+# ------------------------------------------------------------------ History
+# (NSOT_GUI_BRIEF 3.4; the mockup signed off 2026-10-02; modules/fleet_history.py)
+
+HISTORY_TABS = (("commits", "Commits"), ("baselines", "Baselines"),
+                ("authorisations", "Authorisations"))
+
+
+def _history_filters(request) -> dict:
+    a = request.args
+    since = a.get("since", "7")
+    return {"device": a.get("device", "").strip(), "person": a.get("person", "").strip(),
+            "workflow": a.get("workflow", "").strip(),
+            "since": since if since in [s for s, _w in fleet_history_since()] else "7",
+            "limit": a.get("limit", "")}
+
+
+def fleet_history_since():
+    from modules import fleet_history
+    return fleet_history.SINCE_CHOICES
+
+
+def _history_remote(ref) -> dict:
+    """The header: the remote's one sentence (``remote_publication.describe``),
+    and whether anything is uncommitted (one ``git status``)."""
+    from modules.nsot import repo as R
+    from modules.readers import remote_publication as RP
+
+    pub = RP.status_for(ref.name)
+    out = {"d": RP.describe(pub), "value_at": pub.get("value_at"), "dirty": None,
+           "list": ref.name}
+    rc, text, _err = R.git(ref.repo_dir, "status", "--porcelain")
+    out["dirty"] = len([l for l in (text or "").splitlines() if l.strip()]) if rc == 0 else None
+    return out
+
+
+def _history_commits(ref, f) -> dict:
+    from modules import fleet_history
+    try:
+        got = fleet_history.commits(ref.repo_dir, device=f["device"], person=f["person"],
+                                    workflow=f["workflow"], since_days=f["since"],
+                                    limit=int(f["limit"]) if str(f["limit"]).isdigit()
+                                    else fleet_history.DEFAULT_LIMIT)
+    except fleet_history.HistoryError as exc:
+        got = {"rows": [], "cut": False, "limit": 0, "error": str(exc)}
+    return got
+
+
+def _history_ctx(request) -> dict:
+    from modules import fleet_history, reader_job
+    from modules.device import load_saved_devices
+    from modules.nsot import freshness, listref
+
+    ref = listref.active()
+    tab = request.args.get("tab", "commits")
+    if tab not in [t for t, _l in HISTORY_TABS]:
+        tab = "commits"
+    f = _history_filters(request)
+    ctx = {"tab": tab, "tabs": HISTORY_TABS, "f": f, "ref": ref,
+           "remote": _history_remote(ref), "since_choices": fleet_history.SINCE_CHOICES}
+    if tab == "commits":
+        ctx["c"] = _history_commits(ref, f)
+        ctx["choices"] = fleet_history.choices(ref.repo_dir, f["since"])
+        try:
+            ctx["devices"] = sorted(d.get("hostname", "") for d in load_saved_devices(ref.csv_path)
+                                    if d.get("hostname"))
+        except Exception as exc:                          # noqa: BLE001
+            log.warning("v2 history: the inventory could not be read: %s", exc)
+            ctx["devices"] = []
+    elif tab == "baselines":
+        got = reader_job.read_cached("baseline-usability")
+        good = (got.get("doc") or {}).get("last_good") or {}
+        ctx["b"] = (((good.get("value") or {}).get("lists") or {}).get(ref.name) or {})
+        ctx["b_at"] = good.get("value_at")
+    else:
+        try:
+            rows = freshness.authorisations(ref.name, include_expired=True)
+            ctx["auth"] = {"rows": list(reversed(rows)), "error": ""}
+        except Exception as exc:                          # noqa: BLE001
+            ctx["auth"] = {"rows": [], "error": f"{type(exc).__name__}: {exc}"}
+    return ctx
+
+
+@bp.route("/history", methods=["GET"])
+def history_page():
+    """History: the network's commits, baselines and authorisations, with the
+    remote's state at the top."""
+    from flask import request
+    return _page("v2/history.html", active_nav="history", **_history_ctx(request))
+
+
+@bp.route("/history/commits", methods=["GET"])
+def history_commits():
+    """The commit list alone, redrawn when a commit lands (``goldens``)."""
+    from flask import request
+
+    from modules.nsot import listref
+    ref = listref.active()
+    f = _history_filters(request)
+    return _strict(render_template("v2/_history_commits.html", c=_history_commits(ref, f), f=f))
+
+
+@bp.route("/history/commit/<sha>", methods=["GET"])
+def history_commit(sha):
+    """One commit's change, masked (C77), drawn when a person opens its row."""
+    from modules import fleet_history
+    from modules.nsot import listref
+    d = fleet_history.diff(listref.active().repo_dir, sha)
+    return _strict(render_template("v2/_history_diff.html", d=d, sha=sha))
+
+
+@bp.route("/history/remote", methods=["GET"])
+def history_remote():
+    """The header alone, redrawn when the remote is re-read (``remote``)."""
+    from modules.nsot import listref
+    return _strict(render_template("v2/_history_remote.html",
+                                   remote=_history_remote(listref.active())))
+
+
 @bp.route("/help/<slug>", methods=["GET"])
 def help_page(slug):
     """A manual page (NSOT_GUI_BRIEF section 10): ``docs/manual/``, rendered

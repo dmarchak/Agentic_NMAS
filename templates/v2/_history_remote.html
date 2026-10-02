@@ -1,0 +1,32 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{#- History's header: the remote's one sentence (remote_publication.describe,
+    never composed here), what is uncommitted, and Push now and Verify, each
+    busy on itself. Redrawn when the remote is re-read. -#}
+{%- set LEVEL = {'success': ('in sync', 'ok'), 'warning': ('not pushed', 'warn'),
+                 'danger': ('attention', 'danger'), 'secondary': ('no remote', 'muted')} -%}
+{%- set lv = LEVEL.get(remote.d.level, (remote.d.state, 'muted')) -%}
+<section class="card hist-remote" id="hist-remote" hx-get="{{ url_for('v2.history_remote') }}"
+         hx-trigger="nmas:remote from:body, nmas:goldens from:body" hx-swap="outerHTML">
+  <div class="hist-remote-row">
+    <p class="hist-remote-words">{{ badge(lv[0], lv[1]) }}
+      {%- if remote.dirty is none %} The working tree could not be read.
+      {%- elif remote.dirty %} {{ remote.dirty }} path(s) are not committed (see today's Git tab).
+      {%- else %} Everything is committed{% endif %} · {{ remote.d.clause }}
+      {%- if remote.value_at %} <span class="muted small" title="{{ remote.d.detail }}">(checked {{ stamp(remote.value_at) }})</span>{% endif %}
+      {{ info('history', 'remote', 'About the remote') }}</p>
+    {%- if remote.d.state not in ('no_remote', 'not_read') %}
+    <div class="hist-remote-actions">
+      <span x-data="remotePost" data-kind="verify" data-url="{{ url_for('remote.verify') }}" data-label="Verify the remote" data-busy="Verifying…">
+        <button type="button" class="btn" x-on:click="go" x-bind:disabled="busy" x-text="label">Verify the remote</button>
+        <span x-bind:class="saidClass" x-text="said"></span>
+      </span>
+      {%- if remote.d.state in ('ahead', 'held', 'tags_not_pushed', 'no_branch') %}
+      <span x-data="remotePost" data-kind="push" data-url="{{ url_for('remote.push') }}" data-label="Push now" data-busy="Pushing…">
+        <button type="button" class="btn btn-primary" x-on:click="go" x-bind:disabled="busy" x-text="label">Push now</button>
+        <span x-bind:class="saidClass" x-text="said"></span>
+      </span>
+      {%- endif %}
+    </div>
+    {%- endif %}
+  </div>
+</section>

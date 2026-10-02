@@ -43,9 +43,14 @@ def judge(repo: str, list_name: str, baselines: list) -> dict:
     for b in baselines:
         if b.get("deleted"):
             continue
+        # What its commit recorded it earned, and why withdrawn: History's
+        # Baselines tab draws both from this stored value (no read per tag).
         entry = {"tag": b["tag"], "created": b.get("created", ""),
-                 "withdrawn": bool(b.get("withdrawn")), "stale": [], "guarded": [],
-                 "silent": []}
+                 "withdrawn": bool(b.get("withdrawn")),
+                 "withdrawn_why": (b.get("withdrawn") or {}).get("why", "")
+                 if isinstance(b.get("withdrawn"), dict) else "",
+                 "decision": b.get("decision", ""), "decision_detail": b.get("decision_detail", ""),
+                 "commit": b.get("commit", ""), "stale": [], "guarded": [], "silent": []}
         if not entry["withdrawn"]:
             gaps = baseline_credential_gaps(repo, b["tag"], list_name,
                                             devices_at(repo, b["tag"]))
@@ -73,7 +78,9 @@ def read(lists=None, previous=None) -> dict:
         try:
             head = git(repo, "rev-parse", "HEAD")[1].strip()
             tags = git(repo, "tag", "--list", "baseline/*")[1].split()
-            key = f"{head}|{','.join(sorted(tags))}"
+            # "v2": rows carry what each baseline earned (History, 2026-10-02); a
+            # stored answer from before is recomputed once.
+            key = f"v2|{head}|{','.join(sorted(tags))}"
             before = (previous.get("lists") or {}).get(name) or {}
             if before.get("key") == key and "usable" in before:
                 out[name] = before          # nothing moved: the stored answer stands

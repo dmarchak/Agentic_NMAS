@@ -1,0 +1,102 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
+{#- History (NSOT_GUI_BRIEF 3.4; the mockup signed off 2026-10-02): the remote's
+    state, then the network's commits, its baselines, and the Oxidized
+    divergences people authorised. modules/fleet_history.py: a fixed number of
+    reads, never one per commit. -#}
+{% block title %}History · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>History {{ info('history') }}</h1>
+    <p class="sub">{{ ref.name }}: what happened to the network's record, and when.</p>
+  </div>
+</div>
+{% include "v2/_history_remote.html" %}
+<nav class="tabs" aria-label="History">
+  {%- for key, label in tabs %}
+  <a class="tab{% if key == tab %} on{% endif %}" href="{{ url_for('v2.history_page', tab=key) }}"{% if key == tab %} aria-current="page"{% endif %}>{{ label }}</a>
+  {%- endfor %}
+</nav>
+<div class="tab-body">
+{%- if tab == 'commits' %}
+<p class="tab-help">{{ info('history', 'commits', 'About commits') }}</p>
+<form class="dev-filters" method="get" action="{{ url_for('v2.history_page') }}">
+  <input type="hidden" name="tab" value="commits">
+  <label class="hist-filter"><span class="muted small">Device</span>
+    <select name="device"><option value="">Any device</option>
+      {%- for d in devices %}<option value="{{ d }}"{% if d == f.device %} selected{% endif %}>{{ d }}</option>{% endfor %}
+    </select></label>
+  <label class="hist-filter"><span class="muted small">Person</span>
+    <select name="person"><option value="">Anyone</option>
+      {%- for p in choices.people %}<option value="{{ p }}"{% if p == f.person %} selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select></label>
+  <label class="hist-filter"><span class="muted small">Workflow</span>
+    <select name="workflow"><option value="">Any workflow</option>
+      {%- for w in choices.workflows %}<option value="{{ w.value }}"{% if w.value == f.workflow %} selected{% endif %}>{{ w.words }}</option>{% endfor %}
+    </select></label>
+  <label class="hist-filter"><span class="muted small">Since</span>
+    <select name="since">
+      {%- for v, words in since_choices %}<option value="{{ v }}"{% if v == f.since %} selected{% endif %}>{{ words }}</option>{% endfor %}
+    </select></label>
+  <button type="submit" class="btn">Show</button>
+</form>
+{% include "v2/_history_commits.html" %}
+{%- elif tab == 'baselines' %}
+<p class="tab-help">{{ info('history', 'baselines', 'About baselines') }}</p>
+<section class="card" id="hist-baselines" hx-get="{{ url_for('v2.history_page', tab='baselines') }}" hx-select="#hist-baselines" hx-trigger="nmas:baselines from:body" hx-swap="outerHTML">
+  {%- if b.error %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>The baselines could not be judged: {{ b.error }}. Not the same as there being none.</p></div>
+  {%- elif not b.baselines and b_at %}
+  <p class="cov-head">{{ icon('info') }} {{ ref.name }} has no baseline yet: Save All earns one when every device is at its committed intent.</p>
+  {%- elif not b_at %}
+  <p class="cov-head">{{ icon('info') }} The baselines have not been read yet (the check runs in the background).</p>
+  {%- else %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Baseline</th><th scope="col">Taken</th><th scope="col">Earned</th><th scope="col">Can be re-applied</th><th scope="col"></th></tr></thead>
+    <tbody>
+    {%- for r in b.baselines %}
+      <tr data-baseline="{{ r.tag }}">
+        <td class="mono">{{ r.tag }}</td>
+        <td>{{ stamp(r.created) }}</td>
+        <td>{%- if r.withdrawn %}{{ badge('withdrawn', 'danger') }} <span class="muted">{{ r.withdrawn_why }}</span>
+            {%- elif r.decision == 'earned' %}{{ badge('earned', 'ok') }}
+            {%- elif r.decision == 'denied' %}{{ badge('denied', 'warn') }} <span class="muted">{{ r.decision_detail }}</span>
+            {%- elif r.decision == 'unrecorded' %}{{ badge('not recorded', 'muted') }}
+            {%- else %}<span class="muted">not read yet</span>{% endif %}</td>
+        <td>{%- if r.withdrawn %}<span class="muted">no: withdrawn</span>
+            {%- elif r.usable %}{{ badge('yes', 'ok') }}
+            {%- else %}{{ badge('no', 'warn') }} <span class="muted">it predates a credential change on {{ r.stale | join(', ') }}</span>{% endif %}</td>
+        <td>{% if not r.withdrawn %}<a href="{{ url_for('index') }}">Re-apply (today's page)…</a>{% endif %}</td>
+      </tr>
+    {%- endfor %}
+    </tbody></table></div>
+  <p class="muted small">Judged {{ stamp(b_at) }}, in the background, whenever a commit or a tag moves.</p>
+  {%- endif %}
+</section>
+{%- else %}
+<p class="tab-help">{{ info('history', 'authorisations', 'About authorisations') }}</p>
+<section class="card" id="hist-auth">
+  {%- if auth.error %}
+  <div class="notice notice-warn">{{ icon('warn') }}<p>The authorisations could not be read: {{ auth.error }}. Not the same as there being none.</p></div>
+  {%- elif not auth.rows %}
+  <p class="cov-head">{{ icon('info') }} No Oxidized divergence has been authorised in {{ ref.name }}.</p>
+  {%- else %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Device</th><th scope="col">Authorised</th><th scope="col">By</th><th scope="col">Reason</th><th scope="col">Expires</th></tr></thead>
+    <tbody>
+    {%- for a in auth.rows %}
+      <tr>
+        <td><a href="{{ url_for('device_v2.device', name=a.device) }}">{{ a.device }}</a></td>
+        <td>{{ stamp(a.at) }}</td>
+        <td>{{ a.actor }}</td>
+        <td>{{ a.reason }}</td>
+        <td>{% if a.expired %}{{ badge('expired', 'muted') }}{% else %}{{ stamp(a.expires_at) }}{% endif %}</td>
+      </tr>
+    {%- endfor %}
+    </tbody></table></div>
+  {%- endif %}
+</section>
+{%- endif %}
+</div>
+{% endblock %}

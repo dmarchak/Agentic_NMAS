@@ -417,6 +417,20 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .help-panel-page { font-size: 12px; color: var(--ink-2); margin: 0 0 4px; }
 .help-panel-more { font-size: 13px; margin-top: 14px; }
 .tab-help { grid-column: 1 / -1; margin: 0 0 -4px; text-align: right; }
+/* History (routes/v2.history_page). */
+.hist-remote-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.hist-remote-words { margin: 0; }
+.hist-remote-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.remote-said { font-size: 13px; margin-left: 6px; }
+.remote-said.ok { color: var(--ok); }
+.remote-said.bad { color: var(--danger); }
+.hist-filter { display: flex; flex-direction: column; gap: 2px; }
+.hist-table details summary { cursor: pointer; }
+.hist-detail { padding: 8px 0 2px; display: flex; flex-direction: column; gap: 4px; }
+.hist-detail p { margin: 0; }
+.hist-diff { font-family: var(--mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--line-2);
+  border-radius: var(--r); padding: 8px 10px; max-height: 420px; overflow: auto; white-space: pre; }
+.nowrap { white-space: nowrap; }
 
 /* The Update page (modules/update_op.py). */
 .stack { display: flex; flex-direction: column; gap: 14px; }
