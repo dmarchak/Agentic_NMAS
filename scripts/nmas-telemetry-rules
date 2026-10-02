@@ -21,8 +21,9 @@ NoData = Alerting (a stream that stopped yields no series), labelled
 job (30 s, read from Prometheus's loaded config 2026-10-01), so one missed
 scrape never fires.
 
-    nmas-telemetry-rules --datasource-uid <prometheus-uid>   # write the file
-    nmas-telemetry-rules --check                          # 0 current, 1 not, 2 unproven
+    nmas-telemetry-rules            # write the file; the Prometheus datasource's
+                                    # UID read from Grafana (one, or Grafana's default)
+    nmas-telemetry-rules --check    # 0 current, 1 not, 2 unproven
 
 The file is generated on the host and never committed (it carries the
 datasource UID); installing it is the same host step as the heartbeat rules',
@@ -152,6 +153,35 @@ def check(have: set, want: dict) -> tuple:
     return code, lines
 
 
+def grafana_datasource(client=None) -> tuple:
+    """``(uid, said)``: the Prometheus datasource the rules query, read from
+    Grafana's own front-end settings (the operator, 2026-10-01: the host step
+    asked for `--datasource-uid <...>`, a value the person had to go and
+    find). Grafana's default when it is a Prometheus source, else the only
+    one; several and none the default is a refusal naming them, never a
+    guess. Raises ValueError with what was found."""
+    from modules.integrations.grafana import GrafanaIntegration
+    from modules.readers.grafana_dashboards import FRONTEND, datasources
+
+    g = client or GrafanaIntegration()
+    if not g.is_configured():
+        raise ValueError("Grafana is not configured (grafana_url), so the datasource "
+                         "cannot be read: pass --datasource-uid")
+    got = g._get(FRONTEND)                          # noqa: SLF001 - the client's API
+    if not got.get("ok"):
+        raise ValueError(f"Grafana's {FRONTEND} could not be read: {got.get('error')}")
+    proms = [d for d in datasources(got["response"].json()) if d.get("type") == "prometheus"]
+    pick = next((d for d in proms if d.get("is_default")), None) or (
+        proms[0] if len(proms) == 1 else None)
+    if pick is None:
+        raise ValueError("Grafana holds " + (
+            "no Prometheus datasource" if not proms else
+            f"{len(proms)} Prometheus datasources and none is the default ("
+            + ", ".join(f"{d['name']} {d['uid']}" for d in proms) + ")")
+            + ": pass --datasource-uid")
+    return pick["uid"], f"datasource {pick['name']} ({pick['uid']}), read from Grafana"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -184,7 +214,11 @@ def main(argv=None) -> int:
         print("\n".join(lines))
         return code
     try:
-        doc = build(want, args.datasource_uid)
+        uid = args.datasource_uid
+        if not uid:
+            uid, said = grafana_datasource()
+            print(said)
+        doc = build(want, uid)
     except ValueError as exc:
         print(f"UNPROVEN: {exc}")
         return EXIT_UNPROVEN

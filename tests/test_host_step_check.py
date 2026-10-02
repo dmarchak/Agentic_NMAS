@@ -169,6 +169,28 @@ class TestAStepInstallsOnlyWhatItNames:
         assert p.returncode == 1 and sha[:12] in p.stderr and "fixed folder" in p.stderr
 
 
+class TestAStepCarriesEveryValue:
+    """The operator, 2026-10-01: the telemetry rules' step said
+    `--datasource-uid <...>`, a value the person then had to go and find."""
+
+    TELEMETRY = ("Host-Step-After: scripts/nmas-telemetry-rules --datasource-uid <loki-uid> "
+                 "--write")
+
+    def test_a_placeholder_is_refused_naming_it(self, hs):
+        why = hs.unsafe_step("x\n\n" + self.TELEMETRY)
+        assert why.startswith("Host-Step-After carries a placeholder (<loki-uid>)")
+        assert hs.problem(["deploy/systemd/x.service"], "x\n\n" + self.TELEMETRY) == why
+
+    def test_the_filled_in_step_passes_and_a_redirect_is_not_a_placeholder(self, hs):
+        assert hs.unsafe_step("x\n\n" + self.TELEMETRY.replace("<loki-uid>",
+                                                                "efwpn8hr7sfeob")) == ""
+        assert hs.unsafe_step("x\n\nHost-Step: sudo tee /etc/x < /tmp/y 2>&1 && "
+                              "cat <<EOF >/dev/null") == ""
+
+    def test_a_none_trailer_is_never_read_as_a_step(self, hs):
+        assert hs.unsafe_step("x\n\nHost-Step-None: nothing to fill in (<none>)") == ""
+
+
 #: Records of what HAPPENED, which quote the old command as the finding
 #: (C284), never a recipe anybody follows: the register and the writeup.
 HISTORY = {"docs/OPEN_FINDINGS.md", "docs/NSOT_WRITEUP.md", "docs/NSOT_WRITEUP_NOTES.md"}

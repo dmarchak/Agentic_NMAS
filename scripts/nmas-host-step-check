@@ -79,6 +79,9 @@ def says_host(message: str) -> bool:
 
 
 STEP_TEXT = re.compile(r"^(Host-Step|Host-Step-After):\s*(.*)$", re.M)
+#: A `<name>` placeholder: a word in angle brackets, never a shell redirect
+#: (`< file`, `<<`, `2>&1`) or a comparison.
+PLACEHOLDER = re.compile(r"<[A-Za-z][\w.@-]*(?:[ -][\w.@-]+)*>")
 
 
 def unsafe_step(message: str) -> str:
@@ -89,6 +92,13 @@ def unsafe_step(message: str) -> str:
     installs each file BY NAME. "" when every step does."""
     body = "\n".join(l for l in message.splitlines() if not l.startswith("#"))
     for kind, text in STEP_TEXT.findall(body):
+        # Every value filled in (the operator, 2026-10-01: a telemetry step
+        # said `--datasource-uid <...>`, a value the person then had to find).
+        holder = PLACEHOLDER.search(text)
+        if holder:
+            return (f"{kind} carries a placeholder ({holder.group(0)}): a host step names every "
+                    "value it needs, read from where it lives (the datasource UID from "
+                    "Grafana's API, a path from the checkout), never a blank to fill in")
         fixed = re.search(r"--out\s+(?![\"']?\$)(\S+)", text)
         if fixed:
             return (f"{kind} renders into a fixed folder ({fixed.group(1)}), which can hold "

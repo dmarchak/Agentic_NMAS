@@ -144,6 +144,43 @@ class TestRefusalsAndTheCheck:
         assert T.main(["--datasource-uid", "prom-uid", "--out", str(out)]) == T.EXIT_UNPROVEN
         assert not out.exists() and "UNPROVEN: r3: boom" in capsys.readouterr().out
 
+    def test_the_datasource_is_read_from_grafana_when_none_is_given(self, monkeypatch,
+                                                                    tmp_path, capsys):
+        """The operator, 2026-10-01: the host step said `--datasource-uid <...>`."""
+        from types import SimpleNamespace
+        out = tmp_path / "nmas-telemetry.yaml"
+        want = _expected()
+        monkeypatch.setattr(T, "expected", lambda: want)
+        front = {"defaultDatasource": "Prometheus", "datasources": {
+            "Prometheus": {"uid": "efwpn8hr7sfeob", "type": "prometheus"},
+            "Loki": {"uid": "lokiuid", "type": "loki"}}}
+
+        class G:
+            def is_configured(self):
+                return True
+
+            def _get(self, path):
+                assert path == "api/frontend/settings"
+                return {"ok": True, "response": SimpleNamespace(json=lambda: front)}
+
+        monkeypatch.setattr("modules.integrations.grafana.GrafanaIntegration", G)
+        assert T.main(["--out", str(out)]) == T.EXIT_OK
+        assert "datasource Prometheus (efwpn8hr7sfeob), read from Grafana" in capsys.readouterr().out
+        assert "efwpn8hr7sfeob" in out.read_text()
+
+    def test_two_prometheus_sources_and_no_default_is_refused_naming_them(self):
+        from types import SimpleNamespace
+        front = {"defaultDatasource": "Loki", "datasources": {
+            "Prom A": {"uid": "a1", "type": "prometheus"},
+            "Prom B": {"uid": "b2", "type": "prometheus"},
+            "Loki": {"uid": "l", "type": "loki"}}}
+        g = SimpleNamespace(is_configured=lambda: True, _get=lambda p: {
+            "ok": True, "response": SimpleNamespace(json=lambda: front)})
+        with pytest.raises(ValueError) as exc:
+            T.grafana_datasource(client=g)
+        assert "2 Prometheus datasources and none is the default (Prom A a1, Prom B b2)" \
+            in str(exc.value)
+
     def test_the_generated_file_is_never_committed(self):
         import subprocess
         r = subprocess.run(["git", "check-ignore", "-q",
