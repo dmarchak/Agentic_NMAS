@@ -5862,6 +5862,16 @@ run if the checkout's `data/` changed at all (C32). Importing `app` starts no se
   first shape that does not return the device to equivalence, and says so first. Its
   first real run used that stop, and the stop is what turned C193 from a silent wrong
   answer into a halt.
+- **SEVERAL PEOPLE USE THE TOOL AT ONCE, AND EVERY WRITE PATH IS SAFE AGAINST ANOTHER PERSON,
+  ANOTHER TAB AND ANOTHER WORKER PROCESS** (the operator's design principle, 2026-10-02; NSOT_PLAN
+  P.15). In an enterprise, with roles coming, it is assumed. A lock in memory, a module-level
+  dict or an in-process job registry protects nothing once 9.S runs several gunicorn workers:
+  a protection counts only if it holds across processes (a `flock`, `filestore.PathLock`,
+  `device_ops`, or a database). A document two people can edit is saved against the version
+  that person opened, and refused with the difference shown when it moved. A lock has a
+  visible owner and start time, a lease, and a recorded admin release. The audit is
+  [docs/CONCURRENCY_AUDIT.md](docs/CONCURRENCY_AUDIT.md); its fixes land before 9.S's
+  multi-worker step.
 - **OPERATIONS ACROSS DEVICES RUN CONCURRENTLY; A SERIAL ONE STATES WHY** (the operator's
   standing rule, 2026-09-29, after C188 measured Save All at 101 s read one device after
   another and 40.9 s at once). READS across devices run concurrently by default, and a

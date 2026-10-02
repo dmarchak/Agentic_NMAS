@@ -960,6 +960,34 @@ info links, and the steps the code already declares.
   - a stepper's steps come from a declared code source (planted: a hand-written list
     fails).
 
+### 10b. The manual's mockup, signed off (the operator, 2026-10-02)
+
+Built as drawn (the mockups artifact, page "The manual"):
+- **A diagram on every How it works page**, drawn only from the shared key: a device (ports
+  along its foot; dashed when not reached), intent (green document), golden (gold document),
+  the repository (a cylinder), the tool's own records (a bar on the left), an integration (a
+  pill), a LAB integration (dashed, tagged LAB: the lab startup file, Oxidized). Arrows: SENT to
+  a device (solid accent), READ from it (dashed), copied into a record (solid ink), a rollback
+  (dashed amber). A crossed circle marks "nothing is sent". A diagram's step numbers are its
+  step list's. Every diagram follows the light or dark choice and carries its description in
+  words. Concept pages too: drift, merge-only and Mode B, rotation and persist, how a baseline
+  is earned.
+- **"How does this work?" beside every action button, and (i) on every menu row** (its
+  tooltip says the words, its accessible name the operation). Each opens that operation's page
+  in the side panel; a running operation's card carries the same link, and the panel sits
+  beside the live stepper. In the panel: the diagram first, then the steps (what is read, sent
+  and recorded, and why), then "Open in the manual".
+- **Today's pages carry links too**: the onboarding wizard and the pending banner open the
+  page in a new tab, since today's pages have no panel.
+- **Help's index lists every operation and screen**, those still on today's app marked, and
+  the pages still to write named.
+- **Every mockup from now on draws its links**, so what is signed off is what is built.
+- **The check, extended:** every How it works page has at least one diagram; every action
+  control has its link and its target exists; every diagram carries its description.
+
+**The stepper, signed off the same day:** one component, the code's own steps, each done,
+running (with its time and what it waits on) or waiting, with its How it works link.
+
 ## 11. What the mockups (step 3) will show
 
 - **Three screens at desktop width:**

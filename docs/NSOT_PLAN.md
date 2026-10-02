@@ -4374,6 +4374,58 @@ configuration equal to its golden, its routing settled (verify's settle windows)
 with the reason and who. Admin-only once Stage 9 has roles. The bulk reload (`/bulk_reload`) is
 removed with the bulk file actions.
 
+### P.15 — Several people at once: every write path safe across users, tabs and processes (DECIDED 2026-10-02, the operator; AUDIT RUNNING; the fixes land BEFORE 9.S's multi-worker step)
+
+**The principle.** In an enterprise several people use the tool at once, and with roles
+coming that is assumed, not hoped. Every write path must be safe against another person,
+another browser tab, and, after 9.S's gunicorn, another worker PROCESS. A lock held in
+memory, a module-level dict or an in-process job registry protects nothing across processes.
+
+**The audit** ([CONCURRENCY_AUDIT.md](CONCURRENCY_AUDIT.md), read-only, each finding checked
+against the code by a second reader) inventories every write path (git repository, JSON and
+file stores, the credential store, NetBox, Kea, devices): what it writes, how it is protected,
+whether that holds across processes, what a second user sees, what a collision does, marked
+SAFE, UNSAFE-MULTI-PROCESS or UNSAFE and ranked. It answers specifically:
+- two people editing the same intent: a save refused when intent moved since that person
+  opened it, the difference shown (optimistic concurrency, the hash-bound confirm's idea);
+- every lock cross-process, with a visible owner and start time, a lease so an abandoned
+  operation cannot hold a device for ever, and a recorded admin release;
+- the list's git repository, every commit strictly serialised across processes;
+- file stores with more than one writer: atomic replace plus locking, or where a database
+  (SQLite WAL first) is warranted;
+- batches overlapping on devices: a defined lock order, no deadlock, no half-applied batch;
+- every confirm bound to what was previewed (true for deploys; checked for every operation);
+- approvals: two approvers at once, and four-eyes (requester is not approver) as a
+  configurable policy for the roles stage;
+- visibility: every page touching a device shows live who operates on it and for how long,
+  and a person on a stale preview is told another user changed what they are looking at;
+- Socket.IO, the readers and the in-memory job registries across workers.
+
+**Tests:** a harness with two simulated users and two worker processes running conflicting
+operations at once, and failure injection (a process killed mid-operation, a lock left behind,
+a hung holder). **Placement:** the fixes land before 9.S runs more than one worker; findings
+that affect today's single-process install (two users or two tabs) are scheduled now, by risk.
+
+### P.16 — Build or adopt the job machinery (DECIDED 2026-10-02, the operator; NOT STARTED; an evaluation, placed BEFORE Stage 10's release)
+
+The stepper showed the tool has grown pieces of a job runner: systemd timers, job health,
+device locks, run history, the finish wake-ups, in-memory job registries. **The OPERATIONS
+stay ours**: preview, the hash-bound confirm, gates, verify, rollback, records, masked
+secrets; they are the product. **The generic MACHINERY gets an honest evaluation**: queueing,
+retries, scheduling, run history, concurrency, and an operation surviving an app restart
+mid-run.
+
+Candidates: Jenkins, AWX (Ansible Tower), Rundeck, Temporal, Celery or RQ, and "keep systemd
+and what the tool has". Each costed against:
+- a single-host install and air-gapped use;
+- several users and concurrent operations (P.15's findings are an input);
+- another credential store and another attack surface;
+- progress and results kept on the tool's own pages (no second UI a person must open);
+- what the tool would DELETE if it adopted it, and what it would have to keep anyway.
+
+A recommendation with evidence, written before anything changes. Nothing is adopted or
+removed by this item; a decision to adopt becomes its own plan item.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported
