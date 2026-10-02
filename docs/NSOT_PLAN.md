@@ -4463,6 +4463,9 @@ reason a product operation stops. Placed with Stage 10's lab-boundary work
 (NSOT_STAGE10_PLAN 6.0), and before the release, because the release is what a network with
 no lab installs.
 
+**P.19, SDN controller support, is recorded at the END of this plan** (after Stage 10, whose
+platform-driver layer it depends on).
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported
@@ -6510,3 +6513,56 @@ split targets the measured time (device I/O, git, NetBox, the readers).
 - Stage 7 complete (the wizard reuses its screens and manual);
 - Stage 8.3 (the agent's role), or the AI off;
 - P.10's sandbox (the second vendor's write tier and 8.10).
+
+### P.19 — SDN controller support (RECORDED 2026-10-02, the operator; NOT RESEARCHED, NOT BUILT; placed at the END of the plan)
+
+**Placement:** last. After every current feature, after the AI work (Stage 8), and after
+Stage 10's platform-driver layer (NSOT_STAGE10_PLAN 12), on which it depends. **Recorded
+only:** no research and no building now, because controllers change, so the research is
+done at the time it starts.
+
+**The goal:** manage networks that include an SDN controller and its switches.
+
+**Controllers to support:**
+- Floodlight, ONOS, OpenDaylight, Ryu and Faucet;
+- whatever the CSCI 5280 lab VMs run;
+- as reference designs (not support targets): Cisco ACI/APIC, VMware NSX, Juniper Apstra,
+  Arista CloudVision.
+
+The research states each controller's maintenance status honestly (Floodlight's activity,
+for one), so support is chosen knowingly rather than for a project nobody maintains.
+
+**The model: the CONTROLLER is the managed device**, through its northbound API, and its
+switches are its children.
+
+| NSoT concept | For a controller |
+|---|---|
+| Intent | controller-level objects |
+| Golden | an export of the controller's state |
+| Drift | TWO layers: the controller against intent, and each switch's flow tables against the controller's view |
+| Deploy | an object diff, previewed, confirmed by hash, verified by read-back, rolled back |
+
+**One owner.** The controller owns the flows it programs; the tool never writes a flow to a
+switch directly. The tool may manage a switch's OWN configuration (its controller address,
+OpenFlow version, management) through OVSDB or NETCONF.
+
+**Hybrid networks** (CLI devices plus an SDN fabric) appear in ONE inventory, one Device page
+and one topology, with the controller's topology drawn as a layer (P.11).
+
+**The architecture: not a parallel tool.** It rides on Stage 10's platform-driver layer,
+generalised from line-oriented CLI to a STRUCTURED, API-driven model, in which a platform
+declares whether it is managed by CLI or by API. The same generalisation serves API-driven
+devices that are not controllers (Arista eAPI, NETCONF, gNMI), so it is built once for both.
+
+**When it starts:**
+1. **Research first.** Per controller: its API, object model, export, authentication,
+   topology and statistics. Then the mapping in the table above, and a costing against the
+   driver layer as it then exists.
+2. **Then a lab plan**, on the course's Mininet and controller VMs (Proxmox VMs 201 and 202).
+   - Measure the lab host's contention BEFORE and DURING the runs (the lab host is shared
+     with the fleet, and C93's slow clocks are its symptom).
+   - Never schedule a run that overlaps the nightly backup.
+
+**The lab is course-specific; the product support is not** (NSOT_STAGE10_PLAN 6.0b's note):
+the VMs, their names and the course belong to the lab-tooling area, and the controller
+drivers belong to the product.

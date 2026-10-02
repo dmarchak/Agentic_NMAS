@@ -568,6 +568,12 @@ and `scripts/nmas-host` move there (a host step each: the host's symlinks and un
 | The operator's records | the findings register, the write-up and its notes, the staged-run instructions, the lab runbooks and probe documents | **Stay in this repository, out of the release** |
 | Defaults, fixtures, docs | settings defaults holding the lab's values (`clab_configs_dir`, `netbox_excluded_vrfs = ["clab-mgmt"]`), test fixtures holding the lab's configs and addresses, docs that work only with the lab's values | **Neutral defaults**; fixtures ship sanitised (6's tests note); docs rewritten for an installer |
 
+**A note for what comes after this stage: SDN controller support (NSOT_PLAN P.19, recorded
+2026-10-02).** Its LAB is course-specific: the CSCI 5280 Mininet and controller VMs, their
+names and their runbooks belong in `lab/` with the rest of this table's lab rows. Its PRODUCT
+support is not: controller drivers ride on 12's platform layer, generalised to an API-driven
+model, and ship like any other platform.
+
 The table in 6 below is the first inventory (2026-09-30), kept: 6.0b supersedes its
 dispositions where they differ (containerlab is an optional integration while the lab uses
 it, and out of the release).
