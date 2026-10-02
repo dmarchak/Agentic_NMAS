@@ -51,6 +51,34 @@
 <a class="how-link{{ ' compact' if compact }}" href="{{ url_for('v2.help_page', slug=slug) }}{{ '#' ~ section if section }}" hx-get="{{ url_for('v2.help_panel', slug=slug, section=section) if section else url_for('v2.help_panel', slug=slug) }}" hx-target="#help-panel-body" hx-swap="innerHTML" x-on:click="openHelp" data-manual="{{ slug }}{{ '#' ~ section if section }}"{% if compact %} title="How does this work?" aria-label="{{ words }}"{% endif %}>{{ icon('info', 15) }}{% if not compact %}<span>{{ words }}</span>{% endif %}</a>
 {%- endmacro %}
 
+{#- The time-range controls (NSOT_GUI_BRIEF 14.2), ONE for the fleet's Monitoring page and
+    a device's Monitoring tab (2026-10-02, the operator: a note under the controls crowded
+    the dashboard selector). What the backend keeps and the step are on the controls' hover
+    and behind the (i); the one thing a person must see, a range past what the backend keeps,
+    is said AT the control, naming the limit. *links* maps each preset to its {href, hx};
+    *hidden* the fields the custom form carries. -#}
+{% macro range_controls(cur, links, action, hidden, input_id, m) -%}
+{%- set limit = m.limit_words or 'Prometheus keeps 90 days' -%}
+{%- set hint = limit ~ '. ' ~ (('Step ' ~ m.step ~ ' s for ' ~ m.range_words ~ ': the step widens with the range.') if m.step else 'The step widens with the range.') -%}
+{%- set refused = m.state == 'range_refused' -%}
+<div class="seg" role="group" aria-label="Time range" title="{{ hint }}">
+  {%- for key in ['1h', '6h', '24h', '7d'] %}
+  <a class="seg-btn{% if cur == key %} on{% endif %}" aria-pressed="{{ 'true' if cur == key else 'false' }}"
+     href="{{ links[key].href }}" hx-get="{{ links[key].hx }}" hx-target="#tab-body" hx-push-url="{{ links[key].href }}">{{ key }}</a>
+  {%- endfor %}
+</div>
+<form class="range-custom" hx-get="{{ action }}" hx-target="#tab-body">
+  {%- for k, v in hidden.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <label class="sr" for="{{ input_id }}">Custom range ({{ limit }})</label>
+  <input id="{{ input_id }}" type="text" name="range" placeholder="last 90 minutes" title="{{ hint }}" value="{{ cur if cur not in ['1h', '6h', '24h', '7d'] else '' }}"{% if refused %} aria-invalid="true" aria-describedby="{{ input_id }}-err"{% endif %}>
+  <button type="submit" class="btn btn-small">Apply</button>
+  {{- info('monitoring', 'time-range', 'About the time range') }}
+  {%- if refused %}
+  <p class="range-refused" id="{{ input_id }}-err" role="alert">{{ icon('warn', 14) }}<span>Refused: {{ m.why }}.</span></p>
+  {%- endif %}
+</form>
+{%- endmacro %}
+
 {% macro stamp(iso, words='', note='') -%}
 {%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or iso }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}

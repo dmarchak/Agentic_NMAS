@@ -430,11 +430,22 @@ class TestMonitoringStates:
         _, html = _get(lab, "/v2/device/r3/monitoring")
         assert "notice-warn" not in html
 
+    def test_no_note_sits_under_the_range_controls(self, lab):
+        """2026-10-02: retention and step are on the controls' hover and behind the (i)."""
+        _, html = _get(lab, "/v2/device/r3/monitoring")
+        assert "Prometheus serves up to" not in html and "Dashboards read" not in html
+        assert re.search(r'<div class="seg" role="group" aria-label="Time range" '
+                         r'title="Prometheus keeps 90 days\. Step \d+ s for ', html)
+        assert 'data-manual="monitoring#time-range"' in html
+
     def test_a_range_past_the_limit_is_refused_naming_it_never_trimmed(self, lab):
         _, html = _get(lab, "/v2/device/r3/monitoring?range=last+120d")
-        text = _text(html)
-        assert "That range is refused" in text and "90 days" in text
-        assert "data-panel-src" not in html
+        # Said AT the control where it was typed (2026-10-02), naming the limit and the range.
+        form = re.search(r'<form class="range-custom".*?</form>', html, re.S).group(0)
+        assert 'aria-invalid="true" aria-describedby="range-in-err"' in form
+        assert re.search(r'<p class="range-refused" id="range-in-err" role="alert">.*?'
+                         r"Refused: Prometheus keeps 90 days; this range is 120 days\.", form, re.S)
+        assert "data-panel-src" not in html and "notice-warn" not in html
 
     def test_a_custom_range_is_carried_into_every_panel_url(self, lab):
         _, html = _get(lab, "/v2/device/r3/monitoring?range=last+3d")

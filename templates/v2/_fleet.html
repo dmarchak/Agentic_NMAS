@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, panel_grid -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, panel_grid, range_controls -%}
 {#- Monitoring's fleet dashboard (NSOT_GUI_BRIEF 14.2): device_page.fleet_monitoring().
     The selector lists every dashboard Grafana holds; choosing one changes this
     view, never the default (Settings > Integrations > Grafana, Fleet dashboard
@@ -9,8 +9,8 @@
      hx-trigger="nmas:dashboards from:body" hx-swap="outerHTML">
 <div class="toolbar">
   <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
-    <button type="button" class="btn btn-select" aria-haspopup="listbox" x-bind:aria-expanded="expanded" x-on:click="toggle">
-      <span class="muted">Dashboard</span> <strong>{{ (m.dashboard or {}).get('title') or 'none chosen' }}</strong>{{ icon('down', 14) }}
+    <button type="button" class="btn btn-select" aria-haspopup="listbox" x-bind:aria-expanded="expanded" x-on:click="toggle"{% if m.value_at %} title="Grafana's dashboard list, read {{ m.value_at }}"{% endif %}>
+      <span class="muted">Dashboard</span> <strong title="{{ (m.dashboard or {}).get('title') or '' }}">{{ (m.dashboard or {}).get('title') or 'none chosen' }}</strong>{{ icon('down', 14) }}
     </button>
     <div class="menu menu-wide" role="listbox" x-show="isOpen" x-cloak>
       <p class="menu-note">Every dashboard Grafana holds: {{ m.offered|length }}. Choosing one changes this view, not the default.</p>
@@ -28,23 +28,12 @@
   </div>
   {%- for name, val in (m.variables or {}).items() %}<span class="chip"><span class="mono">{{ name }} = {{ 'all' if val == '.*' else val }}</span></span>{% endfor %}
   <span class="grow"></span>
-  <div class="seg" role="group" aria-label="Time range">
-    {%- for key in ['1h', '6h', '24h', '7d'] %}
-    <a class="seg-btn{% if cur_range == key %} on{% endif %}" aria-pressed="{{ 'true' if cur_range == key else 'false' }}"
-       href="{{ url_for('v2.monitoring_page', dashboard=dash_uid, range=key) }}"
-       hx-get="{{ url_for('v2.monitoring_dashboard', dashboard=dash_uid, range=key) }}" hx-target="#tab-body"
-       hx-push-url="{{ url_for('v2.monitoring_page', dashboard=dash_uid, range=key) }}">{{ key }}</a>
-    {%- endfor %}
-  </div>
-  <form class="range-custom" hx-get="{{ url_for('v2.monitoring_dashboard') }}" hx-target="#tab-body">
-    <input type="hidden" name="dashboard" value="{{ dash_uid }}">
-    <label class="sr" for="fleet-range-in">Custom range</label>
-    <input id="fleet-range-in" type="text" name="range" placeholder="last 90 minutes" value="{{ cur_range if cur_range not in ['1h', '6h', '24h', '7d'] else '' }}">
-    <button type="submit" class="btn btn-small">Apply</button>
-  </form>
+  {%- set links = {} %}
+  {%- for key in ['1h', '6h', '24h', '7d'] %}{% set _ = links.update({key: {
+      'href': url_for('v2.monitoring_page', dashboard=dash_uid, range=key),
+      'hx': url_for('v2.monitoring_dashboard', dashboard=dash_uid, range=key)}}) %}{% endfor %}
+  {{ range_controls(cur_range, links, url_for('v2.monitoring_dashboard'), {'dashboard': dash_uid}, 'fleet-range-in', m) }}
 </div>
-<p class="limits">Prometheus serves up to 90 days. {% if m.step %}Step {{ m.step }} s for {{ m.range_words }}: the step widens with the range.{% endif %}
-  {% if m.value_at %}Dashboards read {{ stamp(m.value_at) }}.{% endif %}</p>
 
 {%- if m.state == 'not_read' %}
 <div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>Grafana's dashboards have not been read yet.</strong> {{ m.why }}</div></div>
@@ -58,7 +47,7 @@
 <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Dashboard <span class="mono">{{ m.uid }}</span> is not in the stored list, and Grafana could not be asked now.</strong>
   {{ m.live.error }}.</div></div>
 {%- elif m.state == 'range_refused' %}
-<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>That range is refused.</strong> {{ m.why }}</div></div>
+{#- Said at the range control (range_controls), where it was typed. -#}
 {%- else %}
   {{ panel_grid(m.layout, 'v2.monitoring_panel', {'uid': dash_uid, 'range': cur_range}) }}
 {%- endif %}

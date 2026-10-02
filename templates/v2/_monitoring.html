@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, panel_grid, info -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, panel_grid, info, range_controls -%}
 {%- set dev_name = device.hostname -%}
 {%- set cur_range = m.range or '1h' -%}
 {%- set dash_uid = (m.dashboard or {}).get('uid', '') -%}
@@ -9,8 +9,8 @@
 {%- if mb is defined %}{% include "v2/_monitored_by.html" %}{% endif %}
 <div class="toolbar">
   <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
-    <button type="button" class="btn btn-select" aria-haspopup="listbox" x-bind:aria-expanded="expanded" x-on:click="toggle">
-      <span class="muted">Dashboard</span> <strong>{{ (m.dashboard or {}).get('title') or 'none chosen' }}</strong>{{ icon('down', 14) }}
+    <button type="button" class="btn btn-select" aria-haspopup="listbox" x-bind:aria-expanded="expanded" x-on:click="toggle"{% if m.value_at %} title="Grafana's dashboard list, read {{ m.value_at }}"{% endif %}>
+      <span class="muted">Dashboard</span> <strong title="{{ (m.dashboard or {}).get('title') or '' }}">{{ (m.dashboard or {}).get('title') or 'none chosen' }}</strong>{{ icon('down', 14) }}
     </button>
     <div class="menu menu-wide" role="listbox" x-show="isOpen" x-cloak>
       <p class="menu-note">Only dashboards with a <span class="mono">{{ m.settings.variable }}</span> variable:
@@ -37,23 +37,12 @@
   {% if m.total_dashboards %}<span class="selector-why">{{ m.offered|length }} of {{ m.total_dashboards }} dashboard{{ '' if m.total_dashboards == 1 else 's' }} can show a single device</span>{% endif %}
   {% if m.device_value %}<span class="chip">{{ icon('lock', 12) }}<span class="mono">{{ m.settings.variable }} = {{ m.device_value }}</span></span>{% endif %}
   <span class="grow"></span>
-  <div class="seg" role="group" aria-label="Time range">
-    {% for key in ['1h', '6h', '24h', '7d'] %}
-    <a class="seg-btn{% if cur_range == key %} on{% endif %}" aria-pressed="{{ 'true' if cur_range == key else 'false' }}"
-       href="{{ url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=dash_uid, range=key) }}"
-       hx-get="{{ url_for('device_v2.monitoring', name=dev_name, dashboard=dash_uid, range=key) }}" hx-target="#tab-body"
-       hx-push-url="{{ url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=dash_uid, range=key) }}">{{ key }}</a>
-    {% endfor %}
-  </div>
-  <form class="range-custom" hx-get="{{ url_for('device_v2.monitoring', name=dev_name) }}" hx-target="#tab-body">
-    <input type="hidden" name="dashboard" value="{{ dash_uid }}">
-    <label class="sr" for="range-in">Custom range</label>
-    <input id="range-in" type="text" name="range" placeholder="last 90 minutes" value="{{ cur_range if cur_range not in ['1h', '6h', '24h', '7d'] else '' }}">
-    <button type="submit" class="btn btn-small">Apply</button>
-  </form>
+  {%- set links = {} %}
+  {%- for key in ['1h', '6h', '24h', '7d'] %}{% set _ = links.update({key: {
+      'href': url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=dash_uid, range=key),
+      'hx': url_for('device_v2.monitoring', name=dev_name, dashboard=dash_uid, range=key)}}) %}{% endfor %}
+  {{ range_controls(cur_range, links, url_for('device_v2.monitoring', name=dev_name), {'dashboard': dash_uid}, 'range-in', m) }}
 </div>
-<p class="limits">Prometheus serves up to 90 days. {% if m.step %}Step {{ m.step }} s for {{ m.range_words }}: the step widens with the range.{% endif %}
-  {% if m.value_at %}Dashboards read {{ stamp(m.value_at) }}.{% endif %}</p>
 
 {%- if m.state == 'not_read' %}
 <div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>Grafana's dashboards have not been read yet.</strong> {{ m.why }}</div></div>
@@ -70,7 +59,7 @@
 <div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>No panels for {{ dev_name }}: {{ m.dashboard.title }} cannot be filtered to one device.</strong>
   It has no variable named <span class="mono">{{ m.settings.variable }}</span> (its variables: {{ m.variables|join(', ') or 'none' }}), so its panels would show the whole fleet under {{ dev_name }}'s name. None are drawn.</div></div>
 {%- elif m.state == 'range_refused' %}
-<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>That range is refused.</strong> {{ m.why }}</div></div>
+{#- Said at the range control (range_controls), where it was typed. -#}
 {%- else %}
   {%- if m.live and m.live.state == 'found' %}
   <p class="limits">Read from Grafana now: the stored dashboard list {% if m.value_at %}(read {{ stamp(m.value_at) }}) {% endif %}predates <span class="mono">{{ m.dashboard.uid }}</span>, and picks it up at its next read.</p>

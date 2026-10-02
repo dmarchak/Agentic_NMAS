@@ -156,7 +156,7 @@ kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); 
 .title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .sub { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
-.page-actions { display: flex; align-items: center; gap: 8px; }
+.page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .status { display: inline-flex; align-items: center; gap: 8px; }
 .status-since { font-size: 12px; color: var(--ink-2); }
 
@@ -245,10 +245,16 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .seg-btn { font-size: 13px; padding: 6px 12px; color: var(--ink-2); text-decoration: none; border-left: 1px solid var(--line); }
 .seg-btn:first-child { border-left: none; }
 .seg-btn.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
-.range-custom { display: inline-flex; gap: 6px; align-items: center; }
+.range-custom { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+/* A refused range is said AT the control (2026-10-02), on its own line under it. */
+.range-refused { flex-basis: 100%; display: flex; align-items: center; gap: 6px; margin: 2px 0 0;
+  font-size: 12px; color: var(--warn); }
+.range-custom input[aria-invalid="true"] { border-color: var(--warn-mark); }
+/* The toolbar's own space below it, never a note pulled up into it with a negative margin. */
+.monitoring > .toolbar { margin-bottom: 16px; }
 .range-custom input { font: inherit; font-size: 13px; border: 1px solid var(--line); border-radius: var(--r); padding: 5px 8px;
   width: 150px; background: var(--surface); }
-.limits { margin: -4px 0 0; font-size: 12px; color: var(--ink-2); }
+.limits { margin: 0 0 8px; font-size: 12px; color: var(--ink-2); }
 .panels { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 12px; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card);
   padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -312,7 +318,18 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 @media (max-width: 480px) {
   .strip-item { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; }
   .who { display: none; }
+  /* The jump box gives way first: it had no floor below its 300 px, so the status ran off. */
+  .jump { min-width: 0; flex: 1 1 0; }
+  .topbar .strip { min-width: 0; overflow: hidden; }
 }
+/* A selector never wider than its row: a long dashboard title is cut with an ellipsis,
+   its whole name on hover (2026-10-02, the phone ran it off the screen). */
+.toolbar .menu-wrap { min-width: 0; max-width: 100%; }
+.btn-select { max-width: 100%; }
+.btn-select strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* On a phone a long button wraps inside its card rather than running off it (2026-10-02:
+   Devices' "Plan a deploy for the ticked devices (today's page)..." did). */
+@media (max-width: 480px) { .btn { white-space: normal; max-width: 100%; text-align: left; } }
 .who-none .avatar { background: var(--warn-soft); color: var(--warn); }
 .who-none .who-name { color: var(--warn); }
 .selector-why { font-size: 12px; color: var(--ink-2); }

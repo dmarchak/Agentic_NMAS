@@ -132,6 +132,26 @@ class TestTheTabsAndTheSidebar:
         assert re.search(r'<a class="tab on" href="/v2/monitoring/coverage" aria-current="page">Coverage</a>', html)
         assert re.search(r'<a class="nav-item active" href="/v2/monitoring" aria-current="page">', html)
 
+    def test_no_note_sits_under_the_controls(self, lab):
+        """The operator, 2026-10-02: the retention and step note under the range controls
+        crowded the dashboard selector. They are on the controls' hover and behind the (i)."""
+        lab["settings"]["grafana_fleet_dashboard_uid"] = FLEET
+        _r, html = _get(lab, "/v2/monitoring")
+        assert '<p class="limits">' not in html and "Prometheus serves up to" not in html
+        assert re.search(r'<div class="seg" role="group" aria-label="Time range" '
+                         r'title="Prometheus keeps 90 days\. Step 15 s for 1 hour: the step '
+                         r'widens with the range\.">', html)
+        assert 'data-manual="monitoring#time-range"' in html
+        assert re.search(r"class=\"btn btn-select\"[^>]*title=\"Grafana's dashboard list, read ", html)
+
+    def test_a_range_past_the_limit_is_refused_at_the_control(self, lab):
+        lab["settings"]["grafana_fleet_dashboard_uid"] = FLEET
+        _r, html = _get(lab, "/v2/monitoring?range=last+120d")
+        form = re.search(r'<form class="range-custom".*?</form>', html, re.S).group(0)
+        assert 'value="last 120d" aria-invalid="true"' in form
+        assert "Refused: Prometheus keeps 90 days; this range is 120 days." in _text(form)
+        assert _panels(html) == [] and "notice-warn" not in html
+
     def test_monitoring_has_exactly_the_signed_off_tabs(self, lab):
         """The operator, 2026-10-02: a new screen needs a mockup and a sign-off
         BEFORE it is built. IP SLA and Heartbeat were tabs that had neither;

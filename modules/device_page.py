@@ -406,7 +406,7 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
     no such variable, the variable listing nothing, or the panels."""
     cfg = device_dashboard_settings()
     value, at, why = _cached("grafana-dashboards")
-    out = {"settings": cfg, "value_at": at, "range": range_text, "offered": [], "state": "ok"}
+    out = {"settings": cfg, "value_at": at, "range": range_text, "limit_words": panels.LIMITS["prometheus"][1], "offered": [], "state": "ok"}
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -640,7 +640,7 @@ def fleet_monitoring(chosen_uid: str = "", range_text: str = "1h", client=None) 
     choosing one changes the view, never the setting."""
     default = fleet_dashboard_uid()
     value, at, why = _cached("grafana-dashboards")
-    out = {"default": default, "value_at": at, "range": range_text, "offered": [], "state": "ok"}
+    out = {"default": default, "value_at": at, "range": range_text, "limit_words": panels.LIMITS["prometheus"][1], "offered": [], "state": "ok"}
     if value is None:
         out.update(state="not_read", why=why)
         return out
