@@ -1,0 +1,5 @@
+{#- The top bar's quiet "Update available" (routes/device_v2.update_available): news, not a
+    problem, so neutral; the Update page is where it is read and acted on. Empty when there is
+    no update, CI has not passed for it, or it is a Needs attention row instead. -#}
+{%- from "v2/_macros.html" import icon -%}
+{%- if avail %}<a class="update-pill" href="{{ url_for('v2.update') }}" title="{{ avail.title }}" aria-label="Update available: {{ avail.title }}">{{ icon('info', 14) }}<span>Update</span><span class="strip-words">available</span></a>{% endif -%}

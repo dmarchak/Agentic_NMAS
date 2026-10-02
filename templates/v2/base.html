@@ -59,6 +59,7 @@
       {{ icon('search', 15) }}<input type="text" name="name" aria-label="Go to device" placeholder="Go to device by name" autocomplete="off" x-ref="jumpbox"><kbd>/</kbd>
     </form>
     <span class="grow"></span>
+    <span class="update-slot" id="nmas-update" hx-get="{{ url_for('device_v2.update_available') }}" hx-trigger="load, nmas:app_version from:body" hx-swap="innerHTML"></span>
     <span class="strip" id="nmas-strip" hx-get="{{ url_for('device_v2.strip') }}" hx-trigger="load, nmas:integration_health from:body" hx-swap="innerHTML"></span>
     <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Live</span></span>
     <div class="menu-wrap theme" x-data="theme" x-on:keydown.escape="close" x-on:click.outside="close">

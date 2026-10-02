@@ -88,8 +88,19 @@ def served(lab, monkeypatch):  # noqa: F811
     monkeypatch.setattr(device_page, "history", _history)
     monkeypatch.setattr(v2, "_history_commits", _commits)
     real = reader_job.read_cached
+    # An installable update, so the top bar is measured carrying its "Update available"
+    # (the widest the bar gets in ordinary use).
+    from routes import health
+    monkeypatch.setattr(health, "_COMMIT", "a" * 40)
+    monkeypatch.setattr("modules.update_op.outcome", lambda: {"value": {}})
+    pushed = {"state": "ok", "doc": {"stale_after_seconds": 750, "last_good": {
+        "value_at": "2026-10-02T09:00:00Z", "value": {
+            "running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 3,
+            "branch": "main", "behind_since": "2026-10-02T08:00:00Z",
+            "ci": {"tip": "b" * 40, "state": "verified"}}}}}
+    stored = {"baseline-usability": BASELINES, "app-pushed": pushed}
     monkeypatch.setattr(reader_job, "read_cached",
-                        lambda name: BASELINES if name == "baseline-usability" else real(name))
+                        lambda name: stored[name] if name in stored else real(name))
     monkeypatch.setattr("modules.nsot.freshness.authorisations",
                         lambda ln, include_expired=False: [dict(a) for a in AUTHS])
     # For the frame the top bar is measured in, and nothing else (the module docstring).
@@ -204,7 +215,8 @@ class TestTheTopBarFits:
              "f.style.maxWidth='none'; f.style.border='0'; f.style.zIndex='9999';"
              "f.src=location.href; document.documentElement.appendChild(f);")
         b.wait_for("var d=document.getElementById('phone').contentDocument;"
-                   "return d && d.querySelector('.topbar #nmas-strip .strip-item')", 15)
+                   "return d && d.querySelector('.topbar #nmas-strip .strip-item')"
+                   " && d.querySelector('.topbar .update-pill')", 15)
         got = b.js(
             "var w=document.getElementById('phone').contentWindow, d=w.document;"
             "var bar=d.querySelector('.topbar'), W=w.innerWidth, out=[];"
@@ -213,10 +225,12 @@ class TestTheTopBarFits:
             " out.push((e.className||e.tagName)+' ends at '+Math.round(r.right)+' of '+W);});"
             "var who=d.getElementById('nmas-who').getBoundingClientRect();"
             "var jump=d.querySelector('.jump').getBoundingClientRect();"
+            "var pill=d.querySelector('.update-pill').getBoundingClientRect();"
             "return {inner: W, over: out, scroll: d.documentElement.scrollWidth,"
             " who: [Math.round(who.left), Math.round(who.right), who.width],"
-            " jump: Math.round(jump.width)};")
+            " jump: Math.round(jump.width), pill: [Math.round(pill.right), pill.width]};")
         assert got["inner"] == width, got
         assert not got["over"], got
         assert got["who"][2] > 0 and got["who"][1] <= width, ("the avatar is not on the screen", got)
         assert got["jump"] >= 60, ("the search box gave way to nothing usable", got)
+        assert got["pill"][1] > 0 and got["pill"][0] <= width, ("Update available not shown", got)

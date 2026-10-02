@@ -207,6 +207,29 @@ def strip():
                                    read=value is not None))
 
 
+@bp.route("/update-available", methods=["GET"])
+def update_available():
+    """The top bar's quiet "Update available" (the operator, 2026-10-02): drawn
+    only while attention.update_available() says so, from the app-pushed
+    reader's stored comparison for THIS running commit; empty otherwise,
+    including when the release is a Needs attention row instead."""
+    avail = None
+    try:
+        from modules import attention, reader_job
+        from routes import health
+
+        got = reader_job.read_cached("app-pushed")
+        v = ((((got.get("doc") or {}).get("last_good") or {}).get("value")) or {}) \
+            if got.get("state") == "ok" else {}
+        if v and str(v.get("running") or "") == str(health._COMMIT or ""):
+            avail = attention.update_available(v)
+    except Exception as exc:                            # noqa: BLE001
+        # News, never a problem: a failed read draws nothing here, and the
+        # Needs attention source says the comparison could not be read.
+        log.warning("v2 update indicator failed: %s", exc)
+    return _strict(render_template("v2/_update_available.html", avail=avail))
+
+
 @bp.route("/attention-count", methods=["GET"])
 def attention_count():
     """The sidebar's Needs attention count: rows that ask for action."""

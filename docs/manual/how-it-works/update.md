@@ -9,7 +9,13 @@ the process running from it; no network device is touched.
 ## How it starts {#start}
 
 About's **Update…** button and the Needs attention row for a running version behind
-origin/main both open the Update page (`/v2/update`). What the page knows comes from the
+origin/main both open the Update page (`/v2/update`). So does **Update available** in the
+top bar. It is drawn, in a neutral colour, only while origin/main is ahead of the running
+commit AND CI passed for it; hovering says how many commits behind and since when. A release
+is news, not a problem, so it makes no Needs attention row. The pill turns into that row
+when something IS wrong: CI failed or was cancelled for the release, the host has run
+behind for more than 20 hours, the release could not be fetched, or an update asked from
+this version did not happen. The two are never shown together. What the page knows comes from the
 app-pushed reader, which asks the repository's origin (`git ls-remote`) every 5 minutes and
 when you press **Check again**, and asks GitHub's Actions API for the target's CI verdict
 through `nmas-deploy`'s own gate. No page load asks GitHub itself.

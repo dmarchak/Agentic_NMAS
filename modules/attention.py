@@ -1612,6 +1612,50 @@ def pushed_level(v: dict, now: float = None) -> tuple:
     return "info", ""
 
 
+#: An update that was asked for and did not happen (update_op's outcomes).
+_UPDATE_NOT_DONE = ("refused", "rolled_back", "rollback_failed", "failed")
+
+
+def release_level(v: dict, last: dict = None, now: float = None) -> tuple:
+    """``(level, why)`` for the release: pushed_level, raised when the last
+    update asked FROM this commit did not happen (a failed rollback is danger).
+    The ONE decision the Needs attention row and the top bar's "Update
+    available" both read, so the quiet indicator turns into the row exactly
+    when the row appears, and never shows beside it."""
+    level, why = pushed_level(v, now)
+    if last is None:
+        from modules import update_op
+        last = update_op.outcome().get("value") or {}
+    if last.get("outcome") in _UPDATE_NOT_DONE and last.get("from") == v.get("running"):
+        level = "danger" if last["outcome"] == "rollback_failed" else "warning"
+    return level, why
+
+
+def update_available(v: dict, last: dict = None, now: float = None):
+    """The top bar's quiet "Update available" (the operator, 2026-10-02: an
+    update is news, not a problem, and should be noticeable): a dict when
+    origin/main is ahead, CI PASSED for its tip, and nothing makes it a Needs
+    attention row; None otherwise. CI still checking, or a tip never fetched,
+    shows nothing: an update not yet installable is not news to act on."""
+    if v.get("state") != "behind":
+        return None
+    ci = v.get("ci") or {}
+    if not (ci.get("tip") == v.get("tip") and ci.get("state") == "verified"):
+        return None
+    if release_level(v, last, now)[0] != "info":
+        return None
+    n = v.get("behind")
+    behind = (f"{n} commit{'' if n == 1 else 's'} behind" if n is not None
+              else "behind by a number of commits not yet counted")
+    since = str(v.get("behind_since") or "")
+    since = f"{since[:16].replace('T', ' ')} UTC" if len(since) >= 16 else since
+    return {"tip": str(v.get("tip") or "")[:7], "running": str(v.get("running") or "")[:7],
+            "behind": n, "since": since,
+            "title": (f"{behind} origin/{v.get('branch') or 'main'} "
+                      f"({str(v.get('running') or '')[:7]} → {str(v.get('tip') or '')[:7]}), "
+                      f"CI passed; ahead since {since or 'unknown'}")}
+
+
 def update_words(v: dict) -> str:
     """The row's headline, in a person's words: "Update available — 1a587a6 →
     2986b5c (2 new commits)"."""
@@ -1669,20 +1713,19 @@ def pushed_source(cached=None) -> dict:
         cause = (f"origin/{v.get('branch') or 'main'} was asked with git ls-remote at "
                  f"{good.get('value_at') or '?'}; the host moves only when a person updates it")
         last = (update_op.outcome().get("value") or {})
-        level, why = pushed_level(v)
+        # An update tried and not done is wrong (the host stays behind what a
+        # person asked for); a failed rollback is worse. release_level decides
+        # it, the one decision the top bar's indicator also reads.
+        level, why = release_level(v, last)
         if why:
             cause = f"{why[0].upper()}{why[1:]}. {cause}"
-        if last.get("outcome") in ("refused", "rolled_back", "rollback_failed", "failed") \
-                and last.get("from") == running:
+        if last.get("outcome") in _UPDATE_NOT_DONE and last.get("from") == running:
             # One event, one row: the update that did not happen is this row's
             # cause, not a second row beside it.
             cause += (f". The last update, to {str(last.get('to') or '?')[:10]} by "
                       f"{last.get('requested_by') or '?'}, "
                       f"{update_op.OUTCOME_WORDS.get(last['outcome'], last['outcome'])} "
                       f"({last.get('ended_at') or last.get('at') or '?'}): {last.get('reason')}")
-            # An update tried and not done is wrong (the host stays behind
-            # what a person asked for); a failed rollback is worse.
-            level = "danger" if last["outcome"] == "rollback_failed" else "warning"
         wait = update_op.deferred()
         if wait.get("target"):
             # Update when CI passes: the row says the update is coming, and
