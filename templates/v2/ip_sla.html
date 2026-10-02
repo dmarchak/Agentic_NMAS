@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge -%}
+{%- from "v2/_macros.html" import icon, badge, info -%}
 {#- IP SLA probes (P.9 d4, the ADD path; routes/v2._ip_sla_ctx), reached from
     Coverage's IP SLA cells until it folds into the profile's proposal: the
     profile's policy, then the probes it suggests for the devices chosen on
@@ -11,7 +11,7 @@
 {% block main %}
 <div class="page-head">
   <div class="page-title">
-    <h1>IP SLA probes</h1>
+    <h1>IP SLA probes {{ info('monitoring-templates') }}</h1>
     <p class="sub">Probes for devices that run none, suggested from the monitoring profile's policy. Each probe is committed to its device's own intent, then sent after a preview of its exact program. Changing a probe that already runs waits on staged run 9.</p>
   </div>
 </div>

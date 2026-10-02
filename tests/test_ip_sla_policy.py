@@ -281,7 +281,7 @@ class TestTheCommit:
         r = lab["client"].get(url)
         apply_page = r.get_data(as_text=True)
         assert r.status_code == 200, apply_page[:300]
-        assert "<h1>Send the IP SLA probes</h1>" in apply_page
+        assert "<h1>Send the IP SLA probes " in apply_page
         prog = re.search(r'<pre class="apply-program">([^<]*)</pre>', apply_page).group(1)
         lines = html_mod.unescape(prog).splitlines()
         assert lines[0] == "ip sla 2" and "ip sla schedule 2 life forever start-time now" in lines

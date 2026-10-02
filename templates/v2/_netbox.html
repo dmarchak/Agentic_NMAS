@@ -1,10 +1,11 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
 {#- The device page's NetBox (NSOT_GUI_BRIEF 3.3), from
     modules/device_netbox.for_device(): what NetBox holds about the device and
     who owns that record by NMAS's own provenance. Read-only; writes stay on
     today's NetBox tab behind its preview and token. -#}
 <section class="card netbox-rec" id="netbox" hx-get="{{ url_for('device_v2.netbox', name=device.hostname) }}"
          hx-trigger="nmas:netbox from:body" hx-swap="outerHTML">
+<p class="tab-help">{{ info('device-page', 'netbox-tab', 'About this tab') }}</p>
   {%- for e in nb.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}. Not the same as NetBox holding nothing.</p></div>
   {%- endfor %}

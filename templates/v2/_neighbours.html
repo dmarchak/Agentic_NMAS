@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
 {#- The device page's Neighbours (NSOT_GUI_BRIEF 3.3; register C38), from
     modules/neighbours.for_device(): the adjacencies committed intent implies,
     against what the device's own routing tables report through Prometheus.
@@ -8,6 +8,7 @@
 {%- set WORD = {'up': 'up', 'down': 'down', 'not_seen': 'not reported', 'unexpected': 'not implied by intent', 'unknown': 'not measured'} -%}
 <section class="card neighbours" id="neighbours" hx-get="{{ url_for('device_v2.neighbours', name=device.hostname) }}"
          hx-trigger="nmas:goldens from:body, nmas:adjacencies from:body" hx-swap="outerHTML">
+<p class="tab-help">{{ info('device-page', 'neighbours', 'About this tab') }}</p>
   {%- for e in n.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}.</p></div>
   {%- endfor %}

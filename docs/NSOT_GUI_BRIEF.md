@@ -900,7 +900,11 @@ feels good", the deciding check).** The redesign is built in A. The review's fix
   - **Screens:** one section per sidebar item and per device-page tab, which the info links
     open.
 - **Rendered at `/help/<page>`,** server-side.
-  - **The cost:** a Markdown renderer. Python-Markdown is packaged for Ubuntu as
+  - **Built 2026-10-02 with an in-repo renderer instead** (`modules/manual.py`): a strict
+    subset (headings, paragraphs, lists, code, links, diagrams; every character escaped, no
+    raw HTML), because no Markdown library is on the host and adding one is a host step. The
+    files are plain Markdown, so moving to Python-Markdown later changes no file.
+  - **The cost, as first planned:** a Markdown renderer. Python-Markdown is packaged for Ubuntu as
     `python3-markdown`, so the host installs it with apt and `requirements.lock` is
     regenerated there (C37, C40).
   - The manual is the repository's own text, and it is rendered with raw HTML disabled.

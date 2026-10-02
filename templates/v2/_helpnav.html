@@ -1,0 +1,12 @@
+{#- Help's navigation, generated from modules.manual.PAGES (one declaration,
+    so a page added to the manual is in the navigation by construction). -#}
+<nav class="helpnav" aria-label="Help">
+  {%- for g in nav %}
+  <p class="helpnav-head">{{ g.group }}</p>
+  {%- for p in g.pages %}
+  <a class="helpnav-item{% if p.slug == current %} on{% endif %}" href="{{ url_for('v2.help_page', slug=p.slug) }}"{% if p.slug == current %} aria-current="page"{% endif %}>{{ p.title }}</a>
+  {%- endfor %}
+  {%- endfor %}
+  <p class="helpnav-head">About</p>
+  <a class="helpnav-item{% if current == 'about' %} on{% endif %}" href="{{ url_for('v2.about') }}"{% if current == 'about' %} aria-current="page"{% endif %}>About this installation</a>
+</nav>

@@ -382,6 +382,42 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
   .recent li { flex-direction: column; gap: 2px; }
 }
 
+/* The manual (modules/manual.py): its text, the side help panel an info link
+   opens, the info link itself, and the diagrams' classes (no inline style in
+   an SVG, so the strict policy holds and dark mode applies). */
+.manual { max-width: 760px; font-size: 14px; line-height: 1.6; color: var(--ink); }
+.manual h2 { font-size: 17px; font-weight: 600; margin: 22px 0 6px; }
+.manual h3 { font-size: 15px; font-weight: 600; margin: 16px 0 4px; }
+.manual .manual-title { font-size: 20px; margin-top: 0; }
+.manual p { margin: 0 0 10px; }
+.manual ul, .manual ol { margin: 0 0 10px; padding-left: 22px; }
+.manual li { margin: 2px 0; }
+.manual code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 4px;
+  border-radius: 4px; }
+.manual pre { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r);
+  padding: 10px 12px; overflow-x: auto; }
+.manual pre code { background: none; padding: 0; }
+.manual figure.diagram { margin: 14px 0; }
+.manual figure.diagram svg { width: 100%; height: auto; max-width: 720px; }
+.manual figcaption { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+.dg-box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+.dg-key { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.dg-warn { fill: var(--warn-soft); stroke: var(--warn-mark); stroke-width: 1.5; }
+.dg-text { fill: var(--ink); font-family: var(--sans); font-size: 13px; }
+.dg-small { fill: var(--ink-2); font-family: var(--sans); font-size: 11.5px; }
+.dg-line { stroke: var(--ink-2); stroke-width: 1.5; fill: none; }
+.dg-arrow { fill: var(--ink-2); }
+.info-link { display: inline-flex; vertical-align: middle; color: var(--ink-3); margin-left: 6px; }
+.info-link:hover, .info-link:focus-visible { color: var(--accent); }
+.help-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); background: var(--surface);
+  border-left: 1px solid var(--line); box-shadow: var(--shadow); z-index: 60; display: flex; flex-direction: column; }
+.help-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line);
+  font-weight: 600; }
+.help-panel-body { padding: 14px 18px 24px; overflow-y: auto; }
+.help-panel-page { font-size: 12px; color: var(--ink-2); margin: 0 0 4px; }
+.help-panel-more { font-size: 13px; margin-top: 14px; }
+.tab-help { grid-column: 1 / -1; margin: 0 0 -4px; text-align: right; }
+
 /* The Update page (modules/update_op.py). */
 .stack { display: flex; flex-direction: column; gap: 14px; }
 .sub-head { margin: 14px 0 6px; font-size: 13px; font-weight: 600; }

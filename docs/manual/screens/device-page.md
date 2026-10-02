@@ -1,0 +1,55 @@
+# The device page
+
+Everything about one device, addressed by its name. Its header names the model, platform,
+address and the account the tool signs in as; Actions lists the operations on the device.
+
+## Actions {#actions}
+
+Plan a deploy, Capture now, Persist, Rotate the credential, Seed intent, Restore from, and
+Retire. They open on today's device page until the redesign carries each (plan 7.3). How each
+works: [Deploy a change](deploy), [Capture and Save All](capture), [Persist](persist),
+[Rotate a credential](rotate), [Seed intent](seed), [Restore and re-apply a baseline](restore),
+[Retire a device](retire).
+
+## Overview {#overview}
+
+What the tool knows about the device, each fact with where it came from: its last golden, its
+intent state, whether its golden matches its intent, the monitoring profile it inherits, and
+its checks (reachability, Oxidized's copy, alerts).
+
+## Intent {#intent}
+
+The device's intent as committed (a file edited on the host but never committed is never
+drawn), its last intent commit, and what the monitoring profile adds. Read-only; editing is on
+today's page until plan 7.3.
+
+## History {#history-tab}
+
+One timeline for the device: its golden commits (each naming its workflow and who), its intent
+commits, and its deploy and restore receipts. A record that could not be read is said.
+
+## Monitoring {#monitoring-tab}
+
+What the device is monitored by, and its dashboard: the panels of the device dashboard that
+select this device, drawn here. A panel that does not apply (telemetry on a switch that
+streams none) is folded, with why.
+
+## Logs {#logs-tab}
+
+The device's syslog for the last 24 hours, from Loki. Heartbeats are folded into a count; an
+error that names the heartbeat is still listed.
+
+## NetBox {#netbox-tab}
+
+The device's NetBox record, read-only, and who owns it: NMAS created it, NMAS adopted it, or a
+person's. NMAS's recorded writes to it are listed.
+
+## Neighbours {#neighbours}
+
+The routing adjacencies the network's committed intent implies for this device, against what
+Prometheus last read from its routing tables: up, down with its state, unexpected, or not
+measured. It opens no session to the device.
+
+## Ask the device {#ask-the-device}
+
+Not built yet (plan 7.3): an allowlisted, read-only command box.

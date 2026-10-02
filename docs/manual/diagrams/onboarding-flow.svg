@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 200" role="img" aria-hidden="true">
+  <defs>
+    <marker id="ob-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path class="dg-arrow" d="M0,0 L10,5 L0,10 z"></path>
+    </marker>
+  </defs>
+  <rect class="dg-box" x="10" y="40" width="150" height="90" rx="8"></rect>
+  <text class="dg-text" x="85" y="66" text-anchor="middle">1. Create</text>
+  <text class="dg-small" x="85" y="86" text-anchor="middle">credential staged,</text>
+  <text class="dg-small" x="85" y="102" text-anchor="middle">bootstrap committed</text>
+  <text class="dg-small" x="85" y="118" text-anchor="middle">nothing sent</text>
+
+  <rect class="dg-warn" x="190" y="40" width="150" height="90" rx="8"></rect>
+  <text class="dg-text" x="265" y="66" text-anchor="middle">2. The device boots</text>
+  <text class="dg-small" x="265" y="86" text-anchor="middle">on the bootstrap config</text>
+  <text class="dg-small" x="265" y="102" text-anchor="middle">(static, DHCP, or ZTP</text>
+  <text class="dg-small" x="265" y="118" text-anchor="middle">served by the tool)</text>
+
+  <rect class="dg-box" x="370" y="40" width="150" height="90" rx="8"></rect>
+  <text class="dg-text" x="445" y="66" text-anchor="middle">3. Verify</text>
+  <text class="dg-small" x="445" y="86" text-anchor="middle">reach, rotate, save,</text>
+  <text class="dg-small" x="445" y="102" text-anchor="middle">first golden,</text>
+  <text class="dg-small" x="445" y="118" text-anchor="middle">promote</text>
+
+  <rect class="dg-key" x="550" y="40" width="160" height="90" rx="8"></rect>
+  <text class="dg-text" x="630" y="66" text-anchor="middle">4. Seed, then deploy</text>
+  <text class="dg-small" x="630" y="86" text-anchor="middle">full intent from the</text>
+  <text class="dg-small" x="630" y="102" text-anchor="middle">golden; changes are</text>
+  <text class="dg-small" x="630" y="118" text-anchor="middle">deploys from then on</text>
+
+  <path class="dg-line" d="M160,85 L186,85" marker-end="url(#ob-a)"></path>
+  <path class="dg-line" d="M340,85 L366,85" marker-end="url(#ob-a)"></path>
+  <path class="dg-line" d="M520,85 L546,85" marker-end="url(#ob-a)"></path>
+
+  <text class="dg-small" x="10" y="170">Pending from 1 to 3: in the manifest and git, not yet in the inventory.</text>
+  <text class="dg-small" x="10" y="188">A pending device can be abandoned at any time; nothing has reached it until Verify.</text>
+</svg>

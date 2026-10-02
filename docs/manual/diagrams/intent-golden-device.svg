@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 250" role="img" aria-hidden="true">
+  <defs>
+    <marker id="igd-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="dg-arrow" d="M0,0 L10,5 L0,10 z"></path>
+    </marker>
+  </defs>
+  <rect class="dg-key" x="20" y="30" width="190" height="80" rx="8"></rect>
+  <text class="dg-text" x="115" y="62" text-anchor="middle">Intent</text>
+  <text class="dg-small" x="115" y="82" text-anchor="middle">what it SHOULD be</text>
+  <text class="dg-small" x="115" y="98" text-anchor="middle">host_vars/&lt;device&gt;.yml</text>
+
+  <rect class="dg-box" x="510" y="30" width="190" height="80" rx="8"></rect>
+  <text class="dg-text" x="605" y="62" text-anchor="middle">The device</text>
+  <text class="dg-small" x="605" y="82" text-anchor="middle">what IS, right now</text>
+  <text class="dg-small" x="605" y="98" text-anchor="middle">its running configuration</text>
+
+  <rect class="dg-box" x="265" y="160" width="190" height="80" rx="8"></rect>
+  <text class="dg-text" x="360" y="192" text-anchor="middle">The golden</text>
+  <text class="dg-small" x="360" y="212" text-anchor="middle">what it WAS, recorded</text>
+  <text class="dg-small" x="360" y="228" text-anchor="middle">golden/&lt;device&gt;.cfg</text>
+
+  <path class="dg-line" d="M210,60 L505,60" marker-end="url(#igd-a)"></path>
+  <text class="dg-text" x="360" y="50" text-anchor="middle">deploy</text>
+  <text class="dg-small" x="360" y="78" text-anchor="middle">sends what intent has and the device lacks</text>
+
+  <path class="dg-line" d="M560,112 L430,158" marker-end="url(#igd-a)"></path>
+  <text class="dg-text" x="540" y="148" text-anchor="start">capture</text>
+
+  <path class="dg-line" d="M290,158 L160,112" marker-end="url(#igd-a)"></path>
+  <text class="dg-text" x="180" y="148" text-anchor="end">seed (once)</text>
+</svg>

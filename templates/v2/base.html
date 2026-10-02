@@ -24,7 +24,7 @@
 <script defer src="{{ url_for('static', filename='js/nmas_apply.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/vendor/alpinejs-csp/cdn.min.js') }}"></script>
 </head>
-<body class="v2" x-data="frame">
+<body class="v2" x-data="frame" x-on:keydown.escape="closeHelp">
 <a class="skip" href="#main">Skip to the content</a>
 <div class="scrim" x-show="drawer" x-on:click="close" x-cloak></div>
 <nav class="sidebar" aria-label="Main" x-bind:class="drawerClass">
@@ -47,7 +47,7 @@
   <div class="grow"></div>
   <p class="spike-note">The redesign so far: Needs attention, the device page, Monitoring and Help &gt; About. Other items open today's screens.</p>
   <div class="nav-rule"></div>
-  <a class="nav-item{% if active_nav == 'help' %} active{% endif %}" href="{{ url_for('v2.about') }}"{% if active_nav == 'help' %} aria-current="page"{% endif %}>{{ icon('help') }}<span>Help</span></a>
+  <a class="nav-item{% if active_nav == 'help' %} active{% endif %}" href="{{ url_for('v2.help_page', slug='getting-started') }}"{% if active_nav == 'help' %} aria-current="page"{% endif %}>{{ icon('help') }}<span>Help</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('settings') }}<span>Settings</span></a>
 </nav>
 <div class="frame">
@@ -75,5 +75,12 @@
     {% block main %}{% endblock %}
   </main>
 </div>
+<aside class="help-panel" aria-label="Help" x-show="help" x-cloak>
+  <div class="help-panel-head">
+    <span class="grow">Help</span>
+    <button type="button" class="icon-btn" aria-label="Close the help" x-on:click="closeHelp">{{ icon('x', 18) }}</button>
+  </div>
+  <div id="help-panel-body" class="help-panel-body" aria-live="polite"></div>
+</aside>
 </body>
 </html>

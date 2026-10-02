@@ -1,10 +1,11 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, panel_grid -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, panel_grid, info -%}
 {%- set dev_name = device.hostname -%}
 {%- set cur_range = m.range or '1h' -%}
 {%- set dash_uid = (m.dashboard or {}).get('uid', '') -%}
 {#- Re-rendered when Grafana's dashboards change (the reader announces only a change). -#}
 <div class="monitoring" id="monitoring" hx-get="{{ url_for('device_v2.monitoring', name=dev_name, dashboard=dash_uid, range=cur_range) }}"
      hx-trigger="nmas:dashboards from:body" hx-swap="outerHTML">
+<p class="tab-help">{{ info('device-page', 'monitoring-tab', 'About this tab') }}</p>
 {%- if mb is defined %}{% include "v2/_monitored_by.html" %}{% endif %}
 <div class="toolbar">
   <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">

@@ -148,7 +148,36 @@ def installation() -> dict:
 @bp.route("/help/about", methods=["GET"])
 def about():
     """Help > About: the software, moved out of the top bar."""
-    return _page("v2/about.html", inst=installation(), active_nav="help")
+    from modules import manual
+    return _page("v2/about.html", inst=installation(), nav=manual.nav(), active_nav="help")
+
+
+@bp.route("/help/<slug>", methods=["GET"])
+def help_page(slug):
+    """A manual page (NSOT_GUI_BRIEF section 10): ``docs/manual/``, rendered
+    by ``modules.manual``. An unknown page is a 404 naming the pages there are."""
+    from flask import abort
+
+    from modules import manual
+    try:
+        doc = manual.load(slug)
+    except manual.ManualError:
+        abort(404)
+    return _page("v2/help.html", doc=doc, nav=manual.nav(), active_nav="help")
+
+
+@bp.route("/help/<slug>/panel", methods=["GET"])
+def help_panel(slug):
+    """One manual section for the side help panel an info link opens: the
+    SAME file the Help page renders, never a second copy of the words."""
+    from flask import request
+
+    from modules import manual
+    try:
+        sec = manual.section(slug, request.args.get("section", ""))
+    except manual.ManualError as exc:
+        return _strict(render_template("v2/_help_panel.html", sec=None, error=str(exc))), 404
+    return _strict(render_template("v2/_help_panel.html", sec=sec, error=""))
 
 
 @bp.route("/help/installation", methods=["GET"])

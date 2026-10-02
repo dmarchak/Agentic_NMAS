@@ -1,0 +1,344 @@
+"""The manual (NSOT_GUI_BRIEF section 10 and 10a; the operator, 2026-10-02).
+
+Markdown in ``docs/manual/``, versioned with the code, rendered at
+``/v2/help/<page>`` and, one section at a time, in the frame's side help panel
+that every screen's info link opens. ONE source: the panel and the page render
+the same file, never a second copy of the words.
+
+**The renderer is a small, strict subset, written here** rather than
+Python-Markdown: no Markdown library is on the deployment host or in
+``requirements.lock``, and adding one is a host step (apt, then the lock
+regenerated there, C37 and C40) that would hold the manual hostage to it. The
+files are plain Markdown, so moving to Python-Markdown later changes no file.
+What it renders: ``#``-``###`` headings (each an anchor), paragraphs, ``-`` and
+``1.`` lists (one nested level), fenced code, inline code, ``**bold**``,
+``*emphasis*``, links to another manual page or an app path, and a diagram line
+``![description](diagrams/<name>.svg)``. Everything else is TEXT: every
+character is escaped, there is no raw HTML, so the manual cannot inject markup.
+A link of any other form is refused, so a typo cannot ship (the checks in
+``tests/test_manual.py`` render every page).
+
+**What the manual must cover is declared here and checked**: every sidebar
+destination and device-page tab has a Screens page (``SCREENS``), every
+operation has a How it works page (``OPERATIONS``), and an operation whose code
+declares its steps has each step named in its page.
+"""
+
+import html
+import importlib
+import logging
+import os
+import re
+
+log = logging.getLogger(__name__)
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MANUAL_DIR = os.path.join(ROOT, "docs", "manual")
+
+#: Every page, in the Help navigation's order: (slug, title, group, file).
+#: The slug is the URL (``/v2/help/<slug>``); "about" is the installation page.
+PAGES = (
+    ("getting-started", "The model: intent, golden, device", "Getting started", "getting-started.md"),
+    ("deploy", "Deploy a change", "How it works", "how-it-works/deploy.md"),
+    ("capture", "Capture and Save All", "How it works", "how-it-works/capture.md"),
+    ("restore", "Restore and re-apply a baseline", "How it works", "how-it-works/restore.md"),
+    ("removal", "Remove a line (Mode B)", "How it works", "how-it-works/removal.md"),
+    ("rotate", "Rotate a credential", "How it works", "how-it-works/rotate.md"),
+    ("persist", "Persist", "How it works", "how-it-works/persist.md"),
+    ("seed", "Seed intent", "How it works", "how-it-works/seed.md"),
+    ("onboard", "Onboard a device", "How it works", "how-it-works/onboard.md"),
+    ("adopt", "Adopt a device", "How it works", "how-it-works/adopt.md"),
+    ("retire", "Retire a device", "How it works", "how-it-works/retire.md"),
+    ("monitoring-templates", "Apply a monitoring template", "How it works",
+     "how-it-works/monitoring-templates.md"),
+    ("update", "Update the app", "How it works", "how-it-works/update.md"),
+    ("needs-attention", "Needs attention", "Screens", "screens/needs-attention.md"),
+    ("devices", "Devices", "Screens", "screens/devices.md"),
+    ("device-page", "The device page", "Screens", "screens/device-page.md"),
+    ("history", "History", "Screens", "screens/history.md"),
+    ("monitoring", "Monitoring", "Screens", "screens/monitoring.md"),
+    ("logs", "Logs", "Screens", "screens/logs.md"),
+    ("dhcp", "DHCP", "Screens", "screens/dhcp.md"),
+    ("templates", "Templates", "Screens", "screens/templates.md"),
+    ("netbox", "NetBox", "Screens", "screens/netbox.md"),
+    ("credentials", "Credentials", "Screens", "screens/credentials.md"),
+    ("settings", "Settings", "Screens", "screens/settings.md"),
+    ("help", "Help", "Screens", "screens/help.md"),
+)
+GROUPS = ("Getting started", "How it works", "Screens")
+
+#: Every sidebar destination (its label in ``templates/v2/base.html``) and the
+#: Screens page it opens.
+SCREENS = {
+    "Needs attention": "needs-attention", "Devices": "devices", "History": "history",
+    "Monitoring": "monitoring", "Logs": "logs", "DHCP": "dhcp", "Templates": "templates",
+    "NetBox": "netbox", "Credentials": "credentials", "Help": "help", "Settings": "settings",
+}
+
+#: Every device-page tab (``routes/device_v2.TABS``) and its anchor on the
+#: device page's Screens page.
+DEVICE_TABS = {
+    "overview": "overview", "intent": "intent", "history": "history-tab",
+    "monitoring": "monitoring-tab", "logs": "logs-tab", "netbox": "netbox-tab",
+    "neighbours": "neighbours", "ask": "ask-the-device",
+}
+
+#: Every operation and the code that declares its steps: ``(module, attribute)``,
+#: whose value is a sequence of step keys (or of ``(key, words)`` pairs), each of
+#: which its page must name. ``None`` with a reason where the code declares no
+#: step list yet: the stepper work (brief 10a) adds one, and this list only
+#: shrinks (``UNDECLARED_CEILING`` in the test).
+OPERATIONS = {
+    "deploy": ("modules.pipeline", "STAGE_NAMES"),
+    "capture": None,
+    "restore": ("modules.pipeline", "STAGE_NAMES"),
+    "removal": ("modules.pipeline", "STAGE_NAMES"),
+    "rotate": None,
+    "persist": None,
+    "seed": None,
+    "onboard": ("modules.nsot.onboard", "STEPS"),
+    "onboard-phase-two": ("modules.nsot.onboard", "PHASE_TWO_STEPS"),
+    "onboard-ztp": ("modules.nsot.onboard", "ZTP_STEPS"),
+    "adopt": ("modules.nsot.adopt", "APPLY_STEPS"),
+    "retire": None,
+    "monitoring-templates": ("modules.pipeline", "STAGE_NAMES"),
+    "update": ("modules.update_op", "STEPS"),
+}
+#: The page each operation's steps are named on (an operation may have two
+#: declared sequences on one page: onboarding's two phases and its ZTP form).
+OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard"}
+#: Why an operation has no declared step list yet, said rather than left blank.
+UNDECLARED = {
+    "capture": "the capture job reads, previews and records in code paths with no step tuple",
+    "rotate": "rotation reports states (credential_rotation) and steps it appends as it goes",
+    "persist": "persist_op builds its step list in plan(), with the device's name in each",
+    "seed": "seed's preview, confirm and apply are three routes with no step tuple",
+    "retire": "retire builds its step list in plan(), per device",
+}
+
+
+class ManualError(ValueError):
+    """A page that cannot be rendered: an unknown link form, a missing
+    diagram, a page the manual does not declare."""
+
+
+def page(slug: str) -> dict:
+    """``{"slug", "title", "group", "file"}`` for a declared page, or raise."""
+    for s, title, group, rel in PAGES:
+        if s == slug:
+            return {"slug": s, "title": title, "group": group, "file": rel}
+    raise ManualError(f"no manual page named {slug!r}")
+
+
+def nav() -> list:
+    """The Help navigation: ``[{"group", "pages": [{"slug", "title"}]}]``."""
+    return [{"group": g, "pages": [{"slug": s, "title": t} for s, t, gg, _f in PAGES if gg == g]}
+            for g in GROUPS]
+
+
+def source(slug: str) -> str:
+    with open(os.path.join(MANUAL_DIR, page(slug)["file"]), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def declared_steps(op: str) -> list:
+    """The step keys the code declares for *op*, read from the code itself."""
+    ref = OPERATIONS[op]
+    if ref is None:
+        return []
+    mod = importlib.import_module(ref[0])
+    out = []
+    for item in getattr(mod, ref[1]):
+        out.append(item[0] if isinstance(item, (tuple, list)) else item)
+    return out
+
+
+# --------------------------------------------------------------------- render
+
+def anchor_of(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+_INLINE = re.compile(r"`([^`]+)`|\*\*(.+?)\*\*|\*(.+?)\*|\[([^\]]+)\]\(([^)\s]+)\)")
+
+
+def _href(target: str) -> str:
+    """A link's target: another manual page (``slug`` or ``slug#anchor``), an
+    anchor on this page (``#anchor``) or an app path (``/v2/...``)."""
+    if target.startswith("#"):
+        return target
+    if target.startswith("/v2/"):
+        return target
+    slug, _hash, anchor = target.partition("#")
+    if any(s == slug for s, _t, _g, _f in PAGES):
+        return f"/v2/help/{slug}" + (f"#{anchor}" if anchor else "")
+    raise ManualError(f"a link the manual cannot resolve: {target!r} (a manual page slug, "
+                      "slug#anchor, #anchor or a /v2/ path)")
+
+
+def _inline(text: str, links: list) -> str:
+    out, pos = [], 0
+    for m in _INLINE.finditer(text):
+        out.append(html.escape(text[pos:m.start()]))
+        code, bold, em, label, target = m.groups()
+        if code is not None:
+            out.append(f"<code>{html.escape(code)}</code>")
+        elif bold is not None:
+            out.append(f"<strong>{_inline(bold, links)}</strong>")
+        elif em is not None:
+            out.append(f"<em>{_inline(em, links)}</em>")
+        else:
+            href = _href(target)
+            links.append(target)
+            out.append(f'<a href="{html.escape(href)}">{_inline(label, links)}</a>')
+        pos = m.end()
+    out.append(html.escape(text[pos:]))
+    return "".join(out)
+
+
+_DIAGRAM = re.compile(r"^!\[([^\]]+)\]\(diagrams/([a-z0-9-]+)\.svg\)$")
+_HEAD = re.compile(r"^(#{1,3}) (.+?)(?: \{#([a-z0-9-]+)\})?$")
+_BULLET = re.compile(r"^( *)(?:- |(\d+)\. )(.*)$")
+
+
+def diagram(name: str) -> str:
+    """A diagram's SVG, read from ``docs/manual/diagrams``. The repository's
+    own file, drawn with classes the stylesheet themes (no inline style, so
+    the strict policy holds and dark mode applies)."""
+    path = os.path.join(MANUAL_DIR, "diagrams", f"{name}.svg")
+    if not os.path.isfile(path):
+        raise ManualError(f"a diagram the manual names does not exist: diagrams/{name}.svg")
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    if re.search(r"<script|\son[a-z]+=|style=|javascript:", text, re.I):
+        raise ManualError(f"diagrams/{name}.svg carries script or inline style")
+    return text[text.index("<svg"):]
+
+
+def render(text: str) -> dict:
+    """``{"html", "title", "anchors", "links", "sections"}``. *sections* maps
+    each anchor (an ``##`` heading) to its own HTML, for the side panel."""
+    lines = text.splitlines()
+    blocks, anchors, links = [], [], []
+    title = ""
+    current = None          # (anchor, [html]) of the open ## section
+    sections = {}
+    para, lst = [], []      # paragraph lines; list items [(indent, ordered, html)]
+    i = 0
+
+    def emit(h):
+        blocks.append(h)
+        if current is not None:
+            current[1].append(h)
+
+    def flush_para():
+        if para:
+            emit("<p>" + _inline(" ".join(para), links) + "</p>")
+            para.clear()
+
+    def flush_list():
+        if not lst:
+            return
+        out, stack = [], []
+        for indent, ordered, item in lst:
+            level = 1 if indent >= 2 else 0
+            tag = "ol" if ordered else "ul"
+            while len(stack) > level + 1:
+                out.append(f"</li></{stack.pop()}>")
+            if len(stack) < level + 1:
+                out.append(f"<{tag}>")
+                stack.append(tag)
+            elif out:
+                out.append("</li>")
+            out.append(f"<li>{item}")
+        while stack:
+            out.append(f"</li></{stack.pop()}>")
+        emit("".join(out))
+        lst.clear()
+
+    while i < len(lines):
+        line = lines[i].rstrip()
+        if line.startswith("```"):
+            flush_para()
+            flush_list()
+            body = []
+            i += 1
+            while i < len(lines) and not lines[i].startswith("```"):
+                body.append(lines[i])
+                i += 1
+            emit("<pre><code>" + html.escape("\n".join(body)) + "</code></pre>")
+            i += 1
+            continue
+        h = _HEAD.match(line)
+        if h:
+            flush_para()
+            flush_list()
+            level, words, explicit = len(h.group(1)), h.group(2), h.group(3)
+            if level == 1:
+                title = words
+                i += 1
+                continue
+            anchor = explicit or anchor_of(words)
+            if anchor in anchors:
+                raise ManualError(f"two headings share the anchor {anchor!r}")
+            anchors.append(anchor)
+            if level == 2:
+                current = (anchor, [])
+                sections[anchor] = current
+            emit(f'<h{level} id="{anchor}">{_inline(words, links)}</h{level}>')
+            i += 1
+            continue
+        d = _DIAGRAM.match(line)
+        if d:
+            flush_para()
+            flush_list()
+            desc, name = d.groups()
+            emit(f'<figure class="diagram">{diagram(name)}<figcaption>{_inline(desc, links)}'
+                 "</figcaption></figure>")
+            i += 1
+            continue
+        b = _BULLET.match(line)
+        if b:
+            flush_para()
+            indent, number, rest = len(b.group(1)), b.group(2), b.group(3)
+            # Continuation lines, indented past the marker.
+            j = i + 1
+            while j < len(lines) and lines[j].startswith(" " * (indent + 2)) \
+                    and not _BULLET.match(lines[j]) and lines[j].strip():
+                rest += " " + lines[j].strip()
+                j += 1
+            lst.append((indent, number is not None, _inline(rest, links)))
+            i = j
+            continue
+        if not line.strip():
+            flush_para()
+            flush_list()
+            i += 1
+            continue
+        flush_list()
+        para.append(line.strip())
+        i += 1
+    flush_para()
+    flush_list()
+    return {"html": "\n".join(blocks), "title": title, "anchors": anchors, "links": links,
+            "sections": {a: "\n".join(h for h in body) for a, (_a, body) in sections.items()}}
+
+
+def load(slug: str) -> dict:
+    """A declared page, rendered: its declared title, group and HTML."""
+    p = page(slug)
+    out = render(source(slug))
+    out.update(slug=slug, group=p["group"], nav_title=p["title"])
+    return out
+
+
+def section(slug: str, anchor: str = "") -> dict:
+    """What the side panel draws: the page's ``##`` section named by *anchor*,
+    or the whole page when no anchor is given. An unknown anchor raises."""
+    out = load(slug)
+    if not anchor:
+        return {"slug": slug, "title": out["title"], "html": out["html"], "anchor": ""}
+    if anchor not in out["sections"]:
+        raise ManualError(f"the manual page {slug!r} has no section {anchor!r}")
+    return {"slug": slug, "title": out["title"], "html": out["sections"][anchor],
+            "anchor": anchor}

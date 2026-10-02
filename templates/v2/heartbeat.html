@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge -%}
+{%- from "v2/_macros.html" import icon, badge, info -%}
 {#- The heartbeat re-measure (NSOT_PLAN P.7; routes/v2._heartbeat_ctx), reached
     ONLY from the heartbeat check's Needs attention row, never a tab: every
     device's heartbeat window, installed against measured now, with what each
@@ -10,7 +10,7 @@
 {% block main %}
 <div class="page-head">
   <div class="page-title">
-    <h1>Heartbeat windows</h1>
+    <h1>Heartbeat windows {{ info('monitoring-templates', 'the-heartbeat') }}</h1>
     <p class="sub">Each device sends a heartbeat every {{ plan.heartbeat if plan else 'few' }} s by its own clock, and its alert fires when none arrives within its window: quiet on one missed heartbeat, firing on two. A window is measured from the device's own arrivals; gaps across a configuration change, a restart or a miss are not measurements.</p>
   </div>
 </div>

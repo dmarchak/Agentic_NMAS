@@ -1,10 +1,10 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon -%}
+{%- from "v2/_macros.html" import icon, info -%}
 {% block title %}Devices · NMAS{% endblock %}
 {% block main %}
 <div class="page-head">
   <div class="page-title">
-    <h1>Devices <span class="muted">· {{ d.total }}</span></h1>
+    <h1>Devices <span class="muted">· {{ d.total }}</span> {{ info('devices') }}</h1>
     <p class="sub">{{ list_name }}: each device's status, address, platform and intent state, read from what the app already keeps.</p>
   </div>
   <div class="page-actions">

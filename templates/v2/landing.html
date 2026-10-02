@@ -1,10 +1,10 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import stamp, badge -%}
+{%- from "v2/_macros.html" import stamp, badge, info -%}
 {% block title %}Needs attention · NMAS{% endblock %}
 {% block main %}
 <div class="page-head">
   <div class="page-title">
-    <h1>Needs attention</h1>
+    <h1>Needs attention {{ info('needs-attention') }}</h1>
     <p class="sub">What is wrong, and what needs a person. Each item names its cause and the one action that addresses it.</p>
   </div>
 </div>

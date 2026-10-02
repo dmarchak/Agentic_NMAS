@@ -1,0 +1,21 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
+{#- A manual page (NSOT_GUI_BRIEF section 10): docs/manual/<file>, rendered by
+    modules.manual, which escapes every character of the text itself, so its
+    HTML is inserted as built. -#}
+{% block title %}{{ doc.title }} · Help · NMAS{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Help {{ info('help') }}</h1>
+    <p class="sub">{{ doc.group }}</p>
+  </div>
+</div>
+<div class="help-grid">
+  {% with current=doc.slug %}{% include "v2/_helpnav.html" %}{% endwith %}
+  <article class="help-body manual">
+    <h2 class="manual-title">{{ doc.title }}</h2>
+    {{ doc.html | safe }}
+  </article>
+</div>
+{% endblock %}

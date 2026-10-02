@@ -145,7 +145,7 @@ class TestThePage:
         assert not re.search(r"\sstyle=|\son[a-z]+=", html)
         for host in ("r2", "r6"):
             assert f'<a href="/v2/device/{host}">{host}</a>' in html
-        assert "<h1>Devices <span class=\"muted\">· 2</span></h1>" in html
+        assert "<h1>Devices <span class=\"muted\">· 2</span>" in html
         assert re.search(r'<a class="nav-item active" href="/v2/devices" aria-current="page">', html)
 
     def test_a_search_says_how_many_it_shows(self, inv):

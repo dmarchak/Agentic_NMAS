@@ -1,5 +1,5 @@
 {%- extends "v2/base.html" -%}
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
 {%- set active_nav = 'devices' -%}
 {#- A pending device's page (NSOT_GUI_BRIEF 3.3): onboarded (phase 1: its
     commit and its staged credential) and not yet reached, so it is in no
@@ -12,7 +12,7 @@
 <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices') }}">Devices</a><span aria-hidden="true">/</span><span>{{ p.name }}</span></nav>
 <div class="page-head">
   <div class="page-title">
-    <div class="title-row"><h1 class="mono">{{ p.name }}</h1> {{ badge('Pending onboarding: ' ~ s[0], s[1]) }}</div>
+    <div class="title-row"><h1 class="mono">{{ p.name }} {{ info('onboard', 'phase-two-verify') }}</h1> {{ badge('Pending onboarding: ' ~ s[0], s[1]) }}</div>
     <p class="sub">Onboarded {{ stamp(p.onboarded_at) }} · network {{ list_name }} · not reached yet, so it is in no inventory and nothing polls, backs up or checks it</p>
   </div>
 </div>

@@ -146,9 +146,14 @@
     A.data('frame', function () {
       return {
         drawer: false,
+        // The side help panel (NSOT_GUI_BRIEF 10a): an info link loads its
+        // manual section into it (htmx) and opens it here.
+        help: false,
         get drawerClass() { return this.drawer ? 'open' : ''; },
         open: function () { this.drawer = true; },
-        close: function () { this.drawer = false; },
+        close: function () { this.drawer = false; this.help = false; },
+        openHelp: function () { this.help = true; },
+        closeHelp: function () { this.help = false; },
         jump: function () {
           var form = this.$el.closest ? this.$el.closest('form') : this.$el;
           var box = form.querySelector('input[name="name"]');

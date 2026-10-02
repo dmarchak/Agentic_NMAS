@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
 {#- The device page's History (NSOT_GUI_BRIEF 3.3): one timeline from
     device_page.history(): golden commits (each names its workflow), intent
     commits, and deploy and restore receipts, newest first. A record that
@@ -6,6 +6,7 @@
 {%- set KIND = {'golden': ('golden', 'info'), 'intent': ('intent', 'muted'), 'receipt': ('receipt', 'ok')} -%}
 <section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname) }}"
          hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body" hx-swap="outerHTML">
+<p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }}</p>
   {%- for e in h.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}: the timeline below lacks it, which is not the same as nothing having happened.</p></div>
   {%- endfor %}

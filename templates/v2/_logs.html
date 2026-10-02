@@ -1,10 +1,11 @@
-{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
 {#- The device page's Logs (NSOT_GUI_BRIEF 3.3), from
     modules/device_logs.for_device(): what the device sent to syslog, as Loki
     holds it, newest first, heartbeats folded into one line. Read from Loki,
     never from the device. A cut list says it is cut. -#}
 <section class="card logs" id="logs" hx-get="{{ url_for('device_v2.logs', name=device.hostname) }}"
          hx-trigger="nmas:goldens from:body" hx-swap="outerHTML">
+<p class="tab-help">{{ info('device-page', 'logs-tab', 'About this tab') }}</p>
   {%- for e in g.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}. Not the same as {{ device.hostname }} having sent nothing.</p></div>
   {%- endfor %}

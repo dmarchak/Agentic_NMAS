@@ -1,9 +1,10 @@
 {%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
 {% block title %}Coverage · Monitoring · NMAS{% endblock %}
 {% block main %}
 <div class="page-head">
   <div class="page-title">
-    <h1>Monitoring</h1>
+    <h1>Monitoring {{ info('monitoring', 'coverage') }}</h1>
     <p class="sub">What each device is configured for, read from its committed golden, and the monitoring profile that supplies what is missing.</p>
   </div>
 </div>

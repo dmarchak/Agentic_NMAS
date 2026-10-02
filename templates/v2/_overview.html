@@ -1,7 +1,8 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, STATE_KIND -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, STATE_KIND, info -%}
 {#- Re-fetched whenever a reader it draws from announces (nmas_v2.js). -#}
 <div class="grid-2" id="overview" hx-get="{{ url_for('device_v2.overview', name=device.hostname) }}" hx-swap="outerHTML"
      hx-trigger="nmas:reachability from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:drift from:body">
+<p class="tab-help">{{ info('device-page', 'overview', 'About this tab') }}</p>
   <section class="card">
     <div class="card-head"><h2>Around this device</h2></div>
     <dl class="facts">

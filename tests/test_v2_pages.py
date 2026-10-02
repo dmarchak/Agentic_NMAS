@@ -304,7 +304,8 @@ class TestTheLanding:
     def test_the_sidebar_leads_to_the_landing_and_help(self, landing):
         html = _client().get("/v2/").get_data(as_text=True)
         assert re.search(r'class="nav-item active" href="/v2/" aria-current="page"', html)
-        assert 'href="/v2/help/about"' in html
+        # Help opens the manual (2026-10-02); About is a page within it.
+        assert 'href="/v2/help/getting-started"' in html
 
 
 class TestHelpAbout:

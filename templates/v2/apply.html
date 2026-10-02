@@ -1,9 +1,10 @@
 {%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
 {% block title %}{{ words.title }} · Monitoring · NMAS{% endblock %}
 {% block main %}
 <div class="page-head">
   <div class="page-title">
-    <h1>{{ words.title }}</h1>
+    <h1>{{ words.title }} {{ info('monitoring-templates', 'what-apply-does') }}</h1>
     <p class="sub">{{ words.sub }}</p>
   </div>
 </div>

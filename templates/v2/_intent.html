@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge -%}
+{%- from "v2/_macros.html" import icon, badge, info -%}
 {#- The device page's Intent tab (NSOT_GUI_BRIEF 3.3), READ-ONLY: the intent
     COMMITTED at HEAD (device_page.intent_view), its last commit, and what the
     network's monitoring profile adds on top or the device excludes. The
@@ -6,6 +6,7 @@
     them, and the page says so. -#}
 <section class="card intent" id="intent" hx-get="{{ url_for('device_v2.intent', name=device.hostname) }}"
          hx-trigger="nmas:goldens from:body" hx-swap="outerHTML">
+<p class="tab-help">{{ info('device-page', 'intent', 'About this tab') }}</p>
   {%- if iv.state == 'unreadable' %}
   <div class="notice notice-danger">{{ icon('warn') }}<p>{{ device.hostname }}: {{ iv.note }}. Not the same as having no intent.</p></div>
   {%- elif iv.state == 'never_committed' %}
