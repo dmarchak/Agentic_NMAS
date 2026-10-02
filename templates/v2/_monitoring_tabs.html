@@ -1,11 +1,10 @@
-{#- Monitoring's tabs: the fleet dashboard (the default), Coverage, IP SLA (the
-    probes the profile's policy suggests, P.9 d4; also reached from Coverage's IP
-    SLA cells) and Heartbeat (each device's alert window, re-measured as an
-    action, P.7; also the heartbeat check's Needs attention action). Never only
-    by a typed address. -#}
+{#- Monitoring's tabs: the fleet dashboard (the default) and Coverage. Nothing
+    else (the operator, 2026-10-02): IP SLA and Heartbeat were built as tabs
+    with no mockup and no sign-off, and a new screen needs both first. The IP
+    SLA page is reached from Coverage's IP SLA cells until it folds into the
+    monitoring profile's proposal; the heartbeat re-measure only from the
+    heartbeat check's Needs attention row. -#}
 <nav class="tabs" aria-label="Monitoring">
   <a class="tab{% if monitoring_tab == 'dashboards' %} on{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if monitoring_tab == 'dashboards' %} aria-current="page"{% endif %}>Dashboards</a>
   <a class="tab{% if monitoring_tab == 'coverage' %} on{% endif %}" href="{{ url_for('v2.coverage') }}"{% if monitoring_tab == 'coverage' %} aria-current="page"{% endif %}>Coverage</a>
-  <a class="tab{% if monitoring_tab == 'ip_sla' %} on{% endif %}" href="{{ url_for('v2.ip_sla') }}"{% if monitoring_tab == 'ip_sla' %} aria-current="page"{% endif %}>IP SLA</a>
-  <a class="tab{% if monitoring_tab == 'heartbeat' %} on{% endif %}" href="{{ url_for('v2.heartbeat') }}"{% if monitoring_tab == 'heartbeat' %} aria-current="page"{% endif %}>Heartbeat</a>
 </nav>

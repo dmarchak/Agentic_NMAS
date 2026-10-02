@@ -125,8 +125,11 @@ class TestThePage:
         assert r.status_code == 200 and "Content-Security-Policy" in r.headers
         assert 'id="hb-s3"' in page and 'id="hb-s9"' in page and "1337 s" in page
         assert 'id="hb-confirm"' in page
-        assert re.search(r'<a class="tab on" href="/v2/monitoring/heartbeat" aria-current="page">'
-                         r'Heartbeat</a>', page)
+        # Never a tab (the operator, 2026-10-02): the page belongs to the
+        # heartbeat check's Needs attention row, its one way in.
+        assert 'class="tabs"' not in page and 'aria-label="Monitoring"' not in page
+        assert re.search(r'class="nav-item active" href="/v2/"', page), \
+            "drawn under Needs attention, where it is reached"
 
     def test_after_the_confirm_the_page_names_the_host_step_with_real_values(self, lab):
         import app as A

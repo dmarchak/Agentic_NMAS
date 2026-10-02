@@ -1047,6 +1047,17 @@ Help
 Settings
 ```
 
+**Monitoring's tabs are Dashboards and Coverage, and nothing else** (the operator,
+2026-10-02). IP SLA and Heartbeat were built as tabs with no mockup and no sign-off, and are
+removed: **a new screen, or a new tab, needs a mockup and the operator's sign-off before it is
+built.** `test_fleet_monitoring.py` pins the two. Where the two removed tabs' work lives:
+- **IP SLA** is a section of the monitoring profile (14.3), like SNMP or syslog. Until that
+  fold is built, its page is reached only from Coverage's IP SLA cells and is drawn under
+  Coverage.
+- **The heartbeat** is a background check that needs a person only when it fails. Its
+  re-measure screen is reached only from the heartbeat check's Needs attention row, and is
+  drawn under Needs attention, never as a tab.
+
 **Where each service lives:**
 - **Oxidized has no item of its own:** its config versions are History's (fleet) and the
   device page's (one device), always labelled as Oxidized's copies.
@@ -1475,8 +1486,20 @@ The design is [MONITORING_PROFILE.md](MONITORING_PROFILE.md). What a person sees
   The result is the deploy's.
 - **Onboarding's Verify and adopt's preview** draw the same groups for a new device, before
   the confirm.
+- **IP SLA is one of the profile's sections** (the operator, 2026-10-02). Its POLICY is chosen
+  when the profile is PROPOSED: routing peers, the default gateway, or nothing; every 60 s by
+  default on vIOS; a probe placed on the router end where the path is the same; the expected
+  CPU cost drawn beside each choice. Its per-device suggestions are committed to each device's
+  intent, where they are reviewed like any other intent, and "Apply monitoring profile" sends
+  the probes with everything else. There is no IP SLA tab and no separate IP SLA page once
+  this is built (drawn as a mockup first, awaiting the operator's sign-off).
 - **Monitoring > Coverage:** devices by integration, the cells from committed goldens. Select
   several and "Apply monitoring profile" opens one batch preview with the rollout order drawn.
+  An IP SLA cell that is missing links to the profile's proposal, at its IP SLA section.
+- **The heartbeat re-measure** opens from the heartbeat check's Needs attention row only, when
+  a window no longer fits its device's measured clock. It answers at once and measures as a
+  job, busy on its own control, never inside the click (C322: the GET measured for 7.5 s and
+  the click looked like it did nothing).
 - **The intent editor** draws inherited values in their own style, labelled "from the
   profile". An override reads "overrides the profile", and an exclusion shows its reason.
 - **Needs attention:** one row per device not covered, "r6 is not monitored by SNMP: its

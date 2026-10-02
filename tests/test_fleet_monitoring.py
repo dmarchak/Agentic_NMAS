@@ -132,6 +132,18 @@ class TestTheTabsAndTheSidebar:
         assert re.search(r'<a class="tab on" href="/v2/monitoring/coverage" aria-current="page">Coverage</a>', html)
         assert re.search(r'<a class="nav-item active" href="/v2/monitoring" aria-current="page">', html)
 
+    def test_monitoring_has_exactly_the_signed_off_tabs(self, lab):
+        """The operator, 2026-10-02: a new screen needs a mockup and a sign-off
+        BEFORE it is built. IP SLA and Heartbeat were tabs that had neither;
+        Monitoring holds the two that were signed off, and a third is a change
+        to this test, made with the operator's sign-off."""
+        tabs = "templates/v2/_monitoring_tabs.html"
+        labels = re.findall(r'class="tab[^"]*"[^>]*>([^<]+)</a>', open(tabs, encoding="utf-8").read())
+        assert labels == ["Dashboards", "Coverage"]
+        _r, html = _get(lab, "/v2/monitoring")
+        nav = html.split('aria-label="Monitoring">', 1)[1].split("</nav>", 1)[0]
+        assert re.findall(r">([^<]+)</a>", nav) == ["Dashboards", "Coverage"]
+
     def test_every_monitoring_url_carries_the_strict_policy(self, lab):
         from modules import csp
         for url in ("/v2/monitoring", "/v2/monitoring/dashboard"):

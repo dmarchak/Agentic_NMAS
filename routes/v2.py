@@ -562,7 +562,7 @@ def ip_sla():
     """The IP SLA policy and the probes it suggests for the devices chosen on
     Coverage (those running none)."""
     from flask import request
-    return _page("v2/ip_sla.html", active_nav="monitoring", monitoring_tab="ip_sla",
+    return _page("v2/ip_sla.html", active_nav="monitoring", monitoring_tab="coverage",
                  **_ip_sla_ctx(request))
 
 
@@ -592,7 +592,7 @@ def _heartbeat_ctx() -> dict:
 def heartbeat():
     """Each device's heartbeat window: installed against measured now, the
     check's own verdict, and the re-measure's confirm."""
-    return _page("v2/heartbeat.html", active_nav="monitoring", monitoring_tab="heartbeat",
+    return _page("v2/heartbeat.html", active_nav="attention",
                  **_heartbeat_ctx())
 
 

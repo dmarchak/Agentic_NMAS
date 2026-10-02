@@ -413,18 +413,25 @@ def _coverage_inventory(monkeypatch):
         {"hostname": "s4", "ip": "203.0.113.24", "platform": "cisco_ios"}])
 
 
-class TestTheWayIn:
-    def test_monitoring_has_an_ip_sla_tab_and_its_page_marks_it(self, lab):
-        _r, page = _page(lab)
-        assert re.search(r'<a class="tab on" href="/v2/monitoring/ip-sla" aria-current="page">'
-                         r'IP SLA</a>', page), "the IP SLA tab, current on its own page"
-        assert '<a class="tab" href="/v2/monitoring/coverage">Coverage</a>' in page
+def _nav(page):
+    """Monitoring's tab bar, as drawn."""
+    return page.split('aria-label="Monitoring">', 1)[1].split("</nav>", 1)[0]
 
-    def test_every_monitoring_page_carries_the_tab(self, lab, monkeypatch):
+
+class TestTheWayIn:
+    def test_the_page_is_drawn_under_coverage_and_is_no_tab(self, lab):
+        """The operator, 2026-10-02: IP SLA was a tab nobody signed off. It is
+        reached from Coverage's cells until it folds into the profile."""
+        _r, page = _page(lab)
+        assert re.search(r'<a class="tab on" href="/v2/monitoring/coverage" aria-current="page">'
+                         r'Coverage</a>', page), "drawn under Coverage, where it is reached"
+        assert "IP SLA" not in _nav(page)
+
+    def test_no_monitoring_page_carries_an_ip_sla_tab(self, lab, monkeypatch):
         _coverage_inventory(monkeypatch)
         for path in ("/v2/monitoring/coverage", "/v2/monitoring"):
             page = lab["client"].get(path).get_data(as_text=True)
-            assert '<a class="tab" href="/v2/monitoring/ip-sla">IP SLA</a>' in page, path
+            assert "Coverage" in _nav(page) and "IP SLA" not in _nav(page), path
 
     def test_opened_from_the_tab_it_shows_every_device_without_a_probe(self, lab):
         assert _policy(lab).status_code == 200

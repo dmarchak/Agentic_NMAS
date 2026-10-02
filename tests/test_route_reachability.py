@@ -44,6 +44,12 @@ NON_GUI = {
     "POST /jobs/finished": ("scripts/nmas-job-finished",
                             "systemd's OnSuccess/OnFailure for each host job: read job "
                             "health now, not at the reader's next run"),
+    # A GUI way in carried as DATA, which a scan of rendered pages cannot see:
+    # the heartbeat check's Needs attention row, its ONE entry point (the
+    # operator, 2026-10-02: never a tab), built in job_health.
+    "GET /v2/monitoring/heartbeat": ("modules/job_health.py",
+                                     "the heartbeat check's Needs attention action, "
+                                     "built by job health; never a tab"),
     "GET /favicon.ico": (None, "requested by browsers by convention; no page "
                                "references it and none needs to"),
 }

@@ -1,6 +1,7 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import icon, badge -%}
-{#- Monitoring > IP SLA (P.9 d4, the ADD path; routes/v2._ip_sla_ctx): the
+{#- IP SLA probes (P.9 d4, the ADD path; routes/v2._ip_sla_ctx), reached from
+    Coverage's IP SLA cells until it folds into the profile's proposal: the
     profile's policy, then the probes it suggests for the devices chosen on
     Coverage, each saying where it lives, what path it measures, why there,
     and its expected CPU cost. The ticked ones are committed into the

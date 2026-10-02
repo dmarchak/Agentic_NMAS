@@ -1,11 +1,12 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import icon, badge -%}
-{#- Monitoring > Heartbeat (NSOT_PLAN P.7; routes/v2._heartbeat_ctx): every
+{#- The heartbeat re-measure (NSOT_PLAN P.7; routes/v2._heartbeat_ctx), reached
+    ONLY from the heartbeat check's Needs attention row, never a tab: every
     device's heartbeat window, installed against measured now, with what each
     is measured from and the hourly check's own verdict; the re-measure's
     confirm writes the rules file, and the page then names the ONE host step
     that installs it, every value filled in. -#}
-{% block title %}Heartbeat · Monitoring · NMAS{% endblock %}
+{% block title %}Heartbeat windows · Needs attention · NMAS{% endblock %}
 {% block main %}
 <div class="page-head">
   <div class="page-title">
@@ -13,7 +14,6 @@
     <p class="sub">Each device sends a heartbeat every {{ plan.heartbeat if plan else 'few' }} s by its own clock, and its alert fires when none arrives within its window: quiet on one missed heartbeat, firing on two. A window is measured from the device's own arrivals; gaps across a configuration change, a restart or a miss are not measurements.</p>
   </div>
 </div>
-{% include "v2/_monitoring_tabs.html" %}
 <div class="tab-body">
 {%- if host_step %}
 <section class="card" id="hb-pending">
