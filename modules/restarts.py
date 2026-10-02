@@ -193,6 +193,31 @@ def events(device: str = "", list_name: str = "") -> dict:
     return dict(got, rows=rows)
 
 
+def judged(rows: list, planned: list) -> list:
+    """*rows* with each one's planned verdict taken from the planned windows recorded NOW,
+    so a window recorded after the reader first saw the restart (a redeploy declared once the
+    release that can record it is deployed) still counts. A restart the tool recorded as
+    planned stays planned."""
+    out = []
+    for r in rows:
+        r = dict(r)
+        if not r.get("planned"):
+            p = planned_for(r.get("device", ""), _epoch(r.get("at", "")), planned, r.get("list", ""))
+            if p:
+                r.update(planned=True, planned_by=p.get("by", ""), planned_why=p.get("why", ""))
+        out.append(r)
+    return out
+
+
+def planned_rows() -> list:
+    """The planned windows, or [] when none are recorded; an unreadable record raises, because
+    reading it as "nothing planned" would raise a row for every planned restart."""
+    got = _read_jsonl(_data("planned_restarts.jsonl"))
+    if got["state"] == "unreadable":
+        raise RuntimeError(f"the planned-restart record could not be read: {got.get('error')}")
+    return got["rows"]
+
+
 def known(device: str, at: float, rows: list, list_name: str = "") -> bool:
     return any(r.get("device") == device and r.get("list", "") == list_name
                and abs(_epoch(r.get("at", "")) - at) < SAME_RESTART_SECONDS for r in rows)

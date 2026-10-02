@@ -781,7 +781,12 @@ def history(ref, dev: dict, limit: int = None) -> dict:
     rs = _restarts.events(device=host, list_name=ref.name)
     if rs["state"] == "unreadable":
         errors.append(f"the restart record could not be read: {rs.get('error', '')}")
-    for r in rs["rows"][:limit]:
+    try:
+        rs_rows = _restarts.judged(rs["rows"][:limit], _restarts.planned_rows())
+    except RuntimeError as exc:
+        errors.append(str(exc))
+        rs_rows = rs["rows"][:limit]
+    for r in rs_rows:
         events.append({"at": r.get("at", ""), "kind": "restart",
                        "what": ("Restarted as planned" if r.get("planned") else
                                 "Restarted unexpectedly"),

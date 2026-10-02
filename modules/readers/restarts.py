@@ -118,7 +118,8 @@ def read(previous=None, clock=time.time, source=None, devices=None, reason=None)
                 new.append(row)
                 log.warning("restarts: %s", R.words(row))
     horizon = now - R.ATTENTION_DAYS * 86400
-    recent = [r for r in rows if not r.get("planned") and R._epoch(r.get("at", "")) >= horizon]
+    recent = [r for r in R.judged(rows, planned["rows"])
+              if not r.get("planned") and R._epoch(r.get("at", "")) >= horizon]
     recent.sort(key=lambda r: R._epoch(r.get("at", "")), reverse=True)
     return {"configured": True, "last_read_at": _iso(now), "window": window, "cut": cut,
             "new": new, "recent_unplanned": recent, "unmanaged": sorted(set(unmanaged)),

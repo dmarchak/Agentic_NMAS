@@ -221,3 +221,31 @@ class TestTheCommand:
     def test_a_time_that_is_not_one_is_refused(self, store):
         assert self._main()(["Lab", "s3", "--from", "yesterday", "--minutes", "5",
                              "--why", "a hand reload"]) == 1
+
+
+class TestAWindowRecordedLater:
+    """The release that can record a planned window ships with the reader, so the window for
+    a restart already seen is recorded after it: it still counts, in the row and History."""
+
+    def test_the_row_goes_and_history_says_planned(self, store, monkeypatch):
+        from modules import device_page
+        from modules.attention import restart_source
+        from modules.nsot import listref
+        from modules.restarts import record_planned
+        v = _read(now=time.time())
+        assert v["recent_unplanned"]
+        boot, _seen = _expected_boot()
+        record_planned(["*"], boot - 600, boot + 60, "operator@example.com", "the redeploy",
+                       "nmas-planned-restart", list_name="Lab")
+        v2 = _read(previous=v, now=time.time())
+        assert v2["new"] == [] and v2["recent_unplanned"] == []
+        assert restart_source(cached=_cached(v2))["rows"] == []
+        monkeypatch.setattr("modules.nsot.repo.golden_history", lambda *a, **k: [])
+        monkeypatch.setattr("modules.nsot.hostvars.intent_commits", lambda *a, **k: [])
+        monkeypatch.setattr("modules.nsot.receipts.read",
+                            lambda *a, **k: {"state": "absent", "rows": []})
+        ref = listref.ListRef(name="Lab", slug="lab", data_dir=str(store), repo_dir=str(store),
+                              csv_path="")
+        ev = [e for e in device_page.history(ref, {"hostname": "s3"})["events"]
+              if e["kind"] == "restart"]
+        assert ev[0]["what"] == "Restarted as planned" and ev[0]["who"] == "operator@example.com"
