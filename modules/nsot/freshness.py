@@ -29,8 +29,8 @@ The **raw** config as Oxidized stores it, against the **golden**. Never the
 sanitiser's output.
 
 Both raw-Oxidized and golden are *captured running configs* — records of the
-device. The sanitised file is a **derived** artefact: it adds its own
-``! <host> - from Oxidized HEAD <sha>`` header, re-injects ``no shutdown``
+device. The sanitised file is a **derived** artefact: it carried its own
+``! <host> - from Oxidized HEAD <sha>`` header until C313, re-injects ``no shutdown``
 into every addressed interface, appends ``crypto key generate rsa`` for
 switches, and drops some twenty-five classes of line and block. Comparing a
 transformation against its own input reports **every sanitiser rule as

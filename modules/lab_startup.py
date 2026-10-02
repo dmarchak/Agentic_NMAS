@@ -8,10 +8,11 @@ holds, approved or not, and the record the tool keeps is the committed golden.
 This compares the two the only way that is exact: the golden is rendered
 through the SANITISER'S OWN functions (``kind_for``, ``sanitise``,
 ``render_device``, lifted from the script as the clab sync test does, one
-implementation) and compared line for line with the file, its one header line
-(``! <h> - from Oxidized <ref> <sha>``) aside. Measured on the host
-2026-10-01: equal on all nine devices, so any difference is real, never the
-sanitiser's own rules.
+implementation) and compared line for line with the file's configuration
+(the script's ``config_body``: a file written before C313 still opens with a
+``! <h> - from Oxidized <ref> <sha>`` header, which is provenance, not
+configuration). Measured on the host 2026-10-01: equal on all nine devices,
+so any difference is real, never the sanitiser's own rules.
 
 Credentials are compared by presence: a line whose secret slot differs is
 named with its slot masked (``redact_positional``), never its value.
@@ -56,7 +57,7 @@ def _library() -> str:
 def render_expected(hostname: str, dialect: str, golden: str) -> str:
     """What the clab sync would write from *golden*: the script's own render."""
     script = (_library() + "\nkind=$(kind_for \"$1\") || { echo \"no sanitising rules for "
-              "platform $1\" >&2; exit 3; }\nrender_device \"$2\" \"$kind\" HEAD golden \"$(cat)\"\n")
+              "platform $1\" >&2; exit 3; }\nrender_device \"$2\" \"$kind\" \"$(cat)\"\n")
     out = subprocess.run(["bash", "-c", script, "render", dialect, hostname], input=golden,
                          capture_output=True, text=True, timeout=60)
     if out.returncode != 0:
@@ -65,8 +66,12 @@ def render_expected(hostname: str, dialect: str, golden: str) -> str:
 
 
 def _body(text: str, hostname: str) -> list:
-    head = f"! {hostname} - from Oxidized "
-    return [l.rstrip() for l in (text or "").splitlines() if not l.startswith(head)]
+    """The file's configuration, as the script's ``config_body`` reads it: the
+    first three lines dropped when the second is a pre-C313 provenance header."""
+    lines = [l.rstrip() for l in (text or "").splitlines()]
+    if len(lines) >= 3 and lines[1].startswith(f"! {hostname} - from Oxidized "):
+        lines = lines[3:]
+    return lines
 
 
 def compare(hostname: str, dialect: str, golden: str, startup: str) -> dict:

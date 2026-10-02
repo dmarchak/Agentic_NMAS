@@ -166,12 +166,14 @@ fi
 # chance for Oxidized to have polled in between - the gate would then approve
 # a copy this script is not writing.
 RAW="$(mktemp -d)"
+# What each lab holds NOW, read once per device, compared here (C313).
+CUR="$(mktemp -d)"
 # The app re-reads what this job writes as soon as it ends, success or not
 # (the operator, 2026-10-01: the lab-startup reader read two minutes before a
 # sync and its rows stood for ten). Its unit lives outside the repository, so
 # the job tells the app itself; the timer's own result is unaffected.
 finished() {
-  rm -rf "$RAW"
+  rm -rf "$RAW" "$CUR"
   NMAS_URL="$NMAS_URL" "$HERE/nmas-job-finished" clab-sync \
     || echo "(the app could not be told this sync finished; its readers catch up on their own schedule)"
 }
@@ -329,12 +331,17 @@ awk -v kind="$1" '
 # Every distinct destination in the map, once.
 # >>> render_device
 # One renderer, used for this run's output AND to reproduce what an earlier
-# run wrote for the Oxidized version named in a file's own header (C15).
-render_device() {   # render_device <name> <router|switch> <ref-label> <sha> <raw>
-  local n="$1" kind="$2" label="$3" sha="$4" raw="$5"
-  echo "!"
-  echo "! ${n} - from Oxidized ${label} ${sha}"
-  echo "!"
+# run wrote for the Oxidized version its provenance names (C15).
+#
+# THE FILE IS CONFIGURATION ONLY (the operator, 2026-10-01, C313). It began
+# with `! <h> - from Oxidized HEAD <sha>`, so every Oxidized commit (any
+# device's poll) changed every file by that one line, the sync reported all
+# of them CHANGED and committed all of them, and a real change was one line
+# in nine identical diffs. The provenance is kept in the lab commit's message
+# ("harvest from oxidized <sha> ...: r1 r3"), and a commit carries only the
+# files whose configuration changed.
+render_device() {   # render_device <name> <router|switch> <raw>
+  local n="$1" kind="$2" raw="$3"
   # only add the header line if the harvested config does not already have it
   if [ "$kind" = switch ] && ! grep -q '^no logging console$' <<<"$raw"; then
     printf 'no logging console\n!\n'
@@ -347,6 +354,22 @@ render_device() {   # render_device <name> <router|switch> <ref-label> <sha> <ra
   printf '!\nend\n'
 }
 # <<< render_device
+
+# >>> config_body
+# A file's CONFIGURATION: the text less the provenance header a file written
+# before C313 still carries (its first three lines, `!`, the header, `!`).
+# A file written since has none and passes through unchanged, so an old file
+# whose configuration is current compares equal and is left alone; its old
+# header goes when its configuration next changes.
+config_body() {   # config_body <name>, the file on stdin
+  awk -v h="! $1 - from Oxidized " '
+    NR <= 3 { held[NR] = $0
+              if (NR == 3 && index(held[2], h) != 1) { print held[1]; print held[2]; print held[3] }
+              next }
+    { print }
+    END { if (NR < 3) for (i = 1; i <= NR; i++) print held[i] }'
+}
+# <<< config_body
 
 destinations() {
   local n
@@ -372,7 +395,7 @@ for n in "${DEVICES[@]}"; do
   fi
   printf '%s\n' "$raw" > "$RAW/${n}.cfg"
 
-  render_device "$n" "$kind" "$REF" "$SRC_SHA" "$raw" > "$OUT/${n}.cfg"
+  render_device "$n" "$kind" "$raw" > "$OUT/${n}.cfg"
 
   lines=$(wc -l < "$OUT/${n}.cfg")
   ends=$(grep -c '^end$'  "$OUT/${n}.cfg")
@@ -535,41 +558,58 @@ rsync -a "$OUT"/ "${CLAB}:${STAGE}/" || exit 1
 # unversioned, invisible to every later run -- and the run reported success.
 #
 # A dirty tracked (or untracked) file is committed only when it is PROVABLY
-# this job's own output: byte-identical to what `render_device` produces for
-# the Oxidized version the file's own header names. The sanitiser is
-# deterministic, so that is reproducible, not a judgement. Anything else is
+# this job's own output: its configuration identical to what `render_device`
+# produces for one of the Oxidized versions of that device. A file written
+# before C313 names its version in its header and only that one is tried; a
+# file written since names none (its provenance is the lab commit's message,
+# and a stranded write has no commit), so the device's last RECONCILE_DEPTH
+# versions in Oxidized are tried, newest first. The sanitiser is
+# deterministic, so a match is reproducible, not a judgement. Anything else is
 # REFUSED for that device: neither committed (which would record a hand
 # edit as a harvest) nor overwritten (which would destroy it), named, and
 # the run exits 3 -- a refusal that exited 0 would reproduce the defect.
+#
+# The depth: Oxidized commits a device only when its configuration changed,
+# and a stranded write is found by the next run, 30 minutes later.
 declare -A REFUSED_DIRTY=()
+RECONCILE_DEPTH=20
 reconcile() {
-  local n kind dest rel st hdr label sha raw out
+  local n kind dest rel st hdr label sha raw out body found candidates
   for n in "${DEVICES[@]}"; do
     dest="${CFGDIR[$n]}/${n}.cfg"
     rel="$(basename "${CFGDIR[$n]}")/${n}.cfg"
     st="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') 2>/dev/null && git rev-parse --git-dir >/dev/null 2>&1 && git status --porcelain -- '$rel'" 2>/dev/null)"
     [ -n "$st" ] || continue
+    kind="$(kind_for "${PLATFORM[$n]}")" || kind=""
+    body="$(ssh -n "$CLAB" "cat '$dest'" 2>/dev/null | config_body "$n")"
     hdr="$(ssh -n "$CLAB" "sed -n 2p '$dest'" 2>/dev/null)"
     label=""; sha=""
     case "$hdr" in
       "! ${n} - from Oxidized "*) read -r label sha <<<"${hdr#"! ${n} - from Oxidized "}" ;;
     esac
-    kind="$(kind_for "${PLATFORM[$n]}")" || kind=""
-    raw=""
-    if [ -n "$sha" ] && [ -n "$kind" ]; then
-      raw="$("${GIT[@]}" show "${sha}:${NODE[$n]}" 2>/dev/null)"
+    if [ -n "$sha" ]; then
+      candidates="$sha"
+    else
+      candidates="$("${GIT[@]}" log --format=%h -n "$RECONCILE_DEPTH" "$REF" -- "${NODE[$n]}" 2>/dev/null)"
     fi
-    if [ -n "$raw" ] && ssh -n "$CLAB" "cat '$dest'" \
-         | cmp -s - <(render_device "$n" "$kind" "$label" "$sha" "$raw"); then
-      if out="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') && git add -- '$rel' && git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $sha (recorded late: an earlier run wrote it and its commit failed)' -- '$rel'" 2>&1)"; then
-        printf '  %-4s RECORDED LATE - its uncommitted file was this job'"'"'s own output for Oxidized %s\n' "$n" "$sha"
+    found=""
+    if [ -n "$kind" ]; then
+      for c in $candidates; do
+        raw="$("${GIT[@]}" show "${c}:${NODE[$n]}" 2>/dev/null)"
+        [ -n "$raw" ] || continue
+        if [ "$body" = "$(render_device "$n" "$kind" "$raw")" ]; then found="$c"; break; fi
+      done
+    fi
+    if [ -n "$found" ]; then
+      if out="$(ssh -n "$CLAB" "cd \$(dirname '${CFGDIR[$n]}') && git add -- '$rel' && git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $found (recorded late: an earlier run wrote it and its commit failed): $n' -- '$rel'" 2>&1)"; then
+        printf '  %-4s RECORDED LATE - its uncommitted file was this job'"'"'s own output for Oxidized %s\n' "$n" "$found"
       else
         REFUSED_DIRTY[$n]="its own uncommitted output could not be committed - git said: ${out%%$'\n'*}"
       fi
-    elif [ -z "$sha" ]; then
-      REFUSED_DIRTY[$n]="uncommitted changes, and the file does not name the Oxidized version it came from: not this job's write"
-    else
+    elif [ -n "$sha" ]; then
       REFUSED_DIRTY[$n]="uncommitted changes this job did not produce (the file says Oxidized $sha; sanitising $sha gives different content)"
+    else
+      REFUSED_DIRTY[$n]="uncommitted changes this job did not produce (sanitising each of the last $RECONCILE_DEPTH Oxidized versions of ${NODE[$n]} gives different content)"
     fi
   done
 }
@@ -588,23 +628,41 @@ if [ ${#REFUSED_DIRTY[@]} -gt 0 ]; then
   DEVICES=("${keep[@]}")
 fi
 
+# >>> compare
+# CONFIGURATION AGAINST CONFIGURATION (C313). Each lab's current file is read
+# once and its configuration (config_body) compared with this run's: a file
+# whose configuration did not move is unchanged, whatever Oxidized commit it
+# was harvested from, and is neither copied nor committed. Only COPY is.
 changed=0
 newfiles=0
+COPY=()
 echo
 for n in "${DEVICES[@]}"; do
-  d="$(ssh -n "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>&1" || true)"
+  ssh -n "$CLAB" "if [ -e '${CFGDIR[$n]}/${n}.cfg' ]; then cat '${CFGDIR[$n]}/${n}.cfg'; else exit 4; fi" \
+    > "$CUR/${n}.file" 2>/dev/null
+  rc=$?
+  if [ "$rc" -eq 4 ]; then
+    printf '  %-4s %-16s NEW - no current file on the clab VM\n' "$n" "${LAB[$n]}"
+    newfiles=$((newfiles+1)); COPY+=("$n")
+    continue
+  elif [ "$rc" -ne 0 ]; then
+    echo
+    echo "REFUSED - ${CFGDIR[$n]}/${n}.cfg could not be read on $CLAB (exit $rc): what it"
+    echo "holds is unknown, so nothing is compared or copied. Staged files left at ${CLAB}:${STAGE}."
+    exit 1
+  fi
+  config_body "$n" < "$CUR/${n}.file" > "$CUR/${n}.cfg"
+  d="$(diff -u "$CUR/${n}.cfg" "$OUT/${n}.cfg")"
   if [ -z "$d" ]; then
     printf '  %-4s %-16s unchanged\n' "$n" "${LAB[$n]}"
-  elif grep -q 'No such file' <<<"$d"; then
-    printf '  %-4s %-16s NEW - no current file on the clab VM\n' "$n" "${LAB[$n]}"
-    newfiles=$((newfiles+1))
   else
     add=$(grep -c '^+[^+]' <<<"$d")
     del=$(grep -c '^-[^-]' <<<"$d")
     printf '  %-4s %-16s CHANGED  +%s / -%s lines\n' "$n" "${LAB[$n]}" "$add" "$del"
-    changed=$((changed+1))
+    changed=$((changed+1)); COPY+=("$n")
   fi
 done
+# <<< compare
 
 if [ $((changed + newfiles)) -eq 0 ]; then
   echo
@@ -615,6 +673,11 @@ if [ $((changed + newfiles)) -eq 0 ]; then
   [ ${#REFUSED_DIRTY[@]} -eq 0 ] || exit 3
   exit 0
 fi
+
+# From here on the run works on the files that MOVE (C313): an unchanged file
+# is not backed up, copied, read back or committed, and a lab with none of
+# them is not touched at all.
+DEVICES=("${COPY[@]}")
 
 # ---------------------------------------------------------------------------
 # The full diff, SHOWN rather than offered, then one question
@@ -636,13 +699,14 @@ if [ "$DEPLOY" = ask ]; then
   # terminal's scrollback is already a pager and it cannot be misconfigured
   # into showing nothing.
   for n in "${DEVICES[@]}"; do
-    out="$(ssh -n "$CLAB" "diff -u '${CFGDIR[$n]}/${n}.cfg' '$STAGE/${n}.cfg' 2>/dev/null" || true)"
+    cur="$CUR/${n}.cfg"; [ -e "$cur" ] || cur=/dev/null
+    out="$(diff -u "$cur" "$OUT/${n}.cfg" || true)"
     [ -n "$out" ] && { echo; echo "########## $n  (${LAB[$n]}) ##########"; echo "$out"; }
   done
 
   echo
-  echo "This will overwrite these directories on $CLAB:"
-  destinations | sed 's/^/    /'
+  echo "This will overwrite these files on $CLAB:"
+  for n in "${DEVICES[@]}"; do echo "    ${CFGDIR[$n]}/${n}.cfg"; done
   echo "A timestamped backup is taken first, and these are startup-configs -"
   echo "they only take effect on the next 'containerlab deploy --cleanup'."
   echo
@@ -823,16 +887,16 @@ while read -r dir; do
   # ONLY THIS JOB'S FILES, by path. `git add -A configs` would sweep a
   # refused hand edit sitting in the same directory into a harvest commit,
   # and `git commit` with no pathspec would commit anything else staged.
-  files=""
+  files=""; names=""
   for n in "${DEVICES[@]}"; do
-    [ "${CFGDIR[$n]}" = "$dir" ] && files="$files '$(basename "$dir")/${n}.cfg'"
+    [ "${CFGDIR[$n]}" = "$dir" ] && { files="$files '$(basename "$dir")/${n}.cfg'"; names="$names $n"; }
   done
   [ -n "$files" ] || continue
   outcome="$(ssh -n "$CLAB" "cd \$(dirname '$dir') 2>/dev/null || { echo nodir; exit 0; }; \
     git rev-parse --git-dir >/dev/null 2>&1 || { echo norepo; exit 0; }; \
     err=\$(git add --$files 2>&1) || { printf 'addfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"; exit 0; }; \
     git diff --cached --quiet --$files && { echo unchanged; exit 0; }; \
-    err=\$(git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $ts' --$files 2>&1) \
+    err=\$(git ${GIT_ID[*]} commit -q -m 'harvest from oxidized $SRC_SHA ($ts):$names' --$files 2>&1) \
       && echo committed \
       || printf 'commitfailed %s\n' \"\$(printf '%s' \"\$err\" | head -1)\"")"
   kind="${outcome%% *}"

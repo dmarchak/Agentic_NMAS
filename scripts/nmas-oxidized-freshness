@@ -11,11 +11,11 @@ polled is what the device boots with next — approved or not.
 ## WHAT IT SENDS, AND WHY IT IS THE RAW CONFIG
 
 The **raw** config as Oxidized stores it, exactly as the caller read it —
-never the sanitiser's output. The sanitised file adds its own
-`! <host> - from Oxidized HEAD <sha>` header, re-injects `no shutdown` into
+never the sanitiser's output. The sanitised file carried its own
+`! <host> - from Oxidized HEAD <sha>` header until C313, re-injects `no shutdown` into
 every addressed interface and appends `crypto key generate rsa` for switches,
 so comparing it against a golden reports every sanitising rule as drift, for
-ever, on every device. The header is only the loudest of those.
+ever, on every device. The header was only the loudest of those.
 
 Sending the caller's own bytes also removes the poll race: the NMAS compares
 the copy that is about to be written, not one it re-fetched a second later.

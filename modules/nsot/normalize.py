@@ -248,8 +248,8 @@ def strip_provenance_comments(text) -> list:
 
     Three stores each stamp their own provenance into a config as a comment:
     a golden opens with ``! Golden config — <host> (<ip>)``, Oxidized stores
-    its own metadata header, and the clab sanitiser writes
-    ``! <host> - from Oxidized HEAD <sha>``. None of them is configuration —
+    its own metadata header, and the clab sanitiser wrote
+    ``! <host> - from Oxidized HEAD <sha>`` until C313 (2026-10-01). None of them is configuration —
     a device does nothing with a comment — and all three differ between
     stores by construction.
 

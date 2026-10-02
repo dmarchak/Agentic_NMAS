@@ -55,7 +55,7 @@ def _harness(tmp_path, devices: dict, body: str, oxidized: str = ""):
                      for n, d in devices.items())
     script = f"""
 set -uo pipefail
-ts=now; CLAB=clab
+ts=now; CLAB=clab; SRC_SHA=abc1234; REF=HEAD
 ssh() {{ bash -c "${{@: -1}}"; }}
 declare -A NODE CFGDIR PLATFORM
 DEVICES=()
@@ -65,6 +65,7 @@ GIT=(git -C {oxidized!r})
 {_function("kind_for")}
 {_function("sanitise")}
 {_function("render_device")}
+{_function("config_body")}
 destinations() {{ for n in "${{DEVICES[@]}}"; do echo "${{CFGDIR[$n]}}"; done | sort -u; }}
 mapfile -t COPIED_DIRS < <(destinations)
 {body}
@@ -103,7 +104,7 @@ RUNNING = "hostname r6\ninterface Loopback0\n ip address 10.255.1.16 255.255.255
 
 def _job_output(tmp_path, name, ox, sha):
     r = _harness(tmp_path, {}, f'raw="$(git -C {str(ox)!r} show {sha}:{name})"; '
-                               f'render_device {name} router HEAD {sha} "$raw"')
+                               f'render_device {name} router "$raw"')
     return r.stdout
 
 
@@ -185,32 +186,47 @@ def test_a_stranded_write_of_the_jobs_own_is_recorded_late(tmp_path):
     assert f"RECORDED LATE" in r.stdout and "refused=0" in r.stdout, r.stdout + r.stderr
     log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1",
                "--format=%s|%an").stdout.strip()
-    assert log == f"harvest from oxidized {sha} (recorded late: an earlier run wrote it and its commit failed)|clab-sync"
+    assert log == (f"harvest from oxidized {sha} (recorded late: an earlier run wrote it and "
+                   "its commit failed): r6|clab-sync")
 
 
-def test_the_job_output_is_reproduced_for_the_version_in_the_header(tmp_path):
-    """Oxidized moved on since the stranded write: the file still proves to
-    be the job's own for the version its header names."""
+def _moved_on(tmp_path):
+    """Oxidized moved on since the stranded write. A change the SANITISER
+    KEEPS: the first version added a `! comment`, which sanitise() strips, so
+    both versions rendered identically and a reproduction from HEAD instead of
+    the file's own version passed."""
     ox, old = _oxidized(tmp_path, "r6", RUNNING)
-    stranded = _job_output(tmp_path, "r6", ox, old)
-    # A change the SANITISER KEEPS. The first version added a `! comment`,
-    # which sanitise() strips, so both versions rendered identically and a
-    # reproduction from HEAD instead of the header's version passed this test.
     newer = RUNNING.replace(" ip address", " description added later\n ip address", 1)
     _, new = _oxidized(tmp_path, "r6", newer)
-    assert _job_output(tmp_path, "r6", ox, new).splitlines()[3:] != \
-        stranded.splitlines()[3:], "floor: the two versions must render differently"
+    assert _job_output(tmp_path, "r6", ox, new) != _job_output(tmp_path, "r6", ox, old), \
+        "floor: the two versions must render differently"
+    return ox, old, new
+
+
+def test_a_stranded_write_from_an_older_oxidized_version_is_found_by_the_search(tmp_path):
+    """C313: a file names no version, so the device's recent versions are tried."""
+    ox, old, _new = _moved_on(tmp_path)
     d = _lab(tmp_path, "r6")
-    (d / "r6.cfg").write_text(stranded)
+    (d / "r6.cfg").write_text(_job_output(tmp_path, "r6", ox, old))
     r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
                  'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
-    assert "RECORDED LATE" in r.stdout and "refused=0" in r.stdout, r.stdout
+    assert f"own output for Oxidized {old}" in r.stdout and "refused=0" in r.stdout, r.stdout
+
+
+def test_a_pre_c313_file_is_reproduced_for_the_version_its_header_names(tmp_path):
+    ox, old, _new = _moved_on(tmp_path)
+    d = _lab(tmp_path, "r6")
+    (d / "r6.cfg").write_text(f"!\n! r6 - from Oxidized HEAD {old}\n!\n"
+                              + _job_output(tmp_path, "r6", ox, old))
+    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
+                 'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
+    assert f"own output for Oxidized {old}" in r.stdout and "refused=0" in r.stdout, r.stdout
 
 
 def test_a_hand_edit_is_refused_neither_committed_nor_overwritten(tmp_path):
     ox, sha = _oxidized(tmp_path, "r6", RUNNING)
     d = _lab(tmp_path, "r6")
-    edited = _job_output(tmp_path, "r6", ox, sha).replace(
+    edited = f"!\n! r6 - from Oxidized HEAD {sha}\n!\n" + _job_output(tmp_path, "r6", ox, sha).replace(
         "interface Loopback0", "interface Loopback0\n description by hand")
     (d / "r6.cfg").write_text(edited)
     before = _git(_env(tmp_path), "-C", str(d.parent), "rev-parse", "HEAD").stdout
@@ -223,13 +239,15 @@ def test_a_hand_edit_is_refused_neither_committed_nor_overwritten(tmp_path):
     assert _git(_env(tmp_path), "-C", str(d.parent), "rev-parse", "HEAD").stdout == before
 
 
-def test_a_file_that_names_no_version_is_not_the_jobs(tmp_path):
-    ox, _sha = _oxidized(tmp_path, "r6", RUNNING)
+def test_a_hand_edit_with_no_header_matches_no_version_and_is_refused(tmp_path):
+    ox, _old, _new = _moved_on(tmp_path)
     d = _lab(tmp_path, "r6")
     (d / "r6.cfg").write_text("hostname r6\n! typed by hand\n")
     r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
                  'echo "${REFUSED_DIRTY[r6]:-none}"', oxidized=str(ox))
-    assert "does not name the Oxidized version" in r.stdout
+    assert ("sanitising each of the last 20 Oxidized versions of r6 gives different content"
+            in r.stdout), r.stdout + r.stderr
+    assert (d / "r6.cfg").read_text() == "hostname r6\n! typed by hand\n"
 
 
 def test_a_clean_destination_is_left_alone(tmp_path):
@@ -375,3 +393,104 @@ class TestALabThatCannotCommitIsNotCopied:
         assert (labs["a"] / "a.cfg").read_text() == "NEW\n"
         assert "CANNOT COMMIT" in out.stdout and "index.lock exists" in out.stdout
         assert "NOTHING was copied" in out.stdout
+
+
+class TestOnlyAConfigurationChangeIsAChange:
+    """C313 (the operator, 2026-10-01): every file began with
+    `! <h> - from Oxidized HEAD <sha>`, so each Oxidized commit (any device's
+    poll) changed all nine files by that line, and the sync reported, copied
+    and committed every one ("! s1 - from Oxidized HEAD b1c29be" -> "fae137a").
+    The SHIPPED comparison, executed under bash against real files."""
+
+    COMPARE = _between("# >>> compare", "# <<< compare")
+
+    def _run(self, tmp_path, current: dict, staged: dict, unreadable=()):
+        lab = tmp_path / "lab" / "configs"
+        lab.mkdir(parents=True)
+        out = tmp_path / "out"
+        out.mkdir()
+        cur = tmp_path / "cur"
+        cur.mkdir()
+        for n, text in current.items():
+            (lab / f"{n}.cfg").write_text(text)
+        for n, text in staged.items():
+            (out / f"{n}.cfg").write_text(text)
+        decl = "\n".join(f"DEVICES+=({n!r}); CFGDIR[{n}]={str(lab)!r}; LAB[{n}]=default"
+                         for n in staged)
+        refuse = "|".join(unreadable) or "NONE"
+        script = f"""
+set -uo pipefail
+CLAB=clab; STAGE=/nonexistent; OUT={str(out)!r}; CUR={str(cur)!r}
+ssh() {{ local cmd="${{@: -1}}"
+  if [[ "$cmd" =~ /({refuse})\\.cfg ]]; then return 255; fi
+  bash -c "$cmd"; }}
+declare -A CFGDIR LAB
+DEVICES=()
+{decl}
+{_function("config_body")}
+{self.COMPARE}
+echo "COPY=${{COPY[*]}}"
+"""
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                              env=_env(tmp_path), cwd=str(tmp_path))
+
+    CONFIG = "hostname s1\ninterface Vlan1\n no ip address\n!\nend\n"
+
+    def test_only_the_provenance_moved_is_unchanged_and_not_copied(self, tmp_path):
+        old = "!\n! s1 - from Oxidized HEAD b1c29be\n!\n" + self.CONFIG
+        r = self._run(tmp_path, {"s1": old}, {"s1": self.CONFIG})
+        assert "s1   default          unchanged" in r.stdout, r.stdout + r.stderr
+        assert "COPY=\n" in r.stdout
+
+    def test_a_configuration_change_is_changed_and_copied(self, tmp_path):
+        new = self.CONFIG.replace(" no ip address", " ip address 192.0.2.1 255.255.255.0")
+        r = self._run(tmp_path, {"s1": "!\n! s1 - from Oxidized HEAD b1c29be\n!\n" + self.CONFIG,
+                                 "s2": self.CONFIG.replace("s1", "s2")},
+                      {"s1": new, "s2": self.CONFIG.replace("s1", "s2")})
+        assert "s1   default          CHANGED  +1 / -1 lines" in r.stdout, r.stdout + r.stderr
+        assert "s2   default          unchanged" in r.stdout
+        assert "COPY=s1\n" in r.stdout
+
+    def test_a_device_with_no_file_is_new_and_copied(self, tmp_path):
+        r = self._run(tmp_path, {}, {"s1": self.CONFIG})
+        assert "NEW - no current file" in r.stdout and "COPY=s1\n" in r.stdout
+
+    def test_a_file_that_cannot_be_read_refuses_comparing_nothing(self, tmp_path):
+        r = self._run(tmp_path, {"s1": self.CONFIG}, {"s1": self.CONFIG}, unreadable=("s1",))
+        assert r.returncode == 1 and "could not be read" in r.stdout, r.stdout
+        assert "COPY=" not in r.stdout
+
+    def test_the_run_goes_on_with_only_the_files_that_move(self):
+        tail = TEXT[TEXT.index("# <<< compare"):TEXT.index("# Back up, copy, verify, commit")]
+        assert 'DEVICES=("${COPY[@]}")' in tail
+
+    def test_render_device_writes_no_provenance(self):
+        block = _function("render_device")
+        assert "from Oxidized" not in block
+
+    def test_the_lab_commit_names_the_source_commit_and_its_devices(self, tmp_path):
+        d = _lab(tmp_path, "r6")
+        (d / "r6.cfg").write_text("v2\n")
+        r = _harness(tmp_path, {"r6": d}, COMMIT_BLOCK)
+        assert f"{d}: committed" in r.stdout, r.stdout + r.stderr
+        log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1", "--format=%s").stdout
+        assert log.strip() == "harvest from oxidized abc1234 (now): r6"
+
+
+class TestConfigBody:
+    def _body(self, tmp_path, name, text):
+        return subprocess.run(["bash", "-c", _function("config_body") + f"\nconfig_body {name}"],
+                              input=text, capture_output=True, text=True,
+                              env=_env(tmp_path)).stdout
+
+    def test_a_pre_c313_header_is_dropped(self, tmp_path):
+        assert self._body(tmp_path, "r1", "!\n! r1 - from Oxidized HEAD abc\n!\nhostname r1\n") \
+            == "hostname r1\n"
+
+    def test_a_file_with_no_header_is_unchanged(self, tmp_path):
+        for text in ("!\nhostname r1\n!\nend\n", "hostname r1\n", "a\nb\n", ""):
+            assert self._body(tmp_path, "r1", text) == text
+
+    def test_another_devices_header_is_kept(self, tmp_path):
+        text = "!\n! r2 - from Oxidized HEAD abc\n!\nhostname r1\n"
+        assert self._body(tmp_path, "r1", text) == text

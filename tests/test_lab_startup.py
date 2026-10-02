@@ -29,13 +29,18 @@ def _golden(h):
     return open(f"{FLEET}/{h}.cfg", encoding="utf-8").read()
 
 
-def _synced(h, golden=None, sha="0f1e2d3"):
+def _synced(h, golden=None):
     """What the clab sync writes for *h* from Oxidized's copy (here the golden)."""
     script = (_function("kind_for") + _function("sanitise") + _function("render_device")
-              + f'\nrender_device {h} "$(kind_for {DIALECT[h]})" HEAD {sha} "$(cat)"\n')
+              + f'\nrender_device {h} "$(kind_for {DIALECT[h]})" "$(cat)"\n')
     out = subprocess.run(["bash", "-c", script], input=golden or _golden(h),
                          capture_output=True, text=True, check=True)
     return out.stdout
+
+
+def _legacy(h, sha="a" * 40):
+    """A file the sync wrote before C313: its provenance header, then the same text."""
+    return f"!\n! {h} - from Oxidized HEAD {sha}\n!\n" + _synced(h)
 
 
 def _check(files, hosts=HOSTS, golden=None, target=None, reads=None):
@@ -65,9 +70,18 @@ class TestTheComparison:
         assert {h: d["state"] for h, d in _by(r).items()} == {h: "matches" for h in HOSTS}
         assert r["checked"] == 8 and r["configured"] and r["unowned"] == []
 
-    def test_the_header_naming_oxidized_s_commit_is_not_a_difference(self):
-        files = {f"{h}.cfg": _synced(h, sha="a" * 40) for h in HOSTS}
+    def test_a_file_written_before_c313_with_its_provenance_header_still_matches(self):
+        files = {f"{h}.cfg": _legacy(h) for h in HOSTS}
         assert all(d["state"] == "matches" for d in _check(files)["devices"])
+
+    def test_the_sync_writes_no_provenance_into_the_file(self):
+        """C313: the header made every Oxidized commit change every file."""
+        assert all("from Oxidized" not in _synced(h) for h in HOSTS)
+
+    def test_a_header_naming_another_device_is_not_provenance(self):
+        files = {f"{h}.cfg": _synced(h) for h in HOSTS}
+        files["r3.cfg"] = "!\n! r4 - from Oxidized HEAD abc1234\n!\n" + _synced("r3")
+        assert _by(_check(files))["r3"]["state"] == "differs"
 
     def test_a_line_the_device_gained_is_named(self):
         files = {f"{h}.cfg": _synced(h) for h in HOSTS}
