@@ -1787,13 +1787,23 @@ def lab_startup_source(cached=None) -> dict:
             cause="; ".join(sorted({f"{d['device']}: {d.get('why') or '?'}" for d in unknown})),
             action={"label": "The reason above is what is known", "known": False}))
     for u in v.get("unowned") or []:
-        rows.append(row(
-            source="lab-startup", key=f"unowned:{u['file']}", level="info",
-            what=f"{u['file']} is a startup file no managed device owns",
-            cause=(f"No device of lab {u.get('lab')!r} in any list is named for it, and a "
-                   "redeploy still boots it for any node the topology declares by that name"),
-            action={"label": "Nothing to do if the topology no longer declares that node; "
-                             "otherwise remove the node or the file on the lab host"}))
+        node, by = u.get("node") or u["file"], u.get("declared_by")
+        if by:
+            what = f"{u['file']} is used by the topology, owned by no managed device"
+            cause = (f"{', '.join(by)} declares node {node}, so a redeploy boots this file for "
+                     f"it, and no list manages {node}: the tool keeps no golden for it and "
+                     "checks nothing about it")
+        elif by == []:
+            what = f"{u['file']} is a startup file nothing boots"
+            cause = (f"No node of {', '.join(u.get('topologies') or []) or 'the lab topology'} is "
+                     f"named {node}, and no list manages it")
+        else:
+            what = f"{u['file']} is a startup file no managed device owns"
+            cause = (f"No device of lab {u.get('lab')!r} in any list is named for it; whether "
+                     "the topology still boots it was not read")
+        rows.append(row(source="lab-startup", key=f"unowned:{u['file']}", level="info",
+                        what=what, cause=cause,
+                        action={"label": "Nothing to do: it is information"}))
     counted = v.get("checked", 0)
     return source_result(
         "lab-startup", label, rows=rows, **common,

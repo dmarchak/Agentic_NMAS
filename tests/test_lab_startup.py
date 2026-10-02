@@ -55,7 +55,7 @@ def _check(files, hosts=HOSTS, golden=None, target=None, reads=None, source=None
     def reader(host, cdir):
         if reads is not None:
             reads.append((host, cdir))
-        return dict(files)
+        return files if isinstance(files, L.LabFiles) else dict(files)
 
     return L.check(population=lambda: devices,
                    golden=golden or (lambda r, h: _golden(h)),
@@ -116,7 +116,40 @@ class TestTheComparison:
     def test_a_file_no_device_owns_is_named(self):
         # r5's, retired: the host's lab still holds labs/lab/configs/r5.cfg.
         files = {f"{h}.cfg": _synced(h) for h in HOSTS + ["r5"]}
-        assert _check(files)["unowned"] == [{"lab": "default", "file": f"{CDIR}/r5.cfg"}]
+        assert _check(files)["unowned"] == [{"lab": "default", "file": f"{CDIR}/r5.cfg",
+                                             "node": "r5", "declared_by": None,
+                                             "topologies": None}]
+
+    TOPOLOGY = ("name: rcn-lab1\ntopology:\n  nodes:\n" + "".join(
+        f"    {h}:\n      kind: cisco_c8000v\n" for h in ["r1", "r2", "r3", "r4", "r5"]))
+
+    def _with_topology(self, topology):
+        files = L.LabFiles({f"{h}.cfg": _synced(h) for h in HOSTS + ["r5"]})
+        files.topologies = {"rcn-lab1.clab.yml": topology}
+        return files
+
+    def test_a_file_the_topology_still_boots_names_the_topology(self):
+        """C303, the operator: r5 is retired and still in the topology."""
+        u = _check(self._with_topology(self.TOPOLOGY))["unowned"][0]
+        assert u["declared_by"] == ["rcn-lab1.clab.yml"] and u["node"] == "r5"
+
+    def test_a_file_no_node_names_is_said_as_that(self):
+        u = _check(self._with_topology(self.TOPOLOGY.replace("    r5:\n", "    r9:\n")))["unowned"][0]
+        assert u["declared_by"] == [] and u["topologies"] == ["rcn-lab1.clab.yml"]
+
+    def test_the_read_carries_the_topology_in_the_same_command(self, monkeypatch):
+        seen = []
+
+        def fake(host, cmd, timeout=60):
+            seen.append(cmd)
+            return {"ok": True, "text": (f"{L.SEP}r5.cfg\nhostname r5\n"
+                                         f"{L.TOPO}rcn-lab1.clab.yml\n{self.TOPOLOGY}")}
+
+        monkeypatch.setattr("modules.nsot.credential_rotation._ssh_read", fake)
+        got = L.read_lab("lab-host", CDIR)
+        assert dict(got) == {"r5.cfg": "hostname r5\n"} and len(seen) == 1
+        assert L.topology_nodes(got.topologies["rcn-lab1.clab.yml"]) == {"r1", "r2", "r3", "r4",
+                                                                          "r5"}
 
     def test_a_device_the_baseline_does_not_hold_is_not_built_with_the_sync_s_reason(self):
         files = {f"{h}.cfg": _synced(h) for h in HOSTS}
@@ -215,7 +248,7 @@ class TestNeedsAttention:
         assert "`ip domain lookup source-interface Loopback0`" in row["cause"]
         assert "capture" not in row["action"]["label"]
         info = rows[f"{CDIR}/r5.cfg is a startup file no managed device owns"]
-        assert info["level"] == "info"
+        assert info["level"] == "info" and "remove" not in json.dumps(info)
         assert "7 holding what the sync builds" in res["checked"]
 
     def test_a_credential_row_carries_no_value(self):
@@ -255,6 +288,14 @@ class TestNeedsAttention:
         assert res["rows"] == []
         assert res["checked"] == ("8 device(s) compared over 1 lab(s), 8 holding what the sync "
                                   "builds")
+
+    def test_the_topology_s_file_reads_as_used_by_it_and_never_offers_removal(self):
+        t = TestTheComparison()
+        res = self._source(_check(t._with_topology(t.TOPOLOGY)))
+        row = next(r for r in res["rows"] if "r5.cfg" in r["what"])
+        assert row["what"] == f"{CDIR}/r5.cfg is used by the topology, owned by no managed device"
+        assert "rcn-lab1.clab.yml declares node r5" in row["cause"]
+        assert "remove" not in json.dumps(row) and row["level"] == "info"
 
     def test_not_configured_is_said(self):
         res = self._source({"configured": False, "devices": []})

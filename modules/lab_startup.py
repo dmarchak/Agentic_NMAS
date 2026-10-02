@@ -106,21 +106,51 @@ def compare(hostname: str, dialect: str, golden: str, startup: str) -> dict:
             "only_file": only_file[:LINES_SHOWN], "only_file_count": len(only_file)}
 
 
+#: Separates a topology file in the same read (another control character).
+TOPO = "\x1d"
+
+
+class LabFiles(dict):
+    """A lab's ``*.cfg`` files, with the containerlab topology files beside
+    its configs directory (``topologies``: ``{name: text}``); ``None`` when
+    they were not read."""
+    topologies = None
+
+
 def read_lab(host: str, configs_dir: str) -> dict:
-    """``{filename: text}`` for every ``*.cfg`` in one lab's directory, in ONE
-    SSH read. Raises when the directory cannot be read."""
+    """``{filename: text}`` for every ``*.cfg`` in one lab's directory, and
+    its topology files (``*.clab.yml`` beside the directory), in ONE SSH read.
+    Raises when the directory cannot be read."""
     from modules.nsot.credential_rotation import _ssh_read
 
     cmd = (f"cd {shlex.quote(configs_dir)} || exit 3; for f in *.cfg; do "
-           f"[ -f \"$f\" ] || continue; printf '{SEP}%s\\n' \"$f\"; cat \"$f\"; done")
+           f"[ -f \"$f\" ] || continue; printf '{SEP}%s\\n' \"$f\"; cat \"$f\"; done; "
+           f"cd .. && for t in *.clab.yml *.clab.yaml; do "
+           f"[ -f \"$t\" ] || continue; printf '{TOPO}%s\\n' \"$t\"; cat \"$t\"; done")
     got = _ssh_read(host, cmd)
     if not got["ok"]:
         raise RuntimeError(f"{configs_dir} on {host} could not be read: {got['error']}")
-    out = {}
-    for chunk in got["text"].split(SEP)[1:]:
+    out = LabFiles()
+    parts = got["text"].split(TOPO)
+    for chunk in parts[0].split(SEP)[1:]:
         name, _, body = chunk.partition("\n")
         out[name] = body
+    out.topologies = {}
+    for chunk in parts[1:]:
+        name, _, body = chunk.partition("\n")
+        out.topologies[name] = body
     return out
+
+
+def topology_nodes(text: str) -> set:
+    """The node names a containerlab topology declares; empty when it names
+    none or cannot be parsed (said by the caller, never a guess)."""
+    import yaml
+    try:
+        doc = yaml.safe_load(text) or {}
+        return set(((doc.get("topology") or {}).get("nodes") or {}).keys())
+    except Exception:                              # noqa: BLE001
+        return set()
 
 
 class SourceRefused(RuntimeError):
@@ -226,8 +256,18 @@ def check(population=None, golden=None, reader=None, target=None, source=None) -
                 row["since_baseline"] = {k: moved.get(k) for k in
                                          ("state", "only_golden_count", "only_file_count",
                                           "only_golden", "only_file") if k in moved}
-        unowned += [{"lab": lab["lab"], "file": f"{cdir}/{f}"}
-                    for f in sorted(files) if f not in owned]
+        # Whether the lab's topology still boots a file nobody owns (C303:
+        # r5's, retired and still declared): from the topology, never guessed.
+        topologies = getattr(files, "topologies", None)
+        for f in sorted(files):
+            if f in owned:
+                continue
+            node = f[:-4] if f.endswith(".cfg") else f
+            declared = (None if topologies is None else
+                        sorted(t for t, text in topologies.items() if node in topology_nodes(text)))
+            unowned.append({"lab": lab["lab"], "file": f"{cdir}/{f}", "node": node,
+                            "declared_by": declared,
+                            "topologies": None if topologies is None else sorted(topologies)})
     return {"configured": hosted, "devices": devices, "unowned": unowned, "errors": errors,
             "labs": len(labs), "checked": sum(1 for d in devices
                                               if d.get("state") in ("matches", "differs"))}
