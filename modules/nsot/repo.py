@@ -1048,6 +1048,14 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         trailers = [f"Source: {source}", f"Actor: {actor}"]
         if changed:
             trailers.append(f"Devices: {','.join(c['hostname'] for c in changed)}")
+            # EVERY device this save read, unchanged ones included (2026-10-02): `Devices:`
+            # names only the goldens that moved, so a device read and found equal in the
+            # same Save All left no record that it was measured, and the Devices list
+            # dated its last measurement to its last CHANGE. `Intent-Match:` already
+            # judged all of them; this says which "all" was.
+            if unchanged:
+                trailers.append("Devices-Measured: "
+                                + ",".join([c["hostname"] for c in changed] + list(unchanged)))
         elif extra_dirty:
             # No golden moved; the commit is here for what extra_paths carries.
             trailers.append(f"Paths: {','.join(sorted(extra_paths or []))}")

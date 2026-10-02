@@ -25,6 +25,12 @@
         <span class="muted">· {{ records.golden.source or 'no Source trailer' }}{% if records.golden.actor %} · {{ records.golden.actor }}{% endif %}</span>
         {%- else %}none committed <span class="muted">· capture it to record what it runs</span>{% endif -%}
       </dd></div>
+      <div><dt>Last measured</dt><dd>
+        {%- if records.measured %}{{ stamp(records.measured.iso, note='measurement ' ~ records.measured.sha) }}
+        <span class="muted">· by {{ records.measured.words }}</span>
+        {%- elif records.measured_error %}<span class="muted">could not be read · {{ records.measured_error }}</span>
+        {%- else %}never <span class="muted">· no save has read it</span>{% endif -%}
+      </dd></div>
       <div><dt>Address</dt><dd><span class="mono">{{ device.ip }}</span></dd></div>
       <div><dt>Model</dt><dd>{% if hw.model %}{{ hw.model }} <span class="muted">· from {{ hw.model_from }}{% if hw.model_commit %} (<span class="mono">{{ hw.model_commit }}</span>){% endif %}</span>{% else %}not recorded <span class="muted">· {{ hw.model_from }}</span>{% endif %}</dd></div>
       <div><dt>Platform</dt><dd>{% if hw.platform %}{{ hw.platform }} <span class="muted">· from {{ hw.platform_from }}; connects as {{ device.device_type or '?' }}</span>{% else %}not recorded <span class="muted">· connects as {{ device.device_type or '?' }}</span>{% endif %}</dd></div>

@@ -1,9 +1,10 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
 {#- The Devices list (NSOT_GUI_BRIEF 3.3), from modules/device_list.listing():
     a fixed number of reads whatever the list's size. The intent state is the
-    device's state AT ITS LAST CAPTURE (its golden commit's Intent-Match), and
-    says so; the device page's Overview compares it live. Redrawn when the
-    reachability reader or a golden commit moves it. -#}
+    device's state at its LAST MEASUREMENT (the newest save that read it, a Save
+    All that changed nothing included), and says which; Last measured says when,
+    and the golden's last change is on its hover. The device page's Overview
+    compares intent live. Redrawn when the reachability reader or a commit moves it. -#}
 {%- set KIND = {'ok': 'ok', 'danger': 'danger', 'warn': 'warn', 'unknown': 'muted'} -%}
 {%- set IKIND = {'at_intent': 'ok', 'departs': 'warn', 'no_intent': 'muted', 'no_golden': 'warn',
                  'pending': 'info', 'unknown': 'muted', 'unrecorded': 'muted'} -%}
@@ -30,7 +31,7 @@
           <th scope="col">Address</th>
           <th scope="col">Platform</th>
           <th scope="col">Intent</th>
-          <th scope="col">Last capture</th>
+          <th scope="col">Last measured</th>
         </tr></thead>
         <tbody>
           {%- for r in d.rows %}
@@ -40,8 +41,8 @@
             <td>{{ badge(r.status.words, KIND.get(r.status.state, 'muted')) }}{% if r.status.since %} <span class="muted">since {{ stamp(r.status.since) }}</span>{% endif %}</td>
             <td class="mono">{{ r.address }}</td>
             <td>{{ r.platform or '—' }}</td>
-            <td>{{ badge(r.intent.words, IKIND.get(r.intent.state, 'muted')) }}</td>
-            <td>{% if r.captured_iso %}{{ stamp(r.captured_iso) }}{% else %}<span class="muted">none</span>{% endif %}</td>
+            <td>{{ badge(r.intent.words, IKIND.get(r.intent.state, 'muted')) }}{% if r.measured %} <span class="muted dev-measured">by {{ r.measured.words }}</span>{% endif %}</td>
+            <td>{% if r.measured %}{{ stamp(r.measured.iso, note=('the golden changed in this measurement' if r.measured.changed else 'golden last changed ' ~ (r.golden_changed.iso if r.golden_changed else 'before the last ' ~ d.bound ~ ' golden commits') ~ (' (' ~ r.golden_changed.sha ~ ')' if r.golden_changed else '')) ~ '; measurement ' ~ r.measured.sha) }}{% else %}<span class="muted">none</span>{% endif %}</td>
           </tr>
           {%- endfor %}
         </tbody>

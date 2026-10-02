@@ -110,10 +110,26 @@ def records(ref, dev: dict) -> dict:
     days while r6's EFFECTIVE intent changed that day through the profile)."""
     from modules.nsot import profile as _profile
 
+    from modules import device_list
+
     host = dev.get("hostname")
+    golden = _last_commit(ref.repo_dir, f"golden/{host}.cfg")
+    # WHEN IT WAS LAST MEASURED, beside when its golden last changed (2026-10-02): a Save
+    # All that found it unchanged confirms the golden and moves only this. The same
+    # reader as the Devices list; a golden commit is a measurement too.
+    measured, err = device_list.last_measured(ref.repo_dir)
+    m = measured.get(host)
+    g_at = _epoch(golden.get("at") or "") if golden else 0
+    if golden and (m is None or g_at > m["at"]):
+        m = {"at": g_at, "sha": golden["sha"], "how": device_list.SOURCE_WORDS.get(
+            golden.get("source") or "", golden.get("source") or "a save"),
+             "changed": True, "baseline": False}
     return {"intent": _last_commit(ref.repo_dir, f"host_vars/{host}.yml"),
             "profile": _last_commit(ref.repo_dir, _profile.PROFILE_REL),
-            "golden": _last_commit(ref.repo_dir, f"golden/{host}.cfg")}
+            "golden": golden,
+            "measured": ({"iso": _iso(m["at"]), "sha": m["sha"],
+                          "words": device_list.measured_words(m)} if m and not err else None),
+            "measured_error": err}
 
 
 _CHASSIS = re.compile(r"^! Chassis type: *(\S.*?)\s*$", re.M)

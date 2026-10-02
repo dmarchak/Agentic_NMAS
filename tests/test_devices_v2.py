@@ -3,9 +3,10 @@
 On test_profile_apply's lab (r2's REAL config and intent; r6 in its real
 shape), with real golden commits whose `Intent-Match:` trailers `save_golden`
 computes. The list costs a FIXED number of reads whatever its size (the
-brief's scale rule): one bounded `git log` over `golden/` and one `git
-ls-tree` over `host_vars/`, never a read per device. A device's intent state
-is its state at its last capture, and says so.
+brief's scale rule): one bounded `git log` over `golden/`, one over the commits
+carrying `Intent-Match:`, and one `git ls-tree` over `host_vars/`, never a read
+per device. A device's intent state is its state at its last MEASUREMENT (a Save
+All that found it unchanged included), and says which and when.
 """
 
 import os
@@ -76,20 +77,20 @@ class TestTheListing:
         rows = {r["name"]: r for r in d["rows"]}
         assert rows["r6"]["intent"]["state"] == "departs"
         # The device holds a line its intent lacks: "-1" in the trailer's words.
-        assert rows["r6"]["intent"]["words"] == "departs (-1), as of its last capture"
-        assert rows["r2"]["intent"] == {"state": "at_intent",
-                                        "words": "at intent, as of its last capture"}
-        assert rows["r6"]["captured_iso"] and rows["r6"]["platform"] == "cisco_iosxe"
+        assert rows["r6"]["intent"]["words"] == "departs (-1)"
+        assert rows["r6"]["measured"]["words"] == "a capture, golden changed"
+        assert rows["r2"]["intent"] == {"state": "at_intent", "words": "at intent"}
+        assert rows["r6"]["measured"]["iso"] and rows["r6"]["platform"] == "cisco_iosxe"
         assert d["total"] == 2 and d["counts"]["departs"] == 1 and d["counts"]["at_intent"] == 1
 
     def test_no_intent_and_no_golden_are_their_own_states(self, inv):
         from modules.device_list import listing
         inv["rows"].append({"hostname": "r9", "ip": "192.0.2.9", "platform": "cisco_ios"})
         rows = {r["name"]: r for r in listing(_ref())["rows"]}
-        assert rows["r9"]["intent"]["state"] == "no_intent" and rows["r9"]["captured_iso"] == ""
+        assert rows["r9"]["intent"]["state"] == "no_intent" and rows["r9"]["measured"] is None
 
     def test_the_reads_are_fixed_whatever_the_size(self, inv, monkeypatch):
-        """The scale rule: two git reads for two devices and for sixty."""
+        """The scale rule: three git reads for two devices and for sixty."""
         from modules import device_list
         from modules.nsot import repo as R
         real, calls = R.git, []
@@ -104,7 +105,7 @@ class TestTheListing:
         inv["rows"] += [{"hostname": f"x{i}", "ip": f"192.0.2.{i}", "platform": "cisco_ios"}
                         for i in range(60)]
         device_list.listing(_ref())
-        assert two == calls == ["log", "ls-tree"], (two, calls)
+        assert two == calls == ["log", "log", "ls-tree"], (two, calls)
 
     def test_an_unreadable_history_is_unknown_never_no_golden(self, inv, monkeypatch):
         from modules import device_list
@@ -131,6 +132,103 @@ class TestTheListing:
         assert [r["name"] for r in listing(_ref(), q="203.0.113.12")["rows"]] == ["r2"]
         assert [r["name"] for r in listing(_ref(), state="departs")["rows"]] == ["r6"]
         assert listing(_ref(), platform="cisco_ios")["rows"] == []
+
+
+def _save_all(lab, texts):
+    """A real Save All over the given captures, the whole two-device inventory."""
+    from modules.nsot.repo import GoldenItem, save_golden
+    ip = {"r2": R2["ip"], "r6": R6["ip"]}
+    return save_golden("Lab", [GoldenItem(h, t, ip[h], platform="cisco_iosxe")
+                               for h, t in texts.items()],
+                       source="save_all", actor="t", inventory_size=2)
+
+
+def _git(repo, *args):
+    import subprocess
+    return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True).stdout
+
+
+class TestTheLastMeasurement:
+    """The operator, 2026-10-02: the list read only golden commits, so a Save All
+    that found a device UNCHANGED (the best evidence there is) did not count, its
+    intent state was its last CHANGE's and its age that change's. A measurement
+    is any save that read the device; expected values come from git directly."""
+
+    def _base(self, inv):
+        r6 = inv["r6"].replace("\nend", "\nlogging buffered 8192\nend")
+        _capture("r6", r6)
+        assert "r2.cfg" in _git(inv["repo"], "ls-tree", "--name-only", "HEAD", "golden/")
+        return {"r2": inv["captured"], "r6": r6}
+
+    def test_a_save_all_that_changed_nothing_is_the_last_measurement(self, inv):
+        from modules.device_list import listing
+        texts = self._base(inv)
+        golden_sha = _git(inv["repo"], "log", "-1", "--format=%h", "--", "golden/r6.cfg").strip()
+        out = _save_all(inv, texts)
+        assert out["decision_only"] and out["changed"] == [], out
+        decision = out["commit"][:7]
+        rows = {r["name"]: r for r in listing(_ref())["rows"]}
+        for host in ("r2", "r6"):
+            assert rows[host]["measured"]["sha"] == decision, rows[host]
+            assert rows[host]["measured"]["words"] == "Save All, no change"
+            assert rows[host]["measured"]["changed"] is False
+        assert rows["r6"]["golden_changed"]["sha"] == golden_sha != decision
+
+    def test_the_intent_state_is_the_measurement_s_not_the_last_change_s(self, inv):
+        """r2's golden was captured AT intent; intent then gains an NTP server, and a
+        Save All reads r2 unchanged: r2 now departs (+1), which only that Save All
+        knows. The old reader drew "at intent" from the older golden commit."""
+        from modules.device_list import listing
+        from modules.nsot import hostvars
+        from modules.nsot.repo import save_host_vars
+        texts = self._base(inv)
+        _save_all(inv, texts)
+        rows = {r["name"]: r for r in listing(_ref())["rows"]}
+        assert rows["r2"]["intent"]["state"] == "at_intent"
+        hv = hostvars.read_committed(inv["repo"], "r2")
+        hv["ntp_servers"] = list(hv.get("ntp_servers") or []) + ["192.0.2.123"]
+        hostvars.write_committed(inv["repo"], hv)
+        assert save_host_vars("Lab", ["r2"], actor="t", source="extraction")["ok"]
+        out = _save_all(inv, texts)
+        trailer = _git(inv["repo"], "log", "-1", "--format=%(trailers:key=Intent-Match,valueonly)",
+                       out["commit"]).strip()
+        assert trailer.startswith("no: r2 (+1"), trailer
+        rows = {r["name"]: r for r in listing(_ref())["rows"]}
+        assert rows["r2"]["intent"] == {"state": "departs", "words": "departs (+1)"}
+        assert rows["r2"]["measured"]["sha"] == out["commit"][:7]
+
+    def test_a_changing_save_all_names_every_device_it_read(self, inv):
+        """r6 changes and r2 does not: `Devices:` names r6, `Devices-Measured:` both, and
+        r2's last measurement is that commit with no change."""
+        from modules.device_list import listing
+        texts = self._base(inv)
+        texts["r6"] = texts["r6"].replace("logging buffered 8192", "logging buffered 16384")
+        out = _save_all(inv, texts)
+        assert [c for c in out["changed"]] and out["unchanged"] == ["r2"], out
+        trailers = _git(inv["repo"], "log", "-1", "--format=%(trailers)", out["commit"])
+        assert "Devices: r6\n" in trailers and "Devices-Measured: r6,r2\n" in trailers, trailers
+        rows = {r["name"]: r for r in listing(_ref())["rows"]}
+        assert rows["r2"]["measured"]["sha"] == out["commit"][:7]
+        assert rows["r2"]["measured"]["words"].startswith("Save All, no change")
+        assert rows["r6"]["measured"]["words"].startswith("Save All, golden changed")
+        assert rows["r6"]["golden_changed"]["sha"] == out["commit"][:7]
+
+    def test_the_page_draws_last_measured_with_the_golden_change_on_hover(self, inv):
+        texts = self._base(inv)
+        out = _save_all(inv, texts)
+        html = inv["client"].get("/v2/devices/table").get_data(as_text=True)
+        assert '<th scope="col">Last measured</th>' in html and "Last capture" not in html
+        assert "by Save All, no change" in html
+        golden_sha = _git(inv["repo"], "log", "-1", "--format=%h", "--", "golden/r6.cfg").strip()
+        assert re.search(rf'title="[^"]*golden last changed [^"]*\({golden_sha}\); measurement '
+                         rf'{out["commit"][:7]}"', html), html
+
+    def test_the_overview_says_when_it_was_last_measured(self, inv):
+        texts = self._base(inv)
+        out = _save_all(inv, texts)
+        html = inv["client"].get("/v2/device/r2").get_data(as_text=True)
+        assert "<dt>Last measured</dt>" in html and "by Save All, no change" in html
+        assert f"measurement {out['commit'][:7]}" in html
 
 
 class TestThePage:
