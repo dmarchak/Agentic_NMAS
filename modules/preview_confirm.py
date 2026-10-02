@@ -325,6 +325,19 @@ def _profile_scope_parts(name: str, sc: dict, scope: str = "profile") -> tuple:
     return notes, extra
 
 
+def verify_note(commands: list):
+    """The program part's note saying which verify runs after this program
+    and why (the operator, 2026-10-01): the pipeline's own classifier, so
+    what the preview says is what runs. None when nothing is sent."""
+    from modules.nsot import verify_scope
+
+    if not commands:
+        return None
+    v = verify_scope.classify(commands)
+    return {"title": (f"Verify after the push: {v['scope'].upper()}, because {v['why']}"),
+            "lines": v["forwarding"] or v["sections"]}
+
+
 def deploy_preview(devices: list, request, scope: str = "") -> dict:
     """The deploy plan's per-device entries, as the six parts. With *scope*
     ``profile`` (P.9 step b) it is "Apply monitoring profile": the profile's
@@ -450,7 +463,9 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
                         # How often each was authorised here before (C140).
                         "prior": d.get("prior_authorised") or {"state": "ok", "lines": {}},
                         "authorisation_error": d.get("authorisation_error") or "",
-                        "none": "" if commands else none, "notes": notes},
+                        "none": "" if commands else none, "notes": notes,
+                        # Which verify runs after the push, and why.
+                        "verify": verify_note(commands)},
             "operands": operands, "gates": _deploy_gates(d, failed)})
     n = len(targets)
     ready = sum(1 for t in targets if t["selectable"])
@@ -623,7 +638,8 @@ def restore_preview(devices: list, skipped: list, *, ref: str, summary: str,
                         # How often each was authorised here before (C140).
                         "prior": d.get("prior_authorised") or {"state": "ok", "lines": {}},
                         "authorisation_error": d.get("authorisation_error") or "",
-                        "none": "" if commands else none, "notes": notes},
+                        "none": "" if commands else none, "notes": notes,
+                        "verify": verify_note(commands)},
             "operands": operands, "gates": _restore_gates(d, failed)})
     for s in skipped or []:
         what_not.append({"target": s.get("hostname") or "(the ref)", "kind": "skipped",

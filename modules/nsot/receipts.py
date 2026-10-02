@@ -106,6 +106,9 @@ def _checks(result: dict) -> dict:
         # C178: BGP read once more no earlier than its hold time after the
         # push, with the hold time's basis; absent when BGP was not checked.
         "bgp_watch": verify.get("bgp_watch"),
+        # Quick or full, and why (verify_scope); a quick verify's read-back.
+        "verify_scope": verify.get("verify_scope"),
+        "read_back": verify.get("read_back"),
     }
     if not protocols:
         checks["neighbours_note"] = ("no routing protocol on this device: the "

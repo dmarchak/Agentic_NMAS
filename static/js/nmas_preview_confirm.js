@@ -270,6 +270,14 @@
         + 'already pending before it. They are sent too.</div>'
         + (old.length ? pre(old) : '') + '</div>';
     });
+    // Which verify runs after the push, and why (verify_scope: the pipeline's
+    // own classifier, so this says what runs).
+    if (prog.verify) {
+      body += '<div class="mt-2 small" data-pc-verify><div class="fw-semibold">'
+        + esc(prog.verify.title) + '</div>'
+        + ((prog.verify.lines || []).length ? '<div class="text-muted">Sections: '
+           + esc(prog.verify.lines.join(', ')) + '</div>' : '') + '</div>';
+    }
     return section('program', title(p, 'program', 'The exact program'), body);
   }
 
@@ -515,6 +523,16 @@
              + ' (hold ' + esc(String(c.bgp_watch.hold_s)) + ' s, ' + esc(c.bgp_watch.basis || '')
              + '): ' + esc(String(c.bgp_watch.before)) + ' &rarr; ' + esc(String(c.bgp_watch.after))
              + '</div>' : '')
+        // Quick or full, and why (the program's sections decide it).
+        + (c.verify_scope ? '<div data-pr-verify-scope="' + esc(c.verify_scope.scope) + '">'
+           + esc(c.verify_scope.scope) + ' verify: ' + esc(c.verify_scope.why) + '</div>' : '')
+        + (c.read_back ? '<div data-pr-read-back>new lines read back: '
+           + esc(String(c.read_back.checked - (c.read_back.missing || []).length)) + ' of '
+           + esc(String(c.read_back.checked))
+           + ((c.read_back.skipped || []).length ? ' (' + esc(String(c.read_back.skipped.length))
+              + ' not checked: ' + esc(c.read_back.skipped.map(function (k) { return k.why; })
+                .filter(function (w, i, all) { return all.indexOf(w) === i; }).join('; ')) + ')' : '')
+           + '</div>' : '')
         + '</div>'
         + (c.issues || []).map(function (i) {
             return '<div class="small text-danger">' + esc(i) + '</div>';
@@ -522,6 +540,11 @@
         + (c.intent_unmet || []).map(function (i) {
             return '<div class="small text-danger" data-pr-intent-unmet>' + esc(i)
               + ' (not rolled back: the change cannot have caused it)</div>';
+          }).join('')
+        + (((c.read_back || {}).missing) || []).map(function (i) {
+            return '<div class="small text-danger" data-pr-not-read-back>not read back after the '
+              + 'change: ' + esc(i) + ' (verify did not pass on it, and nothing was rolled back '
+              + 'for it: capture the device to see what it holds)</div>';
           }).join('')
         + (c.unreadable || []).map(function (i) {
             return '<div class="small text-danger" data-pr-unreadable>could not be read reliably '

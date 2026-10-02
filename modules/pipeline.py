@@ -1261,6 +1261,10 @@ def _stage_verify(ctx: PipelineContext) -> None:
                              if p in MEASURED and pre_counts.get(p, 0) < 1)
         checked = sorted(set(pre_counts) | set(from_intent))
         record["checked_protocols"] = checked
+        # Which verify this program gets (the operator, 2026-10-01): one
+        # classifier for the preview and here, so the preview says what runs.
+        from modules.nsot import verify_scope
+        scope = verify_scope.classify(ctx.rendered_commands.get(ip) or [])
         unmet: list[str] = []
         # Reads after the change that could not be trusted (C272): verify
         # neither passes nor fails on them. It says so, and nothing is rolled
@@ -1349,7 +1353,7 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # after the push, and a session gone by then fails verify.
         bgp_failed = any(i.startswith("bgp ") for i in issues) or any(
             u.startswith("bgp ") for u in unmet)
-        if "bgp" in checked and not bgp_failed:
+        if "bgp" in checked and not bgp_failed and scope["scope"] != verify_scope.QUICK:
             baseline = pre_counts.get("bgp", 0) or (1 if "bgp" in from_intent else 0)
             watch = _watch_bgp_hold(ctx, ip, baseline, post.get("running_config") or "")
             record["bgp_watch"] = watch
@@ -1453,8 +1457,26 @@ def _stage_verify(ctx: PipelineContext) -> None:
                     issues.append(f"ip sla {u['number']} did not read back as intent defines it: "
                                   f"expected {u['expected']}, found {u['found'] or 'nothing'}")
 
+        # ── A QUICK verify reads each new line back (the operator, 2026-10-01)
+        # A line the device does not show did not land as sent: verify does
+        # not pass, and nothing is rolled back for it (the push itself raised
+        # nothing, so what to undo is not known from here).
+        read_back = None
+        if scope["scope"] == verify_scope.QUICK:
+            post_cfg = post.get("running_config") or ""
+            if not post_cfg:
+                cant_read.append("new lines: `show running-config`: "
+                                 + (post.get("running_config_error") or "nothing was read"))
+            else:
+                read_back = verify_scope.read_back(ctx.rendered_commands.get(ip) or [], post_cfg)
+
         ctx.verify_result[ip] = {
-            "ok":     not issues and not unmet and not cant_read,
+            "ok":     (not issues and not unmet and not cant_read
+                       and not (read_back or {}).get("missing")),
+            # Quick or full, and why, from the program (verify_scope).
+            "verify_scope": {"scope": scope["scope"], "why": scope["why"]},
+            # A quick verify's read-back of each new line; None for a full one.
+            "read_back": read_back,
             # Read after the change and not trustworthy (C272): verify did not
             # pass, did not fail on them, and rolled nothing back for them.
             "unreadable": cant_read,
