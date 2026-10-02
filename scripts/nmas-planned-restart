@@ -4,12 +4,17 @@
     nmas-planned-restart <list> <device>... --minutes 30 --why "redeploying the lab"
     nmas-planned-restart <list> '*' --minutes 45 --why "lab redeploy" --by <operator>
     nmas-planned-restart <list> '*' --from 2026-10-01T15:20Z --minutes 110 --why "..."
+        --correction "the redeploy was planned; the tool could not record it then"
 
 The restarts reader (modules/readers/restarts.py) calls a restart UNPLANNED unless the tool
 performed it or was told beforehand; this is the telling, for a redeploy or a hand reload.
-The window starts now (or at --from, a UTC time, to record a planned restart that already
-happened, before the restarts reader first reads it) and lasts --minutes; a restart up to 15 minutes after its end is still
-the plan's (a boot takes minutes). `*` covers every device of the list. The record
+The window starts now (or at --from, a UTC time) and lasts --minutes; a restart up to 15
+minutes after its end is still the plan's (a boot takes minutes). A window covering a restart
+the tool has ALREADY seen is refused, naming each, unless --correction says why it is
+recorded late: declared after the fact, a window never clears an unplanned restart (the
+operator, 2026-10-02); acknowledge such a restart on Needs attention instead. A script that
+restarts devices declares its window through the product's API instead
+(POST /restarts/planned), so the record names a verified person. `*` covers every device of the list. The record
 (planned_restarts.jsonl, 0600) names who (the login on this host unless --by names the
 person), why, and that it came from this command. Nothing else is written, and no device is
 contacted.
@@ -37,6 +42,9 @@ def main(argv=None) -> int:
     ap.add_argument("--by", default="", help="the person (default: this host's login)")
     ap.add_argument("--from", dest="start", default="",
                     help="when the window began, UTC (e.g. 2026-10-01T15:20Z); default now")
+    ap.add_argument("--correction", default="",
+                    help="why a window covering restarts the tool has ALREADY seen is recorded "
+                         "late; without it such a window is refused")
     args = ap.parse_args(argv)
     if args.minutes <= 0 or args.minutes > 24 * 60:
         print("refused: --minutes is between 1 and 1440", file=sys.stderr)
@@ -52,13 +60,17 @@ def main(argv=None) -> int:
             return 1
     by = args.by or f"{getpass.getuser()} (host login, not a verified identity)"
     out = restarts.record_planned(args.devices, now, now + args.minutes * 60, by, args.why,
-                                  "nmas-planned-restart", list_name=args.list)
+                                  "nmas-planned-restart", list_name=args.list,
+                                  correction=args.correction)
     if not out["ok"]:
         print(f"refused: {out['error']}", file=sys.stderr)
         return 1
     r = out["record"]
     print(f"recorded: {', '.join(r['devices'])} in {r['list']} may restart from {r['from']} "
           f"until {r['until']} (and up to 15 min after), by {r['by']}: {r['why']}")
+    if r.get("correction"):
+        print(f"as a correction, covering {len(out['covered'])} restart(s) already seen: "
+              f"{r['correction']}")
     return 0
 
 

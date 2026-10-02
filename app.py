@@ -2526,9 +2526,15 @@ def bulk_reload():
                     # reload is sent, so a fast boot is never read as unexpected.
                     from modules import restarts as _restarts
                     _t = _time.time()
-                    _restarts.record_planned([dev["hostname"]], _t, _t + 1200, _actor,
-                                             "reloaded from the tool's Reload action",
-                                             "bulk_reload", list_name=_list_name)
+                    _planned = _restarts.record_planned(
+                        [dev["hostname"]], _t, _t + 1200, _actor,
+                        "reloaded from the tool's Reload action", "bulk_reload",
+                        list_name=_list_name)
+                    if not _planned["ok"]:
+                        # Not reloaded: a reload the tool cannot record as planned would
+                        # read as an unexpected restart.
+                        raise RuntimeError("not reloaded: the planned restart could not be "
+                                           "recorded: " + _planned["error"])
                     with _device_lock(dev["ip"]):
                         outcome = reload_device(conn)
                 try:

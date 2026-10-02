@@ -66,6 +66,7 @@ VOCABULARY = {
     "adjacencies": "the routing adjacencies intent implies, against what each device reports (C38)",
     "lab_startup": "each lab startup file against what its committed golden would produce",
     "restarts": "a device restart the restarts reader found, planned or not (modules/restarts.py)",
+    "acknowledgements": "a person acknowledged a Needs attention event row (modules/acknowledgements.py)",
     "remote": "the remote: its push state and verification",
     "drift": "the drift checker's state and last run",
     "approvals": "the approval queue",
@@ -212,6 +213,8 @@ DECLARED = {
     # root-owned updater acts, and the page waits on /health for it.
     "update.apply": ("app_version",),
     "update.step_done": ("app_version",),
+    "attention.acknowledge": ("acknowledgements",),
+    "restarts.planned": ("restarts",),
     "breakglass.export": Nothing("appends to the export log and the reveal record, which job "
                                  "health's reader reads on its own interval; no panel shows "
                                  "either directly"),

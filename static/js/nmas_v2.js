@@ -23,7 +23,17 @@
               // The lab startup files against the goldens (modules/lab_startup.py).
               'lab_startup',
               // A device restart, planned or not (modules/restarts.py).
-              'restarts'];
+              'restarts',
+              // A person acknowledged an event row (modules/acknowledgements.py).
+              'acknowledgements'];
+
+  /* PURE: the Acknowledge button's words, busy on itself. */
+  function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
+
+  /* PURE: a refused acknowledgement in words, from the status and the body. */
+  function ackRefusal(status, body) {
+    return 'Not acknowledged: ' + ((body && body.error) || ('HTTP ' + status));
+  }
 
   /* PURE: an age in words, from two times in milliseconds. */
   function ageWords(thenMs, nowMs) {
@@ -95,6 +105,7 @@
   function relayAdjacencies() { relay('adjacencies'); }
   function relayLabStartup() { relay('lab_startup'); }
   function relayRestarts() { relay('restarts'); }
+  function relayAcknowledgements() { relay('acknowledgements'); }
 
   function wireAnnouncements() {
     var NMAS = root.NMAS;
@@ -116,6 +127,7 @@
     NMAS.subscribe('adjacencies', 'v2Adjacencies', relayAdjacencies);
     NMAS.subscribe('lab_startup', 'v2LabStartup', relayLabStartup);
     NMAS.subscribe('restarts', 'v2Restarts', relayRestarts);
+    NMAS.subscribe('acknowledgements', 'v2Acknowledgements', relayAcknowledgements);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
@@ -214,6 +226,36 @@
         close: function () { this.isOpen = false; }
       };
     });
+    // Acknowledge an EVENT row on Needs attention (the operator, 2026-10-02): a reason,
+    // recorded with who and when. Busy on itself; on success the response invalidates
+    // `acknowledgements`, the list redraws and the row leaves it. Words only for a refusal.
+    A.data('acknowledge', function () {
+      return {
+        isOpen: false, busy: false, said: '',
+        get closed() { return !this.isOpen; },
+        get label() { return ackLabel(this.busy); },
+        open: function () {
+          var box = this.$root.querySelector('input[name="why"]');
+          this.isOpen = true; this.said = '';
+          if (box && box.focus) root.setTimeout(function () { box.focus(); }, 0);
+        },
+        cancel: function () { this.isOpen = false; this.said = ''; },
+        send: function () {
+          var self = this, el = this.$root, box = el.querySelector('input[name="why"]');
+          self.busy = true;
+          self.said = '';
+          root.fetch(el.getAttribute('data-url'), {
+            method: 'POST', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+            body: JSON.stringify({row: el.getAttribute('data-row'), event: el.getAttribute('data-event'),
+                                  why: box ? box.value : ''})
+          }).then(function (r) {
+            return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
+          }).then(function (got) {
+            if (got[0] !== 200) { self.busy = false; self.said = ackRefusal(got[0], got[1]); }
+          }, function (e) { self.busy = false; self.said = 'Not acknowledged: ' + e.message; });
+        }
+      };
+    });
   }
 
   /* A page the browser RESTORES from its back/forward cache comes back with its
@@ -249,5 +291,5 @@
   }
 
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
-                  reloadIfRestored: reloadIfRestored};
+                  reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal};
 })(typeof window !== 'undefined' ? window : this);

@@ -6,7 +6,7 @@ never a failed request, so the page can say which source it could not read.
 
 import logging
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 log = logging.getLogger(__name__)
 
@@ -22,3 +22,22 @@ def needs_attention():
     # description): masked on the way out, like every read that draws text
     # a store holds.
     return jsonify(mask_payload(build()))
+
+
+@bp.route("/acknowledge", methods=["POST"])
+def acknowledge():
+    """A person acknowledges ONE event row (an unplanned restart, a line authorised again
+    and again) with a reason: recorded with who, how established and when, and the row
+    leaves Needs attention. Body ``{"row", "event", "why"}``; the row is found again on
+    the server, never taken from the browser (`attention.acknowledge`)."""
+    from modules import identity
+    from modules.attention import acknowledge as ack
+    from modules.outbound import mask_payload
+
+    data = request.get_json(silent=True) or {}
+    actor = identity.request_actor()
+    got = ack(str(data.get("row") or ""), str(data.get("event") or ""),
+              str(data.get("why") or ""), by=actor,
+              verified=identity.actor_verification(actor))
+    # The row's words quote its source (a device's reason, an authorised line): masked.
+    return jsonify(mask_payload(got)), (200 if got["ok"] else 409)

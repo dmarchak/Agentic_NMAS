@@ -220,6 +220,7 @@
       + (r.attach_to ? '<div class="text-muted">It is about ' + esc(r.attach_to)
          + ', which is not on this page: the last run no longer reports it</div>' : '')
       + '<div>Action: ' + actionHtml(r.action) + '</div>'
+      + (r.clears ? '<div class="text-muted">Clears when ' + esc(r.clears.when) + '.</div>' : '')
       // Stage 8's triage attaches HERE, on the row it answers (NSOT_PLAN 8.6).
       + (r.triage ? '<div class="border-start ps-2 mt-1">Triage: ' + esc(r.triage.summary)
          + '</div>' : '')
@@ -231,6 +232,15 @@
     var u = d.unreadable || [];
     return u.length ? ' <span class="badge bg-secondary">' + u.length
       + ' source(s) could not be read: ' + u.map(esc).join(', ') + '</span>' : '';
+  }
+
+  /* Pure: the rows people acknowledged (modules/acknowledgements.py), with who and why:
+     gone from the list, never from the record. */
+  function ackedHtml(list) {
+    list = list || [];
+    return list.length ? '<div class="mt-1">Acknowledged, so not listed: ' + list.map(function (a) {
+      return esc(a.what) + ' (by ' + esc(a.by) + ', ' + esc(a.at) + ': ' + esc(a.why) + ')';
+    }).join('; ') + '</div>' : '';
   }
 
   function attentionPanelHtml(d, nowMs) {
@@ -251,7 +261,7 @@
       // evidence one level down (the operator's (a), 2026-09-28).
       return '<details class="alert alert-light border small mb-0 py-1" data-attention="none">'
         + '<summary>' + summaryLine(d, sources, nowMs) + '</summary>'
-        + '<div class="mt-1">' + sourcesTable(sources, nowMs) + '</div></details>';
+        + '<div class="mt-1">' + sourcesTable(sources, nowMs) + ackedHtml(d.acknowledged) + '</div></details>';
     }
     var headline = rows.length === (d.rows || []).length ? d.headline
       : rows.length + ' thing(s) need attention';
@@ -261,7 +271,7 @@
       + '<ul class="list-group list-group-flush">' + rows.map(function (r) { return rowHtml(r, nowMs); }).join('')
       + '</ul><details class="card-footer py-1 small text-muted" data-attention="evidence">'
       + '<summary>What was checked: ' + sources.length + ' source(s)</summary>'
-      + sourcesTable(sources, nowMs) + '</details></div>';
+      + sourcesTable(sources, nowMs) + ackedHtml(d.acknowledged) + '</details></div>';
   }
 
   //: The panel's own promise: it re-fetches every minute (for the sources

@@ -116,7 +116,7 @@ class TestTheReader:
         boot, _seen = _expected_boot()
         assert record_planned(["s3"], boot - 120, boot + 60, "operator@example.com",
                               "lab redeploy", "test", list_name="Lab")["ok"]
-        r = _read()["new"][0]
+        r = _read(now=time.time())["new"][0]
         assert r["planned"] is True and r["planned_by"] == "operator@example.com"
 
     def test_a_window_for_another_device_does_not_cover_it(self, store):
@@ -224,28 +224,86 @@ class TestTheCommand:
 
 
 class TestAWindowRecordedLater:
-    """The release that can record a planned window ships with the reader, so the window for
-    a restart already seen is recorded after it: it still counts, in the row and History."""
+    """The operator, 2026-10-02: "don't let a planned-restart window declared after the fact
+    clear an unplanned restart. Refuse a window declared after a restart it would cover
+    unless it's explicitly marked as a correction, with its reason." """
 
-    def test_the_row_goes_and_history_says_planned(self, store, monkeypatch):
+    def _history(self, store, monkeypatch):
         from modules import device_page
-        from modules.attention import restart_source
         from modules.nsot import listref
-        from modules.restarts import record_planned
-        v = _read(now=time.time())
-        assert v["recent_unplanned"]
-        boot, _seen = _expected_boot()
-        record_planned(["*"], boot - 600, boot + 60, "operator@example.com", "the redeploy",
-                       "nmas-planned-restart", list_name="Lab")
-        v2 = _read(previous=v, now=time.time())
-        assert v2["new"] == [] and v2["recent_unplanned"] == []
-        assert restart_source(cached=_cached(v2))["rows"] == []
         monkeypatch.setattr("modules.nsot.repo.golden_history", lambda *a, **k: [])
         monkeypatch.setattr("modules.nsot.hostvars.intent_commits", lambda *a, **k: [])
         monkeypatch.setattr("modules.nsot.receipts.read",
                             lambda *a, **k: {"state": "absent", "rows": []})
         ref = listref.ListRef(name="Lab", slug="lab", data_dir=str(store), repo_dir=str(store),
                               csv_path="")
-        ev = [e for e in device_page.history(ref, {"hostname": "s3"})["events"]
-              if e["kind"] == "restart"]
+        return [e for e in device_page.history(ref, {"hostname": "s3"})["events"]
+                if e["kind"] == "restart"]
+
+    def test_a_late_window_is_refused_naming_the_restart(self, store):
+        from modules.attention import restart_source
+        from modules.restarts import _data, _read_jsonl, record_planned
+        v = _read(now=time.time())
+        boot, _seen = _expected_boot()
+        got = record_planned(["*"], boot - 600, boot + 60, "operator@example.com",
+                             "the redeploy", "nmas-planned-restart", list_name="Lab")
+        assert not got["ok"] and "covers 1 restart(s) the tool has already seen (s3 at" \
+            in got["error"] and "correction" in got["error"]
+        assert _read_jsonl(_data("planned_restarts.jsonl"))["state"] == "absent"
+        assert len(restart_source(cached=_cached(v))["rows"]) == 1
+
+    def test_a_late_window_written_anyway_clears_nothing(self, store, monkeypatch):
+        """A window in the record (an older release wrote it, or by hand) recorded after the
+        restart was seen and not a correction: the row stays and History says unexpected."""
+        import json
+        from modules.attention import restart_source
+        v = _read(now=time.time())
+        boot, _seen = _expected_boot()
+        late = {"devices": ["*"], "list": "Lab", "from": _iso(boot - 600),
+                "until": _iso(boot + 60), "by": "operator@example.com", "why": "the redeploy",
+                "via": "nmas-planned-restart", "recorded_at": _iso(time.time() + 5)}
+        (store / "planned_restarts.jsonl").write_text(json.dumps(late) + "\n")
+        assert len(restart_source(cached=_cached(v))["rows"]) == 1
+        assert self._history(store, monkeypatch)[0]["what"] == "Restarted unexpectedly"
+
+    def test_a_correction_with_its_reason_counts_and_history_says_so(self, store, monkeypatch):
+        from modules.attention import restart_source
+        from modules.restarts import record_planned
+        v = _read(now=time.time())
+        boot, _seen = _expected_boot()
+        bad = record_planned(["*"], boot - 600, boot + 60, "operator@example.com",
+                             "the redeploy", "t", list_name="Lab", correction="late")
+        assert not bad["ok"] and "a correction needs its own reason" in bad["error"]
+        got = record_planned(["*"], boot - 600, boot + 60, "operator@example.com",
+                             "the redeploy", "t", list_name="Lab",
+                             correction="the redeploy was planned before the tool could record it")
+        assert got["ok"] and len(got["covered"]) == 1
+        assert restart_source(cached=_cached(v))["rows"] == [], \
+            "the page judges against the windows recorded now, not the reader's last value"
+        ev = self._history(store, monkeypatch)
         assert ev[0]["what"] == "Restarted as planned" and ev[0]["who"] == "operator@example.com"
+        assert ev[0]["correction"] == "the redeploy was planned before the tool could record it"
+
+    def test_a_window_recorded_before_the_restart_was_seen_needs_no_correction(self, store):
+        from modules.restarts import record_planned
+        boot, _seen = _expected_boot()
+        assert record_planned(["s3"], boot - 120, boot + 60, "operator@example.com",
+                              "a hand reload", "t", list_name="Lab")["ok"]
+        assert _read(now=time.time())["new"][0]["planned"] is True
+
+    def test_the_command_takes_a_correction(self, store):
+        from importlib.machinery import SourceFileLoader
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts",
+                            "nmas-planned-restart")
+        main = SourceFileLoader("nmas_planned_restart", path).load_module().main
+        _read(now=time.time())
+        boot, _seen = _expected_boot()
+        args = ["Lab", "*", "--from", _iso(boot - 600), "--minutes", "11", "--why",
+                "the redeploy", "--by", "operator@example.com"]
+        assert main(args) == 1
+        assert main(args + ["--correction", "planned before the tool could record it"]) == 0
+
+
+def _iso(ts):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+

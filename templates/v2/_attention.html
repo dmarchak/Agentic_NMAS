@@ -8,7 +8,7 @@
 {%- set rows = a.rows or [] -%}
 {%- set sources = a.sources or [] -%}
 <div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
-     hx-trigger="nmas:job_health from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:integration_health from:body, nmas:ci_verdict from:body, nmas:app_version from:body, nmas:reachability from:body, nmas:netbox from:body, nmas:remote from:body, nmas:baselines from:body, nmas:drift from:body, nmas:adjacencies from:body, nmas:lab_startup from:body, nmas:restarts from:body">
+     hx-trigger="nmas:job_health from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:integration_health from:body, nmas:ci_verdict from:body, nmas:app_version from:body, nmas:reachability from:body, nmas:netbox from:body, nmas:remote from:body, nmas:baselines from:body, nmas:drift from:body, nmas:adjacencies from:body, nmas:lab_startup from:body, nmas:restarts from:body, nmas:acknowledgements from:body">
   <p class="att-summary">
     {%- if rows %}<strong>{{ rows|length }} item{{ '' if rows|length == 1 else 's' }}</strong>
     {%- else %}<strong>Nothing needs attention</strong>{% endif %}
@@ -38,6 +38,7 @@
         {%- if r.devices %}{{ r.devices|join(', ') }} · {% endif -%}
         since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %} · {{ r.source }}
       </p>
+      {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}.</p>{% endif %}
       <div class="att-action">
         {%- for d in (r.devices or [])[:3] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d) }}">Open {{ d }}</a>{% endfor %}
         <span class="att-label{% if r.action.known == false %} muted{% endif %}">{{ r.action.label }}</span>
@@ -51,6 +52,20 @@
         {%- elif r.action.open %}<a class="btn btn-small" href="{{ url_for('index') }}">Open on today's page</a>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
       </div>
+      {%- if r.acknowledge %}
+      {#- An event that cannot un-happen: a person acknowledges THIS event with a reason
+          (attention.acknowledge); a later event is a new row. -#}
+      <div class="att-ack" x-data="acknowledge" data-url="{{ url_for('attention.acknowledge') }}" data-row="{{ r.id }}" data-event="{{ r.event }}">
+        <button type="button" class="btn btn-small btn-outline" x-show="closed" x-on:click="open">Acknowledge…</button>
+        <span class="att-ack-form" x-show="isOpen" x-cloak>
+          <label class="sr-only" for="ack-{{ loop.index }}">Why this needs nothing more</label>
+          <input id="ack-{{ loop.index }}" name="why" type="text" autocomplete="off" placeholder="Why this needs nothing more (recorded with your name)">
+          <button type="button" class="btn btn-small" data-op="needs-attention" x-on:click="send" x-bind:disabled="busy" x-text="label">Acknowledge</button>{{ how('needs-attention', 'acknowledging', compact=True, op='acknowledging') }}
+          <button type="button" class="btn btn-small btn-outline" x-on:click="cancel">Cancel</button>
+        </span>
+        <span class="refusal" x-show="said" x-text="said" x-cloak></span>
+      </div>
+      {%- endif %}
     </article>
     {%- endfor %}
   </div>
@@ -72,5 +87,11 @@
       {%- endfor %}
       </tbody>
     </table>
+    {%- if a.acknowledged %}
+    <p class="att-acked">Acknowledged, so not listed:</p>
+    <ul class="att-members">
+      {%- for k in a.acknowledged %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}</li>{% endfor %}
+    </ul>
+    {%- endif %}
   </details>
 </div>

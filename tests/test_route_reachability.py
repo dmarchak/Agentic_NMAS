@@ -44,6 +44,13 @@ NON_GUI = {
     "POST /jobs/finished": ("scripts/nmas-job-finished",
                             "systemd's OnSuccess/OnFailure for each host job: read job "
                             "health now, not at the reader's next run"),
+    # The operator, 2026-10-02: a script that restarts devices (the lab redeploy) declares
+    # its planned window through the product's API, after its typed confirmation and before
+    # it touches the lab, so the record names a verified identity. The redeploy script is
+    # queued work; the host command, the same writer for a person on the host, names it.
+    "POST /restarts/planned": ("scripts/nmas-planned-restart",
+                               "a script that restarts devices declares its planned window "
+                               "here, as a verified identity (the lab redeploy)"),
     # A GUI way in carried as DATA, which a scan of rendered pages cannot see:
     # the heartbeat check's Needs attention row, its ONE entry point (the
     # operator, 2026-10-02: never a tab), built in job_health.

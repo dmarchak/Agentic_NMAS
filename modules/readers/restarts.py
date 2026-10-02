@@ -105,14 +105,15 @@ def read(previous=None, clock=time.time, source=None, devices=None, reason=None)
             for d in R.drops(values):
                 if R.known(host, d["at"], rows, list_name):
                     continue
-                p = R.planned_for(host, d["at"], planned["rows"], list_name)
+                p = R.planned_for(host, d["at"], planned["rows"], list_name, seen=now)
                 why = (reason or R.read_reason)(dev)
                 row = {"device": host, "list": list_name, "at": _iso(d["at"]),
                        "last_seen": _iso(d["last_seen"]),
                        "seen_at": _iso(d["seen_at"]), "planned": bool(p),
                        "planned_by": (p or {}).get("by", ""), "planned_why": (p or {}).get("why", ""),
                        "reason": why.get("reason", ""), "crash_file": why.get("crash_file", ""),
-                       "reason_error": why.get("error", ""), "found_by": "sysUpTime reset"}
+                       "reason_error": why.get("error", ""), "found_by": "sysUpTime reset",
+                       "recorded_at": _iso(now)}
                 R.append(row)
                 rows.append(row)
                 new.append(row)

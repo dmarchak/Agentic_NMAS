@@ -132,10 +132,16 @@ def read_reason(dev: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def record_planned(devices, start: float, end: float, by: str, why: str, via: str,
-                   list_name: str = "") -> dict:
+                   list_name: str = "", correction: str = "") -> dict:
     """Record that *devices* (``["*"]`` for every device of *list_name*) will restart between
     *start* and *end* (epoch seconds), on purpose. Refuses a record with no person, no reason
-    or an end before its start, because a planned window is what keeps an alert quiet."""
+    or an end before its start, because a planned window is what keeps an alert quiet.
+
+    **A window declared AFTER a restart it would cover is refused** (the operator,
+    2026-10-02: "don't let a planned-restart window declared after the fact clear an
+    unplanned restart"), naming each restart, unless it is marked as a *correction* with
+    its own reason: a window that was really planned and only recorded late. A correction
+    is kept as one, and History says so."""
     from modules.config import open_secure
     from modules.filestore import PathLock
 
@@ -145,11 +151,34 @@ def record_planned(devices, start: float, end: float, by: str, why: str, via: st
                                       "why, and a window whose end is after its start"}
     row = {"devices": devices, "list": list_name, "from": _iso(start), "until": _iso(end),
            "by": by, "why": why.strip(), "via": via, "recorded_at": _iso(time.time())}
+    seen = events()
+    if seen["state"] == "unreadable":
+        return {"ok": False, "error": "the restart record could not be read, so whether this "
+                                      "window covers a restart already seen cannot be told "
+                                      f"({seen.get('error')})"}
+    covered = [r for r in seen["rows"] if _window_covers(row, r.get("device", ""),
+                                                         _epoch(r.get("at", "")),
+                                                         r.get("list", ""))]
+    if covered and not (correction or "").strip():
+        named = "; ".join(f"{r.get('device')} at {r.get('at')}" for r in covered[:10])
+        more = f" and {len(covered) - 10} more" if len(covered) > 10 else ""
+        return {"ok": False, "covered": covered, "error": (
+            f"this window covers {len(covered)} restart(s) the tool has already seen ({named}"
+            f"{more}): a window declared after the fact does not make them planned. If it was "
+            "really planned and only recorded late, mark it as a correction with its reason; "
+            "otherwise acknowledge each restart on Needs attention")}
+    if correction:
+        from modules.nsot.authorisation import MIN_CHARS, MIN_WORDS, reason_problem
+        if reason_problem({"line": "", "reason": correction.strip()}):
+            return {"ok": False, "error": (f"a correction needs its own reason: at least "
+                                           f"{MIN_WORDS} words and {MIN_CHARS} characters "
+                                           "saying why the window was recorded late")}
+        row["correction"] = correction.strip()
     path = _data("planned_restarts.jsonl")
     with PathLock(path):
         with open_secure(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, sort_keys=True) + "\n")
-    return {"ok": True, "record": row}
+    return {"ok": True, "record": row, "covered": covered}
 
 
 def _read_jsonl(path: str) -> dict:
@@ -166,15 +195,32 @@ def _read_jsonl(path: str) -> dict:
     return {"state": "ok", "rows": rows}
 
 
-def planned_for(device: str, at: float, planned: list, list_name: str = ""):
-    """The planned record covering a restart of *device* at *at*, or None."""
+def _window_covers(p: dict, device: str, at: float, list_name: str) -> bool:
+    if device not in p.get("devices", []) and not (
+            "*" in p.get("devices", []) and (not p.get("list") or p.get("list") == list_name)):
+        return False
+    return _epoch(p["from"]) - 60 <= at <= _epoch(p["until"]) + PLANNED_SLACK_SECONDS
+
+
+def planned_for(device: str, at: float, planned: list, list_name: str = "", seen=None):
+    """The planned record covering a restart of *device* at *at*, or None. With *seen*
+    (when the tool recorded the restart), a window recorded AFTER that counts only when it
+    is a correction (`record_planned`): declared after the fact, it never clears one."""
     for p in planned:
-        if device not in p.get("devices", []) and not (
-                "*" in p.get("devices", []) and (not p.get("list") or p.get("list") == list_name)):
+        if not _window_covers(p, device, at, list_name):
             continue
-        if _epoch(p["from"]) - 60 <= at <= _epoch(p["until"]) + PLANNED_SLACK_SECONDS:
-            return p
+        if seen is not None and not p.get("correction") and \
+                _epoch(p.get("recorded_at", "")) > seen:
+            continue
+        return p
     return None
+
+
+def seen_at(r: dict) -> float:
+    """When the tool recorded restart *r*: its `recorded_at`, or, for a row written before
+    that field existed, the sample it was found in (the earliest it could have been seen,
+    so a window recorded later never passes as earlier)."""
+    return _epoch(r.get("recorded_at") or r.get("seen_at") or r.get("at", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -194,17 +240,18 @@ def events(device: str = "", list_name: str = "") -> dict:
 
 
 def judged(rows: list, planned: list) -> list:
-    """*rows* with each one's planned verdict taken from the planned windows recorded NOW,
-    so a window recorded after the reader first saw the restart (a redeploy declared once the
-    release that can record it is deployed) still counts. A restart the tool recorded as
-    planned stays planned."""
+    """*rows* with each one's planned verdict taken from the planned windows recorded now. A
+    window recorded after the restart was seen counts only as a CORRECTION (its reason kept
+    on the row); a restart the tool recorded as planned stays planned."""
     out = []
     for r in rows:
         r = dict(r)
         if not r.get("planned"):
-            p = planned_for(r.get("device", ""), _epoch(r.get("at", "")), planned, r.get("list", ""))
+            p = planned_for(r.get("device", ""), _epoch(r.get("at", "")), planned,
+                            r.get("list", ""), seen=seen_at(r))
             if p:
-                r.update(planned=True, planned_by=p.get("by", ""), planned_why=p.get("why", ""))
+                r.update(planned=True, planned_by=p.get("by", ""), planned_why=p.get("why", ""),
+                         planned_correction=p.get("correction", ""))
         out.append(r)
     return out
 

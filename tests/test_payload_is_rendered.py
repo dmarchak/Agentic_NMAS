@@ -98,7 +98,7 @@ RENDERS = {
         {"nmas_attention.js": ("attentionPanelHtml", "loadAttention",
                                "rowHtml", "actionHtml", "unreadableNote",
                                "memberHtml", "operandValue", "sourcesTable",
-                               "sourceRows", "ageOf", "ago")},
+                               "sourceRows", "ageOf", "ago", "ackedHtml")},
         (("nmas_attention.js", "attentionPanelHtml", "d"),),
         maps=("operands",),
         adapters={"modules/attention.py": ("needs_attention", "source_result", "row",
@@ -110,7 +110,7 @@ RENDERS = {
                                            "grafana_source", "_member", "_onset",
                                            "_incidents", "freshness_source",
                                            "integrations_source", "ci_source",
-                                           "reachability_source")}),
+                                           "reachability_source", "_without_acknowledged")}),
     "GET /onboard/pending": Render(
         lambda mp, tmp: P.onboard_pending(mp, tmp),
         # 7.1: each Verify and Abandon result, read back from the run record,
@@ -355,6 +355,11 @@ LIST = ("the echo of the list the route answered for; the panel does not say "
 #: {route: [(keys, reason)]}: carried and not drawn, not yet fixed. Only
 #: shrinks: a key that becomes drawn must leave (no ghosts).
 UNDRAWN = {
+    "GET /attention": [
+        ("ways",
+         "the machine form of clears.when, which both pages draw (the redesign's Needs "
+         "attention also offers Acknowledge, from acknowledge and event, which the adapter "
+         "reads to hide an acknowledged row)")],
     "GET /ai/agent_log": [
         ("failed inconclusive interrupted last_run_at outcomes running "
          "runs_since_ok same_error_count",
@@ -532,6 +537,9 @@ _DEPLOY_CHECKS = ("verify's lists of sentences; the fixture's refused row carrie
 #: "strings" hides nothing. "records" is a state the fixture does not reach,
 #: a finding, and that list only shrinks. Measured 2026-09-27.
 EMPTY_IN_FIXTURE = {
+    "GET /attention acknowledged": (R_, "no row is acknowledged in the fixture; "
+                                       "tests/test_acknowledge.py acknowledges one through the real "
+                                       "route and reads both pages"),
     "POST /deploy/plan preview.targets[].program.notes[].from_profile": (
         S_, "this provider's lab commits no monitoring profile (P.9); the lines are "
             "reached through the real /deploy/plan and drawn by the shipped renderer in "
@@ -697,7 +705,7 @@ EMPTY_IN_FIXTURE = {
 # the intersection) found the restore plan's per-device copy of C140's
 # aggregate, the same state the deploy plan's entry already declares. New
 # coverage: the walker had hidden it, the fixture did not stop reaching it.
-EMPTY_RECORDS_CEILING = 25
+EMPTY_RECORDS_CEILING = 26
 
 
 def _empty_paths(obj, path=""):
@@ -776,7 +784,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 109  # +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 110  # +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

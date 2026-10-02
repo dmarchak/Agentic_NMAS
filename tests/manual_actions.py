@@ -60,6 +60,8 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Open"): "navigates to the device page",
     ("_attention.html", "Open on today's page"): "navigates to today's page, where the row's action is",
     ("_attention.html", "Open…"): "navigates to the screen the row names",
+    ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
+    ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
     ("_macros.html", "btn btn-small"): "Check again: re-reads origin and CI now, a read",
     ("_apply_job.html", "Check now"): "re-reads the job's progress: a read",
     ("_apply_preview.html", "Earlier"): "moves a device earlier in the rollout order the confirm carries",

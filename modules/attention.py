@@ -118,6 +118,87 @@ ROW_KINDS = {
                                  "check the lab host answers"),
 }
 
+#: The ways a row leaves the page (the operator, 2026-10-02): the CONDITION RESOLVING (the
+#: source reads it fixed: by the action, or by itself), a person ACKNOWLEDGING it with a
+#: reason, or TIME passing.
+CLEAR_WAYS = ("resolves", "acknowledge", "time")
+
+#: HOW EVERY KIND CLEARS, drawn on the row as "Clears when …" (the operator, 2026-10-02:
+#: "for EVERY row kind … state how it clears"). Each entry is the ways (CLEAR_WAYS) and the
+#: words; a test holds this to ROW_KINDS both ways, and the words to what each source's code
+#: actually does. A row that could never clear is a defect this table makes visible: the
+#: repeated authorisation's count only grows, so it was a row for ever until a person could
+#: acknowledge it.
+CLEARS = {
+    ("*", "unreadable"): (("resolves",), "the source is read again successfully"),
+    ("job_health", "job"): (("resolves",), "the job's next run or check reads ok (job health "
+                            "re-reads every minute, and as soon as a job finishes)"),
+    ("drift", "disabled"): (("resolves",), "drift checking is switched back on"),
+    ("drift", "never"): (("resolves",), "a drift check runs for this list"),
+    ("drift", "failed"): (("resolves",), "a later drift check completes"),
+    ("drift", "stale"): (("resolves",), "a drift check runs"),
+    ("drift", "drifted"): (("resolves",), "a later drift check finds it matching its golden, "
+                           "or a golden is recorded for it (a capture answers the stored run)"),
+    ("drift", "skipped"): (("resolves",), "a later drift check checks it"),
+    ("drift", "unreachable"): (("resolves",), "a later drift check reaches it"),
+    ("approvals", "pending"): (("resolves", "time"), "a person approves or rejects it, or 48 h "
+                               "pass and it expires (expiry executes nothing)"),
+    ("onboarding", "credential"): (("resolves",), "the device is abandoned"),
+    ("onboarding", "overdue"): (("resolves",), "Verify reaches it, or it is abandoned"),
+    ("rollback", "record"): (("resolves",), "the rolled-back record can be read again"),
+    ("rollback", "blocked"): (("resolves",), "its intent no longer sends what was rolled back "
+                              "(reverted or edited), or a retry is authorised with a reason"),
+    ("deploys", "failed"): (("resolves",), "a later deploy or restore to the device finishes "
+                            "clean"),
+    ("baseline", "denied"): (("resolves",), "a later save earns a baseline"),
+    ("baseline", "unusable"): (("resolves",), "a stored baseline can be re-applied: a new one "
+                               "is earned"),
+    ("authorisations", "repeated"): (("acknowledge",), "a person acknowledges it with a reason; "
+                                     "the line authorised once more raises it again"),
+    ("grafana", "stalled"): (("resolves",), "Grafana evaluates the group again"),
+    ("grafana", "incident"): (("resolves",), "the alert stops firing in Grafana (a silence "
+                              "keeps it a row, saying who silenced it)"),
+    ("grafana", "rule"): (("resolves",), "the rule reads data and evaluates again"),
+    ("grafana", "heartbeat-floor"): (("resolves",), "Grafana shows a heartbeat rule for the "
+                                     "device"),
+    ("freshness", "not-compared"): (("resolves",), "Oxidized's copies are compared again"),
+    ("freshness", "unapproved"): (("resolves", "acknowledge"), "Oxidized's copy matches the "
+                                  "golden again (captured, or put back and fetched), or a person "
+                                  "authorises that one divergence with a reason, for 24 h"),
+    ("freshness", "inconclusive"): (("resolves",), "a later comparison can tell whether the "
+                                    "copy was approved"),
+    ("integrations", "down"): (("resolves",), "it answers the next probe (every 60 s)"),
+    ("ci", "verdict"): (("resolves",), "the host runs a commit CI passed"),
+    ("reachability", "not-answering"): (("resolves",), "every device answers its probe again "
+                                        "(every 5 s)"),
+    ("netbox-secrets", "held"): (("resolves",), "NetBox no longer holds the credential (masked "
+                                 "or removed), at the next hourly read"),
+    ("pushed", "release"): (("resolves",), "the host runs the commit the remote holds"),
+    ("remote", "publication"): (("resolves",), "the remote holds the list's history: pushed, "
+                                "after a held push is acknowledged on the Remote card"),
+    ("host_steps", "owed"): (("resolves", "acknowledge"), "its check finds it done, or a person "
+                             "says it is done on the Update page"),
+    ("adjacencies", "link"): (("resolves",), "the next read finds the adjacency up"),
+    ("adjacencies", "unmeasured"): (("resolves",), "Prometheus scrapes the protocol again"),
+    ("adjacencies", "error"): (("resolves",), "the intent file can be read"),
+    ("restarts", "unplanned"): (("acknowledge", "time"), "a person acknowledges it with a "
+                                "reason, or 7 days after the restart; History keeps it either "
+                                "way"),
+    ("lab-startup", "moved"): (("resolves",), "an earned baseline holds the device as it is "
+                               "now"),
+    ("lab-startup", "differs"): (("resolves",), "the lab sync writes the file it builds"),
+    ("lab-startup", "not_built"): (("resolves",), "a baseline holds the device and the sync "
+                                   "builds its file"),
+    ("lab-startup", "missing"): (("resolves",), "the lab sync writes the file"),
+    ("lab-startup", "unknown"): (("resolves",), "the lab host answers the next read"),
+}
+
+#: The kinds a person acknowledges HERE, with "Acknowledge…" on the row (modules/
+#: acknowledgements.py): an event that cannot un-happen. Each row of these kinds carries
+#: its *event*, so an acknowledgement covers that event and never a later one. Other kinds
+#: whose CLEARS names acknowledge do it through their own control, named in their words.
+ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "repeated")})
+
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
                  "is all that is recorded", "no remedy is recorded", "whole of what is known")
@@ -135,7 +216,7 @@ def _iso(ts) -> str:
 
 def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict,
         level: str, devices=(), since=None, operands: dict = None,
-        attach_to: str = None) -> dict:
+        attach_to: str = None, event: str = None) -> dict:
     """The only constructor for a Needs attention row.
 
     *kind* names the row's declared kind (ROW_KINDS): what is wrong and the
@@ -146,7 +227,11 @@ def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict
     *attach_to* names another row's id this one is ABOUT (a queued drift
     item is about its device's drift row). The page merges it into that row
     instead of drawing a second row about one event; it stands alone only
-    when that row is absent."""
+    when that row is absent.
+
+    *event* names the one event a row of an ACKNOWLEDGED_HERE kind is about (a restart's
+    time), which an acknowledgement is keyed on; such a row without one is refused, since
+    an acknowledgement of it could not tell this event from the next."""
     missing = [n for n, v in (("source", source), ("key", key), ("what", what),
                               ("cause", cause)) if not str(v or "").strip()]
     if not isinstance(action, dict) or not str(action.get("label") or "").strip():
@@ -164,7 +249,14 @@ def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict
     if any(p in said for p in NOT_AN_ACTION):
         raise RowRefused(f"the action {action['label']!r} says there is nothing to do: a row "
                          "with no action belongs on its own page's detail")
+    declared = (source, kind) if (source, kind) in ROW_KINDS else ("*", kind)
+    ways, when = CLEARS[declared]
+    acknowledgeable = declared in ACKNOWLEDGED_HERE
+    if acknowledgeable and not str(event or "").strip():
+        raise RowRefused(f"a {source}/{kind} row is acknowledged per event, and names none")
     return {"id": f"{source}:{key}", "source": source, "kind": kind, "what": what,
+            "clears": {"ways": list(ways), "when": when},
+            "event": str(event) if event else None, "acknowledge": acknowledgeable,
             "devices": [d for d in devices if d], "since": _iso(since),
             "cause": cause, "operands": dict(operands or {}),
             "action": {"known": True, **action}, "level": level,
@@ -945,6 +1037,7 @@ def authorisation_source(counts=None) -> dict:
                 action={"label": "Read the stated reasons on the device's Changes tab: a line "
                                  "authorised routinely belongs in intent, or its cause does"},
                 devices=[device], since=_ts(e.get("first_at")),
+                event=f"{e['count']} authorisations, the last at {e.get('last_at') or 'an unrecorded time'}",
                 operands={"list": lst, "count": e["count"], "threshold": REPEAT_THRESHOLD,
                           "last_at": e.get("last_at")}))
     return source_result("authorisations", "Repeated authorisations", read_at=started,
@@ -1762,19 +1855,25 @@ def restart_source(cached=None) -> dict:
         return source_result("restarts", label, read_at=started, took_ms=took,
                              value_at=value_at, stale_after_seconds=promise, reader="restarts",
                              checked="no Prometheus configured: a restart cannot be seen")
+    # Judged again against the planned windows recorded NOW (a file read), so a correction
+    # recorded a moment ago clears its rows without waiting for the reader's next run.
+    try:
+        unplanned = [r for r in R.judged(v.get("recent_unplanned") or [], R.planned_rows())
+                     if not r.get("planned")]
+    except RuntimeError as exc:
+        return source_result("restarts", label, read_at=started, took_ms=took, error=str(exc))
     rows = []
-    for r in v.get("recent_unplanned") or []:
+    for r in unplanned:
         crash = r.get("crash_file", "")
         action = (f"Read the crash file ({crash}) and check the host at that time" if crash else
                   "Read the device's log around then and check the host at that time")
         rows.append(row(source="restarts", kind="unplanned",
                         key=f"{r.get('list', '')}|{r['device']}|{r['at']}",
                         level="danger" if crash else "warning", what=R.words(r),
-                        devices=[r["device"]], since=_ts(r.get("at")),
+                        devices=[r["device"]], since=_ts(r.get("at")), event=r["at"],
                         cause=(f"Its uptime counter reset (found {r.get('seen_at', '?')} in "
                                "Prometheus's sysUpTime), and no reload by the tool and no planned "
-                               f"window covers it. Shown for {R.ATTENTION_DAYS} days from the "
-                               "restart; every restart stays in the device's History."),
+                               "window covers it."),
                         operands={"list": r.get("list"), "reason": r.get("reason"),
                                   "crash_file": crash},
                         action={"label": action,
@@ -2031,6 +2130,76 @@ def _attach(rows: list) -> list:
     return kept
 
 
+def _without_acknowledged(rows: list):
+    """``(rows, acknowledged, problem)``: the rows a person has not acknowledged, the ones
+    they have (each with who, why and when, for the page's evidence), and a source result
+    naming the record when it cannot be read. Unreadable hides NOTHING: every row stays,
+    and the page says the record could not be read."""
+    from modules import acknowledgements as ACK
+
+    if not any(r.get("acknowledge") for r in rows):
+        return rows, [], None
+    started = time.time()
+    got = ACK.read()
+    if got["state"] == "unreadable":
+        return rows, [], source_result(
+            "acknowledgements", "Acknowledgements", read_at=started,
+            took_ms=int((time.time() - started) * 1000),
+            error=(f"the acknowledgement record could not be read ({got.get('error')}): every "
+                   "row is shown, acknowledged or not"))
+    kept, gone = [], []
+    for r in rows:
+        a = ACK.covering(r["id"], r.get("event"), got["rows"]) if r.get("acknowledge") else None
+        if a:
+            gone.append({"id": r["id"], "what": r["what"], "by": a.get("by"),
+                         "why": a.get("why"), "at": a.get("at")})
+        else:
+            kept.append(r)
+    return kept, gone, None
+
+
+#: The source each acknowledgeable row comes from, so an acknowledgement checks the row
+#: exists NOW (computed again, never taken from the browser).
+_ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_source"}
+
+
+def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) -> dict:
+    """A person acknowledges ONE event row. Refused unless the row is on the page now, of a
+    kind acknowledged here, about this same event, and the reason has the shape of one."""
+    from modules import acknowledgements as ACK
+    from modules.nsot.authorisation import reason_problem
+
+    source = (row_id or "").split(":", 1)[0]
+    fn = _ACK_SOURCES.get(source)
+    if not fn:
+        return {"ok": False, "error": f"{row_id!r} is not a row a person acknowledges: it "
+                                      "clears when its condition resolves (its row says how)"}
+    found = next((r for r in globals()[fn]()["rows"] if r["id"] == row_id), None)
+    if found is None:
+        return {"ok": False, "error": f"{row_id!r} is not on Needs attention now: nothing to "
+                                      "acknowledge"}
+    if str(found.get("event")) != str(event or ""):
+        return {"ok": False, "error": (f"the row is now about {found.get('event')!r}, not "
+                                       f"{event!r}: a later event is acknowledged on its own")}
+    # The authorisation rule's shape check (not empty, three words, eight characters),
+    # with no line to compare against: its messages then begin with the empty line's repr.
+    if reason_problem({"line": "", "reason": (why or "").strip()}):
+        from modules.nsot.authorisation import MIN_CHARS, MIN_WORDS
+        return {"ok": False, "error": (
+            f"an acknowledgement needs a reason: at least {MIN_WORDS} words and {MIN_CHARS} "
+            "characters saying why this needs nothing more (what you found, or why it was "
+            "expected); its quality is never judged")}
+    if not by:
+        return {"ok": False, "error": "an acknowledgement names the person who made it"}
+    got = ACK.read()
+    if got["state"] == "unreadable":
+        return {"ok": False, "error": "the acknowledgement record could not be read, so "
+                                      f"nothing was added to it ({got.get('error')})"}
+    entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
+                       kind=f"{found['source']}/{found['kind']}", what=found["what"])
+    return {"ok": True, "acknowledged": entry}
+
+
 def needs_attention(sources=None) -> dict:
     """The page: every row from every source, worst first, and every source
     with its read time, so an empty page says what it looked at."""
@@ -2045,6 +2214,9 @@ def needs_attention(sources=None) -> dict:
             results.append(source_result(name, name, read_at=time.time(), took_ms=0,
                                          error=f"its adapter raised {type(exc).__name__}: {exc}"))
     rows = _attach([r for res in results for r in res["rows"]])
+    rows, acknowledged, ack_result = _without_acknowledged(rows)
+    if ack_result:
+        results.append(ack_result)
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
     unreadable = [res["label"] for res in results if res["state"] != "read"]
     if rows:
@@ -2052,7 +2224,7 @@ def needs_attention(sources=None) -> dict:
     else:
         headline = "Nothing needs attention"
     return {"ok": True, "headline": headline, "rows": rows,
-            "unreadable": unreadable,
+            "unreadable": unreadable, "acknowledged": acknowledged,
             "sources": [{k: res[k] for k in ("source", "label", "state", "read_at",
                                              "value_at", "took_ms", "checked")}
                         | {"count": len(res["rows"])} for res in results]}

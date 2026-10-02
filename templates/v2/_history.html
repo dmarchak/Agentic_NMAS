@@ -7,7 +7,7 @@
 {%- set KIND = {'golden': ('golden', 'info'), 'intent': ('intent', 'muted'), 'receipt': ('receipt', 'ok'),
                  'restart': ('restart', 'warn')} -%}
 <section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname) }}"
-         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }}</p>
   {%- for e in h.errors %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}: the timeline below lacks it, which is not the same as nothing having happened.</p></div>
@@ -24,6 +24,8 @@
       <span class="tl-when">{{ stamp(e.at) }}</span>
       <span class="tl-what">{{ badge(k[0], 'danger' if failed else k[1]) }} <strong>{{ e.what }}</strong>{% if e.who %}<span class="muted"> by {{ e.who }}</span>{% endif %}</span>
       <span class="tl-detail">{{ e.detail }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</span>
+      {%- if e.acknowledged %}<span class="tl-detail">Acknowledged by {{ e.acknowledged.by }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why }}</span>{% endif %}
+      {%- if e.correction %}<span class="tl-detail">Planned by a window recorded after the restart was seen, as a correction: {{ e.correction }}</span>{% endif %}
       {%- if e.exception %}<span class="tl-detail tl-exception">This commit's record is known to be wrong: {{ e.exception }}</span>{% endif %}
     </li>
     {%- endfor %}

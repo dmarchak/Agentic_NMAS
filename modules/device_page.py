@@ -786,11 +786,24 @@ def history(ref, dev: dict, limit: int = None) -> dict:
     except RuntimeError as exc:
         errors.append(str(exc))
         rs_rows = rs["rows"][:limit]
+    # A person's acknowledgement of an unplanned restart (modules/acknowledgements.py): the
+    # restart stays unplanned here, marked acknowledged, by whom and why.
+    from modules import acknowledgements as _acks
+    acks = _acks.read()
+    if acks["state"] == "unreadable" and any(not r.get("planned") for r in rs_rows):
+        errors.append(f"the acknowledgement record could not be read: {acks.get('error', '')}")
     for r in rs_rows:
+        ack = None if r.get("planned") else _acks.covering(
+            f"restarts:{r.get('list', '')}|{r.get('device', '')}|{r.get('at', '')}",
+            r.get("at", ""), acks["rows"])
         events.append({"at": r.get("at", ""), "kind": "restart",
                        "what": ("Restarted as planned" if r.get("planned") else
+                                "Restarted unexpectedly, acknowledged" if ack else
                                 "Restarted unexpectedly"),
-                       "who": r.get("planned_by", ""),
+                       "who": r.get("planned_by", "") or (ack or {}).get("by", ""),
+                       "acknowledged": ({"by": ack.get("by"), "why": ack.get("why"),
+                                         "at": ack.get("at")} if ack else None),
+                       "correction": r.get("planned_correction", ""),
                        "detail": (("reason: " + r["reason"]) if r.get("reason") else
                                   f"reason not read ({r.get('reason_error') or 'no answer'})")
                                  + (f"; crash file {r['crash_file']}" if r.get("crash_file") else "")
