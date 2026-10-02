@@ -47,6 +47,10 @@ first-click scent did.
 - **Source of truth** is a sidebar HEADING over three items: **Templates**, **NetBox** and
   **Credentials**. A person arrives with three different questions there, not one.
 - Help and Settings sit at the bottom.
+- **OBSERVE is a sidebar heading** (brief section 14.1, signed off 2026-09-30) over
+  **Monitoring**, **Logs**, **DHCP** and **Topology** (P.11, 2026-09-30: Topology is its own
+  destination, never a tab of Monitoring). Built today: Monitoring (Dashboards, Coverage).
+  Logs and DHCP open today's pages; Topology is not in the sidebar yet.
 
 Each destination answers the question it answered before. Sections 1b, 1d and 1e keep their
 old headings where their text was written, and are read as the new names. Confirmed by the
@@ -60,10 +64,16 @@ Each task group from NSOT_TASKS.md lands in exactly one place:
 | **Devices** (was Fleet) | *Which devices, and what do I want to do to many of them?* | C (many), E |
 | **Device** (`/device/<hostname>`) | *What is going on with this one device, and change it* | B, C (one), D (one) |
 | **History** (was Versions) | *What changed, who changed it, and can I go back?* | D (baselines), F |
+| **Monitoring · Logs · DHCP · Topology** (under the heading OBSERVE, added 2026-09-30) | *How is it performing, what did it say, what holds an address, how is it connected?* | B (fleet-wide), and each service's one fleet-wide screen (brief section 14) |
 | **Templates · NetBox · Credentials** (under the heading Source of truth) | *Are the templates, NetBox and credentials right?* | G, H (profiles), F (NetBox) |
 | **Settings** | *How is the tool configured and connected?* | I, H (audits) |
 
-**Why five and not the old two** (Fleet and Monitoring). Monitoring is no
+**Superseded 2026-09-30, kept as the record below:** Monitoring IS a place again, under
+the OBSERVE heading with Logs, DHCP and Topology. The app is the one place for every
+integrated service (brief section 14), so each service has one fleet-wide screen and each
+device page its slice. Grafana is drawn natively, never embedded (section 3).
+
+**Why five and not the old two** (Fleet and Monitoring), as written 2026-09-26. Monitoring is no
 longer a place. Per decision, Grafana is embedded where the device is, and
 "is anything wrong" gathers the rest. Versions and Source of truth are
 separate questions a person asks separately: *what happened* versus *is the
@@ -78,7 +88,11 @@ named.
 Grafana, Oxidized, Kea, Proxmox), the deployed NMAS version and its CI
 result, and who you are (the verified identity, or "not identified: you can
 look, not change"). It is small, always visible, and every item links to its
-cause.
+cause. **Changed 2026-09-30 (mockup version 7):** the top bar keeps integration health and
+who you are; the version and its CI verdict moved to Help > About, with a Needs attention
+row when the running commit is not CI-verified or runs behind what is pushed. **Added
+2026-10-02:** a quiet, neutral "Update available" while origin/main is ahead and CI passed
+for it, which turns into that row when something is wrong (`attention.release_level()`).
 
 ### 1a. Needs attention (the landing page)
 
@@ -135,11 +149,15 @@ has five sections:
    - the difference between them;
    - beside them, each check's state with its time: drift, freshness, the
      heartbeat window, and the last deploy's verification.
-2. **Monitoring, EMBEDDED** (section 3): this device's Grafana graphs and its
-   logs, in place. Also its Oxidized fetch history and DHCP leases, rendered
-   by the NMAS.
+2. **Monitoring, NATIVE** (section 3; "EMBEDDED" until 2026-09-30): this device's panels
+   drawn by the app from the device dashboard's own JSON, and its logs from Loki (the Logs
+   tab), in place. Also its Oxidized fetch history and DHCP leases, rendered
+   by the NMAS. **Built as tabs** (2026-09-30 to 10-01, `/v2/device/<name>`): Overview,
+   Intent (read-only), History, Monitoring (with "Monitored by", Coverage's cells for the
+   device), Logs, NetBox, Neighbours; Ask the device is not built.
 3. **Neighbours**: CDP, OSPF, BGP, tunnels, and each link's state. Per device
-   only, by decision; a fleet topology is deferred (section 9).
+   (built 2026-10-01, C38). The fleet's topology is P.11's Topology page under OBSERVE
+   (research done 2026-09-30, not built), no longer deferred (section 9).
    **It carries C38** (moved from 7.2 by the operator, 2026-09-29): the
    EXPECTED adjacency set, derived from committed intent, against what the
    device reports, built once with two consumers, this section and a Needs
@@ -151,11 +169,15 @@ has five sections:
    - goldens, labelled **a record, not a target**;
    - captures;
    - restores.
-5. **Actions**, each through the preview-then-confirm pattern:
+5. **Actions**, each through the preview-then-confirm pattern. **State 2026-10-02:** each
+   built action (capture, persist, rotate, seed, restore, retire, revert and retry, deploy
+   with Mode B) runs on TODAY's device page; the v2 page's Actions menu links there, each
+   with its "How does this work?" link. Moving them onto the v2 page is open:
    - edit intent, or author it from a form (decision 2): the form is an
      input MODE of the one intent editor, committing through its route
      (section 6a);
-   - **seed intent from a capture** (no usable path today: the commit route
+   - **seed intent from a capture** (BUILT 2026-09-28, C148; the text below is the
+     record of why. Was: no usable path today: the commit route
      needs a verified person, so a curl from the host is refused. **R1
      measured, 2026-09-28, that EVERY onboarding lands here**: phase 1
      commits a bootstrap-shaped intent (`bootstrap`, `hostname`, `logging`,
@@ -163,16 +185,20 @@ has five sections:
      interface until this exists, and C117's rollback run waits on it);
    - deploy;
    - restore to a golden or a ref (guarded, P.3);
-   - **revert one intent commit** and **re-send a blocked change** (C118; was "retry after a rollback"; curl-only
-     today);
-   - rotate the credential (CLI-only today);
-   - move files to or from flash, through the selection's implementation
-     for one device (section 6a);
+   - **revert one intent commit** and **re-send a blocked change** (C118; was "retry after a rollback"; BUILT
+     2026-09-29, was curl-only);
+   - rotate the credential (BUILT and accepted on the host 2026-09-29, was CLI-only);
+   - persist (BUILT and accepted on the host 2026-09-29, C164);
+   - ~~move files to or from flash~~: **REMOVED** (2026-10-02, docs/CUTOVER.md): no
+     arbitrary file transfer; software images get their own operation (P.13, after
+     Stage 7) and ZTP delivery is onboarding's;
    - save to startup (ONE save: today's two, Save Device Config and Save to
      Startup, are one `write memory` with two implementations);
    - ask the device a question: the allowlisted command box, with history
      (absorbing quick actions), rendering and completion;
-   - reload;
+   - reload, as a GATED operation (P.14, 2026-10-02): running against startup, drift,
+     the startup credential, the boot image, no holder, and the blast radius, each drawn by
+     name before the confirm;
    - retire;
    - ~~the terminal~~: **REMOVED** (NSOT_FEATURE_AUDIT 3b, 2026-09-27,
      superseding 3a's read-only lens). A source of truth has no pane that
@@ -181,6 +207,13 @@ has five sections:
      runbook.
 
 ### 1d. Versions
+
+**Built as History, 2026-10-02** (`/v2/history`, `modules/fleet_history.py`, the mockup
+signed off the same day): the remote's one sentence with Push now and Verify; Commits (one
+bounded git read, filters by device, person, workflow and time, each row's actor with how it
+was established, what its commit earned, a record exception beside it, the change masked);
+Baselines from the reader's stored judgement, with re-apply; freshness Authorisations. Not
+yet: the "N of M commits carry a verified identity" line (7.5), and C83's subjects.
 
 - **Commits**, with their `Actor:` and `Source:` trailers. Filtering by
   person, workflow or device is how *who changed what* is answered; the
@@ -655,6 +688,53 @@ is easy and enjoyable to use.
 
    **The limit:** labs 1 to 6 are not recorded in this repository, so they were not checked.
 
+## 1h. Decided since this plan's structure was written (2026-09-30 to 2026-10-02)
+
+Each is a standing rule for every Stage 7 screen still to build. Where it is enforced is
+named; "not mechanised" says so.
+
+- **Monitoring is TEMPLATES, shown on the Coverage grid** (the operator's mockup review,
+  2026-10-02). What each device must run for its integrations is the network's monitoring
+  profile (P.9, built: propose from the connectors, apply as a scoped deploy, onboarding and
+  adopt apply it), and the profile is P.12's FIRST feature template (one bundle of intent
+  section, platform templates, verify checks, removal shapes and risk). Monitoring >
+  Coverage is the grid of device against integration, every cell saying why. The Heartbeat
+  and IP SLA pages are replaced by the monitoring templates once their design is signed off
+  and built (C322; docs/CUTOVER.md). The Coverage redraw's mockup is owed first.
+- **"How does this work?" beside every action** (the operator, 2026-09-30 and 10-02;
+  NSOT_GUI_BRIEF 10a). Every operation has a How it works page in the manual with a diagram
+  in the flow of its text; the link beside the action opens that section in the side panel.
+  Enforced: `tests/test_manual.py` (every operation's page, every declared step named, every
+  info link's page and section exist) and `tests/test_v2_layout_in_a_browser.py` (every
+  info and how link CLICKED in a real browser, the panel filling with its own section).
+- **Needs attention: every row names something wrong AND an action** (C323), **and says how
+  it clears** (C344: the condition resolving, a person acknowledging, or time; drawn as
+  "Clears when …"). An event row (an unplanned restart, a line authorised again and again)
+  is acknowledged by a person with a reason, recorded, keyed on its event. Information is
+  never a row: it is said in its source's finding under What was checked, or on its own
+  page, or as a quiet indicator (the top bar's "Update available"). Enforced:
+  `tests/test_attention_rows_act.py`, `tests/test_acknowledge.py`.
+- **Unplanned restarts are detected** (2026-10-02, `modules/restarts.py`): where the SNMP
+  uptime counter FELL, never now-minus-uptime (the vIOS clocks run slow); planned only when
+  the tool reloaded the device or was told (`POST /restarts/planned`, a late window refused
+  unless a correction with its reason); an unplanned one is a Needs attention row for 7
+  days, DANGER with a crash file. Enforced: `tests/test_restarts.py`.
+- **Several people at once** (P.15, 2026-10-02): every write path is safe against another
+  person, tab and worker process; a lock counts only if it holds across processes; a
+  document two people can edit is saved against the version that person opened; confirms are
+  bound to what was previewed. The audit is docs/CONCURRENCY_AUDIT.md: R1, R4, R24 and R25
+  fixed (2026-10-02, `tests/test_repo_lock_across_processes.py`,
+  `tests/test_approval_queue_store.py`); the rest are ranked there and land before 9.S's
+  multi-worker step.
+- **The lab-tooling boundary** (the operator, 2026-10-02; NSOT_STAGE10_PLAN 6.0): nothing
+  lab- or person-specific in the PRODUCT from the moment it is written. It is lab tooling
+  (`lab/`, a client of the read-only API), an optional integration off unless configured,
+  or a value in gitignored local configuration. Enforced: `tests/test_lab_specifics.py`
+  holds every product file carrying a lab name or value to an exact inventory with its
+  Stage 10 disposition.
+- **No new screen without a mockup and the operator's sign-off**, the mockup showing every
+  link and control the built screen will have. Not mechanised.
+
 ## 2. The shared patterns: built once, used everywhere
 
 1. **Preview, then confirm.** One component, used by:
@@ -698,8 +778,8 @@ is easy and enjoyable to use.
      for this caller, never from a client-side guess at a role;
    - **a control the caller may not use is DISABLED, WITH THE REASON AND WHO
      CAN**, never hidden: a viewer must see that Approve exists and has not
-     been pressed, and the terminal reads *"break-glass: not granted to
-     you"*;
+     been pressed (the example "the terminal reads *break-glass: not granted to
+     you*" is superseded: the terminal is removed in 7.8);
    - **approval screens show the separation-of-duties state** when that
      policy is on;
    - **the status bar shows the caller, their roles and their grants.**
@@ -729,7 +809,27 @@ is easy and enjoyable to use.
    - **a long read is a job, not a request**: it answers at once, shows in the
      in-flight panel and announces its result (the capture preview, C188 step 2).
 
-## 3. Grafana, embedded and central
+## 3. Grafana, drawn natively and central (was "embedded"; superseded 2026-09-30)
+
+**What is true now (decided 2026-09-30, NSOT_GUI_BRIEF 9b and 14.2; NSOT_STAGE10_PLAN 11):
+no iframe.** The app draws Grafana's panels NATIVELY from the dashboard's own JSON model,
+asking Grafana's `api/ds/query` with the NMAS's own token, so a panel added in Grafana
+appears with no code change (measured: 168 of 170 panels across the five dashboards draw
+natively; a type with no native renderer keeps its place, saying Grafana draws it, linked
+where Grafana's address is set).
+- **Two dashboard roles, by UID, per network:** the fleet dashboard is the Monitoring page's
+  default (`grafana_fleet_dashboard_uid`), with a selector over every dashboard; the device
+  dashboard (`grafana_device_dashboard_uid`, variable `device`) draws only the panels that
+  select the device, each at its own `gridPos`, and folds a panel that does not apply into
+  one line saying why.
+- **Logs** come from Loki on the device page's Logs tab, matched by the device's own
+  origin-id (C13), heartbeats folded by their exact line form (C21).
+- Built: `/v2/device/<name>` Monitoring and Logs tabs, `/v2/monitoring` (Dashboards,
+  Coverage), under `csp.STRICT_POLICY`. Custom time ranges are bounded by each backend's
+  measured limit.
+- **People author dashboards in Grafana directly**, through its own login (OIDC with 9.I).
+
+The text below is kept as the record of the iframe design and of what measuring it found.
 
 The device page's Monitoring section embeds **this device's** Grafana panels
 (interface counters, CPU, reachability) and **this device's logs**, in place.
@@ -1001,7 +1101,7 @@ the file name and by mtime rather than a commit time (register C103).
 | Save All / capture one device | many versus one, one component (`previewCapture` with no selection) | none |
 | Selection deploy / the row's Deploy plan | many versus one, one wizard | the row's button moves to the page |
 | Save Device Config / Save to Startup | **duplicate**: one effect, two implementations, one page | one save (7.3) |
-| The page's file upload, download and delete / the selection's | many versus one, **two implementations** | the page calls the selection's (7.3) |
+| The page's file upload, download and delete / the selection's | many versus one, **two implementations** | the page calls the selection's (7.3). **Superseded 2026-10-02:** both go (docs/CUTOVER.md, no arbitrary file transfer; images are P.13) |
 | The command box / the selection's bulk command | many versus one, **two implementations** | one implementation (7.3) |
 | Quick actions / the command box | **duplicate**: canned input to the same route | saved entries in the box's history (7.3) |
 | Playbook delete in the chat panel / in the AI tab | **duplicate**: two implementations | one; Stage 8 decides whether playbooks survive (P.3 refused replay) |
@@ -1041,6 +1141,11 @@ first.**
 | **7.7** | Settings split, file-only settings listed, diagnostics |
 | **7.8** | Removals, each with `check_removed_definitions.py` and a recorded reason, last so nothing goes before its replacement is on screen. **The Topology tab** (its built-in discovery, once 7.3's Neighbours carries it, and the topology-service panel, which goes with the deferred fleet view; C126). **The backup store retires only after section 6a's prerequisite** (the template preview and the two other renders read no backup), which is blocking, not a note. **The legacy golden store (`golden_configs/`) and the header-scan fallback** (`_find_golden_config_file`'s last link and the legacy entries of `repo.list_goldens()`): their retirement condition, `legacy_only_goldens()` empty for every list, holds on the host since r5's file was deleted 2026-09-28, so this is removal work with no prerequisite left (a plan item, never a notice on the landing page) |
 | **7.9** | Configure forms: batch 1 (a parallel track, not blocking) |
+| **7.10** | What defers cleanly (opened 2026-09-27 by the scope decision in section 8's 7.1 notes; it was never added to this table). As opened: Stage 5's in-app monitoring views, adopt (A3), the 900-device list and selection screens (the no-per-device-work rule stays in force), switching a network's inventory source. **Since:** the monitoring views came back into Stage 7 natively (section 3, 2026-09-30), and adopt into 7.3 (2026-09-29, its two steps built). What remains here: adopting the nine reference devices at scale (A3), the 900-device screens, and the inventory-source switch |
+
+**Where each step stands is section 11** (2026-10-02). The row texts above are the plan as
+scoped; where a row conflicts with section 1h or a "superseded" note, those govern (for
+example 7.3's "the Grafana iframe test" first step: the panels are native, section 3).
 
 ### 7.0 built, 2026-09-27 (awaiting the host check)
 
@@ -1831,6 +1936,8 @@ recorded the turn it is raised, after searching the register.
 
 ### The forecast, corrected (2026-09-28)
 
+*(Superseded by section 11's forecast, 2026-10-02; kept as the record.)*
+
 **The estimate was about half the real number.** Measured partway through 7.1:
 "13 hours and 32 commits", with the rest of Stage 7 "three to four more
 efforts that size", which implied about 110 more commits. 7.1 finished at
@@ -2385,6 +2492,9 @@ checked?":
 
 ### What does not exist yet (2026-09-28, the operator's request)
 
+*(Superseded by section 11, 2026-10-02: C92's reader, seed intent, the retire screen and
+most of 7.3's actions have been built since. Kept as the record of the order chosen then.)*
+
 **MISSING** means the capability does not exist; that list is the plan.
 **INCOMPLETE** means it works and could be better; that list is Stage 9, unless
 something forces an item earlier.
@@ -2463,7 +2573,15 @@ read through one function, and P.8 moves it without the reader changing.
 
 ## 9. Deferred, recorded rather than scoped
 
-- **A fleet topology view.** It EXISTS and WORKS today: the rcn-topology service's
+**Two of these are no longer deferred (2026-10-02), each kept below as the record:**
+- **The fleet topology is P.11's Topology page**, its own destination under OBSERVE
+  (decided 2026-09-30; the research is done, NSOT_PLAN P.11: NetworkX computes on the server,
+  the app draws natively, from Prometheus's LLDP and routing series; NOT BUILT).
+- **Mode B is BUILT and ACCEPTED**: 7.3 step 2d passed on the host on 2026-09-29 (r2's
+  `load-interval 30` removed through the deploy path with a stated reason, read back gone,
+  and the next Save All earned `baseline/20260929T060249Z`).
+
+- **A fleet topology view** (as written before 2026-09-30). It EXISTS and WORKS today: the rcn-topology service's
   panel draws the fleet graph once `topology_service_url` is set (measured
   2026-09-28, `http://<lab-host>:8088`). It is removed in 7.8 because the fleet
   view is deferred, not because it failed (C126). If a fleet view returns, it
@@ -2748,16 +2866,24 @@ read through one function, and P.8 moves it without the reader changing.
    implementation exists.
 7. **Needs attention shows every source in section 1a.** Each source's
    unreadable state is a row, and the empty page names what it checked.
-8. **Grafana:** the device page embeds that device's panels and logs, or
-   names the prerequisite that failed. A blank frame fails.
+8. **Grafana, natively** (restated 2026-10-02; was "the device page embeds that device's
+   panels and logs, or names the prerequisite that failed. A blank frame fails", superseded
+   by the native decision of 2026-09-30): the device page draws EVERY panel of the
+   configured device dashboard that selects the device, from the dashboard's own JSON, each
+   at its own `gridPos`, and the device's logs from Loki; the Monitoring page draws the fleet
+   dashboard the same way. Each state is said in words, never a blank area: no dashboard
+   set, a UID Grafana says is gone, no device variable, a panel type the app does not draw
+   (its place kept, "Grafana draws this"), a range past the backend's limit, a panel that
+   does not apply to this device (folded, with why), Grafana or Loki not configured or not
+   answering. A panel added in Grafana appears with no code change.
 9. **CI has no destination:** each CI state appears beside its trigger
    (NSOT_CI.md §5), and there is no CI tab.
 10. **No subsystem tab:** the top-level navigation is the hybrid SIDEBAR
     (section 1, NSOT_GUI_BRIEF.md section 2), and a test pins it. In order:
     Needs attention, Devices, History, then the heading Source of truth over
     Templates, NetBox and Credentials, with Help and Settings at the bottom.
-    The brief (section 14.1) proposes an OBSERVE heading over Monitoring,
-    Logs and DHCP for the integrated services, awaiting sign-off. **The
+    Between History and Source of truth, the OBSERVE heading over Monitoring, Logs, DHCP
+    and Topology (signed off 2026-09-30; Topology added by P.11 the same day). **The
     brief's thirty-seven findability questions are walked on the BUILT screens**
     (the first-click test on the mockups was skipped by the operator,
     2026-09-29), and a path longer than the brief's count is a finding.
@@ -2790,3 +2916,142 @@ read through one function, and P.8 moves it without the reader changing.
 16. **No duplicated function:** the brief's duplicate inventory (section 1g)
     is empty by the stage's close. Every entry keeps the home the brief named,
     and section 6a's check enforces the list.
+
+## 11. Status, 2026-10-02
+
+Read from the code, the register, docs/CUTOVER.md (265 routes: 43 the redesign's; of the
+legacy families, 5 BUILT, 32 PLANNED, 17 REMOVE, 3 STAYS, none UNDECIDED) and the
+writeup. "Accepted" means a run on the host by the operator, with its date.
+
+### The steps
+
+| Step | State | Detail |
+|---|---|---|
+| 7.0 checks | **PARTLY** | Built 2026-09-27; the four checks run in every suite. Its host check (acceptance 5) is half done: the drift card and the Remote card were observed; the device list redrawing after Verify was never measured (it needs an onboarding: run A1 in section 12) |
+| 7.1 an operation, whole | **DONE**, accepted on the host 2026-09-28 | Met on the suite 2026-09-28; C70's restore (2026-09-27), R1 onboarding and R2a/R2b NetBox (2026-09-28) run by the operator. Bulk intent's preview deferred to 7.4 by decision |
+| 7.2 Needs attention, readers, live data | **DONE**, in use on the host since 2026-09-28 | 19 steps; no separate acceptance run was defined, and the page has been the operator's landing since. Since: every row has an action (C323) and says how it clears (C344), restarts, adjacencies, NetBox secrets, lab startup, host steps and the pushed release as sources |
+| 7.D the redesign's design | **DONE** for the three first screens and the services | Research and brief signed off 2026-09-29, the mockups reviewed 2026-09-29, the services mockups and the stack (option A) 2026-09-30, the spike approved 2026-09-30. Owed per screen still to build: the Coverage redraw, the C342 drift panel and the monitoring templates mockups |
+| 7.3 the Device page | **PARTLY** | Accepted on the host: Mode B (2d, 2026-09-29), C188's concurrent capture (measured 2026-09-29), persist and rotate (2026-09-29). Built, awaiting a real run: seed's C117 loop, retire, revert and retry, the browser break-glass export, C178's BGP hold watch (section 12). Built backend, no screen: adopt (steps 1 and 2). v2 page built (2026-09-30 to 10-01): 7 of 8 tabs. **Left:** the actions moved onto the v2 page (today they open the legacy page), Ask the device (the allowlisted command box), reload (P.14), adopt's screen |
+| 7.4 Devices (Fleet) | **PARTLY** | Built 2026-10-01: the v2 list (search, filters, a fixed number of git reads, last measurement, pending rows), and the batch Apply as a job in a rollout order (P.9 d2). **Left:** the selection's own batch deploy, Save All and bulk intent screens on v2 (it opens today's deploy), onboarding on v2 with N address sources, adopt, networks |
+| 7.5 History (Versions) | **PARTLY** | Built 2026-10-02 (commits, baselines with re-apply, authorisations, the remote). **Left:** the "N of M commits carry a verified identity" line, C83's subjects, the remote's connect (curl-only) |
+| 7.6 Source of truth | **NOT STARTED** on v2 | Templates, NetBox and Credentials open today's pages; template revoke and bindings, freshness authorise and credential profiles still have no GUI |
+| 7.7 Settings | **NOT STARTED** on v2 | The sidebar item opens today's page |
+| OBSERVE: Logs, DHCP, Topology | **NOT STARTED** | Logs and DHCP open today's pages; Topology (P.11) is not in the sidebar. They follow P.8 (per-network services) |
+| 7.8 removals | **NOT STARTED** | 17 REMOVE families in CUTOVER, the terminal and today's two pages among them; last by rule |
+| 7.9 Configure forms | **NOT STARTED** | A parallel track |
+| 7.10 | **NOT STARTED** | A3 at scale, the 900-device screens, the inventory-source switch |
+
+### The plan items scheduled within Stage 7
+
+| Item | State | Detail |
+|---|---|---|
+| P.7 alert rules generated | **PARTLY** | Built: the heartbeat generator with its 7-day lookback and its re-measure action (C300), the telemetry rules (C304), the generated scrape targets (C232). **Left:** the other hand-built rules generated and tested, the hand-built folder retired rule by rule |
+| P.8 per-network settings | **NOT STARTED** (decided 2026-09-28) | Gates the OBSERVE screens and per-network Grafana |
+| P.9 the monitoring profile | **BUILT**, (a) to (d4) | **Awaiting:** staged run 9 (changing a running IP SLA probe), C262 and C269 (the operator's `cdp run` steps) |
+| P.11 Topology | **NOT STARTED** (research done 2026-09-30) | After P.8 |
+| P.12 feature templates | **PARTLY** | The profile is the first instance; the monitoring templates' design (replacing the Heartbeat and IP SLA pages) is owed a mockup |
+| P.14 reload, gated | **NOT STARTED** | One of 7.3's actions |
+| P.15 several people at once | **PARTLY** | The audit is done; R1, R4, R24 and R25 fixed 2026-10-02; R2, R5, R13, R19, R20 and R28 next; the rest before 9.S |
+| C38 Neighbours, C92 reachability | **DONE** | Built 2026-10-01 and 2026-09-28; in use |
+
+### The 16 acceptance criteria
+
+| # | State | What would meet it |
+|---|---|---|
+| 1 Reachability | partly | The allowlist is at 49; homing the PLANNED rows and 7.8's removals empty it to the deliberate non-GUI routes |
+| 2 No curl-only task | partly | Screens for the 8 NO_GUI actions (template revoke and bindings, bulk intent apply, freshness authorise, remote adopt, and the rest in `tests/test_results_are_drawn.py`) |
+| 3 Nine concepts | partly | 4 live, 5 pending (`tests/test_concepts_are_taught.py`): each lands with its screen (7.4 to 7.6) |
+| 4 Payloads drawn | partly | The check passes with its floors; its UNDRAWN list (ceiling 110) shrinks to its exemptions as screens draw their fields |
+| 5 Invalidation | partly | Maps complete, live contract built; the host case of the device list after Verify (run A1) |
+| 6 One pattern | partly | Bulk intent through the component (7.4); the legacy confirm paths go with 7.8 |
+| 7 Needs attention, every source | met, except Stage 8 | The agent's triage reports are Stage 8's, by design |
+| 8 Grafana, natively | met | Restated 2026-10-02 (section 10); the device and fleet dashboards and the logs are drawn and every state said. Its one gap is P.8's per-network dashboards |
+| 9 CI has no destination | met | The CI verdict is on About, the Update page and a Needs attention row; no CI tab |
+| 10 The sidebar | partly | The v2 sidebar matches, but Topology is absent and five items open today's pages; then the 37 findability questions walked on the built screens |
+| 11 Scale | partly | v2 Devices does fixed reads at any size (tested at 60); the 900-device selection screens are 7.10's |
+| 12 Behaviour | holding | Checked at close: no control changed what it does outside its stage |
+| 13 Controls drawn from `may` | not met | A test that no gated control is drawn without `may`, and every v2 action drawn from it (NSOT_AUTHORIZATION section 7) |
+| 14 A writeup entry per sub-task | partly | Entries for 7.3's remaining parts, 7.D's screens (Devices, History, Monitoring, Coverage, Update, the manual) and P.9 (d) |
+| 15 The manual stays true | met so far | Holds for every built v2 screen (`tests/test_manual.py`, the click test); each new screen adds its page |
+| 16 No duplicated function | partly | Today's pages duplicate the v2 screens until 7.8; the brief's inventory empties then |
+
+### The order for the rest, and why
+
+1. **The P.15 fixes still open (R2, R5, R13, R19, R20, R28).** Small, no screen, and every
+   later write path builds on them.
+2. **The v2 device page's actions**, starting with the ones accepted on the host (capture,
+   persist, rotate, deploy with Mode B), then seed, restore, revert and retry, retire. They
+   are whole on the server already, so this is porting with the shared component, and it
+   takes the operator off the legacy page for per-device work. Reload (P.14) and Ask the
+   device follow, new operations of the same kind.
+3. **7.4's selection** (batch deploy, Save All, bulk intent) and onboarding on v2, then adopt's
+   screen and its real run.
+4. **P.8**, because Logs, DHCP, Topology and per-network Grafana all read per-network
+   settings; then **OBSERVE** (Logs, DHCP, P.11 Topology) and the monitoring templates.
+5. **7.6 and 7.7** (Source of truth, Settings), which close the no-GUI list.
+6. **7.5's remainder**, then **7.8's removals**, last by rule; 7.9 in parallel.
+
+The real runs in section 12 run alongside, at the operator's lab sessions; none blocks the
+next build step except adopt's (after its screen).
+
+### The forecast, from finished stages of the same kind
+
+Two kinds of work remain, each forecast from the finished stage it resembles:
+- **Operations made whole on a screen** (the device page's actions, the selection, onboarding,
+  adopt, reload, the Source of truth writers, Settings): the same kind as **7.1** (69 commits
+  over 20 h 41 min, about one finding per commit, about 11 commits per operation retrofitted).
+  About 18 such operations remain; most are already whole on the server, so between half and
+  all of 7.1's cost per operation: **100 to 200 commits, 30 to 60 h, a finding per commit.**
+- **Read-only screens over stored sources** (Logs, DHCP, Topology, the NetBox, Templates and
+  Credentials views): the same kind as **7.2** (37 commits in about 4 h, about one finding per
+  two commits). About 8 screens at 4 to 8 commits each: **30 to 60 commits, 8 to 16 h.**
+- **7.8's removals**: no finished stage of this kind; P.4's Jenkins cut (removal with a
+  checker) is the nearest, at about 2 commits per family: **about 35 commits** for 17.
+- **P.8**: no finished stage of its kind (a settings migration across every reader); the
+  settings work of 3.2 is the nearest, and too small to scale from. Stated as unknown.
+
+**Total: about 165 to 295 commits, and 90 to 230 findings,** before P.8. The 2026-09-28
+forecast (200 to 280 for the rest of Stage 7) was made from 7.1; 266 commits have landed
+since, and how many of them were Stage 7's rather than P.9, the redesign's design work and
+side campaigns is not recoverable from git without a classification nobody recorded.
+
+## 12. The real runs owed to the operator, 2026-10-02
+
+One list for lab sessions. Times are estimates from the nearest run already done (R1's
+onboarding, the staged probe runs). Each run's full steps are where it points.
+
+**Session 1: short, on the fleet (about 2 h).**
+
+| Run | Prerequisites | Time | Steps |
+|---|---|---|---|
+| Staged run 6: does vIOS answer `freeMem` | none (read-only snmpget from the NMAS host) | 5 min | section 1g, staged run 6 |
+| Staged run 3: the Grafana Viewer token (C230) | Grafana admin | 15 min | SERVICE_ACCOUNTS.md part 2 |
+| Staged run 2: the NetBox account switch-over (C100) | NetBox admin; note the switch time | 30 min | SERVICE_ACCOUNTS.md part 1 |
+| Staged run 1: the silenced-alert capture | Grafana; a device to send the test log from | 30 min | section 1g, staged run 1 |
+| Staged run 4: `global.ntp-server` and `global.snmp-server-host` measured | r2 and s4; the probe changes running config only | 20 min | section 1g, staged run 4 |
+| Staged run 9: the IP SLA operation's delete measured, then s3's probe to 60 s | s1 and r2 for the probe (never s3); then s3 through the tool | 45 min | section 1g, staged run 9 |
+| C262 and C269: `cdp run` | r6's Device page (Mode B), then r1 to r4's intent and one batch deploy | 40 min | the register rows |
+| The planned-restart correction | `--correction` for the 2026-10-01 15:20 to 17:10 window | 5 min | `scripts/nmas-planned-restart --help` |
+| The browser break-glass export | the laptop holding `nmas-breakglass`; a passphrase | 15 min | 7.3's break-glass notes; verify `--against` the host's digests |
+
+**Session 2: one throwaway C8000v, start to end (about 4 to 5 h).** One device, onboarded
+for the purpose into its own list, carries four runs, retired at the end (R1's shape).
+Prerequisites: the current main deployed; a probe lab on the lab host with the adopted launch
+patch bound and its own management subnet; a census baseline taken BEFORE anything writes;
+NetBox writes on; the template approved for the platform; never during the nightly backup.
+
+| Run | Time | What it shows |
+|---|---|---|
+| A1, C117's loop: onboard, seed, deploy, break, roll back | 2 to 3 h | seed's acceptance; the rollback with C112's read-back; first, whether a filter on TCP 179 holds a BGP session to its hold expiry (C178's step 2); 7.0's device list redrawn after Verify |
+| A2, revert and retry | 30 min | retry with a stated reason lifts the block and the next plan offers it; a revert measured against the block |
+| A3, the retirement | 45 min | needs the break-glass export (session 1) to hold the throwaway's current credential; then Retire… from its page, the census compare, the teardown |
+
+**Session 3: the lab host's clock (about 2 to 3 h), on its own.**
+
+| Run | Prerequisites | Time |
+|---|---|---|
+| Staged run 7: does re-delivering lost timer ticks fix a slow vIOS clock | a throwaway vIOS in its own lab, never s3; the lab host's contention measured before and during; outside the nightly backup | 2 to 3 h |
+
+**Not runnable yet:** **adopt's real run** (a throwaway booting vrnetlab's own `admin`
+config, after adopt's screen is built; about 1 to 2 h then). P.19's SDN lab is the end of the
+plan.
