@@ -296,6 +296,7 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
     error_list:   list[tuple[str, str]] = []
     skip_list:    list[tuple[str, str]] = []
     cert_list:    list[str]             = []
+    comment_list: list[str]             = []
 
     def _check_one(dev: dict) -> None:
         device_ip = dev.get("ip", "")
@@ -349,11 +350,15 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
 
         # The device's own self-signed certificate is regenerated at every
         # boot (normalize.strip_self_signed_certs): not drift, and said in one
-        # line rather than drawn as its hex.
-        from modules.nsot.normalize import self_signed_note, strip_self_signed_certs
+        # line rather than drawn as its hex. Comment lines are not drift either
+        # (2026-10-02: IOS-XE writes "! Call-home is enabled by Smart-Licensing."
+        # itself, by licensing state, and r3's crash-reboot dropped it): set aside
+        # by normalize.strip_comments and said in one line.
+        from modules.nsot.normalize import (comment_note, self_signed_note,
+                                            strip_comments, strip_self_signed_certs)
         diff = list(difflib.unified_diff(
-            _clean("\n".join(strip_self_signed_certs(golden_text))),
-            _clean("\n".join(strip_self_signed_certs(current))),
+            _clean("\n".join(strip_comments(strip_self_signed_certs(golden_text)))),
+            _clean("\n".join(strip_comments(strip_self_signed_certs(current)))),
             fromfile=f"{hostname} — golden config",
             tofile=f"{hostname} — running config",
             lineterm="",
@@ -361,6 +366,9 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
         note = self_signed_note(golden_text, current)
         if note:
             cert_list.append(hostname)
+        c_note = comment_note(golden_text, current)
+        if c_note:
+            comment_list.append(hostname)
 
         if not diff:
             log.debug("drift_check: %s clean", hostname)
@@ -375,6 +383,8 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
             return
         if note:
             diff.append(note)
+        if c_note:
+            diff.append(c_note)
 
         diff_text = "\n".join(diff[:200]) + ("\n[...truncated]" if len(diff) > 200 else "")
         log.info("drift_check: drift on %s (%d diff lines)", hostname, len(diff))
@@ -428,6 +438,10 @@ def run_drift_check(triggered_by: str = "scheduled") -> dict:
         from modules.nsot.normalize import CERT_REGENERATED
         summary += (f" {CERT_REGENERATED[0].upper()}{CERT_REGENERATED[1:]}, not drift: "
                     + ", ".join(sorted(cert_list)) + ".")
+    if comment_list:
+        from modules.nsot.normalize import COMMENTS_DIFFER
+        summary += (f" {COMMENTS_DIFFER[0].upper()}{COMMENTS_DIFFER[1:]}, not drift: "
+                    + ", ".join(sorted(comment_list)) + ".")
     if skip_list:
         summary += " Not checked: " + ", ".join(
             f"{h} ({r})" for h, r in skip_list) + "."

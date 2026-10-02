@@ -314,14 +314,19 @@ def _capture_entry(list_name: str, repo: str, device: dict) -> tuple:
                   "explained": intent_now.get("state") == "match"} if shrink else {})
     # The device's own self-signed certificate is regenerated at boot: drawn as
     # one labelled line, never as its hex. The golden is recorded verbatim.
-    from modules.nsot.normalize import self_signed_note, strip_self_signed_certs
-    diff = [l for l in difflib.unified_diff(strip_self_signed_certs(current),
-                                             strip_self_signed_certs(incoming),
+    # Comment lines likewise (2026-10-02): one labelled line, the golden still verbatim.
+    from modules.nsot.normalize import (comment_note, self_signed_note, strip_comments,
+                                        strip_self_signed_certs)
+    diff = [l for l in difflib.unified_diff(strip_comments(strip_self_signed_certs(current)),
+                                             strip_comments(strip_self_signed_certs(incoming)),
                                              lineterm="", n=1)
             if not l.startswith(("---", "+++"))]
     note = self_signed_note(current, incoming)
     if note:
         diff.append(note)
+    c_note = comment_note(current, incoming)
+    if c_note:
+        diff.append(c_note)
     return ({"device": host, "read": True, "error": "", "platform": platform,
              "capture_hash": _capture_hash(text), "changed": incoming != current,
              "diff": diff, "intent": intent_now, "structure": structure,

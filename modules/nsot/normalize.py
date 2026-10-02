@@ -181,6 +181,69 @@ def self_signed_note(before, after) -> str:
             f"{sum(1 for l in new if l.strip())} line(s) recorded verbatim, not drawn")
 
 
+#: The words a person reads in place of comment lines that differ (the operator,
+#: 2026-10-02: r3's "drift" of 9 lines after a crash-reboot was ONE line, "! Call-home is
+#: enabled by Smart-Licensing.", which IOS-XE writes itself depending on its licensing
+#: state). A comment changes nothing on a device.
+COMMENTS_DIFFER = "comment line(s) differ (a comment changes nothing on the device)"
+
+
+def _comment_lines(text) -> list:
+    """Every comment line of *text* (``!`` then words, at any indentation), outside banners:
+    a ``!`` line inside a banner is the banner's text, which is configuration a person reads.
+    A bare ``!`` is a separator section parsing reads, never a comment here."""
+    lines = text if isinstance(text, list) else (text or "").splitlines()
+    out, delim = [], None
+    for line in lines:
+        s = line.strip()
+        if delim is not None:                          # inside a banner body
+            if delim in line:
+                delim = None
+            continue
+        if line.startswith(_BANNER_OPENERS):
+            rest = line.split(None, 2)[2] if len(line.split(None, 2)) > 2 else ""
+            d = rest[:2] if rest.startswith("^") else rest[:1]
+            if d and d not in rest[len(d):]:
+                delim = d
+            continue
+        if s.startswith("!") and s[1:].strip():
+            out.append(line)
+    return out
+
+
+def strip_comments(text) -> list:
+    """*text* without its comment lines (:func:`_comment_lines`): for the comparisons that
+    ask whether the CONFIGURATION changed, drift and the capture preview. A golden is
+    recorded verbatim, comments and all; only the comparison sets them aside, and
+    :func:`comment_note` says when it did."""
+    lines = text if isinstance(text, list) else (text or "").splitlines()
+    drop = _comment_lines(lines)
+    out, i = [], 0
+    for line in lines:
+        if i < len(drop) and line is drop[i]:
+            i += 1
+            continue
+        out.append(line)
+    return out
+
+
+def comment_note(before, after) -> str:
+    """One line saying the comment lines differ between *before* and *after*, naming up to
+    three of each side, or ``""`` when they do not. A diff built over
+    :func:`strip_comments` carries this line in place of them."""
+    old = [l.strip() for l in _comment_lines(before)]
+    new = [l.strip() for l in _comment_lines(after)]
+    if old == new:
+        return ""
+    gone = [l for l in old if l not in new]
+    came = [l for l in new if l not in old]
+    shown = ([f"no longer {l!r}" for l in gone[:3]] + [f"now {l!r}" for l in came[:3]]
+             or ["reordered"])
+    more = len(gone) + len(came) - min(len(gone), 3) - min(len(came), 3)
+    return (f"~ {COMMENTS_DIFFER}: " + "; ".join(shown)
+            + (f"; and {more} more" if more > 0 else "") + "; recorded verbatim, not drift")
+
+
 def strip_self_signed_certs(text) -> list:
     """Drop the device's own self-signed trustpoint and certificate chain.
 
