@@ -1050,13 +1050,14 @@ Settings
 **Monitoring's tabs are Dashboards and Coverage, and nothing else** (the operator,
 2026-10-02). IP SLA and Heartbeat were built as tabs with no mockup and no sign-off, and are
 removed: **a new screen, or a new tab, needs a mockup and the operator's sign-off before it is
-built.** `test_fleet_monitoring.py` pins the two. Where the two removed tabs' work lives:
-- **IP SLA** is a section of the monitoring profile (14.3), like SNMP or syslog. Until that
-  fold is built, its page is reached only from Coverage's IP SLA cells and is drawn under
-  Coverage.
-- **The heartbeat** is a background check that needs a person only when it fails. Its
-  re-measure screen is reached only from the heartbeat check's Needs attention row, and is
-  drawn under Needs attention, never as a tab.
+built.** `test_fleet_monitoring.py` pins the two. Where the two removed tabs' work lives
+(the operator's mockup review, 2026-10-02, which replaced the first answer):
+- **Monitoring is TEMPLATES, not pages** (14.3): SNMP, syslog, heartbeat, NTP, LLDP, telemetry
+  and IP SLA, each with its settings, per-platform rendering, verify and scope. No template
+  has a page or a banner of its own; the IP SLA page goes.
+- **The heartbeat** is a template plus its alert. Its windows are re-measured in the
+  background, and a person hears of it only when a device's heartbeat stops (that alert is
+  its Needs attention row). The re-measure page goes.
 
 **Where each service lives:**
 - **Oxidized has no item of its own:** its config versions are History's (fleet) and the
@@ -1486,20 +1487,27 @@ The design is [MONITORING_PROFILE.md](MONITORING_PROFILE.md). What a person sees
   The result is the deploy's.
 - **Onboarding's Verify and adopt's preview** draw the same groups for a new device, before
   the confirm.
-- **IP SLA is one of the profile's sections** (the operator, 2026-10-02). Its POLICY is chosen
-  when the profile is PROPOSED: routing peers, the default gateway, or nothing; every 60 s by
-  default on vIOS; a probe placed on the router end where the path is the same; the expected
-  CPU cost drawn beside each choice. Its per-device suggestions are committed to each device's
-  intent, where they are reviewed like any other intent, and "Apply monitoring profile" sends
-  the probes with everything else. There is no IP SLA tab and no separate IP SLA page once
-  this is built (drawn as a mockup first, awaiting the operator's sign-off).
-- **Monitoring > Coverage:** devices by integration, the cells from committed goldens. Select
-  several and "Apply monitoring profile" opens one batch preview with the rollout order drawn.
-  An IP SLA cell that is missing links to the profile's proposal, at its IP SLA section.
-- **The heartbeat re-measure** opens from the heartbeat check's Needs attention row only, when
-  a window no longer fits its device's measured clock. It answers at once and measures as a
-  job, busy on its own control, never inside the click (C322: the GET measured for 7.5 s and
-  the click looked like it did nothing).
+- **Every monitoring function is a TEMPLATE** (the operator, 2026-10-02; the first instance
+  of P.12's feature templates): SNMP, syslog, heartbeat, NTP, LLDP, telemetry and IP SLA. The
+  profile's sections become these templates explicitly, each with its settings, its rendering
+  per platform, what its verify reads, and its scope. A template's settings live with it, in
+  Settings > Monitoring templates (one compact row each). IP SLA's are its targeting (routing
+  peers by default, or the default gateway), its frequency (60 s by default on vIOS) and its
+  CPU note. Saving a template commits it and the per-device lines it generates (IP SLA's probes,
+  in each device's intent) as ONE commit; nothing is sent until a deploy.
+- **Monitoring > Coverage is the one place to see them: devices x templates.** Each cell is
+  one of four: configured; not configured, with a small Deploy in the cell; not reporting
+  (the configuration is present and its data is not arriving: no SNMP scrape, no heartbeat, no
+  stream, said briefly), with Deploy; or n/a with why in a few words ("IOS", "no routing
+  peers"). A Deploy is a deploy scoped to that template's lines, through the normal preview,
+  confirm and verify; ticking several devices deploys one template across them (the batch
+  rollout). The device page's Monitoring tab offers the same deploy for that device: one
+  component, a second entry point. No banner for any template.
+- **The heartbeat is a template plus its alert, with no page.** The hourly check re-measures
+  each device's window from its 7-day spread and keeps the installed rules current without a
+  person; the only time a person hears of the heartbeat is the alert when a device's heartbeat
+  stops, and that alert is its Needs attention row. The privileged install this needs is a
+  root-owned path unit, like the updater's (C322).
 - **The intent editor** draws inherited values in their own style, labelled "from the
   profile". An override reads "overrides the profile", and an exclusion shows its reason.
 - **Needs attention:** one row per device not covered, "r6 is not monitored by SNMP: its
