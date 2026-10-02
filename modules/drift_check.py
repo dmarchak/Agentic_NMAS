@@ -43,6 +43,9 @@ log = logging.getLogger(__name__)
 _DEFAULT_INTERVAL  = 4 * 3600   # 4 hours
 _STARTUP_GRACE     = 300         # fire first check 5 min after start (not instantly)
 _STATE_FILE_NAME   = "drift_state.json"
+#: Serialises a read-modify-write of the state within this process (a golden
+#: answering rows while a run stores its result).
+_STATE_LOCK = threading.RLock()
 
 # Lines stripped from BOTH sides before diffing.
 _SKIP_STARTSWITH = (
@@ -199,6 +202,49 @@ def set_disabled(disabled: bool, actor: str = "") -> None:
 # ---------------------------------------------------------------------------
 # Core drift logic (pure Python, no AI)
 # ---------------------------------------------------------------------------
+
+def answer_by_golden(list_name: str, hosts, why: str) -> list:
+    """A golden just recorded for *hosts* answers the stored run's rows for
+    them (the operator, 2026-10-01: five Critical "has drifted" rows from the
+    23:40 run stood after Save All recorded those devices at 23:52). The new
+    golden IS the device as captured, so the device is at its golden now:
+    each is moved from the run's drifted (or no-golden) list to clean, and the
+    run's record says which, by what and when. Nothing is re-read; the next
+    run measures again. Returns the hostnames answered; never raises."""
+    names = {h for h in (hosts or []) if h}
+    if not names:
+        return []
+    try:
+        with _STATE_LOCK:
+            state = _load_state(list_name)
+            last = state.get("last_result")
+            if not isinstance(last, dict):
+                return []
+            drifted = list(last.get("drifted_devices") or [])
+            skipped = list(last.get("skipped") or [])
+            gone = [d["hostname"] for d in drifted if d.get("hostname") in names]
+            golden_now = [d["hostname"] for d in skipped if d.get("hostname") in names
+                          and d.get("reason") == "no golden config saved"]
+            answered = gone + golden_now
+            if not answered:
+                return []
+            last["drifted_devices"] = [d for d in drifted if d.get("hostname") not in gone]
+            last["skipped"] = [d for d in skipped if d.get("hostname") not in golden_now]
+            last["drifted"] = len(last["drifted_devices"])
+            last["clean"] = int(last.get("clean") or 0) + len(gone)
+            last["checked"] = int(last.get("checked") or 0) + len(golden_now)
+            at = time.strftime("%Y-%m-%d %H:%M:%S")
+            last.setdefault("answered", []).extend(
+                {"hostname": h, "at": at, "why": why} for h in answered)
+            last["summary"] = ((last.get("summary") or "")
+                               + f" Since this run: {', '.join(answered)} at its golden ({why}).")
+            _save_state({"last_result": last}, list_name)
+        log.info("drift_check: %s answered by a new golden (%s)", answered, why)
+        return answered
+    except Exception as exc:                   # noqa: BLE001
+        log.error("drift_check: could not answer %s's drift rows: %s", sorted(names), exc)
+        return []
+
 
 def run_drift_check(triggered_by: str = "scheduled") -> dict:
     """Check every device in the inventory for config drift.

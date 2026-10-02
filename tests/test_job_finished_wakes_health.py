@@ -60,11 +60,48 @@ class TestTheRoute:
         monkeypatch.setattr(reader_job, "request_run", request_run)
         r = _client().post("/jobs/finished", json={"unit": "nmas-startup-check.service"})
         assert r.status_code == 202 and r.get_json() == {
-            "ok": True, "unit": "nmas-startup-check", "started": True, "run": "abc123"}
+            "ok": True, "unit": "nmas-startup-check", "started": True, "run": "abc123",
+            "woke": []}
         assert calls == [("job-health", "nmas-startup-check", "job_finished",
                           reader_job.announce_via_page)]
         again = _client().post("/jobs/finished", json={"unit": "nmas-startup-check"})
         assert again.status_code == 200 and again.get_json()["started"] is False
+
+
+class TestTheSyncWakesTheReaderOfWhatItWrote:
+    """The operator, 2026-10-01: the lab-startup reader read at 00:00:16, the
+    clab sync rewrote the files at 00:02, and the rows stood for ten minutes.
+    The sync tells the app when it ends (its unit lives outside this
+    repository), and the route reads lab-startup with job health."""
+
+    def test_clab_sync_finishing_reads_lab_startup_now(self, monkeypatch):
+        import modules.readers.lab_startup  # noqa: F401 (registers the reader)
+        calls = []
+        monkeypatch.setattr(reader_job, "running", lambda name: True)
+
+        def request_run(reader, by, announce=None, kind="request"):
+            calls.append((reader.name, by, kind))
+            return {"run": "r1", "started": True}
+        monkeypatch.setattr(reader_job, "request_run", request_run)
+        r = _client().post("/jobs/finished", json={"unit": "clab-sync"})
+        assert r.status_code == 202 and r.get_json()["woke"] == ["lab-startup"]
+        assert calls == [("job-health", "clab-sync", "job_finished"),
+                         ("lab-startup", "clab-sync", "job_finished")]
+
+    def test_another_job_wakes_only_job_health(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(reader_job, "running", lambda name: True)
+        monkeypatch.setattr(reader_job, "request_run",
+                            lambda reader, *a, **k: calls.append(reader.name) or
+                            {"run": "x", "started": True})
+        _client().post("/jobs/finished", json={"unit": "nmas-startup-check"})
+        assert calls == ["job-health"]
+
+    def test_the_sync_sends_it_on_every_exit(self):
+        src = open(os.path.join(ROOT, "scripts", "oxidized-to-config.sh"), encoding="utf-8").read()
+        body = src[src.index("finished() {"):src.index("trap finished EXIT")]
+        assert '"$HERE/nmas-job-finished" clab-sync' in body
+        assert re.search(r"^trap finished EXIT$", src, re.M)
 
 
 class TestTheRunRecordsItsCause:

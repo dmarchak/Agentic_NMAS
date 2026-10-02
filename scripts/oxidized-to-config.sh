@@ -166,7 +166,16 @@ fi
 # chance for Oxidized to have polled in between - the gate would then approve
 # a copy this script is not writing.
 RAW="$(mktemp -d)"
-trap 'rm -rf "$RAW"' EXIT
+# The app re-reads what this job writes as soon as it ends, success or not
+# (the operator, 2026-10-01: the lab-startup reader read two minutes before a
+# sync and its rows stood for ten). Its unit lives outside the repository, so
+# the job tells the app itself; the timer's own result is unaffected.
+finished() {
+  rm -rf "$RAW"
+  NMAS_URL="$NMAS_URL" "$HERE/nmas-job-finished" clab-sync \
+    || echo "(the app could not be told this sync finished; its readers catch up on their own schedule)"
+}
+trap finished EXIT
 
 DEPLOY=ask
 for a in "$@"; do

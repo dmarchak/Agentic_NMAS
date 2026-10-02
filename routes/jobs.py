@@ -58,5 +58,19 @@ def job_finished():
                                  announce=reader_job.announce_via_page)
     log.info("jobs: %s finished; job health %s (run %s)", unit,
              "read now" if got["started"] else "already being read", got["run"])
-    return jsonify({"ok": True, "unit": unit, "started": got["started"], "run": got["run"]}), \
-        (202 if got["started"] else 200)
+    # The readers whose source this job WRITES are read now too (the operator,
+    # 2026-10-01: the lab-startup reader read two minutes before clab-sync
+    # rewrote the files, and its rows stood for another ten).
+    woke = []
+    for name in WAKES.get(unit, ()):
+        reader = next((r for r in reader_job.readers() if r.name == name), None)
+        if reader is not None and reader_job.running(name):
+            reader_job.request_run(reader, unit, kind="job_finished",
+                                   announce=reader_job.announce_via_page)
+            woke.append(name)
+    return jsonify({"ok": True, "unit": unit, "started": got["started"], "run": got["run"],
+                    "woke": woke}), (202 if got["started"] else 200)
+
+
+#: A job -> the readers whose source it writes, read when it finishes.
+WAKES = {"clab-sync": ("lab-startup",)}

@@ -767,6 +767,13 @@ def _supersede_drift_items(list_name: str, hosts: list, sha: str, source: str,
 
     at = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
     what = f"commit {sha[:10]}" if sha else "a capture that found it unchanged"
+    # The stored drift run's rows for these devices are answered too: the new
+    # golden is the device as captured (the operator, 2026-10-01).
+    try:
+        from modules.drift_check import answer_by_golden
+        answer_by_golden(list_name, hosts, f"recorded by {what} ({source}) at {at}")
+    except Exception as exc:                   # noqa: BLE001
+        log.error("repo: could not answer drift rows for %s: %s", hosts, exc)
     try:
         return supersede_drift(hosts, f"superseded by {what} ({source}) at {at}: a newer "
                                       "golden records the device, so this diff no longer "

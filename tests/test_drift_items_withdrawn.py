@@ -132,3 +132,44 @@ class TestADriftRunUnderTheCurrentRules:
             "hostname r2\n", "hostname r2\nip domain lookup source-interface Loopback0\n")
         assert drift["module"].run_drift_check("test")["drifted"] == 1
         assert _status(i)["status"] == "pending"
+
+
+class TestARecordedGoldenAnswersTheDriftRow:
+    """The operator, 2026-10-01: five Critical "has drifted from its golden"
+    rows from the 23:40 run stood after Save All recorded those devices at
+    23:52. Recording a golden answers the stored run's row for the device,
+    saying by what; the next run measures again."""
+
+    def _plant_run(self, cap):
+        from modules import drift_check as D
+        D._save_state({"last_check_ts": time.time() - 720, "last_result": {
+            "ok": True, "inventory": 2, "checked": 2, "drifted": 2, "clean": 0,
+            "drifted_devices": [{"hostname": "r2", "diff_lines": 23},
+                                {"hostname": "r9", "diff_lines": 4}],
+            "skipped": [], "errors": [], "summary": "Drift detected on 2 device(s).",
+            "timestamp": "2026-10-01 23:40:00", "triggered_by": "scheduled"}}, "Lab")
+
+    def test_a_capture_moves_the_device_to_clean_and_says_why(self, cap):
+        from modules import attention as A
+        from modules import drift_check as D
+
+        self._plant_run(cap)
+        _grown = cap["captured"].replace(
+            "hostname r2\n", "hostname r2\nip domain lookup source-interface Loopback0\n")
+        cap["running"]["r2"] = _grown
+        d = _preview(cap)
+        _apply(cap, {"r2": _hash(d)})
+        last = D._load_state("Lab")["last_result"]
+        assert [x["hostname"] for x in last["drifted_devices"]] == ["r9"]
+        assert (last["drifted"], last["clean"]) == (1, 1)
+        assert last["answered"][0]["hostname"] == "r2"
+        assert last["answered"][0]["why"].startswith("recorded by commit ")
+        assert "Since this run: r2 at its golden" in last["summary"]
+        res = A.drift_source(status=lambda: {"list": "Lab", "last_ts": time.time() - 720,
+                                             "last_run": last})
+        drifted = [r["devices"] for r in res["rows"] if "has drifted" in r["what"]]
+        assert drifted == [["r9"]]
+
+    def test_no_stored_run_is_left_alone(self, cap):
+        from modules import drift_check as D
+        assert D.answer_by_golden("Lab", ["r2"], "x") == []
