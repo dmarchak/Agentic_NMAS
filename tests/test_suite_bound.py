@@ -24,7 +24,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _runner(tmp_path, body, bound="5"):
     probe = tmp_path / "test_probe_bound.py"
     probe.write_text(body)
-    env = dict(os.environ, NMAS_TEST_TIMEOUT=bound, PYTHON=sys.executable)
+    # NMAS_PROBE_RUN: conftest skips the whole-program import, so the probe starts in about
+    # the same time however large the program grows (run #312 passed its 5 s bound cold).
+    env = dict(os.environ, NMAS_TEST_TIMEOUT=bound, PYTHON=sys.executable, NMAS_PROBE_RUN="1")
     env.pop("PYTEST_XDIST_WORKER", None)
     env.pop("NMAS_TEST_INFLIGHT", None)
     return subprocess.run(
@@ -84,3 +86,14 @@ def test_a_finished_run_says_its_timing(tmp_path):
     out = _runner(tmp_path, "def test_ok():\n    pass\n")
     assert out.returncode == 0
     assert "nmas-test timing: 1 test(s); the last finished" in out.stderr
+
+
+def test_a_probe_does_not_import_the_whole_program(tmp_path):
+    """Run #312 (2026-10-02): a probe that finishes passed its 5 s bound on CI's cold,
+    two-core runner, because conftest imported every module first. A probe opts out
+    (NMAS_PROBE_RUN), so its start does not grow with the program."""
+    out = _runner(tmp_path, "import sys\n\n"
+                            "def test_ok():\n"
+                            "    assert 'app' not in sys.modules, 'the probe imported the app'\n"
+                            "    assert 'modules.ai_assistant' not in sys.modules\n")
+    assert out.returncode == 0, (out.returncode, (out.stdout + out.stderr)[-800:])
