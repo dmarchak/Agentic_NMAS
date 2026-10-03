@@ -2929,8 +2929,10 @@ page's four signed actions are built: capture, persist, rotate, and deploy with 
 has its not-reporting reader and its grid and selection; its third step, the combined deploy, is
 next. History became one timeline (C369, board D). Credentials carries the break-glass record
 (board 7), which passed its first real run end to end on 2026-10-03.
-**Owed a mockup before building:** seed, restore, revert and retry, and retire on the v2 device
-page. The signed "Device actions on v2" page drew the four actions built.
+**Owed a sign-off before building:** seed, restore, revert and retry, and retire on the v2 device
+page, drawn 2026-10-03 as boards 8 to 12 of the mockups' "Device actions on v2" page (with the
+Actions menu every action runs from, and the retired record at a retired device's address,
+C185). The signed boards 1 to 6 drew the four actions built.
 
 Read from the code, the register, docs/CUTOVER.md (265 routes: 43 the redesign's; of the
 legacy families, 5 BUILT, 32 PLANNED, 17 REMOVE, 3 STAYS, none UNDECIDED) and the
