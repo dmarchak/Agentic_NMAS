@@ -172,7 +172,7 @@ def _load_for_write(repo: str) -> dict:
     every tombstone in it). The damaged file is preserved beside it."""
     from modules.filestore import StoreUnreadable, read_json_for_write
     try:
-        data = read_json_for_write(approvals_path(repo))
+        data = read_json_for_write(approvals_path(repo), aside=_aside(repo))
     except StoreUnreadable as exc:
         raise ApprovalsUnreadable(str(exc)) from exc
     if not isinstance(data, dict):
@@ -180,10 +180,19 @@ def _load_for_write(repo: str) -> dict:
     return data
 
 
+def _aside(repo: str) -> str:
+    """Where the record's damaged copy goes, and the folder of its write's temp file:
+    BESIDE the repository (``<repo>.approvals.json``), never inside it, where seeding stages
+    untracked files under ``templates/`` (C345)."""
+    return os.path.abspath(repo) + ".approvals.json"
+
+
 def _save(repo: str, data: dict) -> None:
-    """Replaced atomically, a temp file per write (it was one shared `.tmp`)."""
+    """Replaced atomically, a temp file per write (it was one shared `.tmp`), the temp
+    beside the repository, on the same filesystem (C345)."""
     from modules.filestore import write_atomic
-    write_atomic(approvals_path(repo), json.dumps(data, indent=2, sort_keys=True), newline="\n")
+    write_atomic(approvals_path(repo), json.dumps(data, indent=2, sort_keys=True), newline="\n",
+                 tmp_dir=os.path.dirname(_aside(repo)))
 
 
 def _load(repo: str) -> dict:

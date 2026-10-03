@@ -95,10 +95,54 @@ class TestAnUnreadableRecordIsNeverEmpty:
         assert got["ok"] is False and "could not be read" in got["error"]
         assert approval.revoke(lab, REL, reason="withdrawn for the test run")["ok"] is False
         assert open(path, "rb").read() == before
-        assert any(n.startswith(".approvals.json.corrupt-")
-                   for n in os.listdir(os.path.dirname(path)))
+        # Preserved BESIDE the repository, never inside it (C345).
+        beside = os.path.dirname(os.path.abspath(lab))
+        assert any(n.startswith("config_repo.approvals.json.corrupt-")
+                   for n in os.listdir(beside))
+        assert not [n for n in os.listdir(os.path.dirname(path)) if "corrupt" in n]
         assert approval.is_approved(lab, REL) is False
         assert "could not be read" in approval.approval_status(lab, REL)["reason"]
+
+
+class TestNothingOfTheRecordsIsStagedBySeeding:
+    """C345: an unreadable record's preserved copy, and a write's temp file, sat inside
+    `templates/`, where seeding stages untracked files into a "seed library" commit."""
+
+    def test_the_damaged_copy_and_the_temp_never_enter_the_repository(self, lab, monkeypatch):
+        import tempfile
+
+        dirs = []
+        real = tempfile.mkstemp
+
+        def spy(*a, **k):
+            dirs.append(os.path.abspath(k.get("dir") or ""))
+            return real(*a, **k)
+        monkeypatch.setattr(tempfile, "mkstemp", spy)
+        approval.revoke(lab, REL, reason="withdrawn for the test run")
+        assert dirs and all(not d.startswith(os.path.abspath(lab) + os.sep) for d in dirs)
+
+    def test_seeding_never_stages_a_file_it_did_not_provide(self, lab):
+        from routes import templates as troutes
+
+        path = approval.approvals_path(lab)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("{torn")
+        approval.revoke(lab, REL, reason="withdrawn for the test run")    # refused, preserved
+        # A stray untracked file under templates/, of the shape the old code left there.
+        stray = os.path.join(lab, "templates", ".approvals.json.corrupt-20261002T000000Z")
+        with open(stray, "w", encoding="utf-8") as fh:
+            fh.write("{torn")
+        os.remove(os.path.join(lab, "templates", "cisco_ios", "base.j2"))
+        subprocess.run(["git", "-C", lab, "commit", "-q", "-am", "drop base"], check=True,
+                       env=dict(os.environ, GIT_AUTHOR_NAME="T", GIT_COMMITTER_NAME="T",
+                                GIT_AUTHOR_EMAIL="t@example.invalid",
+                                GIT_COMMITTER_EMAIL="t@example.invalid"))
+        result = troutes._seed_and_commit("Lab", lab)     # seeds base.j2 back, and commits
+        names = subprocess.run(["git", "-C", lab, "show", "--name-only", "--format=", "HEAD"],
+                               capture_output=True, text=True).stdout.split()
+        assert names == [f"templates/{REL}"], names
+        assert "templates/.approvals.json.corrupt-20261002T000000Z" in result["not_seeding"]
+        assert not [n for n in names if "corrupt" in n or ".tmp-" in n]
 
 
 class TestTheGateFailsClosedBothWays:

@@ -352,7 +352,7 @@ commit. "Read at HEAD" is built as fail-closed both ways: the gate counts an app
 when it is committed AND the working record still holds it, so an uncommitted approval is
 not one and an uncommitted revocation already refuses. Found while building it: a damaged
 record's preserved copy lands inside the repository, where seeding stages untracked files
-(register C345).
+(register C345, fixed the same day: both now go beside the repository, and seeding stages only what it provides).
 
 **R13. The approvals record loses tombstones and can reopen the gate** (approvals-10,
 approvals-12, intent-9, stores-7). `_load` returns `{}` on an unreadable file

@@ -123,11 +123,16 @@ class PathLock:
         return False
 
 
-def write_atomic(path: str, text: str, *, newline: str = None) -> None:
-    """Replace *path* with *text*: a temp file per write, 0600, fsynced."""
+def write_atomic(path: str, text: str, *, newline: str = None, tmp_dir: str = None) -> None:
+    """Replace *path* with *text*: a temp file per write, 0600, fsynced.
+
+    *tmp_dir* puts the temp file elsewhere ON THE SAME FILESYSTEM (so the replace stays
+    atomic): a store inside a git repository keeps its temp out of the repository, where a
+    stager would see an untracked file (C345)."""
     directory = os.path.dirname(path) or "."
     os.makedirs(directory, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".tmp-", dir=directory)
+    fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + ".tmp-",
+                               dir=tmp_dir or directory)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as fh:
             fh.write(text)
@@ -142,9 +147,12 @@ def write_atomic(path: str, text: str, *, newline: str = None) -> None:
         raise
 
 
-def preserve_corrupt(path: str, reason: str) -> str:
-    """Copy a damaged store aside, owner-only, before anything overwrites it."""
-    target = f"{path}.corrupt-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+def preserve_corrupt(path: str, reason: str, aside: str = None) -> str:
+    """Copy a damaged store aside, owner-only, before anything overwrites it.
+
+    *aside* is the copy's name without its suffix, when it must not sit beside the store
+    (a store inside a git repository: C345); by default it is the store's own path."""
+    target = f"{aside or path}.corrupt-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
     try:
         if not os.path.exists(target):
             from modules.config import open_secure
@@ -159,10 +167,10 @@ def preserve_corrupt(path: str, reason: str) -> str:
     return target
 
 
-def read_json_for_write(path: str, empty=None):
+def read_json_for_write(path: str, empty=None, aside: str = None):
     """The store for a read-modify-write: *empty* when ABSENT; raises
-    `StoreUnreadable` (and preserves the file) when it exists and cannot be
-    read, which is not empty."""
+    `StoreUnreadable` (and preserves the file, at *aside* when given) when it exists and
+    cannot be read, which is not empty."""
     if not os.path.exists(path):
         return {} if empty is None else empty
     try:
@@ -170,7 +178,7 @@ def read_json_for_write(path: str, empty=None):
             return json.load(fh)
     except (json.JSONDecodeError, OSError, ValueError) as exc:
         reason = f"unreadable ({type(exc).__name__})"
-        preserve_corrupt(path, reason)
+        preserve_corrupt(path, reason, aside=aside)
         raise StoreUnreadable(
             f"{os.path.basename(path)} could not be read ({type(exc).__name__}), so "
             "nothing was written: saving would have replaced every entry in it. "

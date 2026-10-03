@@ -72,6 +72,18 @@ def builtin_platforms() -> list:
                   if os.path.isdir(os.path.join(BUILTIN_ROOT, d)))
 
 
+def seed_paths() -> set:
+    """Every path, relative to ``templates/``, the seed library provides: each platform's
+    templates, the shared macro file and the bindings. What a "seed library" commit may
+    carry, and nothing else (C345: an untracked file there is not seeding's)."""
+    out = {"_common.j2", BINDINGS_FILE}
+    for plat in builtin_platforms():
+        src_dir = os.path.join(BUILTIN_ROOT, plat)
+        if os.path.isdir(src_dir):
+            out.update(f"{plat}/{n}" for n in os.listdir(src_dir) if n.endswith(".j2"))
+    return out
+
+
 def seed_templates(repo: str, platform: str = "", overwrite: bool = False) -> dict:
     """Copy built-in seed templates into the repo. Idempotent.
 

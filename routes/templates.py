@@ -210,6 +210,16 @@ def _seed_and_commit(list_name: str, repo: str) -> dict:
 
     result = templates_repo.seed_templates(repo)   # idempotent; never overwrites
     untracked, modified = _untracked_templates(repo)
+    # Only what the seed library provides (C345): any other untracked file under
+    # templates/ (a damaged record's copy, a write's temp, a person's new file) is not
+    # seeding's, and a commit labelled "seed library" must not carry it.
+    seeded = templates_repo.seed_paths()
+    others = [p for p in untracked if p.split("/", 1)[-1] not in seeded]
+    untracked = [p for p in untracked if p not in others]
+    if others:
+        log.info("templates: seeding leaves %d untracked file(s) it did not provide: %s",
+                 len(others), ", ".join(others))
+    result["not_seeding"] = others
     result["untracked"] = untracked
     result["uncommitted_edits"] = modified
     if modified:

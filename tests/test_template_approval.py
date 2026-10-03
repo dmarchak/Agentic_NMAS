@@ -471,12 +471,15 @@ class TestSeedCommitKeysOffRepoState:
         with open(extra, "w", encoding="utf-8") as fh:
             fh.write("{# added #}\n")
 
+        _rc, head_before, _ = R.git(already_seeded, "rev-parse", "HEAD")
         result = self._seed("Lab", already_seeded)
 
         assert result["uncommitted_edits"] == ["templates/cisco_ios/base.j2"]
-        _rc, files, _ = R.git(already_seeded, "show", "--name-only", "--format=",
-                              "HEAD")
-        assert files.split() == ["templates/cisco_ios/new.j2"]
+        # A NEW file a person added is not seeding's either (C345, 2026-10-02): it used to be
+        # committed as "seed library"; it is left untracked and named, for its own commit.
+        assert result["not_seeding"] == ["templates/cisco_ios/new.j2"]
+        _rc, head_after, _ = R.git(already_seeded, "rev-parse", "HEAD")
+        assert head_after == head_before
         assert T.read_template(already_seeded, "cisco_ios/base.j2") == "{# mine #}\n"
 
     def test_untracked_files_inside_an_untracked_directory_are_found(self, already_seeded):
