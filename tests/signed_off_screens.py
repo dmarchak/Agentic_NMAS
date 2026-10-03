@@ -35,6 +35,16 @@ SIGNED_OFF = {
                                  "set\"), signed off 2026-10-02, with the rollout order decided "
                                  "at the 2026-09-29 review. 7.4's selection may change it; then "
                                  "it needs a new mockup"),
+    "coverage.html": ("2026-10-02", "the REDRAW, artboards A (the grid) and A2 (Deploy missing "
+                                    "templates), signed off 2026-10-02: row checkboxes only, no "
+                                    "box on a fully covered device; icons only with the why on "
+                                    "hover; a not-reporting cell links to its diagnosis, never a "
+                                    "redeploy; one combined program per device, verified and "
+                                    "rolled back as one, in a settable order stopping at the "
+                                    "first failure; configured-but-not-reporting templates "
+                                    "excluded and named. The page as BUILT (P.9 d1, 2026-10-01) "
+                                    "predates it and is rebuilt to it: the not-reporting reader "
+                                    "first, then the grid, then the combined deploy"),
     "update.html": ("2026-10-02", "reviewed IN USE: designed in docs/UPDATE.md, used on the host "
                                   "repeatedly and corrected through C243, C244, C246, C268, "
                                   "C274, C279 and C285. Its next change gets a mockup"),
@@ -54,9 +64,6 @@ SIGNED_OFF = {
 
 #: built without a recorded sign-off: (why, what happens to it). Only shrinks.
 UNSIGNED = {
-    "coverage.html": ("built for P.9 (d1) on 2026-10-01 with no recorded mockup",
-                      "its redraw is drawn to the operator's review (2026-10-02, the mockups' "
-                      "artboards A and A2), awaiting sign-off before it is built"),
     "heartbeat.html": ("built 2026-10-01 (C300) with no mockup",
                        "removed: replaced by the monitoring templates (C322, NSOT_GUI_BRIEF 14)"),
     "ip_sla.html": ("built 2026-10-01 (P.9 d4) with no mockup",
@@ -66,4 +73,4 @@ UNSIGNED = {
     "not_found.html": ("the 404 page, no mockup", "kept: a page with nothing to sign off"),
 }
 
-UNSIGNED_CEILING = 5
+UNSIGNED_CEILING = 4

@@ -2983,7 +2983,14 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
    persist, rotate, deploy with Mode B), then seed, restore, revert and retry, retire. They
    are whole on the server already, so this is porting with the shared component, and it
    takes the operator off the legacy page for per-device work. Reload (P.14) and Ask the
-   device follow, new operations of the same kind.
+   device follow, new operations of the same kind. **Decided 2026-10-02 (the operator):**
+   per-device receipts first (R5's open half), then capture, persist, rotate and deploy with
+   Mode B (the actions' mockup signed off 2026-10-02).
+   **Then Coverage, redrawn** (artboards A and A2 signed off 2026-10-02): the not-reporting
+   reader first, starting with its read-only measurement on the host; then the grid and
+   selection; then the combined deploy (one program per device, verified and rolled back as
+   one). The Heartbeat and IP SLA pages retire when Coverage and the monitoring templates
+   replace them (docs/CUTOVER.md).
 3. **7.4's selection** (batch deploy, Save All, bulk intent) and onboarding on v2, then adopt's
    screen and its real run.
 4. **P.8**, because Logs, DHCP, Topology and per-network Grafana all read per-network
