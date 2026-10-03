@@ -40,8 +40,9 @@ the cell reads unknown, never "not configured". Whether NTP synchronises and whe
 neighbours is not read here yet. Their hover says so, and they are never marked not reporting.
 
 To deploy, tick devices in the left column. A device is offered only when the monitoring profile
-supplies something it is missing. A device with nothing to deploy has a faded box that says why
-when you hover over it. The bar above the grid names the devices you ticked and how many missing
+supplies something it is missing. A device with nothing to deploy has no box: hover over the
+empty space where its box would be to see why. When no device has anything to deploy, the page
+says so above the grid. The bar above the grid names the devices you ticked and how many missing
 templates the profile supplies for them, and it updates as you tick. **Deploy missing
 templates…** opens the preview for those devices. **Clear** unticks them all. The box in the
 header ticks every device that can be ticked. How the deploy works:

@@ -469,12 +469,15 @@ class TestADisabledBoxLooksDisabled:
         opacity = float(re.search(r"opacity:\s*([\d.]+)", m.group(1)).group(1))
         assert opacity <= 0.5 and "cursor: not-allowed" in m.group(1)
 
-    def test_every_disabled_box_on_coverage_says_why_on_hover(self, lab, monkeypatch):
+    def test_coverage_draws_no_box_it_cannot_tick_and_says_why(self, lab, monkeypatch):
         _coverage_inventory(monkeypatch)
         page = lab["client"].get("/v2/monitoring/coverage/table").get_data(as_text=True)
-        boxes = re.findall(r'<input type="checkbox" disabled[^>]*>', page)
-        assert len(boxes) >= 2, "the lab offers neither device (the floor)"
-        assert all(re.search(r'title="Nothing to deploy: [^"]+"', b) for b in boxes), boxes
+        # C377: no box is drawn where nothing can be deployed (nine faded boxes on the host
+        # looked usable, as C298's did); each such row says why on hover instead.
+        assert '<input type="checkbox" disabled' not in page
+        whys = re.findall(r'<td class="gcheck" title="([^"]*)">', page)
+        assert len(whys) >= 2, "the lab offers neither device (the floor)"
+        assert all(w.startswith("Nothing to deploy: ") for w in whys), whys
 
     def test_a_real_browser_draws_it_faded(self, lab, monkeypatch):
         from tests import browser
@@ -486,9 +489,12 @@ class TestADisabledBoxLooksDisabled:
         with browser.Served(A.app) as srv, browser.Browser() as b:
             try:
                 b.go(srv.url("/v2/monitoring/coverage"))
-                b.wait_for("return document.querySelector('.gcheck input[disabled]')")
-                style = b.js("var s=getComputedStyle(document.querySelector("
-                             "'.gcheck input[disabled]'));return [s.opacity, s.cursor]")
+                # Coverage draws no disabled box any more (C377); the rule is the stylesheet's
+                # for every disabled box, so one is planted in the real page and measured.
+                b.wait_for("return document.querySelector('#coverage')")
+                style = b.js("var x=document.createElement('input');x.type='checkbox';"
+                             "x.disabled=true;document.querySelector('#coverage').appendChild(x);"
+                             "var s=getComputedStyle(x);return [s.opacity, s.cursor]")
                 assert float(style[0]) <= 0.5 and style[1] == "not-allowed", style
             finally:
                 b.go("about:blank")

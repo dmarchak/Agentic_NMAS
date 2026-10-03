@@ -86,7 +86,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   [hook: scripts/hooks/claude-no-heredoc-interpreter (.claude/settings.json); tests/test_claude_heredoc_hook.py] [why](docs/LESSONS.md#text-through-file-tools)
 - **A diff must not remove a definition something still calls.**
   [scripts/check_removed_definitions.py in hooks/pre-commit and CI; tests/test_check_removed_definitions.py] [why](docs/LESSONS.md#removed-definitions-still-called)
-- **A commit touching a host-installed file** (`deploy/update/`, `scripts/nmas-deploy`,
+- **A commit touching a host-installed file** (`deploy/update/`, `scripts/nmas-deploy`, `scripts/nmas-oxidized-cred`,
   `deploy/systemd/`, `deploy/topology/`) carries `Host-Step:`/`Host-Step-After:` or
   `Host-Step-None: <why>`; a step fills every value (no `<…>`), renders into a fresh `mktemp -d`
   folder, and installs files by name, never a glob.
@@ -128,6 +128,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   and control the built screen will have.** [every v2 page and device tab named with its sign-off,
   the unsigned list only shrinking: tests/signed_off_screens.py, tests/test_signed_off_screens.py;
   that the mockup drew every control: not mechanised]
+- **No new capability on a v1 page: today's interface only shrinks until cutover; a v1 control,
+  handler or function count may fall and never rise.** [tests/test_no_new_v1_capability.py]
 - **The manual covers every screen and operation:** a page per sidebar item and device tab, a How
   it works page per operation naming each step its code declares, a diagram on each in the flow
   of the text, "How does this work?" beside every action, all clicked in a real browser. A v2

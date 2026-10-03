@@ -36,6 +36,10 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ c.list }} has no monitoring profile yet, so nothing can be deployed: propose one from the network's connectors first. <a href="{{ url_for('index', open='profile_propose', list=c.list) }}">Propose on today's page</a></p></div>
   {%- endif %}
 
+  {%- if c.total and c.profile.committed and not c.profile.error and not offered %}
+  <p class="cov-profile" id="cov-nothing">Nothing to deploy from here: every device has every template the profile supplies{% if c.ip_sla_missing %}. IP SLA probes are suggested and sent from the IP SLA page: open it from a device's IP SLA ring{% endif %}.</p>
+  {%- endif %}
+
   {%- if c.total %}
   <form method="get" action="{{ url_for('v2.profile_apply') }}" class="cov-form" x-data="coverageSelect">
     <input type="hidden" name="list" value="{{ c.list }}">
@@ -61,9 +65,11 @@
         <tbody>
           {%- for d in c.devices %}
           <tr>
-            <td class="gcheck">
+            <td class="gcheck"{% if not d.selectable %} title="Nothing to deploy: {{ d.why_not }}{% if d.not_reporting %}. A template not reporting is diagnosed, not redeployed{% endif %}"{% endif %}>
               {%- if d.selectable %}<input type="checkbox" name="device" value="{{ d.host }}" id="cov-{{ d.host }}" data-missing="{{ d.supplies | length }}"{% if d.checked %} checked{% endif %} x-on:change="recount" aria-label="Select {{ d.host }}: {{ d.supplies | length }} missing" title="{{ d.supplies | length }} missing the profile supplies: {{ d.supplies | join(', ') }}">
-              {%- else %}<input type="checkbox" disabled aria-label="{{ d.host }}: {{ d.why_not }}" title="Nothing to deploy: {{ d.why_not }}{% if d.not_reporting %}. A template not reporting is diagnosed, not redeployed{% endif %}">{% endif -%}
+              {%- else %}{#- No box where nothing can be deployed (the signed note: "no box on a fully
+                  covered device"; C377: nine faded boxes on the host, none tickable). The why
+                  is on the row, for hover and a screen reader. #}<span class="sr-only">Nothing to deploy: {{ d.why_not }}{% if d.not_reporting %}. A template not reporting is diagnosed, not redeployed{% endif %}</span>{% endif -%}
             </td>
             <th scope="row" class="gdev">
               <a href="{{ url_for('device_v2.device', name=d.host) }}">{{ d.host }}</a> <span class="muted">{{ d.platform or 'platform unknown' }}</span>
@@ -95,7 +101,7 @@
   </form>
   <p class="cov-legend muted">
     <span><span class="m-ok">{{ icon('check', 14) }}</span> configured</span>
-    <span><span class="m-no"></span> not configured: select its device to deploy it</span>
+    <span><span class="m-no"></span> not configured: tick its device to deploy it; IP SLA's ring opens the IP SLA page</span>
     <span><span class="m-nr">!</span> not reporting: configured, its data not arriving; opens where to find why</span>
     <span>blank: not applicable (to the device, or its platform)</span>
     {%- if c.unknown_cells %}

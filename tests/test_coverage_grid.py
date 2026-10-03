@@ -50,6 +50,16 @@ def _box(html, host):
     return m.group(0)
 
 
+def _why(html, host):
+    """A row with no box: the title on its box cell, which must hold no input (C377)."""
+    m = re.search(r'<td class="gcheck" title="([^"]*)">(.*?)</td>\s*<th scope="row" class="gdev">'
+                  r'\s*<a href="/v2/device/%s"' % host, html, re.S)
+    assert m, host
+    assert "<input" not in m.group(2), f"{host}: a box drawn where nothing can be deployed"
+    assert m.group(1) in m.group(2), "the same why for a screen reader"
+    return m.group(1)
+
+
 @pytest.fixture
 def r2_snmp_down(read):
     value, _p, _l = read(_down(_capture(), "r2", jobs=("cisco_8000v", "lldp", "ospf", "ospfv3")))
@@ -98,14 +108,14 @@ class TestTheSelection:
         assert "Deploy missing templates…" in bar.group(2) and ">Clear</button>" in bar.group(2)
         assert 'data-missing="1" checked' in _box(html, "r6")
         # Not reporting is diagnosed, never redeployed: r2 has nothing to tick.
-        r2 = _box(html, "r2")
-        assert "disabled" in r2 and "A template not reporting is diagnosed, not redeployed" in r2
+        assert "A template not reporting is diagnosed, not redeployed" in _why(html, "r2")
         assert 'x-ref="all" x-on:change="pickAll"' in html
 
     def test_nothing_offered_draws_no_bar_and_no_header_box(self, lab, monkeypatch):
         html = _table(lab, monkeypatch)
         assert 'id="cov-bar"' not in html and 'x-ref="all"' not in html
-        assert "Nothing to deploy: the network has no monitoring profile yet" in _box(html, "r6")
+        assert _why(html, "r6") == "Nothing to deploy: the network has no monitoring profile yet"
+        assert 'id="cov-nothing"' not in html, "no profile: the notice above says why instead"
 
     @pytest.mark.parametrize("names, missing, words", [
         (["r7", "s5", "s6"], 9, ("3 devices selected", "· r7, s5, s6 · 9 missing templates")),
@@ -212,3 +222,52 @@ class TestNtpAndLldp:
     def test_no_needs_attention_row_reads_them(self):
         from modules import monitoring_coverage as M
         assert set(M.CHECKS) == {"snmp", "syslog", "heartbeat", "telemetry"}
+
+
+class TestEveryBoxDrawnCanBeTicked:
+    """C377: on the host every device had nothing the profile's Apply could send, so every box
+    was drawn DISABLED and ticking did nothing, while the real-browser test above passed on a
+    fixture that always had one deployable device. The property, in a real browser and on the
+    HOST'S shape as well as the deployable one: every box the grid draws can be ticked, and
+    ticking it moves the bar; where nothing can be deployed, no box is drawn and the page says
+    so."""
+
+    @pytest.mark.parametrize("shape", ["host", "one_to_deploy"])
+    def test_in_a_real_browser(self, lab, monkeypatch, shape):
+        from tests import browser
+        ok, why = browser.available()
+        if not ok:
+            pytest.skip(f"no real browser here ({why})")
+        import app as A
+        from modules.nsot import listref
+        _commit_proposal()
+        # The host's shape (2026-10-03): every device has what the profile supplies.
+        fleet = [dict(R2)] if shape == "host" else [dict(R2), dict(R6)]
+        monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
+        monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: fleet)
+        with browser.Served(A.app) as srv, browser.Browser() as b:
+            try:
+                b.go(srv.url("/v2/monitoring/coverage"))
+                b.wait_for("return window.Alpine && document.querySelector('#coverage')")
+                boxes = b.js("return Array.from(document.querySelectorAll('#coverage tbody tr'))"
+                             ".map(function (tr, i) { return tr.querySelector('input[type="
+                             "checkbox]') ? tr.querySelector('th a').textContent : null; })")
+                rows = [(i, host) for i, host in enumerate(boxes) if host]
+                boxes = [host for _i, host in rows]
+                for i, box in rows:
+                    sel = f"#coverage tbody tr:nth-of-type({i + 1}) input[type=checkbox]"
+                    if b.js("return document.querySelector(arguments[0]).checked", sel):
+                        b.click(sel)       # start from unticked
+                    b.click(sel)
+                    assert b.wait_for("return document.querySelector(arguments[0]).checked",
+                                      5.0, sel), f"{box}: ticking did nothing"
+                    assert b.wait_for("return !document.querySelector('#cov-bar').hidden", 5.0)
+                if shape == "host":
+                    assert not boxes
+                    said = b.js("return document.querySelector('#cov-nothing').textContent")
+                    assert "Nothing to deploy from here" in said, said
+                else:
+                    assert boxes == ["r6"]
+            finally:
+                b.go("about:blank")
+                browser.close_socketio_sessions()
