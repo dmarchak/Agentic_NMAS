@@ -71,7 +71,12 @@ self-signed certificate is named in the summary as not drift.
 - **The next run's time is kept in memory.** Editing the state file does not move it; Check
   now does.
 - **Check now** runs the check at once and answers with its result. It refuses while a run is
-  already in progress.
+  already in progress, by anyone and from any process (the scheduled run, another person's
+  Check now, a script), naming when it started and what started it; one run per list at a
+  time. The scheduled run tries again a minute later.
+- **An unreadable state file pauses the schedule.** The panel says "State unreadable" with
+  why; nothing is written over the file (a refused write keeps a copy beside it), and the
+  schedule resumes once the file is readable again or moved aside.
 - **The schedule checks the selected list.** Its state (last run, switched off or on) is kept
   per device list, and each run checks the list selected at that moment.
 

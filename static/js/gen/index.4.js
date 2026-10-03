@@ -1225,8 +1225,17 @@ async function loadDriftStatus() {
     const partial   = inventory > 0 && checked < inventory;
     const coverage  = inventory > 0 ? ` ${checked}/${inventory}` : '';
 
+    /* CONCURRENCY_AUDIT R19: an unreadable state pauses the scheduler and is said, never
+       drawn as "Not run yet"; a run another person or process started is drawn running,
+       with who started it on hover. */
+    const run = data.running_run || null;
     if (badge) {
-      if (data.disabled) {
+      badge.title = run ? `Started ${run.started_at || '?'} (${run.triggered_by || '?'}, `
+                          + `process ${run.pid || '?'})` : '';
+      if (data.unreadable) {
+        badge.className = 'badge bg-danger small';
+        badge.textContent = 'State unreadable';
+      } else if (data.disabled) {
         badge.className = 'badge bg-secondary small';
         badge.textContent = 'Disabled';
       } else if (data.running) {
@@ -1262,7 +1271,10 @@ async function loadDriftStatus() {
       // run said. Blanking the line is how a silenced check becomes
       // invisible: the reason it was switched off gets fixed, and nothing
       // anywhere prompts a re-evaluation.
-      if (data.disabled) {
+      if (data.unreadable) {
+        lastRun.innerHTML = `<span class="text-danger">Scheduled checks paused: ${_esc(data.unreadable)}. `
+          + 'Nothing is written over it; it is preserved beside it when a write is refused.</span>';
+      } else if (data.disabled) {
         const since = data.disabled_at ? ` since ${_esc(data.disabled_at)}` : '';
         const by    = data.disabled_by ? ` by ${_esc(data.disabled_by)}` : '';
         const last  = data.last_at ? ` · last ran ${data.last_at}` : ' · never ran';
@@ -1318,7 +1330,11 @@ async function runDriftCheck() {
   try {
     const r    = await fetch('/drift/check/sync', { method: 'POST' });
     const data = await r.json();
-    if (data.summary) {
+    if (data.ok === false && (data.error || data.message)) {
+      /* A refusal says why (R19: a run already in progress names who started it), and a
+         run whose result could not be recorded is never drawn in the success colour. */
+      showToast(data.error || data.message, r.status === 409 ? 'warning' : 'danger');
+    } else if (data.summary) {
       showToast(data.summary, data.drifted > 0 ? 'warning' : (data.errors && data.errors.length ? 'danger' : 'success'));
     }
     await loadDriftStatus();

@@ -122,7 +122,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R16 | m | confirms | Deploy and restore confirm gaps | devices, commit | command hash optional; compared before the hold; list derived | partly | UNSAFE | yes | Require the hash; hold first; list in the hash |
 | R17 | m | intent | Settings forms | `user_settings.json`, `.env` | file safe; forms resend every field; `.env` unlocked | yes (file) | UNSAFE | yes | Send changed fields only, with the value as loaded |
 | R18 | m | git, stores, locks | `remote.json` and the post-commit push | the remote, `remote.json` | thread per commit; unlocked read-modify-write; unreadable reads as "no remote" | no | UNSAFE | yes | One publisher per repository; PathLock; push an explicit sha |
-| R19 | m | stores, live, approvals | Drift state and overlapping drift runs | `drift_state.json`, queue items | one RLock in one function; truncate; legacy re-adoption; Check now overlaps | no | UNSAFE | yes | PathLock; refuse unreadable; one drift run at a time across processes |
+| R19 | m | stores, live, approvals | Drift state and overlapping drift runs | `drift_state.json`, queue items | one RLock in one function; truncate; legacy re-adoption; Check now overlaps | no | FIXED 2026-10-02 (was UNSAFE; tests/test_drift_state_concurrency.py) | yes | PathLock; refuse unreadable; one drift run at a time across processes |
 | R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | FIXED 2026-10-02 as C326 (was UNSAFE; tests/test_approved_revert_closes.py) | yes | Never reject the item named by `approval_id` |
 | R21 | m | locks, confirms, live | Every NetBox writer: the tab's import and Remove, onboarding phase two, adopt, retire's mask, the mask script (widened on review) | NetBox, sync status | nothing refuses a second writer; status truncate; tokens in memory | partly | UNSAFE | yes | Per-list NetBox lock with holder, taken by every writer; shared token store |
 | R22 | m | stores | Kea ZTP fragment | the fragment, Kea's running config | none | no | UNSAFE | yes | PathLock from read to read-back |
@@ -416,6 +416,16 @@ then answers "no remote configured, nothing pushed" with `ok` (modules/nsot/arch
 publication stops with a success message. Two pushes of HEAD can arrive out of order and
 be recorded as a divergence (archive.py:134-140). The S3 hook uploads the working file under
 the hook's sha (archive.py:226-236).
+
+*FIXED 2026-10-02 (tests/test_drift_state_concurrency.py):* every read-modify-write of a
+list's state holds a cross-process `PathLock` and replaces the file atomically; only an
+ABSENT state adopts the legacy file, and an unreadable one is never empty: writes refuse
+(the file kept, a `.corrupt-` copy beside it), the scheduler reads it as paused and the panel
+says "State unreadable" with why. One drift run per list at a time across processes
+(`DATA_DIR/drift_runs/<list>.lock`): a second run raises `DriftRunning` naming the first,
+Check now answers 409 naming it, the scheduled run retries in a minute, and the status shows
+another process's run as running. A run whose result cannot be recorded says so, never in
+the success colour. The queue's own check-then-append was R4's, fixed before.
 
 **R19. Drift state is unlocked, and two drift runs can overlap** (stores-4, live-11,
 approvals-20, locks-18). Only `answer_by_golden` takes the RLock

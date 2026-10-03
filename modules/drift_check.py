@@ -43,9 +43,6 @@ log = logging.getLogger(__name__)
 _DEFAULT_INTERVAL  = 4 * 3600   # 4 hours
 _STARTUP_GRACE     = 300         # fire first check 5 min after start (not instantly)
 _STATE_FILE_NAME   = "drift_state.json"
-#: Serialises a read-modify-write of the state within this process (a golden
-#: answering rows while a run stores its result).
-_STATE_LOCK = threading.RLock()
 
 # Lines stripped from BOTH sides before diffing.
 _SKIP_STARTSWITH = (
@@ -105,19 +102,58 @@ def _legacy_state_file() -> str:
     return os.path.join(DATA_DIR, _STATE_FILE_NAME)
 
 
+#: The key `_load_state` returns ALONE when the state file exists and cannot be read
+#: (CONCURRENCY_AUDIT R19): never empty, never the legacy file.
+UNREADABLE = "_unreadable"
+
+
+class DriftStateUnreadable(RuntimeError):
+    """The state file exists and cannot be read: nothing is written over it."""
+
+
+class DriftRunning(RuntimeError):
+    """A drift run for this list is already in progress, in this process or another."""
+
+    def __init__(self, holder: dict):
+        self.holder = holder or {}
+        super().__init__(
+            "A drift check is already running for this list (started "
+            f"{self.holder.get('started_at', '?')}, {self.holder.get('triggered_by', '?')}, "
+            f"process {self.holder.get('pid', '?')}); this one did not start. Its result "
+            "will be on the panel when it finishes.")
+
+
+def _state_lock(list_name: str = ""):
+    """Every read-modify-write of a list's state, across processes (CONCURRENCY_AUDIT R19):
+    one RLock in one function guarded it, so a run storing its result and a golden answering
+    its rows, or the app and a second process, lost each other's update."""
+    from modules.filestore import PathLock
+    return PathLock(lambda: _state_file(list_name))
+
+
 def _load_state(list_name: str = "") -> dict:
     """This list's state, migrating the installation-wide file forward once.
 
     The old file is **copied, not moved**: it is the only record that drift
     was ever switched on, and for one installation it is the only record of
     *when* and, by its stored last run, *why*.
+
+    **Absent and unreadable are different** (CONCURRENCY_AUDIT R19). Only an ABSENT file
+    adopts the legacy one: a torn read used to adopt it and write it over the list's state,
+    which could drop `disabled`. An unreadable file is ``{UNREADABLE: why}``, which every
+    writer refuses and the scheduler reads as paused.
     """
     path = _state_file(list_name)
     try:
         with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError):
+            data = json.load(fh)
+        if isinstance(data, dict):
+            return data
+        return {UNREADABLE: f"{_STATE_FILE_NAME} is not a mapping"}
+    except FileNotFoundError:
         pass
+    except (ValueError, OSError) as exc:
+        return {UNREADABLE: f"{_STATE_FILE_NAME} could not be read ({type(exc).__name__})"}
 
     try:
         with open(_legacy_state_file(), encoding="utf-8") as fh:
@@ -125,12 +161,15 @@ def _load_state(list_name: str = "") -> dict:
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
 
-    log.info("drift_check: adopting installation-wide state for list '%s'",
-             list_name or "(current)")
-    legacy["migrated_from"] = _legacy_state_file()
-    # `_write_state`, not `_save_state`: the latter merges by loading, and
-    # loading is what got us here.
-    _write_state(legacy, list_name)
+    with _state_lock(list_name):
+        if os.path.exists(path):              # another writer created it meanwhile
+            return _load_state(list_name)
+        log.info("drift_check: adopting installation-wide state for list '%s'",
+                 list_name or "(current)")
+        legacy["migrated_from"] = _legacy_state_file()
+        # `_write_state`, not `_save_state`: the latter merges by loading, and
+        # loading is what got us here.
+        _write_state(legacy, list_name)
     return legacy
 
 
@@ -142,20 +181,121 @@ def _save_state(data: dict, list_name: str = "") -> None:
     unreachable while disabled, so it never fired, but a switch that a
     completed run can silently flip is one bug away from switching itself back
     on, and the operator would have no record either way.
+
+    Under the state lock, across processes; an unreadable file raises
+    `DriftStateUnreadable` with the file preserved beside it (R19).
     """
-    merged = _load_state(list_name)
-    merged.update(data)
-    _write_state(merged, list_name)
+    with _state_lock(list_name):
+        merged = _load_state(list_name)
+        if UNREADABLE in merged:
+            from modules.filestore import preserve_corrupt
+            path = _state_file(list_name)
+            preserve_corrupt(path, merged[UNREADABLE])
+            raise DriftStateUnreadable(
+                f"{merged[UNREADABLE]}, so nothing was written: saving would have replaced "
+                "the disabled switch and the last run. The damaged file is preserved beside "
+                "it; move it aside to start a fresh state.")
+        merged.update(data)
+        _write_state(merged, list_name)
 
 
 def _write_state(data: dict, list_name: str = "") -> None:
+    """Replaced atomically, a temp file per write (it was truncated in place)."""
+    from modules.filestore import write_atomic
+
     path = _state_file(list_name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2)
+        write_atomic(path, json.dumps(data, indent=2))
     except Exception as exc:
         log.warning("drift_check: could not save state: %s", exc)
+
+
+
+
+def _run_lock_path(list_name: str = "") -> str:
+    """``DATA_DIR/drift_runs/<list>.lock``, by the list's NAME, as device holds are: resolving
+    a list's folder creates it, and a lock beside a relative device-list path landed in
+    whatever the working directory was."""
+    import re as _re
+
+    from modules.config import DATA_DIR, get_current_list_name
+
+    name = (list_name or get_current_list_name() or "default").lower()
+    return os.path.join(DATA_DIR, "drift_runs",
+                        (_re.sub(r"[^a-z0-9_.-]", "_", name) or "_") + ".lock")
+
+
+def running_now(list_name: str = ""):
+    """The run in progress for this list, by any process, or None. A READ."""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    path = _run_lock_path(list_name)
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            text = os.read(fd, 1 << 16).decode("utf-8", "replace")
+            try:
+                return json.loads(text) if text.strip() else {}
+            except ValueError:
+                return {}
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return None
+    finally:
+        os.close(fd)
+
+
+class _OneRun:
+    """One drift run per list at a time, across processes (CONCURRENCY_AUDIT R19): Check
+    now never set the scheduler's flag, so two people pressing it, or Check now during the
+    scheduled run, ran two full passes, and the queue's check-then-append added two items
+    for one device. An exclusive `flock` the kernel releases with its holder; a second run
+    raises `DriftRunning` naming the first, never waits."""
+
+    def __init__(self, path: str, triggered_by: str):
+        self.path, self.triggered_by, self.fd = path, triggered_by, None
+
+    def __enter__(self):
+        try:
+            import fcntl
+        except ImportError:
+            return self
+        path = self.path
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            text = os.read(fd, 1 << 16).decode("utf-8", "replace")
+            os.close(fd)
+            try:
+                holder = json.loads(text) if text.strip() else {}
+            except ValueError:
+                holder = {}
+            raise DriftRunning(holder) from None
+        os.ftruncate(fd, 0)
+        os.write(fd, json.dumps({
+            "pid": os.getpid(), "triggered_by": self.triggered_by,
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}).encode())
+        self.fd = fd
+        return self
+
+    def __exit__(self, *exc):
+        if self.fd is not None:
+            import fcntl
+            try:
+                os.ftruncate(self.fd, 0)
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
+            finally:
+                os.close(self.fd)
+                self.fd = None
+        return False
 
 
 def _clean(text: str) -> list[str]:
@@ -176,8 +316,19 @@ def _get_interval() -> float:
         return _DEFAULT_INTERVAL
 
 
+_UNREADABLE_SAID = set()
+
+
 def _is_disabled() -> bool:
-    return bool(_load_state().get("disabled", False))
+    """An unreadable state reads as PAUSED (R19): its switch cannot be known, and nothing a
+    run produced could be recorded. Logged once per cause."""
+    state = _load_state()
+    if UNREADABLE in state:
+        if state[UNREADABLE] not in _UNREADABLE_SAID:
+            _UNREADABLE_SAID.add(state[UNREADABLE])
+            log.error("drift_check: the scheduler is paused: %s", state[UNREADABLE])
+        return True
+    return bool(state.get("disabled", False))
 
 
 def set_disabled(disabled: bool, actor: str = "") -> None:
@@ -215,7 +366,7 @@ def answer_by_golden(list_name: str, hosts, why: str) -> list:
     if not names:
         return []
     try:
-        with _STATE_LOCK:
+        with _state_lock(list_name):
             state = _load_state(list_name)
             last = state.get("last_result")
             if not isinstance(last, dict):
@@ -247,6 +398,17 @@ def answer_by_golden(list_name: str, hosts, why: str) -> list:
 
 
 def run_drift_check(triggered_by: str = "scheduled") -> dict:
+    """One drift run of the active list, and only one at a time across processes
+    (CONCURRENCY_AUDIT R19): raises `DriftRunning` naming the run in progress. Keyed on the
+    name of the device list the run reads."""
+    from modules.device import get_current_device_list
+
+    name, _ = get_current_device_list()
+    with _OneRun(_run_lock_path(name), triggered_by):
+        return _run_drift_check(triggered_by)
+
+
+def _run_drift_check(triggered_by: str = "scheduled") -> dict:
     """Check every device in the inventory for config drift.
 
     **The population is the inventory, not the golden store.** It used to
@@ -564,11 +726,17 @@ class DriftChecker:
         interval = _get_interval()
         list_name = get_current_list_name()
         state = _load_state(list_name)
+        unreadable = state.get(UNREADABLE)
         disabled = bool(state.get("disabled", False))
+        # A run another person or process started is running too (R19): the scheduler's
+        # own flag knew only about its own runs.
+        elsewhere = running_now(list_name)
 
-        if disabled:
+        if unreadable:
+            phase = "unreadable"
+        elif disabled:
             phase = "disabled"
-        elif self._running:
+        elif self._running or elsewhere is not None:
             phase = "running"
         else:
             phase = "idle"
@@ -584,7 +752,9 @@ class DriftChecker:
         return {
             "list":        list_name,
             "state":       phase,
-            "running":     self._running,
+            "running":     self._running or elsewhere is not None,
+            "running_run": elsewhere,
+            "unreadable":  unreadable,
             "disabled":    disabled,
             "disabled_at": state.get("disabled_at"),
             "disabled_by": state.get("disabled_by"),
@@ -630,39 +800,53 @@ class DriftChecker:
                     continue   # already in flight
                 self._running = True
 
+            started = False
             try:
-                result = run_drift_check(triggered_by="scheduled")
-            except Exception as exc:
-                log.exception("drift_check: unexpected error: %s", exc)
-                result = {
-                    "ok": False, "checked": 0, "drifted": 0, "clean": 0,
-                    "errors": [{"hostname": "scheduler", "reason": str(exc)}],
-                    "summary": f"Drift check failed: {exc}",
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "triggered_by": "scheduled",
-                }
+                try:
+                    result = run_drift_check(triggered_by="scheduled")
+                    started = True
+                except DriftRunning as exc:
+                    # Another run (Check now, or another process) holds this list: it
+                    # records its own result; this one tries again in a minute (R19).
+                    log.info("drift_check: scheduled run not started: %s", exc)
+                    self._next_ts = time.time() + 60
+                except Exception as exc:
+                    log.exception("drift_check: unexpected error: %s", exc)
+                    started = True
+                    result = {
+                        "ok": False, "checked": 0, "drifted": 0, "clean": 0,
+                        "errors": [{"hostname": "scheduler", "reason": str(exc)}],
+                        "summary": f"Drift check failed: {exc}",
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "triggered_by": "scheduled",
+                    }
             finally:
                 with self._running_lock:
                     self._running  = False
-                self._last_result = result
-                self._last_ts     = time.time()
-                interval          = _get_interval()
-                self._next_ts     = self._last_ts + interval
-                # `_save_state` merges. This used to hand `json.dump` a
-                # fresh three-key dict, dropping `disabled` and anything else
-                # the file held.
-                # `next_ts` is deliberately NOT written. It was, and it was
-                # read nowhere -- `__init__` rebuilds the schedule from
-                # `last_check_ts + interval` and every other path sets
-                # `self._next_ts` directly. A key that looks authoritative,
-                # is not, and sits in the same file as `disabled` (which IS
-                # live, re-read every iteration) cost an operator a
-                # twenty-minute experiment: editing one works, editing the
-                # other does nothing, with nothing on screen saying which.
+            if not started:
+                continue
+            self._last_result = result
+            self._last_ts     = time.time()
+            interval          = _get_interval()
+            self._next_ts     = self._last_ts + interval
+            # `_save_state` merges. This used to hand `json.dump` a
+            # fresh three-key dict, dropping `disabled` and anything else
+            # the file held.
+            # `next_ts` is deliberately NOT written. It was, and it was
+            # read nowhere -- `__init__` rebuilds the schedule from
+            # `last_check_ts + interval` and every other path sets
+            # `self._next_ts` directly. A key that looks authoritative,
+            # is not, and sits in the same file as `disabled` (which IS
+            # live, re-read every iteration) cost an operator a
+            # twenty-minute experiment: editing one works, editing the
+            # other does nothing, with nothing on screen saying which.
+            try:
                 _save_state({
                     "last_check_ts": self._last_ts,
                     "last_result":   result,
                 })
+            except DriftStateUnreadable as exc:
+                log.error("drift_check: the run's result was not recorded: %s", exc)
 
         log.info("drift_check: scheduler loop stopped")
 

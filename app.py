@@ -3222,12 +3222,20 @@ def drift_check_trigger():
 def drift_check_sync():
     """Run a drift check synchronously and return the result.
     Suitable for manual 'Check Now' button clicks where the user wants to see results."""
-    from modules.drift_check import run_drift_check, get_checker
+    from modules.drift_check import (DriftRunning, DriftStateUnreadable, get_checker,
+                                     run_drift_check)
     checker = get_checker()
     if checker._running:
         return jsonify({"ok": False, "message": "Drift check already in progress"}), 409
     try:
         result = run_drift_check(triggered_by="manual")
+    except DriftRunning as exc:
+        # One run per list across processes (CONCURRENCY_AUDIT R19), named, never run twice.
+        return jsonify({"ok": False, "running_run": exc.holder, "error": str(exc)}), 409
+    except Exception as exc:
+        app.logger.error("drift check sync error: %s", exc, exc_info=True)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    try:
         # Persist, don't only cache. `status()` reads the per-list state file,
         # so a manual run that updated only the in-memory attributes vanished
         # from the panel on the next list switch -- and the last run recorded
@@ -3238,6 +3246,9 @@ def drift_check_sync():
         checker._last_ts     = _time.time()
         _save_state({"last_check_ts": checker._last_ts, "last_result": result})
         return jsonify(result)
+    except DriftStateUnreadable as exc:
+        return jsonify({**result, "ok": False,
+                        "error": f"The check ran; its result was not recorded: {exc}"}), 500
     except Exception as exc:
         app.logger.error("drift check sync error: %s", exc, exc_info=True)
         return jsonify({"ok": False, "error": str(exc)}), 500
