@@ -608,6 +608,10 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .stepper .step-not_reached .step-words { text-decoration: line-through; }
 .stepper .step-not_reached .step-mark { border-style: dashed; background: none; }
 .stepper .step-failed .step-note { color: var(--danger); font-weight: 600; }
+/* Sent, and its verify did not pass (C394): never the done green. */
+.stepper .step-partial { color: var(--ink); font-weight: 600; }
+.stepper .step-partial .step-mark { background: var(--warn-mark); border-color: var(--warn-mark); }
+.stepper .step-partial .step-note { color: var(--warn-mark); }
 
 .check-again .check-late:empty { display: none; }
 /* A check that answered late, or a last attempt that failed: said in words. */
@@ -627,6 +631,18 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   margin: 0 0 12px; padding: 8px 14px; background: var(--accent-soft); border: 1px solid var(--accent);
   border-radius: var(--r); }
 .cov-bar[hidden] { display: none; }
+/* Coverage's combined deploy (artboard A2): a card per device, its order beside its name. */
+.cdep { display: flex; flex-direction: column; gap: 14px; }
+.cdep-form { display: flex; flex-direction: column; gap: 14px; }
+.cdep-device, .cdep-idle { display: flex; flex-direction: column; gap: 10px; }
+.cdep-hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cdep-order { display: flex; gap: 6px; }
+.cdep-checks, .cdep-nr { margin: 0; font-size: 12.5px; }
+.cdep-program > summary { cursor: pointer; }
+.cdep-bar { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: 0; padding: 12px 16px; background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-card); }
+.cdep-acts { display: flex; gap: 10px; align-items: center; }
 .cov-bar-acts { display: flex; gap: 10px; align-items: center; }
 .cov-grid { table-layout: fixed; width: auto; }
 .cov-grid th, .cov-grid td { padding: 6px; }

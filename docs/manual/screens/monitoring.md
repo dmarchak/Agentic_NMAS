@@ -39,15 +39,17 @@ where that platform's default has been measured as off. Where the default has no
 the cell reads unknown, never "not configured". Whether NTP synchronises and whether LLDP finds
 neighbours is not read here yet. Their hover says so, and they are never marked not reporting.
 
-To deploy, tick devices in the left column. A device is offered only when the monitoring profile
-supplies something it is missing. A device with nothing to deploy has no box: hover over the
-empty space where its box would be to see why. When no device has anything to deploy, a note
-beside the grid says so, names what is missing (IP SLA, and on which devices) and says it goes
-through the IP SLA page until the combined deploy takes it. The bar above the grid names the devices you ticked and how many missing
-templates the profile supplies for them, and it updates as you tick. **Deploy missing
-templates…** opens the preview for those devices. **Clear** unticks them all. The box in the
-header ticks every device that can be ticked. How the deploy works:
-[Apply a monitoring template](monitoring-templates).
+To deploy, tick devices in the left column. A device is offered only when something it is
+missing can be sent: a line the monitoring profile supplies, or an IP SLA probe committed to
+its intent and not yet on the device. A device with nothing to deploy has no box: hover over
+the empty space where its box would be to see why. When no device has anything to deploy, a
+note beside the grid says so, and names any device whose IP SLA probe is not chosen yet: a
+probe's target is chosen on the IP SLA page, and once committed it is deployed from here. The
+bar above the grid names the devices you ticked and how many missing templates they have, and
+it updates as you tick. **Deploy missing templates…** opens the combined deploy for those
+devices: one program per device, every template it is missing. **Clear** unticks them all.
+The box in the header ticks every device that can be ticked. How the deploy works:
+[Deploy missing templates](monitoring-templates#combined).
 
 A configured cell can still be **not reporting**: the configuration is there and its data is
 not arriving. The cell says for how long ("no scrape for 12 min", "no stream for 9 min",

@@ -296,7 +296,7 @@ def _profile_scope_parts(name: str, sc: dict, scope: str = "profile") -> tuple:
         if not mine:
             continue
         src = (sc.get("sources") or {}).get(section) or ""
-        if scope == "ip_sla":
+        if scope == "ip_sla" or section == "ip_sla":
             title = f"The IP SLA probes committed to its intent: will be sent ({len(mine)} line(s))"
         else:
             title = (f"From the profile's {PROFILE_SECTION_WORDS.get(section, section)} section"
@@ -321,6 +321,7 @@ def _profile_scope_parts(name: str, sc: dict, scope: str = "profile") -> tuple:
         extra.append({"target": name, "kind": "held_back",
                       "text": ("Held back: this device's OWN intent would add these lines, and "
                                + ("sending its IP SLA probes" if scope == "ip_sla"
+                                  else "deploying its missing templates" if scope == "templates"
                                   else "applying the profile")
                                + " does not send them. Deploy them from a plan of its intent."),
                       "lines": _text(sc["held_back"])})
@@ -372,6 +373,9 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
         else:
             none = ("Nothing will be sent: the device already has every IP SLA probe its intent "
                     "defines." if scope == "ip_sla" else
+                    "Nothing will be sent: the device already has every line the profile "
+                    "supplies and every IP SLA probe its intent defines." if scope == "templates"
+                    else
                     "Nothing will be sent: the device already has every line the profile "
                     "supplies." if d.get("profile_scope") else
                     "Nothing will be sent: the device already has every line.")
@@ -493,6 +497,10 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
         summary=((f"Add the IP SLA probes committed to these devices' intent: only IP SLA lines are "
                   f"sent, merge-only. {ready} of {n} can receive them now, and for each, exactly the "
                   "program shown is sent, in order.") if scope == "ip_sla" else
+                 (f"Deploy the missing monitoring templates: each device gets ONE program, every "
+                  f"template it is missing, sent, verified and rolled back as one; nothing else "
+                  f"in its intent is sent. {ready} of {n} can receive theirs now, one at a time "
+                  "in the order shown.") if scope == "templates" else
                  (f"Apply the network's monitoring profile to the devices you tick: only the "
                   f"profile's lines are sent, "
                   + ("plus the removals you selected" if removing_any else "merge-only")

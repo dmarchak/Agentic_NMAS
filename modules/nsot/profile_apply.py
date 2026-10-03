@@ -27,8 +27,11 @@ import logging
 
 log = logging.getLogger(__name__)
 
-#: The one scope a deploy plan accepts besides the whole intent.
+#: The scope that sends the profile's lines.
 SCOPE = "profile"
+#: Coverage's combined deploy (artboard A2): the profile's lines AND the device's own IP SLA
+#: probes, one program per device, sending only what the device lacks.
+TEMPLATES = "templates"
 
 
 class ScopeRefused(ValueError):
@@ -41,7 +44,7 @@ def _keyed(config: str) -> list:
     return [((tuple(chain), line)) for line, chain in _section_chains(config or "")]
 
 
-def scoped(effective_render: str, own_render: str, captured: str) -> dict:
+def scoped(effective_render: str, own_render: str, captured: str, also=None) -> dict:
     """The scoped intended config and the groups a person reads.
 
     ``config``: the effective render less every line the device's own intent
@@ -50,13 +53,16 @@ def scoped(effective_render: str, own_render: str, captured: str) -> dict:
     ``held_back``: the lines its own intent would add, NOT sent by this
     action. Each group is a list of ``{chain, line}``.
 
+    *also* ``(chain, line) -> bool``: own-intent lines that join the scope
+    (`TEMPLATES`: the device's IP SLA probes, `ip_sla_policy.is_ip_sla_line`).
+
     Refuses a profile line that sits under a stanza only the device's OWN
     intent adds: sending the line would send that stanza's header, which is
     not the profile's."""
     eff = _keyed(effective_render)
     own = set(_keyed(own_render))
     have = set(_keyed(captured))
-    profile = [k for k in eff if k not in own]
+    profile = [k for k in eff if k not in own or (also is not None and also(*k))]
     pkeys = set(profile)
     held = [k for k in eff if k not in pkeys and k not in have]
     held_keys = set(held)

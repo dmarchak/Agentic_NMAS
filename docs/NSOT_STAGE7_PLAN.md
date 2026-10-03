@@ -3008,6 +3008,32 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
    selection; then the combined deploy (one program per device, verified and rolled back as
    one). The Heartbeat and IP SLA pages retire when Coverage and the monitoring templates
    replace them (docs/CUTOVER.md).
+   **The combined deploy, from artboard A2 (2026-10-03). BUILT: its scope, its page and
+   Coverage's button (tests/test_coverage_deploy.py). NEXT: stop at the first failure, the
+   read-back of every line, then arrivals once decided.**
+   - **Its scope** is the profile's lines plus the device's own IP SLA probes
+     (`templates`), sending only what the device lacks. So a configured template is never in
+     the program, and a not-reporting one is named beside it with its Diagnose link, as
+     drawn.
+   - **The batch stops at the first device that fails, of any kind.** Today's breaker stops
+     after 2 verify failures and counts nothing else (C10).
+   - **Every line of the program is read back,** quick or full, and a line that did not land
+     rolls the device's program back as one.
+   - **DECISION OWED (the operator): what "a scrape, a log line and a heartbeat arriving"
+     does.** A2 draws it as part of verify. Two things decide what it can be:
+     - The heartbeat fires every 5 minutes, and the reader looks once a minute.
+     - SNMP's scrape target exists only after the batch's golden commit regenerates the
+       targets, which is after the last device.
+     Waiting per device would add at least 5 to 6 minutes to each device and could never
+     see SNMP.
+     **Recommendation:** arrival is WATCHED after the batch, never a gate and never a
+     rollback. The job watches each device's new templates for up to 15 minutes (about 2.5x
+     the 6-minute worst case, a heartbeat and a reader cycle) and draws each cell as
+     "arrived at hh:mm" or "not yet". A cell still waiting when the watch ends becomes
+     Coverage's not-reporting state, with its diagnosis. The configuration that read back
+     correctly stays; a missing scrape is not a reason to remove it.
+     **Alternatively,** arrival gates each device and rolls back on a timeout. That is about
+     6 minutes a device, and SNMP is excluded from the gate.
 3. **7.4's selection** (batch deploy, Save All, bulk intent) and onboarding on v2, then adopt's
    screen and its real run.
 4. **P.8**, because Logs, DHCP, Topology and per-network Grafana all read per-network

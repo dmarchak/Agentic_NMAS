@@ -40,6 +40,9 @@
   {%- if c.total %}
   <form method="get" action="{{ url_for('v2.profile_apply') }}" class="cov-form" x-data="coverageSelect">
     <input type="hidden" name="list" value="{{ c.list }}">
+    {#- The combined deploy (artboard A2): the profile's lines and the IP SLA probes committed
+        to intent, one program per device. -#}
+    <input type="hidden" name="scope" value="templates">
     {%- if offered %}
     <div class="cov-bar" id="cov-bar"{% if not picked %} hidden{% endif %} x-bind:hidden="nonePicked">
       <span><strong x-text="summary">{{ picked | length }} device{{ 's' if picked | length != 1 }} selected</strong>
@@ -54,7 +57,7 @@
     {#- Said beside the grid (the operator, 2026-10-03: a muted line among the profile's
         details went unseen): why there is no box, and where what is missing goes. -#}
     <div class="notice notice-muted cov-nothing" id="cov-nothing">{{ icon('info') }}<p><strong>Nothing can be deployed from here:</strong> every device has every template the profile supplies.
-      {%- if c.ip_sla_missing %} What is missing, IP SLA on {{ c.ip_sla_missing | join(', ') }}, goes through the IP SLA page until the combined deploy takes it: open it from a device's IP SLA ring.{% endif %}</p></div>
+      {%- if c.ip_sla_missing %} IP SLA on {{ c.ip_sla_missing | join(', ') }} has no probe chosen yet: choose one on the IP SLA page, from the device's IP SLA ring; once committed, it is deployed from here.{% endif %}</p></div>
     {%- endif %}
     <div class="table-wrap">
       <table class="table cov-grid">
@@ -113,7 +116,7 @@
   </p>
   <p class="cov-legend muted">Hover a cell for why. A device with nothing the profile can supply has no box to tick; a template not reporting is never redeployed from here.</p>
   {%- if c.ip_sla_missing and c.profile.committed %}
-  <p class="cov-actions" id="cov-ipsla">IP SLA: {{ c.ip_sla_missing | length }} device(s) run no probe ({{ c.ip_sla_missing | join(', ') }}). Probes are suggested from the profile's policy and sent from their own page, never by the profile's deploy.
+  <p class="cov-actions" id="cov-ipsla">IP SLA: {{ c.ip_sla_missing | length }} device(s) run no probe ({{ c.ip_sla_missing | join(', ') }}). A probe's target is chosen per device: they are suggested from the profile's policy on their own page, and once committed, deployed from here with the device's other missing templates.
     <a class="btn" data-op="monitoring-templates" href="{{ url_for('v2.ip_sla', list=c.list, device=c.ip_sla_missing) }}">Suggest IP SLA probes for them…</a>{{ how('monitoring-templates', compact=True, op='an IP SLA probe') }}</p>
   {%- endif %}
   {%- endif %}

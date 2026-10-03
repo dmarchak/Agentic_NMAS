@@ -74,6 +74,7 @@ class TestTheCells:
         import re as _re
         from modules.prometheus_targets import read_golden
         _commit_proposal()
+        _no_probe_in_intent(lab, "r2")
 
         def golden(ref, host):
             text = read_golden(ref, host)
@@ -200,6 +201,20 @@ def test_todays_opener_takes_several_device_parameters():
     assert "openProfileApply(q.getAll('device').join(','), q.get('list') || '')" in src
 
 
+def _no_probe_in_intent(lab, host):
+    """*host* runs no probe AND has none chosen: its committed intent without IP SLA (the
+    operator's s1, s2, s4 and r6 on 2026-10-01). A golden edited alone, its intent keeping the
+    probe, is a probe committed and not sent: a gap the combined deploy supplies
+    (tests/test_coverage_deploy.py)."""
+    from modules.nsot import hostvars
+    from modules.nsot.repo import save_host_vars
+    hv = hostvars.read_committed(lab["repo"], host)
+    hv.pop("ip_sla", None)
+    hv.pop("ip_sla_schedules", None)
+    hostvars.write_committed(lab["repo"], hv)
+    assert save_host_vars("Lab", [host], actor="t", source="extraction")["ok"]
+
+
 class TestEveryCellSaysWhy:
     """The operator, 2026-10-01: "none (a policy per device)" explained nothing.
     Every device here supports IP SLA; probes were configured by hand on r1 to
@@ -209,6 +224,10 @@ class TestEveryCellSaysWhy:
         from modules import prometheus_targets as P
         return "\n".join(l for l in P.read_golden(ref, host).splitlines()
                          if not l.startswith("ip sla"))
+
+    @pytest.fixture(autouse=True)
+    def _r6_chose_none(self, lab):
+        _no_probe_in_intent(lab, "r6")
 
     def test_ip_sla_with_no_policy_says_targets_are_chosen_per_device(self, lab):
         cell = _row(_fleet(lab, golden=self._no_ip_sla), "r6")["cells"]["ip_sla"]

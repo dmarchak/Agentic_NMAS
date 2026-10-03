@@ -32,7 +32,8 @@ KIND = "monitoring profile apply"
 #: What the in-flight panel calls the job, by its scope (C364: an IP SLA send and, since the
 #: device page's deploy runs here too, a whole-intent deploy were both "monitoring profile
 #: apply").
-KINDS = {"profile": KIND, "ip_sla": "IP SLA send", "": "deploy"}
+KINDS = {"profile": KIND, "ip_sla": "IP SLA send", "templates": "monitoring templates deploy",
+         "": "deploy"}
 ANNOUNCER = "deploy-job"
 #: Announced as each device finishes: the page's progress moved.
 PROGRESS_KEYS = ("deploy_job",)

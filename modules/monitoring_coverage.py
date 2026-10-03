@@ -317,6 +317,19 @@ def _ip_sla_words(doc: dict) -> str:
             "review the suggested probes on the IP SLA page")
 
 
+def _ip_sla_pending(intent, text) -> list:
+    """The IP SLA operations committed to *intent* that the golden *text* does not define,
+    by number."""
+    ids = []
+    for op in (intent or {}).get("ip_sla") or []:
+        try:
+            ids.append(int(op.get("id")))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    have = {int(m) for m in re.findall(r"^ip sla (\d+)\s*$", text or "", re.M)}
+    return [i for i in ids if i not in have]
+
+
 def _lldp(text, platform: str) -> tuple:
     """(True | False | None, why when None): does LLDP run, from the committed golden. A
     present `lldp run` or `no lldp run` decides; an absent line is the platform's MEASURED
@@ -464,6 +477,13 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
             elif section in (view.get("excluded") or {}):
                 cell = {"state": "excluded",
                         "words": f"excluded — {view['excluded'][section]}"}
+            elif key == "ip_sla" and _ip_sla_pending(intent, text):
+                # Committed to its intent and not on the device: missing, and the combined
+                # deploy sends it (artboard A2), never "no probes yet".
+                n = len(_ip_sla_pending(intent, text))
+                cell = {"state": "gap", "words": (f"missing — {n} probe{'s' if n != 1 else ''} "
+                                                  "committed to its intent, not yet sent")}
+                row["supplies"].append(key)
             elif key == "ip_sla":
                 cell = {"state": "unused", "words": _ip_sla_words(doc)}
             elif key not in want:

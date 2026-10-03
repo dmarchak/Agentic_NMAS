@@ -470,8 +470,10 @@ class TestCoverageSaysWhereTheMissingGoes:
         assert note, "the sentence beside the grid"
         text = " ".join(re.sub(r"<[^>]+>", " ", note.group(1)).split())
         assert text.startswith("Nothing can be deployed from here:")
-        assert ("What is missing, IP SLA on s4, goes through the IP SLA page until the combined "
-                "deploy takes it") in text
+        # A probe's target is chosen per device (the IP SLA page); once committed, the
+        # combined deploy takes it (artboard A2).
+        assert ("IP SLA on s4 has no probe chosen yet: choose one on the IP SLA page, from the "
+                "device's IP SLA ring; once committed, it is deployed from here") in text
         assert page.index('id="cov-nothing"') < page.index('<div class="table-wrap">')
 
 

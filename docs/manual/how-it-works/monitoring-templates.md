@@ -80,6 +80,32 @@ Each device runs the deploy's pipeline, its stages in the order the code declare
     file, whatever happened; and, after the commit, a receipt per device (what was sent, the
     checks that ran, any rollback), shown on the device page's History tab.
 
+## Deploy missing templates {#combined}
+
+Coverage's **Deploy missing templates…** sends each ticked device ONE program: every template
+it is missing, the profile's lines and the IP SLA probes committed to its intent, sent,
+verified and rolled back as one. Nothing else in its intent is sent, and nothing on a device
+is removed. It is the deploy above with scope `templates`:
+
+1. **Choose the devices.** On Coverage, tick devices (a box is drawn only where something can
+   be deployed) and press **Deploy missing templates…**. Read: nothing yet. Sent: nothing.
+   Recorded: nothing.
+2. **The preview.** Read: each device's committed golden, its committed intent, the
+   committed profile, and Coverage's stored reading of which templates are missing and which
+   are configured and not reporting. Sent: nothing; no device is contacted. Recorded:
+   nothing. A card per device in the order they will go: the templates its program holds, the
+   program itself (the first device's open, the others one click down), its checks, with the
+   operands they compared on hover, and each template that is configured but not reporting,
+   named with **Diagnose it**. A template not reporting is never part of the deploy: its
+   lines are already on the device, and the cause is looked for on the device's page.
+   **Earlier**, **Later** and **Leave out** plan the deploy again.
+3. **Confirm.** Read: nothing. Sent: nothing yet. Recorded: nothing yet. The confirm is bound
+   to the programs on the screen: if a device or a template changed since, that device is
+   refused, with nothing sent to it, naming what moved. The server answers at once and starts
+   the deploy as a job, as you.
+4. **The deploy.** As the batch above: one device after another, in your order, each
+   through the deploy's pipeline, then one golden commit and a receipt per device.
+
 ## The heartbeat
 
 Each device runs an applet that logs a heartbeat line on a timer (the profile's syslog
@@ -115,8 +141,8 @@ closest:
    routing peers or the default gateway or none, and its frequency, 10 to 3600 s) committed
    as you, `Source: profile`, refused if the profile moved since the page showed it. The
    probes it suggests are a SECOND commit, into the chosen devices' intent
-   (`Source: ip-sla`), and are sent only by a scoped Apply (scope `ip_sla`), never by the
-   profile's Apply.
+   (`Source: ip-sla`), and are sent by Coverage's [Deploy missing templates](#combined) or by
+   a scoped Apply (scope `ip_sla`), never by the profile's Apply.
 
 The signed-off design (not built) says: each template's settings live with it in Settings >
 Monitoring templates, one compact row each; IP SLA's are its targeting, its frequency and its

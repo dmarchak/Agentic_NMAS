@@ -1,0 +1,17 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
+{#- Coverage's combined deploy (artboard A2, signed off 2026-10-02): one program per device,
+    every template it is missing, sent, verified and rolled back as one, in a settable order. -#}
+{% block title %}Deploy missing templates · Monitoring · NMAS{% endblock %}
+{% block main %}
+<p class="crumbs muted"><a href="{{ url_for('v2.coverage') }}">Monitoring › Coverage</a> › Deploy missing templates</p>
+<div class="page-head">
+  <div class="page-title">
+    {%- set n = rows | rejectattr('nothing') | list | length %}
+    <h1>Deploy missing templates to {{ n }} device{{ 's' if n != 1 }} {{ info('monitoring-templates', 'combined') }}</h1>
+    <p class="sub">{{ words.sub }}</p>
+  </div>
+</div>
+{% include "v2/_coverage_deploy_preview.html" %}
+<div id="apply-result"></div>
+{% endblock %}

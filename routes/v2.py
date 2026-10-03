@@ -630,6 +630,18 @@ SCOPE_WORDS = {
                "none_can": "No device here can receive its probes now: each says why above.",
                "all_nothing": ("Nothing to send: every device chosen already runs every probe its "
                                "intent declares.")},
+    # Coverage's combined deploy (artboard A2, signed off 2026-10-02): its own page.
+    "templates": {"title": "Deploy missing templates",
+                  "sub": ("Each device gets ONE program: every template it is missing, in the order "
+                          "shown, sent and verified as one change, rolled back as one. Nothing else "
+                          "in its intent is sent. Devices go one at a time, in this order; the "
+                          "first that fails stops the rest."),
+                  "has_all": "it already has every template the profile and its intent supply",
+                  "only": ("No line outside the missing templates is sent, and nothing on a device "
+                           "is removed."),
+                  "none_can": "No device here can receive its templates now: each says why above.",
+                  "all_nothing": ("Nothing to deploy: every device chosen already has every "
+                                  "template the profile and its intent supply.")},
 }
 
 
@@ -683,6 +695,58 @@ def _apply_args(req) -> dict:
         for i in ids:
             reasons[(d, i)] = (req.args.get(f"why::{d}::{i}") or "").strip()
     return {"list": named_list(req), "order": order, "picked": picked, "reasons": reasons}
+
+
+#: A template's name in Coverage's words, for a section of the program (CDP has no column).
+_TEMPLATE_WORDS = {"snmp": "SNMP", "syslog": "Syslog", "heartbeat": "Heartbeat", "ntp": "NTP",
+                   "lldp": "LLDP", "telemetry": "Telemetry", "ip_sla": "IP SLA", "cdp": "CDP"}
+
+
+def _sent_templates(sc: dict) -> list:
+    """The templates whose lines the program SENDS, in Coverage's order: read from the plan's
+    own sections (never from Coverage's cells, which can call a template unknown, LLDP on
+    IOS-XE, that the program still sends). Syslog's heartbeat applet is named Heartbeat."""
+    send = {(tuple(r["chain"]), r["line"]) for r in (sc or {}).get("to_send") or []}
+    got = set()
+    for section, rows in ((sc or {}).get("by_section") or {}).items():
+        for r in rows:
+            if (tuple(r["chain"]), r["line"]) not in send:
+                continue
+            head = (list(r["chain"]) or [r["line"]])[0].strip()
+            got.add("heartbeat" if section == "syslog" and head.startswith("event manager applet")
+                    else section)
+    order = list(_TEMPLATE_WORDS)
+    return [_TEMPLATE_WORDS[k] for k in sorted(got, key=lambda k: (order.index(k) if k in order
+                                                                   else len(order), k))
+            if k in _TEMPLATE_WORDS] + sorted(k for k in got if k not in _TEMPLATE_WORDS)
+
+
+def _coverage_words(list_name: str, rows: list) -> None:
+    """Artboard A2's not-reporting words on each row, from Coverage's own reading of the chosen
+    devices (one stored read, `monitoring_coverage.fleet`): each configured template whose data
+    is not arriving, NOT part of the deploy, with where its cause is looked for."""
+    from modules import monitoring_coverage as MC
+    from modules.device import load_saved_devices
+    from modules.nsot import listref
+
+    names = {r["name"] for r in rows}
+    words = dict(MC.COLUMNS)
+    try:
+        ref = listref.resolve(list_name)
+        devs = [(ref, d) for d in load_saved_devices(ref.csv_path)
+                if (d.get("hostname") or "").strip() in names]
+        by_host = {r["host"]: r for r in MC.fleet(ref, devices=devs)["devices"]}
+    except Exception as exc:                            # noqa: BLE001
+        log.warning("coverage deploy: Coverage could not be read for %s: %s", list_name, exc)
+        by_host, why = {}, f"Coverage could not be read ({type(exc).__name__}: {exc})"
+    else:
+        why = ""
+    for r in rows:
+        cov = by_host.get(r["name"])
+        r["coverage_unread"] = why or ("" if cov else "not in Coverage's reading")
+        r["not_reporting"] = [{"name": words[k], "words": cov["cells"][k]["words"],
+                               "where": cov["cells"][k].get("where", "")}
+                              for k in (cov or {}).get("not_reporting") or []]
 
 
 def _apply_ctx(req) -> dict:
@@ -740,6 +804,8 @@ def _apply_ctx(req) -> dict:
                "program": (t.get("program") or {}).get("lines") or [],
                "none": (t.get("program") or {}).get("none", ""),
                "notes": (t.get("program") or {}).get("notes") or [],
+               "verify": (t.get("program") or {}).get("verify"),
+               "templates": _sent_templates(sc),
                "gates": t.get("gates") or [], "operands": t.get("operands") or [],
                "superseded": superseded,
                "authorisation_error": d.get("authorisation_error", ""),
@@ -761,6 +827,8 @@ def _apply_ctx(req) -> dict:
         rows.append(row)
         if row["selectable"]:
             ready.append(name)
+    if scope == "templates":
+        _coverage_words(list_name, rows)
     # The devices with nothing to send go last in the order the page carries,
     # so Earlier and Later move a device past a neighbour the person can see.
     rows = [r for r in rows if not r["nothing"]] + [r for r in rows if r["nothing"]]
@@ -790,7 +858,10 @@ def profile_apply():
         ctx = _apply_ctx(request)
     except UnknownScope as exc:
         return _strict(str(escape(str(exc))), 400)
-    return _page("v2/apply.html", active_nav="monitoring", monitoring_tab="coverage", **ctx)
+    # Coverage's combined deploy is its own page (artboard A2); the profile and IP SLA
+    # scopes keep the stepper's (signed off 2026-10-02).
+    page = "v2/coverage_deploy.html" if ctx["scope"] == "templates" else "v2/apply.html"
+    return _page(page, active_nav="monitoring", monitoring_tab="coverage", **ctx)
 
 
 @bp.route("/monitoring/apply/preview", methods=["GET"])
@@ -802,7 +873,9 @@ def profile_apply_preview():
         ctx = _apply_ctx(request)
     except UnknownScope as exc:
         return _strict(str(escape(str(exc))), 400)
-    return _strict(render_template("v2/_apply_preview.html", **ctx))
+    part = ("v2/_coverage_deploy_preview.html" if ctx["scope"] == "templates"
+            else "v2/_apply_preview.html")
+    return _strict(render_template(part, **ctx))
 
 
 @bp.route("/monitoring/apply/confirm", methods=["POST"])

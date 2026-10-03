@@ -43,10 +43,13 @@
   <h2 class="apply-h">{{ badge(lv[0], lv[1]) }} {{ (res.happened or {}).summary }}</h2>
   <ol class="stepper">
     {%- for t in res.targets or [] %}
-    {%- set ok = t.outcome == 'deployed' %}
-    <li class="step step-{{ 'done' if ok else 'failed' }}">
+    {#- C394: sent, and its verify did not pass (intent unmet, unreadable, a line not read
+        back): never green, and said beside it, as the heading already says partly done. -#}
+    {%- set partial = t.outcome == 'deployed' and (t.checks or {}).ran and not (t.checks or {}).ok %}
+    {%- set ok = t.outcome == 'deployed' and not partial %}
+    <li class="step step-{{ 'done' if ok else 'partial' if partial else 'failed' }}">
       <span class="step-mark"></span><span class="step-words">{{ t.name }}</span>
-      <span class="step-note">{{ ((res.happened or {}).targets | selectattr('name', 'equalto', t.name) | map(attribute='words') | first) or t.outcome }}{% if t.reason and not ok %}: {{ t.reason }}{% endif %}</span>
+      <span class="step-note">{{ ((res.happened or {}).targets | selectattr('name', 'equalto', t.name) | map(attribute='words') | first) or t.outcome }}{% if partial %}, and its verify did not pass{% endif %}{% if t.reason and not ok %}: {{ t.reason }}{% endif %}</span>
     </li>
     {%- endfor %}
   </ol>

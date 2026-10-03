@@ -290,8 +290,18 @@ def _split_profile(repo: str, hostname: str, artifact, captured: str, to_add: li
 
 
 #: The deploy scopes: the device's whole intent (""), the monitoring
-#: profile's lines (P.9 b), or only its IP SLA probes (P.9 d4's add path).
-SCOPES = ("", "profile", "ip_sla")
+#: profile's lines (P.9 b), only its IP SLA probes (P.9 d4's add path), or
+#: Coverage's combined deploy, both together (artboard A2).
+SCOPES = ("", "profile", "ip_sla", "templates")
+
+#: What each scoped action is, in the words of a refusal.
+SCOPE_ACTION = {"profile": "applying the monitoring profile",
+                "ip_sla": "sending the IP SLA probes",
+                "templates": "deploying the missing monitoring templates"}
+#: The batch golden commit's label, per scope.
+SCOPE_DONE = {"profile": "after the monitoring profile was applied",
+              "ip_sla": "after the IP SLA probes were sent",
+              "templates": "after the missing monitoring templates were deployed"}
 
 
 def _scoped(scope: str, list_name: str, hostname: str, artifact, intended: str, captured: str,
@@ -299,14 +309,22 @@ def _scoped(scope: str, list_name: str, hostname: str, artifact, intended: str, 
     """The intended config scoped by *scope*, with the groups a person reads.
     ONE dispatch for the plan, the apply's recompute and the path that
     connects."""
-    from modules.nsot import ip_sla_policy
+    from modules.nsot import ip_sla_policy, profile_apply
     if scope == ip_sla_policy.SCOPE:
         return ip_sla_policy.scoped(intended, captured, "the device's own intent (its IP SLA probes)")
+    if scope == profile_apply.TEMPLATES:
+        # The profile's lines and the device's own IP SLA probes, one program (A2).
+        out = _profile_scope(list_name, hostname, artifact, intended, captured, device,
+                             also=ip_sla_policy.is_ip_sla_line)
+        sla = ip_sla_policy.scoped(intended, captured)
+        out["by_section"]["ip_sla"] = sla["by_section"]["ip_sla"]
+        out["sources"]["ip_sla"] = "the device's own intent (its IP SLA probes)"
+        return out
     return _profile_scope(list_name, hostname, artifact, intended, captured, device)
 
 
 def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captured: str,
-                   device: dict) -> dict:
+                   device: dict, also=None) -> dict:
     """APPLY MONITORING PROFILE (P.9 step b): the intended config scoped to
     the network's profile, and the groups a person reads. Computed from the
     truthful renders at plan, at apply and on the path that connects; never
@@ -340,7 +358,7 @@ def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captu
                                  artifact.platform, template_root=root, template_name=name)
 
     own_render = render(own)
-    out = profile_apply.scoped(intended, own_render, captured)
+    out = profile_apply.scoped(intended, own_render, captured, also=also)
 
     def render_with(secs):
         one = {"version": doc.get("version"),
@@ -521,8 +539,9 @@ def plan():
     if scope not in SCOPES:
         return jsonify({"ok": False, "error": (
             f"unknown deploy scope {scope!r}: the plan sends the device's whole intent, or "
-            f"with scope {profile_apply.SCOPE!r} only its monitoring profile's lines, or with "
-            f"scope 'ip_sla' only its IP SLA probes")}), 400
+            f"with scope {profile_apply.SCOPE!r} only its monitoring profile's lines, with "
+            f"scope 'ip_sla' only its IP SLA probes, or with scope "
+            f"{profile_apply.TEMPLATES!r} both")}), 400
 
     devices = plan_devices(list_name, hostnames, authorise=authorise, remove=remove,
                            scope=scope)
@@ -649,8 +668,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             # A scoped apply is only ever a program a person confirmed: with no
             # command hash there is nothing to hold the scope to.
             refused.append({"device": hostname, "outcome": "refused",
-                            "reason": ("applying the monitoring profile needs the command hash "
-                                       "the preview showed. Nothing was sent.")})
+                            "reason": (f"{SCOPE_ACTION.get(scope, 'a scoped deploy')} needs the "
+                                       "command hash the preview showed. Nothing was sent.")})
             continue
         artifacts.append(artifact)
         device_rows[hostname] = device
@@ -690,7 +709,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
 
         report["golden"] = _commit_batch_golden(
             list_name, report, actor=actor or "",
-            **({"label": "after the monitoring profile was applied"} if scope else {}))
+            **({"label": SCOPE_DONE.get(scope, "after a scoped deploy")} if scope else {}))
         report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
                                              command_hashes, actor=actor,
                                              actor_kind=actor_kind, pending=pending)
@@ -1081,7 +1100,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
                                device)["config"]
         except Exception as exc:                # noqa: BLE001
             return {"device": hostname, "outcome": FAILED, "stage": "scope",
-                    "reason": f"the monitoring profile could not be scoped: {exc}"}
+                    "reason": (f"{SCOPE_ACTION.get(scope, 'a scoped deploy')}: the program "
+                               f"could not be scoped: {exc}")}
     full = _program(intended, captured, (remove or {}).get(hostname) or [],
                     device, getattr(artifact, "platform", ""))
     if full["recreate"]["refused"]:

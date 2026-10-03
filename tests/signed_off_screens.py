@@ -56,7 +56,14 @@ SIGNED_OFF = {
                                     "(2026-10-03; Deploy missing templates opens the profile's "
                                     "batch preview until the combined deploy replaces it), then "
                                     "the combined deploy"),
-    "update.html": ("2026-10-02", "reviewed IN USE: designed in docs/UPDATE.md, used on the host "
+    "coverage_deploy.html": ("2026-10-02", "artboard A2, Deploy missing templates (the mockups' "
+                                           "CoverageDeploy board), signed off with Coverage's "
+                                           "redraw: a card per device in a settable order "
+                                           "(Earlier, Later, Leave out), its ONE program, its "
+                                           "checks, a configured template not reporting named "
+                                           "with Diagnose, the bound statement, Back and one "
+                                           "confirm. The combined deploy, Coverage's third step"),
+    "update.html": ("2026-10-02","reviewed IN USE: designed in docs/UPDATE.md, used on the host "
                                   "repeatedly and corrected through C243, C244, C246, C268, "
                                   "C274, C279 and C285. Its next change gets a mockup"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
