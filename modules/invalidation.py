@@ -117,6 +117,8 @@ ANNOUNCERS = {
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (as /deploy/apply declares).
     # A restore run as a job (the v2 device page) also moves intent and approvals.
+    # modules/arrival_watch.py: the combined deploy's watch, as each first arrival lands.
+    "arrival-watch": ("deploy_job",),
     "deploy-job": ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
                    "freshness", "goldens", "remote", "intent", "approvals"),
 }

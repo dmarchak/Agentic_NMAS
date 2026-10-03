@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge -%}
+{%- from "v2/_macros.html" import icon, badge, info -%}
 {#- The batch Apply, after the confirm (P.9 step d2): where it is, in the
     rollout order, then its result, drawn from the receipts the apply wrote
     (preview_confirm.operation_result). Redrawn when the job announces
@@ -39,7 +39,10 @@
 {%- else %}
 {%- set res = (j.payload or {}).get('result') or {} %}
 {%- set lv = LEVEL.get(res.level, (res.level or 'unknown', 'muted')) %}
-<section class="card apply-job" id="apply-job">
+{#- Coverage's combined deploy: the arrival watch (modules/arrival_watch.py) redraws the card
+    as each first arrival lands, until it ends. -#}
+<section class="card apply-job" id="apply-job"
+         {%- if arrivals and not arrivals.ended %} hx-get="{{ url_for('v2.profile_apply_job', job=job) }}" hx-trigger="nmas:deploy_job from:body" hx-swap="outerHTML"{% endif %}>
   <h2 class="apply-h">{{ badge(lv[0], lv[1]) }} {{ (res.happened or {}).summary }}</h2>
   <ol class="stepper">
     {%- for t in res.targets or [] %}
@@ -53,6 +56,22 @@
     </li>
     {%- endfor %}
   </ol>
+  {%- if arrivals %}
+  <h3 class="apply-sub">Arrival {{ info('monitoring-templates', 'arrival') }}</h3>
+  {%- if arrivals.ended %}
+  <p>Watched for {{ arrivals.minutes }} min after the batch ({{ arrivals.started_words }} to {{ arrivals.deadline_words }}): {{ arrivals.arrived }} arrived{% if arrivals.missing %}, <strong>{{ arrivals.missing }} did not</strong>, each with where its cause is looked for{% endif %}. The configuration that read back stays either way.</p>
+  {%- else %}
+  <p>Watching each sent template for its first data until {{ arrivals.deadline_words }} ({{ arrivals.minutes }} min after the batch). This never blocks and never rolls back: the configuration that read back stays.</p>
+  {%- endif %}
+  <ul class="arrival">
+    {%- for r in arrivals.rows %}
+    <li><strong class="mono">{{ r.device }}</strong>
+      {%- for c in r.cells %}
+      <span class="arrival-cell arrival-{{ c.state }}">{{ c.label }}: {{ c.words }}{% if c.state == 'missing' %} · <a href="{{ url_for('device_v2.device', name=r.device, tab=c.where) }}">Diagnose on its {{ c.where | capitalize }} tab</a>{% endif %}</span>
+      {%- endfor %}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
   {%- for t in res.targets or [] %}
   <details class="apply-evidence">
     <summary>{{ t.name }}: what was sent and what was checked</summary>

@@ -885,7 +885,14 @@ tracked in git.
   missing one is a job-health `not_monitored` row, drawn by Needs attention as "r6 is not
   monitored by SNMP"; an unreadable golden is `unknown`. The prometheus targets take only a
   device it shows configured for SNMP. The monitoring profile that fixes a gap is P.9,
-  designed in [docs/MONITORING_PROFILE.md](docs/MONITORING_PROFILE.md), not built
+  designed in [docs/MONITORING_PROFILE.md](docs/MONITORING_PROFILE.md), not built.
+  `sent_columns` names the templates a scoped program sends, the one home for the combined
+  deploy's preview and its arrival watch
+- **[modules/arrival_watch.py](modules/arrival_watch.py)** — Coverage's combined deploy,
+  after the batch: each deployed device's sent templates watched for their first data for 15
+  minutes (the operator's decision, 2026-10-03), read from Coverage's stored reading each
+  minute, never blocking and never rolling back; what is missing at the end names where its
+  cause is looked for. In memory with the batch job
 - **[modules/inventory_edit.py](modules/inventory_edit.py)** — C225: a device's ROLE in a
   local list's inventory, the ONE recorded path: a preview (gates, what follows: the Prometheus
   targets' label, the topology icon, NetBox at its next import; what it does not do), a confirm

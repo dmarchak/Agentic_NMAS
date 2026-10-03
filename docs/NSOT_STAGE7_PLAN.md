@@ -3024,7 +3024,9 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
    replace them (docs/CUTOVER.md).
    **The combined deploy, from artboard A2 (2026-10-03). BUILT: its scope, its page and
    Coverage's button; the stop at the first failure and the read-back of every line
-   (tests/test_coverage_deploy.py). NEXT: arrivals, once decided.**
+   (tests/test_coverage_deploy.py); the arrival watch built 2026-10-03
+   (modules/arrival_watch.py, tests/test_arrival_watch.py), awaiting the real run that measures
+   the arrival times.**
    - **Its scope** is the profile's lines plus the device's own IP SLA probes
      (`templates`), sending only what the device lacks. So a configured template is never in
      the program, and a not-reporting one is named beside it with its Diagnose link, as

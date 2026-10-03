@@ -101,6 +101,14 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
                     p["done"][name] = {"outcome": r.get("outcome", ""),
                                        "stage": r.get("stage", ""),
                                        "reason": r.get("reason", ""), "took_s": 0}
+        # Coverage's combined deploy: each deployed device's sent templates are watched for
+        # their first data, from now, never blocking (modules/arrival_watch.py).
+        if report.get("templates_sent") is not None:
+            from modules import arrival_watch
+            deployed = {r.get("device") for r in report.get("results") or []
+                        if r.get("outcome") == "deployed"}
+            arrival_watch.start(job_id, {d: cols for d, cols in report["templates_sent"].items()
+                                         if d in deployed and cols})
         return mask_payload({"ok": True, "list": list_name, **report})
 
     kind = KINDS.get(scope, KIND)

@@ -576,7 +576,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     authorise = authorise or {}
     remove = remove or {}
     artifacts, fresh_captures, device_rows = [], {}, {}
-    refused = []
+    refused, templates_sent = [], {}
     for hostname in confirmations:
         built, error = _artifact_for(list_name, hostname)
         if built is None:
@@ -596,8 +596,13 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             try:
                 intended = prepare_device(artifact)["config"]
                 if scope:
-                    intended = _scoped(scope, list_name, hostname, artifact, intended,
-                                       captured, device)["config"]
+                    sc = _scoped(scope, list_name, hostname, artifact, intended,
+                                 captured, device)
+                    intended = sc["config"]
+                    if scope == profile_apply.TEMPLATES:
+                        # What the combined deploy's arrival watch waits for, per device.
+                        from modules.monitoring_coverage import sent_columns
+                        templates_sent[hostname] = sent_columns(sc)
                 full = _program(intended, captured,
                                 remove.get(hostname) or [], device,
                                 getattr(artifact, "platform", ""))
@@ -711,6 +716,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                            else CircuitBreaker(), sequential=templates)
         if refused:
             _merge_refusals(report, refused)
+        if templates:
+            report["templates_sent"] = templates_sent
 
         report["golden"] = _commit_batch_golden(
             list_name, report, actor=actor or "",

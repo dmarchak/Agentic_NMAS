@@ -703,22 +703,10 @@ _TEMPLATE_WORDS = {"snmp": "SNMP", "syslog": "Syslog", "heartbeat": "Heartbeat",
 
 
 def _sent_templates(sc: dict) -> list:
-    """The templates whose lines the program SENDS, in Coverage's order: read from the plan's
-    own sections (never from Coverage's cells, which can call a template unknown, LLDP on
-    IOS-XE, that the program still sends). Syslog's heartbeat applet is named Heartbeat."""
-    send = {(tuple(r["chain"]), r["line"]) for r in (sc or {}).get("to_send") or []}
-    got = set()
-    for section, rows in ((sc or {}).get("by_section") or {}).items():
-        for r in rows:
-            if (tuple(r["chain"]), r["line"]) not in send:
-                continue
-            head = (list(r["chain"]) or [r["line"]])[0].strip()
-            got.add("heartbeat" if section == "syslog" and head.startswith("event manager applet")
-                    else section)
-    order = list(_TEMPLATE_WORDS)
-    return [_TEMPLATE_WORDS[k] for k in sorted(got, key=lambda k: (order.index(k) if k in order
-                                                                   else len(order), k))
-            if k in _TEMPLATE_WORDS] + sorted(k for k in got if k not in _TEMPLATE_WORDS)
+    """The templates the program SENDS, in Coverage's words (`monitoring_coverage.sent_columns`,
+    the one home the arrival watch shares)."""
+    from modules.monitoring_coverage import sent_columns
+    return [_TEMPLATE_WORDS.get(k, k) for k in sent_columns(sc)]
 
 
 def _coverage_words(list_name: str, rows: list) -> None:
@@ -923,7 +911,9 @@ def profile_apply_job(job):
     the receipts the apply wrote. Redrawn when the job announces."""
     from modules import deploy_job
     got = deploy_job.state(job)
-    return _strict(render_template("v2/_apply_job.html", j=got, job=job)), (200 if got else 404)
+    from modules import arrival_watch
+    return _strict(render_template("v2/_apply_job.html", j=got, job=job,
+                                   arrivals=arrival_watch.state(job))), (200 if got else 404)
 
 
 # ---------------------------------------------------------------------------

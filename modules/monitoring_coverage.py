@@ -252,6 +252,26 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
 #: and the profile section that supplies it.
 COLUMNS = (("snmp", "SNMP"), ("syslog", "Syslog"), ("heartbeat", "Heartbeat"),
            ("ntp", "NTP"), ("lldp", "LLDP"), ("telemetry", "Telemetry"), ("ip_sla", "IP SLA"))
+def sent_columns(sc: dict) -> list:
+    """The templates whose lines a scoped program SENDS (`profile_apply.scoped`'s
+    `to_send` and `by_section`), as section keys in Coverage's column order, then any other
+    (CDP has no column): read from the plan's own sections, never from Coverage's cells, which
+    can call a template unknown (LLDP on IOS-XE) that the program still sends. Syslog's
+    heartbeat applet is the heartbeat. One home for the combined deploy's preview and its
+    arrival watch."""
+    send = {(tuple(r["chain"]), r["line"]) for r in (sc or {}).get("to_send") or []}
+    got = set()
+    for section, rows_ in ((sc or {}).get("by_section") or {}).items():
+        for r in rows_:
+            if (tuple(r["chain"]), r["line"]) not in send:
+                continue
+            head = (list(r["chain"]) or [r["line"]])[0].strip()
+            got.add("heartbeat" if section == "syslog" and head.startswith("event manager applet")
+                    else section)
+    order = [k for k, _w in COLUMNS]
+    return ([k for k in order if k in got] + sorted(k for k in got if k not in order))
+
+
 _IP_SLA = re.compile(r"^ip sla \d+", re.M)
 #: NTP and LLDP (artboard A's seven): the grid's alone, never a Needs attention row (`rows()`
 #: reads CHECKS). An absent `lldp run` is LLDP off only where the platform's default is

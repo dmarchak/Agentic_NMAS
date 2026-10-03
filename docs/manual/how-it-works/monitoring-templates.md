@@ -112,6 +112,25 @@ is removed. It is the deploy above with scope `templates`:
    - **The first device that fails stops the rest,** whatever failed: its push, its verify,
      or a program that moved since the preview. The devices after it are not attempted, and
      the result says so. (Other deploys stop after repeated verify failures.)
+5. **The arrival watch.** Read: Coverage's stored reading, each minute (it reads Prometheus
+   and Loki itself; the watch asks nothing of its own). Sent: nothing. Recorded: nothing; the
+   watch is in memory with the job. For 15 minutes after the batch, each template a deployed
+   device was sent is watched for its first data: SNMP's and IP SLA's first scrape, the first
+   syslog line, the first heartbeat, telemetry's first series. The result shows each as it
+   arrives, with its time and how many seconds after the batch, and anything still missing
+   at 15 minutes says so, with a link to the device tab where its cause is looked for. NTP and
+   LLDP are device state, not an arrival, and are said as not read. It never blocks and never
+   rolls back: the configuration that read back stays. The 15 minutes is about 2.5 times the
+   slowest expected arrival (a 5-minute heartbeat and a 1-minute reading); the first real
+   deploy's arrival times are its measurement.
+
+### Why arrival is watched after the batch {#arrival}
+
+Waiting for each device's data inside its verify would add 5 to 6 minutes to every device
+(the heartbeat fires every 5 minutes, and the reading is taken once a minute), and could
+never see SNMP: a device's scrape target is created when the batch's golden commit
+regenerates the targets, after the last device. So the batch deploys and verifies what it
+sent, and arrival is watched afterwards, as a report, not a gate.
 
 ## The heartbeat
 
