@@ -173,6 +173,9 @@ class TestThePopulation:
         assert pairs["POST /drift/settings"] is True            # a mixed path, write half
         assert pairs["POST /templatize/bulk/apply"] is False     # bulk intent: no page yet
         assert pairs["POST /list/variables"] is False           # its GET half is no proof
+        # The device page's Actions menu loop (`url_for('device_v2.' ~ op)`, one row per op):
+        # Seed's card is reached only from its row there (2026-10-03).
+        assert pairs["GET /v2/device/<name>/seed"] is True
 
 
 class TestTheThreeStates:

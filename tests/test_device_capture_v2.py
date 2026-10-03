@@ -79,11 +79,10 @@ class TestTheMenu:
         row = menu[menu.index('data-op="capture"') - 200:menu.index('data-op="capture"') + 1500]
         assert 'hx-get="/v2/device/r2/capture?back=overview"' in row and 'hx-target="#tab-body"' in row
         assert 'aria-label="How does capture work?"' in row
-        assert ("Deploy, Capture, Restore, Revert, Retry, Rotate and Persist run here; Seed intent "
-                "and Retire open "
-                "on today's device page") in menu
+        assert ("Deploy, Capture, Seed, Restore, Revert, Retry, Rotate and Persist run here; "
+                "Retire opens on today's device page") in menu
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
-        assert labels == ["Capture", "Restore from…", "Remove lines (Mode B)…", "Seed intent",
+        assert labels == ["Capture", "Seed intent…", "Restore from…", "Remove lines (Mode B)…",
                           "Rotate credential…", "Persist", "Retire…"], labels
 
     def test_without_script_the_row_opens_the_page_with_the_card(self, lab):

@@ -342,6 +342,7 @@ class TestExcludedUnrenderableTravelsWithCoverage:
     def test_a_config_with_a_certificate_chain_reports_it(self):
         found = normalize.excluded_unrenderable(self.WITH_CERT)
         assert found == [
+            "crypto pki trustpoint TP-self-signed-2968666059",   # the device's own (C397)
             "crypto pki certificate chain TP-self-signed-2968666059",
             "crypto pki certificate chain SLA-TrustPoint",
         ]
@@ -354,7 +355,7 @@ class TestExcludedUnrenderableTravelsWithCoverage:
         report = roundtrip.compare(self.WITH_CERT, self.WITH_CERT)
         assert report["modeled_coverage"] == 100.0
         assert report["unmodeled"] == 0
-        assert len(report["excluded_unrenderable"]) == 2
+        assert len(report["excluded_unrenderable"]) == 3      # the trustpoint too (C397)
 
     def test_a_clean_config_reports_an_empty_exclusion_list(self):
         report = roundtrip.compare(self.WITHOUT_CERT, self.WITHOUT_CERT)

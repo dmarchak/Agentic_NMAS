@@ -51,6 +51,13 @@ _URL_FOR = re.compile(r"""url_for\(\s*['"]([A-Za-z_][\w.]*)['"]""")
 #: is HANDED, so the literal is at each call (`panel_grid(layout, '<endpoint>',
 #: ...)`): a GET of one panel's data, made by nmas_panels.js.
 _PANEL_GRID = re.compile(r"""panel_grid\([^,]*,\s*['"]([A-Za-z_][\w.]*)['"]""")
+#: The v2 device page's Actions menu builds its rows in a loop over (label, op, words)
+#: tuples, each row's request `url_for('<prefix>' ~ op, ...)` (an hx-get): the endpoint is
+#: the prefix joined to each tuple's op.
+_OP_LOOP = re.compile(r"\{%-?\s*for label, op, \w+ in \[(.*?)\]\s*-?%\}(.*?)\{%-?\s*endfor",
+                      re.S)
+_OP_LOOP_URL = re.compile(r"""url_for\(\s*['"]([A-Za-z_][\w.]*)['"]\s*~\s*op\b""")
+_OP_LOOP_OPS = re.compile(r"""\(\s*'[^']*',\s*'([\w-]+)'""")
 
 
 def classify(text: str, index: int):
@@ -142,6 +149,10 @@ def url_for_references() -> dict:
             out.setdefault(m.group(1), set()).add(classify(text, m.start()))
         for m in _PANEL_GRID.finditer(text):
             out.setdefault(m.group(1), set()).add("GET")
+        for m in _OP_LOOP.finditer(text):
+            for prefix in _OP_LOOP_URL.findall(m.group(2)):
+                for op in _OP_LOOP_OPS.findall(m.group(1)):
+                    out.setdefault(prefix + op, set()).add("GET")
     return out
 
 

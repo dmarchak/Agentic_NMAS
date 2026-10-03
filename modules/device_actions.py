@@ -567,6 +567,79 @@ def intent_op_result_card(op: str, ref, host: str, result: dict) -> dict:
             "not_watched": result.get("not_watched", "")}
 
 
+#: How many lines of the seeded document the card shows before "… N more" (board 8); the
+#: whole document is one click below.
+SEED_SHOWN = 8
+
+
+def seed_card(ref, host: str, preview: dict, viewer: dict, entry: dict) -> dict:
+    """The seed card for *host* (board 8) from `preview_confirm.seed_preview`'s preview and
+    the device's `seed.public(entry_for(...))` (both MASKED): the intent document that would
+    be committed against what is committed now, whether its template reproduces the device
+    (an unmodelled line named, and that it blocks a deploy), the device's own lines (named,
+    never blocking: C397), what it will not do, the operands and checks, and the confirm bound
+    to the seed hash. Nothing is sent to the device."""
+    t = _one_target(preview, host, viewer)
+    program = t["target"].get("program") or {}
+    lines = list(program.get("lines") or [])
+    document = entry.get("document") or ""
+    confirm = preview.get("confirm") or {}
+    # What it will not do: this device's items and the scope's; whether the template
+    # reproduces it is its own part of the card, not a thing it "will not do".
+    what_not = [i.get("text", "") for i in (preview.get("what_not") or {}).get("items") or []
+                if (i.get("target") == host and i.get("kind") != "not_reproduced")
+                or i.get("kind") == "scope"]
+    return {"op": "seed", "state": "preview", "host": host, "list": ref.name,
+            "summary": (preview.get("what") or {}).get("summary", ""),
+            "sent": lines[:SEED_SHOWN], "more": max(0, len(lines) - SEED_SHOWN),
+            "count": len(lines), "document": document,
+            "document_lines": len(document.splitlines()),
+            "caption": program.get("caption", ""), "none": program.get("none", ""),
+            "parsed": not entry.get("error"),
+            "reproduced": bool(entry.get("reproduced")),
+            "unmodeled": list(entry.get("unmodeled") or []),
+            "missing": list(entry.get("missing") or []),
+            "extra": list(entry.get("extra") or []),
+            "fidelity": entry.get("fidelity"), "coverage": entry.get("coverage"),
+            "device_owned": list(entry.get("device_owned") or []),
+            "self_signed": any(h.startswith("crypto pki trustpoint TP-self-signed-")
+                               for h in entry.get("device_owned") or []),
+            "not_compared": list(entry.get("not_compared") or []),
+            "golden": entry.get("golden", ""),
+            "what_not": what_not, "operands": list(t["target"].get("operands") or []),
+            "gates": t["gates"], "failing": t["failing"], "may": t["may"],
+            "held": held(t["gates"]),
+            "hash": (t["chosen"].get("select_data") or {}).get("hash", ""),
+            "effect": confirm.get("effect", ""), "button": confirm.get("button", "")}
+
+
+#: A seed result's level (`seed_result`) -> the card's.
+SEED_LEVELS = {"success": "ok", "partial": "warn", "failed": "danger", "nothing": "warn"}
+
+
+def seed_result_card(ref, host: str, result: dict) -> dict:
+    """The seed result card from `preview_confirm.seed_result` (MASKED): what happened and the
+    record (the intent commit), what stays true (the template reproduces it, or what blocks a
+    deploy until modelled), and, once seeded, its next steps."""
+    happened = next((x for x in (result.get("happened") or {}).get("targets") or []
+                     if x.get("name") == host), {})
+    target = next((x for x in result.get("targets") or [] if x.get("name") == host), {})
+    checks = target.get("checks") or {}
+    outcome = happened.get("outcome", target.get("outcome", "unknown"))
+    return {"op": "seed", "state": "result", "host": host, "list": ref.name,
+            "level": SEED_LEVELS.get(result.get("level"), "danger"),
+            "outcome": outcome, "seeded": outcome == "seeded",
+            "words": happened.get("words", target.get("words", "")),
+            "reason": target.get("reason", ""),
+            "summary": (result.get("happened") or {}).get("summary", ""),
+            "reproduced": bool(checks.get("ok")),
+            "checks": list(checks.get("statements") or ([checks["why"]]
+                                                        if checks.get("why") else [])),
+            "issues": list(checks.get("issues") or []),
+            "record": (result.get("record") or {}).get("statement", ""),
+            "not_watched": result.get("not_watched", "")}
+
+
 def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict:
     """The restore card for its job: running with the pipeline's stepper, its result from the
     receipt (the deploy's own reading of it), or why there is none."""

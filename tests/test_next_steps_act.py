@@ -45,6 +45,10 @@ OPENERS = {
     # The v2 device page's deploy card (a revert whose block still stands offers it).
     "deploy_card": ("document.querySelector('#device-op h2') && /Deploy committed intent to r2/"
                     ".test(document.querySelector('#device-op h2').textContent)"),
+    # The v2 device page's Intent tab (a seed's next step: read what was committed).
+    "intent_tab": ("document.querySelector('[role=tab].on') && /Intent/"
+                   ".test(document.querySelector('[role=tab].on').textContent) && "
+                   "document.querySelector('#tab-body')"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,
@@ -141,6 +145,7 @@ class TestEachOpenerActsInARealBrowser:
         ("revert", "/v2/device/r2?op=revert"),
         ("retry", "/v2/device/r2?op=retry"),
         ("deploy_card", "/v2/device/r2?op=deploy"),
+        ("intent_tab", "/v2/device/r2?tab=intent"),
     ])
     def test_the_link_leaves_its_tool_open(self, page, name, query):
         if query.startswith("/"):

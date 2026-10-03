@@ -133,7 +133,15 @@ def entry_for(list_name: str, device: dict) -> dict:
             if not l.startswith(("---", "+++"))]
     details = result.get("details") or {}
     unmodeled = _unmodeled_lines(host_vars)
+    from modules.nsot import normalize
+    owned = normalize.device_owned(record["text"])
     return {**base,
+            # What the device generates for itself (C397; board 8): out of intent and every
+            # program by the same strip, named as the device's own, never as blocking. The
+            # rest of what the round trip sets aside (a banner) is said apart.
+            "device_owned": owned,
+            "not_compared": [h for h in normalize.excluded_unrenderable(record["text"])
+                             if h not in owned],
             "seedable": state in (NEVER, BOOTSTRAP),
             "hash": seed_hash(document, record["text"]),
             "document": document, "diff": diff,

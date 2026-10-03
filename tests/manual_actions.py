@@ -88,6 +88,8 @@ NOT_AN_OPERATION = {
     ("_restore.html", "Choose another moment"): "returns to the moments, a read",
     ("_revert.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_retry.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
+    ("_seed.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
+    ("_seed.html", "Open the Intent tab"): "opens the device's Intent tab to read what was committed, a read",
 }
 
 

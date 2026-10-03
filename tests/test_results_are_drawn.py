@@ -154,6 +154,8 @@ PAGE_RECORD = {
     # receipt, and the record read back on the device's History.
     "device_v2.revert_confirm": ("templates/v2/_revert.html",
                                  ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
+    "device_v2.seed_confirm": ("templates/v2/_seed.html",
+                               ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     "device_v2.retry_confirm": ("templates/v2/_retry.html",
                                 ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     "device_v2.restore_confirm": ("templates/v2/_restore.html",

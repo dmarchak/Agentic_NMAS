@@ -122,6 +122,7 @@ GATES = {
     "templatize.bulk_apply": _g(A, "commits one change to many devices' intent"),
     "device_v2.revert_confirm": _g(A, "commits the inverse of one intent commit's change from the v2 device page (7.3, board 11; the same apply as templatize.revert_apply, in the list its card carries)"),
     "device_v2.retry_confirm": _g(A, "lifts a blocked change so it may be sent again, with a stated reason, from the v2 device page (7.3, board 11; the same apply as templatize.retry_apply, in the list its card carries)"),
+    "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; the same apply as templatize.seed_apply, in the list its card carries)"),
     "templatize.retry_apply": _g(A, "lifts a blocked change (the lines a rollback undid) so it may be sent again"),
     "freshness.authorise": _g(A, "authorises one divergence past the freshness gate"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and

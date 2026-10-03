@@ -158,7 +158,8 @@ def device(name):
                       _deploy_card(ref, dev, tab, {}) if op == "deploy" else
                       _restore_card(ref, dev, tab, request.args) if op == "restore" else
                       _revert_card(ref, dev, tab, request.args) if op == "revert" else
-                      _retry_card(ref, dev, tab, request.args) if op == "retry" else None)
+                      _retry_card(ref, dev, tab, request.args) if op == "retry" else
+                      _seed_card(ref, dev, tab) if op == "seed" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -612,6 +613,8 @@ def when_free(name):
     if op == "restore":
         return _strict(render_template("v2/_restore.html",
                                        c=_restore_card(ref, dev, back, request.args)))
+    if op == "seed":
+        return _strict(render_template("v2/_seed.html", c=_seed_card(ref, dev, back)))
     if op == "revert":
         return _strict(render_template("v2/_revert.html",
                                        c=_revert_card(ref, dev, back, request.args)))
@@ -1017,6 +1020,66 @@ def retry_confirm(name):
                                              mask_payload(retry_result(out)))
     c.update(back=_back(request.form), ip=dev.get("ip", ""))
     return _strict(render_template("v2/_retry.html", c=c))
+
+
+# ---------------------------------------------------------------------------
+# Seed intent (7.3; the device-actions canvas, board 8)
+# ---------------------------------------------------------------------------
+
+def _seed_card(ref, dev, back):
+    """The seed card: THE seed preview (`seed.entry_for`, the builder today's route uses)
+    for this device, masked on the way out, the confirm bound to its seed hash."""
+    from modules import device_actions
+    from modules.nsot import seed
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import seed_preview as parts
+
+    host = dev.get("hostname", "")
+    entry = dict(seed.public(seed.entry_for(ref.name, dev)), list=ref.name)
+    out = mask_payload({"entry": entry, "preview": parts([entry], request=request)})
+    c = device_actions.seed_card(ref, host, out["preview"], _viewer(), out["entry"])
+    c.update(back=back, ip=dev.get("ip", ""))
+    return c
+
+
+@bp.route("/device/<name>/seed", methods=["GET"])
+def seed(name):
+    """Seed the device's intent from its committed golden (board 8): the document that would
+    be committed, whether the template reproduces the device, the device's own lines, what it
+    will not do, the checks and the confirm bound to the seed hash. A READ: git only; nothing
+    is sent to the device."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_seed.html", c=_seed_card(ref, dev, _back(request.args))))
+
+
+@bp.route("/device/<name>/seed/confirm", methods=["POST"])
+def seed_confirm(name):
+    """Seed the confirmed device as the verified person, in the list the card CARRIES: the
+    same apply as `/templatize/seed/apply` (`seed.apply`: the device held, its golden parsed
+    again, a moved seed refused, one intent commit). Nothing is sent."""
+    from modules import device_actions, identity
+    from modules.nsot import seed as seed_op
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import seed_result
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_seed.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    confirmed = (request.form.get("hash") or "").strip()
+    if not confirmed:
+        return _strict(render_template("v2/_seed.html", c={
+            "op": "seed", "state": "refused_hash", "host": host, "list": ref.name,
+            "back": _back(request.form)}), 400)
+    done = seed_op.apply(ref.name, [dev], {host: confirmed},
+                         identity.identify(request).actor or "")
+    c = device_actions.seed_result_card(ref, host, mask_payload(
+        seed_result(done["outcomes"], done["save"])))
+    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_seed.html", c=c))
 
 
 @bp.route("/device/<name>/deploy/job/<job>", methods=["GET"])

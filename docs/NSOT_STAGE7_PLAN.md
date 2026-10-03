@@ -2940,7 +2940,8 @@ The two flagged choices are agreed:
 - A retired device's address shows its retired record, closing C185.
 **Build order (the operator):** restore (as a job, carrying its list: C396), revert and retry,
 seed, retire, then the combined deploy's arrival watch. Restore built 2026-10-03 (4c336be);
-revert and retry built 2026-10-03, offered only while a block stands.
+revert and retry built 2026-10-03, offered only while a block stands (d354cc2); seed built
+2026-10-03, the device's own lines named and never intent (C397 closed).
 
 Read from the code, the register, docs/CUTOVER.md (265 routes: 43 the redesign's; of the
 legacy families, 5 BUILT, 32 PLANNED, 17 REMOVE, 3 STAYS, none UNDECIDED) and the

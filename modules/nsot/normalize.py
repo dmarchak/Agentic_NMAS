@@ -362,6 +362,26 @@ UNRENDERABLE_BLOCK_PREFIXES = (
     "license udi",                    # per-chassis serial, set at manufacture
 )
 
+
+def _opens_device_owned(stripped: str, line: str) -> bool:
+    """Whether *line* opens a block the DEVICE generates for itself, never configuration
+    someone chose: a certificate body, the licence UDI, and the device's own self-signed
+    trustpoint (C397: its name follows the chassis id and regenerates at boot, so intent
+    holding it would send a trustpoint and an `rsakeypair` the device no longer has). Every
+    such block is out of the parse (so out of intent), out of every program and residue
+    (`deploy._section_chains`), and out of every round trip, all through
+    :func:`strip_for_roundtrip`; :func:`device_owned` names them."""
+    if line[:1].isspace():
+        return False
+    return (any(stripped.startswith(p) for p in UNRENDERABLE_BLOCK_PREFIXES)
+            or bool(_SELF_SIGNED.match(stripped)))
+
+
+def device_owned(text: str) -> list:
+    """The header of every block in *text* the device generates for itself, in order: what a
+    screen lists as the device's own, never as unmodelled and never as blocking."""
+    return [h for h in excluded_unrenderable(text) if _opens_device_owned(h, h)]
+
 #: Single lines that cannot come from intent.
 #:
 #: Includes NMAS's own golden header and the two lines IOS prints above a
@@ -434,7 +454,7 @@ def excluded_unrenderable(text: str) -> list:
                 continue
             in_block = False
 
-        if any(stripped.startswith(p) for p in UNRENDERABLE_BLOCK_PREFIXES):
+        if _opens_device_owned(stripped, line):
             found.append(stripped)
             in_block = True
             continue
@@ -445,8 +465,9 @@ def excluded_unrenderable(text: str) -> list:
 def strip_for_roundtrip(text: str) -> list:
     """Remove lines a template cannot render, for round-trip comparison.
 
-    Removes certificate chains and their hex bodies, banner blocks, boot
-    markers, licence UDI lines, and the ``show version`` preamble NMAS prefixes
+    Removes certificate chains and their hex bodies, the device's own
+    self-signed trustpoint (C397), banner blocks, boot markers, licence UDI
+    lines, and the ``show version`` preamble NMAS prefixes
     to a golden config. Everything else is left alone — including lines the
     parser does not yet model, which must stay visible so coverage is honest.
     """
@@ -474,7 +495,7 @@ def strip_for_roundtrip(text: str) -> list:
                 continue
             in_block = False
 
-        if any(stripped.startswith(p) for p in UNRENDERABLE_BLOCK_PREFIXES):
+        if _opens_device_owned(stripped, line):
             in_block = True
             continue
 

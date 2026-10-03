@@ -196,9 +196,9 @@ class TestIosXeSpecific:
         assert acl["entries"] == ["10 permit 192.0.2.211"]
 
     def test_pki_trustpoints_kept_certificates_stripped(self, r1):
-        """Trustpoint config is renderable; the certificate body is not."""
-        assert {t["name"] for t in r1["pki_trustpoints"]} == {
-            "TP-self-signed-2968666059", "SLA-TrustPoint"}
+        """A CA trustpoint is configuration someone chose; the certificate body is not, and
+        neither is the device's own self-signed trustpoint, regenerated at boot (C397)."""
+        assert {t["name"] for t in r1["pki_trustpoints"]} == {"SLA-TrustPoint"}
         assert not any("certificate chain" in u["line"] for u in r1["unmodeled"])
 
 

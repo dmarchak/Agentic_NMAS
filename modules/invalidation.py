@@ -165,6 +165,7 @@ DECLARED = {
     "templatize.retry_apply": ("rolled_back",),
     "device_v2.revert_confirm": ("intent", "remote", "rolled_back"),
     "device_v2.retry_confirm": ("rolled_back",),
+    "device_v2.seed_confirm": ("intent", "remote"),
     "templates.write_template": ("templates", "remote"),
     "templates.approve": ("templates", "remote"),
     "templates.revoke_approval": ("templates", "remote"),
