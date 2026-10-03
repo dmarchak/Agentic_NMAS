@@ -608,6 +608,8 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .cov-ok .ico { color: var(--ok); }
 .cov-gap .ico, .cov-gap_open .ico { color: var(--warn-mark); }
 .cov-gap_open span { color: var(--warn); }
+.cov-not_reporting .ico { color: var(--warn-mark); }
+.cov-not_reporting a { color: var(--warn); }
 .cov-excluded, .cov-unused, .cov-not_applicable, .cov-unknown { color: var(--ink-2); }
 .cov-excluded .ico, .cov-unused .ico, .cov-not_applicable .ico, .cov-unknown .ico { color: var(--ink-3); }
 .cov-dev { font-weight: 500; }

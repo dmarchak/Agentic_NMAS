@@ -30,6 +30,11 @@ def _fleet(lab, settings=None, **kw):
                    get=lambda k, d=None: s.get(k, d), **kw)
 
 
+def _shown(cell):
+    """A cell's state and words; whether it REPORTS is tests/test_coverage_reporting.py's."""
+    return {"state": cell["state"], "words": cell["words"]}
+
+
 def _row(c, host):
     return next(d for d in c["devices"] if d["host"] == host)
 
@@ -38,7 +43,7 @@ class TestTheCells:
     def test_before_a_profile_r6s_gap_says_there_is_none_and_nothing_is_offered(self, lab):
         c = _fleet(lab)
         r2, r6 = _row(c, "r2"), _row(c, "r6")
-        assert r2["cells"]["snmp"] == {"state": "ok", "words": "configured"}
+        assert _shown(r2["cells"]["snmp"]) == {"state": "ok", "words": "configured"}
         assert r6["cells"]["snmp"] == {"state": "gap_open",
                                        "words": "missing — no monitoring profile yet"}
         # Loki is not configured here: syslog is not something the network uses.
@@ -223,7 +228,8 @@ class TestEveryCellSaysWhy:
 
     def test_ip_sla_configured_by_hand_reads_configured(self, lab):
         # r2's REAL golden carries its hand-configured operations.
-        assert _row(_fleet(lab), "r2")["cells"]["ip_sla"] == {"state": "ok", "words": "configured"}
+        cell = _row(_fleet(lab), "r2")["cells"]["ip_sla"]
+        assert _shown(cell) == {"state": "ok", "words": "configured"}
 
     def test_vios_says_it_has_no_model_driven_telemetry_from_its_real_golden(self):
         import os

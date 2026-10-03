@@ -95,6 +95,7 @@ VOCABULARY = {
     "reachability": "whether each device answers, as the reachability reader last stored it",
     "integration_health": "whether each integration answers, as the integration-health reader last stored it",
     "credential_health": "each credential's expiry or age, as the credential-health reader last stored it (P.21)",
+    "coverage_reporting": "when each device's monitoring data last arrived, as the coverage-reporting reader last stored it (Coverage's not-reporting cells)",
     "ci_verdict": "the running commit's CI verdict, as the ci-verdict reader last stored it",
     "app_version": "whether the running commit is what is pushed (origin/main), as the "
                    "app-pushed reader last stored it",

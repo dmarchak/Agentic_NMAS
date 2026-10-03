@@ -23,3 +23,25 @@ Monitoring tab.
 Every device against every monitoring section, read from each device's committed golden, and
 the batch Apply for the devices the profile would fix. How Apply works:
 [Apply a monitoring template](monitoring-templates).
+
+A configured cell can still be **not reporting**: the configuration is there and its data is
+not arriving. The cell says for how long ("no scrape for 12 min", "no stream for 9 min",
+"none for 16 min") and links to the device tab where the cause is found: Monitoring for SNMP,
+IP SLA and telemetry, Logs for syslog and the heartbeat. A deploy does not fix it, so a
+not-reporting cell is never offered for Apply. A reader asks Prometheus and Loki every minute,
+with one query per source for the whole fleet:
+
+- **SNMP and IP SLA:** the device's targets in Prometheus, and the last time each one was
+  scraped. A target that fails, or that has not been scraped for two of its intervals, is not
+  reporting. The cell names the failing job when only some of the device's jobs fail.
+- **Telemetry:** no series from the device for 5 minutes.
+- **Heartbeat:** no beat within the window of the device's own heartbeat alert (each window is
+  measured from that device's beats). When no alert rule is installed, the window is twice the
+  heartbeat period.
+- **Syslog:** for a device with a heartbeat, no line within the same window. Without a
+  heartbeat, nothing proves the path works, and a quiet device sends nothing. The cell then says
+  "nothing proves it arrives" and never "not reporting".
+
+Hover a configured cell to see when its data last arrived. If the reader has no current
+reading, or could not ask a source, the page says so once. The affected cells stay
+"configured" and accuse no device of the reader's failure.

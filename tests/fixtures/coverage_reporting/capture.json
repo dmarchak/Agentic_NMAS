@@ -1,0 +1,4620 @@
+{
+"captured_at": 1791021835.882254,
+"heartbeat": {
+"data": {
+"result": [
+{
+"metric": {
+"dev": "r1"
+},
+"values": [
+[
+1791011160,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791012960,
+"1"
+],
+[
+1791013260,
+"1"
+],
+[
+1791013560,
+"1"
+],
+[
+1791013860,
+"1"
+],
+[
+1791014160,
+"1"
+],
+[
+1791014460,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015660,
+"1"
+],
+[
+1791015960,
+"1"
+],
+[
+1791016260,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791017160,
+"1"
+],
+[
+1791017460,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791018060,
+"1"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018660,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791020760,
+"1"
+],
+[
+1791021060,
+"1"
+],
+[
+1791021360,
+"1"
+],
+[
+1791021660,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "r2"
+},
+"values": [
+[
+1791011160,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791012960,
+"1"
+],
+[
+1791013260,
+"1"
+],
+[
+1791013560,
+"1"
+],
+[
+1791013860,
+"1"
+],
+[
+1791014160,
+"1"
+],
+[
+1791014460,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015660,
+"1"
+],
+[
+1791015960,
+"1"
+],
+[
+1791016260,
+"1"
+],
+[
+1791016560,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791017160,
+"1"
+],
+[
+1791017460,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791018060,
+"1"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018660,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791020760,
+"1"
+],
+[
+1791021060,
+"1"
+],
+[
+1791021360,
+"1"
+],
+[
+1791021660,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "r3"
+},
+"values": [
+[
+1791011160,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791012960,
+"1"
+],
+[
+1791013260,
+"1"
+],
+[
+1791013560,
+"1"
+],
+[
+1791013860,
+"1"
+],
+[
+1791014160,
+"1"
+],
+[
+1791014460,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015660,
+"1"
+],
+[
+1791015960,
+"1"
+],
+[
+1791016260,
+"1"
+],
+[
+1791016560,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791017160,
+"1"
+],
+[
+1791017460,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791018060,
+"1"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018660,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791020760,
+"1"
+],
+[
+1791021060,
+"1"
+],
+[
+1791021360,
+"1"
+],
+[
+1791021660,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "r4"
+},
+"values": [
+[
+1791011160,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791012960,
+"1"
+],
+[
+1791013260,
+"1"
+],
+[
+1791013560,
+"1"
+],
+[
+1791013860,
+"1"
+],
+[
+1791014160,
+"1"
+],
+[
+1791014460,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015660,
+"1"
+],
+[
+1791015960,
+"1"
+],
+[
+1791016260,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791017160,
+"1"
+],
+[
+1791017460,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791018060,
+"1"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018660,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791020760,
+"1"
+],
+[
+1791021060,
+"1"
+],
+[
+1791021360,
+"1"
+],
+[
+1791021660,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "r6"
+},
+"values": [
+[
+1791011100,
+"1"
+],
+[
+1791011400,
+"1"
+],
+[
+1791011700,
+"1"
+],
+[
+1791012000,
+"1"
+],
+[
+1791012300,
+"1"
+],
+[
+1791012600,
+"1"
+],
+[
+1791012900,
+"1"
+],
+[
+1791013200,
+"1"
+],
+[
+1791013500,
+"1"
+],
+[
+1791013800,
+"1"
+],
+[
+1791014100,
+"1"
+],
+[
+1791014400,
+"1"
+],
+[
+1791014700,
+"1"
+],
+[
+1791015000,
+"1"
+],
+[
+1791015300,
+"1"
+],
+[
+1791015600,
+"1"
+],
+[
+1791015900,
+"1"
+],
+[
+1791016200,
+"1"
+],
+[
+1791016500,
+"1"
+],
+[
+1791017100,
+"1"
+],
+[
+1791017400,
+"1"
+],
+[
+1791017700,
+"1"
+],
+[
+1791018000,
+"1"
+],
+[
+1791018300,
+"1"
+],
+[
+1791018600,
+"1"
+],
+[
+1791018900,
+"1"
+],
+[
+1791019200,
+"1"
+],
+[
+1791019500,
+"1"
+],
+[
+1791019800,
+"1"
+],
+[
+1791020100,
+"1"
+],
+[
+1791020400,
+"1"
+],
+[
+1791020700,
+"1"
+],
+[
+1791021000,
+"1"
+],
+[
+1791021300,
+"1"
+],
+[
+1791021600,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "s1"
+},
+"values": [
+[
+1791011100,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012720,
+"1"
+],
+[
+1791013020,
+"1"
+],
+[
+1791013320,
+"1"
+],
+[
+1791013680,
+"1"
+],
+[
+1791013980,
+"1"
+],
+[
+1791014280,
+"1"
+],
+[
+1791014640,
+"1"
+],
+[
+1791014940,
+"1"
+],
+[
+1791015240,
+"1"
+],
+[
+1791015600,
+"1"
+],
+[
+1791015900,
+"1"
+],
+[
+1791016200,
+"1"
+],
+[
+1791016560,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791017220,
+"1"
+],
+[
+1791017520,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018120,
+"1"
+],
+[
+1791018480,
+"1"
+],
+[
+1791018780,
+"1"
+],
+[
+1791019080,
+"1"
+],
+[
+1791019440,
+"1"
+],
+[
+1791019740,
+"1"
+],
+[
+1791020040,
+"1"
+],
+[
+1791020400,
+"1"
+],
+[
+1791020700,
+"1"
+],
+[
+1791021000,
+"1"
+],
+[
+1791021300,
+"1"
+],
+[
+1791021660,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "s2"
+},
+"values": [
+[
+1791011220,
+"1"
+],
+[
+1791011580,
+"1"
+],
+[
+1791011880,
+"1"
+],
+[
+1791012180,
+"1"
+],
+[
+1791012540,
+"1"
+],
+[
+1791012840,
+"1"
+],
+[
+1791013140,
+"1"
+],
+[
+1791013500,
+"1"
+],
+[
+1791013800,
+"1"
+],
+[
+1791014100,
+"1"
+],
+[
+1791014400,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015720,
+"1"
+],
+[
+1791016020,
+"1"
+],
+[
+1791016320,
+"1"
+],
+[
+1791016980,
+"1"
+],
+[
+1791017340,
+"1"
+],
+[
+1791017640,
+"1"
+],
+[
+1791017940,
+"1"
+],
+[
+1791018300,
+"1"
+],
+[
+1791018600,
+"1"
+],
+[
+1791018900,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020520,
+"1"
+],
+[
+1791020820,
+"1"
+],
+[
+1791021120,
+"1"
+],
+[
+1791021480,
+"1"
+],
+[
+1791021780,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "s3"
+},
+"values": [
+[
+1791011340,
+"1"
+],
+[
+1791011820,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012900,
+"1"
+],
+[
+1791013380,
+"1"
+],
+[
+1791013980,
+"1"
+],
+[
+1791014520,
+"1"
+],
+[
+1791015000,
+"1"
+],
+[
+1791015540,
+"1"
+],
+[
+1791016080,
+"1"
+],
+[
+1791016620,
+"1"
+],
+[
+1791017280,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018900,
+"1"
+],
+[
+1791019440,
+"1"
+],
+[
+1791019980,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791021000,
+"1"
+],
+[
+1791021540,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "s4"
+},
+"values": [
+[
+1791011040,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011880,
+"1"
+],
+[
+1791012240,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791013020,
+"1"
+],
+[
+1791013380,
+"1"
+],
+[
+1791013800,
+"1"
+],
+[
+1791014220,
+"1"
+],
+[
+1791014580,
+"1"
+],
+[
+1791015000,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015780,
+"1"
+],
+[
+1791016140,
+"1"
+],
+[
+1791016560,
+"1"
+],
+[
+1791017040,
+"1"
+],
+[
+1791017400,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791018180,
+"1"
+],
+[
+1791018600,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019380,
+"1"
+],
+[
+1791019740,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020520,
+"1"
+],
+[
+1791020940,
+"1"
+],
+[
+1791021300,
+"1"
+],
+[
+1791021720,
+"1"
+]
+]
+}
+],
+"resultType": "matrix",
+"stats": {
+"cache": {
+"chunk": {
+"bytesReceived": 126222,
+"bytesSent": 0,
+"downloadTime": 209270,
+"entriesFound": 215,
+"entriesRequested": 215,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 20
+},
+"index": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"instantMetricResult": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"labelResult": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"result": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"seriesResult": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"statsResult": {
+"bytesReceived": 494,
+"bytesSent": 0,
+"downloadTime": 26541,
+"entriesFound": 2,
+"entriesRequested": 2,
+"entriesStored": 0,
+"queryLengthServed": 7020000000000,
+"requests": 2
+},
+"volumeResult": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+}
+},
+"index": {
+"postFilterChunks": 0,
+"shardsDuration": 0,
+"totalChunks": 0,
+"usedBloomFilters": false
+},
+"ingester": {
+"store": {
+"chunk": {
+"compressedBytes": 16381,
+"decompressedBytes": 22012,
+"decompressedLines": 125,
+"decompressedStructuredMetadataBytes": 3750,
+"headChunkBytes": 1118,
+"headChunkLines": 7,
+"headChunkStructuredMetadataBytes": 56,
+"postFilterLines": 88,
+"totalDuplicates": 3
+},
+"chunkRefsFetchTime": 590181,
+"chunksDownloadTime": 1832522,
+"congestionControlLatency": 0,
+"pipelineWrapperFilteredLines": 0,
+"queryReferencedStructuredMetadata": false,
+"totalChunksDownloaded": 85,
+"totalChunksRef": 85
+},
+"totalBatches": 4,
+"totalChunksMatched": 7,
+"totalLinesSent": 83,
+"totalReached": 2
+},
+"querier": {
+"store": {
+"chunk": {
+"compressedBytes": 38617,
+"decompressedBytes": 52249,
+"decompressedLines": 301,
+"decompressedStructuredMetadataBytes": 9030,
+"headChunkBytes": 0,
+"headChunkLines": 0,
+"headChunkStructuredMetadataBytes": 0,
+"postFilterLines": 211,
+"totalDuplicates": 0
+},
+"chunkRefsFetchTime": 645290,
+"chunksDownloadTime": 4972862,
+"congestionControlLatency": 0,
+"pipelineWrapperFilteredLines": 0,
+"queryReferencedStructuredMetadata": false,
+"totalChunksDownloaded": 215,
+"totalChunksRef": 215
+}
+},
+"summary": {
+"bytesProcessedPerSecond": 3876327,
+"execTime": 0.019445984,
+"linesProcessedPerSecond": 22266,
+"queueTime": 0.003812663,
+"shards": 4,
+"splits": 4,
+"subqueries": 0,
+"totalBytesProcessed": 75379,
+"totalEntriesReturned": 9,
+"totalLinesProcessed": 433,
+"totalPostFilterLines": 299,
+"totalStructuredMetadataBytesProcessed": 12836
+}
+}
+},
+"status": "success"
+},
+"syslog": {
+"data": {
+"result": [
+{
+"metric": {
+"dev": "r1"
+},
+"values": [
+[
+1791010980,
+"1"
+],
+[
+1791011160,
+"1"
+],
+[
+1791011280,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012300,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012540,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791012960,
+"1"
+],
+[
+1791013260,
+"1"
+],
+[
+1791013560,
+"1"
+],
+[
+1791013620,
+"1"
+],
+[
+1791013860,
+"1"
+],
+[
+1791014100,
+"1"
+],
+[
+1791014160,
+"1"
+],
+[
+1791014460,
+"1"
+],
+[
+1791014580,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015660,
+"1"
+],
+[
+1791015960,
+"2"
+],
+[
+1791016260,
+"2"
+],
+[
+1791016860,
+"1"
+],
+[
+1791017160,
+"2"
+],
+[
+1791017340,
+"1"
+],
+[
+1791017460,
+"2"
+],
+[
+1791017760,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018060,
+"2"
+],
+[
+1791018240,
+"1"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018660,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019020,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019620,
+"2"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020040,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020220,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791020760,
+"1"
+],
+[
+1791020940,
+"1"
+],
+[
+1791021060,
+"1"
+],
+[
+1791021360,
+"1"
+],
+[
+1791021480,
+"1"
+],
+[
+1791021660,
+"1"
+],
+[
+1791021720,
+"1"
+],
+[
+1791021780,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "r2"
+},
+"values": [
+[
+1791011160,
+"2"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"2"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012300,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791012960,
+"1"
+],
+[
+1791013260,
+"1"
+],
+[
+1791013560,
+"1"
+],
+[
+1791013620,
+"1"
+],
+[
+1791013860,
+"1"
+],
+[
+1791013920,
+"1"
+],
+[
+1791014100,
+"2"
+],
+[
+1791014160,
+"1"
+],
+[
+1791014460,
+"1"
+],
+[
+1791014580,
+"1"
+],
+[
+1791014760,
+"2"
+],
+[
+1791014880,
+"1"
+],
+[
+1791014940,
+"11"
+],
+[
+1791015060,
+"4"
+],
+[
+1791015180,
+"1"
+],
+[
+1791015240,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015660,
+"1"
+],
+[
+1791015960,
+"2"
+],
+[
+1791016260,
+"1"
+],
+[
+1791016560,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791017040,
+"2"
+],
+[
+1791017160,
+"1"
+],
+[
+1791017460,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018060,
+"1"
+],
+[
+1791018240,
+"2"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018600,
+"1"
+],
+[
+1791018660,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019200,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019620,
+"1"
+],
+[
+1791019800,
+"2"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020400,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791020760,
+"1"
+],
+[
+1791021060,
+"1"
+],
+[
+1791021360,
+"1"
+],
+[
+1791021480,
+"1"
+],
+[
+1791021660,
+"2"
+],
+[
+1791021720,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "r3"
+},
+"values": [
+[
+1791011160,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012300,
+"2"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791012960,
+"1"
+],
+[
+1791013260,
+"1"
+],
+[
+1791013320,
+"1"
+],
+[
+1791013560,
+"1"
+],
+[
+1791013860,
+"2"
+],
+[
+1791014160,
+"2"
+],
+[
+1791014460,
+"1"
+],
+[
+1791014580,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015660,
+"1"
+],
+[
+1791015960,
+"2"
+],
+[
+1791016260,
+"1"
+],
+[
+1791016560,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791016980,
+"1"
+],
+[
+1791017100,
+"1"
+],
+[
+1791017160,
+"1"
+],
+[
+1791017400,
+"1"
+],
+[
+1791017460,
+"1"
+],
+[
+1791017520,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018060,
+"1"
+],
+[
+1791018240,
+"1"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018420,
+"1"
+],
+[
+1791018660,
+"1"
+],
+[
+1791018780,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019620,
+"1"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020280,
+"3"
+],
+[
+1791020460,
+"1"
+],
+[
+1791020640,
+"1"
+],
+[
+1791020700,
+"1"
+],
+[
+1791020760,
+"1"
+],
+[
+1791021060,
+"1"
+],
+[
+1791021360,
+"1"
+],
+[
+1791021480,
+"2"
+],
+[
+1791021660,
+"1"
+],
+[
+1791021720,
+"1"
+],
+[
+1791021840,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "r4"
+},
+"values": [
+[
+1791011160,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012180,
+"1"
+],
+[
+1791012300,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791012840,
+"1"
+],
+[
+1791012960,
+"1"
+],
+[
+1791013260,
+"1"
+],
+[
+1791013320,
+"1"
+],
+[
+1791013560,
+"1"
+],
+[
+1791013860,
+"1"
+],
+[
+1791014160,
+"2"
+],
+[
+1791014460,
+"1"
+],
+[
+1791014580,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015660,
+"1"
+],
+[
+1791015900,
+"1"
+],
+[
+1791015960,
+"2"
+],
+[
+1791016200,
+"1"
+],
+[
+1791016260,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791016980,
+"1"
+],
+[
+1791017160,
+"1"
+],
+[
+1791017460,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018060,
+"2"
+],
+[
+1791018240,
+"1"
+],
+[
+1791018360,
+"2"
+],
+[
+1791018660,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019620,
+"1"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791020700,
+"1"
+],
+[
+1791020760,
+"1"
+],
+[
+1791021060,
+"1"
+],
+[
+1791021360,
+"1"
+],
+[
+1791021480,
+"1"
+],
+[
+1791021660,
+"1"
+],
+[
+1791021720,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "r6"
+},
+"values": [
+[
+1791011100,
+"1"
+],
+[
+1791011400,
+"1"
+],
+[
+1791011700,
+"1"
+],
+[
+1791012000,
+"1"
+],
+[
+1791012300,
+"2"
+],
+[
+1791012600,
+"1"
+],
+[
+1791012900,
+"1"
+],
+[
+1791013200,
+"1"
+],
+[
+1791013320,
+"1"
+],
+[
+1791013500,
+"1"
+],
+[
+1791013800,
+"1"
+],
+[
+1791014100,
+"1"
+],
+[
+1791014160,
+"1"
+],
+[
+1791014340,
+"1"
+],
+[
+1791014400,
+"1"
+],
+[
+1791014580,
+"1"
+],
+[
+1791014700,
+"1"
+],
+[
+1791015000,
+"1"
+],
+[
+1791015240,
+"1"
+],
+[
+1791015300,
+"1"
+],
+[
+1791015600,
+"1"
+],
+[
+1791015900,
+"1"
+],
+[
+1791015960,
+"1"
+],
+[
+1791016200,
+"1"
+],
+[
+1791016500,
+"1"
+],
+[
+1791016980,
+"1"
+],
+[
+1791017100,
+"1"
+],
+[
+1791017400,
+"1"
+],
+[
+1791017700,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018000,
+"1"
+],
+[
+1791018240,
+"1"
+],
+[
+1791018300,
+"1"
+],
+[
+1791018600,
+"1"
+],
+[
+1791018900,
+"1"
+],
+[
+1791019200,
+"1"
+],
+[
+1791019500,
+"1"
+],
+[
+1791019680,
+"1"
+],
+[
+1791019800,
+"1"
+],
+[
+1791020100,
+"1"
+],
+[
+1791020400,
+"1"
+],
+[
+1791020520,
+"1"
+],
+[
+1791020700,
+"2"
+],
+[
+1791020820,
+"1"
+],
+[
+1791021000,
+"1"
+],
+[
+1791021300,
+"1"
+],
+[
+1791021480,
+"1"
+],
+[
+1791021600,
+"1"
+],
+[
+1791021720,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "s1"
+},
+"values": [
+[
+1791011100,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011760,
+"1"
+],
+[
+1791012060,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012720,
+"1"
+],
+[
+1791013020,
+"1"
+],
+[
+1791013320,
+"1"
+],
+[
+1791013680,
+"1"
+],
+[
+1791013980,
+"1"
+],
+[
+1791014280,
+"1"
+],
+[
+1791014640,
+"1"
+],
+[
+1791014940,
+"1"
+],
+[
+1791015240,
+"1"
+],
+[
+1791015600,
+"1"
+],
+[
+1791015900,
+"1"
+],
+[
+1791016200,
+"1"
+],
+[
+1791016560,
+"1"
+],
+[
+1791016860,
+"1"
+],
+[
+1791017220,
+"1"
+],
+[
+1791017520,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018120,
+"1"
+],
+[
+1791018480,
+"1"
+],
+[
+1791018780,
+"1"
+],
+[
+1791019080,
+"1"
+],
+[
+1791019440,
+"1"
+],
+[
+1791019740,
+"1"
+],
+[
+1791020040,
+"1"
+],
+[
+1791020400,
+"1"
+],
+[
+1791020700,
+"1"
+],
+[
+1791021000,
+"1"
+],
+[
+1791021300,
+"1"
+],
+[
+1791021660,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "s2"
+},
+"values": [
+[
+1791011220,
+"1"
+],
+[
+1791011580,
+"1"
+],
+[
+1791011880,
+"1"
+],
+[
+1791012180,
+"1"
+],
+[
+1791012540,
+"1"
+],
+[
+1791012840,
+"1"
+],
+[
+1791013140,
+"1"
+],
+[
+1791013500,
+"1"
+],
+[
+1791013800,
+"1"
+],
+[
+1791014100,
+"1"
+],
+[
+1791014400,
+"1"
+],
+[
+1791014760,
+"1"
+],
+[
+1791015060,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015720,
+"1"
+],
+[
+1791016020,
+"1"
+],
+[
+1791016320,
+"1"
+],
+[
+1791016980,
+"1"
+],
+[
+1791017340,
+"1"
+],
+[
+1791017640,
+"1"
+],
+[
+1791017940,
+"1"
+],
+[
+1791018300,
+"1"
+],
+[
+1791018600,
+"1"
+],
+[
+1791018900,
+"1"
+],
+[
+1791019260,
+"1"
+],
+[
+1791019560,
+"1"
+],
+[
+1791019860,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020520,
+"1"
+],
+[
+1791020820,
+"1"
+],
+[
+1791021120,
+"1"
+],
+[
+1791021480,
+"1"
+],
+[
+1791021780,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "s3"
+},
+"values": [
+[
+1791011340,
+"1"
+],
+[
+1791011820,
+"1"
+],
+[
+1791012360,
+"1"
+],
+[
+1791012900,
+"1"
+],
+[
+1791013380,
+"1"
+],
+[
+1791013980,
+"1"
+],
+[
+1791014520,
+"1"
+],
+[
+1791015000,
+"1"
+],
+[
+1791015540,
+"1"
+],
+[
+1791016080,
+"1"
+],
+[
+1791016620,
+"1"
+],
+[
+1791016800,
+"1"
+],
+[
+1791017280,
+"1"
+],
+[
+1791017820,
+"1"
+],
+[
+1791018360,
+"1"
+],
+[
+1791018900,
+"1"
+],
+[
+1791019440,
+"1"
+],
+[
+1791019980,
+"1"
+],
+[
+1791020460,
+"1"
+],
+[
+1791021000,
+"1"
+],
+[
+1791021540,
+"1"
+]
+]
+},
+{
+"metric": {
+"dev": "s4"
+},
+"values": [
+[
+1791011040,
+"1"
+],
+[
+1791011460,
+"1"
+],
+[
+1791011880,
+"1"
+],
+[
+1791012240,
+"1"
+],
+[
+1791012660,
+"1"
+],
+[
+1791013020,
+"1"
+],
+[
+1791013380,
+"1"
+],
+[
+1791013800,
+"1"
+],
+[
+1791014220,
+"1"
+],
+[
+1791014580,
+"1"
+],
+[
+1791015000,
+"1"
+],
+[
+1791015360,
+"1"
+],
+[
+1791015780,
+"1"
+],
+[
+1791016140,
+"1"
+],
+[
+1791016560,
+"1"
+],
+[
+1791017040,
+"1"
+],
+[
+1791017400,
+"1"
+],
+[
+1791017760,
+"1"
+],
+[
+1791018180,
+"1"
+],
+[
+1791018600,
+"1"
+],
+[
+1791018960,
+"1"
+],
+[
+1791019380,
+"1"
+],
+[
+1791019740,
+"1"
+],
+[
+1791020160,
+"1"
+],
+[
+1791020520,
+"1"
+],
+[
+1791020940,
+"1"
+],
+[
+1791021300,
+"1"
+],
+[
+1791021720,
+"1"
+]
+]
+}
+],
+"resultType": "matrix",
+"stats": {
+"cache": {
+"chunk": {
+"bytesReceived": 113434,
+"bytesSent": 6822,
+"downloadTime": 417120,
+"entriesFound": 194,
+"entriesRequested": 215,
+"entriesStored": 42,
+"queryLengthServed": 0,
+"requests": 20
+},
+"index": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"instantMetricResult": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"labelResult": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"result": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"seriesResult": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+},
+"statsResult": {
+"bytesReceived": 494,
+"bytesSent": 0,
+"downloadTime": 139075,
+"entriesFound": 2,
+"entriesRequested": 2,
+"entriesStored": 0,
+"queryLengthServed": 7020000000000,
+"requests": 2
+},
+"volumeResult": {
+"bytesReceived": 0,
+"bytesSent": 0,
+"downloadTime": 0,
+"entriesFound": 0,
+"entriesRequested": 0,
+"entriesStored": 0,
+"queryLengthServed": 0,
+"requests": 0
+}
+},
+"index": {
+"postFilterChunks": 0,
+"shardsDuration": 0,
+"totalChunks": 0,
+"usedBloomFilters": false
+},
+"ingester": {
+"store": {
+"chunk": {
+"compressedBytes": 16381,
+"decompressedBytes": 22012,
+"decompressedLines": 125,
+"decompressedStructuredMetadataBytes": 3750,
+"headChunkBytes": 1118,
+"headChunkLines": 7,
+"headChunkStructuredMetadataBytes": 56,
+"postFilterLines": 132,
+"totalDuplicates": 8
+},
+"chunkRefsFetchTime": 2169428,
+"chunksDownloadTime": 9219247,
+"congestionControlLatency": 0,
+"pipelineWrapperFilteredLines": 0,
+"queryReferencedStructuredMetadata": false,
+"totalChunksDownloaded": 85,
+"totalChunksRef": 85
+},
+"totalBatches": 4,
+"totalChunksMatched": 7,
+"totalLinesSent": 120,
+"totalReached": 2
+},
+"querier": {
+"store": {
+"chunk": {
+"compressedBytes": 38617,
+"decompressedBytes": 52249,
+"decompressedLines": 301,
+"decompressedStructuredMetadataBytes": 9030,
+"headChunkBytes": 0,
+"headChunkLines": 0,
+"headChunkStructuredMetadataBytes": 0,
+"postFilterLines": 301,
+"totalDuplicates": 0
+},
+"chunkRefsFetchTime": 2871558,
+"chunksDownloadTime": 67460296,
+"congestionControlLatency": 0,
+"pipelineWrapperFilteredLines": 0,
+"queryReferencedStructuredMetadata": false,
+"totalChunksDownloaded": 215,
+"totalChunksRef": 215
+}
+},
+"summary": {
+"bytesProcessedPerSecond": 1449667,
+"execTime": 0.051997441,
+"linesProcessedPerSecond": 8327,
+"queueTime": 0.008724178,
+"shards": 4,
+"splits": 4,
+"subqueries": 0,
+"totalBytesProcessed": 75379,
+"totalEntriesReturned": 9,
+"totalLinesProcessed": 433,
+"totalPostFilterLines": 433,
+"totalStructuredMetadataBytesProcessed": 12836
+}
+}
+},
+"status": "success"
+},
+"targets": {
+"data": {
+"activeTargets": [
+{
+"discoveredLabels": {
+"__address__": "192.0.2.10",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-bgp.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "cisco_bgp_peer2",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "20s",
+"device": "r3",
+"job": "bgp",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r3",
+"instance": "192.0.2.10",
+"job": "bgp",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:28.493909043Z",
+"lastScrapeDuration": 0.331254274,
+"scrapeInterval": "30s",
+"scrapePool": "bgp",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=cisco_bgp_peer2&target=192.0.2.10"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.11",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-bgp.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "cisco_bgp_peer2",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "20s",
+"device": "r4",
+"job": "bgp",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r4",
+"instance": "192.0.2.11",
+"job": "bgp",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:44.441857347Z",
+"lastScrapeDuration": 0.291609838,
+"scrapeInterval": "30s",
+"scrapePool": "bgp",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=cisco_bgp_peer2&target=192.0.2.11"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.12",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_iosxe.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "30s",
+"device": "r2",
+"job": "cisco_8000v",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r2",
+"instance": "192.0.2.12",
+"job": "cisco_8000v",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:31.621267483Z",
+"lastScrapeDuration": 2.928099949,
+"scrapeInterval": "30s",
+"scrapePool": "cisco_8000v",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=if_mib&module=cisco_device&module=system&target=192.0.2.12"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.13",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_iosxe.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "30s",
+"device": "r1",
+"job": "cisco_8000v",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r1",
+"instance": "192.0.2.13",
+"job": "cisco_8000v",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:43.026087949Z",
+"lastScrapeDuration": 2.301021567,
+"scrapeInterval": "30s",
+"scrapePool": "cisco_8000v",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=if_mib&module=cisco_device&module=system&target=192.0.2.13"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.14",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_iosxe.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "30s",
+"device": "r6",
+"job": "cisco_8000v",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r6",
+"instance": "192.0.2.14",
+"job": "cisco_8000v",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:42.324991352Z",
+"lastScrapeDuration": 0.644526024,
+"scrapeInterval": "30s",
+"scrapePool": "cisco_8000v",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=if_mib&module=cisco_device&module=system&target=192.0.2.14"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.10",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_iosxe.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "30s",
+"device": "r3",
+"job": "cisco_8000v",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r3",
+"instance": "192.0.2.10",
+"job": "cisco_8000v",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:32.402212653Z",
+"lastScrapeDuration": 1.81702846,
+"scrapeInterval": "30s",
+"scrapePool": "cisco_8000v",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=if_mib&module=cisco_device&module=system&target=192.0.2.10"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.11",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_iosxe.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "30s",
+"device": "r4",
+"job": "cisco_8000v",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r4",
+"instance": "192.0.2.11",
+"job": "cisco_8000v",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:35.848705488Z",
+"lastScrapeDuration": 3.124585258,
+"scrapeInterval": "30s",
+"scrapePool": "cisco_8000v",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=if_mib&module=cisco_device&module=system&target=192.0.2.11"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.11",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ipsla.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "cisco_ipsla",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "r4",
+"job": "cisco_ipsla",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r4",
+"instance": "192.0.2.11",
+"job": "cisco_ipsla",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:30.712226813Z",
+"lastScrapeDuration": 0.404923534,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_ipsla",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=cisco_ipsla&target=192.0.2.11"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.13",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ipsla.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "cisco_ipsla",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "r1",
+"job": "cisco_ipsla",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r1",
+"instance": "192.0.2.13",
+"job": "cisco_ipsla",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:25.950561138Z",
+"lastScrapeDuration": 0.251416888,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_ipsla",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=cisco_ipsla&target=192.0.2.13"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.15",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ipsla.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "cisco_ipsla",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "s3",
+"job": "cisco_ipsla",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s3",
+"instance": "192.0.2.15",
+"job": "cisco_ipsla",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:43.37736849Z",
+"lastScrapeDuration": 0.262065374,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_ipsla",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=cisco_ipsla&target=192.0.2.15"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.12",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ipsla.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "cisco_ipsla",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "r2",
+"job": "cisco_ipsla",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r2",
+"instance": "192.0.2.12",
+"job": "cisco_ipsla",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:32.171438669Z",
+"lastScrapeDuration": 0.214158697,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_ipsla",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=cisco_ipsla&target=192.0.2.12"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.10",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ipsla.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "cisco_ipsla",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "r3",
+"job": "cisco_ipsla",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r3",
+"instance": "192.0.2.10",
+"job": "cisco_ipsla",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:02:56.171589791Z",
+"lastScrapeDuration": 0.107568262,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_ipsla",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=cisco_ipsla&target=192.0.2.10"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.16",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_ios.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "55s",
+"device": "s1",
+"job": "cisco_vios_l2",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s1",
+"instance": "192.0.2.16",
+"job": "cisco_vios_l2",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:18.958920166Z",
+"lastScrapeDuration": 4.48994105,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_vios_l2",
+"scrapeTimeout": "55s",
+"scrapeUrl": "http://192.0.2.17:9116/snmp?auth=public_v2&module=if_mib&module=cisco_old_cpu&module=system&target=192.0.2.16"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.18",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_ios.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "55s",
+"device": "s2",
+"job": "cisco_vios_l2",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s2",
+"instance": "192.0.2.18",
+"job": "cisco_vios_l2",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:00.982456311Z",
+"lastScrapeDuration": 5.074718226,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_vios_l2",
+"scrapeTimeout": "55s",
+"scrapeUrl": "http://192.0.2.17:9116/snmp?auth=public_v2&module=if_mib&module=cisco_old_cpu&module=system&target=192.0.2.18"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.15",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_ios.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "55s",
+"device": "s3",
+"job": "cisco_vios_l2",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s3",
+"instance": "192.0.2.15",
+"job": "cisco_vios_l2",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:25.116214026Z",
+"lastScrapeDuration": 8.15806945,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_vios_l2",
+"scrapeTimeout": "55s",
+"scrapeUrl": "http://192.0.2.17:9116/snmp?auth=public_v2&module=if_mib&module=cisco_old_cpu&module=system&target=192.0.2.15"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.19",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-cisco_ios.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "if_mib",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "55s",
+"device": "s4",
+"job": "cisco_vios_l2",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s4",
+"instance": "192.0.2.19",
+"job": "cisco_vios_l2",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:32.082149471Z",
+"lastScrapeDuration": 3.546753888,
+"scrapeInterval": "1m",
+"scrapePool": "cisco_vios_l2",
+"scrapeTimeout": "55s",
+"scrapeUrl": "http://192.0.2.17:9116/snmp?auth=public_v2&module=if_mib&module=cisco_old_cpu&module=system&target=192.0.2.19"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.15",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "s3",
+"job": "lldp",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s3",
+"instance": "192.0.2.15",
+"job": "lldp",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:37.058630283Z",
+"lastScrapeDuration": 1.372917325,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.15"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.14",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "r6",
+"job": "lldp",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r6",
+"instance": "192.0.2.14",
+"job": "lldp",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:28.043212961Z",
+"lastScrapeDuration": 0.229599252,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.14"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.11",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "r4",
+"job": "lldp",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r4",
+"instance": "192.0.2.11",
+"job": "lldp",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:12.706089431Z",
+"lastScrapeDuration": 0.213178589,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.11"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.19",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "s4",
+"job": "lldp",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s4",
+"instance": "192.0.2.19",
+"job": "lldp",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:34.331065136Z",
+"lastScrapeDuration": 0.427781175,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.19"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.10",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "r3",
+"job": "lldp",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r3",
+"instance": "192.0.2.10",
+"job": "lldp",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:40.737202811Z",
+"lastScrapeDuration": 0.344956812,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.10"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.13",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "r1",
+"job": "lldp",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r1",
+"instance": "192.0.2.13",
+"job": "lldp",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:00.064323949Z",
+"lastScrapeDuration": 0.271530319,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.13"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.16",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "s1",
+"job": "lldp",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s1",
+"instance": "192.0.2.16",
+"job": "lldp",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:50.789487414Z",
+"lastScrapeDuration": 0.31901711,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.16"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.18",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "s2",
+"job": "lldp",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s2",
+"instance": "192.0.2.18",
+"job": "lldp",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:21.493645019Z",
+"lastScrapeDuration": 0.753552926,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.18"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.12",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-all.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "lldp",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "30s",
+"device": "r2",
+"job": "lldp",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r2",
+"instance": "192.0.2.12",
+"job": "lldp",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:35.757143923Z",
+"lastScrapeDuration": 0.296385503,
+"scrapeInterval": "1m",
+"scrapePool": "lldp",
+"scrapeTimeout": "30s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=lldp&target=192.0.2.12"
+},
+{
+"discoveredLabels": {
+"__address__": "localhost:9100",
+"__metrics_path__": "/metrics",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "10s",
+"job": "node"
+},
+"health": "up",
+"labels": {
+"instance": "localhost:9100",
+"job": "node"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:32.258529779Z",
+"lastScrapeDuration": 0.209309055,
+"scrapeInterval": "30s",
+"scrapePool": "node",
+"scrapeTimeout": "10s",
+"scrapeUrl": "http://localhost:9100/metrics"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.15",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospf.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospf",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "s3",
+"job": "ospf",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s3",
+"instance": "192.0.2.15",
+"job": "ospf",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:53.955663581Z",
+"lastScrapeDuration": 0.596697684,
+"scrapeInterval": "1m",
+"scrapePool": "ospf",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospf&target=192.0.2.15"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.13",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospf.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospf",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "r1",
+"job": "ospf",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r1",
+"instance": "192.0.2.13",
+"job": "ospf",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:02:59.467465874Z",
+"lastScrapeDuration": 0.157874324,
+"scrapeInterval": "1m",
+"scrapePool": "ospf",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospf&target=192.0.2.13"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.10",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospf.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospf",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "r3",
+"job": "ospf",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r3",
+"instance": "192.0.2.10",
+"job": "ospf",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:14.612249038Z",
+"lastScrapeDuration": 0.165167298,
+"scrapeInterval": "1m",
+"scrapePool": "ospf",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospf&target=192.0.2.10"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.12",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospf.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospf",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "r2",
+"job": "ospf",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r2",
+"instance": "192.0.2.12",
+"job": "ospf",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:18.805958992Z",
+"lastScrapeDuration": 0.424532467,
+"scrapeInterval": "1m",
+"scrapePool": "ospf",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospf&target=192.0.2.12"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.11",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospf.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospf",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "r4",
+"job": "ospf",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r4",
+"instance": "192.0.2.11",
+"job": "ospf",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:27.73749577Z",
+"lastScrapeDuration": 0.179336329,
+"scrapeInterval": "1m",
+"scrapePool": "ospf",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospf&target=192.0.2.11"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.19",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospf.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospf",
+"__scheme__": "http",
+"__scrape_interval__": "1m",
+"__scrape_timeout__": "20s",
+"device": "s4",
+"job": "ospf",
+"role": "switch"
+},
+"health": "up",
+"labels": {
+"device": "s4",
+"instance": "192.0.2.19",
+"job": "ospf",
+"role": "switch"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:46.888301875Z",
+"lastScrapeDuration": 0.932621599,
+"scrapeInterval": "1m",
+"scrapePool": "ospf",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospf&target=192.0.2.19"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.10",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospfv3.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospfv3",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "20s",
+"device": "r3",
+"job": "ospfv3",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r3",
+"instance": "192.0.2.10",
+"job": "ospfv3",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:31.344116655Z",
+"lastScrapeDuration": 0.122267103,
+"scrapeInterval": "30s",
+"scrapePool": "ospfv3",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospfv3&target=192.0.2.10"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.11",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospfv3.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospfv3",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "20s",
+"device": "r4",
+"job": "ospfv3",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r4",
+"instance": "192.0.2.11",
+"job": "ospfv3",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:27.943334813Z",
+"lastScrapeDuration": 0.122340228,
+"scrapeInterval": "30s",
+"scrapePool": "ospfv3",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospfv3&target=192.0.2.11"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.13",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospfv3.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospfv3",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "20s",
+"device": "r1",
+"job": "ospfv3",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r1",
+"instance": "192.0.2.13",
+"job": "ospfv3",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:50.205957704Z",
+"lastScrapeDuration": 0.228490079,
+"scrapeInterval": "30s",
+"scrapePool": "ospfv3",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospfv3&target=192.0.2.13"
+},
+{
+"discoveredLabels": {
+"__address__": "192.0.2.12",
+"__meta_filepath": "/etc/prometheus/nmas/nmas-snmp-ospfv3.json",
+"__metrics_path__": "/snmp",
+"__param_auth": "public_v2",
+"__param_module": "ospfv3",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "20s",
+"device": "r2",
+"job": "ospfv3",
+"role": "router"
+},
+"health": "up",
+"labels": {
+"device": "r2",
+"instance": "192.0.2.12",
+"job": "ospfv3",
+"role": "router"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:38.191654786Z",
+"lastScrapeDuration": 0.163522362,
+"scrapeInterval": "30s",
+"scrapePool": "ospfv3",
+"scrapeTimeout": "20s",
+"scrapeUrl": "http://localhost:9116/snmp?auth=public_v2&module=ospfv3&target=192.0.2.12"
+},
+{
+"discoveredLabels": {
+"__address__": "localhost:9090",
+"__metrics_path__": "/metrics",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "10s",
+"job": "prometheus"
+},
+"health": "up",
+"labels": {
+"instance": "localhost:9090",
+"job": "prometheus"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:46.592349723Z",
+"lastScrapeDuration": 0.013373516,
+"scrapeInterval": "30s",
+"scrapePool": "prometheus",
+"scrapeTimeout": "10s",
+"scrapeUrl": "http://localhost:9090/metrics"
+},
+{
+"discoveredLabels": {
+"__address__": "localhost:9273",
+"__metrics_path__": "/metrics",
+"__scheme__": "http",
+"__scrape_interval__": "30s",
+"__scrape_timeout__": "10s",
+"job": "telemetry_mdt"
+},
+"health": "up",
+"labels": {
+"instance": "localhost:9273",
+"job": "telemetry_mdt"
+},
+"lastError": "",
+"lastScrape": "2026-10-03T10:03:54.968311767Z",
+"lastScrapeDuration": 0.032980681,
+"scrapeInterval": "30s",
+"scrapePool": "telemetry_mdt",
+"scrapeTimeout": "10s",
+"scrapeUrl": "http://localhost:9273/metrics"
+}
+]
+},
+"status": "success"
+},
+"telemetry": {
+"data": {
+"result": [
+{
+"metric": {
+"source": "r6"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"source": "r4"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"source": "r1"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"source": "r2"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"source": "r3"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+}
+],
+"resultType": "vector"
+},
+"status": "success"
+},
+"up": {
+"data": {
+"result": [
+{
+"metric": {
+"device": "r4",
+"job": "ospfv3"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r2",
+"job": "ospf"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r1",
+"job": "cisco_ipsla"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r3",
+"job": "ospf"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s2",
+"job": "cisco_vios_l2"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r4",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r6",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s3",
+"job": "cisco_vios_l2"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r2",
+"job": "ospfv3"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r6",
+"job": "cisco_8000v"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s4",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r2",
+"job": "cisco_8000v"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r1",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r1",
+"job": "ospf"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s1",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r1",
+"job": "cisco_8000v"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r2",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r2",
+"job": "cisco_ipsla"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r4",
+"job": "ospf"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r3",
+"job": "cisco_ipsla"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r3",
+"job": "ospfv3"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r1",
+"job": "ospfv3"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r4",
+"job": "cisco_ipsla"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s4",
+"job": "ospf"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s3",
+"job": "cisco_ipsla"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r4",
+"job": "cisco_8000v"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r4",
+"job": "bgp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s3",
+"job": "ospf"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s2",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r3",
+"job": "bgp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r3",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "r3",
+"job": "cisco_8000v"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s3",
+"job": "lldp"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s4",
+"job": "cisco_vios_l2"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+},
+{
+"metric": {
+"device": "s1",
+"job": "cisco_vios_l2"
+},
+"value": [
+1791021835.882,
+"1791021780"
+]
+}
+],
+"resultType": "vector"
+},
+"status": "success"
+}
+}

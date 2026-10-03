@@ -317,7 +317,25 @@ def _expected_columns(get) -> dict:
     return out
 
 
-def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
+def _reporting(key, host, report, heartbeat_configured) -> dict:
+    """A CONFIGURED cell, judged by the not-reporting reader's stored arrivals: ``ok`` with
+    the reader's word beside "configured" (reporting, unproven, or unknown, said), or
+    ``not_reporting`` naming for how long and the device tab where its cause is looked for
+    (artboard A: never a redeploy)."""
+    from modules.readers import coverage_reporting as CR
+
+    value, _at, why = report
+    if value is None:
+        got = {"state": "unjudged", "words": f"whether it reports is unknown: {why}"}
+    else:
+        got = CR.judge(key, host, value, heartbeat_configured=heartbeat_configured)
+    if got["state"] == "not_reporting":
+        return {"state": "not_reporting", "words": f"not reporting — {got['words']}",
+                "where": got["where"], "reporting": got}
+    return {"state": "ok", "words": "configured", "reporting": got}
+
+
+def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -> dict:
     """Monitoring > Coverage for one list: every device, each integration it is
     CONFIGURED for from its committed golden, and what the list's monitoring
     profile would supply where it is not (the operator's design, 14.3).
@@ -341,6 +359,11 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
         from modules.settings_schema import get_setting as get
     golden = golden or P.read_golden
     want = _expected_columns(get)
+    if report is None:
+        # ONE stored read for the whole grid (enterprise scale), never a query per device.
+        from modules.device_page import _cached
+        from modules.readers.coverage_reporting import NAME
+        report = _cached(NAME)
     if devices is None:
         from modules.device import load_saved_devices
         devices = [(ref, d) for d in load_saved_devices(ref.csv_path)]
@@ -365,7 +388,8 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
         platform = platform_for_device(dev) or ""
         role = (dev.get("role") or "").strip()
         row = {"host": host, "platform": platform, "role": role, "cells": {}, "gaps": [],
-               "supplies": [], "selectable": False, "checked": False, "why_not": ""}
+               "supplies": [], "not_reporting": [], "selectable": False, "checked": False,
+               "why_not": ""}
         try:
             text = golden(ref, host)
             row["golden"] = "ok" if text else "none"
@@ -390,7 +414,7 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
             if text is None:
                 cell = {"state": "unknown", "words": "unknown — its golden could not be read"}
             elif have.get(key):
-                cell = {"state": "ok", "words": "configured"}
+                cell = _reporting(key, host, report, bool(have.get("heartbeat")))
             elif section in (view.get("excluded") or {}):
                 cell = {"state": "excluded",
                         "words": f"excluded — {view['excluded'][section]}"}
@@ -412,6 +436,8 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
                 cell = {"state": "gap_open", "words": (
                     "missing — no monitoring profile yet" if not doc else
                     f"missing — the profile has no {_SECTION_WORDS.get(section, section)} section")}
+            if cell["state"] == "not_reporting":
+                row["not_reporting"].append(key)
             if cell["state"] in ("gap", "gap_open"):
                 row["gaps"].append(key)
             row["cells"][key] = cell
@@ -437,6 +463,14 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None) -> dict:
     return {"list": ref.name, "columns": [{"key": k, "words": w, "connector": want.get(k, "")}
                                           for k, w in COLUMNS],
             "profile": prof, "devices": rows, "covered": covered, "total": len(rows),
+            # Configured and its data not arriving, per cell and per device (artboard A's
+            # head: "3 not reporting on 2"); and, once, why reporting could not be judged.
+            "not_reporting": sum(len(r["not_reporting"]) for r in rows),
+            "not_reporting_devices": sum(1 for r in rows if r["not_reporting"]),
+            "reporting_unknown": next((c["reporting"]["words"] for r in rows
+                                       for c in r["cells"].values()
+                                       if (c.get("reporting") or {}).get("state") == "unjudged"),
+                                      ""),
             # The devices running no IP SLA probe, each a link to the IP SLA
             # page, where the policy suggests probes (P.9 d4).
             "ip_sla_missing": [r["host"] for r in rows

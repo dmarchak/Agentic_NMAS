@@ -239,7 +239,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.adjacencies",
                            "modules.readers.lab_startup",
                            "modules.readers.restarts",
-                           "modules.readers.credential_health")
+                           "modules.readers.credential_health",
+                           "modules.readers.coverage_reporting")
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +338,10 @@ CHANGE_ONLY = {
     "grafana-dashboards": ("the Monitoring tab re-renders every chart on its announcement and "
                            "draws no read time of this reader: a redraw every 5 min would "
                            "reset every chart on an open page for nothing"),
+    "coverage-reporting": ("it reads every 60 s and Coverage draws each cell's verdict; the "
+                           "arrival ages are only on hover: a redraw of the whole grid every "
+                           "minute would change nothing a person reads unless a verdict could "
+                           "move (its 300 s keepalive proves it alive)"),
 }
 
 

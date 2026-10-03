@@ -2108,6 +2108,17 @@ Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own
 5. **Numbers.** One commit [git: this commit]. 24 tests in `tests/test_credential_health.py` and 5 more in `tests/test_integration_health.py`; nine controls, each failing its aimed tests. Findings closed: C354. **Estimate versus actual:** no forecast was made; the reader pattern (the fifteenth) made it about half a device card's time.
 6. **Where it left the product.** An expiring, expired, refused or old credential is in front of a person with where to renew it and where to put it, before it breaks a connection; 7.6's Credentials page draws its list from the same stored value.
 
+### Coverage's not-reporting reader (the first of Coverage's three steps)
+
+*Written at close, 2026-10-03 (overnight). The grid and the combined deploy are separate steps.*
+
+1. **What it was.** Coverage said only whether a template was CONFIGURED. Artboard A (signed off 2026-10-02) adds a fourth state: configured, but its data not arriving. The cell says for how long and links to where the cause is found, never to a redeploy [NSOT_GUI_BRIEF.md 14.3; NSOT_STAGE7_PLAN.md, the Coverage redraw].
+2. **How it was implemented.** First the read-only measurement on the host. The SNMP jobs are per platform, and every target came from a generated file named in its `__meta_filepath`. Telemetry is labelled `source`. The device's name in a syslog line follows IOS's sequence number. The installed heartbeat rules hold a measured window for every device. Then one reader, `coverage-reporting`, every 60 s, one query per source for the fleet. It stores ARRIVALS only, and `monitoring_coverage` judges each configured cell from them. A failing or stale reader makes a cell unjudged, never "not reporting".
+3. **Issues encountered.** The first two regular expressions for the device's name were wrong: they assumed the name followed the sequence number. A flat window of twice the heartbeat period would have flagged s3, which beats about 7 times an hour. One control passed, because in today's lines rsyslog's hostname field equals the device's name.
+4. **How they were resolved.** The expression was measured against the anchored per-device query, and it agreed on every count over 24 h. The heartbeat is judged by each device's own alert window, so Coverage and the alert agree. The test gained C13's measured shape (an address in rsyslog's field), and the control then failed.
+5. **Numbers.** One commit [git: this commit]. 23 tests in `tests/test_coverage_reporting.py`, on a real capture from the host; nine controls, each failing its aimed tests. Findings: C376 recorded (Loki's series limit at fleet scale). **Estimate versus actual:** no forecast was made; a reader of the 7.2 kind.
+6. **Where it left the product.** Today's Coverage table shows a configured template whose data stopped as its own state, with its age and the tab to look at. The redrawn grid draws the same verdicts as icons.
+
 ## Part II. Stage 7
 
 ### 7.0 — The checks every later step is written against
