@@ -1435,7 +1435,7 @@ RENEW_AT = {
     "s3": "the S3 provider's access keys",
 }
 #: An expiry a person declares where the service does not let the tool read it (P.21).
-DECLARED_EXPIRY = {"grafana": "grafana_token_expires"}
+DECLARED_EXPIRY = {"grafana": "grafana_token_expires", "proxmox": "proxmox_token_expires"}
 
 
 def _setting(key: str) -> str:
@@ -1639,8 +1639,9 @@ def credential_health_source(cached=None) -> dict:
                                    "a credential is kept"),
                             action={"label": f"{c.get('renew_at')}"}))
         elif state == "unknown":
+            # UNKNOWN, never a Warning (C381): a Warning claims a danger the reader has seen.
             rows.append(row(source="credential-health", kind="unread", key=c.get("id", "?"),
-                            level="warning", what=f"{c.get('label')}'s expiry cannot be read",
+                            level="unknown", what=f"{c.get('label')}'s expiry cannot be read",
                             cause=c.get("why") or "no reason recorded",
                             action={"label": f"Read its expiry at {c.get('renew_at')}; the "
                                              "reader asks again every hour"}))

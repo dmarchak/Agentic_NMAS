@@ -153,8 +153,9 @@ DEFAULTS: dict = {
     "grafana_url":            "",
     "grafana_token":          "",
     #: The token's expiry, DECLARED by the person who entered it (P.21, signed off 2026-10-03:
-    #: Grafana does not let a Viewer token read its own expiry). YYYY-MM-DD; empty until the
-    #: field is on a screen. A wrong or missing date is caught by refusal detection.
+    #: Grafana does not let a Viewer token read its own expiry). YYYY-MM-DD, or "never"; on
+    #: Settings > Integrations, a recorded exception to the no-new-v1 rule. A wrong or missing
+    #: date is caught by refusal detection.
     "grafana_token_expires":  "",
     "grafana_embed_mode":     "link",    # link | iframe
     "grafana_device_dashboard_url": "",  # supports {hostname} / {ip}
@@ -206,6 +207,9 @@ DEFAULTS: dict = {
     "proxmox_node":           "",
     "proxmox_token_id":       "",
     "proxmox_token_secret":   "",
+    #: The Proxmox token's expiry, DECLARED (C380, 2026-10-03: a PVEAuditor token cannot read
+    #: its own record, and it is not widened). YYYY-MM-DD, or "never"; as Grafana's.
+    "proxmox_token_expires":  "",
     "proxmox_backup_storage": "",
     "proxmox_backup_vmids":   "",     # text, "100,102", so the card can carry it
     "proxmox_verify_tls":     True,
@@ -703,6 +707,7 @@ SCHEMA: dict = {
         "proxmox_url": _STR,
         "proxmox_node": _STR,
         "proxmox_token_id": _STR,
+        "proxmox_token_expires": _STR,
         "proxmox_backup_storage": _STR,
         "proxmox_backup_vmids": {"type": "string", "pattern": r"^[0-9, ]*$"},
         "proxmox_verify_tls": _BOOL,

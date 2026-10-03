@@ -74,7 +74,7 @@ def _parse_time(text: str):
 
 def netbox(now: float) -> list:
     """NetBox's API token: its `expires`, from the token list the token itself may read,
-    picked by the suffix NetBox shows."""
+    picked by its v2 key."""
     from modules.netbox_client import _nb_ready, get_netbox_config
 
     ok, err, session, base = _nb_ready()
@@ -92,12 +92,21 @@ def netbox(now: float) -> list:
         return [_entry("netbox_token", "NetBox API token", kind="expiry", state="unknown",
                        why=f"the token list could not be read: {type(exc).__name__}",
                        renew_at=renew, put_at=put, now=now)]
-    mine = [t for t in rows if token and str(t.get("display") or t.get("key") or "")
-            .endswith(token[-4:])]
+    # NetBox 4.6 lists a v2 token (`nbt_<key>.<secret>`) by its KEY and never shows any part of
+    # its secret (C378, measured on 4.6.9: `key` the 12-character id, `token` null); the
+    # tool's row is the one whose key is its own token's.
+    key = token[4:].partition(".")[0] if token.startswith("nbt_") and "." in token else ""
+    if not key:
+        return [_entry("netbox_token", "NetBox API token", kind="expiry", state="unknown",
+                       why=("the tool's token is not a v2 token (nbt_<key>.<secret>), and NetBox "
+                            "lists tokens by a v2 key, so which listed token is the tool's cannot "
+                            "be told"),
+                       renew_at=renew, put_at=put, now=now)]
+    mine = [t for t in rows if str(t.get("key") or "") == key]
     if len(mine) != 1:
         return [_entry("netbox_token", "NetBox API token", kind="expiry", state="unknown",
-                       why=(f"{len(rows)} token(s) readable and {len(mine)} end as the tool's "
-                            "does, so which is the tool's cannot be told"),
+                       why=(f"{len(rows)} token(s) readable and {len(mine)} carry the tool's "
+                            "key, so which is the tool's cannot be told"),
                        renew_at=renew, put_at=put, now=now)]
     expires = _parse_time(mine[0].get("expires"))
     return [_entry("netbox_token", "NetBox API token", kind="expiry",
@@ -106,31 +115,53 @@ def netbox(now: float) -> list:
                    renew_at=renew, put_at=put, now=now)]
 
 
-def proxmox(now: float) -> list:
-    """Proxmox's API token: its `expire` (0 is never), read with the token itself."""
-    from urllib.parse import quote
-
-    from modules.integrations.proxmox import ProxmoxIntegration
+def _declared(cid, label, setting, *, renew, put, now) -> list:
+    """A token whose expiry it cannot read itself, by the expiry DECLARED for it in Settings
+    (the operator's decisions, 2026-10-03: Grafana's Viewer token; Proxmox's token, not
+    widened to read its own record). "never" is a declaration; blank is none yet; a refusal
+    is still caught by the integrations probe within a minute."""
     from modules.settings_schema import get_setting
 
-    inst = ProxmoxIntegration()
-    if not inst.is_configured():
-        return []
-    token_id = (get_setting("proxmox_token_id", "") or "").strip()
-    put, renew = ("Settings > Integrations > Proxmox VE, token secret",
-                  "Proxmox: Datacenter > Permissions > API Tokens")
-    user, _sep, name = token_id.partition("!")
-    got = inst._get(f"api2/json/access/users/{quote(user)}/token/{quote(name)}")
-    if not got.get("ok"):
-        return [_entry("proxmox_token", "Proxmox API token", kind="expiry", state="unknown",
-                       why=f"its record could not be read: {got.get('error')}",
+    declared = (get_setting(setting, "") or "").strip()
+    if not declared:
+        return [_entry(cid, label, kind="expiry", state="listed",
+                       why=("no expiry declared yet (" + put + "); a refusal is still caught by "
+                            "the integrations probe"),
                        renew_at=renew, put_at=put, now=now)]
-    data = (got["response"].json() or {}).get("data") or {}
-    expire = int(data.get("expire") or 0)
-    return [_entry("proxmox_token", "Proxmox API token", kind="expiry",
-                   state=judge_expiry(expire or None, now), expires_at=expire or None,
-                   why="" if expire else "it never expires", renew_at=renew, put_at=put,
-                   now=now)]
+    if declared.lower() == "never":
+        return [_entry(cid, label + " (declared expiry)", kind="expiry", state="listed",
+                       why="declared: it never expires", renew_at=renew, put_at=put, now=now)]
+    try:
+        expires = _parse_time(declared)
+    except ValueError:
+        return [_entry(cid, label, kind="expiry", state="unknown",
+                       why=f"the declared expiry {declared!r} is not a date (YYYY-MM-DD) or never",
+                       renew_at=renew, put_at=put, now=now)]
+    return [_entry(cid, label + " (declared expiry)", kind="expiry",
+                   state=judge_expiry(expires, now), expires_at=expires, renew_at=renew,
+                   put_at=put, now=now)]
+
+
+def proxmox(now: float) -> list:
+    """Proxmox's API token, by its DECLARED expiry: a PVEAuditor token cannot read its own
+    record (C380, measured: 403 "Permission check failed"), and it is not widened."""
+    from modules.integrations.proxmox import ProxmoxIntegration
+
+    if not ProxmoxIntegration().is_configured():
+        return []
+    return _declared("proxmox_token", "Proxmox API token", "proxmox_token_expires",
+                     renew="Proxmox: Datacenter > Permissions > API Tokens",
+                     put="Settings > Integrations > Proxmox VE, token secret and its expiry",
+                     now=now)
+
+
+def _not_after(cert) -> float:
+    """A certificate's notAfter, epoch seconds. `not_valid_after_utc` arrived in cryptography 42;
+    the host and CI pin 41.0.7, whose `not_valid_after` is naive UTC (C379: AttributeError)."""
+    got = getattr(cert, "not_valid_after_utc", None)
+    if got is None:
+        got = cert.not_valid_after.replace(tzinfo=timezone.utc)
+    return got.timestamp()
 
 
 def tls(now: float) -> list:
@@ -157,8 +188,7 @@ def tls(now: float) -> list:
             with socket.create_connection((u.hostname, u.port or 443), timeout=10) as raw:
                 with ctx.wrap_socket(raw, server_hostname=u.hostname) as s:
                     der = s.getpeercert(binary_form=True)
-            cert = x509.load_der_x509_certificate(der)
-            after = cert.not_valid_after_utc.timestamp()
+            after = _not_after(x509.load_der_x509_certificate(der))
         except Exception as exc:                        # noqa: BLE001
             out.append(_entry(f"tls:{key}", f"{label}'s TLS certificate", kind="expiry",
                               state="unknown", why=f"the handshake could not be read: "
@@ -176,27 +206,12 @@ def grafana(now: float) -> list:
     """Grafana's token, by the expiry DECLARED when it was entered (the operator's decision:
     a Viewer token cannot read its own)."""
     from modules.secrets_store import get_secret
-    from modules.settings_schema import get_setting
 
     if not get_secret("grafana_token"):
         return []
-    put, renew = ("Settings > Integrations > Grafana, API token and its expiry",
-                  "Grafana: Administration > Service accounts")
-    declared = (get_setting("grafana_token_expires", "") or "").strip()
-    if not declared:
-        return [_entry("grafana_token", "Grafana API token", kind="expiry", state="listed",
-                       why=("no expiry declared yet: the field is not on a screen; a refusal "
-                            "is still caught by the integrations probe"),
-                       renew_at=renew, put_at=put, now=now)]
-    try:
-        expires = _parse_time(declared)
-    except ValueError:
-        return [_entry("grafana_token", "Grafana API token", kind="expiry", state="unknown",
-                       why=f"the declared expiry {declared!r} is not a date (YYYY-MM-DD)",
-                       renew_at=renew, put_at=put, now=now)]
-    return [_entry("grafana_token", "Grafana API token (declared expiry)", kind="expiry",
-                   state=judge_expiry(expires, now), expires_at=expires, renew_at=renew,
-                   put_at=put, now=now)]
+    return _declared("grafana_token", "Grafana API token", "grafana_token_expires",
+                     renew="Grafana: Administration > Service accounts",
+                     put="Settings > Integrations > Grafana, API token and its expiry", now=now)
 
 
 def device_ages(now: float) -> list:

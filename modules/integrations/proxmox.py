@@ -42,7 +42,7 @@ class ProxmoxIntegration(IntegrationClient):
     url_key = "proxmox_url"
     secret_keys = ("proxmox_token_secret",)
     plain_keys = ("proxmox_node", "proxmox_token_id", "proxmox_backup_storage",
-                  "proxmox_backup_vmids", "proxmox_verify_tls")
+                  "proxmox_backup_vmids", "proxmox_verify_tls", "proxmox_token_expires")
 
     # ── configuration ───────────────────────────────────────────────────────
 

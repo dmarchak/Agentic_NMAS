@@ -13,6 +13,8 @@ const INTEGRATION_SPEC = {
   grafana: {icon: '📊', fields: [
     {key: 'grafana_url', label: 'Base URL', type: 'url'},
     {key: 'grafana_token', label: 'API token', type: 'secret'},
+    {key: 'grafana_token_expires', label: 'Token expires', type: 'text',
+     help: 'YYYY-MM-DD, or never. Grafana does not let the token read its own expiry; Needs attention warns 30 and 7 days ahead.'},
     {key: 'grafana_device_dashboard_url', label: 'Device dashboard URL', type: 'text',
      help: 'Supports {hostname} and {ip} placeholders.'},
     {key: 'grafana_fleet_dashboard_uid', label: 'Fleet dashboard UID', type: 'text',
@@ -75,6 +77,8 @@ const INTEGRATION_SPEC = {
     {key: 'proxmox_node', label: 'Node', type: 'text'},
     {key: 'proxmox_token_id', label: 'API token ID', type: 'text', help: 'user@realm!tokenname, with the PVEAuditor role and nothing more.'},
     {key: 'proxmox_token_secret', label: 'API token secret', type: 'secret'},
+    {key: 'proxmox_token_expires', label: 'Token expires', type: 'text',
+     help: 'YYYY-MM-DD, or never. A PVEAuditor token cannot read its own record; Needs attention warns 30 and 7 days ahead.'},
     {key: 'proxmox_backup_storage', label: 'Backup storage', type: 'text', help: 'The storage the vzdump job writes to.'},
     {key: 'proxmox_backup_vmids', label: 'VM IDs imaged', type: 'text', help: 'Comma-separated. Each is reported on its own.'},
     {key: 'proxmox_verify_tls', label: 'Verify TLS', type: 'switch', help: 'Off only for a self-signed certificate you have checked.'}]},

@@ -1,0 +1,9 @@
+{
+ "body": {
+  "data": null,
+  "message": "Permission check failed\n"
+ },
+ "captured": "2026-10-03, Proxmox VE, GET /api2/json/access/users/<user>/token/<token> with the tool's own token (PVEAuditor): its own record",
+ "reason": "Permission check failed",
+ "status": 403
+}

@@ -15,6 +15,7 @@ its Needs attention rows. Metadata only, never a value.
 """
 
 import json
+import os
 import time
 
 import pytest
@@ -62,55 +63,161 @@ class _Session:
         return _Resp(self.payload, self.status)
 
 
-TOKEN = "nbtok-PLANTED-0123456789abcdWXYZ"
+HERE = os.path.dirname(os.path.abspath(__file__))
+FIX = os.path.join(HERE, "fixtures", "credential_health")
+#: The time of the captures (2026-10-03).
+CAPTURED = time.mktime((2026, 10, 3, 12, 0, 0, 0, 0, 0))
+
+
+def _capture(name):
+    with open(os.path.join(FIX, name), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+#: The tool's token in the capture's shape: a NetBox 4.6 v2 token, `nbt_<key>.<secret>`, 57
+#: characters as on the host; its key is the one the masked capture lists as the tool's.
+TOKEN = "nbt_Kq3x9Z0aB7cD." + "PLANTEDsecret0123456789abcdefPLANTED0123"
 
 
 @pytest.fixture
 def netbox(monkeypatch):
-    state = {"payload": {"results": []}, "status": 200}
+    """NetBox answering with the REAL token list captured on the host (C378), masked."""
+    cap = _capture("netbox_tokens.json")
+    state = {"payload": cap["body"], "status": cap["status"], "token": TOKEN}
     monkeypatch.setattr("modules.netbox_client._nb_ready",
                         lambda: (True, "", _Session(state["payload"], state["status"]),
                                  "http://192.0.2.7"))
     monkeypatch.setattr("modules.netbox_client.get_netbox_config",
-                        lambda: {"url": "http://192.0.2.7", "token": TOKEN})
+                        lambda: {"url": "http://192.0.2.7", "token": state["token"]})
     return state
 
 
 class TestNetBox:
-    def test_the_tools_token_by_its_suffix(self, netbox):
-        netbox["payload"] = {"results": [
-            {"display": "**********1111", "expires": "2026-01-01T00:00:00Z"},
-            {"display": "**********WXYZ", "expires": "2027-12-01T00:00:00Z"}]}
-        (c,) = CH.netbox(NOW)
-        assert c["state"] == "ok" and c["expires_at"] == "2027-12-01T00:00:00Z"
+    """C378: on the host the row read "1 token(s) readable and 0 end as the tool's does". NetBox
+    4.6 lists a v2 token by its KEY, the part between `nbt_` and the dot, never by its
+    secret's last characters; the tool's row is the one whose key is its token's."""
+
+    def test_the_tools_v2_token_by_its_key(self, netbox):
+        assert len(TOKEN) == 57
+        (c,) = CH.netbox(CAPTURED)
+        assert c["state"] == "ok" and c["expires_at"] == "2027-09-22T12:00:00Z", c
         assert "API tokens" in c["renew_at"] and "Settings" in c["put_at"]
 
-    def test_which_is_the_tools_cannot_be_told(self, netbox):
-        netbox["payload"] = {"results": [{"display": "**********1111"}]}
-        (c,) = CH.netbox(NOW)
+    def test_another_tokens_key_is_not_the_tools(self, netbox):
+        netbox["token"] = "nbt_OtherKey0001." + "x" * 40
+        (c,) = CH.netbox(CAPTURED)
         assert c["state"] == "unknown" and "cannot be told" in c["why"]
+
+    def test_a_token_that_is_not_v2_is_said(self, netbox):
+        netbox["token"] = "0123456789abcdef0123456789abcdef01234567"
+        (c,) = CH.netbox(CAPTURED)
+        assert c["state"] == "unknown" and "not a v2 token" in c["why"]
 
     def test_an_unreadable_list_is_unknown_naming_only_the_error_kind(self, netbox):
         netbox["status"] = 403
-        (c,) = CH.netbox(NOW)
+        (c,) = CH.netbox(CAPTURED)
         assert c["state"] == "unknown" and c["why"].endswith("RuntimeError")
 
 
+class _TLSServer:
+    """A real TLS server on loopback, its certificate made with the installed `cryptography`
+    (41.0.7, the host's and CI's pin), expiring *days* from now: the handshake the reader
+    reads is real, never an invented object (C379: AttributeError on the host)."""
+
+    def __init__(self, tmp_path, days):
+        import datetime as dt
+        import socket
+        import ssl
+        import threading
+
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.x509.oid import NameOID
+
+        key = ec.generate_private_key(ec.SECP256R1())
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "192.0.2.80")])
+        now = dt.datetime.utcnow()
+        self.not_after = (now + dt.timedelta(days=days)).replace(microsecond=0)
+        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+                .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                .not_valid_before(now - dt.timedelta(days=1)).not_valid_after(self.not_after)
+                .sign(key, hashes.SHA256()))
+        (tmp_path / "c.pem").write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+        (tmp_path / "k.pem").write_bytes(key.private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption()))
+        self.ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self.ctx.load_cert_chain(str(tmp_path / "c.pem"), str(tmp_path / "k.pem"))
+        self.sock = socket.create_server(("127.0.0.1", 0))
+        self.port = self.sock.getsockname()[1]
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+        self.thread.start()
+
+    def _serve(self):
+        try:
+            conn, _a = self.sock.accept()
+            with self.ctx.wrap_socket(conn, server_side=True) as s:
+                s.recv(1)
+        except OSError:
+            pass
+
+    def close(self):
+        self.sock.close()
+
+
+class TestTheTLSCertificate:
+    def test_a_real_handshake_is_read_with_the_pinned_library(self, monkeypatch, tmp_path):
+        srv = _TLSServer(tmp_path, days=20)
+        try:
+            monkeypatch.setattr("modules.settings_schema.get_setting",
+                                lambda k, d=None: f"https://127.0.0.1:{srv.port}"
+                                if k == "proxmox_url" else d)
+            (c,) = CH.tls(time.time())
+        finally:
+            srv.close()
+        assert c["state"] == "warning", c["why"]
+        assert c["expires_at"] == srv.not_after.strftime("%Y-%m-%dT%H:%M:%SZ")
+        assert "credential" not in c["why"]
+
+
 class TestProxmoxAndGrafana:
-    def test_proxmox_zero_is_never(self, monkeypatch):
+    """C380: Proxmox's token cannot read its own record (the REAL answer captured on the host:
+    403, "Permission check failed"), and is not widened. Its expiry is DECLARED in Settings, as
+    Grafana's is; "never" is a valid declaration."""
+
+    @pytest.fixture
+    def proxmox(self, monkeypatch):
         from modules.integrations.proxmox import ProxmoxIntegration
+        cap = _capture("proxmox_own_token_record.json")
+        asked = []
+
+        class _PxSession:
+            def get(self, url, **kw):
+                asked.append(url)
+                r = _Resp(cap["body"], cap["status"])
+                r.reason = cap["reason"]
+                return r
         monkeypatch.setattr(ProxmoxIntegration, "is_configured", lambda self: True)
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda k, d=None: "nmas@pve!probe" if k == "proxmox_token_id" else d)
-        got = {"data": {"expire": 0}}
-        monkeypatch.setattr(ProxmoxIntegration, "_get",
-                            lambda self, path, **p: {"ok": True, "response": _Resp(got)})
-        assert CH.proxmox(NOW)[0]["state"] == "listed"
-        got["data"]["expire"] = int(NOW + 5 * DAY)
-        assert CH.proxmox(NOW)[0]["state"] == "danger"
+        monkeypatch.setattr(ProxmoxIntegration, "session", lambda self: _PxSession())
+        declared = {"value": ""}
+        monkeypatch.setattr("modules.settings_schema.get_setting", lambda k, d=None: {
+            "proxmox_token_id": "nmas@pve!probe", "proxmox_url": "https://192.0.2.80:8006",
+            "proxmox_token_expires": declared["value"]}.get(k, d))
+        return declared, asked
+
+    @pytest.mark.parametrize("declared, state, why", [
+        ("", "listed", "no expiry declared"), ("never", "listed", "declared: it never expires"),
+        ("2026-10-20", "warning", ""), ("not a date", "unknown", "is not a date")])
+    def test_by_its_declared_expiry_never_its_record(self, proxmox, declared, state, why):
+        proxmox[0]["value"] = declared
+        (c,) = CH.proxmox(CAPTURED)
+        assert c["state"] == state and why in c["why"], c
+        assert "403" not in c["why"] and "could not be read" not in c["why"]
+        assert not proxmox[1], "its own record is not asked: the token cannot read it"
 
     @pytest.mark.parametrize("declared, state", [("", "listed"), ("2027-02-01", "ok"),
-                                                 ("not a date", "unknown")])
+                                                 ("never", "listed"), ("not a date", "unknown")])
     def test_grafana_by_its_declared_expiry(self, monkeypatch, declared, state):
         monkeypatch.setattr("modules.secrets_store.get_secret", lambda k: "tok")
         monkeypatch.setattr("modules.settings_schema.get_setting",
@@ -152,11 +259,9 @@ class TestTheRead:
         assert v["errors"] == ["boom: ValueError: planted"]
 
     def test_no_planted_value_reaches_the_stored_value(self, netbox, monkeypatch):
-        netbox["payload"] = {"results": [{"display": "**********WXYZ",
-                                          "expires": "2027-01-11T00:00:00Z"}]}
         monkeypatch.setattr(CH, "SOURCES", (CH.netbox,))
-        blob = json.dumps(CH.read(NOW))
-        assert TOKEN not in blob and TOKEN[:-4] not in blob
+        blob = json.dumps(CH.read(CAPTURED))
+        assert "PLANTED" not in blob and TOKEN not in blob
 
     def test_the_reader_is_declared(self):
         from modules import reader_job
@@ -194,7 +299,8 @@ class TestTheRows:
         assert "API tokens" in rows["a"]["action"]["label"]
         assert rows["b"]["level"] == "danger" and rows["c"]["level"] == "warning"
         assert rows["d"]["kind"] == "age" and "Rotate" in rows["d"]["action"]["label"]
-        assert rows["e"]["kind"] == "unread"
+        # C381: an expiry not read is UNKNOWN, never a Warning, which claims a danger seen.
+        assert rows["e"]["kind"] == "unread" and rows["e"]["level"] == "unknown"
 
     def test_nothing_stored_is_unreadable(self):
         res = A.credential_health_source(cached={"state": "absent", "doc": None, "why": "never"})

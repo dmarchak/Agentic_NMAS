@@ -46,6 +46,12 @@ So each setting is in one of three states, visible in the posture panel:
 | `ai_enabled`, **`background_agent_enabled`**, `wf_*` | Settings → AI |
 | `require_identity_for_*`, `require_person_for_*`, `service_allowed_operations`, `cf_access_*` | Settings → Security posture (**read-only**, see below) |
 
+`grafana_token_expires` and `proxmox_token_expires` are the tokens' DECLARED expiries
+(YYYY-MM-DD, or `never`), because neither token can read its own (P.21, C380). They are on
+today's Settings → Integrations as a **recorded exception** to the no-new-v1 rule, named with
+their reason in `tests/test_no_new_v1_capability.py`, and they move at cutover; a v2 Settings
+page waits on P.8.
+
 `background_agent_enabled` was added to the form in 3.2d. It had **no control
 at all**: `/settings` accepted it and nothing ever sent it. See the warning
 below.
@@ -75,7 +81,6 @@ Each with a reason. These are settable by editing
 
 | Setting | Why not in the UI |
 |---|---|
-| `grafana_token_expires` | The Grafana token's expiry (YYYY-MM-DD), **declared** by whoever enters the token, since a Viewer token cannot read its own (P.21, signed off 2026-10-03: a required field beside the token). File-only only until its field is on a screen: Settings has no v2 page, and today's pages take nothing new (2026-10-03). Until then the credential-health reader lists Grafana's token as "no expiry declared", and a refused token is a danger row from the integrations probe within a minute. |
 | `platform_map` | A nested mapping of platform → driver, template dir, transport, NETCONF support. A form for it would be a worse JSON editor. Editing it wrongly breaks every deploy, and it changes when a **vendor** is added, not when an operator changes their mind. |
 | `role_map` | Same shape, same reasoning: NetBox role slug → internal role. |
 | `verify_settle_windows` | Per-protocol convergence timings, nested. Changed when a protocol's behaviour is *measured*, not adjusted by feel — a slider would invite the second. |

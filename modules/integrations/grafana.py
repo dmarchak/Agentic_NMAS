@@ -17,7 +17,8 @@ class GrafanaIntegration(IntegrationClient):
     secret_keys = ("grafana_token",)
     plain_keys = ("grafana_embed_mode", "grafana_device_dashboard_url",
                   "grafana_verify_tls", "grafana_fleet_dashboard_uid", "grafana_device_dashboard_uid",
-                  "grafana_device_variable", "grafana_device_variable_value")
+                  "grafana_device_variable", "grafana_device_variable_value",
+                  "grafana_token_expires")
 
     def query(self, body: dict, timeout: float = 20.0) -> dict:
         """Run panel queries through Grafana's own query endpoint

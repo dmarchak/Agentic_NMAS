@@ -24,6 +24,24 @@ JS = os.path.join(ROOT, "static", "js")
 CONTROLS_CEILING = 284
 HANDLERS_CEILING = 275
 FUNCTIONS_CEILING = 451
+#: Fields a person can fill on today's pages: form elements in its templates, and the
+#: settings fields its scripts draw from a spec (`{key: '<setting>', ...}`), less the
+#: recorded exceptions below. Measured 2026-10-03 (261 elements and 68 spec fields).
+FIELDS_CEILING = 329
+
+#: RECORDED EXCEPTIONS to the rule, each a v1 settings field by its key, with its reason and
+#: where it goes at cutover. A field is excepted only by the operator's decision.
+EXCEPTIONS = {
+    "grafana_token_expires": (
+        "the operator, 2026-10-03: the Grafana token's declared expiry (P.21), which a Viewer "
+        "token cannot read; a v2 Settings page waits on P.8. Moves at cutover"),
+    "proxmox_token_expires": (
+        "the operator, 2026-10-03: the Proxmox token's declared expiry (C380), which a "
+        "PVEAuditor token cannot read and is not widened to; a v2 Settings page waits on P.8. "
+        "Moves at cutover"),
+}
+_SPEC_FIELD = re.compile(r"\{\s*key:\s*'([a-z0-9_]+)'")
+_FORM_FIELD = re.compile(r"<(?:input|select|textarea)\b")
 
 _FN = re.compile(r"^\s*(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(|^\s*root\.\w+\s*=\s*function",
                  re.M)
@@ -61,9 +79,16 @@ def _read(path):
         return fh.read()
 
 
+def spec_fields() -> list:
+    """Every settings field a v1 script draws from a spec, by its key."""
+    return [k for p in v1_scripts() for k in _SPEC_FIELD.findall(_read(p))]
+
+
 def counts() -> dict:
     texts = [_read(p) for p in v1_templates()]
-    return {"controls": sum(len(M.controls(t)) for t in texts),
+    return {"fields": (sum(len(_FORM_FIELD.findall(t)) for t in texts)
+                       + len([k for k in spec_fields() if k not in EXCEPTIONS])),
+            "controls": sum(len(M.controls(t)) for t in texts),
             "handlers": sum(len(re.findall(r"\bon(click|change|submit|input)=", t))
                             for t in texts),
             "functions": sum(len(_FN.findall(_read(p))) for p in v1_scripts())}
@@ -81,12 +106,23 @@ class TestTodaysInterfaceOnlyShrinks:
             "the new capability on v2 (a v1 page gains nothing new)")
         assert c["handlers"] <= HANDLERS_CEILING, (c["handlers"], HANDLERS_CEILING)
         assert c["functions"] <= FUNCTIONS_CEILING, (c["functions"], FUNCTIONS_CEILING)
+        assert c["fields"] <= FIELDS_CEILING, (
+            f"{c['fields']} fields on today's pages, the ceiling {FIELDS_CEILING}: a new field "
+            "goes on v2, or is a recorded exception the operator decided (EXCEPTIONS)")
+
+    def test_each_exception_is_there_with_its_reason_and_where_it_goes(self):
+        """An exception names a field that exists (a stale one would excuse the next field
+        under its key), the operator's decision, and that it moves at cutover."""
+        present = set(spec_fields())
+        for key, why in EXCEPTIONS.items():
+            assert key in present, f"{key}: excepted and not on today's pages: remove it"
+            assert "the operator" in why and why.endswith("Moves at cutover"), key
 
     def test_a_ceiling_never_sits_above_what_is_there(self):
         """A ceiling left high after a removal would let the next addition through."""
         c = counts()
-        assert (c["controls"], c["handlers"], c["functions"]) == (
-            CONTROLS_CEILING, HANDLERS_CEILING, FUNCTIONS_CEILING), (
+        assert (c["controls"], c["handlers"], c["functions"], c["fields"]) == (
+            CONTROLS_CEILING, HANDLERS_CEILING, FUNCTIONS_CEILING, FIELDS_CEILING), (
             f"lower the ceilings to what is there now: {c}")
 
     def test_a_planted_control_is_found(self, tmp_path, monkeypatch):
