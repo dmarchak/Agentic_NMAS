@@ -16,7 +16,6 @@ cannot be read is an ERROR said on the tab, never a shorter timeline. Reads only
 stores' files, nothing from a device.
 """
 
-import calendar
 import logging
 import time
 
@@ -61,7 +60,9 @@ def golden(ref, dev, limit):
         return _out(errors=[f"the golden history could not be read: {exc}"])
     events = []
     for g in rows:
-        exc_reason = (g.get("exception") or {}).get("reason", "")
+        # The table's reason is `why` (record_exceptions); this read `reason`, which no
+        # exception has, so History drew none of the thirteen it holds (C363).
+        exc_reason = (g.get("exception") or {}).get("why", "")
         e = _event(g["timestamp"], "golden",
                    f"Golden recorded ({g['source'] or 'no Source: trailer'})",
                    who=g["actor"], detail=g["subject"], sha=g["sha"],
@@ -237,31 +238,54 @@ def restart_windows(ref, dev, limit):
     return _out(events)
 
 
+#: A save's line (the device's own save, C362): its own words, never a rotation's.
+SAVE_WORDS = {"persisted": "Persisted: the startup config carries the running credential",
+              "saved_not_persisted": "Saved: the startup config does NOT carry a running "
+                                     "credential line",
+              "save_unverified": "Save not verified: it could not run or be read back"}
+#: A rotation's rows, by phase: the rotation itself, its persistence chain, a recovery.
+ROTATION_WORDS = {"rotate": "Rotation", "persist": "Rotation's persistence",
+                  "recover": "Rotation recovery"}
+
+
 def rotation(ref, dev, limit):
     """Persist, rotate and recover: the rotation record job health's row reads (C359: a
-    persist was readable now and not later). Its rows name the device and no list."""
+    persist was readable now and not later). Its rows name the device and no list. A
+    device's own save is kind `persist` and worded by ITS state (C362: a save recorded with
+    a rotation's state read as a rotation); a row `record_exceptions` corrects is drawn as
+    what is known, marked corrected, with what it recorded and why."""
     from modules.nsot import credential_rotation as cr
     host = dev.get("hostname", "")
     try:
-        rows = [r for r in cr.rotation_records() if r.get("device") == host]
+        rows = [r for r in cr.rotation_records_as_known() if r.get("device") == host]
     except OSError as exc:
         return _out(errors=[f"the rotation record could not be read: {exc}"])
-    words = {"persist": "Persisted", "rotate": "Credential rotated", "recover": "Rotation recovered"}
     events = []
     for r in reversed(rows[-limit:]):
-        state = r.get("state", "")
+        state, phase = r.get("state", ""), r.get("phase", "")
         failed = r.get("failed_stage", "")
-        events.append(_event(r.get("at", ""), "rotation",
-                             f"{words.get(r.get('phase'), r.get('phase', 'Rotation'))}: "
-                             f"{state.replace('_', ' ') or 'no state recorded'}",
-                             who=r.get("actor", ""),
-                             detail=(f"stopped at {failed}" if failed else "every stage passed")
-                             + f"; via {r.get('via', 'not named')}",
-                             outcome=state, marks=["failed"] if failed else [],
-                             record=[("Phase", r.get("phase")), ("State", state), ("Via", r.get("via"))]
-                             + [(s.get("name", "?"), ("ok" if s.get("ok") else "FAILED")
-                                 + (f": {s['reason']}" if s.get("reason") else ""))
-                                for s in r.get("stages") or []]))
+        save = state in cr.SAVE_STATES
+        what = (SAVE_WORDS[state] if save else
+                f"{ROTATION_WORDS.get(phase, phase or 'Rotation')}: "
+                f"{state.replace('_', ' ') or 'no state recorded'}")
+        known = r.get("exception") or {}
+        marks = (["failed"] if failed or state == cr.SAVE_NOT_PERSISTED else []) + (
+            ["corrected"] if known else [])
+        e = _event(r.get("at", ""), "persist" if save else "rotation", what,
+                   who=r.get("actor", ""),
+                   detail=(f"stopped at {failed}" if failed else "every stage passed")
+                   + f"; via {r.get('via') or known.get('via') or 'not named'}",
+                   outcome=state, marks=marks,
+                   record=[("Phase", phase), ("State", state)]
+                   + ([("Recorded as", r.get("recorded_state", "")),
+                       ("Corrected by", known.get("finding", ""))] if known else [])
+                   + [("Via", r.get("via") or known.get("via") or "not named")]
+                   + [(s.get("name", "?"), ("ok" if s.get("ok") else "FAILED")
+                       + (f": {s['reason']}" if s.get("reason") else ""))
+                      for s in r.get("stages") or []])
+        if known:
+            e["exception"] = known.get("why", "")
+        events.append(e)
     return _out(events, cut=[f"the rotation record's newest {limit}"] if len(rows) > limit else [])
 
 

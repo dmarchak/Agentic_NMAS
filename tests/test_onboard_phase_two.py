@@ -650,13 +650,14 @@ class TestPhaseTwoWaitsForIt:
         run_phase_two(world["repo"], "bp1", "probe", **_steps(
             persist=lambda *a, **k: {"ok": False, "state": "not_persisted", "detail": "no"}))
         rec = [r for r in cr.rotation_records() if r.get("device") == "bp1"][-1]
-        assert rec["state"] == cr.ROTATED_UNVERIFIED
+        # The save's own state (C362): the rotation before it has its own row.
+        assert rec["state"] == cr.SAVE_NOT_PERSISTED
         row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp1"][0]
         assert row["state"] == "not_safe_to_reboot"
 
         run_phase_two(world["repo"], "bp1", "probe", **_steps())
         rec = [r for r in cr.rotation_records() if r.get("device") == "bp1"][-1]
-        assert rec["state"] == cr.ROTATED_PERSISTED
+        assert rec["state"] == cr.SAVE_PERSISTED
 
 
 class TestTheNativePersistCommand:
@@ -685,7 +686,10 @@ class TestTheNativePersistCommand:
         from modules import job_health
         from modules.nsot.onboard import _record_native_persist
 
-        _record_native_persist("bp9", {"ok": False, "detail": "no startup config"}, "op",
+        # The save's real answer for this case (`startup_carries`), its state included.
+        _record_native_persist("bp9", {"ok": False, "state": "not_persisted",
+                                       "detail": "after write memory the device still has NO "
+                                                 "startup config"}, "op",
                                via="nmas-persist-native")
         row = [r for r in job_health.rotation_rows() if r["unit"] == "rotation:bp9"][0]
         assert row["state"] == "not_safe_to_reboot"

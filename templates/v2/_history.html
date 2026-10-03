@@ -6,7 +6,8 @@
     A failed or stopped record is drawn danger whatever its kind. -#}
 {%- set KIND = {'golden': ('golden', 'info'), 'intent': ('intent', 'muted'), 'receipt': ('receipt', 'ok'),
                  'restart': ('restart', 'warn'), 'measured': ('measured', 'muted'),
-                 'window': ('window', 'muted'), 'rotation': ('credential', 'ok'),
+                 'window': ('window', 'muted'), 'rotation': ('rotation', 'ok'),
+                 'persist': ('persist', 'ok'),
                  'retry': ('retry', 'warn'), 'onboarding': ('onboarding', 'info'),
                  'acknowledged': ('acknowledged', 'muted'), 'breakglass': ('break-glass', 'muted'),
                  'interrupted': ('cut off', 'danger'), 'freshness': ('freshness', 'warn'),
@@ -24,7 +25,7 @@
     {%- for e in h.events %}
     {%- set k = KIND.get(e.kind, (e.kind, 'muted')) %}
     {%- set failed = (e.kind == 'receipt' and e.outcome and e.outcome != 'deployed')
-                     or (e.kind in ('rotation', 'onboarding') and ('failed' in (e.marks or []) or 'stopped' in (e.marks or [])))
+                     or (e.kind in ('rotation', 'persist', 'onboarding') and ('failed' in (e.marks or []) or 'stopped' in (e.marks or [])))
                      or (e.kind == 'restart' and e.outcome == 'crash') %}
     {#- ONE line per row (what, its marks, who); the full wording expands under it at full
         width (the operator, 2026-10-02: a long note in a narrow column made a row many times
@@ -39,7 +40,7 @@
           {%- if e.who %}<p class="muted">By {{ e.who }}</p>{% endif %}
           {%- if e.correction %}<p>Planned by a window recorded after the restart was seen, as a correction: {{ e.correction }}</p>{% endif %}
           {%- if e.acknowledged %}<p>Acknowledged by {{ e.acknowledged.by }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why }}</p>{% endif %}
-          {%- if e.exception %}<p class="tl-exception">This commit's record is known to be wrong: {{ e.exception }}</p>{% endif %}
+          {%- if e.exception %}<p class="tl-exception">This {{ 'commit' if e.sha else 'row' }}'s record is known to be wrong: {{ e.exception }}</p>{% endif %}
           {%- if e.record %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 }}</dd>{% endfor %}</dl>{% endif %}
         </div>
       </details>

@@ -685,6 +685,14 @@ def settings_rows(guards: dict = None, load=None) -> list:
 
 _ROTATION_WHAT = ("a device's credential rotation; until a persist reads SAFE, "
                   "a reboot or redeploy may bring back the previous password (B15)")
+#: A row whose newest record is the device's own save (C362): no rotation is claimed.
+_SAVE_WHAT = ("a device's saved configuration; until its startup config carries the "
+              "credential its running config holds, a reload boots without it")
+
+
+def _what_of(state: str) -> str:
+    from modules.nsot import credential_rotation as cr
+    return _SAVE_WHAT if state in cr.SAVE_STATES else _ROTATION_WHAT
 
 
 def known_devices() -> tuple:
@@ -747,18 +755,25 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
     departed (the verdict stands, and the reason is said)."""
     from modules.nsot import credential_rotation as cr
 
-    records = cr.rotation_records() if records is None else records
+    records = cr.rotation_records_as_known() if records is None else records
     names, why_not = known_devices() if known is None else known
-    latest = {}
+    # The newest row per device, except that a save which could not be judged
+    # (`SAVE_UNVERIFIED`) says nothing of the device and so keeps the last answer: a failed
+    # read keeps the last good value. Alone, it is the row (unknown).
+    latest, judged = {}, {}
     for rec in records:
         if rec.get("device"):
             latest[rec["device"]] = rec
+            if rec.get("state") != cr.SAVE_UNVERIFIED:
+                judged[rec["device"]] = rec
+    latest.update(judged)
     rows = []
     for device, rec in sorted(latest.items()):
         state, stage, at = rec.get("state", ""), rec.get("failed_stage", ""), rec.get("at", "")
         if not why_not and device.lower() not in names:
-            unsafe = state not in (cr.ROTATED_PERSISTED, cr.REVERTED, cr.NOT_STARTED)
-            rows.append({"unit": f"rotation:{device}", "what": _ROTATION_WHAT,
+            unsafe = state not in (cr.ROTATED_PERSISTED, cr.SAVE_PERSISTED, cr.REVERTED,
+                                   cr.NOT_STARTED)
+            rows.append({"unit": f"rotation:{device}", "what": _what_of(state),
                          "device": device, "state": "departed", "max_age_minutes": 0,
                          "detail": (f"{device} is in no list's inventory or manifest: it has "
                                     f"left management. Its last rotation record ({state} at "
@@ -770,6 +785,25 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
         act = None
         if state == cr.ROTATED_PERSISTED:
             st, detail = "ok", f"persisted and read SAFE at {at}"
+        elif state == cr.SAVE_PERSISTED:
+            st, detail = "ok", (f"saved on the device and read SAFE at {at}: the startup "
+                                "config carries the running credential")
+        elif state in (cr.SAVE_NOT_PERSISTED, cr.SAVE_UNVERIFIED):
+            # The device's own save (C362): its words claim no rotation.
+            st, detail = (("not_safe_to_reboot",
+                           f"at {at} a save read the startup config back WITHOUT a credential "
+                           f"line the running config holds: the running config holds the only "
+                           f"copy. Do not reload it; persist it again (Persist… on its page, "
+                           f"or nmas-persist-native {device} --list <list>)")
+                          if state == cr.SAVE_NOT_PERSISTED else
+                          ("unknown",
+                           f"a save at {at} could not run or be read back, and no earlier "
+                           f"record says whether the startup config carries the running "
+                           f"credential. Persist it again"))
+            act = {"label": "Persist the running credential on the device before anything "
+                            "reloads it: Persist… on its Device page, or on the host (the "
+                            "record names no list: use the device's own)",
+                   "command": f"nmas-persist-native {device} --list <its list>"}
         elif state in (cr.REVERTED, cr.NOT_STARTED):
             st, detail = "ok", f"unchanged: the last rotation ended {state} at {at}"
         elif state == cr.ROTATED_UNVERIFIED and stage == "device_startup_config":
@@ -827,7 +861,7 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
             act = {"label": "Recover the device on its console, with the break-glass record"}
         else:
             st, detail = "unknown", f"last recorded state {state or '(none)'} at {at}"
-        rows.append({"unit": f"rotation:{device}", "what": _ROTATION_WHAT,
+        rows.append({"unit": f"rotation:{device}", "what": _what_of(state),
                      "device": device, "state": st, "max_age_minutes": 0,
                      **({"action": act} if act else {}),
                      "detail": detail + (f" (whether it has left management is unknown: "

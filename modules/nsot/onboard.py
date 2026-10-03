@@ -2819,13 +2819,17 @@ def check_startup(mgmt_ip: str, username: str, password: str, secret: str,
 
 
 def _record_native_persist(hostname: str, pers: dict, actor: str, *, via: str) -> None:
-    """A rotation record, so job health's rotation row reads what happened on
-    the DEVICE: SAFE only when the startup read-back matched."""
+    """A row in the rotation record, so job health's rotation row reads what happened on
+    the DEVICE: SAFE only when the startup read-back matched. Its state is the SAVE's own
+    (`cr.SAVE_STATES`), never a rotation's: a save rotates nothing, and wrote
+    `rotated_and_persisted` until C362 (History drew a rotation that never happened)."""
     from modules.nsot import credential_rotation as cr
 
+    state = (cr.SAVE_PERSISTED if pers.get("ok") else
+             cr.SAVE_NOT_PERSISTED if pers.get("state") == "not_persisted" else
+             cr.SAVE_UNVERIFIED)
     cr.record_outcome("persist", {
-        "device": hostname, "actor": actor, "via": via,
-        "state": cr.ROTATED_PERSISTED if pers.get("ok") else cr.ROTATED_UNVERIFIED,
+        "device": hostname, "actor": actor, "via": via, "state": state,
         "persistence": [{"name": "device_startup_config", "ok": bool(pers.get("ok")),
                          "detail": pers.get("detail", "")}]})
 

@@ -40,7 +40,8 @@ One timeline for the device, holding every record the tool keeps about it:
 | receipt | a deploy, restore, removal or rollback, with its result |
 | restart | a restart, planned or not, with the device's own reason |
 | window | a planned-restart window declared for the device |
-| credential | a rotation or a persist (the device's own save), with the step it stopped at if it failed |
+| rotation | a credential rotation, its persistence or a recovery, with the step it stopped at if it failed |
+| persist | the device's own save, and whether its startup config read back carrying the running credential; a save never claims a rotation |
 | retry | a retry authorised after a rollback, with the reason |
 | onboarding | an onboarding or adopt run, with its result |
 | acknowledged | a Needs attention row acknowledged, with who and why |
@@ -55,7 +56,11 @@ not the same as nothing having happened.
 Each entry is one line: when, what, any marks (corrected, acknowledged, crash file, record known
 wrong, failed) and who. Open it for the full record underneath: the reason, each step and its
 result, the correction or acknowledgement with who and why, and how the person was identified.
-A failed rotation, onboarding run or deploy is drawn red.
+A failed rotation, save, onboarding run or deploy is drawn red.
+
+A record known to be wrong is never rewritten. It is drawn as what is known, marked
+**corrected** or **record known wrong**, with what it recorded and why underneath. For
+example, saves recorded before 2026-10-03 carried a rotation's state, and are drawn as saves.
 
 Every operation that can change a device declares which of these records it writes, and the
 test suite fails when a new one declares none, so an operation's result is readable here later,

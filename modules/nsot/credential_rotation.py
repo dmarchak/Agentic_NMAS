@@ -100,6 +100,26 @@ REVERT_FAILED = "revert_failed"
 REVERTED_UNPROVEN = "reverted_proof_inconclusive"
 NOT_STARTED = "failed_before_any_change"
 
+#: Every state a ROTATION's own rows carry (rotate, its persistence chain, recover). Only a
+#: run that rotated, or set out to, may write one.
+ROTATION_STATES = (ROTATED_PERSISTED, ROTATED_PENDING_PERSIST, ROTATED_UNVERIFIED,
+                   ROTATED_NOT_RECORDED, REVERTED, REVERT_FAILED, REVERTED_UNPROVEN, NOT_STARTED)
+
+#: The DEVICE'S OWN SAVE's states (C362, the operator, 2026-10-03: a persist from r2's page
+#: read in History as "rotated and persisted", a rotation that never happened). The save
+#: (`onboard._record_native_persist`: the device page's Persist, `nmas-persist-native`,
+#: adopt, onboarding's save after its rotation) shares the rotation record, so job health
+#: reads one row per device, and records the read-back's OWN answer, never a rotation's.
+#: Saved, and the startup config read back carrying every credential line the running one holds.
+SAVE_PERSISTED = "persisted"
+#: Saved, and the startup config read back WITHOUT a credential line the running one holds.
+SAVE_NOT_PERSISTED = "saved_not_persisted"
+#: The save or its read-back could not run, or could not judge: nothing is known of the
+#: device from it, so a reader keeps the last answer it had (a failed read keeps the last
+#: good value).
+SAVE_UNVERIFIED = "save_unverified"
+SAVE_STATES = (SAVE_PERSISTED, SAVE_NOT_PERSISTED, SAVE_UNVERIFIED)
+
 #: Passed as *confirmed_fingerprint* by a caller with **no separate plan
 #: step**, so there is no window between a plan and an apply to protect.
 #:
@@ -2653,6 +2673,23 @@ def rotation_records() -> list:
                 out.append(json.loads(line))
             except ValueError:
                 continue
+    return out
+
+
+def rotation_records_as_known() -> list:
+    """Every row as what is KNOWN of it: a row `record_exceptions.ROW_EXCEPTIONS` corrects
+    reads its corrected `state`, with `recorded_state` (what the row says, never rewritten)
+    and `exception` (the finding and why) beside it. The ONE reading job health and History
+    share, so they cannot disagree about a corrected row (C362)."""
+    from modules.nsot.record_exceptions import row_exception
+    out = []
+    for row in rotation_records():
+        known = row_exception(row)
+        if known:
+            row = dict(row, state=known["was"], recorded_state=row.get("state", ""),
+                       exception={"finding": known["finding"], "why": known["why"],
+                                  "via": known.get("via", "")})
+        out.append(row)
     return out
 
 

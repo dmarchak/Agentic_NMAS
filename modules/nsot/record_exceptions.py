@@ -105,3 +105,44 @@ WITHDRAWN_BASELINES = {
 def withdrawn_baseline(sha: str):
     """The withdrawal recorded for a baseline's commit, or None. Full sha only."""
     return WITHDRAWN_BASELINES.get((sha or "").strip())
+
+
+# ---------------------------------------------------------------------------
+# Rows of the rotation record (`rotation_audit.jsonl`) known to be wrong
+# ---------------------------------------------------------------------------
+
+#: **The five saves recorded as rotations** (C362, measured on the deployment host
+#: 2026-10-03). The device's own save (`onboard._record_native_persist`) wrote the
+#: ROTATION's state `rotated_and_persisted` until C362, so every save that was not part of a
+#: rotation reads as one. The host's record holds ten rows; these five are saves alone: one
+#: stage (`device_startup_config`), and no rotation in the same run. Two by the operator from
+#: r2's device page (`via: device page`; neither followed a rotation in the same run, the
+#: second the run that found C362), and three by `nmas-persist-native` before rows named
+#: their path (C111 measured the two for bp-ztp-a as the CLI's; s1's carries the same bare
+#: login as they do). Onboarding's save four seconds after its rotation (probe-r1a,
+#: 2026-09-28T07:02:44Z) is not listed: a rotation ran in that operation, recorded in its own
+#: row. Keyed by the row's device and time, which together identify one row there.
+ROW_EXCEPTIONS = {
+    (device, at): {"field": "state", "recorded": "rotated_and_persisted",
+                   "was": "persisted", "finding": "C362", "via": via,
+                   "why": ("recorded with the rotation's state because the device's own "
+                           "save wrote the rotation record's states until C362; this run "
+                           "saved the running configuration and read it back, and rotated "
+                           "nothing")}
+    for device, at, via in (
+        ("bp-ztp-a", "2026-09-27T03:48:44Z", "nmas-persist-native"),
+        ("bp-ztp-a", "2026-09-27T03:58:29Z", "nmas-persist-native"),
+        ("s1", "2026-09-27T04:00:22Z", "nmas-persist-native"),
+        ("r2", "2026-09-29T16:41:50Z", "device page"),
+        ("r2", "2026-10-03T06:50:31Z", "device page"),
+    )
+}
+
+
+def row_exception(row: dict):
+    """The known exception for a rotation-record row, or None: matched on its device, its
+    time AND the state it recorded, so a row that differs in any of them is not this one."""
+    known = ROW_EXCEPTIONS.get((row.get("device", ""), row.get("at", "")))
+    if known and row.get(known["field"]) == known["recorded"]:
+        return known
+    return None

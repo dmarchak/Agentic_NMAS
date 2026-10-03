@@ -12,13 +12,15 @@ correct and readable NOW, on its result, and not LATER, in History).
   History, with who and its full record; a source that raises is said, never a shorter
   timeline.
 - End to end: a persist confirmed on the v2 card, its REAL recorder in place, is a line in
-  r2's History ("Persisted: rotated and persisted", by the person), which it was not before.
+  r2's History ("Persisted", by the person, never a rotation), which it was not before.
 """
 
 import json
 import os
 import re
 import time
+
+import pytest
 
 from modules import history_sources as HS
 from modules import operation_stages as S
@@ -29,6 +31,15 @@ from tests.test_device_v2 import _get, _text, lab  # noqa: F401 (the fixture)
 #: The real recorder, taken before test_persist_screen's lab replaces it with a spy.
 REAL_RECORD_NATIVE_PERSIST = _onboard._record_native_persist
 KINDS = ("confirm", "approve", "configure")
+
+
+@pytest.fixture(autouse=True)
+def _own_data_dir(tmp_path, monkeypatch):
+    """The rotation record, the break-glass log and the hold records live in DATA_DIR,
+    which the run shares across tests: each test here plants its own."""
+    data = tmp_path / "own-data"
+    data.mkdir()
+    monkeypatch.setattr("modules.config.DATA_DIR", str(data))
 
 
 def _now(offset=0):
@@ -95,9 +106,9 @@ class TestEachSourceReachesTheTab:
                                                {"name": cr.VERIFY, "ok": False,
                                                 "error": "the fresh login was refused"}]})
         html = _history(lab)
-        assert "Persisted: rotated and persisted" in html
-        assert "Credential rotated: reverted" in html and "stopped at verify" in html
-        assert re.search(r'badge-danger[^>]*>[^<]*credential', html), "a failed rotation is danger"
+        assert "Persisted: the startup config carries the running credential" in html
+        assert "Rotation: reverted" in html and "stopped at verify" in html
+        assert re.search(r'badge-danger[^>]*>[^<]*rotation', html), "a failed rotation is danger"
         assert "the fresh login was refused" in html, "the full record opens under the line"
 
     def test_a_retry_an_onboarding_run_and_an_intent_commits_person(self, lab):  # noqa: F811
@@ -184,5 +195,8 @@ class TestPersistEndToEnd:
         out = c.post("/v2/device/r2/persist/confirm", data=vals).get_data(as_text=True)
         assert "Persisted" in out
         hist = c.get("/v2/device/r2/history").get_data(as_text=True)
-        assert "Persisted: rotated and persisted" in hist
+        assert "Persisted: the startup config carries the running credential" in hist
         assert "test-person@example.invalid" in hist and "via device page" in hist
+        lines = re.findall(r'<summary class="tl-sum">(.*?)</summary>', hist, re.S)
+        assert lines and not [l for l in lines if "rotat" in l.lower()], (
+            "a save is never drawn as a rotation (C362)")
