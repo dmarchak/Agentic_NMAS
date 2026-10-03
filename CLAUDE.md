@@ -267,6 +267,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   covers it; keep the whole record, then summarise.** [tests/test_reader_job.py (full pages)] [why](docs/LESSONS.md#truncated-reads-and-whole-records)
 - **A stored answer is dated by its value and judged against its promise;** a failed read keeps the
   last good value. [tests/test_reader_job.py; tests/test_live_contract.py] [why](docs/LESSONS.md#stored-answers-and-their-promises)
+- **A test run leaves the person's home untouched: a browser session keeps its downloads and
+  profile in its own folder.** [tests/test_home_untouched.py]
 - **No test touches a live network, device or store; no duplicate dict key or definition; every
   script reaches its imports.** [tests/test_network_guard.py; tests/test_harness_isolation.py;
   tests/test_no_duplicate_dict_keys.py; tests/test_no_duplicate_definitions.py;
