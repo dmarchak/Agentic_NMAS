@@ -86,7 +86,9 @@ class TestTheTimeline:
         _receipt()
         _r, html = _get(lab, "/v2/device/r3/history")
         whats = re.findall(r"<strong>([^<]+)</strong>", html)
-        assert whats[:3] == ["Deployed: deployed", "Intent committed", "Golden recorded (capture)"]
+        # An intent line names its Source: trailer since C359 (2026-10-03).
+        assert whats[:3] == ["Deployed: deployed", "Intent committed (extraction)",
+                             "Golden recorded (capture)"]
         assert "3 line(s) sent" in _text(html) and "abc1234def" in html
 
     def test_a_failed_deploy_is_drawn_as_one(self, lab):
@@ -126,4 +128,6 @@ class TestTheTab:
         assert not re.search(r"\sstyle=|\son[a-z]+=", frag)
         assert frag.lstrip().startswith('<section class="card history" id="history"')
         keys = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"', frag).group(1))
-        assert keys == ["goldens", "deploy_job", "restarts", "acknowledgements"]
+        # + rotation and device_state (C359): a persist and a rotation re-read History.
+        assert keys == ["goldens", "deploy_job", "restarts", "acknowledgements", "rotation",
+                        "device_state"]

@@ -679,6 +679,9 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .tl-mark { color: var(--ink-2); }
 .tl-more { padding: 0 0 9px 26px; color: var(--ink-2); overflow-wrap: anywhere; }
 .tl-more p { margin: 0 0 4px; }
+.tl-record { margin: 4px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; font-size: 12.5px; }
+.tl-record dt { color: var(--ink-3); }
+.tl-record dd { margin: 0; overflow-wrap: anywhere; }
 .tl-exception { color: var(--warn); }
 @media (max-width: 640px) {
   .tl-sum { grid-template-columns: 14px minmax(0, 1fr); row-gap: 2px; }

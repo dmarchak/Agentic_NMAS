@@ -734,88 +734,27 @@ def _epoch(iso: str) -> float:
 
 
 def history(ref, dev: dict, limit: int = None) -> dict:
-    """``{"events", "errors", "cut"}``, newest first. Each event is
-    ``{"at", "kind", "what", "who", "detail", "sha", "outcome"}``."""
-    from modules.nsot import hostvars, receipts
-    from modules.nsot import repo as R
+    """``{"events", "errors", "cut", "limit"}``, newest first: every per-device record, from
+    EVERY source in `history_sources.SOURCES` (C359: a persist was readable now and not later).
+    Each event is ``{"at", "kind", "what", "who", "detail", "sha", "outcome", "marks",
+    "record"}``. A source that cannot be read is said, never a shorter timeline; one that
+    raises is said with what it raised."""
+    from modules import history_sources
 
     limit = limit or HISTORY_LIMIT
-    host = dev.get("hostname", "")
     events, errors, cut = [], [], []
-    try:
-        golden = R.golden_history(ref.repo_dir, host, limit=limit)
-        for g in golden:
-            events.append({"at": g["timestamp"], "kind": "golden",
-                           "what": f"Golden recorded ({g['source'] or 'no Source: trailer'})",
-                           "who": g["actor"], "detail": g["subject"], "sha": g["sha"],
-                           "outcome": "", "exception": (g.get("exception") or {}).get("reason", "")})
-        if len(golden) >= limit:
-            cut.append(f"the golden history's newest {limit}")
-    except Exception as exc:                          # noqa: BLE001
-        errors.append(f"the golden history could not be read: {exc}")
-    try:
-        intent = hostvars.intent_commits(ref.repo_dir, host, limit=limit)
-        for c in intent:
-            events.append({"at": c["date"], "kind": "intent", "what": "Intent committed",
-                           "who": "", "detail": c["subject"], "sha": c["sha"], "outcome": ""})
-        if len(intent) >= limit:
-            cut.append(f"the intent history's newest {limit}")
-    except Exception as exc:                          # noqa: BLE001
-        errors.append(f"the intent history could not be read: {exc}")
-    got = receipts.read(ref.name, device=host, limit=limit)
-    if got["state"] == "unreadable":
-        errors.append(f"the deploy receipts could not be read: {got.get('error', '')}")
-    for r in got.get("rows") or []:
-        verb = {"deploy": "Deployed", "restore": "Restored"}.get(r.get("action", ""), "Changed")
-        pending = receipts.is_pending(r)
-        events.append({"at": r.get("at", ""), "kind": "receipt", "pending": pending,
-                       "what": f"{verb}: {r.get('outcome', '?').replace('_', ' ')}"
-                               + (f", {receipts.PENDING_WORDS}" if pending else ""),
-                       "who": r.get("actor", ""),
-                       "detail": (f"{r.get('program_lines', 0)} line(s) sent"
-                                  + (f"; {r['reason']}" if r.get("reason") else "")),
-                       "sha": r.get("golden_commit", ""), "outcome": r.get("outcome", "")})
-    if len(got.get("rows") or []) >= limit:
-        cut.append(f"the receipts' newest {limit}")
-    # Every restart, planned or not (the operator, 2026-10-02), from the restarts reader's
-    # record: what the device said, and whether the tool did it or was told.
-    from modules import restarts as _restarts
-    rs = _restarts.events(device=host, list_name=ref.name)
-    if rs["state"] == "unreadable":
-        errors.append(f"the restart record could not be read: {rs.get('error', '')}")
-    try:
-        rs_rows = _restarts.judged(rs["rows"][:limit], _restarts.planned_rows())
-    except RuntimeError as exc:
-        errors.append(str(exc))
-        rs_rows = rs["rows"][:limit]
-    # A person's acknowledgement of an unplanned restart (modules/acknowledgements.py): the
-    # restart stays unplanned here, marked acknowledged, by whom and why.
-    from modules import acknowledgements as _acks
-    acks = _acks.read()
-    if acks["state"] == "unreadable" and any(not r.get("planned") for r in rs_rows):
-        errors.append(f"the acknowledgement record could not be read: {acks.get('error', '')}")
-    for r in rs_rows:
-        ack = None if r.get("planned") else _acks.covering(
-            f"restarts:{r.get('list', '')}|{r.get('device', '')}|{r.get('at', '')}",
-            r.get("at", ""), acks["rows"])
-        events.append({"at": r.get("at", ""), "kind": "restart",
-                       "what": ("Restarted as planned" if r.get("planned") else
-                                "Restarted unexpectedly"),
-                       "marks": ([m for m, on in (("corrected", r.get("planned_correction")),
-                                                  ("acknowledged", ack),
-                                                  ("crash file", r.get("crash_file"))) if on]),
-                       "who": r.get("planned_by", "") or (ack or {}).get("by", ""),
-                       "acknowledged": ({"by": ack.get("by"), "why": ack.get("why"),
-                                         "at": ack.get("at")} if ack else None),
-                       "correction": r.get("planned_correction", ""),
-                       "detail": (("reason: " + r["reason"]) if r.get("reason") else
-                                  f"reason not read ({r.get('reason_error') or 'no answer'})")
-                                 + (f"; crash file {r['crash_file']}" if r.get("crash_file") else "")
-                                 + (f"; planned: {r['planned_why']}" if r.get("planned_why") else ""),
-                       "sha": "", "outcome": "crash" if r.get("crash_file") else
-                       ("planned" if r.get("planned") else "unplanned")})
-    if len(rs["rows"]) > limit:
-        cut.append(f"the restarts' newest {limit}")
+    for name, source in history_sources.SOURCES.items():
+        try:
+            got = source(ref, dev, limit)
+        except Exception as exc:                      # noqa: BLE001
+            log.warning("device_page: history source %s failed for %s: %s", name,
+                        dev.get("hostname", ""), exc)
+            errors.append(f"the {name.replace('_', ' ')} record could not be read "
+                          f"({type(exc).__name__}: {exc})")
+            continue
+        events += got.get("events") or []
+        errors += got.get("errors") or []
+        cut += got.get("cut") or []
     for e in events:
         # The row's ONE line (the operator, 2026-10-02: a long note squeezed into a narrow
         # column made a row many times taller than its neighbours): what, its marks and the

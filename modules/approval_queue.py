@@ -25,15 +25,18 @@ EXPIRY_HOURS = 48   # auto-expire unreviewed approvals after 48 hours
 # Storage helpers
 # ---------------------------------------------------------------------------
 
+QUEUE_FILE = "approval_queue.json"
+
+
 def _queue_path(list_name: str = "") -> str:
     """The queue of *list_name* when given (a caller that knows its list
     CARRIES it: a golden commit supersedes items in its own list's queue),
     else the active list's, as every older caller reads it."""
     if list_name:
         from modules.nsot import listref
-        return os.path.join(listref.resolve(list_name).data_dir, "approval_queue.json")
+        return os.path.join(listref.resolve(list_name).data_dir, QUEUE_FILE)
     from modules.config import get_current_list_data_dir
-    return os.path.join(get_current_list_data_dir(), "approval_queue.json")
+    return os.path.join(get_current_list_data_dir(), QUEUE_FILE)
 
 
 # The store's concurrency (CONCURRENCY_AUDIT R4, 2026-10-02). It truncated in place with no
@@ -65,8 +68,18 @@ def _read(list_name: str = "") -> list:
     """The queue for a READ: writes nothing. [] when absent; an unreadable queue raises
     `filestore.StoreUnreadable`, because "no approval is waiting" and "the queue could not
     be read" must not share an answer."""
+    return _read_path(_queue_path(list_name))
+
+
+def read_list(ref) -> list:
+    """The queue of an already-resolved list (`listref.ListRef`), for a READ that holds one:
+    resolving it again by name creates the list's folder (`get_list_data_dir`), and a read
+    creates no list (C359's History source did, caught by the suite's store check)."""
+    return _read_path(os.path.join(ref.data_dir, QUEUE_FILE))
+
+
+def _read_path(path: str) -> list:
     from modules.filestore import StoreUnreadable
-    path = _queue_path(list_name)
     if not os.path.exists(path):
         return []
     try:

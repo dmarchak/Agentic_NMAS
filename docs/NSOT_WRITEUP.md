@@ -2806,7 +2806,7 @@ The landing page drew every section 1a source from stored or cached values, each
 
 #### 7.3 — Persist on the v2 device page
 
-*Written at close, 2026-10-03. It awaits its real run on the host, which saves a device's startup configuration and so is the operator's.*
+*Written at close, 2026-10-03. **First real run, 2026-10-03, by the operator on r2**: the preview, the busy state and the result correct ("persisted", read back). **One failure: the persist was not in r2's History tab**, readable now and not later. Fixed as a class (C359): History read 4 of the 14 per-device records the survey found and now reads all 14, and every gated operation declares which records History reads for it, so a new one without a reader fails the suite; 12 operations keep no per-device record (C360), and rotation rows name no list (C361).*
 
 1. **What it was.** The second of the device page's actions on v2, in the signed order (capture, persist, rotate, deploy with Mode B), on the same card pattern as capture [tests/signed_off_screens.py; NSOT_STAGE7_PLAN.md].
 2. **How it was implemented.** The card is drawn from the operation's own builders (`persist_op.plan`, `persist_preview`, `persist_result`) through a shared one-device helper in `modules/device_actions.py`, which the remaining cards will use; its confirm calls `persist_op.apply`, the same apply as `/persist/apply`. Persist's preview contacts no device, so the card needs no job and is drawn at once; the confirm is busy on itself while the device saves and reads back. The menu row draws the card in place; without script the page draws it.

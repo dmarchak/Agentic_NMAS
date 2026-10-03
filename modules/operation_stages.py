@@ -186,3 +186,125 @@ STAGES = {
 
 #: The gaps, counted: the test pins this number, so it can only go down.
 MISSING_CEILING = 44
+
+
+# ---------------------------------------------------------------------------
+# Where each operation's record is READ LATER (C359, the operator, 2026-10-03: a persist was
+# readable now, on its result, and not later, in the device's History). Every gated route
+# that can change a device or its record (confirm, approve, configure) names the
+# `history_sources.SOURCES` that read its per-device record into the History tab, or says
+# `n/a: <why>` (no device's record), or `MISSING: <why>` (a record nothing keeps; counted,
+# only shrinking). tests/test_history_declared.py holds the population to the gate table and
+# every named source to the registry History draws, so a new operation with no reader fails.
+# ---------------------------------------------------------------------------
+
+NOT_A_DEVICE = "n/a: changes the app, a list or its settings, never one device's record"
+TEMPLATE = "n/a: changes a template or its approval, never one device's record"
+PROFILE = "n/a: changes the network's monitoring profile, which no device's record holds"
+NO_RECORD = ("MISSING: a legacy route that keeps no per-device record of what it did; "
+             "removed in 7.8 (docs/CUTOVER.md)")
+
+HISTORY = {
+    # ---- confirm: sends to a device
+    "deploy.apply": ("receipts", "golden"),
+    "golden.restore_apply": ("receipts", "golden"),
+    "v2.profile_apply_confirm": ("receipts", "golden"),
+    "persist.apply": ("rotation",),
+    "device_v2.persist_confirm": ("rotation",),
+    "rotate.apply": ("rotation", "golden", "intent"),
+    "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
+    "onboard.verify": ("onboarding", "golden"),
+    "onboard.abandon": ("onboarding",),
+    "bulk_reload": ("restart_windows", "restarts"),
+    "update.apply": NOT_A_DEVICE,
+    "update.step_done": NOT_A_DEVICE,
+    "run_command": NO_RECORD,
+    "bulk_execute": NO_RECORD,
+    "bulk_tftp_upload": NO_RECORD,
+    "bulk_delete_file": NO_RECORD,
+    "upload_file": NO_RECORD,
+    "delete_file": NO_RECORD,
+    "ai_chat": ("MISSING: the assistant's device tools keep no per-device record; removed "
+                "by P.3 step 8"),
+    "ai_agent_run": ("MISSING: the agent's device tools keep no per-device record; removed "
+                     "by P.3 step 8"),
+    # ---- approve: a decision a later device change acts on
+    "golden.capture_apply": ("golden", "measured"),
+    "device_v2.capture_confirm": ("golden", "measured"),
+    "ai_approval_approve": ("approvals",),
+    "ai_approval_reject": ("approvals",),
+    "freshness.authorise": ("freshness",),
+    "onboard.create": ("intent",),
+    "refresh_hostnames": ("golden",),
+    "templatize.seed_apply": ("intent",),
+    "templatize.edit_committed": ("intent",),
+    "templatize.bulk_apply": ("intent",),
+    "templatize.revert_apply": ("intent",),
+    "templatize.retry_apply": ("retries",),
+    "v2.ip_sla_commit": ("intent",),
+    "retire.apply": ("n/a: a retired device has no page to hold a History tab; its record is "
+                     "the retire commit, read by the legacy golden history (C185)"),
+    "netbox_safety.apply_import": ("n/a: a NetBox object's record, kept per object with its "
+                                   "provenance, which the device's NetBox tab draws"),
+    "netbox_safety.apply_import_all": ("n/a: NetBox objects' records, kept per object with "
+                                       "their provenance, drawn on each device's NetBox tab"),
+    "netbox_safety.apply_removal": ("n/a: removes NetBox objects; the removal record is per "
+                                    "object, drawn on the NetBox tab"),
+    "templatize.profile_propose_apply": PROFILE,
+    "v2.ip_sla_policy_set": PROFILE,
+    "templates.approve": TEMPLATE,
+    "templates.revoke_approval": TEMPLATE,
+    "templates.save_bindings": TEMPLATE,
+    "templates.write_template": TEMPLATE,
+    # ---- configure
+    "attention.acknowledge": ("acknowledgements", "restarts"),
+    "restarts.planned": ("restart_windows",),
+    "golden.migrate_apply": ("golden",),
+    "golden.sync_renames": ("golden",),
+    "inventory.copy_inherited": ("MISSING: a credential override is saved with no time or "
+                                 "person (credentials.py keeps no audit)"),
+    "inventory.credential_profiles": ("MISSING: a credential profile is saved with no time "
+                                      "or person (credentials.py keeps no audit)"),
+    "inventory.delete_credential_profile": ("MISSING: a deleted credential profile leaves no "
+                                            "record of who or when"),
+    "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
+                           "(heartbeat_rules.jsonl) has no History source yet"),
+    "monitoring_config": "n/a: the collectors' settings, never one device's record",
+    "inventory.set_order": NOT_A_DEVICE,
+    "inventory.set_source": NOT_A_DEVICE,
+    "reorder_devices": NOT_A_DEVICE,
+    "add_quick_action": NOT_A_DEVICE,
+    "delete_quick_action": NOT_A_DEVICE,
+    "ai_agent_pause": NOT_A_DEVICE,
+    "ai_agent_resume": NOT_A_DEVICE,
+    "ai_agent_timers_post": NOT_A_DEVICE,
+    "ai_delete_playbook": NOT_A_DEVICE,
+    "ai_events_clear": NOT_A_DEVICE,
+    "ai_set_provider": NOT_A_DEVICE,
+    "clear_netflow_flows": NOT_A_DEVICE,
+    "clear_snmp_traps": NOT_A_DEVICE,
+    "create_device_list_route": NOT_A_DEVICE,
+    "delete_backup_route": NOT_A_DEVICE,
+    "delete_device_list_route": NOT_A_DEVICE,
+    "drift_settings_post": NOT_A_DEVICE,
+    "identity.ratify_setting": NOT_A_DEVICE,
+    "list_compliance_policy_update": NOT_A_DEVICE,
+    "list_variables_delete": NOT_A_DEVICE,
+    "list_variables_discover": NOT_A_DEVICE,
+    "list_variables_set": NOT_A_DEVICE,
+    "save_settings": NOT_A_DEVICE,
+    "save_tftp_server": NOT_A_DEVICE,
+    "select_device_list_route": NOT_A_DEVICE,
+    "settings_integrations.general_settings": NOT_A_DEVICE,
+    "settings_integrations.save_integration": NOT_A_DEVICE,
+}
+
+#: Sources whose records no gated route above writes: a process that ended holding a device,
+#: and the break-glass export's reveal route. Each says which.
+WRITTEN_ELSEWHERE = {
+    "interrupted": "a process that ended while it held the device (device_ops)",
+    "breakglass": "the break-glass export, a reveal route (routes/breakglass.py)",
+}
+
+#: The history gaps, counted: only down.
+HISTORY_MISSING_CEILING = 12

@@ -722,7 +722,9 @@ tracked in git.
   another element catches up on an announcement made during the swap (C358). The device
   page's tabs since: **Intent**
   (read-only: the document committed at HEAD, its last commit, the profile sections it
-  inherits), **History** (goldens, intent commits and receipts as one timeline) and
+  inherits), **History** (every per-device record as one timeline, read by the 14 sources of
+  **[modules/history_sources.py](modules/history_sources.py)**, C359; every gated operation
+  declares in `operation_stages.HISTORY` which sources read its record, or why none) and
   **Neighbours** (**[modules/neighbours.py](modules/neighbours.py)**, C38: the adjacencies the
   fleet's committed intent implies, read in two git calls, against what Prometheus last scraped
   from the device's routing tables; it opens no device session) and **Logs**

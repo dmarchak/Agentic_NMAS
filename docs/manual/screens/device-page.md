@@ -30,13 +30,36 @@ today's page until plan 7.3.
 
 ## History {#history-tab}
 
-One timeline for the device: its golden commits (each naming its workflow and who), its intent
-commits, its deploy and restore receipts, and every restart. A record that could not be read is
-said.
+One timeline for the device, holding every record the tool keeps about it:
+
+| Kind | What it is |
+|---|---|
+| golden | a golden commit, naming its workflow (capture, save, deploy, restore) and who |
+| measured | a save that read the device and found its golden unchanged |
+| intent | an intent commit, with who and which operation made it |
+| receipt | a deploy, restore, removal or rollback, with its result |
+| restart | a restart, planned or not, with the device's own reason |
+| window | a planned-restart window declared for the device |
+| credential | a rotation or a persist (the device's own save), with the step it stopped at if it failed |
+| retry | a retry authorised after a rollback, with the reason |
+| onboarding | an onboarding or adopt run, with its result |
+| acknowledged | a Needs attention row acknowledged, with who and why |
+| freshness | a freshness gate authorised for this device, with the reason |
+| approval | a queued action approved or rejected |
+| break-glass | a break-glass record exported that holds this device |
+| cut off | an operation whose process ended mid-run, found when the hold was cleared |
+
+A record that could not be read is said above the timeline: the timeline lacks it, which is
+not the same as nothing having happened.
 
 Each entry is one line: when, what, any marks (corrected, acknowledged, crash file, record known
-wrong) and who. Open it for the full wording underneath: the reason, the correction or
-acknowledgement with who and why, and how the person was identified.
+wrong, failed) and who. Open it for the full record underneath: the reason, each step and its
+result, the correction or acknowledgement with who and why, and how the person was identified.
+A failed rotation, onboarding run or deploy is drawn red.
+
+Every operation that can change a device declares which of these records it writes, and the
+test suite fails when a new one declares none, so an operation's result is readable here later,
+not only on its result card now.
 
 A restart is found where the device's uptime counter fell (SNMP, read each minute), never by
 subtracting its uptime from the clock: a slow device clock runs its uptime slow too, so that

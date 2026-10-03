@@ -1052,15 +1052,20 @@ def intent_commits(repo: str, hostname: str, limit: int = 20) -> list:
     from modules.nsot.repo import git
 
     rel = os.path.join(COMMITTED_REL, os.path.basename(committed_path(repo, hostname)))
-    rc, out, _ = git(repo, "log", f"-{limit}", "--format=%H\x1f%s\x1f%aI",
+    # Who and by which path, from the commit's own trailers (History drew every intent commit
+    # with nobody named, C359's survey, 2026-10-03).
+    rc, out, _ = git(repo, "log", f"-{limit}",
+                     "--format=%H\x1f%s\x1f%aI\x1f%(trailers:key=Actor,valueonly,separator=%x2c)"
+                     "\x1f%(trailers:key=Source,valueonly,separator=%x2c)\x1e",
                      "--", rel)
     if rc != 0 or not out:
         return []
     entries = []
-    for line in out.splitlines():
-        parts = line.split("\x1f")
-        if len(parts) == 3:
-            entries.append({"sha": parts[0], "subject": parts[1], "date": parts[2]})
+    for record in out.split("\x1e"):
+        parts = record.strip("\n").split("\x1f")
+        if len(parts) == 5:
+            entries.append({"sha": parts[0], "subject": parts[1], "date": parts[2],
+                            "actor": parts[3].strip(), "source": parts[4].strip()})
     return entries
 
 
