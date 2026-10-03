@@ -48,6 +48,17 @@ def gate(name: str, state: str, detail: str = "") -> dict:
     return {"name": name, "state": state, "detail": detail}
 
 
+def not_read(plan: dict) -> str:
+    """An operand the plan did not read, and WHY (the operator, 2026-10-03: a preview drew
+    "account ? (privilege ?)" when its preflight stopped before reading, a field that looked
+    like a value). The plan's own error or refusals, never a bare "?"."""
+    plan = plan or {}
+    why = (plan.get("error") or plan.get("reason_not_read")
+           or "; ".join(plan.get("refusals") or []) or "the plan stopped before reading it")
+    why = str(why)
+    return "not read: " + (why if len(why) <= 140 else why[:137] + "…")
+
+
 def confirm_part(request, action: str = "confirm") -> dict:
     """Who is confirming, from the SAME functions the gate uses, so the
     screen cannot disagree with what apply will do."""
@@ -2166,7 +2177,8 @@ def seed_preview(entries: list, *, request) -> dict:
                 {"name": "seed hash", "value": e.get("hash") or "none"},
                 {"name": "from golden", "value": e.get("golden") or "none"},
                 {"name": "platform", "value": e.get("platform") or "unknown"},
-                {"name": "committed intent now", "value": _INTENT_NOW.get(state, state or "?")},
+                {"name": "committed intent now",
+                 "value": _INTENT_NOW.get(state, state or not_read(e))},
                 {"name": "template", "value": _fidelity_words(e) if ok else "not parsed"},
                 {"name": "secrets into the credential store",
                  "value": ", ".join(e.get("secret_refs") or []) or "none"}],
@@ -2546,13 +2558,13 @@ def retire_preview(plan: dict, *, busy: str, request) -> dict:
                     "none": "Nothing to do: " + "; ".join(plan.get("refusals") or ["no steps"])},
         "operands": [
             {"name": "reason", "value": plan.get("reason") or "none given"},
-            {"name": "list", "value": plan.get("list_name") or "?"},
+            {"name": "list", "value": plan.get("list_name") or not_read(plan)},
             {"name": "identity", "value": identity},
             {"name": "management address", "value": plan.get("ip") or "none recorded"},
             {"name": "files removed (kept in history)",
              "value": ", ".join(plan.get("files") or []) or "none"},
             {"name": "startup config, frozen",
-             "value": f"{plan.get('startup') or '?'} (lab {plan.get('lab') or '?'})"},
+             "value": f"{plan.get('startup') or 'none recorded'} (lab {plan.get('lab') or 'none named'})"},
             {"name": "break-glass basis",
              "value": ("the export log (not the record): newest export "
                        f"{export.get('at') or 'none'}"
@@ -2717,13 +2729,13 @@ def persist_preview(plan: dict, *, busy: str, request) -> dict:
                                          if s["key"] != "save"]}],
                     "none": "Nothing to do: " + "; ".join(plan.get("refusals") or ["no steps"])},
         "operands": [
-            {"name": "list", "value": plan.get("list_name") or "?"},
+            {"name": "list", "value": plan.get("list_name") or not_read(plan)},
             {"name": "management address", "value": plan.get("ip") or "none recorded"},
             {"name": "session driver (Netmiko)",
              "value": plan.get("device_type") or "none recorded"},
             {"name": "config dialect (the inventory's platform)",
              "value": plan.get("dialect") or "none recorded"},
-            {"name": "account", "value": plan.get("username") or "?"},
+            {"name": "account", "value": plan.get("username") or not_read(plan)},
             {"name": "startup config, last checked",
              "value": _persist_check_words(plan.get("last_check") or {})},
             {"name": "plan hash", "value": plan.get("hash") or "none"}],
@@ -2822,6 +2834,8 @@ ROTATE_NOT_DOING = (
 
 def rotate_preview(plan: dict, *, busy: str, request) -> dict:
     """*plan*: `rotate_op.plan()`'s. One target, the device."""
+    from modules.nsot import credential_rotation as cr
+
     name = plan.get("device") or "?"
     checks = (plan.get("preflight") or {}).get("checks") or []
     gates = [gate(c["name"].replace("_", " "), "pass" if c["ok"] else "fail",
@@ -2859,14 +2873,15 @@ def rotate_preview(plan: dict, *, busy: str, request) -> dict:
                                    "back, then the boot-file chain"]}],
                     "none": "Nothing is sent: " + (plan.get("error") or "refused")},
         "operands": [
-            {"name": "list", "value": plan.get("list_name") or "?"},
-            {"name": "management address", "value": plan.get("mgmt_ip") or "?"},
-            {"name": "account", "value": f"{plan.get('username') or '?'} (privilege "
-                                         f"{plan.get('privilege') or '?'})"},
+            {"name": "list", "value": plan.get("list_name") or not_read(plan)},
+            {"name": "management address", "value": plan.get("mgmt_ip") or not_read(plan)},
+            {"name": "account", "value": (f"{plan['username']} (privilege "
+                                          f"{plan.get('privilege') or 'not read'})"
+                                          if plan.get("username") else not_read(plan))},
             {"name": "its line now (read live, masked)",
-             "value": plan.get("current_form") or "not read"},
-            {"name": "entry kind", "value": plan.get("entry_kind") or "?"},
-            {"name": "new password", "value": f"{plan.get('length') or '?'} characters, "
+             "value": plan.get("current_form") or not_read(plan)},
+            {"name": "entry kind", "value": plan.get("entry_kind") or not_read(plan)},
+            {"name": "new password", "value": f"{plan.get('length') or cr.LENGTH} characters, "
                                               "generated at apply, never shown"},
             {"name": "who else logs in as it",
              "value": "; ".join(f"{c.get('name')}: {c.get('action')}" for c in consumers)
@@ -3064,7 +3079,8 @@ def revert_preview(entry: dict, *, list_name: str, request) -> dict:
                     "none": "Nothing to commit: " + (entry.get("error") or "")},
         "operands": [
             {"name": "commit to revert",
-             "value": f"{entry.get('target') or '?'} {entry.get('subject') or ''}".strip()},
+             "value": (f"{entry['target']} {entry.get('subject') or ''}".strip()
+                       if entry.get("target") else not_read(entry))},
             {"name": "later commits kept", "value": str(len(entry.get("kept") or []))},
             {"name": "rollback block", "value": _note_words(note)},
             {"name": "revert hash", "value": entry.get("hash") or "none"}],

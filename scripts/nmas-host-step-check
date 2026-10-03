@@ -41,6 +41,9 @@ HOST_STEP_PATHS = (
     "scripts/nmas-deploy",
     "deploy/systemd/",
     "deploy/topology/",
+    # The Oxidized credential helper, installed root-owned as /usr/local/sbin/nmas-oxidized-cred
+    # (2026-10-03: every root-installed helper; modules/host_helpers.py is the registry).
+    "scripts/nmas-oxidized-cred",
 )
 
 TRAILER = re.compile(r"^(Host-Step|Host-Step-After|Host-Step-None):\s*\S", re.M)

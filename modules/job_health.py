@@ -1397,6 +1397,14 @@ def updater_rows() -> list:
                  "detail": f"the check raised {type(exc).__name__}: {exc}"}]
 
 
+def helper_rows() -> list:
+    """Every root-installed helper the updater's rows do not cover, compared with this
+    release by its own check (`modules.host_helpers`): a drifted or missing helper is a row
+    naming its install command before the operation that runs it refuses."""
+    from modules import host_helpers
+    return host_helpers.helper_rows()
+
+
 def prometheus_target_rows() -> list:
     """Does the running Prometheus scrape the inventory, labelled (C232)?
     `modules.prometheus_targets` owns the comparison; no row while Prometheus
@@ -1413,7 +1421,8 @@ def prometheus_target_rows() -> list:
 def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None, ztp=None, responder=None,
            startup=None, sessions=None, version=None, readers=None,
-           breakglass=None, prometheus=None, monitoring=None, updater=None) -> dict:
+           breakglass=None, prometheus=None, monitoring=None, updater=None,
+           helpers=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -1433,6 +1442,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += prometheus_target_rows() if prometheus is None else list(prometheus)
     jobs += monitoring_rows() if monitoring is None else list(monitoring)
     jobs += updater_rows() if updater is None else list(updater)
+    jobs += helper_rows() if helpers is None else list(helpers)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     gone = sum(1 for j in jobs if j["state"] == "departed")

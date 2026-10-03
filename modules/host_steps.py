@@ -72,19 +72,25 @@ def _service_started(unit: str, run=subprocess.run):
     return int(m.group(1)) if m else None
 
 
-def check_topology_renderer(root: str = ROOT, link: str = "/usr/local/bin/rcn-topology.py",
+#: Where the topology renderer is installed: a symlink to the checkout's copy.
+TOPOLOGY_LINK = "/usr/local/bin/rcn-topology.py"
+TOPOLOGY_SOURCE_REL = "deploy/topology/rcn-topology.py"
+TOPOLOGY_UNIT = "rcn-topology.service"
+
+
+def check_topology_renderer(root: str = ROOT, link: str = TOPOLOGY_LINK,
                             run=subprocess.run) -> dict:
     """Done when the installed renderer IS the checkout's (a symlink resolving
     to deploy/topology/rcn-topology.py) and rcn-topology.service started after
     that file last changed, so the running process read this release's code."""
-    source = os.path.realpath(os.path.join(root, "deploy", "topology", "rcn-topology.py"))
+    source = os.path.realpath(os.path.join(root, TOPOLOGY_SOURCE_REL))
     if not os.path.islink(link):
         return {"state": "not_done", "detail": (f"{link} is not a symlink to the checkout"
                                                 if os.path.exists(link) else f"{link} is absent")}
     if os.path.realpath(link) != source:
         return {"state": "not_done", "detail": f"{link} points to {os.path.realpath(link)}, "
                                                f"not {source}"}
-    started = _service_started("rcn-topology.service", run=run)
+    started = _service_started(TOPOLOGY_UNIT, run=run)
     if started is None:
         return {"state": "unknown", "detail": "the symlink is right; when rcn-topology.service "
                                               "last started could not be read"}
