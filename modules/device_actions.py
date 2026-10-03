@@ -142,3 +142,58 @@ def capture_result_card(ref, host: str, got: dict, confirmed: str, actor: str,
                        "unknown": intent.get("state") not in ("match", "differs"),
                        "sentence": explain(intent) if intent else "not compared",
                        "lines": list(intent.get("lines") or [])}}
+
+
+def _one_target(preview: dict, host: str, viewer: dict) -> dict:
+    """The parts of a one-device preview (`preview_confirm.build`) a card draws: part 1's
+    state and the data the confirm carries, the target's program, operands and gates, what
+    will not happen, and the verified-person check decided NOW from *viewer*."""
+    target = next((t for t in preview.get("targets") or [] if t.get("name") == host), {})
+    chosen = next((t for t in (preview.get("what") or {}).get("targets") or []
+                   if t.get("name") == host), {})
+    viewer = viewer or {"may": False, "statement": "nobody is identified"}
+    gates = list(target.get("gates") or [])
+    gates.append({"name": VERIFIED_GATE, "state": "pass" if viewer.get("may") else "fail",
+                  "detail": (viewer.get("actor") if viewer.get("may") and viewer.get("actor")
+                             else viewer.get("statement", ""))})
+    failing = [g for g in gates if g.get("state") == "fail"]
+    return {"target": target, "chosen": chosen, "gates": gates, "failing": failing,
+            "what_not": [i.get("text", "") for i in (preview.get("what_not") or {}).get("items")
+                         or [] if i.get("target") == host],
+            "may": bool(chosen.get("selectable")) and not failing}
+
+
+def persist_card(ref, host: str, preview: dict, viewer: dict) -> dict:
+    """The persist card for *host* from `preview_confirm.persist_preview`'s preview. The
+    preview contacts no device, so the card is drawn at once, never as a job."""
+    t = _one_target(preview, host, viewer)
+    program = t["target"].get("program") or {}
+    confirm = preview.get("confirm") or {}
+    return {"op": "persist", "state": "preview", "host": host, "list": ref.name,
+            "summary": (preview.get("what") or {}).get("summary", ""),
+            "sent": list(program.get("lines") or []),
+            "then": [line for n in program.get("notes") or [] for line in n.get("lines") or []],
+            "none": program.get("none", ""),
+            "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
+            "gates": t["gates"], "failing": t["failing"], "may": t["may"],
+            "hash": (t["chosen"].get("select_data") or {}).get("hash", ""),
+            "effect": confirm.get("effect", ""), "button": confirm.get("button", "")}
+
+
+#: A persist result's state -> (its heading chip, its level).
+PERSIST_WORDS = {"persisted": ("Persisted", "ok"),
+                 "not_persisted": ("Saved, NOT persisted", "danger"),
+                 "refused": ("Refused: nothing was sent", "warn")}
+
+
+def persist_result_card(ref, host: str, out: dict, result: dict) -> dict:
+    """The result card from `persist_op.apply`'s answer *out* and `persist_result`'s
+    *result*, the same words today's page draws."""
+    state = out.get("state") or "unknown"
+    chip, level = PERSIST_WORDS.get(state, ("Could not be established", "danger"))
+    return {"op": "persist", "state": "result", "host": host, "list": ref.name,
+            "outcome": state, "chip": chip, "level": level,
+            "summary": (result.get("happened") or {}).get("summary", ""),
+            "record": (result.get("record") or {}).get("statement", ""),
+            "not_watched": result.get("not_watched", ""),
+            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}

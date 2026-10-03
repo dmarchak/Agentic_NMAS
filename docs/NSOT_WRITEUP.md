@@ -99,7 +99,7 @@ close are marked *written at close*.
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28); the audit's other rows and the multi-worker half (9.S) not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs; the v2 capture's preview half ran on the host (2026-10-03), its record half awaits a real change |
+| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs; the v2 capture's preview half ran on the host (2026-10-03), its record half awaits a real change; persist on v2 awaits its real run |
 | | 7.4 to 7.10 | Not started |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
@@ -2803,6 +2803,17 @@ The landing page drew every section 1a source from stored or cached values, each
 4. **How they were resolved.** The check and the link fixed with tests; the sweep extended (the escaped mask, the HTML job id, the device route driven as r1); C348 recorded and left open (C: nothing exposed); the browser test clicks only once nothing settles, then eight cold runs clean.
 5. **Numbers.** One commit [git: this commit]. 14 tests in `tests/test_device_capture_v2.py`, two of them in a real browser; fourteen controls, each failing its aimed tests. Findings recorded: 1 (C348). **Estimate versus actual: no forecast was made**; recorded so persist, rotate and Mode B on v2 get one from this, the same kind of work: one action ported to a card with its tests in one session.
 6. **Where it left the product.** A device's golden can be recorded from its v2 page, with what it will and will not do, what it was checked against, and the result in place. Save All stays on today's page until 7.4.
+
+#### 7.3 — Persist on the v2 device page
+
+*Written at close, 2026-10-03. It awaits its real run on the host, which saves a device's startup configuration and so is the operator's.*
+
+1. **What it was.** The second of the device page's actions on v2, in the signed order (capture, persist, rotate, deploy with Mode B), on the same card pattern as capture [tests/signed_off_screens.py; NSOT_STAGE7_PLAN.md].
+2. **How it was implemented.** The card is drawn from the operation's own builders (`persist_op.plan`, `persist_preview`, `persist_result`) through a shared one-device helper in `modules/device_actions.py`, which the remaining cards will use; its confirm calls `persist_op.apply`, the same apply as `/persist/apply`. Persist's preview contacts no device, so the card needs no job and is drawn at once; the confirm is busy on itself while the device saves and reads back. The menu row draws the card in place; without script the page draws it.
+3. **Issues encountered.** None new. The one test that failed on first run pinned the sent line without the builder's own words (`write memory (the device's own save)`).
+4. **How they were resolved.** The test pins the builder's words.
+5. **Numbers.** One commit [git: this commit]. 14 tests in `tests/test_device_persist_v2.py`, two in a real browser, run confined in the gate's suite; eight controls, each failing its aimed tests. Findings recorded: none. **Estimate versus actual:** capture's entry made no forecast but set the basis, one action ported in a session; persist, the same kind with a simpler operation (no job), took a fraction of that, so rotate (a job, and the held-device mockup) is forecast between the two.
+6. **Where it left the product.** A device's running configuration can be saved to startup and proved from its v2 page, with the result in place. Rotate and deploy with Mode B are next.
 
 ### 7.D — The GUI redesign (open)
 

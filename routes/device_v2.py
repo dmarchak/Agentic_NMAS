@@ -147,9 +147,10 @@ def device(name):
                _netbox_ctx(ref, dev) if tab == "netbox" else _monitoring_ctx(ref, dev))
     # An action's card opened without script (the menu row's href): drawn in place of the
     # tab, starting as the row's own request would.
+    op = request.args.get("op")
     ctx["op_card"] = ({"state": "starting", "op": "capture", "host": dev.get("hostname", ""),
-                       "list": ref.name, "back": tab}
-                      if request.args.get("op") == "capture" else None)
+                       "list": ref.name, "back": tab} if op == "capture" else
+                      _persist_card(ref, dev, tab) if op == "persist" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -340,20 +341,20 @@ def _back(fields) -> str:
     return back if back in BUILT else "overview"
 
 
-def _named_device(name, list_name):
+def _named_device(name, list_name, template="v2/_capture.html"):
     """``(ref, dev, refusal)`` for a WRITE path: the device in the list the card carries
     (a write path carries its list; only a read derives the active one)."""
     from modules.nsot import listref
 
     if not list_name or not listref.exists(list_name):
         return None, None, _strict(render_template(
-            "v2/_capture.html", c={"state": "refused_list", "host": name,
+            template, c={"state": "refused_list", "host": name,
                                    "list": list_name}), 400)
     try:
         ref, dev = device_page.find_device(name, ref=listref.resolve(list_name))
     except device_page.NoSuchDevice as exc:
         return None, None, _strict(render_template(
-            "v2/_capture.html", c={"state": "failed", "host": name, "list": list_name,
+            template, c={"state": "failed", "host": name, "list": list_name,
                                    "error": str(exc)}), 404)
     return ref, dev, None
 
@@ -433,3 +434,60 @@ def capture_confirm(name):
     c = mask_payload(c)
     c.update(back=_back(request.form), ip=dev.get("ip", ""))
     return _strict(render_template("v2/_capture.html", c=c))
+
+
+@bp.route("/device/<name>/persist", methods=["GET"])
+def persist(name):
+    """The persist card: what saving the running config to startup would do and would not,
+    its operands and checks, and the confirm bound to the plan's hash. A READ: the preview
+    contacts no device (`persist_op.plan`), so it is drawn at once."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_persist.html",
+                                   c=_persist_card(ref, dev, _back(request.args))))
+
+
+def _persist_card(ref, dev, back):
+    """The persist card for *dev*, drawn by the card's route and by the page itself."""
+    from modules import device_actions, identity
+    from modules.nsot import persist_op
+    from modules.nsot.device_ops import busy_text
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import confirm_part, persist_preview
+
+    host = dev.get("hostname", "")
+    preview = persist_preview(persist_op.plan(ref.name, host), busy=busy_text(ref.name, host),
+                              request=request)
+    c = device_actions.persist_card(ref, host, mask_payload(preview), viewer=dict(
+        confirm_part(request, "confirm"), actor=identity.identify(request).actor or ""))
+    c.update(back=back, ip=dev.get("ip", ""))
+    return c
+
+
+@bp.route("/device/<name>/persist/confirm", methods=["POST"])
+def persist_confirm(name):
+    """Save the device's running config to startup and read it back, as the verified person,
+    holding the device, bound to the plan the card showed (`hash`): the same apply as
+    `/persist/apply`. The result is drawn in place of the preview."""
+    from modules import device_actions, identity
+    from modules.nsot import persist_op
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import persist_result
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_persist.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    confirmed = (request.form.get("hash") or "").strip()
+    if not confirmed:
+        return _strict(render_template("v2/_persist.html", c={
+            "state": "refused_hash", "host": host, "list": ref.name,
+            "back": _back(request.form)}), 400)
+    actor = identity.identify(request).actor or ""
+    out = persist_op.apply(ref.name, host, actor=actor, confirmed_hash=confirmed)
+    c = device_actions.persist_result_card(ref, host, out, mask_payload(
+        persist_result(out, out.get("plan") or {}, actor)))
+    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_persist.html", c=c))

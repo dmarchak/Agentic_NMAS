@@ -6,7 +6,7 @@ A device boots from its startup configuration, not from what it runs now. Persis
 
 There are two paths that persist a device, and they differ in what they touch:
 
-- **Persist… on the device's page**, and `nmas-persist-native` on the host: the device's own save and its read-back, and nothing else. This is the page's subject.
+- **Persist on the device's page** (Actions > Persist on the redesigned page, its card in place of the tab; Persist… on today's page), and `nmas-persist-native` on the host: the device's own save and its read-back, and nothing else. The two pages call the same plan and apply (`/v2/device/<name>/persist` and its confirm, `/persist/preview` and `/persist/apply`). This is the page's subject.
 - **The host chain** (`credential_rotation.persist()`): run after every rotation, from the device's page or `nmas-rotate-credential`, and by `nmas-persist-credential` to finish one. It does the same save first, then updates Oxidized and the lab host's startup file. Those stages are a lab integration; see [the host chain](#the-host-chain).
 
 ## The preview

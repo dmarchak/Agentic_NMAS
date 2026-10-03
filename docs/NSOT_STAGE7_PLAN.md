@@ -2986,7 +2986,8 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
    device follow, new operations of the same kind. **Decided 2026-10-02 (the operator):**
    per-device receipts first (R5's open half; DONE 2026-10-02, tests/test_pending_receipts.py),
    then capture (DONE 2026-10-02 on the device page, tests/test_device_capture_v2.py; Save
-   All waits for 7.4), persist, rotate and deploy with Mode B (the actions' mockup signed off
+   All waits for 7.4), persist (DONE 2026-10-03, tests/test_device_persist_v2.py), rotate and
+   deploy with Mode B (the actions' mockup signed off
    2026-10-02).
    **Then Coverage, redrawn** (artboards A and A2 signed off 2026-10-02): the not-reporting
    reader first, starting with its read-only measurement on the host; then the grid and

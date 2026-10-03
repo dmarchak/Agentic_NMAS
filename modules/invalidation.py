@@ -209,6 +209,7 @@ DECLARED = {
     # A device, its files and backups.
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),
+    "device_v2.persist_confirm": ("device_state",),   # the same apply
     # The Update button: a request is written now; the version moves when the
     # root-owned updater acts, and the page waits on /health for it.
     "update.apply": ("app_version",),

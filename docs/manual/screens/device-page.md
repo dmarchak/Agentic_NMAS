@@ -10,7 +10,7 @@ Rotate credential, Persist and Retire. **Capture runs here**: its card takes the
 tab you were on, reads the device, and shows what its golden would become, against the golden
 now and against committed intent, with the checks and the confirm bound to that read; once you
 record it, the same card shows the commit, who and when (the read's timings on hover), what is
-still true against intent, and what to do next. Cancel or Close puts the tab back. The others
+still true against intent, and what to do next. **Persist runs here too**: its card says what the save sends and then reads, what it will not do, its operands and checks, and after the save whether the startup config carries the credential. Cancel or Close puts the tab back. The others
 open on today's device page until the redesign carries each (plan 7.3). How each works:
 [Deploy a change](deploy), [Capture and Save All](capture), [Remove lines (Mode B)](removal),
 [Persist](persist), [Rotate a credential](rotate), [Seed intent](seed),

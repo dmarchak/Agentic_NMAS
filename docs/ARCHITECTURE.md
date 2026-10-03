@@ -712,7 +712,9 @@ tracked in git.
   operation's OWN job and apply (`routes.golden.start_capture_preview`, `apply_captures`,
   which `/golden/capture/*` call too); the card starts its read and then listens for its
   job's announcement, the confirm carries the read's hash and the list, and the result is
-  drawn in place. Capture first; persist, rotate and deploy with Mode B follow. The device page's tabs since: **Intent**
+  drawn in place. Capture first, then persist (2026-10-03, the same pattern over
+  `persist_preview` and `persist_result`, through a shared one-device helper); rotate and
+  deploy with Mode B follow. The device page's tabs since: **Intent**
   (read-only: the document committed at HEAD, its last commit, the profile sections it
   inherits), **History** (goldens, intent commits and receipts as one timeline) and
   **Neighbours** (**[modules/neighbours.py](modules/neighbours.py)**, C38: the adjacencies the

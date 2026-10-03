@@ -44,7 +44,7 @@ and built.
 | Remote, the rest | `/remote/status`, `/auto-push`, `/verify-write`, `/preview`, `/acknowledge`, `/adopt` | PLANNED, History | History's remote section: connect, acknowledge publication, the write probe, auto-push |
 | Renames | `/golden/renames`, `/golden/renames/sync` | PLANNED, 7.4 | Devices, with Refresh Hostnames |
 | Legacy golden store, migration | `/golden/legacy_store`, `/golden/migrate/plan`, `/golden/migrate/apply` | REMOVE, 7.8 | Its retirement condition (`legacy_only_goldens()` empty) has held on the host since 2026-09-28 (plan 7.8) |
-| Persist, rotate, retire | `/persist/*`, `/rotate/*`, `/retire/*` | PLANNED, 7.3 | Device Actions (built on today's page; the v2 menu links there) |
+| Persist, rotate, retire | `/persist/*`, `/rotate/*`, `/retire/*` | PLANNED, 7.3 (persist BUILT on v2, 2026-10-03) | The device page's Actions > Persist runs on v2 (the same plan and apply, through `/v2/device/<name>/persist`); rotate and retire still link to today's page, so the routes stay until they are built |
 | Seed, revert, retry | `/templatize/seed/*`, `/templatize/revert/*`, `/templatize/retry/*`, `/templatize/rolled-back/retries` | PLANNED, 7.3 | Device Actions, and History for revert |
 | Intent editing | `/templatize/committed/<host>` (read, edit, preview), `/templatize/committed` | PLANNED, 7.3 | The Intent tab's editor (read-only today) |
 | Bulk intent | `/templatize/bulk/preview`, `/apply` | PLANNED, 7.4 | Devices selection |

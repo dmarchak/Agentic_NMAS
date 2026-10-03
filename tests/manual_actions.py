@@ -71,6 +71,7 @@ NOT_AN_OPERATION = {
     ("device.html", "Actions"): "opens the actions menu; each row carries its own link",
     ("_capture.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_capture.html", "Edit intent…"): "navigates to today's device page, where the intent editor is",
+    ("_persist.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
 }
 
 

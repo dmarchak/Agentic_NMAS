@@ -38,6 +38,11 @@ STAGES = {
         "persist.preview", "hash", "modules.nsot.onboard.persist_on_device",
         "n/a: a save cannot be undone; the preview says it carries the running config as it is",
         "modules.nsot.persist_op.apply"),
+    # The v2 device page's Persist (7.3): the same plan and apply, drawn as a card.
+    "device_v2.persist_confirm": Stages(
+        "device_v2.persist", "hash", "modules.nsot.onboard.persist_on_device",
+        "n/a: a save cannot be undone; the preview says it carries the running config as it is",
+        "modules.nsot.persist_op.apply"),
     "rotate.apply": Stages(
         "rotate.preview", "fingerprint", "modules.nsot.credential_rotation.verify_new_credential",
         "modules.nsot.credential_rotation.revert_commands",

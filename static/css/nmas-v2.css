@@ -737,6 +737,7 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .op-part p { margin: 0 0 6px; }
 .op-part p:last-child { margin-bottom: 0; }
 .op-wait { color: var(--ink-2); }
+.op-list { margin: 0 0 6px; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
 .op-diff { margin: 0 0 8px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r);
   padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto;
   white-space: pre; }

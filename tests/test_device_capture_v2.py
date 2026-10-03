@@ -79,7 +79,7 @@ class TestTheMenu:
         row = menu[menu.index('data-op="capture"') - 200:menu.index('data-op="capture"') + 1500]
         assert 'hx-get="/v2/device/r2/capture?back=overview"' in row and 'hx-target="#tab-body"' in row
         assert 'aria-label="How does capture work?"' in row
-        assert "Capture runs here; the others open on today" in menu
+        assert "Capture and Persist run here; the others open on today" in menu
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
         assert labels == ["Capture", "Restore from…", "Remove lines (Mode B)…", "Seed intent",
                           "Rotate credential…", "Persist", "Retire…"], labels

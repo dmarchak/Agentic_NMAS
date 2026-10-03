@@ -146,6 +146,10 @@ PAGE_RECORD = {
     # program FROM that committed intent; the device's Intent tab re-reads it.
     # The device page's Capture (7.3): the result drawn in place from the apply's outcome
     # (the commit, who, the outcome), and the golden read back on the device's History.
+    # The device page's Persist (7.3): the result in place from the apply's answer, and the
+    # record read back by job health's rotation row.
+    "device_v2.persist_confirm": ("templates/v2/_persist.html",
+                                  ('id="device-op"', "c.outcome", "c.record"), "jobs.jobs_health"),
     "device_v2.capture_confirm": ("templates/v2/_capture.html",
                                   ('id="device-op"', "c.commit", "c.outcome"), "device_v2.history"),
     "v2.ip_sla_commit": ("templates/v2/_apply_preview.html",
