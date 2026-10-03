@@ -1871,6 +1871,7 @@ def host_steps_source(owed=None) -> dict:
                       f" is still to do: {s['step']}"),
                 cause=(f"checked: {s['check_detail']}" if s["check_state"] != "not_checkable"
                        else "it is done after the update, and nothing can check it"),
+                operands={"check": s.get("check") or "", "state": s["check_state"]},
                 action={"label": ("Open the Update page and say it is done"
                                   if s["check_state"] == "not_checkable"
                                   else "Do it on the host; this row goes when the check reads done"),
@@ -2233,8 +2234,29 @@ def _attach(rows: list) -> list:
             continue
         target["attached"].append({"source": r["source"], "what": r["what"],
                                    "since": r["since"]})
-        target["action"] = r["action"]
+        if r.get("attach_action", True):
+            target["action"] = r["action"]
     return kept
+
+
+def _fold_one_cause(rows: list) -> list:
+    """Rows from two sources about ONE cause, folded by the attach rule (the operator,
+    2026-10-02). The updater's installed copy of `nmas-deploy` differing produced two
+    warnings, the host step's ("A host step for ... is still to do") and job health's
+    ("updater differs from this release's copy"), cleared together by one re-install. While
+    an owed host step is checked by the updater's own check, job health's `differs` row
+    attaches to it, and the host step's row keeps its action: it is the one that says what
+    to do. Any other updater state (writable, cannot run) is its own danger and stays."""
+    step = next((r for r in rows if r["source"] == "host_steps"
+                 and (r.get("operands") or {}).get("check") == "updater"), None)
+    if step is None:
+        return rows
+    for r in rows:
+        if (r["id"] == "job_health:updater"
+                and (r.get("operands") or {}).get("state") == "differs"):
+            r["attach_to"] = step["id"]
+            r["attach_action"] = False
+    return rows
 
 
 def _without_acknowledged(rows: list):
@@ -2321,7 +2343,7 @@ def needs_attention(sources=None) -> dict:
             log.error("attention: source %s raised: %s", name, exc)
             results.append(source_result(name, name, read_at=time.time(), took_ms=0,
                                          error=f"its adapter raised {type(exc).__name__}: {exc}"))
-    rows = _attach([r for res in results for r in res["rows"]])
+    rows = _attach(_fold_one_cause([r for res in results for r in res["rows"]]))
     rows, acknowledged, ack_result = _without_acknowledged(rows)
     if ack_result:
         results.append(ack_result)
