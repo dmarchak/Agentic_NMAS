@@ -12,15 +12,15 @@ credential. On the host it writes two rows that say an export was made, and neve
 
 One operation, reached from four places:
 
-- **Settings**: the Export button, for the list the app is showing.
+- **Credentials**: the break-glass record's **Export the record…**.
 - **Needs attention**: the break-glass row, when no export is logged for a list or a device's
   credential has changed since the last one.
 - **The result of a rotation**, as its next step: the record still holds the old password.
 - **The result of an adoption**, as its next step: the record does not hold the new device.
+- **Settings**: its break-glass line links to Credentials.
 
-On the redesigned pages each of these opens the export itself, for the list it names, never a
-page you then have to search: until the export is on those pages, it opens on today's pages,
-already showing what the record would hold.
+Each opens Credentials › The break-glass record, with the export ready and showing what the
+record would hold, for the list it names.
 
 Exporting needs a signed-in person. A service is refused, because the file holds every
 device's credential.
@@ -70,10 +70,17 @@ leaves the page. Then, in order:
    record goes stale.
 7. **The file is downloaded**. Read: nothing. Sent: the sealed file, to your browser only.
    Recorded: nothing more. It is named after the list and the time, ending `.bg`.
+8. **The browser checks what it received** (`intact`). Read: the bytes, in your browser.
+   Sent: the browser's sha256 of them. Recorded: a row with the list, both sha256s, whether they
+   match, and you. Before saving the file, the browser hashes the bytes it received and
+   compares them with the sha256 the server recorded. The result card then reads
+   **Downloaded intact** or, in danger, **Not intact**, naming both sha256s. A download that
+   did not arrive intact is not counted as current: delete it and export again. The browser
+   computes a hash only on a secure page. Opened any other way, the result says
+   **Not checked**, and the export is not counted either.
 
-The result says what the record holds, what was verified (the device count, the key's
-fingerprint and how many stored values it opens, the sha256), and, as an optional next step,
-how to verify the copy where you keep it.
+The result says what was built and sent, whether it arrived intact, what was recorded, and what
+is still true.
 
 ## What the record holds {#contents}
 

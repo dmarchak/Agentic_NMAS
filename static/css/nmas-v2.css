@@ -798,6 +798,15 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .op-confirm.htmx-request .op-idle { display: none; }
 .op-confirm.htmx-request .op-busy { display: inline; }
 .op-confirm[disabled] { opacity: .7; cursor: progress; }
+/* Credentials > The break-glass record (board 7). */
+.bg-pass { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+.bg-pass label { display: flex; flex-direction: column; gap: 4px; }
+.bg-pass input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface); color: var(--ink); }
+.bg-pass p { margin: 0; }
+.bg-refused { margin: 0; padding: 10px 20px; color: var(--danger); }
+.op-part .bg-refused { padding: 0; }
+#bg-op:not(:empty) { margin-top: 14px; }
 @media (max-width: 700px) {
   .op-part { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .op-hd, .op-part, .op-ft { padding-left: 14px; padding-right: 14px; }

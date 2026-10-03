@@ -88,7 +88,7 @@ GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
 ON_TODAYS_APP = frozenset((
     "deploy", "capture", "restore", "removal", "revert-retry", "rotate", "persist", "seed",
     "bulk-intent", "onboard", "adopt", "retire", "drift-check", "approvals", "netbox-import",
-    "breakglass-export", "logs", "dhcp", "templates", "netbox", "credentials",
+    "logs", "dhcp", "templates", "netbox",
     "approvals-screen", "backups", "settings",
 ))
 

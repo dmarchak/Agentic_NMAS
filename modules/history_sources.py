@@ -620,15 +620,23 @@ def breakglass(ctx):
         rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
     except (OSError, ValueError) as exc:
         return _out(errors=[f"the break-glass export log could not be read: {exc}"])
+    verdicts = bg.intact_verdicts(config.DATA_DIR)
+    if verdicts.get("state") == "unreadable":
+        return _out(errors=[f"the break-glass download verdicts could not be read: "
+                            f"{verdicts.get('error')}"])
     events = []
     for r in reversed(rows):
         held = list(r.get("devices") or {})
+        v = (verdicts.get("by_sha") or {}).get(r.get("sha256") or "")
         if r.get("list") != ctx["ref"].name or not any(_mine(ctx, d) for d in held):
             continue
         events.append(_event(r.get("at"), "breakglass",
                              f"Break-glass record exported ({len(held)} device"
                              f"{'' if len(held) == 1 else 's'})", held,
                              who=r.get("actor", ""), detail=f"via {r.get('via', '?')}",
+                             marks=(["downloaded intact"] if v and v.get("ok") else
+                                    ["not intact"] if v else []),
+                             outcome="" if not v or v.get("ok") else "not_intact",
                              record=[("Key fingerprint", r.get("key_fingerprint")),
                                      ("Devices", ", ".join(sorted(held))),
                                      ("Written to", r.get("path")), ("Via", r.get("via"))]))

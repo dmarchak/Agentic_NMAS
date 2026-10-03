@@ -26,7 +26,8 @@
     {%- set failed = (e.kind == 'receipt' and e.outcome and e.outcome != 'deployed')
                      or (e.kind in ('rotation', 'persist', 'onboarding') and ('failed' in (e.marks or []) or 'stopped' in (e.marks or [])))
                      or (e.kind == 'restart' and e.outcome == 'crash')
-                     or (e.kind == 'update' and e.outcome and e.outcome not in ('confirmed', 'done', 'ok')) %}
+                     or (e.kind == 'update' and e.outcome and e.outcome not in ('confirmed', 'done', 'ok'))
+                     or (e.kind == 'breakglass' and e.outcome == 'not_intact') %}
     <details class="hist-row tl-row" data-kind="{{ e.kind }}">
       <summary class="hist-sum"><span class="hist-when">{{ stamp(e.at) }}</span><span class="hist-kind">{{ badge(k[0], 'danger' if failed else 'warn' if e.pending else k[1]) }}</span>
         <span class="hist-dev{% if not e.devices %} muted{% endif %}">{{ e.devices_words }}</span>

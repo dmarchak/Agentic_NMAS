@@ -375,6 +375,8 @@ _JOB_STATES = {
     "not_monitored": ("is not configured for an integration the network uses", "warning"),
     "breakglass_stale": ("is not recoverable from the break-glass record: it holds an "
                          "older credential", "danger"),
+    "breakglass_not_intact": ("break-glass record's last download did not arrive intact",
+                              "danger"),
     # The Update button's root-owned updater (docs/UPDATE.md).
     "writable": ("is run as root and writable by someone else", "danger"),
     "cannot_run": ("cannot run: a program it needs is missing or not root's", "danger"),

@@ -1,0 +1,56 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- The export, on Credentials (board 7, A; signed off 2026-10-03), drawing the preview
+    contract (preview_confirm.breakglass_preview) as it stands: what the record will hold, the
+    checks, the passphrase twice, and one confirm. The confirm posts to routes/breakglass.py
+    (the one export: a verified person, the reveal recorded before anything leaves). The
+    browser then hashes the bytes it received against the server's sha256 and records its
+    word (/v2/credentials/intact), whose answer is the result card (B) in place of this one.
+    static/js/nmas_credentials.js; the passphrase fields are cleared the moment it is sent. -#}
+{%- set t = p.what.targets[0] -%}
+{%- set prog = p.targets[0].program -%}
+{%- set ops = p.targets[0].operands -%}
+{%- set gates = p.targets[0].gates -%}
+<section class="op-card op-danger" id="bg-export" aria-labelledby="bg-title"
+         x-data="breakglassExport" data-list="{{ list_name }}" data-hash="{{ t.select_data.hash }}"
+         data-export-url="{{ url_for('breakglass.export') }}" data-intact-url="{{ url_for('v2.credentials_intact') }}"
+         data-label="{{ p.confirm.button or 'Export' }}" data-min="{{ 12 }}">
+  <div class="op-hd"><h2 id="bg-title">Export {{ list_name }}'s break-glass record</h2>
+    <div class="op-hd-actions">{{ how('breakglass-export') }}<a class="btn" href="{{ url_for('v2.credentials', list=list_name) }}">Cancel</a></div></div>
+  <div class="op-part"><h3>What</h3><div>
+    <p>One file holding every device's credential in <strong>{{ list_name }}</strong> and the key that opens the tool's stored secrets, sealed with a passphrase you choose. Built and opened again in memory, sent to this browser, never written on the tool's host.</p>
+    <p class="muted">{{ p.what.summary }}</p></div></div>
+  <div class="op-part"><h3>What will not happen</h3><div>
+    {%- for n in p.what_not['items'] %}<p>{{ n.text[0] | upper }}{{ n.text[1:] }}{% if n.lines %}: <span class="mono">{{ n.lines | join(', ') }}</span>{% endif %}.</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>What it will hold</h3><div>
+    {%- if prog.lines %}
+    <p>{{ prog.lines | length }} {{ prog.unit }}. {{ prog.caption }}.</p>
+    <pre class="op-diff">{% for l in prog.lines %}{{ l }}
+{% endfor %}</pre>
+    {%- else %}<p>{{ prog.none }}.</p>{% endif %}
+    <dl class="op-ops">
+      {%- for o in ops %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+    </dl></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      {%- for g in gates %}
+      <li>{{ badge({'pass': 'pass', 'fail': 'fail', 'at_apply': 'at confirm'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger', 'at_apply': 'info'}.get(g.state, 'muted')) }}<span>{{ g.name[0] | upper }}{{ g.name[1:] }}{% if g.detail %} <span class="muted">({{ g.detail }})</span>{% endif %}</span></li>
+      {%- endfor %}
+    </ul></div></div>
+  {%- if t.selectable and p.confirm.may %}
+  <div class="op-part"><h3>Passphrase</h3><div class="bg-pass">
+    <label><span class="muted small">Passphrase</span><input type="password" autocomplete="new-password" data-bg-pass x-on:input="refresh"></label>
+    <label><span class="muted small">Again</span><input type="password" autocomplete="new-password" data-bg-again x-on:input="refresh"></label>
+    <p class="muted small">At least 12 characters. It seals the file; keep it apart from the file. It is never stored, logged or sent back, and nothing can recover it.</p></div></div>
+  <div class="op-ft">
+    <p class="op-note">{{ p.confirm.effect }} {{ p.confirm.statement }} Bound to this preview ({{ t.select_data.hash }}): if {{ list_name }}'s credentials change before you confirm, nothing is built.</p>
+    <span class="op-act"><button type="button" class="btn btn-danger op-confirm" data-op="breakglass-export"
+            x-on:click="confirm" x-bind:disabled="blocked" x-text="label" disabled>The passphrase needs 12 characters or more</button>{{ how('breakglass-export', compact=True, op='the export') }}</span>
+  </div>
+  <p class="bg-refused" x-bind:hidden="noError" x-text="error" hidden></p>
+  {%- else %}
+  <div class="op-ft">
+    <p class="op-note">Not available: {% if not p.confirm.may %}{{ p.confirm.statement }}{% else %}{{ t.why_not or prog.none }}{% endif %}. Nothing was built.</p>
+    <span class="op-act"><a class="btn" href="{{ url_for('v2.credentials', list=list_name, open='export') }}">Preview it again</a>{{ how('breakglass-export', compact=True, op='the export') }}</span>
+  </div>
+  {%- endif %}
+</section>

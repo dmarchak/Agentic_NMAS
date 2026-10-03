@@ -22,6 +22,7 @@
 <script defer src="{{ url_for('static', filename='js/nmas_v2.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/nmas_update.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/nmas_apply.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/nmas_credentials.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/nmas_history.js') }}"></script>
 <script defer src="{{ url_for('static', filename='js/vendor/alpinejs-csp/cdn.min.js') }}"></script>
 </head>
@@ -44,9 +45,9 @@
   <div class="nav-head">SOURCE OF TRUTH</div>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('templates') }}<span>Templates</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('netbox') }}<span>NetBox</span></a>
-  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('credentials') }}<span>Credentials</span></a>
+  <a class="nav-item{% if active_nav == 'credentials' %} active{% endif %}" href="{{ url_for('v2.credentials') }}"{% if active_nav == 'credentials' %} aria-current="page"{% endif %}>{{ icon('credentials') }}<span>Credentials</span></a>
   <div class="grow"></div>
-  <p class="spike-note">The redesign so far: Needs attention, the device page, Monitoring and Help &gt; About. Other items open today's screens.</p>
+  <p class="spike-note">The redesign so far: Needs attention, Devices and the device page, History, Monitoring, Credentials (the break-glass record) and Help. Other items open today's screens.</p>
   <div class="nav-rule"></div>
   <a class="nav-item{% if active_nav == 'help' %} active{% endif %}" href="{{ url_for('v2.help_page', slug='getting-started') }}"{% if active_nav == 'help' %} aria-current="page"{% endif %}>{{ icon('help') }}<span>Help</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('settings') }}<span>Settings</span></a>

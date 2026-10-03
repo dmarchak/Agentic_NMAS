@@ -1140,7 +1140,7 @@ def startup_rows(read=None, now: float = None) -> list:
     return rows
 
 
-def breakglass_rows(exports=None, current=None) -> list:
+def breakglass_rows(exports=None, current=None, intact=None) -> list:
     """C182: does the break-glass record hold the credential NMAS holds NOW?
 
     The record lives off the host, so this compares the newest EXPORT this
@@ -1161,6 +1161,7 @@ def breakglass_rows(exports=None, current=None) -> list:
     try:
         current = _current_credential_digests() if current is None else current
         exports = bg.last_exports(DATA_DIR) if exports is None else exports
+        intact = bg.intact_verdicts(DATA_DIR) if intact is None else intact
     except Exception as exc:                          # noqa: BLE001
         return [{"unit": "breakglass", "what": what, "state": "unknown", "max_age_minutes": 0,
                  "detail": f"could not be checked: {type(exc).__name__}: {exc}"}]
@@ -1193,8 +1194,22 @@ def breakglass_rows(exports=None, current=None) -> list:
         # person; a host export to have been WRITTEN. Neither says where it went.
         made = (f"downloaded by {last.get('actor') or '?'} at {when}"
                 if last.get("via") == "browser" else f"exported from this host at {when}")
-        stale = [r for r in bg.compare(last.get("devices") or {}, now_digests)
-                 if r["state"] in ("differs", "missing")]
+        # ONE judgement (breakglass.currency), the Credentials page's too.
+        judged = bg.currency(last, now_digests,
+                             (intact.get("by_sha") or {}).get(last.get("sha256") or ""))
+        if judged["state"] == "not_intact":
+            v = (intact.get("by_sha") or {}).get(last.get("sha256")) or {}
+            rows.append({"unit": f"breakglass:{list_name}", "what": what,
+                         "list": list_name, "state": "breakglass_not_intact",
+                         "max_age_minutes": 0,
+                         "action": {"label": "Delete the file you saved and export the record "
+                                             "again: the download did not arrive intact",
+                                    "open": "breakglass_export", "list": list_name},
+                         "detail": (f"the record {made}: the browser's sha256 of what it "
+                                    f"received is {str(v.get('browser_sha256', '?'))[:12]}, the "
+                                    f"server sent {str(last.get('sha256', '?'))[:12]}")})
+            continue
+        stale = judged["stale"]
         for r in stale:
             rows.append({"unit": f"breakglass:{list_name}/{r['device']}", "what": what,
                          "device": r["device"], "list": list_name, "state": "breakglass_stale",

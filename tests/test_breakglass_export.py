@@ -240,11 +240,14 @@ class TestTheThreeEntryPointsAndOneClient:
                               "list: 'Lab', command: 'nmas-breakglass export'})")
         assert 'data-nmas-open="breakglass_export"' in html and "or on the host" in html
 
-    def test_the_settings_page_offers_it_and_one_client_opens_all_three(self):
+    def test_settings_links_to_credentials_and_todays_openers_go_there(self):
+        """Board 7 (2026-10-03): the export lives on Credentials. Today's Settings line links
+        there; today's other openers (data-nmas-open) and its ?open= link are sent there."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         partial = open(os.path.join(root, "templates", "partials",
                                     "settings_integrations.html")).read()
-        assert 'data-nmas-open="breakglass_export"' in partial
+        assert "url_for('v2.credentials')" in partial
         assert "js/nmas_breakglass.js" in open(os.path.join(root, "templates", "base.html")).read()
         client = shipped("nmas_breakglass.js")
         assert "closest('[data-nmas-open=\"breakglass_export\"]')" in client
+        assert client.count("'/v2/credentials?open=export&list='") == 2

@@ -272,6 +272,7 @@ HISTORY = {
                                       "or person (credentials.py keeps no audit)"),
     "inventory.delete_credential_profile": ("MISSING: a deleted credential profile leaves no "
                                             "record of who or when"),
+    "v2.credentials_intact": ("breakglass",),
     "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
                            "(heartbeat_rules.jsonl) has no History source yet"),
     "monitoring_config": "n/a: the collectors' settings, never one device's record",

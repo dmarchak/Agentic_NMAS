@@ -34,6 +34,11 @@ SIGNED_OFF = {
                                    "own records, filtered by device, person, kind and time, "
                                    "Commits a kind; Baselines and Authorisations keep their tabs. "
                                    "Before it: NSOT_GUI_BRIEF 3.4, signed off 2026-10-02"),
+    "credentials.html": ("2026-10-03", "board 7, the break-glass record on Source of truth > "
+                                       "Credentials (its placement signed off 2026-10-03, the card "
+                                       "the same night's revision): the record's state, the export "
+                                       "(A), checked intact by the browser (B); Check a break-glass "
+                                       "file (C) and the offline drill (D) follow in their own commits"),
     "help.html": ("2026-10-02", "NSOT_GUI_BRIEF 10b, the manual's mockup"),
     "apply.html": ("2026-10-02", "the stepper mockup (\"Applying to 3 devices... in the order you "
                                  "set\"), signed off 2026-10-02, with the rollout order decided "

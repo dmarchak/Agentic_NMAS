@@ -36,18 +36,30 @@ def list_devices(list_name: str) -> list:
     from modules.nsot.platform import platform_for_device
 
     path = os.path.join(get_list_data_dir(list_name), "devices.csv")
-    rows = []
+    rows, unopened = [], []
     for device in load_saved_devices(path):
+        try:
+            password = decrypt_field(device.get("password", ""))
+            secret = decrypt_field(device.get("secret", ""))
+        except Exception as exc:                    # noqa: BLE001 (InvalidToken, a bad field)
+            # Named, never a crash (C384): a record built now would not recover this device.
+            unopened.append(f"{device.get('hostname') or '(no name)'} ({type(exc).__name__})")
+            continue
         rows.append({
             "hostname": device.get("hostname", ""),
             "ip": device.get("ip", ""),
             "username": device.get("username", ""),
-            "password": decrypt_field(device.get("password", "")),
-            "secret": decrypt_field(device.get("secret", "")),
+            "password": password,
+            "secret": secret,
             "platform": platform_for_device(device),
             "list_name": list_name,
             "container": device.get("container", ""),
         })
+    if unopened:
+        raise BreakglassError(
+            "the stored credential of " + ", ".join(unopened) + " could not be opened with the "
+            "application key, so a record built now would not recover "
+            + ("it" if len(unopened) == 1 else "them") + ": fix the stored credential first")
     return rows
 
 
@@ -78,13 +90,16 @@ def export_plan(list_name: str) -> dict:
     Reveals NOTHING: device names, which have a password, the key's
     fingerprint and verdict, and a hash of the credentials held now, which the
     confirm binds (a rotation between preview and export refuses)."""
-    devices = list_devices(list_name)
+    refusals = []
+    try:
+        devices = list_devices(list_name)
+    except BreakglassError as exc:
+        devices, refusals = [], [str(exc)]
     key = live_key()
     check = check_key_opens(key, live_stores()) if key else {"verdict": "no_key", "opened": 0,
                                                             "total": 0}
     digests = digests_of(devices)
-    refusals = []
-    if not devices:
+    if not devices and not refusals:
         refusals.append(f"{list_name} has no devices: there is nothing to recover")
     if not key:
         refusals.append("the application key could not be read, so it cannot be escrowed")

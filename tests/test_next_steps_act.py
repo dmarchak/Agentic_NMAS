@@ -24,7 +24,10 @@ TEMPLATES = os.path.join(ROOT, "templates", "v2")
 
 #: What each opener leaves open, as a browser expression that is true only then.
 OPENERS = {
-    "breakglass_export": "document.querySelector('.modal.show [data-bg-confirm]')",
+    # Board 7 (2026-10-03): the export's card, open in place on Credentials, its confirm or its
+    # refusal drawn.
+    "breakglass_export": ("location.pathname === '/v2/credentials' && "
+                          "document.querySelector('#bg-export .op-ft')"),
     "intent_editor": ("document.querySelector('#intentEditorModal.show') && "
                       "document.getElementById('intentEditorTitle').textContent"
                       ".indexOf('r2') >= 0"),

@@ -65,7 +65,7 @@ and built.
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` (2) | PLANNED, 7.7 | Results are Needs attention rows (built); the schedule and "check now" go to Settings > Checks |
 | Freshness authorisations | `/freshness/authorisations` | BUILT | History > Authorisations (2026-10-02) |
 | Authorise a divergence | `/freshness/authorise` | PLANNED, 7.6 | Source of truth, beside the divergence it authorises |
-| Break-glass export | `/breakglass/preview`, `/export` | PLANNED, 7.7 | Settings, and Needs attention's break-glass row (which links to today's page now) |
+| Break-glass export | `/breakglass/preview`, `/export` | STAYS (2026-10-03, board 7) | Credentials › The break-glass record draws the export and posts to `/breakglass/export`, the one export; `/breakglass/preview` and today's modal (`static/js/nmas_breakglass.js`'s `openBreakglassExport`) REMOVE at 7.8: every opener, today's included, already goes to Credentials |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | PLANNED, 7.7 | Settings > Diagnostics |
 | Settings | `/settings` (2), `/settings/integrations/*` (5), `/save_tftp_server` | PLANNED, 7.7 | Settings, split |
 | Server and session | `/server/restart`, `/session/pending-restart` | `/server/restart` REMOVED 2026-10-02 (with `/ai/restart`, CONCURRENCY_AUDIT R5: each ended the process with no check of held devices); `/session/pending-restart` REMOVE, 7.8 | No caller (measured 2026-09-27); the Update button restarts, gated on held devices |

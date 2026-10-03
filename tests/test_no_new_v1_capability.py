@@ -21,7 +21,7 @@ TEMPLATES = os.path.join(ROOT, "templates")
 JS = os.path.join(ROOT, "static", "js")
 
 #: Measured 2026-10-03.
-CONTROLS_CEILING = 284
+CONTROLS_CEILING = 283   # 2026-10-03: Settings' break-glass Export… became a link to Credentials
 HANDLERS_CEILING = 275
 FUNCTIONS_CEILING = 451
 #: Fields a person can fill on today's pages: form elements in its templates, and the

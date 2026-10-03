@@ -291,6 +291,101 @@ def history_remote():
                                    remote=_history_remote(listref.active())))
 
 
+# ------------------------------------------------------------------ Credentials
+# Source of truth > Credentials, its first piece: the break-glass record (board 7, signed off
+# 2026-10-03; modules/breakglass_page.py). The export itself is routes/breakglass.py's, the
+# one implementation; these draw it, and record the browser's word on the download.
+
+def _credentials_list(req) -> str:
+    """The list named in the address (every way in names it), else the active one; a name
+    that is no list is said by the page, never replaced by another list."""
+    from modules.nsot import listref
+    from routes.list_param import named_list
+    return named_list(req) or listref.active().name
+
+
+def _breakglass_export_ctx(list_name: str) -> dict:
+    from flask import request
+
+    from modules.breakglass_export import export_plan
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import breakglass_preview
+
+    return {"list_name": list_name,
+            "p": mask_payload(breakglass_preview(export_plan(list_name), request=request))}
+
+
+@bp.route("/credentials", methods=["GET"])
+def credentials():
+    """The break-glass record: whether it holds the credentials in use, its last export, and
+    the export opened in place when the address asks (``open=export``)."""
+    from flask import request
+
+    from modules import breakglass_page
+    from modules.nsot import listref
+
+    name = _credentials_list(request)
+    ctx = {"list_name": name, "known": listref.exists(name),
+           "r": breakglass_page.record(name) if listref.exists(name) else None,
+           "open": request.args.get("open", "")}
+    if ctx["known"] and ctx["open"] == "export":
+        ctx.update(_breakglass_export_ctx(name))
+    return _page("v2/credentials.html", active_nav="credentials", **ctx)
+
+
+@bp.route("/credentials/export", methods=["GET"])
+def credentials_export():
+    """The export card alone, opened in place by the record's button."""
+    from flask import request
+
+    from modules.nsot import listref
+
+    name = _credentials_list(request)
+    if not listref.exists(name):
+        return _strict(render_template("v2/_breakglass_refused.html",
+                                       why=f"No list is named {name!r}: nothing to export.")), 404
+    return _strict(render_template("v2/_breakglass_export.html", **_breakglass_export_ctx(name)))
+
+
+@bp.route("/credentials/intact", methods=["POST"])
+def credentials_intact():
+    """The browser's word on the download it just received (board 7, B): its sha256 of the
+    bytes against the server's. Recorded either way, then the result card is drawn in place;
+    a download not intact is said in danger and the export is not counted as current."""
+    import modules.breakglass as bg
+    from flask import request
+
+    from modules import identity
+    from modules.config import DATA_DIR
+    from modules.nsot import listref
+
+    name = (request.form.get("list") or "").strip()
+    sha = (request.form.get("sha256") or "").strip().lower()
+    got = (request.form.get("browser_sha256") or "").strip().lower()
+    if not listref.exists(name) or not re.fullmatch(r"[0-9a-f]{64}", sha or "x"):
+        return _strict(render_template("v2/_breakglass_refused.html", why=(
+            f"Not recorded: the list {name!r} or the file's sha256 {sha[:16]!r} is not one the "
+            "export sent."))), 400
+    last = (bg.last_exports(DATA_DIR).get("by_list") or {}).get(name) or {}
+    if last.get("sha256") != sha:
+        return _strict(render_template("v2/_breakglass_refused.html", why=(
+            f"Not recorded: {name}'s newest export is sha256 {str(last.get('sha256', ''))[:12]}, "
+            f"and this download is {sha[:12]}: an export made since replaced it."))), 409
+    actor = identity.identify(request).actor
+    row = bg.record_intact(DATA_DIR, list_name=name, sha256=sha, browser_sha256=got,
+                           actor=actor)
+    log.info("breakglass: %s's download of %s %s intact", actor, name,
+             "arrived" if row["ok"] else "did NOT arrive")
+    from modules import breakglass_page
+    # The record's card above redraws with the answer (out of band): a change leaves the screen
+    # showing the new state, never "none exported" above a finished export.
+    return _strict(render_template("v2/_breakglass_done.html", list_name=name, last=last,
+                                   row=row, at=breakglass_page._iso(row["at"]),
+                                   filename=request.form.get("filename", ""),
+                                   devices=len(last.get("devices") or {}),
+                                   r=breakglass_page.record(name), oob=True))
+
+
 @bp.route("/help/<slug>", methods=["GET"])
 def help_page(slug):
     """A manual page (NSOT_GUI_BRIEF section 10): ``docs/manual/``, rendered

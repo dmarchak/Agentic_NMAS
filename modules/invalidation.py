@@ -221,6 +221,9 @@ DECLARED = {
     "update.step_done": ("app_version",),
     "attention.acknowledge": ("acknowledgements",),
     "restarts.planned": ("restarts",),
+    "v2.credentials_intact": Nothing("appends the browser's word on a download to its own log, "
+                                    "which job health's reader and the Credentials page read; the "
+                                    "answer is the result card, drawn in place"),
     "breakglass.export": Nothing("appends to the export log and the reveal record, which job "
                                  "health's reader reads on its own interval; no panel shows "
                                  "either directly"),

@@ -165,13 +165,22 @@
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('click', function (e) {
       var b = e.target && e.target.closest && e.target.closest('[data-nmas-open="breakglass_export"]');
-      if (b) { e.preventDefault(); openBreakglassExport(b.getAttribute('data-nmas-list') || ''); }
+      // Board 7 (2026-10-03): every way in opens Credentials, the export ready, for its list.
+      if (b) {
+        e.preventDefault();
+        root.location.assign('/v2/credentials?open=export&list='
+                             + encodeURIComponent(b.getAttribute('data-nmas-list') || ''));
+      }
     });
     /* The fourth: ?open=breakglass_export&list=<list>, the link the redesigned pages use
        (C372: a link that only opened a page was a dead end). The list is the link's. */
     document.addEventListener('DOMContentLoaded', function () {
       var q = new URLSearchParams(root.location.search);
-      if (q.get('open') === 'breakglass_export') openBreakglassExport(q.get('list') || '');
+      // Board 7 (2026-10-03): the export lives on Credentials; an old link goes there.
+      if (q.get('open') === 'breakglass_export') {
+        root.location.assign('/v2/credentials?open=export&list='
+                             + encodeURIComponent(q.get('list') || ''));
+      }
     });
   }
 

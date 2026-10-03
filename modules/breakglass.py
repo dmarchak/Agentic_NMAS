@@ -462,6 +462,58 @@ def record_export(data_dir: str, *, list_name: str, devices: list, path: str,
     return row
 
 
+#: The browser's word on each download (board 7, signed off 2026-10-03): the sha256 the
+#: browser computed of the bytes it received, against the one the server recorded. A download
+#: that did not arrive intact is not counted as current. Digests of a sealed file, no value.
+INTACT_LOG = "breakglass_intact.jsonl"
+
+
+def record_intact(data_dir: str, *, list_name: str, sha256: str, browser_sha256: str,
+                  actor: str, at: float = None) -> dict:
+    """Append the browser's verdict on one download: ``ok`` when its sha256 of the bytes it
+    received is the server's."""
+    from modules.config import open_secure
+
+    row = {"at": at if at is not None else time.time(), "list": list_name,
+           "sha256": sha256, "browser_sha256": browser_sha256,
+           "ok": bool(sha256) and sha256 == browser_sha256, "actor": actor}
+    with open_secure(os.path.join(data_dir, INTACT_LOG), "a") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    return row
+
+
+def intact_verdicts(data_dir: str) -> dict:
+    """``{"state", "by_sha": {sha256: newest verdict row}}``; absent and unreadable differ."""
+    path = os.path.join(data_dir, INTACT_LOG)
+    if not os.path.exists(path):
+        return {"state": "absent", "by_sha": {}}
+    try:
+        rows = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "by_sha": {}, "error": str(exc)}
+    out = {}
+    for r in rows:
+        if r.get("sha256") and r.get("at", 0) >= out.get(r["sha256"], {}).get("at", 0):
+            out[r["sha256"]] = r
+    return {"state": "ok", "by_sha": out}
+
+
+def currency(last: dict, now_digests: dict, verdict: dict = None) -> dict:
+    """THE judgement of one list's record (job health's row and the Credentials page both
+    read it): ``{"state": never|not_intact|stale|current, "stale": [{device, state}],
+    "intact": True|False|None}``. *last*: the list's newest export row (or None); *verdict*:
+    the browser's on that export's sha256 (or None: a host export, or a browser that said
+    nothing)."""
+    if not last:
+        return {"state": "never", "stale": [], "intact": None}
+    intact = None if not verdict else bool(verdict.get("ok"))
+    stale = [r for r in compare(last.get("devices") or {}, now_digests)
+             if r["state"] in ("differs", "missing")]
+    if intact is False:
+        return {"state": "not_intact", "stale": stale, "intact": False}
+    return {"state": "stale" if stale else "current", "stale": stale, "intact": intact}
+
+
 def last_exports(data_dir: str) -> dict:
     """``{"state": absent|unreadable|ok, "by_list": {list: newest row}}``.
     Absent and unreadable are different answers (the settings erasure)."""

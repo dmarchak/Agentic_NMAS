@@ -1,0 +1,23 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- The export's result (board 7, B; signed off 2026-10-03), drawn from what the server
+    recorded (the export log's newest row for the list) and the browser's word on the bytes it
+    received (breakglass.record_intact). Not intact is danger, and the export is not counted as
+    current (breakglass.currency). -#}
+{%- set ok = row.ok -%}
+<section class="op-card {{ 'op-ok' if ok else 'op-danger' }}" id="bg-export" aria-labelledby="bg-title">
+  <div class="op-hd"><h2 id="bg-title">{{ list_name }}'s record {{ badge('Downloaded intact' if ok else ('Not checked' if not row.browser_sha256 else 'Not intact'), 'ok' if ok else 'danger') }}</h2>
+    <div class="op-hd-actions">{{ how('breakglass-export') }}<a class="btn" href="{{ url_for('v2.credentials', list=list_name) }}">Close</a></div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p><span class="mono">{{ filename or 'The file' }}</span> was built, opened again with your passphrase ({{ devices }} device(s), the key {{ last.key_fingerprint }}), and sent, as {{ last.actor or 'nobody recorded' }}, {{ stamp(at) }}.</p>
+    {%- if ok %}
+    <p><strong>Downloaded intact:</strong> this browser's sha256 of the bytes it received, <span class="mono">{{ row.browser_sha256[:4] }}…{{ row.browser_sha256[-4:] }}</span>, is the one the server recorded.</p>
+    {%- elif not row.browser_sha256 %}
+    <p class="bg-refused"><strong>Not checked:</strong> this browser could not compute a sha256 of what it received (it does so only on a secure page), so whether the file arrived intact is unknown and the export is not counted as current. Delete the file and export again from the tool's https address.</p>
+    {%- else %}
+    <p class="bg-refused"><strong>Not intact:</strong> the bytes received are <span class="mono">{{ (row.browser_sha256 or 'unknown')[:4] }}…{{ (row.browser_sha256 or '')[-4:] }}</span> and the server sent <span class="mono">{{ row.sha256[:4] }}…{{ row.sha256[-4:] }}</span>. Delete the file you saved and export again: this export is not counted as current.</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>The reveal (who, when, the file's sha256) and the export, both before the file left; and this browser's word on what arrived ("{{ 'downloaded intact' if ok else 'not intact' }} by {{ row.actor }}").</p></div></div>
+  <div class="op-part"><h3>Still true</h3><div><p>
+    {%- if ok %}Needs attention's break-glass row for {{ list_name }} clears on job health's next read: the record downloaded now holds the credentials in use.{% else %}Needs attention keeps a danger row for {{ list_name }} until an export arrives intact.{% endif %} This host never sees where the file goes: keep it, and its passphrase, apart.</p></div></div>
+</section>
+{%- if oob %}{% include "v2/_breakglass_record.html" %}{% endif %}

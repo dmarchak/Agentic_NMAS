@@ -78,7 +78,7 @@
   <div class="op-part"><h3>What next</h3><div class="op-next">
     <div><span>{{ c.next }}</span></div>
     {%- if c.export %}
-    <div><a class="btn" data-op="breakglass-export" data-next-acts="breakglass_export" href="{{ url_for('index', open='breakglass_export', list=c.list) }}">Export the break-glass record…</a>{{ how('breakglass-export', compact=True, op='the break-glass export') }}<span class="muted">opens the export of {{ c.list }}'s record, on today's pages until it is on these</span></div>
+    <div><a class="btn" data-op="breakglass-export" data-next-acts="breakglass_export" href="{{ url_for('v2.credentials', list=c.list, open='export') }}">Export {{ c.list }}'s break-glass record…</a>{{ how('breakglass-export', compact=True, op='the break-glass export') }}<span class="muted">opens Credentials › The break-glass record, the export ready</span></div>
     {%- endif %}</div></div>
   <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p></div></div>
   <div class="op-part"><h3>Still true</h3><div><p>{{ c.not_watched }}</p></div></div>
