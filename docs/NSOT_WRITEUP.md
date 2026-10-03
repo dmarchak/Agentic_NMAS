@@ -2168,6 +2168,12 @@ Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own
    - The intact answer redraws the record's card with it.
 5. **Numbers.** Three commits. `tests/test_credentials_v2.py`: 38 tests, five in a real browser. Seventeen controls, each failing its aimed tests. Findings: C384 recorded and closed. **Estimate versus actual:** no forecast was made. It was the kind of 7.3's device cards, about a card per commit.
 6. **Where it left the product.** The way back into the devices can be exported, confirmed intact, checked where it is kept, and drilled offline, from one page, with Needs attention saying when any of it lapses.
+7. **Its first real run (2026-10-03, the operator) found that both buttons did nothing, and the suite had passed.**
+   - **Why.** The record's card refreshes itself with `hx-select="#bg-record"`, and htmx passed that selection down to the Export and Check links inside it. Each answer was filtered to nothing and swapped in silently (C385). The host's log later showed the six clicks, each answered 200. Every browser test had opened the card by its address, which the server draws, and none clicked the button. It was the third time this shape had shipped (C338).
+   - **The fix ended the class.** A structural check reads every v2 template: no request may inherit a selection, and every element that selects passes nothing down. The script makes any answer that cannot be drawn say "Couldn't load: <why>" in place (C388). That change also drew the refusal cards that answered 4xx and had been discarded the same way.
+   - **The same run found three more defects.** The drill's heading and the line below it disagreed, because a relative age was drawn of a future time (C386). The drill command named a file the host cannot know (C387). A proxy injected scripts into the served pages (C389). The test browser had also been saving its downloads into the operator's Downloads, and every confined test process left a geckodriver running: 442 of them, holding 2.9 GB (C391, C392).
+   - **The retry passed end to end.** The export downloaded intact; both kept files checked current, device by device; the drill was recorded, next due 2027-01-01.
+   - **Numbers.** Six commits, 2a1e2b9 to 02506d4. Findings C385 to C393, all closed. Three new test files: `test_v2_swaps_never_silent.py`, `test_served_page_is_what_was_sent.py` and `test_home_untouched.py`. Eighteen controls, each failing its aimed tests.
 
 ## Part II. Stage 7
 

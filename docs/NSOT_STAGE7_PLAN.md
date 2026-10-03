@@ -2922,7 +2922,15 @@ read through one function, and P.8 moves it without the reader changing.
     is empty by the stage's close. Every entry keeps the home the brief named,
     and section 6a's check enforces the list.
 
-## 11. Status, 2026-10-02
+## 11. Status, 2026-10-02 (rows updated 2026-10-03)
+
+**Since 2026-10-02:** P.15's open fixes are all done (R2, R5, R13, R19, R20, R28). The device
+page's four signed actions are built: capture, persist, rotate, and deploy with Mode B. Coverage
+has its not-reporting reader and its grid and selection; its third step, the combined deploy, is
+next. History became one timeline (C369, board D). Credentials carries the break-glass record
+(board 7), which passed its first real run end to end on 2026-10-03.
+**Owed a mockup before building:** seed, restore, revert and retry, and retire on the v2 device
+page. The signed "Device actions on v2" page drew the four actions built.
 
 Read from the code, the register, docs/CUTOVER.md (265 routes: 43 the redesign's; of the
 legacy families, 5 BUILT, 32 PLANNED, 17 REMOVE, 3 STAYS, none UNDECIDED) and the
@@ -2938,8 +2946,8 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
 | 7.D the redesign's design | **DONE** for the three first screens and the services | Research and brief signed off 2026-09-29, the mockups reviewed 2026-09-29, the services mockups and the stack (option A) 2026-09-30, the spike approved 2026-09-30. Owed per screen still to build: the Coverage redraw, the C342 drift panel and the monitoring templates mockups |
 | 7.3 the Device page | **PARTLY** | Accepted on the host: Mode B (2d, 2026-09-29), C188's concurrent capture (measured 2026-09-29), persist and rotate (2026-09-29). Built, awaiting a real run: seed's C117 loop, retire, revert and retry, the browser break-glass export, C178's BGP hold watch (section 12). Built backend, no screen: adopt (steps 1 and 2). v2 page built (2026-09-30 to 10-01): 7 of 8 tabs. **Left:** the actions moved onto the v2 page (today they open the legacy page), Ask the device (the allowlisted command box), reload (P.14), adopt's screen |
 | 7.4 Devices (Fleet) | **PARTLY** | Built 2026-10-01: the v2 list (search, filters, a fixed number of git reads, last measurement, pending rows), and the batch Apply as a job in a rollout order (P.9 d2). **Left:** the selection's own batch deploy, Save All and bulk intent screens on v2 (it opens today's deploy), onboarding on v2 with N address sources, adopt, networks |
-| 7.5 History (Versions) | **PARTLY** | Built 2026-10-02 (commits, baselines with re-apply, authorisations, the remote). **Left:** the "N of M commits carry a verified identity" line, C83's subjects, the remote's connect (curl-only) |
-| 7.6 Source of truth | **NOT STARTED** on v2 | Templates, NetBox and Credentials open today's pages; template revoke and bindings, freshness authorise and credential profiles still have no GUI |
+| 7.5 History (Versions) | **PARTLY** | Built 2026-10-02 (commits, baselines with re-apply, authorisations, the remote); one timeline across every device and the fleet's own records, the device tab the same reader (C369, 2026-10-03). **Left:** the "N of M commits carry a verified identity" line, C83's subjects, the remote's connect (curl-only) |
+| 7.6 Source of truth | **PARTLY** on v2 | Credentials: the break-glass record (board 7, built and accepted on the host 2026-10-03); its credential list and expiries are still today's. Templates and NetBox open today's pages; template revoke and bindings, freshness authorise and credential profiles still have no GUI |
 | 7.7 Settings | **NOT STARTED** on v2 | The sidebar item opens today's page |
 | OBSERVE: Logs, DHCP, Topology | **NOT STARTED** | Logs and DHCP open today's pages; Topology (P.11) is not in the sidebar. They follow P.8 (per-network services) |
 | 7.8 removals | **NOT STARTED** | 17 REMOVE families in CUTOVER, the terminal and today's two pages among them; last by rule |
@@ -2956,7 +2964,7 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
 | P.11 Topology | **NOT STARTED** (research done 2026-09-30) | After P.8 |
 | P.12 feature templates | **PARTLY** | The profile is the first instance; the monitoring templates' design (replacing the Heartbeat and IP SLA pages) is owed a mockup |
 | P.14 reload, gated | **NOT STARTED** | One of 7.3's actions |
-| P.15 several people at once | **PARTLY** | The audit is done; R1, R4, R24 and R25 fixed 2026-10-02; R2, R5, R13, R19, R20 and R28 next; the rest before 9.S |
+| P.15 several people at once | **PARTLY** | The audit is done; R1, R2, R4, R5, R13, R19, R20, R24, R25 and R28 fixed 2026-10-02; the rest before 9.S |
 | C38 Neighbours, C92 reachability | **DONE** | Built 2026-10-01 and 2026-09-28; in use |
 
 ### The 16 acceptance criteria
