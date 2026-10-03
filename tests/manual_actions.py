@@ -67,7 +67,7 @@ NOT_AN_OPERATION = {
     ("_apply_preview.html", "Earlier"): "moves a device earlier in the rollout order the confirm carries",
     ("_apply_preview.html", "Later"): "moves a device later in the rollout order the confirm carries",
     ("_apply_preview.html", "Leave out"): "leaves a device out of the rollout the confirm carries",
-    ("_history_commits.html", "Show the change"): "reads one commit's masked change",
+    ("_timeline.html", "Show the change"): "reads one commit's masked change",
     ("device.html", "Actions"): "opens the actions menu; each row carries its own link",
     ("_capture.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_capture.html", "Edit intent…"): ("opens today's intent editor on the device (C372); "

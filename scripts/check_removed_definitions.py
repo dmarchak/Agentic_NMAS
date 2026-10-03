@@ -158,6 +158,15 @@ def _referenced_elsewhere(name: str, path: str, rev: str = "",
     survivors = [f for f in _top_level_definers(name, rev) if f != path]
     if survivors:
         callers = [f for f in callers if _imports_from(f, _module_of(path), name, rev)]
+    # A FILE THAT NEVER REACHES THE MODULE CANNOT USE ITS FUNCTION (C382, 2026-10-03). A
+    # top-level definition is reached from another file only through its module: an import of
+    # it (or of a name from it, a star import included), or a dotted string naming it
+    # (`"modules.x.f"`, what monkeypatch takes). Removing `fleet_history.commits` and
+    # `.choices` was flagged by another module's own `commits` and a template helper's local
+    # `choices`, which no import connects; the gate then needed --no-verify, which skips the
+    # stage guard too. A view keeps its own rule (`url_for`), above.
+    if not view:
+        callers = [f for f in callers if _reaches_module(f, _module_of(path), name, rev)]
     return callers
 
 
@@ -188,6 +197,34 @@ def _imports_from(path: str, module: str, name: str, rev: str = "") -> bool:
                 return True
         if (isinstance(node, ast.Attribute) and node.attr == name
                 and ast.unparse(node.value) in aliases):
+            return True
+    return False
+
+
+def _reaches_module(path: str, module: str, name: str, rev: str = "") -> bool:
+    """Can *path* reach a top-level definition of *module* at all: does it import *module* (or
+    a package above it, or anything from it, a star import included), or hold a dotted string
+    naming ``module.name``? A file that cannot parse counts, as elsewhere."""
+    import ast
+
+    if not path.endswith(".py"):
+        return False
+    try:
+        tree = ast.parse(_read_at(path, rev))
+    except (SyntaxError, ValueError):
+        return True
+    parent, _, leaf = module.rpartition(".")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(a.name == module or module.startswith(a.name + ".") for a in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == module:
+                return True
+            if (node.module == parent or node.level) and any(a.name == leaf for a in node.names):
+                return True
+        elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
+              and re.search(re.escape(module) + r"[.:]" + re.escape(name) + r"\b", node.value)):
             return True
     return False
 

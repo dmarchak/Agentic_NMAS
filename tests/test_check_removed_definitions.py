@@ -312,3 +312,56 @@ class TestAViewIsNamedByItsEndpoint:
     def test_the_control_a_non_view_string_still_counts(self, source):
         p = source('TTL = {"git_commit": None}\n')
         assert CHECK._code_mentions("git_commit", p) is True
+
+
+class TestAFileThatNeverReachesTheModuleCannotUseIt:
+    """C382 (2026-10-03): removing `fleet_history.commits` and `.choices` was flagged by
+    another module's own `commits` and a helper's local `choices`, which no import connects
+    to the removed module, and the gate's only way past was --no-verify, which skips the stage
+    guard too. A top-level definition is reached from another file only through its module."""
+
+    def _write(self, tmp_path, monkeypatch, rel, text):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text)
+        monkeypatch.setattr(CHECK, "ROOT", str(tmp_path))
+        return rel
+
+    @pytest.mark.parametrize("text", [
+        "def helper():\n    choices = []\n    return choices\n",
+        "def commits():\n    return []\n",
+        'KINDS = {"commits": 1}\n',
+        "import modules.other\nmodules.other.commits()\n",
+        "<p>{{ commits }}</p>\n",
+    ])
+    def test_no_import_of_the_module_is_no_use(self, tmp_path, monkeypatch, text):
+        rel = self._write(tmp_path, monkeypatch,
+                          "routes/x.html" if text.startswith("<p>") else "routes/x.py", text)
+        assert CHECK._reaches_module(rel, "modules.gone", "commits") is False
+
+    @pytest.mark.parametrize("text", [
+        "from modules.gone import commits\n",
+        "from modules.gone import *\n",
+        "from modules import gone\ngone.commits()\n",
+        "from modules import gone as G\nG.commits()\n",
+        "import modules.gone\nmodules.gone.commits()\n",
+        "import modules\nmodules.gone.commits()\n",
+        'monkeypatch.setattr("modules.gone.commits", None)\n',
+        'ep = "modules.gone:commits"\n',
+        "def broken(:\n",
+    ])
+    def test_every_way_of_reaching_it_still_counts(self, tmp_path, monkeypatch, text):
+        """Control: the rule must not hide a real caller (or an unreadable file)."""
+        rel = self._write(tmp_path, monkeypatch, "routes/x.py", text)
+        assert CHECK._reaches_module(rel, "modules.gone", "commits") is True
+
+    def test_the_search_for_callers_applies_it(self, tmp_path, monkeypatch):
+        """Wired, not just written: of two files naming `commits`, only the one that imports
+        the removed module is a caller."""
+        for rel, text in (("routes/a.py", "def helper():\n    return commits()\n"),
+                          ("routes/b.py", "from modules import gone\ngone.commits()\n")):
+            (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / rel).write_text(text)
+        monkeypatch.setattr(CHECK, "ROOT", str(tmp_path))
+        monkeypatch.setattr(CHECK, "_git", lambda *a: "routes/a.py\nroutes/b.py\n")
+        monkeypatch.setattr(CHECK, "_top_level_definers", lambda name, rev="": [])
+        assert CHECK._referenced_elsewhere("commits", "modules/gone.py") == ["routes/b.py"]

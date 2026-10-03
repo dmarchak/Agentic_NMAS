@@ -722,9 +722,10 @@ tracked in git.
   another element catches up on an announcement made during the swap (C358). The device
   page's tabs since: **Intent**
   (read-only: the document committed at HEAD, its last commit, the profile sections it
-  inherits), **History** (every per-device record as one timeline, read by the 14 sources of
-  **[modules/history_sources.py](modules/history_sources.py)**, C359; every gated operation
-  declares in `operation_stages.HISTORY` which sources read its record, or why none) and
+  inherits), **History** (the History page's timeline filtered to the device: since C369 one
+  reader, `timeline()` in **[modules/history_sources.py](modules/history_sources.py)**, whose 17
+  sources each read their store once for the fleet; every gated operation declares in
+  `operation_stages.HISTORY` which sources read its record, or why none) and
   **Neighbours** (**[modules/neighbours.py](modules/neighbours.py)**, C38: the adjacencies the
   fleet's committed intent implies, read in two git calls, against what Prometheus last scraped
   from the device's routing tables; it opens no device session) and **Logs**
@@ -823,12 +824,14 @@ tracked in git.
   list (`oxidized_fetch_requests.json`, newest per device). It asks and never waits; what reads
   Oxidized's copy (the freshness signal, the clab sync's cross-check) sees the change sooner. (Its
   lab-startup "Oxidized hasn't fetched" row went with C319, which builds the files from the baseline)
-- **[modules/fleet_history.py](modules/fleet_history.py)** — HISTORY (NSOT_GUI_BRIEF 3.4, the
-  mockup signed off 2026-10-02; `/v2/history`): the remote's one sentence with Push now and Verify
-  (`static/js/nmas_history.js`), the network's commits (ONE bounded `git log` whose device,
-  person, workflow and time filters git applies, one more for the filter choices; each row's
-  actor with how it was established, what its commit earned, a known record exception beside
-  it, and its change MASKED on request), the baselines from the `baseline-usability` reader's
+- **[modules/history_sources.py](modules/history_sources.py)** — HISTORY (NSOT_GUI_BRIEF 3.4;
+  board D, History as one timeline, signed off 2026-10-03, C369; `/v2/history`; it absorbed
+  `fleet_history.py` that day): the remote's one sentence with Push now and Verify
+  (`static/js/nmas_history.js`); the Timeline, read by `timeline()`, the one reader a device's
+  History tab shares (every record across every device and the fleet's own: commits,
+  decisions, updates; filters by device, person, kind and time, each in the address; a fixed
+  number of reads whatever the fleet's size; each row's person with how it was established, a
+  known record exception marked, a commit's change MASKED on request); the baselines from the `baseline-usability` reader's
   stored judgement (now carrying what each earned), and the freshness authorisations
 - **[modules/manual.py](modules/manual.py)** — THE MANUAL (NSOT_GUI_BRIEF 10 and 10a, the
   operator, 2026-10-02): `docs/manual/` (Getting started, How it works per operation, Screens per

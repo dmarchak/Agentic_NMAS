@@ -734,42 +734,14 @@ def _epoch(iso: str) -> float:
 
 
 def history(ref, dev: dict, limit: int = None) -> dict:
-    """``{"events", "errors", "cut", "limit"}``, newest first: every per-device record, from
-    EVERY source in `history_sources.SOURCES` (C359: a persist was readable now and not later).
-    Each event is ``{"at", "kind", "what", "who", "detail", "sha", "outcome", "marks",
-    "record"}``. A source that cannot be read is said, never a shorter timeline; one that
-    raises is said with what it raised."""
+    """The History tab: THE timeline (`history_sources.timeline`, C369) filtered to this
+    device, all time, newest first: the History page's reader, the same rows. Each event is
+    ``{"at", "kind", "what", "devices", "who", "detail", "sha", "outcome", "marks",
+    "record"}``; a store that cannot be read is said, never a shorter timeline."""
     from modules import history_sources
 
-    limit = limit or HISTORY_LIMIT
-    events, errors, cut = [], [], []
-    for name, source in history_sources.SOURCES.items():
-        try:
-            got = source(ref, dev, limit)
-        except Exception as exc:                      # noqa: BLE001
-            log.warning("device_page: history source %s failed for %s: %s", name,
-                        dev.get("hostname", ""), exc)
-            errors.append(f"the {name.replace('_', ' ')} record could not be read "
-                          f"({type(exc).__name__}: {exc})")
-            continue
-        events += got.get("events") or []
-        errors += got.get("errors") or []
-        cut += got.get("cut") or []
-    for e in events:
-        # The row's ONE line (the operator, 2026-10-02: a long note squeezed into a narrow
-        # column made a row many times taller than its neighbours): what, its marks and the
-        # person's short name. The full wording, who with how they were identified, expands
-        # under the row at full width.
-        e.setdefault("marks", ["record known wrong"] if e.get("exception") else [])
-        e["who_short"] = short_who(e.get("who", ""))
-    events.sort(key=lambda e: _epoch(e["at"]), reverse=True)
-    return {"events": events, "errors": errors, "cut": cut, "limit": limit}
-
-
-def short_who(who: str) -> str:
-    """A person's name for a one-line summary: "alex" for "alex (host login, not a
-    verified identity)". How they were identified is said in full where the row expands."""
-    return (who or "").split(" (", 1)[0].strip()
+    return history_sources.timeline(ref, device=dev.get("hostname", ""),
+                                    limit=limit or HISTORY_LIMIT)
 
 
 # ---------------------------------------------------------------------------

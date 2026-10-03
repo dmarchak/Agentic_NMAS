@@ -181,8 +181,8 @@ class TestTheHostsRowsAreCorrected:
         built = persist_lab.__wrapped__(tmp_path, monkeypatch)
         _plant(HOST_ROWS)
         html = built["client"].get("/v2/device/r2/history").get_data(as_text=True)
-        items = re.findall(r'<li class="tl-item">(.*?)</li>', html, re.S)
-        line = lambda item: re.search(r'<summary class="tl-sum">(.*?)</summary>', item,  # noqa: E731
+        items = re.findall(r'<details class="hist-row tl-row"[^>]*>(.*?)</details>', html, re.S)
+        line = lambda item: re.search(r'<summary class="hist-sum">(.*?)</summary>', item,  # noqa: E731
                                       re.S).group(1)
         saves = [i for i in items if "badge" in i and ">persist<" in line(i)]
         assert len(saves) == 2, len(saves)

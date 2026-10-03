@@ -10,6 +10,7 @@ whether the running commit is what is pushed is the `app-pushed` reader.
 
 import logging
 import os
+import re
 import subprocess
 
 from flask import Blueprint, render_template
@@ -153,24 +154,34 @@ def about():
 
 
 # ------------------------------------------------------------------ History
-# (NSOT_GUI_BRIEF 3.4; the mockup signed off 2026-10-02; modules/fleet_history.py)
+# (NSOT_GUI_BRIEF 3.4; board D, History as one timeline, signed off 2026-10-03, C369:
+# modules/history_sources.timeline, the one reader behind this page and every device's tab)
 
-HISTORY_TABS = (("commits", "Commits"), ("baselines", "Baselines"),
+HISTORY_TABS = (("timeline", "Timeline"), ("baselines", "Baselines"),
                 ("authorisations", "Authorisations"))
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
 
 
 def _history_filters(request) -> dict:
+    """The timeline's filters, each in the address so a view is a link. A device or person
+    that is not a name is refused (said), never passed on."""
+    from modules import history_sources as HS
+
     a = request.args
     since = a.get("since", "7")
-    return {"device": a.get("device", "").strip(), "person": a.get("person", "").strip(),
-            "workflow": a.get("workflow", "").strip(),
-            "since": since if since in [s for s, _w in fleet_history_since()] else "7",
-            "limit": a.get("limit", "")}
-
-
-def fleet_history_since():
-    from modules import fleet_history
-    return fleet_history.SINCE_CHOICES
+    kinds = [k for k in a.getlist("kind") if k in HS.KIND_FILTERS]
+    # The Commits tab became a kind (board D): its old links open the timeline on commits.
+    if a.get("tab") == "commits" and not kinds:
+        kinds = ["commits"]
+    f = {"device": a.get("device", "").strip(), "person": a.get("person", "").strip(),
+         "kinds": kinds,
+         "since": since if since in [s for s, _w in HS.SINCE_CHOICES] else "7",
+         "limit": a.get("limit", ""), "error": ""}
+    for name in ("device", "person"):
+        if f[name] and not _SAFE_NAME.match(f[name]):
+            f["error"] = f"the {name} filter {f[name]!r} is not a name"
+            f[name] = ""
+    return f
 
 
 def _history_remote(ref) -> dict:
@@ -187,39 +198,46 @@ def _history_remote(ref) -> dict:
     return out
 
 
-def _history_commits(ref, f) -> dict:
-    from modules import fleet_history
+def _history_members(ref) -> list:
+    from modules.device import load_saved_devices
     try:
-        got = fleet_history.commits(ref.repo_dir, device=f["device"], person=f["person"],
-                                    workflow=f["workflow"], since_days=f["since"],
-                                    limit=int(f["limit"]) if str(f["limit"]).isdigit()
-                                    else fleet_history.DEFAULT_LIMIT)
-    except fleet_history.HistoryError as exc:
-        got = {"rows": [], "cut": False, "limit": 0, "error": str(exc)}
-    return got
+        return sorted(d.get("hostname", "") for d in load_saved_devices(ref.csv_path)
+                      if d.get("hostname"))
+    except Exception as exc:                          # noqa: BLE001
+        log.warning("v2 history: the inventory could not be read: %s", exc)
+        return []
+
+
+def _history_timeline(ref, f, members) -> dict:
+    """THE timeline (C369), filtered as the address says."""
+    from modules import history_sources as HS
+    h = HS.timeline(ref, device=f["device"], person=f["person"], kinds=f["kinds"],
+                    since_days=f["since"],
+                    limit=int(f["limit"]) if str(f["limit"]).isdigit() else HS.DEFAULT_LIMIT,
+                    members=members or None)
+    if f["error"]:
+        h["errors"] = [f["error"]] + h["errors"]
+    return h
 
 
 def _history_ctx(request) -> dict:
-    from modules import fleet_history, reader_job
-    from modules.device import load_saved_devices
+    from modules import history_sources as HS
+    from modules import reader_job
     from modules.nsot import freshness, listref
 
     ref = listref.active()
-    tab = request.args.get("tab", "commits")
+    tab = request.args.get("tab", "timeline")
+    if tab == "commits":
+        tab = "timeline"
     if tab not in [t for t, _l in HISTORY_TABS]:
-        tab = "commits"
+        tab = "timeline"
     f = _history_filters(request)
     ctx = {"tab": tab, "tabs": HISTORY_TABS, "f": f, "ref": ref,
-           "remote": _history_remote(ref), "since_choices": fleet_history.SINCE_CHOICES}
-    if tab == "commits":
-        ctx["c"] = _history_commits(ref, f)
-        ctx["choices"] = fleet_history.choices(ref.repo_dir, f["since"])
-        try:
-            ctx["devices"] = sorted(d.get("hostname", "") for d in load_saved_devices(ref.csv_path)
-                                    if d.get("hostname"))
-        except Exception as exc:                          # noqa: BLE001
-            log.warning("v2 history: the inventory could not be read: %s", exc)
-            ctx["devices"] = []
+           "remote": _history_remote(ref), "since_choices": HS.SINCE_CHOICES,
+           "kind_groups": HS.KIND_GROUPS}
+    if tab == "timeline":
+        ctx["devices"] = _history_members(ref)
+        ctx["h"] = _history_timeline(ref, f, ctx["devices"])
     elif tab == "baselines":
         got = reader_job.read_cached("baseline-usability")
         good = (got.get("doc") or {}).get("last_good") or {}
@@ -236,29 +254,32 @@ def _history_ctx(request) -> dict:
 
 @bp.route("/history", methods=["GET"])
 def history_page():
-    """History: the network's commits, baselines and authorisations, with the
-    remote's state at the top."""
+    """History: one timeline of everything that happened to the network and its devices,
+    its baselines and authorisations, with the remote's state at the top."""
     from flask import request
     return _page("v2/history.html", active_nav="history", **_history_ctx(request))
 
 
-@bp.route("/history/commits", methods=["GET"])
-def history_commits():
-    """The commit list alone, redrawn when a commit lands (``goldens``)."""
+@bp.route("/history/timeline", methods=["GET"])
+def history_timeline():
+    """The timeline alone, redrawn when a record lands."""
     from flask import request
 
+    from modules import history_sources as HS
     from modules.nsot import listref
     ref = listref.active()
     f = _history_filters(request)
-    return _strict(render_template("v2/_history_commits.html", c=_history_commits(ref, f), f=f))
+    return _strict(render_template("v2/_history_timeline.html",
+                                   h=_history_timeline(ref, f, _history_members(ref)), f=f,
+                                   kind_groups=HS.KIND_GROUPS))
 
 
 @bp.route("/history/commit/<sha>", methods=["GET"])
 def history_commit(sha):
     """One commit's change, masked (C77), drawn when a person opens its row."""
-    from modules import fleet_history
+    from modules import history_sources as HS
     from modules.nsot import listref
-    d = fleet_history.diff(listref.active().repo_dir, sha)
+    d = HS.diff(listref.active().repo_dir, sha)
     return _strict(render_template("v2/_history_diff.html", d=d, sha=sha))
 
 

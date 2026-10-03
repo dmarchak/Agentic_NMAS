@@ -36,31 +36,36 @@ LONG_NOTE = ("the redeploy was planned on 2026-10-01 from 15:20 to 17:10 UTC; th
              "not record a window until 30c2fd4 shipped, so this is recorded late")
 
 
-def _commits(ref, f):
-    rows = []
-    for i, (state, words) in enumerate((("denied", DENIED), ("not_taken", "not taken: 7 not targeted"),
-                                        ("earned", "earned"), ("unrecorded", "not recorded"))):
-        rows.append({"short": f"abc{i}def", "sha": f"abc{i}def" + "0" * 32,
-                     "at": "2026-10-02T08:00:00Z",
-                     "subject": "golden: 9 device(s) via save_all, the whole fleet read at once "
-                                "after the lab redeploy, every capture compared with its intent",
-                     "exception": "", "intent_match": "no: r2 (+1 -1)", "devices": ["r2", "r6"],
-                     "files": ["golden/r2.cfg", "golden/r6.cfg"], "workflow": "save all",
-                     "source": "save_all", "who": "a-person-with-a-long-name@example.com",
-                     "how": "verified by Cloudflare Access",
-                     "baseline": {"state": state, "words": words,
-                                  "tag": "baseline/20261002T080000Z" if state == "earned" else ""}})
-    return {"rows": rows, "cut": False, "limit": 100, "error": ""}
+def _timeline(ref, f, members):
+    """The History page's timeline (C369) at its widest: a denied decision's long words, a
+    Save All naming nine devices, a long person, a known-wrong record."""
+    nine = ["r1", "r2", "r3", "r4", "r6", "s1", "s2", "s3", "s4"]
+    return {"events": [
+        {"at": "2026-10-02T08:00:00Z", "kind": "decision", "what": f"Baseline {DENIED} (save_all)",
+         "devices": [], "devices_words": "fleet", "marks": [], "outcome": "denied",
+         "who": "a-person-with-a-long-name@example.com",
+         "who_short": "a-person-with-a-long-name@example.com",
+         "detail": "golden: 9 device(s) via save_all, the whole fleet read at once after the lab "
+                   "redeploy, every capture compared with its intent",
+         "sha": "abc0def" + "0" * 33, "record": [("Baseline", DENIED)]},
+        {"at": "2026-10-02T07:59:00Z", "kind": "golden", "what": "Golden recorded (save_all)",
+         "devices": nine, "devices_words": "9 devices", "marks": ["record known wrong"],
+         "exception": LONG_NOTE, "outcome": "",
+         "who": "a-person-with-a-long-name@example.com (host login, not verified)",
+         "who_short": "a-person-with-a-long-name@example.com", "detail": "golden: 9 device(s)",
+         "sha": "abc1def" + "0" * 33, "record": []}],
+        "errors": [], "cut": [], "limit": 50, "total": 2, "people": [], "counts": {}}
 
 
 def _history(ref, dev, limit=None):
     return {"events": [
         {"at": "2026-10-01T16:58:00Z", "kind": "restart", "what": "Restarted as planned",
+         "devices": ["r2"], "devices_words": "r2",
          "marks": ["corrected", "acknowledged", "crash file"],
          "who": "a-person-with-a-long-name@example.com (host login, not a verified identity)",
          "who_short": "a-person-with-a-long-name@example.com", "correction": LONG_NOTE,
          "detail": "reason: Reload Command; planned: lab redeploy", "sha": "",
-         "outcome": "planned"}], "errors": [], "cut": [], "limit": 50}
+         "outcome": "planned"}], "errors": [], "cut": [], "limit": 50, "total": 1}
 
 
 BASELINES = {"state": "ok", "doc": {"last_good": {"value_at": "2026-10-02T09:00:00Z", "value": {
@@ -86,7 +91,7 @@ def served(lab, monkeypatch):  # noqa: F811
     monkeypatch.setattr("modules.device.load_saved_devices",
                         lambda path=None: [dict(r) for r in rows])
     monkeypatch.setattr(device_page, "history", _history)
-    monkeypatch.setattr(v2, "_history_commits", _commits)
+    monkeypatch.setattr(v2, "_history_timeline", _timeline)
     real = reader_job.read_cached
     # An installable update, so the top bar is measured carrying its "Update available"
     # (the widest the bar gets in ordinary use).
@@ -198,14 +203,17 @@ class TestNoOneLineRowOverflows:
             problems += [f"{page} at {width}: {p}" for p in got]
         assert not problems, "\n".join(problems)
 
-    def test_the_baseline_column_is_one_word_with_the_decision_under_its_row(self, served):
+    def test_a_long_decision_stays_one_line_with_the_whole_of_it_under_its_row(self, served):
+        """The timeline's line is one line (C369): a denied decision's 80-character words run to
+        the What cell's edge and no further; the whole decision opens under the row."""
         srv, b = served
         b.go(srv.url("/v2/history"))
-        b.wait_for("return document.querySelector('.hist-base .badge')", 10)
-        assert b.js("return Array.from(document.querySelectorAll('.hist-base .badge'))"
-                    ".map(function(e){return e.textContent})") == [
-            "denied", "not taken", "earned", "not recorded"]
-        assert b.js("return document.querySelector('.hist-base .badge').title") == DENIED
+        b.wait_for("return document.querySelector('.hist-tl .hist-sum')", 10)
+        h = b.js("var s=document.querySelector('.hist-tl .hist-sum'); return [s.getBoundingClientRect()"
+                 ".height, s.querySelector('.hist-what').getBoundingClientRect().height]")
+        assert h[0] < 40 and h[1] < 30, h
+        assert b.js("return document.querySelectorAll('.hist-tl .hist-sum')[1]"
+                    ".querySelector('.hist-dev').textContent.trim()") == "9 devices"
         assert DENIED in b.js("return document.querySelector('.hist-row .hist-detail').textContent")
 
 

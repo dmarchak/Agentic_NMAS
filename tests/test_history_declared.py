@@ -77,14 +77,14 @@ class TestTheDeclaration:
 
     def test_history_draws_every_source_in_the_registry(self, lab, monkeypatch):  # noqa: F811
         asked = []
-        fake = {name: (lambda n: lambda ref, dev, limit: asked.append(n) or
+        fake = {name: (lambda n: lambda ctx: asked.append(n) or
                        {"events": [], "errors": [], "cut": []})(name) for name in HS.SOURCES}
         monkeypatch.setattr(HS, "SOURCES", fake)
         _get(lab, "/v2/device/r3/history")
         assert asked == list(fake), "History asks every source, in the registry's order"
 
     def test_a_source_that_raises_is_said(self, lab, monkeypatch):  # noqa: F811
-        def boom(ref, dev, limit):
+        def boom(ctx):
             raise ValueError("planted")
         monkeypatch.setitem(HS.SOURCES, "rotation", boom)
         text = _text(_get(lab, "/v2/device/r3/history")[1])
@@ -142,7 +142,7 @@ class TestEachSourceReachesTheTab:
         html = _history(lab)
         assert "Planned-restart window declared" in html and "IOS-XE upgrade" in html
         assert "Acknowledged: shutdown authorised 3 times" in html
-        assert "Break-glass record exported (holds this device)" in html
+        assert "Break-glass record exported (1 device)" in html
 
     def test_an_interrupted_hold_a_freshness_authorisation_and_an_approval(self, lab,  # noqa: F811
                                                                             monkeypatch):
@@ -197,6 +197,6 @@ class TestPersistEndToEnd:
         hist = c.get("/v2/device/r2/history").get_data(as_text=True)
         assert "Persisted: the startup config carries the running credential" in hist
         assert "test-person@example.invalid" in hist and "via device page" in hist
-        lines = re.findall(r'<summary class="tl-sum">(.*?)</summary>', hist, re.S)
+        lines = re.findall(r'<summary class="hist-sum">(.*?)</summary>', hist, re.S)
         assert lines and not [l for l in lines if "rotat" in l.lower()], (
             "a save is never drawn as a rotation (C362)")

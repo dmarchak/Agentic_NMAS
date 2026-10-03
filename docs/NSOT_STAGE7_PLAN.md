@@ -214,6 +214,11 @@ bounded git read, filters by device, person, workflow and time, each row's actor
 was established, what its commit earned, a record exception beside it, the change masked);
 Baselines from the reader's stored judgement, with re-apply; freshness Authorisations. Not
 yet: the "N of M commits carry a verified identity" line (7.5), and C83's subjects.
+**Rebuilt as ONE timeline, 2026-10-03** (board D, signed off that day; C369): Commits became a
+kind of a Timeline holding every record across every device and the fleet's own, read by
+`history_sources.timeline()`, which a device's History tab shares filtered to the device; a
+check holds the two to the same rows (tests/test_history_one_timeline.py). `fleet_history.py`
+was folded into `history_sources.py`: one module owns History.
 
 - **Commits**, with their `Actor:` and `Source:` trailers. Filtering by
   person, workflow or device is how *who changed what* is answered; the

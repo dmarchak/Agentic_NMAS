@@ -45,9 +45,9 @@ class TestTheTimeline:
         assert r.status_code == 200
         text = _text(html)
         assert "Golden recorded (capture)" in text
-        summary = _text(re.search(r'<summary class="tl-sum">(.*?)</summary>', html, re.S).group(1))
-        assert "Golden recorded (capture)" in summary and "· operator@example.com" in summary
-        more = _text(re.search(r'<div class="tl-more">(.*?)</div>', html, re.S).group(1))
+        summary = _text(re.search(r'<summary class="hist-sum">(.*?)</summary>', html, re.S).group(1))
+        assert "Golden recorded (capture)" in summary and summary.strip().endswith("operator@example.com")
+        more = _text(re.search(r'<div class="hist-detail tl-more">(.*?)</div>', html, re.S).group(1))
         assert "By operator@example.com" in more
 
     def test_a_long_note_expands_under_its_row_and_never_widens_the_summary(self, lab, monkeypatch):
@@ -66,16 +66,16 @@ class TestTheTimeline:
                         "sha": "", "outcome": "planned"}],
             "errors": [], "cut": [], "limit": 50})
         r, html = _get(lab, "/v2/device/r3/history")
-        summary = _text(re.search(r'<summary class="tl-sum">(.*?)</summary>', html, re.S).group(1))
-        assert summary.strip().endswith("Restarted as planned · corrected · alex"), summary
+        summary = _text(re.search(r'<summary class="hist-sum">(.*?)</summary>', html, re.S).group(1))
+        assert summary.strip().endswith("Restarted as planned · corrected alex"), summary
         assert long_note not in summary and "host login" not in summary
-        more = _text(re.search(r'<div class="tl-more">(.*?)</div>', html, re.S).group(1))
+        more = _text(re.search(r'<div class="hist-detail tl-more">(.*?)</div>', html, re.S).group(1))
         for words in (long_note, "By alex (host login, not a verified identity)",
                       "reason: Reload Command"):
             assert words in more
 
     def test_the_short_name_drops_only_how_the_person_was_identified(self):
-        from modules.device_page import short_who
+        from modules.history_sources import short_who
         assert short_who("alex (host login, not a verified identity)") == "alex"
         assert short_who("operator@example.com") == "operator@example.com"
         assert short_who("") == ""
@@ -109,9 +109,10 @@ class TestTheTimeline:
     def test_a_cut_timeline_says_where(self, lab, monkeypatch):
         from modules import device_page
         monkeypatch.setattr(device_page, "HISTORY_LIMIT", 1)
+        _receipt()                           # a second record beside the golden
         _r, html = _get(lab, "/v2/device/r3/history")
-        assert "Cut at the golden history&#39;s newest 1" in html or \
-            "Cut at the golden history's newest 1" in html
+        # The one timeline (C369): the newest of how many, and where the rest are.
+        assert re.search(r"Showing the newest 1 of \d+", html), html
 
     def test_nothing_recorded_says_so(self, lab):
         _r, html = _get(lab, "/v2/device/r9/history")

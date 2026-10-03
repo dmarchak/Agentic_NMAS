@@ -1,15 +1,15 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
-{#- History (NSOT_GUI_BRIEF 3.4; the mockup signed off 2026-10-02): the remote's
-    state, then the network's commits, its baselines, and the Oxidized
-    divergences people authorised. modules/fleet_history.py: a fixed number of
-    reads, never one per commit. -#}
+{#- History (NSOT_GUI_BRIEF 3.4; board D, History as one timeline, signed off 2026-10-03, C369):
+    the remote's state, then ONE timeline of everything recorded about the network and its
+    devices (modules/history_sources.timeline, each store read once per request), its
+    baselines, and the Oxidized divergences people authorised. -#}
 {% block title %}History · NMAS{% endblock %}
 {% block main %}
 <div class="page-head">
   <div class="page-title">
     <h1>History {{ info('history') }}</h1>
-    <p class="sub">{{ ref.name }}: what happened to the network's record, and when.</p>
+    <p class="sub">{{ ref.name }}: what happened to the network and its devices, and when.</p>
   </div>
 </div>
 {% include "v2/_history_remote.html" %}
@@ -19,29 +19,41 @@
   {%- endfor %}
 </nav>
 <div class="tab-body">
-{%- if tab == 'commits' %}
-<p class="tab-help">{{ info('history', 'commits', 'About commits') }}</p>
+{%- if tab == 'timeline' %}
+<p class="tab-help">{{ info('history', 'timeline', 'About the timeline') }}</p>
+{#- Board D (signed off 2026-10-03): every filter in the address, so a view is a link. -#}
 <form class="dev-filters" method="get" action="{{ url_for('v2.history_page') }}">
-  <input type="hidden" name="tab" value="commits">
   <label class="hist-filter"><span class="muted small">Device</span>
-    <select name="device"><option value="">Any device</option>
+    <select name="device"><option value="">Any device, and the fleet</option>
       {%- for d in devices %}<option value="{{ d }}"{% if d == f.device %} selected{% endif %}>{{ d }}</option>{% endfor %}
     </select></label>
   <label class="hist-filter"><span class="muted small">Person</span>
     <select name="person"><option value="">Anyone</option>
-      {%- for p in choices.people %}<option value="{{ p }}"{% if p == f.person %} selected{% endif %}>{{ p }}</option>{% endfor %}
+      {%- for p in h.people %}<option value="{{ p }}"{% if p == f.person %} selected{% endif %}>{{ p }}</option>{% endfor %}
     </select></label>
-  <label class="hist-filter"><span class="muted small">Workflow</span>
-    <select name="workflow"><option value="">Any workflow</option>
-      {%- for w in choices.workflows %}<option value="{{ w.value }}"{% if w.value == f.workflow %} selected{% endif %}>{{ w.words }}</option>{% endfor %}
-    </select></label>
+  {%- set n_kinds = kind_groups | map(attribute=1) | map('length') | sum %}
+  <div class="hist-filter"><span class="muted small">Kind</span>
+    <details class="hist-kinds">
+      <summary class="hist-kinds-sum">{% if not f.kinds %}Every kind{% elif f.kinds | length == 1 %}{% for _h, g in kind_groups %}{% for key, words, _k in g %}{% if key == f.kinds[0] %}{{ words }}{% endif %}{% endfor %}{% endfor %}{% else %}{{ f.kinds | length }} of {{ n_kinds }} kinds{% endif %}</summary>
+      <div class="hist-kinds-menu">
+        {%- for heading, group in kind_groups %}
+        <fieldset><legend>{{ heading }}</legend>
+          {%- for key, words, _k in group %}
+          <label><input type="checkbox" name="kind" value="{{ key }}"{% if key in f.kinds %} checked{% endif %}> {{ words }}</label>
+          {%- endfor %}
+        </fieldset>
+        {%- endfor %}
+        <p class="small"><a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since) }}">Every kind</a> · <a href="{{ url_for('v2.history_page', device=f.device, person=f.person, since=f.since, kind='commits') }}">Commits only</a> <span class="muted">· each a filter in the address, so a view is a link</span></p>
+      </div>
+    </details>
+  </div>
   <label class="hist-filter"><span class="muted small">Since</span>
     <select name="since">
       {%- for v, words in since_choices %}<option value="{{ v }}"{% if v == f.since %} selected{% endif %}>{{ words }}</option>{% endfor %}
     </select></label>
   <button type="submit" class="btn">Show</button>
 </form>
-{% include "v2/_history_commits.html" %}
+{% include "v2/_history_timeline.html" %}
 {%- elif tab == 'baselines' %}
 <p class="tab-help">{{ info('history', 'baselines', 'About baselines') }}</p>
 <section class="card" id="hist-baselines" hx-disinherit="*" hx-get="{{ url_for('v2.history_page', tab='baselines') }}" hx-select="#hist-baselines" hx-trigger="nmas:baselines from:body" hx-swap="outerHTML">

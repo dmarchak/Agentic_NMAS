@@ -30,7 +30,9 @@ today's page until plan 7.3.
 
 ## History {#history-tab}
 
-One timeline for the device, holding every record the tool keeps about it:
+The History page's timeline filtered to this device, over all time. It is the same reader
+drawing the same rows, so the two can never disagree; the link at the top opens the History page
+filtered to the device. It holds every record the tool keeps about the device:
 
 | Kind | What it is |
 |---|---|
@@ -47,13 +49,13 @@ One timeline for the device, holding every record the tool keeps about it:
 | acknowledged | a Needs attention row acknowledged, with who and why |
 | freshness | a freshness gate authorised for this device, with the reason |
 | approval | a queued action approved or rejected |
-| break-glass | a break-glass record exported that holds this device |
+| break-glass | a break-glass record exported that holds this device (the row names how many devices it holds) |
 | cut off | an operation whose process ended mid-run, found when the hold was cleared |
 
 A record that could not be read is said above the timeline: the timeline lacks it, which is
 not the same as nothing having happened.
 
-Each entry is one line: when, what, any marks (corrected, acknowledged, crash file, record known
+Each entry is one line: when, its kind, its device or devices, what, any marks (corrected, acknowledged, crash file, record known
 wrong, failed) and who. Open it for the full record underneath: the reason, each step and its
 result, the correction or acknowledgement with who and why, and how the person was identified.
 A failed rotation, save, onboarding run or deploy is drawn red.

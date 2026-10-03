@@ -523,6 +523,22 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .hist-list { --cols: 14px 110px minmax(0, 1fr) 120px minmax(0, 240px) 120px; }
 .hist-list.hist-bl { --cols: 14px minmax(0, 1fr) 90px 110px 140px 200px; }
 .hist-list.hist-au { --cols: 14px 70px 100px minmax(0, 220px) minmax(0, 1fr) 140px; }
+/* The one timeline (C369, board D): when, kind, device, what, who. */
+.hist-list.hist-tl { --cols: 14px 110px 92px 96px minmax(0, 1fr) minmax(0, 150px); }
+.hist-dev { white-space: nowrap; }
+.tl-links { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.hist-kinds { position: relative; }
+.hist-kinds-sum { list-style: none; cursor: pointer; padding: 2px 8px; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface); font-size: 13px; white-space: nowrap; }
+.hist-kinds-sum::-webkit-details-marker { display: none; }
+.hist-kinds-sum::after { content: " \25BE"; color: var(--ink-3); }
+.hist-kinds-menu { position: absolute; z-index: 5; margin-top: 4px; padding: 10px 12px; min-width: 280px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.hist-kinds-menu fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hist-kinds-menu legend { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ink-2);
+  letter-spacing: .04em; padding: 0 0 2px; }
+.hist-kinds-menu p { margin: 0; }
 .hist-head, .hist-sum { display: grid; gap: 12px; align-items: baseline; grid-template-columns: var(--cols); }
 .hist-head { font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 8px 0;
   border-bottom: 1px solid var(--line); }
@@ -541,6 +557,7 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
   .hist-head { display: none; }
   .hist-sum { grid-template-columns: 14px minmax(0, 1fr); row-gap: 2px; }
   .hist-when, .hist-what, .hist-meta { grid-column: 2; }
+  .hist-tl .hist-kind, .hist-tl .hist-dev, .hist-tl .hist-who { grid-column: 2; font-size: 12px; }
   .hist-list.hist-bl .hist-what { overflow-wrap: anywhere; white-space: normal; }
   .hist-meta .hist-why { display: none; }
   .hist-when { font-size: 12px; color: var(--ink-2); }

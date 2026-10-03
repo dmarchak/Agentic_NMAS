@@ -1,0 +1,14 @@
+{%- from "v2/_macros.html" import icon -%}
+{%- from "v2/_timeline.html" import timeline_rows -%}
+{#- History's timeline card (C369; board D): THE reader's rows, filtered as the address says,
+    redrawn in place when a record lands. A cut list says how much it shows of how many. -#}
+<section class="card hist-timeline" id="hist-timeline"
+         hx-get="{{ url_for('v2.history_timeline', device=f.device, person=f.person, kind=f.kinds, since=f.since, limit=f.limit) }}"
+         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body" hx-swap="outerHTML">
+  {%- if not h.events and not h.errors %}
+  <p class="cov-head">{{ icon('info') }} Nothing matches{% if f.device %} device {{ f.device }}{% endif %}{% if f.person %}, person {{ f.person }}{% endif %}{% if f.kinds %}, the kinds chosen{% endif %}{% if f.since %} in the last {{ f.since }} day(s){% endif %}.</p>
+  {%- elif h.events %}
+  <p class="muted small hist-count">{% if h.total > h.events | length %}Showing the newest {{ h.events | length }} of {{ h.total }} · <a href="{{ url_for('v2.history_page', device=f.device, person=f.person, kind=f.kinds, since=f.since, limit=h.limit * 2) }}">Show more</a>{% else %}{{ h.events | length }} record{{ 's' if h.events | length != 1 }}{% endif %}</p>
+  {%- endif %}
+  {{ timeline_rows(h) }}
+</section>

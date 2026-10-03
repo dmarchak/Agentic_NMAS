@@ -206,7 +206,7 @@ class TestEveryReaderDrawsPending:
         with A.app.test_request_context("/"):
             html = render_template("v2/_history.html", h=h,
                                    device={"hostname": "s4"})
-        line = html[html.index("tl-line"):html.index("commit PENDING")]
+        line = html[html.index("hist-kind"):html.index("commit PENDING")]
         assert "badge-warn" in line and "badge-ok" not in line
 
     def test_the_landing_marks_it(self, monkeypatch):

@@ -309,6 +309,11 @@ HISTORY = {
 WRITTEN_ELSEWHERE = {
     "interrupted": "a process that ended while it held the device (device_ops)",
     "breakglass": "the break-glass export, a reveal route (routes/breakglass.py)",
+    # The fleet's own records (C369, board D): about no one device, read by the one timeline.
+    "commits": "a commit touching no device's golden or intent: the monitoring profile, the "
+               "templates, a policy (every writer, through repo.commit())",
+    "decisions": "a Save All's baseline decision, its commit's Baseline: trailer",
+    "updates": "the app's updater (deploy/update), not a device",
 }
 
 #: The history gaps, counted: only down.

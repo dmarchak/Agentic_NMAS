@@ -1,52 +1,15 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, info -%}
-{#- The device page's History (NSOT_GUI_BRIEF 3.3): one timeline from
-    device_page.history(), every per-device record newest first. A record that
-    could not be read is said; a cut timeline says where it was cut. -#}
-{#- Every per-device record (modules/history_sources.py, C359): each kind its word and colour.
-    A failed or stopped record is drawn danger whatever its kind. -#}
-{%- set KIND = {'golden': ('golden', 'info'), 'intent': ('intent', 'muted'), 'receipt': ('receipt', 'ok'),
-                 'restart': ('restart', 'warn'), 'measured': ('measured', 'muted'),
-                 'window': ('window', 'muted'), 'rotation': ('rotation', 'ok'),
-                 'persist': ('persist', 'ok'),
-                 'retry': ('retry', 'warn'), 'onboarding': ('onboarding', 'info'),
-                 'acknowledged': ('acknowledged', 'muted'), 'breakglass': ('break-glass', 'muted'),
-                 'interrupted': ('cut off', 'danger'), 'freshness': ('freshness', 'warn'),
-                 'approval': ('approval', 'muted')} -%}
+{%- from "v2/_macros.html" import icon, info -%}
+{%- from "v2/_timeline.html" import timeline_rows -%}
+{#- The device page's History (NSOT_GUI_BRIEF 3.3; board D, signed off 2026-10-03, C369): the
+    History page's timeline filtered to this device, all time: the same reader
+    (history_sources.timeline) and the same drawing (_timeline.html), so one can never show what
+    the other lacks. -#}
 <section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname) }}"
          hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body" hx-swap="outerHTML">
-<p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }}</p>
-  {%- for e in h.errors %}
-  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ e }}: the timeline below lacks it, which is not the same as nothing having happened.</p></div>
-  {%- endfor %}
-  {%- if not h.events %}
+<p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }} <a class="small" href="{{ url_for('v2.history_page', device=device.hostname, since='') }}">The fleet's timeline, filtered to {{ device.hostname }}</a></p>
+  {%- if not h.events and not h.errors %}
   <p class="cov-head">{{ icon('info') }} Nothing is recorded for {{ device.hostname }} yet: no golden, no intent commit, no deploy.</p>
-  {%- else %}
-  <ol class="timeline">
-    {%- for e in h.events %}
-    {%- set k = KIND.get(e.kind, (e.kind, 'muted')) %}
-    {%- set failed = (e.kind == 'receipt' and e.outcome and e.outcome != 'deployed')
-                     or (e.kind in ('rotation', 'persist', 'onboarding') and ('failed' in (e.marks or []) or 'stopped' in (e.marks or [])))
-                     or (e.kind == 'restart' and e.outcome == 'crash') %}
-    {#- ONE line per row (what, its marks, who); the full wording expands under it at full
-        width (the operator, 2026-10-02: a long note in a narrow column made a row many times
-        taller than its neighbours). -#}
-    <li class="tl-item">
-      <details class="tl-row">
-        <summary class="tl-sum"><span class="tl-when">{{ stamp(e.at) }}</span><span class="tl-line">{{ badge(k[0], 'danger' if failed else 'warn' if e.pending else k[1]) }} <strong>{{ e.what }}</strong>
-          {%- for m in e.marks or [] %}<span class="tl-mark"> · {{ m }}</span>{% endfor %}
-          {%- if e.who_short %}<span class="muted"> · {{ e.who_short }}</span>{% endif %}</span></summary>
-        <div class="tl-more">
-          <p>{{ e.detail }}{% if e.sha %} <code class="muted">{{ e.sha[:10] }}</code>{% endif %}</p>
-          {%- if e.who %}<p class="muted">By {{ e.who }}</p>{% endif %}
-          {%- if e.correction %}<p>Planned by a window recorded after the restart was seen, as a correction: {{ e.correction }}</p>{% endif %}
-          {%- if e.acknowledged %}<p>Acknowledged by {{ e.acknowledged.by }}, {{ stamp(e.acknowledged.at) }}: {{ e.acknowledged.why }}</p>{% endif %}
-          {%- if e.exception %}<p class="tl-exception">This {{ 'commit' if e.sha else 'row' }}'s record is known to be wrong: {{ e.exception }}</p>{% endif %}
-          {%- if e.record %}<dl class="tl-record">{% for k2, v2 in e.record %}<dt>{{ k2 }}</dt><dd>{{ v2 }}</dd>{% endfor %}</dl>{% endif %}
-        </div>
-      </details>
-    </li>
-    {%- endfor %}
-  </ol>
-  {%- if h.cut %}<p class="muted">Cut at {{ h.cut | join(', ') }}: older entries are in the repository's history.</p>{% endif %}
   {%- endif %}
+  {{ timeline_rows(h, here=device.hostname) }}
+  {%- if (h.total or 0) > h.events | length %}<p class="muted small">Showing the newest {{ h.events | length }} of {{ h.total }} · <a href="{{ url_for('v2.history_page', device=device.hostname, since='', limit=h.limit * 2) }}">Show more on the History page</a></p>{% endif %}
 </section>

@@ -28,8 +28,12 @@ SIGNED_OFF = {
                                  "the version)"),
     "monitoring.html": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (fleet-wide "
                                       "Monitoring, native panels)"),
-    "history.html": ("2026-10-02", "modules/fleet_history.py: NSOT_GUI_BRIEF 3.4, the mockup "
-                                   "signed off 2026-10-02"),
+    "history.html": ("2026-10-03", "board D, History as one timeline (C369), signed off "
+                                   "2026-10-03 by the operator: one reader (modules/"
+                                   "history_sources.timeline) across every device and the fleet's "
+                                   "own records, filtered by device, person, kind and time, "
+                                   "Commits a kind; Baselines and Authorisations keep their tabs. "
+                                   "Before it: NSOT_GUI_BRIEF 3.4, signed off 2026-10-02"),
     "help.html": ("2026-10-02", "NSOT_GUI_BRIEF 10b, the manual's mockup"),
     "apply.html": ("2026-10-02", "the stepper mockup (\"Applying to 3 devices... in the order you "
                                  "set\"), signed off 2026-10-02, with the rollout order decided "
@@ -58,7 +62,9 @@ SIGNED_OFF = {
                                  "browser's device slice)"),
     "tab:intent": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the OBSERVE heading and the device "
                                  "tabs approved, step (a)"),
-    "tab:history": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the device tabs approved, step (a)"),
+    "tab:history": ("2026-10-03", "board D (C369), signed off 2026-10-03: the History page's "
+                                  "timeline filtered to the device, the same reader and drawing. "
+                                  "Before it: NSOT_STAGE7_PLAN 1g, step (a)"),
     "tab:neighbours": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the device tabs approved, step (a)"),
     "tab:ask": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the device tabs approved, step (a); not "
                               "built (drawn disabled)"),
