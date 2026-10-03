@@ -4497,6 +4497,84 @@ The rest, in the order to build them:
 **P.19, SDN controller support, is recorded at the END of this plan** (after Stage 10, whose
 platform-driver layer it depends on).
 
+### P.21 — Credential expiry and health (RECORDED 2026-10-03, the operator; INVENTORY DONE, DESIGN AWAITING SIGN-OFF; NOT BUILT)
+
+**The problem.** The tool uses many connections, and an expired or revoked credential breaks
+one silently or late. Measured: no product code reads any credential's expiry or age against a
+threshold. The only expiry read anywhere is lab tooling's (`scripts/nmas-ci-log`, GitHub's
+`github-authentication-token-expiration` header); `last_rotated` is stored on credential
+profiles and template secrets and listed, never judged; and Grafana's probe counts a refused
+token as reachable (C354).
+
+**The inventory** (2026-10-03: the code read for every credential, and the host measured
+read-only, metadata only: which settings are set, each service's token table or API for an
+expiry field, the one TLS certificate's dates. No value was printed, logged or kept).
+
+| Credential | Where it lives | Expiry exposed by the service? | Today, when it dies |
+|---|---|---|---|
+| NetBox API token | `netbox_token` (`enc:v1:` in `user_settings.json`) | **Yes**: the token's `expires` (`/api/users/tokens/`); set, with an expiry, on the host | sync and reads fail `raise_for_status`; the `api/status/` probe goes down |
+| Grafana service-account token | `grafana_token` | **Yes**: service-account tokens carry `expiration` (`/api/serviceaccounts/<id>/tokens`), readable only with `serviceaccounts:read`, which a Viewer token lacks; NOT measured (Grafana's database is not readable by the service user) | shows UP (C354) until a Grafana reader raises 401 |
+| Proxmox API token | `proxmox_token_id`, `proxmox_token_secret` | **Yes**: `expire` (`/access/users/<user>/token/<id>`); measured: set to never | probe and image-job rows go down or unknown |
+| Kea, Oxidized, Loki, Prometheus, topology service | `*_username`/`*_password`/`*_bearer_token` (Loki, Prometheus, Oxidized and topology unauthenticated on the host; Kea set) | No: passwords and static bearers | the integration probe goes down (Loki's probe is unauthenticated, C354) |
+| S3 archive keys | `s3_access_key`, `s3_secret_key` (empty on the host) | No (static keys; no expiry API) | the post-commit hook reports `ok: False` |
+| Anthropic API key | `ANTHROPIC_API_KEY` in `.env` (plaintext by design) | No | a chat error event; the agent logs it; no row |
+| GitHub, CI verdicts | none: the reader is unauthenticated | n/a | rate-limited or HTTP code: the CI source's unknown row |
+| GitHub deploy key per list | `remote.json` names an SSH alias; the key is in the service user's `~/.ssh` | No (SSH deploy keys do not expire) | push failure recorded; the remote source's row |
+| App origin access (Update) | the service user's SSH | No | the app-pushed reader fails |
+| Cloudflare Access | none held: the app verifies assertions against the team's public JWKS | n/a (assertions carry `exp`, checked per request) | per request refusals; no row for a JWKS outage |
+| TLS certificates | none held; one HTTPS service used (Proxmox), verified per `*_verify_tls` | **Yes**: the certificate's `notAfter`; measured on the host, about two years away | the probe fails when verifying, nothing when not |
+| Device credentials | `devices.csv` (Fernet), `credential_profiles.json` profiles and overrides | No expiry; **age** from `last_rotated` and `rotation_audit.jsonl` | logins fail; the startup check; rotation's own rows |
+| SNMP v2c communities | template secrets (`<list>:<host>:snmp_community_ro`, `@profile` refs) | No; age from `last_rotated` | polls fail per device |
+| Fernet key `key.key`, session key `secret.key` | the data directory, mode 0600 | No; no rotation path exists | everything encrypted becomes unreadable |
+| Break-glass record | the operator's sealed file; `breakglass_exports.jsonl` logs each export | No expiry; currency is already judged (`job_health.breakglass_rows`: digests against the devices now) | the stale row exists |
+
+Outside the product, lab tooling only: the CI-log token (already warns at 14 days left), the
+Cloudflare Access login for `nmas-host` (expiry detected, exit 75), the Access service token
+two lab scripts send, and the NetBox backup's B2 and SSH keys (its failure is the backup job's
+row).
+
+**The design, for the operator's sign-off.** One reader, `credential-health`, hourly, reading
+METADATA only, writing one stored value per credential: `{source, where_renewed, where_put,
+expires_at | age_since, last_ok_use, state, why}`. It never reads, logs or returns a value.
+- **An exposed expiry** (NetBox, Grafana, Proxmox, the TLS certificate): a Needs attention row
+  **30 days ahead (warning) and 7 days ahead (danger)**, and immediately once expired. The row
+  names the credential, its expiry, WHERE to renew it (the service's own page: NetBox's API
+  tokens, Grafana's service accounts, Proxmox's API tokens, the node certificate) and WHERE to
+  put the new value (Settings, that integration's field, which keeps a blank as unchanged). It
+  clears when the reader sees an expiry beyond 30 days. Each service is asked with the app's
+  own credential: NetBox's token list filtered to the integration's user; Proxmox's token
+  record for the configured id (whether PVEAuditor may read it is measured at build);
+  Grafana's needs `serviceaccounts:read` on the token, so **two choices for the operator**:
+  grant it, or declare the expiry when the token is entered (a Settings field the reader
+  trusts and says it trusts). The certificate's `notAfter` is read from the integration's own
+  TLS handshake, verified or not.
+- **No expiry, a free validity check**: the Anthropic key by `GET /v1/models` once a day (it
+  costs no tokens); every other integration by its probe, made to ask an endpoint that NEEDS
+  the credential (C354: Grafana `/api/user`, Loki a labels query), so a refused credential is
+  a row naming 401 or 403 and the field to fix, never "down" in general.
+- **A refusal seen in use** (401 or 403 from any integration call, or the AI client's
+  authentication error) is recorded by the integration's own failure path and read by the
+  reader at once: a danger row the same minute, not at the next probe.
+- **The tool's own secrets with no expiry**: an age policy from the records already kept.
+  Device credentials and SNMP communities from `last_rotated` and `rotation_audit.jsonl`
+  against `rotation_policy` (stored and unused today; proposed default 180 days, a warning
+  row naming Rotate on the device page). The Fernet and session keys are listed with their
+  age and NO row: there is no rotation path, and a row needs an action (it becomes one when
+  a key rotation exists).
+- **Listed** on Source of truth > Credentials (7.6): every credential with its source, its
+  expiry or age, its last successful use and its state, from the reader's stored value.
+
+**Placement.** The reader and its rows need no new screen (Needs attention draws them), so
+**before 7.6**, after the device actions now in progress (persist, rotate, deploy with Mode
+B); 7.6's Credentials page draws its list from the same stored value. C354 is fixed with it.
+**Lab tooling** is worth one thing only: the CI-log token already warns ahead, and the tunnel
+login is detected when it fails; the Access service token the two lab scripts send has an
+expiry Cloudflare shows on its dashboard, and a line in those scripts' failure naming it is
+the most it is worth. Nothing outside the product becomes a row.
+
+**Not decided:** the thresholds (30 and 7 days; 180 days of age), Grafana's choice above, and
+whether an expiry beyond a year is drawn at all.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported
