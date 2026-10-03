@@ -35,6 +35,39 @@ KIND = "credential rotation"
 ANNOUNCER = "rotation"
 ANNOUNCE_KEYS = ("rotation",)
 
+#: Rotate's steps as a person reads them (the operator, 2026-10-03, C370: read the account,
+#: stage the new password, send, fresh login, record, persist), in the order they run:
+#: ``(key, words, what it waits on, the step names the code notes for it)``. The stepper
+#: draws these from the hold's progress trail (`device_ops.note`): a step is done once its
+#: last name is noted. The names are the code's own (`credential_rotation.rotate`'s steps,
+#: this module's "persisting", `_persist`'s stages); tests/test_job_stepper.py holds the two
+#: to each other, and the manual's rotate page names each key.
+STEPS = (
+    ("read_account", "Read the account",
+     "the device's account line, read live and compared with the plan you confirmed",
+     ("preflight", "confirmation")),
+    ("stage", "Stage the new password",
+     "the new password generated and kept, encrypted, before anything is sent",
+     ("generate", "stage", "invalidate_redaction_cache")),
+    ("send", "Send",
+     "a held session to the device, the account's entry kind read again, the new line sent",
+     ("original_session", "recheck_entry_kind", "push")),
+    ("fresh_login", "Fresh login",
+     "a new SSH login with the new password, and the stored form read back",
+     ("verify_new_credential", "captured_type_9")),
+    ("record", "Record",
+     "the running configuration read, then one commit recording the new credential",
+     ("post_capture", "golden_capture", "commit")),
+    ("persist", "Persist",
+     "the device's own save read back, then the boot-file chain",
+     ("persisting", "device_startup_config", "oxidized_row", "oxidized_reload",
+      "fetch_confirmed", "clab_target", "clab_sync", "startup_file", "startup_applies",
+      "startup_safe")),
+)
+#: Steps the code takes off the path (a failed verify puts the old line back), drawn on the
+#: step they belong to.
+DETOURS = {"revert": "fresh_login", "revert_verified": "fresh_login"}
+
 
 def plan(list_name: str, hostname: str) -> dict:
     """`credential_rotation.plan()`: the preflight (which reads the device's

@@ -599,6 +599,21 @@ Dates, counts and statuses below are as they were written. Where a later entry o
   now deletes the file before the run, so a skipped run leaves nothing to read, and refuses on
   a missing file. `e986e66` is left unrewritten; the next commit states its real result.
 
+### No commits on a red CI
+
+*The rule (CLAUDE.md):* **Never stack a commit on a RED CI; never wait idle for a green one.**
+
+- **THE RULE IS ABOUT RED, NOT ABOUT WAITING** (the operator, 2026-10-03). After CI was red for
+  five commits while the gate passed (C349 to C352), the work stopped until CI was green: that
+  episode's instruction. It was then carried on as a habit, waiting for every run before the
+  next task, at 6.5 to 9 minutes a run (runs #334 to #340: the job 395 to 549 s, the tests
+  step 93% of it). Nothing needed the wait: `nmas-deploy --wait` and the Update button both
+  refuse a commit CI has not passed, so an unverified commit never reaches the host. What the
+  rule protects against is building on a failure: a second commit on a red run hides which
+  change broke it and makes the fix a bisection. So: push, name the sha, start the next task;
+  read the run's outcome when it lands; on red, stop new work and fix forward before anything
+  else.
+
 ### The commit message file
 
 *The rule (CLAUDE.md):* **Gate `git commit -F` on the message file's first line naming THIS commit**

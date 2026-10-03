@@ -180,7 +180,23 @@ class TestEveryStateIsNamedWithItsAction:
         assert (nxt["open"] == "breakglass_export") is opens, state
         assert not opens or nxt["args"] == {"list": "Lab"}
         assert result["happened"]["summary"] == cr.summarise(
-            {"device": "r2", "state": state, "steps": []})
+            {"device": "r2", "state": state, "steps": []}, where="browser")
+        # C371: a browser's result names the browser's export, never a terminal command.
+        assert "nmas-breakglass" not in result["happened"]["summary"]
+
+    def test_what_stays_true_follows_the_state_reached(self):
+        """C373: one fixed sentence said the rotation row stays until a persist reads SAFE,
+        beside a result whose own persistence had just read it SAFE."""
+        from modules.preview_confirm import rotate_result
+
+        def still(state):
+            return rotate_result({"device": "r2", "state": state, "steps": []},
+                                 _plan())["not_watched"]
+        assert "reads SAFE now" in still(cr.ROTATED_PERSISTED)
+        assert "stays until a persist reads SAFE" not in still(cr.ROTATED_PERSISTED)
+        for state in (cr.ROTATED_PENDING_PERSIST, cr.ROTATED_UNVERIFIED):
+            assert "stays until a persist reads SAFE" in still(state), state
+        assert "unchanged" in still(cr.REVERTED)
 
     def test_not_recorded_names_the_recovery_command(self):
         from modules.preview_confirm import rotate_result

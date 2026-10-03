@@ -46,10 +46,13 @@
         <span class="cmd"><code>{{ r.action.command }}</code><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ r.action.command }}" x-on:click="copy" x-text="label">Copy</button></span>
         {%- endif %}
         {%- if r.action.reference %}<span class="muted">({{ r.action.reference }})</span>{% endif %}
-        {%- if r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" data-op="update" href="{{ url_for('v2.update') }}">Update…</a>{{ how('update', compact=True, op='the update') }}
-        {%- elif r.action.open == 'profile_apply' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" href="{{ url_for('v2.profile_apply', device=r.action.device, list=r.action.list) }}">Preview the apply…</a>{{ how('monitoring-templates', compact=True, op='the apply') }}
-        {%- elif r.action.open == 'profile_propose' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" href="{{ url_for('index', open='profile_propose', list=r.action.list) }}">Propose on today's page</a>{{ how('monitoring-templates', compact=True, op='the proposal') }}
-        {%- elif r.action.open %}<a class="btn btn-small" href="{{ url_for('index') }}">Open on today's page</a>
+        {#- Each `open` an action can carry has its own control, and each control lands on what
+            it names (C372: "Open on today's page" opened a page and nothing on it). -#}
+        {%- if r.action.open == 'app_update' %}<a class="btn btn-small btn-outline" data-op="update" data-next-acts="update_page" href="{{ url_for('v2.update') }}">Update…</a>{{ how('update', compact=True, op='the update') }}
+        {%- elif r.action.open == 'profile_apply' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" data-next-acts="profile_apply_page" href="{{ url_for('v2.profile_apply', device=r.action.device, list=r.action.list) }}">Preview the apply…</a>{{ how('monitoring-templates', compact=True, op='the apply') }}
+        {%- elif r.action.open == 'profile_propose' %}<a class="btn btn-small btn-outline" data-op="monitoring-templates" data-next-acts="profile_propose" href="{{ url_for('index', open='profile_propose', list=r.action.list) }}">Propose on today's page</a>{{ how('monitoring-templates', compact=True, op='the proposal') }}
+        {%- elif r.action.open == 'breakglass_export' %}<a class="btn btn-small btn-outline" data-op="breakglass-export" data-next-acts="breakglass_export" href="{{ url_for('index', open='breakglass_export', list=r.action.list) }}">Export the break-glass record…</a>{{ how('breakglass-export', compact=True, op='the break-glass export') }}
+        {%- elif r.action.open %}<span class="muted">its control ({{ r.action.open }}) is not on these pages yet</span>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
       </div>
       {%- if r.acknowledge %}

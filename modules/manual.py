@@ -118,7 +118,7 @@ OPERATIONS = {
     "capture": None,
     "restore": ("modules.pipeline", "STAGE_NAMES"),
     "removal": ("modules.pipeline", "STAGE_NAMES"),
-    "rotate": None,
+    "rotate": ("modules.nsot.rotate_op", "STEPS"),
     "persist": None,
     "seed": None,
     "onboard": ("modules.nsot.onboard", "STEPS"),
@@ -135,7 +135,6 @@ OPERATION_PAGE = {"onboard-phase-two": "onboard", "onboard-ztp": "onboard"}
 #: Why an operation has no declared step list yet, said rather than left blank.
 UNDECLARED = {
     "capture": "the capture job reads, previews and records in code paths with no step tuple",
-    "rotate": "rotation reports states (credential_rotation) and steps it appends as it goes",
     "persist": "persist_op builds its step list in plan(), with the device's name in each",
     "seed": "seed's preview, confirm and apply are three routes with no step tuple",
     "retire": "retire builds its step list in plan(), per device",

@@ -74,6 +74,11 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   can stop it; a failed write leaves the previous message. [not mechanised] [why](docs/LESSONS.md#the-commit-message-file)
 - **Push every commit and name the pushed sha; never rewrite pushed history** (correct with a
   forward commit). [not mechanised]
+- **Never stack a commit on a RED CI; never wait idle for a green one.** Push, name the sha and
+  start the next task while CI runs; when a run fails, stop new work and fix forward before
+  anything else. Nothing unverified reaches the host: `nmas-deploy --wait` and the Update button
+  refuse a commit CI has not passed. [the host refusing it: tests/test_nmas_deploy.py,
+  tests/test_update_when_ci_passes.py; the rest: not mechanised] [why](docs/LESSONS.md#no-commits-on-a-red-ci)
 - **Deploys are the operator's** (`nmas-deploy --wait`). Never deploy, pull or write in the live
   checkout on the host. [nmas-deploy needs CI's pass: tests/test_nmas_deploy.py; the agent:
   hook scripts/hooks/claude-no-host-writes, tests/test_claude_host_writes_hook.py]

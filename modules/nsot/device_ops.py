@@ -499,21 +499,47 @@ def _announce_released() -> None:
         log.warning("device_ops: the release could not be announced", exc_info=True)
 
 
+#: The most steps a hold's trail keeps (a rotation notes about twenty).
+TRAIL_MAX = 64
+
+
 def note(step: str) -> None:
-    """Record progress on every device THIS thread holds: the step it is on,
-    and when. It is what lets a refusal say "last progress: verify, 20 s ago"
-    rather than only when the hold began."""
+    """Record progress on every device THIS thread holds: the step it has reached,
+    and when, and the TRAIL of every step noted so far (``[[step, at], ...]``, the hold's
+    start first), so a stepper can say how long each step took (C370). It is what lets a
+    refusal say "last progress: verify, 20 s ago" rather than only when the hold began.
+    Announces `device_progress` when this thread held a device, so a card drawing the
+    stepper redraws on each step, never by polling."""
     me, now = threading.get_ident(), time.time()
     with _mu:
         mine = [info for info in _held.values() if info["thread"] == me]
         for info in mine:
-            info["holder"]["progress"] = {"step": step, "at": now}
+            before = info["holder"].get("progress") or {}
+            trail = list(before.get("trail") or [[before.get("step", "started"),
+                                                   before.get("at", info["holder"].get(
+                                                       "started", now))]])
+            trail = (trail + [[step, now]])[-TRAIL_MAX:]
+            info["holder"]["progress"] = {"step": step, "at": now, "trail": trail}
             if info["fd"] is not None:
                 try:
                     os.ftruncate(info["fd"], 0)
                     os.pwrite(info["fd"], json.dumps(info["holder"]).encode("utf-8"), 0)
                 except OSError:
                     log.debug("device_ops: progress not written", exc_info=True)
+    if mine:
+        _announce_progress()
+
+
+def _announce_progress() -> None:
+    """`device_progress`: a held device's operation reached its next step (C370). Only the
+    app's own process can announce; a host script's steps are read when a page asks."""
+    try:
+        from modules import invalidation
+        invalidation.announce(["device_progress"], "device-ops", True)
+    except RuntimeError:
+        pass                              # no emitter: a script's process; nobody to tell
+    except Exception:                     # noqa: BLE001 - progress never fails on telling
+        log.warning("device_ops: progress could not be announced", exc_info=True)
 
 
 def may_write(ip: str) -> bool:

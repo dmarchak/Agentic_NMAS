@@ -68,6 +68,9 @@ INVENTORY = {
     "modules/nsot/credential_rotation.py": (82, LAB_PLATFORM, OPTIONAL,
                                             "the persistence chain's clab-sync and startup-file stages; "
                                             "vrnetlab's injected user (the save and read-back are generic)"),
+    "modules/nsot/rotate_op.py": (1, LAB_PLATFORM, OPTIONAL,
+                                  "the stepper's persist step names the chain's clab stages "
+                                  "(C370), as credential_rotation runs them"),
     "modules/nsot/bootstrap_config.py": (37, HARDWARE, GENERIC,
                                          "vrnetlab's boot behaviour: console replay, the injected user"),
     "modules/nsot/onboard.py": (9, HARDWARE, GENERIC, "vrnetlab's RW community and injected user"),

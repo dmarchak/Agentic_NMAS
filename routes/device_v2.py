@@ -558,9 +558,10 @@ def rotate_confirm(name):
         return _strict(render_template("v2/_rotate.html", c={
             "state": "refused", "host": host, "list": ref.name, "back": back,
             "error": got["error"]}), got["status"])
+    from modules import device_actions
     return _strict(render_template("v2/_rotate.html", c={
         "state": "rotating", "host": host, "list": ref.name, "back": back,
-        "job": got["job"]}))
+        "job": got["job"], "steps": device_actions.job_steps("rotate", ref.name, host)}))
 
 
 @bp.route("/device/<name>/rotate/job/<job>", methods=["GET"])

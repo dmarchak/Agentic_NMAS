@@ -635,8 +635,9 @@ class TestTheShippedScripts:
         heard += lab["client"].post("/v2/device/r3/rotate/preview",
                                     data={"list": "Lab"}).get_data(as_text=True)
         # +6 2026-10-02: every key attention.SOURCE_KEYS names; +1 capture_preview (7.3);
-        # +2 2026-10-03: rotation and device_holds (7.3's rotate card).
-        assert len(keys) == 27
+        # +2 2026-10-03: rotation and device_holds (7.3's rotate card); +1 device_progress
+        # (C370: a running job's stepper).
+        assert len(keys) == 28
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

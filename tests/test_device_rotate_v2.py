@@ -150,7 +150,8 @@ class TestTheConfirm:
         assert r.status_code == 200
         waiting = r.get_data(as_text=True)
         assert "Rotating r2's credential" in waiting
-        assert 'hx-trigger="nmas:rotation from:body"' in waiting
+        assert 'hx-trigger="nmas:rotation from:body, nmas:device_progress from:body"' in waiting
+        assert 'data-stepper' in waiting, "a running job's card draws the stepper (C370)"
         out = _finish(rot, waiting)
         assert rot["rot"]["calls"] == [("rotate", True, "fp-abc123", "device page"),
                                        ("persist", True)]

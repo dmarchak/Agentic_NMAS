@@ -167,6 +167,12 @@
       var b = e.target && e.target.closest && e.target.closest('[data-nmas-open="breakglass_export"]');
       if (b) { e.preventDefault(); openBreakglassExport(b.getAttribute('data-nmas-list') || ''); }
     });
+    /* The fourth: ?open=breakglass_export&list=<list>, the link the redesigned pages use
+       (C372: a link that only opened a page was a dead end). The list is the link's. */
+    document.addEventListener('DOMContentLoaded', function () {
+      var q = new URLSearchParams(root.location.search);
+      if (q.get('open') === 'breakglass_export') openBreakglassExport(q.get('list') || '');
+    });
   }
 
   root.openBreakglassExport = openBreakglassExport;

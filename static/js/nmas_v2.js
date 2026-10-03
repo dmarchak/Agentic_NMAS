@@ -33,7 +33,10 @@
               'capture_preview',
               // An operation the app ran released a device: a card refused because it was
               // held reads again (modules/nsot/device_ops.py); and a rotation's job finished.
-              'device_holds', 'rotation'];
+              'device_holds', 'rotation',
+              // A held device's operation reached its next step: a running card redraws its
+              // stepper (C370).
+              'device_progress'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -160,6 +163,7 @@
   function relayCapturePreview() { relay('capture_preview'); }
   function relayDeviceHolds() { relay('device_holds'); }
   function relayRotation() { relay('rotation'); }
+  function relayDeviceProgress() { relay('device_progress'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -231,6 +235,7 @@
     NMAS.subscribe('capture_preview', 'v2CapturePreview', relayCapturePreview);
     NMAS.subscribe('device_holds', 'v2DeviceHolds', relayDeviceHolds);
     NMAS.subscribe('rotation', 'v2Rotation', relayRotation);
+    NMAS.subscribe('device_progress', 'v2DeviceProgress', relayDeviceProgress);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

@@ -58,7 +58,6 @@ NOT_AN_OPERATION = {
     ("heartbeat.html", "Copy"): "copies the host step's command to the clipboard",
     ("_attention.html", "Copy"): "copies a row's command to the clipboard",
     ("_attention.html", "Open"): "navigates to the device page",
-    ("_attention.html", "Open on today's page"): "navigates to today's page, where the row's action is",
     ("_attention.html", "Open…"): "navigates to the screen the row names",
     ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
@@ -70,7 +69,8 @@ NOT_AN_OPERATION = {
     ("_history_commits.html", "Show the change"): "reads one commit's masked change",
     ("device.html", "Actions"): "opens the actions menu; each row carries its own link",
     ("_capture.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
-    ("_capture.html", "Edit intent…"): "navigates to today's device page, where the intent editor is",
+    ("_capture.html", "Edit intent…"): ("opens today's intent editor on the device (C372); "
+                                        "editing intent has no How it works page of its own"),
     ("_persist.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_rotate.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
 }

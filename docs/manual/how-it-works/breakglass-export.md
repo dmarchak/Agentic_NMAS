@@ -18,6 +18,10 @@ One operation, reached from four places:
 - **The result of a rotation**, as its next step: the record still holds the old password.
 - **The result of an adoption**, as its next step: the record does not hold the new device.
 
+On the redesigned pages each of these opens the export itself, for the list it names, never a
+page you then have to search: until the export is on those pages, it opens on today's pages,
+already showing what the record would hold.
+
 Exporting needs a signed-in person. A service is refused, because the file holds every
 device's credential.
 

@@ -83,6 +83,25 @@
 {%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or iso }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}
 
+{#- The stepper on a running job's card (NSOT_GUI_BRIEF 10a, signed off 2026-10-02; C370):
+    the operation's declared steps from `device_actions.stepper`, each done (with its time),
+    running (since when, what it waits on, the last thing it did) or waiting. The card redraws
+    it on `device_progress`. -#}
+{% macro job_stepper(steps, label='Progress') -%}
+<ol class="stepper" data-stepper aria-label="{{ label }}">
+  {%- for s in steps %}
+  <li class="step step-{{ 'current' if s.state == 'running' else s.state }}" data-step="{{ s.key }}"{% if s.state == 'running' %} aria-current="step"{% endif %}>
+    <span class="step-mark"></span><span class="step-words">{{ s.words }}</span>
+    <span class="step-note">
+      {%- if s.state == 'done' %}done{% if s.took_s >= 2 %} in {{ s.took_s }} s{% endif %}
+      {%- elif s.state == 'running' %}running since {{ stamp(s.since) }}: waits on {{ s.waits }}{% if s.last %} (last done: {{ s.last }}){% endif %}
+      {%- else %}waits its turn{% endif -%}
+    </span>
+  </li>
+  {%- endfor %}
+</ol>
+{%- endmacro %}
+
 {% set STATE_KIND = {'ok': 'ok', 'warn': 'warn', 'danger': 'danger', 'unknown': 'muted'} %}
 
 {#- "Check again": ask origin and CI now (routes/update.check). Its x-data and

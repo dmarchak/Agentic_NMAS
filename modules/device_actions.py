@@ -229,14 +229,90 @@ def rotate_card(ref, host: str, preview: dict, viewer: dict) -> dict:
 ROTATE_LEVELS = {"success": "ok", "partial": "warn", "failed": "danger"}
 
 
+#: Every job-backed card and the steps its running state draws (C370, the operator: the
+#: signed-off stepper on every job-backed v2 card): ``(module, attribute)`` of the operation's
+#: declared STEPS and DETOURS, or a reason it draws none. Persist, deploy and Mode B join as
+#: they land as jobs. tests/test_job_stepper.py holds every job card in the templates to this.
+JOB_STEPPERS = {
+    "rotate": ("modules.nsot.rotate_op", "STEPS", "DETOURS"),
+    "capture": ("one step: the preview's read of the device, which holds nothing and so notes "
+                "no progress; its card names what it reads"),
+}
+
+
+def _iso(epoch: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def stepper(steps, progress, *, detours=None, now=None) -> list:
+    """The signed-off stepper's rows (NSOT_GUI_BRIEF 10a) for a running job: the operation's
+    DECLARED *steps* (``(key, words, waits, names)``), each done (with how long it took),
+    running (since when, what it waits on, the last thing it did) or waiting, read from the
+    hold's progress trail (`device_ops.note`: ``{"step", "at", "trail": [[name, at], ...]}``).
+    A step is done once its last name is noted. With no progress (the hold not taken yet, or
+    held by another process) the first step runs, from now."""
+    now = time.time() if now is None else now
+    index = {name: i for i, s in enumerate(steps) for name in s[3]}
+    keys = [s[0] for s in steps]
+    index.update({name: keys.index(key) for name, key in (detours or {}).items()})
+    progress = progress or {}
+    trail = progress.get("trail") or ([[progress["step"], progress["at"]]]
+                                      if progress.get("at") else [])
+    begun = trail[0][1] if trail else now
+    ends, current, last = {}, 0, ""
+    for name, at in trail:
+        if name not in index:
+            continue
+        i = index[name]
+        for j in range(i):
+            ends.setdefault(j, at)
+        last = name
+        if name == steps[i][3][-1]:
+            ends[i], current = at, i + 1
+        else:
+            current = i
+    rows, started = [], begun
+    for i, (key, words, waits, _names) in enumerate(steps):
+        if i < current:
+            end = ends.get(i, started)
+            rows.append({"key": key, "words": words, "state": "done",
+                         "took_s": round(max(0.0, end - started))})
+            started = end
+        elif i == current:
+            rows.append({"key": key, "words": words, "state": "running", "since": _iso(started),
+                         "took_s": round(max(0.0, now - started)), "waits": waits,
+                         "last": last if index.get(last) == i else ""})
+        else:
+            rows.append({"key": key, "words": words, "state": "waiting"})
+    return rows
+
+
+def job_steps(op: str, list_name: str, host: str, *, now=None) -> list:
+    """The stepper rows for *op*'s running job on *host*, from its declared steps and the
+    device's hold; [] for a card that declares why it draws none."""
+    import importlib
+
+    from modules.nsot import device_ops
+
+    ref = JOB_STEPPERS[op]
+    if isinstance(ref, str):
+        return []
+    mod = importlib.import_module(ref[0])
+    holder = device_ops.holder(list_name, host) or {}
+    return stepper(getattr(mod, ref[1]), holder.get("progress"),
+                   detours=getattr(mod, ref[2], None), now=now)
+
+
 def rotate_job_card(ref, host: str, job_id: str, got) -> dict:
-    """The rotate card for its job (`capture_job.get`, or None): rotating, its result, or why
-    there is none. The result is `rotate_result`'s, the words today's page draws."""
+    """The rotate card for its job (`capture_job.get`, or None): rotating with its stepper,
+    its result, or why there is none. The result is `rotate_result`'s, the words today's page
+    draws."""
     card = {"op": "rotate", "host": host, "list": ref.name, "job": job_id}
     if got is None:
         return dict(card, state="unknown")
     if got["state"] == "running":
-        return dict(card, state="rotating", elapsed_s=got.get("elapsed_s"))
+        return dict(card, state="rotating", elapsed_s=got.get("elapsed_s"),
+                    steps=job_steps("rotate", ref.name, host))
     if got["state"] == "failed":
         return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
     result = (got.get("payload") or {}).get("result") or {}

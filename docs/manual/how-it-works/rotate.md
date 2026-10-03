@@ -30,6 +30,19 @@ The apply runs as a job, holding the device from start to finish, so no other op
 12. **Clear the staged copy**. Read: nothing. Sent: nothing. Recorded: the staging file is removed, only after the commit succeeded. If the record failed, the staged copy is kept, because it is then the only copy.
 13. **Persist** (see [Persist](persist#the-host-chain)). Read and Sent: as that chain says. Recorded: a persist row. The device page's rotation runs the whole host chain: the device's own save and read-back first, then the Oxidized and lab startup-file stages (lab integration). On an installation without the lab, those stages fail and the rotation ends "rotated, persistence unverified" even though the device itself is saved.
 
+### While it runs
+
+The card shows the rotation in six steps, each done with its time, running (since when, and
+what it waits on), or waiting. Each step groups the numbered steps above:
+
+- **Read the account** (`read_account`): step 1, the preflight and confirmation read again.
+- **Stage the new password** (`stage`): steps 2 to 4.
+- **Send** (`send`): steps 5 to 7.
+- **Fresh login** (`fresh_login`): steps 8 and 9, and putting the old line back if the login
+  is refused.
+- **Record** (`record`): steps 10 and 11.
+- **Persist** (`persist`): step 13, naming each stage of the chain as it finishes.
+
 ## The outcomes
 
 The result names one state, with its one next step:

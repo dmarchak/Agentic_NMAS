@@ -2915,6 +2915,23 @@ def _rotate_state_action(state: str, name: str, list_name: str) -> str:
     }.get(state, "The state above is what is known.")
 
 
+def _rotate_still_true(state: str, name: str) -> str:
+    """What stays in front of a person after this result, by the state reached (C373: one
+    fixed sentence said the rotation row stays until a persist reads SAFE, beside a result
+    whose own persistence had just read it SAFE; job health's row was already clear)."""
+    from modules.nsot import credential_rotation as cr
+
+    if state == cr.ROTATED_PERSISTED:
+        return (f"Job health's rotation row for {name} reads SAFE now: this rotation's own "
+                "persistence read the startup config back. The break-glass currency row stays "
+                "until you export again.")
+    if state in (cr.ROTATED_PENDING_PERSIST, cr.ROTATED_UNVERIFIED, cr.ROTATED_NOT_RECORDED):
+        return (f"Job health's rotation row for {name} stays until a persist reads SAFE; the "
+                "break-glass currency row until you export again.")
+    return (f"{name}'s credential is unchanged, so the break-glass record still holds it; job "
+            "health's rotation row names this state until another rotation.")
+
+
 def rotate_result(result: dict, plan: dict) -> dict:
     """*result*: `rotate_op.run()`'s; *plan*: the plan it ran from."""
     from modules.nsot import credential_rotation as cr
@@ -2942,7 +2959,7 @@ def rotate_result(result: dict, plan: dict) -> dict:
                 for n in ROTATE_NOT_DOING]
     commit = ((result.get("commit") or {}).get("commit") or "")
     return build_result(
-        action="rotate", level=level, summary=cr.summarise(result),
+        action="rotate", level=level, summary=cr.summarise(result, where="browser"),
         targets=[{"name": name, "outcome": state, "words": state.replace("_", " "),
                   "reason": result.get("reason", ""),
                   "sent": {"lines": list((plan or {}).get("new_program") or []) if pushed
@@ -2961,8 +2978,7 @@ def rotate_result(result: dict, plan: dict) -> dict:
                                if commit else "No rotation commit was made. ")
                               + "A rotation record of every step is written where job "
                                 "health reads it.")},
-        not_watched=(f"Job health's rotation row for {name} stays until a persist reads SAFE; "
-                     "the break-glass currency row until you export again."),
+        not_watched=_rotate_still_true(state, name),
         titles=ROTATE_RESULT_TITLES,
         # The next step in its own slot (C219), and where the rotation leaves the
         # record stale, the export itself (the operator, 2026-09-29).

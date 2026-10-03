@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, how, job_stepper -%}
 {#- The device page's Rotate (7.3; the device-actions mockup signed off 2026-10-02, its
     "Rotate, a check failing" artboard): the card in place of the tab, from
     modules/device_actions.py over `rotate_preview` and `rotate_result`, the words today's
@@ -60,10 +60,12 @@
 {%- elif c.state == 'rotating' %}
 <section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
          hx-get="{{ url_for('device_v2.rotate_job_card', name=c.host, job=c.job, back=c.back) }}"
-         hx-trigger="nmas:rotation from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:rotation from:body, nmas:device_progress from:body" hx-swap="outerHTML">
   <div class="op-hd"><h2 id="op-title">Rotating {{ c.host }}'s credential</h2>
     <div class="op-hd-actions">{{ how('rotate') }}</div></div>
-  <div class="op-part"><h3>What</h3><div><p class="op-wait">The rotation runs as a job, holding {{ c.host }}: it pushes the new password, proves it on a fresh login, records it, then persists it. This page can close; Needs attention keeps it in front of you until it is persisted.</p></div></div>
+  <div class="op-part"><h3>Where it is</h3><div>
+    {{ job_stepper(c.steps, 'Rotation progress') }}
+    <p class="op-wait">It holds {{ c.host }} until it ends. This page can close; Needs attention keeps it in front of you until it is persisted.</p></div></div>
 </section>
 {%- elif c.state == 'result' %}
 <section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
@@ -76,7 +78,7 @@
   <div class="op-part"><h3>What next</h3><div class="op-next">
     <div><span>{{ c.next }}</span></div>
     {%- if c.export %}
-    <div><a class="btn" data-op="breakglass-export" href="{{ url_for('manage_device', ip=c.ip) }}">Export the break-glass record…</a>{{ how('breakglass-export', compact=True, op='the break-glass export') }}<span class="muted">on today's device page, where the export is built</span></div>
+    <div><a class="btn" data-op="breakglass-export" data-next-acts="breakglass_export" href="{{ url_for('index', open='breakglass_export', list=c.list) }}">Export the break-glass record…</a>{{ how('breakglass-export', compact=True, op='the break-glass export') }}<span class="muted">opens the export of {{ c.list }}'s record, on today's pages until it is on these</span></div>
     {%- endif %}</div></div>
   <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p></div></div>
   <div class="op-part"><h3>Still true</h3><div><p>{{ c.not_watched }}</p></div></div>

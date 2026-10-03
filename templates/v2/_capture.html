@@ -113,8 +113,8 @@
     {%- endif %}</div></div>
   {%- if c.intent.departs %}
   <div class="op-part"><h3>What next</h3><div class="op-next">
-    <div><a class="btn" href="{{ url_for('manage_device', ip=c.ip) }}">Edit intent…</a><span class="muted">to make intent hold what the device holds, in today's device page's editor: the device stays as it is</span></div>
-    <div><a class="btn" data-op="removal" href="{{ url_for('manage_device', ip=c.ip) }}">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}<span class="muted">to take them off the device, on today's device page: intent stays as it is</span></div>
+    <div><a class="btn" data-next-acts="intent_editor" href="{{ url_for('index', open='intent_editor', device=c.host, list=c.list) }}">Edit intent…</a><span class="muted">to make intent hold what the device holds, in today's intent editor, which this opens: the device stays as it is</span></div>
+    <div><a class="btn" data-op="removal" data-next-acts="deploy_plan" href="{{ url_for('index', open='deploy_plan', device=c.host, list=c.list) }}">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}<span class="muted">to take them off the device, in today's deploy plan, which this opens with each line to tick: intent stays as it is</span></div>
   </div></div>
   {%- endif %}
   <div class="op-ft"><p class="op-note">Kept in History and in the commit; this card goes when you close it or leave the page.</p>

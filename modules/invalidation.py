@@ -100,6 +100,7 @@ VOCABULARY = {
     "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
     "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
+    "device_progress": "an operation the app ran on a held device reached its next step: a running card redraws its stepper (C370)",
     "deploy_job": "a batch deploy run as a job (the v2 profile Apply): a device finished, or the batch, "
                   "its progress and result ready to read by id",
 }
@@ -110,7 +111,7 @@ VOCABULARY = {
 ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
-    "device-ops": ("device_holds",),           # modules/nsot/device_ops.py, on each release
+    "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (as /deploy/apply declares).
     "deploy-job": ("deploy_job", "device_state", "baselines", "drift", "rolled_back",

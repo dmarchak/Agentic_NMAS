@@ -30,7 +30,7 @@ INFO_CALL = re.compile(r"info\(\s*'([a-z0-9-]+)'(?:\s*,\s*'([a-z0-9-]*)')?")
 NO_INFO = {"not_found.html": "an error page: what it says is the whole of what there is to know"}
 #: Operations whose code declares no step list yet (brief 10a's stepper work
 #: adds one to each). Only shrinks.
-UNDECLARED_CEILING = 5
+UNDECLARED_CEILING = 4  # 5 until rotate declared its steps (C370)
 
 
 def _client():

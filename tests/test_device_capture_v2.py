@@ -179,7 +179,7 @@ class TestTheConfirm:
                          r'the preview; [^"]+"', out)
         still = out[out.index("Still true"):]
         assert "r2 departs" in still and "the next deploy would send intent" in still
-        assert "Edit intent…</a>" in out and "in today's device page's editor" in out
+        assert "Edit intent…</a>" in out and "in today's intent editor, which this opens" in out
         assert 'data-op="removal"' in out
         assert 'href="/v2/device/r2?tab=history"' in out and "Open in History" in out
         assert 'hx-get="/v2/device/r2/history"' in out, "Close puts back the tab it replaced"

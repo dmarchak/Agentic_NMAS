@@ -515,16 +515,25 @@ def _failed_stage(result: dict) -> str:
     return ""
 
 
-def summarise(result: dict) -> str:
+#: Where the break-glass export is, by where the summary is read (C371: the browser's result
+#: sent a person to a terminal command).
+EXPORT_WORDS = {"cli": "(nmas-breakglass export)",
+                "browser": "(Export the break-glass record…, on this result and on Needs "
+                           "attention)"}
+
+
+def summarise(result: dict, *, where: str = "cli") -> str:
     """One honest sentence. The states are not interchangeable. A device that
     now holds a new credential also makes every break-glass record exported
     before it stale (C182), and the message says so: a rotation never
-    mentioned the record, so the recovery path decayed with nothing saying it."""
+    mentioned the record, so the recovery path decayed with nothing saying it.
+    *where* names the export the reader can use: the command in a terminal, the
+    browser's own export in a browser."""
     message = _summary(result)
     if result.get("state") in (ROTATED_PERSISTED, ROTATED_PENDING_PERSIST,
                                ROTATED_UNVERIFIED, ROTATED_NOT_RECORDED):
         message += (" The break-glass record now holds its OLD credential: export it "
-                    "again (nmas-breakglass export); job health names it until then.")
+                    f"again {EXPORT_WORDS[where]}; job health names it until then.")
     return message
 
 
@@ -2916,8 +2925,13 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
     # and unfinished; reaching the end sets ROTATED_PERSISTED.
     result["state"] = ROTATED_UNVERIFIED
 
+    from modules.nsot import device_ops
+
     def _stage(name, outcome):
         chain.append({"name": name, **outcome})
+        # Progress on the held device, so a stepper names the chain's stage rather than one
+        # "persisting" for the whole chain (C370, C218's shape). A no-op when nothing is held.
+        device_ops.note(name)
         return outcome.get("ok")
 
     result["persistence"] = chain

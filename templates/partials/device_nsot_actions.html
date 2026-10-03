@@ -35,4 +35,25 @@ function nsotAction(name, hostname, asArray) {
     else { window.alert(msg); }
   }
 }
+
+// Opened by a link from the redesigned pages (C372: a next step that only NAVIGATED was a dead
+// end): ?open=intent_editor|deploy_plan&device=<name>&list=<list> opens the tool itself. These
+// tools act on this page's list; a link naming another list is refused, naming both, never
+// switched to (only a read may derive the active list).
+document.addEventListener('DOMContentLoaded', function () {
+  const q = new URLSearchParams(window.location.search);
+  const opens = {intent_editor: ['showIntentEditor', false], deploy_plan: ['openDeployPlan', true]};
+  // No `open` asked for: nothing to do, and nothing to say.
+  const o = opens[q.get('open')];
+  const device = q.get('device') || '', list = q.get('list') || '';
+  const here = {{ (current_list or '') | tojson }};
+  if (o && list && list !== here) {
+    const msg = device + ' is in the list ' + list + ', and this page shows ' + here
+              + ': select ' + list + ' in the list menu, then open it again. Nothing was opened.';
+    if (typeof showToast === 'function') { showToast(msg, 'warning'); }
+    else { window.alert(msg); }
+  } else if (o) {
+    nsotAction(o[0], device, o[1]);
+  }
+});
 </script>
