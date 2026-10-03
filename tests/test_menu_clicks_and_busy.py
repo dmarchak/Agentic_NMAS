@@ -304,7 +304,7 @@ class TestC403:
                 b.wait_for("var p = document.querySelector('#removal.op-focus');"
                            "return !!p && " + SETTLED, 15)
                 top = b.js("return document.querySelector('#removal').getBoundingClientRect().top")
-                assert 0 <= top < 200, f"scrolled to the lines on the device ({top})"
+                assert -2 <= top < 200, f"scrolled to the lines on the device ({top}; sub-pixel rounding allowed)"
                 assert not b.js(MENU), "the menu closed"
             finally:
                 b.go("about:blank")

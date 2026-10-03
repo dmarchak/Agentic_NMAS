@@ -3176,37 +3176,239 @@ holds it.
 **DR:** the replica MinIO is current for all three buckets (object counts, sizes and newest
 object equal), each by an enabled MinIO replication rule that also replicates deletions.
 
-### 13.3 The stores, before the screens (each a host step, the operator's)
+### 13.3 The stores
 
-- **Thanos compaction and downsampling** (`thanos-compact`, one instance): compacts the 2 h
-  blocks, downsamples to 5 min and 1 h, and applies a retention per resolution (proposed: raw
-  90 days, 5 min one year, 1 h five years). Without it requirement 2's "downsampled for long
-  ranges" has nothing to read, and long ranges read every raw 2 h block.
-- **The tool reads ranges through Thanos Query.** It speaks PromQL, so the reads are unchanged
-  (NSOT_PLAN: "works against Thanos Query unchanged"). The cost: a second address (a history
-  source) beside `prometheus_url`, because live state (Coverage's `/api/v1/targets` and its
-  `up` reads) stays on Prometheus until Thanos Query is measured to serve the same answer; one
-  router choosing the store by the range's start against Prometheus's lowest timestamp, which
-  the coverage line also states; `max_source_resolution=auto` for long ranges; slower answers
-  for ranges read from the bucket (to be measured); no deduplication, since there is one
-  Prometheus. Grafana's role dashboards can take "Thanos (lake)" the same way.
-- **Loki's retention and query length:** 30 days against Prometheus's 90; the logs are small
-  (11 MiB), so 90 days or a year costs little. A range longer than 30 days must be split by the
-  tool, or `max_query_length` raised with it.
+Superseded by the operator's decisions of 2026-10-04: section 14, the data lake (retention by
+data class, one PromQL and one LogQL endpoint per network, the Thanos compactor, raw
+telemetry as Parquet, scale, the lake's own health, and the archive job's credential).
 
-### 13.4 raw-telemetry: its purpose, to decide
-
-The metric trends it could answer are what Telegraf already sends to Prometheus, so Thanos,
-once compacted, covers trends over time. What raw-telemetry adds is every MDT update at the
-device's own cadence, finer than Prometheus's scrape. **Recommended:** if no question needs
-sub-scrape replay, give it a lifecycle rule (current objects expire after 30 days) as a
-forensic buffer, and say so in the coverage line. **If fine-grained replay is wanted:** convert
-each hour's JSON-lines to Parquet partitioned by day, device and path, which a query engine
-reads in place from the bucket (DuckDB reads S3 Parquet directly), behind a reader job that
-answers the ready-made questions; the conversion and its reader are the cost, and its views
-follow 13.1 like the rest.
-
-### 13.5 Recorded
+### 13.4 Recorded
 
 C404 (Thanos never compacted, downsampled or pruned), C405 (raw-telemetry has no reader and no
 retention), C406 (from about 2026-11-28 the tool cannot show a metric older than 90 days).
+
+## 14. The data lake (the operator's decisions, 2026-10-04)
+
+Every decision passes one test: **what makes this useful to an enterprise with large fleets and
+years of history?** The lab's values are defaults a site changes, never constants in the
+product. The measurements behind it are section 13.2.
+
+### 14.1 Retention by data class
+
+Each class has a retention setting with an enterprise default, per network once P.8 lands. The
+tool states the retention in force beside each (14.6) and says when it differs from the setting.
+
+| Class | Where it lives | Enterprise default | This lab |
+|---|---|---|---|
+| Raw metrics | Prometheus's local blocks and Thanos's raw blocks | 90 days | 90 days |
+| Downsampled metrics, 5 min | Thanos | 2 years | 1 year |
+| Downsampled metrics, 1 h | Thanos | 5 years | 2 years |
+| Logs | Loki | 1 year | 90 days |
+| Raw telemetry (14.4) | its bucket, as Parquet | 30 days | 30 days |
+| Configuration history | git | kept for ever (already) | the same |
+
+A store applies its own retention (Thanos's compactor, Loki's compactor, a bucket lifecycle
+rule); the tool never deletes data itself. Every bucket is versioned with a 7-day non-current
+expiry and replicated with deletions, so a retention deletion reaches DR and stays recoverable for
+7 days on both sides.
+
+### 14.2 Endpoint-agnostic: one PromQL and one LogQL endpoint per network
+
+The tool talks to ONE PromQL endpoint and ONE LogQL endpoint per network, never to "Prometheus"
+or "Thanos" by name: Thanos Query, Mimir, VictoriaMetrics or plain Prometheus may stand behind
+the first, Loki behind the second.
+
+- **Settings:** `metrics_query_url` and `logs_query_url`, the values of today's
+  `prometheus_url` and `loki_url` carried over by the settings' version bump. The endpoint's
+  build information is read only to state provenance and its limits, never to change a query.
+- **Live reads and history through the same endpoint, once measured equal.** Before switching
+  this lab to Thanos Query, Coverage's reads (`/api/v1/targets`, the `up` and telemetry
+  queries) are run against both and compared; any difference keeps live reads on Prometheus,
+  said as such. A store-picking router is built only where no unifying query layer exists.
+- **Splitting:** a range longer than the backend's per-query limit (Loki's `max_query_length`,
+  30d1h here) is split by the tool into windows and joined, the limit read from the backend or a
+  setting, never a constant.
+- **When:** before about 2026-11-28 (C406).
+
+### 14.3 The Thanos compactor (C404)
+
+Exactly ONE compactor per bucket, ever: a single systemd service on one host. Retention per
+resolution from 14.1. Job health checks that it runs, that it is not halted, that it completed
+an iteration recently, and that no second one runs, as far as the metrics endpoint sees: it
+counts the compactors Prometheus scrapes (a compactor no one scrapes cannot be seen, and the row
+says so). Its host step is 14.10.
+
+### 14.4 Raw telemetry, the enterprise form (C405)
+
+Not just an expiry. The MDT stream kept at the device's own cadence, readable in place:
+
+- **Format:** Parquet (zstd), partitioned by date, device and sensor path
+  (`parquet/date=YYYY-MM-DD/device=<name>/path=<sensor path>/<hour>.parquet`), each row a
+  timestamp, its tags and its fields; the partitions let a query read only its devices and days.
+- **Conversion:** an hourly job reads the previous hour's JSON-lines and writes its partitions
+  (DuckDB reads JSON-lines and writes partitioned Parquet in one statement); the JSON-lines
+  staging expires after two days once its conversion is verified (row counts equal). It
+  replaces the lab's archive script (14.8) or is told it exists.
+- **Query path:** DuckDB reads the bucket's Parquet in place over S3, pruning by partition; a
+  reader job answers the ready-made questions that need sub-scrape resolution (per-interface
+  counters at the stream's cadence), the SQL shown beneath each, editable, as section 13 asks
+  of PromQL and LogQL.
+- **Retention:** its own class (14.1), a lifecycle rule on the `parquet/` prefix.
+- **Cost, to measure before building:** one real hour converted (its time, CPU and Parquet size
+  against the 9 MiB of JSON-lines) and one ready-made question answered over a day and a week
+  of it (time, bytes read). Expected, unmeasured: Parquet several times smaller than JSON-lines,
+  and a day's question in seconds. The conversion is one job and one optional integration (off
+  unless configured), the query path one reader.
+
+### 14.5 Scale
+
+- **Recording rules** for the ready-made questions, so a view reads a precomputed series per
+  device, never every raw series.
+- **Top-N and grouping** by site and role instead of all-device charts; a view states the N.
+- **Downsampled data for long ranges**, chosen by the endpoint's resolution (Thanos's
+  `max_source_resolution=auto`).
+- **Budgets:** every query view checked against test_scale's 900-device budget (queries per
+  view, series per query, and Loki's `max_query_series`, 500 here).
+
+### 14.6 The lake's own health
+
+Readers, per class: size, growth (bytes a day over seven days), the projected full date (against
+the disk or the bucket's quota), the retention in force, and DR currency (per bucket: object
+count, size and newest object, primary against replica, and the replication rule's state). And
+the archive job's last successful run, read from its newest object against its hourly cadence,
+so a silently stopped copy shows. Needs attention rows, each with its action: projected full
+within the setting's horizon, DR behind by more than an hour, the archive stopped for two
+cadences, and the compactor not running or two of them (14.3). The readers use a read-only
+MinIO user for the tool (a host step), never an administrator's.
+
+### 14.7 Evidence and access
+
+Optional object lock (write-once) for logs kept as evidence: a bucket created with object lock,
+its retention mode a setting. History access follows Stage 9's roles.
+
+### 14.8 The raw-telemetry archive job (C407)
+
+`/etc/cron.d/lake-archive` runs `/usr/local/bin/archive-to-lake.sh` hourly at :15 as root (its
+log `/var/log/lake-archive.log`). It `mc mirror --overwrite`s the telemetry folder (without the
+live file) to `raw-telemetry/mdt/` and the network log folder (without the live logs) to
+`raw-telemetry/syslog/`, without `--remove`, so local rotation (Telegraf keeps 48 hourly files)
+never deletes from the bucket: retention belongs in a bucket lifecycle rule, which replication
+carries to DR. It authenticates as MinIO's root user, from a root-only file; the fix is scope, a
+dedicated user whose policy only writes raw-telemetry (14.11). The script is lab tooling,
+outside the product; 14.4's pipeline replaces it or is told it exists.
+
+### 14.9 The order
+
+1. **The compactor** (14.10), the operator's host step, and its job-health checks.
+2. **The archive job's own user** (14.11), the operator's host step.
+3. **One PromQL and one LogQL endpoint** with splitting (14.2), before about 2026-11-28.
+4. **Retention by class** (14.1) as settings, and **the lake's health readers** (14.6) with the
+   tool's read-only MinIO user.
+5. **Raw telemetry's measurement**, then its pipeline (14.4) if the measurement holds.
+6. **The query screens' mockups** (section 13), after the store work.
+
+### 14.10 Host step: the Thanos compactor (the operator's)
+
+On the NMAS host, once. Thanos 0.37.2 is installed at `/usr/local/bin/thanos`; its units run as
+`prometheus`, and `/etc/thanos/objstore.yml` (the `thanos` bucket) is readable by that group.
+First confirm no compactor runs anywhere against the bucket (this host has none):
+
+```
+systemctl list-unit-files 'thanos-compact*' --no-legend   # expect nothing
+ps -C thanos -o pid=,args=                                 # expect no 'thanos compact' line
+```
+
+Then render the unit into a fresh folder, install it by name, and start it:
+
+```
+d=$(mktemp -d)
+cat > "$d/thanos-compact.service" <<'UNIT'
+[Unit]
+Description=Thanos Compactor (the ONE compactor for the thanos bucket)
+After=network-online.target minio.service
+Wants=network-online.target
+
+[Service]
+User=prometheus
+Group=prometheus
+ExecStart=/usr/local/bin/thanos compact \
+  --wait \
+  --wait-interval=5m \
+  --data-dir=/var/lib/thanos/compact \
+  --objstore.config-file=/etc/thanos/objstore.yml \
+  --http-address=0.0.0.0:19194 \
+  --retention.resolution-raw=90d \
+  --retention.resolution-5m=365d \
+  --retention.resolution-1h=730d
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo install -d -o prometheus -g prometheus /var/lib/thanos/compact
+sudo install -m 0644 "$d/thanos-compact.service" /etc/systemd/system/thanos-compact.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now thanos-compact.service
+rm -r "$d"
+```
+
+Add Prometheus's scrape job for it, so job health can see it (in `/etc/prometheus/prometheus.yml`
+under `scrape_configs`), then reload Prometheus:
+
+```
+  - job_name: thanos_compact
+    static_configs:
+      - targets: ['127.0.0.1:19194']
+```
+
+```
+promtool check config /etc/prometheus/prometheus.yml && sudo systemctl reload prometheus
+```
+
+Verify, each a result, not an exit code:
+
+```
+systemctl is-active thanos-compact                                   # active
+curl -s 127.0.0.1:19194/metrics | grep -E '^thanos_compact_halted '  # 0
+curl -s -G 127.0.0.1:9090/api/v1/query --data-urlencode 'query=count(up{job="thanos_compact"})'   # 1
+journalctl -u thanos-compact --since '-15 min' | grep -iE 'compaction|downsampl|error' | tail -5
+```
+
+The first run compacts the existing 2 h blocks and writes 5 min blocks for data older than
+40 h; 1 h blocks follow for data older than 10 days. Deleted blocks become non-current versions
+for 7 days (14.1), and replication carries the deletions to DR. The values in the unit are this
+lab's (14.1); a site sets its own.
+
+### 14.11 Host step: the archive job's own MinIO user (the operator's)
+
+On the NMAS host, with the `mc` alias that holds MinIO's administrator credential (the root
+user is used here once, to create the narrower one). Create a policy that only writes
+`raw-telemetry`, and a user with it:
+
+```
+d=$(mktemp -d)
+cat > "$d/lake-archive-write.json" <<'POLICY'
+{"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+   "Resource": ["arn:aws:s3:::raw-telemetry"]},
+  {"Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject"],
+   "Resource": ["arn:aws:s3:::raw-telemetry/*"]}]}
+POLICY
+mc admin policy create lab lake-archive-write "$d/lake-archive-write.json"
+mc admin user add lab                     # prompts for the access key (lake-archive) and its secret
+mc admin policy attach lab lake-archive-write --user lake-archive
+rm -r "$d"
+```
+
+`mc mirror --overwrite` without `--remove` needs list, get and put only, so the policy grants no
+delete. Then swap the job's credential in `/etc/default/lake-archive` (root-only, as now) to
+`lake-archive` and its secret, run the job once by hand, and confirm the result:
+
+```
+sudo /usr/local/bin/archive-to-lake.sh && tail -5 /var/log/lake-archive.log
+mc ls lab/raw-telemetry/mdt/ | tail -1          # this hour's file, new
+```
+
+Finally confirm no job still uses the root account: no file under `/etc/default`, `/etc/cron.d`
+or `/usr/local/bin` names the root user, and MinIO's trace shows only `lake-archive` on the
+bucket at the next :15 (`mc admin trace --path 'raw-telemetry/*' lab` for one run).

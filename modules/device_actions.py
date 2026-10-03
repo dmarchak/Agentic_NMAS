@@ -370,8 +370,14 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
     # removals included), so `t["may"]` decides it; `waiting` only chooses the words.
     may = bool(t["may"]) and not blocking and not refused and bool(lines)
     confirm = preview.get("confirm") or {}
+    # The one device, never the batch's "the devices you tick… N of N… for each" (C408).
+    removing = any(r["picked"] for r in residue)
+    summary = (f"Deploy {host}'s committed intent, merge-only"
+               + (", with the lines you ticked for removal" if removing else "")
+               + (f": exactly these {len(lines)} line(s) are sent, in order." if lines
+                  else ": nothing to send."))
     return {"op": "deploy", "state": "preview", "host": host, "list": ref.name,
-            "summary": (preview.get("what") or {}).get("summary", ""),
+            "summary": summary,
             "sent": lines, "none": program.get("none", ""),
             "notes": [{"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
                       for n in program.get("notes") or []],
@@ -608,7 +614,8 @@ def seed_card(ref, host: str, preview: dict, viewer: dict, entry: dict) -> dict:
                 if (i.get("target") == host and i.get("kind") != "not_reproduced")
                 or i.get("kind") == "scope"]
     return {"op": "seed", "state": "preview", "host": host, "list": ref.name,
-            "summary": (preview.get("what") or {}).get("summary", ""),
+            # The one device, never the batch's "N of N device(s)" (C408).
+            "summary": f"Commit {host}'s first full intent, parsed from its committed golden.",
             "sent": lines[:SEED_SHOWN], "more": max(0, len(lines) - SEED_SHOWN),
             "count": len(lines), "document": document,
             "document_lines": len(document.splitlines()),
@@ -649,7 +656,8 @@ def seed_result_card(ref, host: str, result: dict) -> dict:
             "outcome": outcome, "seeded": outcome == "seeded",
             "words": happened.get("words", target.get("words", "")),
             "reason": target.get("reason", ""),
-            "summary": (result.get("happened") or {}).get("summary", ""),
+            # The one device, never the batch's "N of N device(s) seeded" (C408).
+            "summary": f"{host}: {happened.get('words', target.get('words', outcome))}.",
             "reproduced": bool(checks.get("ok")),
             "checks": list(checks.get("statements") or ([checks["why"]]
                                                         if checks.get("why") else [])),
@@ -757,9 +765,11 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
     rollback = target.get("rollback") or {}
     outcome = happened.get("outcome", "unknown")
     rolled_back = bool(rollback.get("performed"))
+    words = happened.get("words", outcome.replace("_", " "))
     return dict(card, state="result", level=DEPLOY_LEVELS.get(result.get("level"), "danger"),
-                outcome=outcome, words=happened.get("words", outcome.replace("_", " ")),
-                summary=(result.get("happened") or {}).get("summary", ""),
+                outcome=outcome, words=words,
+                # The one device, never the batch's "N of N device(s) deployed" (C408).
+                summary=f"{host}: {words}.",
                 sent=list(sent.get("lines") or []), match_words=sent.get("match_words", ""),
                 none=sent.get("none", ""), authorised=list(sent.get("authorised") or []),
                 checks=list(checks.get("statements") or ([checks["why"]]

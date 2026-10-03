@@ -374,6 +374,31 @@ def _a_verified_person_by_default(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _device_cards_are_singular(request, monkeypatch):
+    """C408 (the operator, 2026-10-04): a device page's card names its one device, never the
+    fleet's "N of N device(s)", "devices you tick" or "for each". Every card
+    `routes/device_v2.py` answers, in any test, is read for those words (`tests/singular_cards`),
+    and the test fails naming each phrase in its sentence. A test about the guard itself opts out
+    with ``@pytest.mark.fleet_words_allowed``."""
+    if request.node.get_closest_marker("fleet_words_allowed"):
+        yield
+        return
+    import routes.device_v2 as dv
+    from tests.singular_cards import fleet_words
+
+    found, real = [], dv._strict
+
+    def strict(resp, code=200):
+        if isinstance(resp, str):
+            found.extend(fleet_words(resp))
+        return real(resp, code)
+    monkeypatch.setattr(dv, "_strict", strict)
+    yield
+    assert not found, ("a device card speaks of the fleet (C408): "
+                       + "; ".join(f"{w!r} in “{ctx}”" for w, ctx in dict.fromkeys(found)))
+
+
+@pytest.fixture(autouse=True)
 def _deploy_receipts_go_to_a_temp_file(request, monkeypatch, tmp_path):
     """Every deploy and restore apply appends a receipt per device (C60), into
     the list's directory. In the suite that is the shared test store, so each

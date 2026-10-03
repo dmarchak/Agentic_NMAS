@@ -104,7 +104,7 @@ class TestTheCard:
         assert "load-interval 30" in card and 'name="rm"' in card
         assert "What will not happen" in card and "Operands" in card and "Checks" in card
         assert "op-confirm" not in card, "no confirm until every reason is given"
-        assert "waits on a stated reason" in card
+        assert "waits on your stated reason" in card
         assert "default-src" in r.headers.get("Content-Security-Policy", "")
 
     def test_a_reason_plans_again_and_offers_the_confirm_bound_to_that_program(self, deploy):

@@ -125,7 +125,7 @@
             hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "moment": c.moment, "un_onboard": "1" if c.un_onboard else "", "capture_hash": c.confirm.capture_hash, "command_hash": c.confirm.command_hash, "authorise": c.confirm.authorise | tojson} | tojson }}'><span class="op-idle">Re-apply {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again and starting the restore…</span></button>{{ how('restore', compact=True, op='restore') }}</span>
     {%- else %}
     <p class="op-note">Not available:
-      {%- if c.waiting %} waits on a stated reason for each line above that needs one; give it and the plan is computed again.
+      {%- if c.waiting %} waits on your stated reason on every line above that needs one; give it and the plan is computed again.
       {%- elif not c.sent %} nothing to confirm.
       {%- else %} {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}{{ c.refused or (c.blocking | join('; ')) or 'nothing can be re-applied' }}{% endfor %}.{% endif %}
       {%- if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>
