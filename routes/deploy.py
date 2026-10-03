@@ -703,7 +703,12 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 on_device("done", name, result)
             return result
 
-        report = run_batch(batch, _one, CircuitBreaker())
+        # Coverage's combined deploy stops at its FIRST failure of any kind, one device at a
+        # time (artboard A2); every other scope keeps the setting's limit on verify failures.
+        templates = scope == profile_apply.TEMPLATES
+        report = run_batch(batch, _one,
+                           CircuitBreaker(limit=1, any_failure=True) if templates
+                           else CircuitBreaker(), sequential=templates)
         if refused:
             _merge_refusals(report, refused)
 
@@ -1183,6 +1188,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
                                            "recreate_commands": full["recreate"]["commands"]}}
     # The batch commits; this device hands its capture back.
     ctx.defer_golden = True
+    # Coverage's combined deploy reads every sent line back and rolls the program back as
+    # one when any did not land (artboard A2).
+    from modules.nsot.profile_apply import TEMPLATES
+    ctx.read_back_all = scope == TEMPLATES
     # What the TARGET intent declares, so verify checks the protocol this
     # operation may exist to bring back (it read the device's before-state
     # alone). A restore's target is the ref's intent (None: the ref predates

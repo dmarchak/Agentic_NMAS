@@ -117,6 +117,53 @@ class TestOneProgram:
         assert reached == ["templates"]
 
 
+class TestOneChangeRolledBackAsOne:
+    """A2: the first device that fails stops the rest, and every sent line is read back, a
+    line not read back rolling the program back as one (C10: the batch otherwise stops only
+    after 2 verify failures that raised)."""
+
+    def _conf(self, lab):
+        (d,) = _plan(lab, "templates")["devices"]
+        return {"confirmations": {"r6": d["capture_hash"]},
+                "command_hashes": {"r6": d["command_hash"]}, "list_name": "Lab"}
+
+    def test_the_apply_stops_at_the_first_failure_one_device_at_a_time(self, lab, monkeypatch,
+                                                                      r6_probe_unsent):
+        import routes.deploy as rd
+        seen = []
+
+        def run_batch(plan, one, breaker=None, sequential=False):
+            seen.append((breaker.limit, breaker.any_failure, sequential))
+            return {"results": [], "by_outcome": {}, "deployed": [], "breaker_tripped": False,
+                    "breaker_reason": "", "total": 0, "workers": 1}
+        monkeypatch.setattr("modules.nsot.deploy.run_batch", run_batch)
+        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+        monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
+        lab["client"].post("/deploy/apply", json=dict(self._conf(lab), scope="templates"))
+        assert seen == [(1, True, True)]
+        (p,) = _plan(lab, "profile")["devices"]
+        lab["client"].post("/deploy/apply", json={
+            "confirmations": {"r6": p["capture_hash"]}, "command_hashes": {"r6": p["command_hash"]},
+            "list_name": "Lab", "scope": "profile"})
+        assert seen[-1][1] is False and seen[-1][2] is False, "every other scope as before"
+
+    def test_the_device_path_reads_every_line_back(self, lab, monkeypatch, r6_probe_unsent):
+        import routes.deploy as rd
+        caught = []
+
+        class Runner:
+            def __init__(self, ctx):
+                caught.append(ctx)
+
+            def run(self):
+                raise RuntimeError("stopped here: the test reads the context only")
+        monkeypatch.setattr("modules.pipeline.PipelineRunner", Runner)
+        monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
+        monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
+        lab["client"].post("/deploy/apply", json=dict(self._conf(lab), scope="templates"))
+        assert caught and caught[-1].read_back_all is True
+
+
 class TestCoverageOffersIt:
     def test_a_probe_committed_and_not_sent_is_missing_and_supplied(self, lab, monkeypatch,
                                                                      r6_probe_unsent):
@@ -166,6 +213,9 @@ class TestThePage:
         assert ">Leave out</button>" in card.group(1)
         assert ">Earlier</button>" not in card.group(1) and ">Later</button>" not in card.group(1)
         assert "Checks:" in card.group(1)
+        # What verify does here, from the rule that decides it (`verify_note`, read_back_all).
+        assert ("and every line sent is read back, a line that did not land rolling this "
+                "device's program back as one") in card.group(1)
         # r2: nothing to send, its SNMP not reporting named with where to diagnose it.
         idle = re.search(r'<li id="apply-r2">(.*?)</li>', text, re.S).group(1)
         assert "SNMP is not reporting" in idle

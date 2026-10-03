@@ -124,6 +124,32 @@ class TestThePipelineRunsTheScopedVerify:
         assert v["ok"] is False and v["issues"] == []
         assert "line vty 0 4 > length 0" in v["read_back"]["missing"]
 
+    def test_the_combined_deploy_fails_verify_on_a_line_not_read_back_so_it_rolls_back(
+            self, world):
+        """Coverage's combined deploy (A2), `read_back_all`: the same quick line not read back
+        is a verify FAILURE (raised, so the pipeline rolls the program back as one)."""
+        ctx, clock = world(_summary(), config=R3)
+        ctx.rendered_commands = {"x": VTY}
+        ctx.read_back_all = True
+        with pytest.raises(pipeline.PipelineStageError):
+            pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert v["ok"] is False and "line vty 0 4 > length 0" in v["read_back"]["missing"]
+        assert any(re.match(r"\d+ sent line\(s\) did not read back: .*line vty 0 4 > length 0", i)
+                   for i in v["issues"]), v["issues"]
+
+    def test_the_combined_deploy_reads_a_full_program_back_too(self, world):
+        """A full program has no read-back of its own; the combined deploy reads it, and a
+        line the device does not show fails verify."""
+        ctx, clock = world(_summary(), config=MERGED)
+        ctx.rendered_commands = {"x": ["interface Loopback9", " description x", "exit"]}
+        ctx.read_back_all = True
+        with pytest.raises(pipeline.PipelineStageError):
+            pipeline._stage_verify(ctx)
+        v = ctx.verify_result["x"]
+        assert v["verify_scope"]["scope"] == "full" and v["read_back"]["checked"] >= 1
+        assert "interface Loopback9 > description x" in v["read_back"]["missing"]
+
     def test_a_quick_verify_still_catches_a_neighbour_lost(self, world, monkeypatch):
         ctx, clock = world(_summary("Idle"), config=MERGED)
         ctx.rendered_commands = {"x": VTY}

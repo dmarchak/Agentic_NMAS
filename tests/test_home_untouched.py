@@ -74,6 +74,17 @@ class TestTheJudgement:
         assert "/tmp/nmas-browser-1-x" in home_guard.judge({}, {}, ["/tmp/nmas-browser-1-x"])
 
 
+def test_every_session_has_its_own_id_and_its_workers_share_it(monkeypatch):
+    """A child pytest a test starts is its own session: with its parent's id it judged the
+    folders the parent's other workers were using as left behind (the gate, 2026-10-03)."""
+    monkeypatch.setenv(home_guard.RUN_ENV, "111")
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
+    assert home_guard.start_run() == str(os.getpid()), "a session: its own id"
+    monkeypatch.setenv(home_guard.RUN_ENV, "111")
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
+    assert home_guard.start_run() == "111", "a worker: its session's id"
+
+
 def test_the_run_fails_when_a_test_writes_into_the_download_folder(tmp_path):
     """The wiring, end to end: a child pytest whose one test writes into the download folder
     (pointed at a temporary one) fails, naming the file, though the test itself passed."""

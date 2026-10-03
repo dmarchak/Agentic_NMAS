@@ -1500,13 +1500,24 @@ class CircuitBreaker:
     mistake into nine.
     """
 
-    def __init__(self, limit: int = None):
+    def __init__(self, limit: int = None, any_failure: bool = False):
+        """*any_failure* (Coverage's combined deploy, artboard A2): every device that was
+        not deployed, or whose verify did not pass, counts, not only a verify that raised
+        (C10); with *limit* 1 the batch stops at its first failure of any kind."""
         if limit is None:
             from modules.settings_schema import get_setting
             limit = get_setting("deploy_verify_failure_limit", 2)
         self.limit = max(1, int(limit))
+        self.any_failure = any_failure
         self.verify_failures = 0
         self.tripped_after = None
+
+    def counts(self, outcome: dict) -> bool:
+        """Whether *outcome* (one device's result) is a failure this breaker counts."""
+        if self.any_failure:
+            return (outcome.get("outcome") != DEPLOYED
+                    or (outcome.get("verify") or {}).get("ok") is False)
+        return outcome.get("outcome") == FAILED and outcome.get("stage") == "verify"
 
     def record_verify_failure(self, device: str) -> bool:
         self.verify_failures += 1
@@ -1522,8 +1533,12 @@ class CircuitBreaker:
         return self.tripped_after is not None
 
     def reason(self) -> str:
-        return (f"not attempted — stopped after {self.verify_failures} verify "
-                f"failure(s), last on {self.tripped_after}")
+        if self.any_failure and self.limit == 1:
+            return (f"not attempted — the deploy stops at its first failure, which was on "
+                    f"{self.tripped_after}")
+        return (f"not attempted — stopped after {self.verify_failures} "
+                f"{'failure(s)' if self.any_failure else 'verify failure(s)'}, last on "
+                f"{self.tripped_after}")
 
 
 def max_workers() -> int:
@@ -1629,7 +1644,8 @@ def plan_batch(artifacts: list, confirmed: dict, fresh_captures: dict) -> dict:
     return plan
 
 
-def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None) -> dict:
+def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None,
+              sequential: bool = False) -> dict:
     """Deploy each planned device, honouring the circuit breaker.
 
     *deploy_one(entry)* performs one device and returns
@@ -1643,11 +1659,13 @@ def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None) -> dict:
     breaker = breaker or CircuitBreaker()
     results = list(plan.get("skipped", []))
     queue = list(plan.get("to_deploy", []))
-    workers = max_workers()
+    # *sequential*: one device at a time whatever the setting, so the breaker can stop the
+    # rest (with workers, every device is submitted before any result is back).
+    workers = 1 if sequential else max_workers()
 
     def _record(entry, outcome):
         results.append(outcome)
-        if outcome.get("outcome") == FAILED and outcome.get("stage") == "verify":
+        if breaker.counts(outcome):
             breaker.record_verify_failure(outcome["device"])
 
     if workers <= 1:

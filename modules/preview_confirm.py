@@ -337,17 +337,22 @@ def _profile_scope_parts(name: str, sc: dict, scope: str = "profile") -> tuple:
     return notes, extra
 
 
-def verify_note(commands: list):
+def verify_note(commands: list, scope: str = ""):
     """The program part's note saying which verify runs after this program
     and why (the operator, 2026-10-01): the pipeline's own classifier, so
-    what the preview says is what runs. None when nothing is sent."""
+    what the preview says is what runs. None when nothing is sent. Coverage's
+    combined deploy (scope `templates`) also reads every sent line back
+    (`PipelineContext.read_back_all`), and says so."""
     from modules.nsot import verify_scope
 
     if not commands:
         return None
     v = verify_scope.classify(commands)
-    return {"title": (f"Verify after the push: {v['scope'].upper()}, because {v['why']}"),
-            "lines": v["forwarding"] or v["sections"]}
+    title = f"Verify after the push: {v['scope'].upper()}, because {v['why']}"
+    if scope == "templates":
+        title += ("; and every line sent is read back, a line that did not land rolling this "
+                  "device's program back as one")
+    return {"title": title, "lines": v["forwarding"] or v["sections"]}
 
 
 def deploy_preview(devices: list, request, scope: str = "") -> dict:
@@ -480,7 +485,7 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
                         "authorisation_error": d.get("authorisation_error") or "",
                         "none": "" if commands else none, "notes": notes,
                         # Which verify runs after the push, and why.
-                        "verify": verify_note(commands)},
+                        "verify": verify_note(commands, scope)},
             "operands": operands, "gates": _deploy_gates(d, failed)})
     n = len(targets)
     ready = sum(1 for t in targets if t["selectable"])

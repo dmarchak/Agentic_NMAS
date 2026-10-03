@@ -103,8 +103,15 @@ is removed. It is the deploy above with scope `templates`:
    to the programs on the screen: if a device or a template changed since, that device is
    refused, with nothing sent to it, naming what moved. The server answers at once and starts
    the deploy as a job, as you.
-4. **The deploy.** As the batch above: one device after another, in your order, each
-   through the deploy's pipeline, then one golden commit and a receipt per device.
+4. **The deploy.** As the batch above, one device after another in your order, each through
+   the deploy's pipeline, then one golden commit and a receipt per device, with two
+   differences:
+   - **Verify reads every line it sent back,** quick or full. A line the device does not show
+     fails verify, and the device's whole program is rolled back: one change, rolled back as
+     one, never a device left with part of its templates.
+   - **The first device that fails stops the rest,** whatever failed: its push, its verify,
+     or a program that moved since the preview. The devices after it are not attempted, and
+     the result says so. (Other deploys stop after repeated verify failures.)
 
 ## The heartbeat
 

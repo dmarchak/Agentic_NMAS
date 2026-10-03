@@ -47,7 +47,7 @@ else:
 from tests.store_guard import data_tree, tree_changes  # noqa: E402
 from tests import store_guard  # noqa: E402
 from tests import home_guard  # noqa: E402
-home_guard.run_id()     # set before xdist starts its workers, which inherit it
+home_guard.start_run()  # this session's own id, set before xdist starts the workers that inherit it
 
 # Every write the test process makes under the checkout's data/ is SEEN (an
 # audit hook), so a change there can be attributed rather than assumed.

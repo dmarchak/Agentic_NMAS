@@ -152,6 +152,44 @@ class TestCircuitBreaker:
         assert breaker.is_tripped is False      # skipping a drifted device
         assert breaker.verify_failures == 0     # records nothing
 
+    @pytest.mark.parametrize("outcome", [
+        {"outcome": "failed", "stage": "push"},
+        {"outcome": "refused", "reason": "the program moved"},
+        {"outcome": "deployed", "verify": {"ok": False, "intent_unmet": ["ospf"]}},
+        {"outcome": "failed", "stage": "verify"}])
+    def test_the_combined_deploy_counts_every_failure(self, outcome):
+        """Artboard A2: any device not deployed, or whose verify did not pass, counts."""
+        assert CircuitBreaker(limit=1, any_failure=True).counts(dict(outcome, device="r7"))
+
+    def test_the_default_still_counts_only_a_verify_that_raised(self):
+        """C10's open shape, kept for every other scope until it is decided; the combined
+        deploy alone leaves it."""
+        b = CircuitBreaker(limit=2)
+        assert b.counts({"outcome": "failed", "stage": "verify"})
+        assert not b.counts({"outcome": "failed", "stage": "push"})
+        assert not b.counts({"outcome": "deployed", "verify": {"ok": False}})
+        assert not CircuitBreaker(limit=1, any_failure=True).counts(
+            {"outcome": "deployed", "verify": {"ok": True}})
+
+    def test_a_sequential_batch_stops_at_its_first_failure_whatever_the_workers(
+            self, monkeypatch):
+        from modules.nsot.deploy import run_batch
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda k, d=None: 4 if k == "deploy_max_workers" else d)
+        art = lambda d: type("A", (), {"device": d})()          # noqa: E731
+        plan = {"to_deploy": [{"artifact": art(d)} for d in ("r7", "s5", "s6")]}
+        ran = []
+
+        def one(entry):
+            ran.append(entry["artifact"].device)
+            return {"device": entry["artifact"].device, "outcome": "failed", "stage": "push"}
+        report = run_batch(plan, one, CircuitBreaker(limit=1, any_failure=True), sequential=True)
+        assert ran == ["r7"] and report["workers"] == 1
+        left = {r["device"]: r for r in report["results"] if r["outcome"] == "unattempted"}
+        assert set(left) == {"s5", "s6"}
+        assert left["s5"]["reason"] == ("not attempted — the deploy stops at its first failure, "
+                                        "which was on r7")
+
 
 class TestConcurrency:
     def test_sequential_by_default(self, monkeypatch):

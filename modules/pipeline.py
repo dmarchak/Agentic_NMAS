@@ -207,6 +207,10 @@ class PipelineContext:
     rollback_failures: dict = field(default_factory=dict)
     #: Set by a batch: stage 8.5 hands its captures back instead of committing.
     defer_golden: bool = False
+    #: Coverage's combined deploy (artboard A2): every sent line is read back, quick or full,
+    #: and a line not read back FAILS verify, so the program is rolled back as one (a quick
+    #: verify's missing line only keeps it from passing, nothing rolled back for it).
+    read_back_all: bool = False
     #: Captures handed to the batch when :attr:`defer_golden` is set.
     golden_pending: list = field(default_factory=list)
     #: ip -> pushed lines the device rejected, so there was nothing to undo.
@@ -1517,13 +1521,19 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # not pass, and nothing is rolled back for it (the push itself raised
         # nothing, so what to undo is not known from here).
         read_back = None
-        if scope["scope"] == verify_scope.QUICK:
+        if scope["scope"] == verify_scope.QUICK or ctx.read_back_all:
             post_cfg = post.get("running_config") or ""
             if not post_cfg:
                 cant_read.append("new lines: `show running-config`: "
                                  + (post.get("running_config_error") or "nothing was read"))
             else:
                 read_back = verify_scope.read_back(ctx.rendered_commands.get(ip) or [], post_cfg)
+                if ctx.read_back_all and read_back.get("missing"):
+                    # One program, rolled back as one (A2): a template that did not land is a
+                    # verify failure, never a device left with part of its templates.
+                    issues.append(f"{len(read_back['missing'])} sent line(s) did not read back: "
+                                  + "; ".join(read_back["missing"][:5])
+                                  + (" …" if len(read_back["missing"]) > 5 else ""))
 
         ctx.verify_result[ip] = {
             "ok":     (not issues and not unmet and not cant_read
