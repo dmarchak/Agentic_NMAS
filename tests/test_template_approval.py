@@ -35,6 +35,28 @@ def repo(tmp_path):
     return path
 
 
+def _commit_approvals(repo):
+    """Commit the approvals record, as the approve and revoke routes do: the deploy gate
+    counts an approval only once it is committed (CONCURRENCY_AUDIT R13)."""
+    import subprocess
+
+    env = dict(os.environ, GIT_AUTHOR_NAME="T", GIT_AUTHOR_EMAIL="t@example.invalid",
+               GIT_COMMITTER_NAME="T", GIT_COMMITTER_EMAIL="t@example.invalid")
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        subprocess.run(["git", "init", "-q", repo], check=True, env=env)
+    subprocess.run(["git", "-C", repo, "add", "templates/.approvals.json"], check=True, env=env)
+    subprocess.run(["git", "-C", repo, "commit", "-q", "--allow-empty", "-m", "approvals"],
+                   check=True, env=env)
+
+
+def _approve(repo, *args, **kwargs):
+    """`approval.approve`, then the commit the route makes."""
+    result = approval.approve(repo, *args, **kwargs)
+    if result.get("ok"):
+        _commit_approvals(repo)
+    return result
+
+
 def _devices(names, platform="cisco_ios"):
     return [{"device": n, "platform": platform, "running_config": _config(n)}
             for n in names]
@@ -110,7 +132,7 @@ class TestTemplateCrud:
 
 class TestApprovalGate:
     def test_approves_when_every_bound_device_passes(self, repo):
-        result = approval.approve(repo, "cisco_ios/base.j2",
+        result = _approve(repo, "cisco_ios/base.j2",
                                   _devices(["s1", "s2", "s3"]), actor="operator")
         assert result["ok"], result.get("error")
         assert result["validation"]["device_count"] == 3
@@ -118,7 +140,7 @@ class TestApprovalGate:
     def test_refuses_when_no_device_round_trips(self, repo):
         templates_repo.write_template(repo, "cisco_ios/base.j2",
                                       "hostname {{ vars.hostname }}\nend\n")
-        result = approval.approve(repo, "cisco_ios/base.j2",
+        result = _approve(repo, "cisco_ios/base.j2",
                                   _devices(["s1", "s2", "s3"]))
         assert result["ok"] is False
         assert "at least one must" in result["error"]
@@ -128,7 +150,7 @@ class TestApprovalGate:
         so it is evidence here, not a veto over s1 and s2."""
         devices = _devices(["s1", "s2", "s3"])
         devices[2]["running_config"] += "\nsome construct no template models 42\n"
-        result = approval.approve(repo, "cisco_ios/base.j2", devices, actor="operator")
+        result = _approve(repo, "cisco_ios/base.j2", devices, actor="operator")
         assert result["ok"], result.get("error")
         evidence = result["evidence"]
         assert evidence["validated"] == ["s1", "s2"]
@@ -139,7 +161,7 @@ class TestApprovalGate:
     def test_a_device_that_could_not_be_validated_is_recorded_not_a_veto(self, repo):
         """A bound device with no capture (a pending onboarding) used to keep
         its whole platform unapprovable (D2)."""
-        result = approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]),
+        result = _approve(repo, "cisco_ios/base.j2", _devices(["s1"]),
                                   actor="operator",
                                   not_validated=[{"device": "s9", "reason": "no captured config yet"}])
         assert result["ok"]
@@ -150,7 +172,7 @@ class TestApprovalGate:
     def test_the_result_says_what_it_covers_and_what_it_does_not(self, repo):
         """The operator's addition: without the second sentence scheme 3 reads
         as weaker than scheme 2 to anyone who does not know why."""
-        result = approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]))
+        result = _approve(repo, "cisco_ios/base.j2", _devices(["s1"]))
         assert "covers the template itself" in result["covers"]
         assert "blocked there alone" in result["does_not_cover"]
         status = approval.approval_status(repo, "cisco_ios/base.j2")
@@ -159,14 +181,14 @@ class TestApprovalGate:
     def test_failure_names_the_device_and_lines(self, repo):
         templates_repo.write_template(repo, "cisco_ios/base.j2",
                                       "hostname {{ vars.hostname }}\nend\n")
-        result = approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]))
+        result = _approve(repo, "cisco_ios/base.j2", _devices(["s1"]))
         failed = result["validation"]["results"][0]
         assert failed["device"] == "s1"
         assert failed["missing"] > 0
         assert failed["missing_sample"]
 
     def test_refuses_with_no_bound_devices(self, repo):
-        result = approval.approve(repo, "cisco_iosxe/base.j2", [])
+        result = _approve(repo, "cisco_iosxe/base.j2", [])
         assert result["ok"] is False
         assert "nothing to validate" in result["error"]
 
@@ -195,6 +217,7 @@ class TestTemplateFingerprint:
         approval, and with it every other device's deploy path, offline."""
         approval._save(repo, {"cisco_ios/base.j2":
                               approval.template_fingerprint(repo, "cisco_ios/base.j2")})
+        _commit_approvals(repo)
         assert approval.is_approved(repo, "cisco_ios/base.j2")
         manifest.upsert_device(repo, "uid:s9", "s9", "203.0.113.29", platform="cisco-ios")
         assert approval.is_approved(repo, "cisco_ios/base.j2")
@@ -211,6 +234,7 @@ class TestTemplateFingerprint:
         """A deploy is not an approval question."""
         approval._save(repo, {"cisco_ios/base.j2":
                               approval.template_fingerprint(repo, "cisco_ios/base.j2")})
+        _commit_approvals(repo)
         assert approval.is_approved(
             repo, "cisco_ios/base.j2",
             {"s1": {"hostname": "s1", "totally": "different"}})
@@ -244,6 +268,7 @@ class TestFingerprintSchemeMigration:
 
     def test_the_status_explains_the_scheme_change(self, repo):
         approval._save(repo, {"cisco_ios/base.j2": self._scheme2(repo)})
+        _commit_approvals(repo)
         status = approval.approval_status(repo, "cisco_ios/base.j2")
         assert status["approved"] is False
         assert "scheme 2" in status["reason"]
@@ -251,7 +276,7 @@ class TestFingerprintSchemeMigration:
 
     def test_re_approving_writes_the_current_scheme(self, repo):
         approval._save(repo, {"cisco_ios/base.j2": self._scheme2(repo)})
-        result = approval.approve(repo, "cisco_ios/base.j2",
+        result = _approve(repo, "cisco_ios/base.j2",
                                   _devices(["s1", "s2", "s3"]), actor="operator")
         assert result["ok"] is True
         assert approval._load(repo)["cisco_ios/base.j2"]["scheme"] == 3
@@ -569,7 +594,7 @@ class TestRevocationIsARecordedFinding:
         monkeypatch.setattr(approval, "template_fingerprint",
                             lambda *a, **k: {"fingerprint": "new", "template_hash": "t",
                                              "scheme": approval.FINGERPRINT_SCHEME})
-        result = approval.approve(repo, rel, [{"device": "s1"}], actor="operator")
+        result = _approve(repo, rel, [{"device": "s1"}], actor="operator")
 
         assert result["ok"] is True
         assert approval._load(repo)[rel].get("revoked") is None
@@ -717,7 +742,7 @@ class TestOnboardingNoLongerRevokesItsPlatformsApproval:
         os.makedirs(repo)
         templates_repo.seed_templates(repo)
         manifest.upsert_device(repo, "uid:s1", "s1", "203.0.113.21", platform="cisco-ios")
-        approval.approve(repo, "cisco_ios/base.j2", _devices(["s1"]), actor="operator")
+        _approve(repo, "cisco_ios/base.j2", _devices(["s1"]), actor="operator")
         assert approval.is_approved(repo, "cisco_ios/base.j2")
         manifest.upsert_device(repo, "uid:new", "brand-new", "203.0.113.99",
                                platform="cisco-ios")
@@ -749,7 +774,8 @@ class TestTheApproveRouteRecordsWhatItCouldNotValidate:
         monkeypatch.setattr(troutes, "_repo_for", lambda *_a: repo)
         monkeypatch.setattr(troutes, "_captured_golden",
                             lambda name, *_a, **_k: (_config(name), None) if name == "s1" else (None, None))
-        monkeypatch.setattr("modules.nsot.repo.save_templates", lambda *a, **k: {"ok": True})
+        monkeypatch.setattr("modules.nsot.repo.save_templates",
+                            lambda *a, **k: (_commit_approvals(repo), {"ok": True})[1])
         r = nmas.app.test_client().post("/templates/approve/cisco_ios/base.j2", json={})
         body = r.get_json()
         assert r.status_code == 200, body

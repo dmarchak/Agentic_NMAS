@@ -116,7 +116,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R10 | h under workers | live, locks, confirms | Job registries (capture preview, rotate, deploy job, `op_progress`) | in-memory job state and results | `threading.Lock` | no | UNSAFE-MULTI-PROCESS | no | Shared job store; "interrupted" from the recorded pid |
 | R11 | m today; h under workers | locks, live | SSH session budget per device | vty lines | per-process count | no | UNSAFE | yes (host CLIs) | Cross-process session slots |
 | R12 | m | approvals, intent, confirms | Template approve | `.approvals.json`, a commit | client sends `{}`; validates, then fingerprints the working tree | no | UNSAFE | yes | Approve carries the reviewed fingerprint; fingerprint one snapshot first |
-| R13 | m | approvals, stores | `.approvals.json` record | approvals and tombstones | unlocked read-modify-write, shared `.tmp`, `{}` on unreadable; edits' revocations not committed; gate reads the working tree | no | UNSAFE | yes | PathLock and atomic write; commit tombstones with the template; read at HEAD |
+| R13 | m | approvals, stores | `.approvals.json` record | approvals and tombstones | unlocked read-modify-write, shared `.tmp`, `{}` on unreadable; edits' revocations not committed; gate reads the working tree | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approvals_record.py) | yes | PathLock and atomic write; commit tombstones with the template; read at HEAD |
 | R14 | m | intent, approvals | Template and bindings editors | templates, `bindings.yml` | no base; truncate in place; bindings fall back to defaults silently | no | UNSAFE | yes | Base blob; `write_atomic`; refuse an unreadable bindings file |
 | R15 | m | intent, confirms | Hash-confirmed intent writers (bulk, profile propose, IP SLA) | `host_vars`, `profiles/monitoring.yml` | hash checked, then write, then commit, nothing spanning; no device holds | no | UNSAFE | yes | Repo lock across recompute, write and commit; hold devices |
 | R16 | m | confirms | Deploy and restore confirm gaps | devices, commit | command hash optional; compared before the hold; list derived | partly | UNSAFE | yes | Require the hash; hold first; list in the hash |
@@ -343,6 +343,16 @@ ran against, and the edit's revocation tombstone is overwritten by the later sav
 applied: the edit-versus-approve race is not safe by design, and risk is medium, not high,
 because the deploy plan still renders the actual template and a person confirms the program
 by hash.
+
+*FIXED 2026-10-02 (tests/test_approvals_record.py):* every approve and revoke is a locked
+read-modify-write (`<repo>.approvals.lock`, beside the repository) with a temp file per write;
+an unreadable record refuses both, keeping the file and a `.corrupt-` copy; a template edit
+commits its revocations with the template; the approve and revoke routes report a failed
+commit. "Read at HEAD" is built as fail-closed both ways: the gate counts an approval only
+when it is committed AND the working record still holds it, so an uncommitted approval is
+not one and an uncommitted revocation already refuses. Found while building it: a damaged
+record's preserved copy lands inside the repository, where seeding stages untracked files
+(register C345).
 
 **R13. The approvals record loses tombstones and can reopen the gate** (approvals-10,
 approvals-12, intent-9, stores-7). `_load` returns `{}` on an unreadable file

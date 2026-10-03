@@ -150,25 +150,90 @@ def template_fingerprint(repo: str, rel_path: str,
 # Storage
 # ---------------------------------------------------------------------------
 
-def _load(repo: str) -> dict:
-    path = approvals_path(repo)
-    if not os.path.exists(path):
-        return {}
+class ApprovalsUnreadable(RuntimeError):
+    """The approvals record exists and cannot be read: nothing is written over it."""
+
+
+def _lock(repo: str):
+    """Every read-modify-write of the record, across processes (CONCURRENCY_AUDIT R13): an
+    approve and a revoke at once each saved a stale copy, so one person's revocation could be
+    undone by another's approval, and a host script writes this file too.
+
+    The lock file is BESIDE the repository (``<repo>.approvals.lock``), as the repository's
+    own lock is: inside ``templates/`` it was an untracked file in the NSoT repository, which
+    the library's seeding stages."""
+    from modules.filestore import PathLock
+    return PathLock(os.path.abspath(repo) + ".approvals")
+
+
+def _load_for_write(repo: str) -> dict:
+    """The working record for a read-modify-write: {} when ABSENT; ApprovalsUnreadable when
+    it cannot be read (it used to read as {}, and the next save erased every approval and
+    every tombstone in it). The damaged file is preserved beside it."""
+    from modules.filestore import StoreUnreadable, read_json_for_write
     try:
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
-    except (json.JSONDecodeError, OSError) as exc:
-        log.error("approval: unreadable record (%s) — treating as unapproved", exc)
-        return {}
+        data = read_json_for_write(approvals_path(repo))
+    except StoreUnreadable as exc:
+        raise ApprovalsUnreadable(str(exc)) from exc
+    if not isinstance(data, dict):
+        raise ApprovalsUnreadable(f"{APPROVALS_REL} is not a mapping, so nothing was written")
+    return data
 
 
 def _save(repo: str, data: dict) -> None:
-    path = approvals_path(repo)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        json.dump(data, fh, indent=2, sort_keys=True)
-    os.replace(tmp, path)
+    """Replaced atomically, a temp file per write (it was one shared `.tmp`)."""
+    from modules.filestore import write_atomic
+    write_atomic(approvals_path(repo), json.dumps(data, indent=2, sort_keys=True), newline="\n")
+
+
+def _load(repo: str) -> dict:
+    """The working record for display; {} (logged) when unreadable. Never written back:
+    writers use `_load_for_write` under `_lock`."""
+    try:
+        return _load_for_write(repo)
+    except ApprovalsUnreadable as exc:
+        log.error("approval: %s", exc)
+        return {}
+
+
+def _committed(repo: str):
+    """The record at HEAD: {} when not committed, None when it cannot be read."""
+    from modules.nsot.repo import git, git_raw
+
+    rel = APPROVALS_REL.replace(os.sep, "/")
+    if git(repo, "cat-file", "-e", f"HEAD:{rel}")[0] != 0:
+        return {}
+    rc, out, err = git_raw(repo, "show", f"HEAD:{rel}")
+    if rc != 0:
+        log.error("approval: the committed record could not be read: %s", err)
+        return None
+    try:
+        data = json.loads(out)
+    except ValueError as exc:
+        log.error("approval: the committed record is not JSON: %s", exc)
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _effective(repo: str, rel_path: str) -> tuple:
+    """``(record, problem)``: the record the gate judges (CONCURRENCY_AUDIT R13).
+
+    An approval counts only when it is COMMITTED and the working record still holds it, so
+    it fails closed both ways: an approval whose commit failed is not one (the gate read the
+    working file, so an uncommitted approval passed), and a revocation not yet committed
+    already refuses (the working record holds it). Either record unreadable refuses."""
+    try:
+        work = _load_for_write(repo)
+    except ApprovalsUnreadable as exc:
+        return None, f"the approvals record could not be read: {exc}"
+    head = _committed(repo)
+    if head is None:
+        return None, "the committed approvals record could not be read"
+    w, h = work.get(rel_path), head.get(rel_path)
+    if w and not w.get("revoked") and w != h:
+        return None, ("approved in the record but not committed: the deploy gate counts an "
+                      "approval once its commit exists")
+    return w, ""
 
 
 def is_approved(repo: str, rel_path: str, host_vars_by_device: dict = None) -> bool:
@@ -178,7 +243,10 @@ def is_approved(repo: str, rel_path: str, host_vars_by_device: dict = None) -> b
     answered a different question, and honouring it would be a gate that passes
     because nobody migrated it.
     """
-    record = _load(repo).get(rel_path)
+    record, problem = _effective(repo, rel_path)
+    if problem:
+        log.warning("approval: '%s' is not approved: %s", rel_path, problem)
+        return False
     if not record:
         return False
     if record.get("revoked"):
@@ -197,10 +265,13 @@ def is_approved(repo: str, rel_path: str, host_vars_by_device: dict = None) -> b
 
 def approval_status(repo: str, rel_path: str, host_vars_by_device: dict = None) -> dict:
     """Approval state, what it covers and does not, and when stale, what changed."""
-    record = _load(repo).get(rel_path)
+    record, problem = _effective(repo, rel_path)
     current = template_fingerprint(repo, rel_path)
     scope = {"covers": COVERS, "does_not_cover": DOES_NOT_COVER}
 
+    if problem:
+        return {"approved": False, "reason": problem,
+                "fingerprint": current["fingerprint"], "changes": [], **scope}
     if not record:
         return {"approved": False, "reason": "never approved",
                 "fingerprint": current["fingerprint"], "changes": [], **scope}
@@ -322,11 +393,16 @@ def approve(repo: str, rel_path: str, devices: list, actor: str = "user",
     fingerprint = template_fingerprint(repo, rel_path)
     evidence = {"validated": sorted(passed), "failed": failed, "not_validated": skipped,
                 "bound": len(passed) + len(failed) + len(skipped)}
-    data = _load(repo)
-    data[rel_path] = {**fingerprint,
-                      "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                      "actor": actor, "evidence": evidence}
-    _save(repo, data)
+    with _lock(repo):
+        try:
+            data = _load_for_write(repo)
+        except ApprovalsUnreadable as exc:
+            return {"ok": False, "error": f"Not approved: {exc}", "validation": validation,
+                    "not_validated": skipped}
+        data[rel_path] = {**fingerprint,
+                          "approved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                          "actor": actor, "evidence": evidence}
+        _save(repo, data)
     log.info("approval: '%s' approved by %s; validated %d of %d bound device(s)",
              rel_path, actor, len(passed), evidence["bound"])
     return {"ok": True, "template": rel_path, "validation": validation,
@@ -370,21 +446,25 @@ def revoke(repo: str, rel_path: str, reason: str = "", actor: str = "") -> dict:
             "template must be re-validated, and 'unapproved' on its own says "
             "nothing to whoever finds it.")}
 
-    data = _load(repo)
-    previous = data.get(rel_path) or {}
-    data[rel_path] = {
-        "revoked": True,
-        "reason": reason.strip(),
-        "revoked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "actor": actor or "operator",
-        # Kept so the record says what was withdrawn, not merely that something
-        # was. Never consulted by the gate.
-        "previous_fingerprint": previous.get("fingerprint", ""),
-        "previously_approved_at": previous.get("approved_at", ""),
-        "previously_approved_by": previous.get("actor", ""),
-        "previous_evidence": previous.get("evidence", {}),
-    }
-    _save(repo, data)
+    with _lock(repo):
+        try:
+            data = _load_for_write(repo)
+        except ApprovalsUnreadable as exc:
+            return {"ok": False, "error": f"Not revoked: {exc}"}
+        previous = data.get(rel_path) or {}
+        data[rel_path] = {
+            "revoked": True,
+            "reason": reason.strip(),
+            "revoked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "actor": actor or "operator",
+            # Kept so the record says what was withdrawn, not merely that something
+            # was. Never consulted by the gate.
+            "previous_fingerprint": previous.get("fingerprint", ""),
+            "previously_approved_at": previous.get("approved_at", ""),
+            "previously_approved_by": previous.get("actor", ""),
+            "previous_evidence": previous.get("evidence", {}),
+        }
+        _save(repo, data)
     log.warning("approval: '%s' REVOKED by %s — %s", rel_path,
                 actor or "operator", reason.strip())
     return {"ok": True, "template": rel_path, "reason": reason.strip(),

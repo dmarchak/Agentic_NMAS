@@ -155,6 +155,8 @@ class TestTheBadgeSaysWhatItCoversAndWhatItDoesNot:
                     "running_config": read_shipped(os.path.join(fleet, f"{n}.cfg"))} for n in ("s1", "s2")]
         devices[1]["running_config"] += "\nsome construct no template models 42\n"
         approval.approve(repo, "cisco_ios/base.j2", devices, actor="operator@example.invalid")
+        from tests.test_template_approval import _commit_approvals
+        _commit_approvals(repo)          # the gate counts a COMMITTED approval (R13)
         monkeypatch.setattr(troutes, "_active_list", lambda *a: "Lab")
         monkeypatch.setattr(troutes, "_repo_for", lambda *_a: repo)
         monkeypatch.setattr(troutes, "_captured_golden", lambda *a, **k: (None, None))

@@ -297,22 +297,31 @@ def write_template(rel_path):
     # for BOTH platforms: editing it changes what every base.j2 renders, and
     # revoking only `_common.j2` (which has no approval of its own) would leave
     # them all standing.
-    revoked = []
+    revoked, not_revoked = [], []
     for stored_path in approval.approved_templates(repo):
         if rel_path in approval.template_closure(repo, stored_path):
-            approval.revoke(
+            done = approval.revoke(
                 repo, stored_path,
                 reason=(f"'{rel_path}' was edited, and this template imports "
                         "it; re-approval must validate the new content "
                         "against every bound device"),
                 actor=request_actor())
-            revoked.append(stored_path)
+            (revoked if done.get("ok") else not_revoked).append(stored_path)
 
+    # The revocations are COMMITTED WITH THE EDIT (CONCURRENCY_AUDIT R13): they were left in
+    # the working record, out of history, and the commit staged the template alone.
     commit = repo_service.save_templates(
-        list_name, [rel_path], actor=request_actor(),
-        message=data.get("message", ""))
+        list_name, [rel_path] + ([".approvals.json"] if revoked else []),
+        actor=request_actor(), message=data.get("message", ""))
+    if not commit.get("ok"):
+        return jsonify({"ok": False, "path": rel_path, "revoked": revoked,
+                        "error": (f"The template is written but its commit failed "
+                                  f"({commit.get('error')}): it is not in the repository's "
+                                  "history. The deploy gate already counts the edited "
+                                  "template as unapproved.")}), 500
     return jsonify({"ok": True, "path": rel_path, "commit": commit.get("commit", ""),
-                    "approval_revoked": bool(revoked), "revoked": revoked})
+                    "approval_revoked": bool(revoked), "revoked": revoked,
+                    "not_revoked": not_revoked})
 
 
 @bp.route("/revoke/<path:rel_path>", methods=["POST"])
@@ -339,6 +348,13 @@ def revoke_approval(rel_path):
         list_name, [".approvals.json"], actor=request_actor(),
         message=f"template: revoke approval for {rel_path}",
         paths=[os.path.join("templates", ".approvals.json")])
+    if not commit.get("ok"):
+        # The working record holds the revocation, so the deploy gate already refuses; the
+        # commit that puts it in history did not happen, and that is said (R13).
+        return jsonify({**result, "ok": False, "error": (
+            f"Revoked in the working record, so deploys from it are already refused, but "
+            f"the commit failed ({commit.get('error')}): the revocation is not in the "
+            "repository's history yet. Revoke again to commit it.")}), 500
     return jsonify({**result, "commit": commit.get("commit", "")})
 
 
@@ -506,9 +522,17 @@ def approve(rel_path):
     result = approval.approve(repo, rel_path, devices,
                               actor=request_actor(), not_validated=not_validated)
     if result["ok"]:
-        repo_service.save_templates(list_name, [".approvals.json"],
-                                    actor=request_actor(),
-                                    message=f"template: approve {rel_path}")
+        commit = repo_service.save_templates(list_name, [".approvals.json"],
+                                             actor=request_actor(),
+                                             message=f"template: approve {rel_path}")
+        if not commit.get("ok"):
+            # The gate counts an approval once it is COMMITTED (R13), so an approval whose
+            # commit failed is not one, and the route says so instead of "approved".
+            return jsonify({**result, "ok": False, "error": (
+                f"Not approved yet: the approval is in the working record but its commit "
+                f"failed ({commit.get('error')}), and the deploy gate counts an approval "
+                "once it is committed. Approve again.")}), 500
+        result["commit"] = commit.get("commit", "")
     return jsonify(result), (200 if result["ok"] else 400)
 
 

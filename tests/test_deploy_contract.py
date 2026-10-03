@@ -229,6 +229,8 @@ class TestApprovalIsTheTemplateNotItsDevices:
         repo = _repo_with_templates(tmp_path, devices=("s1", "s2"))
         approval._save(repo, {"cisco_ios/base.j2": approval.template_fingerprint(
             repo, "cisco_ios/base.j2")})
+        from tests.test_template_approval import _commit_approvals
+        _commit_approvals(repo)          # the gate counts a COMMITTED approval (R13)
         assert approval.is_approved(repo, "cisco_ios/base.j2",
                                     {"s1": {"hostname": "s1", "deployed": True},
                                      "s2": {"hostname": "s2"}})
