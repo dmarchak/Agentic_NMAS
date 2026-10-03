@@ -49,6 +49,10 @@ Every operation that changes a device or the record works the same way:
 3. **Result.** What happened, device by device, drawn from the record the operation wrote,
    so you can find it again later in History.
 
+Nothing you click goes quiet. When an answer cannot be drawn (the server refused without a
+card, did not answer, or answered with nothing for that place), the place it would have
+appeared says **Couldn't load:** and why, and keeps what it showed.
+
 ## A baseline is a moment
 
 A baseline tag (`baseline/<time>`) names one commit at which every device's golden and

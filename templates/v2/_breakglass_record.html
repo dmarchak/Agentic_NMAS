@@ -1,12 +1,13 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, how -%}
 {#- The record's state (board 7): whether it holds the credentials in use (job health's
     judgement, breakglass.currency), its last export, and the export opened in place. Redrawn
-    when job health reads again. -#}
+    when job health reads again. It passes nothing down (hx-disinherit): its own hx-select,
+    inherited, filtered its buttons' answers to nothing (C385). -#}
 {%- set STATE = {'current': ('current', 'ok'), 'stale': ('not current', 'danger'),
                  'not_intact': ('not intact', 'danger'), 'never': ('none exported', 'warn'),
                  'unjudged': ('not judged yet', 'muted'), 'unreadable': ('unknown', 'warn')} -%}
 {%- set s = STATE.get(r.state, (r.state, 'muted')) -%}
-<section class="op-card bg-record{{ " op-danger" if s[1] == "danger" else " op-ok" if s[1] == "ok" else " op-warn" if s[1] == "warn" else " op-muted" }}" id="bg-record" hx-get="{{ url_for('v2.credentials', list=list_name) }}" hx-select="#bg-record"
+<section class="op-card bg-record{{ " op-danger" if s[1] == "danger" else " op-ok" if s[1] == "ok" else " op-warn" if s[1] == "warn" else " op-muted" }}" id="bg-record" hx-disinherit="*" hx-get="{{ url_for('v2.credentials', list=list_name) }}" hx-select="#bg-record"
          hx-trigger="nmas:job_health from:body" hx-swap="outerHTML"{% if oob %} hx-swap-oob="true"{% endif %}>
   <div class="op-hd"><h2>{{ list_name }}'s break-glass record {{ badge(s[0], s[1]) }}</h2>
     <div class="op-hd-actions"><a class="btn btn-primary" data-op="breakglass-export" href="{{ url_for('v2.credentials', list=list_name, open='export') }}" hx-get="{{ url_for('v2.credentials_export', list=list_name) }}" hx-target="#bg-op" hx-swap="innerHTML">Export the record…</a>{{ how('breakglass-export', compact=True, op='the export') }}<a class="btn" data-op="breakglass-export" href="{{ url_for('v2.credentials', list=list_name, open='check') }}" hx-get="{{ url_for('v2.credentials_check_form', list=list_name) }}" hx-target="#bg-op" hx-swap="innerHTML">Check a break-glass file…</a>{{ how('breakglass-export', 'check', compact=True, op='the check') }}</div></div>

@@ -372,6 +372,112 @@
     });
   }
 
+  /* C388: a swap that yields nothing, or a request that fails, is never silent. htmx 2 swaps
+     nothing on a 4xx or 5xx, and swaps an EMPTY slot when the selection (hx-select, passed
+     down from an ancestor unless one disinherits it) matches nothing in the answer: C385, the
+     break-glass record's buttons, did nothing on the host. A drawn refusal (an HTML fragment,
+     whatever its status) is the server's answer and is drawn; anything else says
+     "Couldn't load: <why>" in place, keeping what the target showed. */
+  function isFragment(body, contentType) {
+    return /text\/html/i.test(contentType || '') && !!(body || '').replace(/\s+/g, '') &&
+      !/^\s*<(!doctype|html)\b/i.test(body);
+  }
+
+  function failWords(status, statusText, body, contentType) {
+    var why = '';
+    if (/json/i.test(contentType || '')) {
+      try { var got = JSON.parse(body); why = (got && typeof got.error === 'string') ? got.error : ''; }
+      catch (x) { why = ''; }
+    } else if (/text\/html/i.test(contentType || '')) {
+      var title = /<title>([^<]*)<\/title>/i.exec(body || '');
+      why = title ? title[1].replace(/\s+/g, ' ').trim() : '';
+    } else if (body && body.length <= 200) {
+      why = body.trim();
+    }
+    var code = 'HTTP ' + status + (statusText ? ' ' + statusText : '');
+    return "Couldn't load: " + (why ? why + ' (' + code + ')' : 'the server answered ' + code);
+  }
+
+  /* hx-select as htmx 2 resolves it for the element that asked (its own, else the nearest
+     ancestor's, stopped by an hx-disinherit naming it; "unset" is none). */
+  function selectFor(el) {
+    for (var e = el; e && e.getAttribute; e = e.parentElement) {
+      var dis = e !== el ? (e.getAttribute('hx-disinherit') || e.getAttribute('data-hx-disinherit')) : '';
+      if (dis && (dis === '*' || (' ' + dis + ' ').indexOf(' hx-select ') >= 0)) return null;
+      var v = e.getAttribute('hx-select') || e.getAttribute('data-hx-select');
+      if (v) return v === 'unset' ? null : v;
+    }
+    return null;
+  }
+
+  var COULDNT = 'data-couldnt';
+  var INLINE = /^(A|BUTTON|INPUT|SELECT|TEXTAREA|SPAN|LABEL|IMG)$/;
+
+  /* The notice beside a target that cannot hold one (a control), else first inside it. */
+  function couldntSlot(target) {
+    var beside = INLINE.test(target.tagName || '');
+    var at = beside ? target.nextElementSibling : target.firstElementChild;
+    return {beside: beside, at: (at && at.hasAttribute(COULDNT)) ? at : null};
+  }
+
+  function sayCouldnt(target, words) {
+    if (!target || !target.ownerDocument) return;
+    var slot = couldntSlot(target), box = slot.at;
+    if (!box) {
+      box = target.ownerDocument.createElement('div');
+      box.className = 'notice notice-warn';
+      box.setAttribute(COULDNT, '');
+      box.setAttribute('role', 'alert');
+      box.appendChild(target.ownerDocument.createElement('p'));
+      if (slot.beside) target.parentNode.insertBefore(box, target.nextSibling);
+      else target.insertBefore(box, target.firstChild);
+    }
+    box.firstChild.textContent = words;
+  }
+
+  function clearCouldnt(target) {
+    var slot = target && target.tagName ? couldntSlot(target) : null;
+    if (slot && slot.at) slot.at.parentNode.removeChild(slot.at);
+  }
+
+  function neverSilent(e) {
+    var d = e.detail || {}, xhr = d.xhr, target = d.target;
+    if (!xhr || !target) return;
+    var type = xhr.getResponseHeader('Content-Type') || '', body = d.serverResponse;
+    if (d.isError) {
+      if (!isFragment(body, type)) {
+        d.shouldSwap = false;
+        sayCouldnt(target, failWords(xhr.status, xhr.statusText, body, type));
+        return;
+      }
+      d.shouldSwap = true;
+    }
+    if (!d.shouldSwap) return;
+    // htmx's order: the HX-Reselect header, the request's own select, the override, the
+    // element's (inherited) hx-select.
+    var sel = xhr.getResponseHeader('HX-Reselect') || d.select || d.selectOverride ||
+      selectFor(d.requestConfig ? d.requestConfig.elt : d.elt);
+    if (sel && sel !== 'unset' && typeof body === 'string' && body.replace(/\s+/g, '') &&
+        root.DOMParser) {
+      var doc = new root.DOMParser().parseFromString(body, 'text/html'), found = false;
+      try { found = !!doc.querySelector(sel); } catch (x) { found = false; }
+      if (!found) {
+        d.shouldSwap = false;
+        sayCouldnt(target, "Couldn't load: the answer held nothing matching " + sel +
+                   ' (HTTP ' + xhr.status + ')');
+        return;
+      }
+    }
+    clearCouldnt(target);
+  }
+
+  function noAnswer(words) {
+    return function (e) {
+      var d = e.detail || {}, path = d.pathInfo ? d.pathInfo.requestPath : '';
+      sayCouldnt(d.target || e.target, "Couldn't load: " + words + (path ? ' (' + path + ')' : ''));
+    };
+  }
+
   /* A page the browser RESTORES from its back/forward cache comes back with its
      script state as it was left, and its live channel closed: a wait that
      ended hours ago still reads "waiting", with Stop waiting beside it (the
@@ -398,6 +504,12 @@
     root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); catchUpMissed(e); });
     root.document.addEventListener('htmx:beforeRequest', noteAsked);
     root.document.addEventListener('htmx:beforeRequest', markTab);
+    root.document.addEventListener('htmx:beforeSwap', neverSilent);
+    root.document.addEventListener('htmx:sendError', noAnswer('the server did not answer'));
+    root.document.addEventListener('htmx:timeout', noAnswer('no answer in time'));
+    root.document.addEventListener('htmx:targetError', function (e) {
+      sayCouldnt(e.target, "Couldn't load: nothing on this page is " + (e.detail && e.detail.target));
+    });
     root.document.addEventListener('keydown', function (e) {
       var t = e.target && e.target.tagName;
       if (e.key !== '/' || t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
@@ -408,5 +520,6 @@
 
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
-                  badgeDoubt: badgeDoubt, missedKeys: missedKeys};
+                  badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
+                  failWords: failWords};
 })(typeof window !== 'undefined' ? window : this);

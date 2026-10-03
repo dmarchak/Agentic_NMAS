@@ -271,6 +271,10 @@ def test_a_real_browser_exports_and_checks_the_download(page, monkeypatch):
                 "return document.querySelector('#bg-record').textContent")
             assert "T" in b.js("return document.querySelector('#bg-export time').getAttribute("
                                "'datetime')"), "a time, never an epoch number"
+            # What next's "Check a break-glass file…", clicked in the result card, opens the
+            # check (C385: every opener is clicked, not reached by its address).
+            b.click("#bg-export .op-part a[data-op=breakglass-export]")
+            b.wait_for("return document.querySelector('#bg-op #bg-check input[name=file]')", 10)
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
@@ -312,6 +316,35 @@ def test_a_real_browser_says_bytes_altered_on_the_way_are_not_intact(page, monke
             browser.close_socketio_sessions()
     rows = [json.loads(l) for l in (page["dir"] / bg.INTACT_LOG).read_text().splitlines()]
     assert rows[-1]["ok"] is False and rows[-1]["browser_sha256"] != rows[-1]["sha256"]
+
+
+def test_a_real_browser_opens_both_from_the_records_own_buttons(page):
+    """C385: the record's "Export the record…" and "Check a break-glass file…", CLICKED where
+    they sit, inside #bg-record, open their card in #bg-op. On the host neither did anything:
+    the record's `hx-select="#bg-record"` (for its own refresh) passed down to both, so each
+    answer was filtered to nothing. The tests above open `?open=export` and `?open=check`,
+    which the server draws, and never clicked these."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url(f"/v2/credentials?list={LIST}"))
+            b.wait_for("return window.htmx && window.Alpine && document.querySelector('#bg-record')")
+            assert not b.js("return document.querySelector('#bg-op').textContent.trim()")
+            b.js("Array.prototype.filter.call(document.querySelectorAll('#bg-record a.btn'), "
+                 "function (a) { return /Export the record/.test(a.textContent); })[0].click();")
+            b.wait_for("return document.querySelector('#bg-op #bg-export [data-bg-pass]')", 10)
+            b.js("Array.prototype.filter.call(document.querySelectorAll('#bg-record a.btn'), "
+                 "function (a) { return /Check a break-glass file/.test(a.textContent); })[0].click();")
+            b.wait_for("return document.querySelector('#bg-op #bg-check input[name=file]')", 10)
+            assert b.js("return document.querySelector('#bg-record') !== null"), \
+                "the record stays where it was"
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
 
 
 class TestCheckABreakglassFile:
