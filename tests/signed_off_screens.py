@@ -17,7 +17,13 @@ SIGNED_OFF = {
                                    "page, the device list and the Device page"),
     "devices.html": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the device list)"),
     "device.html": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page); the spike in "
-                                  "option A approved 2026-09-30 (brief 9b)"),
+                                  "option A approved 2026-09-30 (brief 9b). Its ACTIONS on v2 "
+                                  "(signed off 2026-10-02, the mockups' 'Device actions on v2' "
+                                  "page): the preview in place of the tab's content, the result "
+                                  "in place with its next steps, the refusal when the device "
+                                  "moved, a check failing on a holder, and the phone width; one "
+                                  "change, the read timings on hover. Built in the order "
+                                  "capture, persist, rotate, deploy with Mode B"),
     "about.html": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, mockup version 7 (Help > About carries "
                                  "the version)"),
     "monitoring.html": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (fleet-wide "
@@ -49,7 +55,8 @@ SIGNED_OFF = {
 #: built without a recorded sign-off: (why, what happens to it). Only shrinks.
 UNSIGNED = {
     "coverage.html": ("built for P.9 (d1) on 2026-10-01 with no recorded mockup",
-                      "its redraw's mockup is owed (NSOT_STAGE7_PLAN 1h)"),
+                      "its redraw is drawn to the operator's review (2026-10-02, the mockups' "
+                      "artboards A and A2), awaiting sign-off before it is built"),
     "heartbeat.html": ("built 2026-10-01 (C300) with no mockup",
                        "removed: replaced by the monitoring templates (C322, NSOT_GUI_BRIEF 14)"),
     "ip_sla.html": ("built 2026-10-01 (P.9 d4) with no mockup",
