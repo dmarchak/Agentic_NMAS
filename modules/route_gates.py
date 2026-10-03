@@ -90,6 +90,7 @@ GATES = {
     "upload_file": _g(C, "copies a file onto a device's flash"),
     "delete_file": _g(C, "deletes a file from a device's flash"),
     "rotate.apply": _g(C, "rotates a device's login credential: the device then accepts only the new password"),
+    "device_v2.rotate_confirm": _g(C, "rotates a device's login credential from the v2 device page (7.3; the same confirm as rotate.apply): the device then accepts only the new password"),
     "v2.profile_apply_confirm": _g(C, "deploys the monitoring profile's confirmed programs to the chosen devices, one after another (P.9 d2)"),
     "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
     "device_v2.persist_confirm": _g(C, "saves the running config to startup on a device and reads it back, from the v2 device page (7.3; the same apply as persist.apply)"),
@@ -178,6 +179,7 @@ GATES = {
     # ---- not gated: reads, previews, tests, layout, the schedule's work --
     "deploy.plan": _g(N, "computes a program; sends nothing"),
     "golden.restore_preview": _g(N, "computes a restore program; sends nothing"),
+    "device_v2.rotate_preview": _g(N, "reads the device's account line live for the rotation's plan, from the v2 device page (the same plan as rotate.preview); changes nothing"),
     "device_v2.capture_start": _g(N, "starts the capture preview's read of one device, from the v2 device page (the same job as golden.capture_preview); records nothing"),
     "golden.capture_preview": _g(N, "reads each device's running config and computes a "
                                     "capture preview; records nothing"),

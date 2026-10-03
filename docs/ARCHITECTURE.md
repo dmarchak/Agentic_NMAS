@@ -713,8 +713,14 @@ tracked in git.
   which `/golden/capture/*` call too); the card starts its read and then listens for its
   job's announcement, the confirm carries the read's hash and the list, and the result is
   drawn in place. Capture first, then persist (2026-10-03, the same pattern over
-  `persist_preview` and `persist_result`, through a shared one-device helper); rotate and
-  deploy with Mode B follow. The device page's tabs since: **Intent**
+  `persist_preview` and `persist_result`, through a shared one-device helper), then rotate
+  (the same, its confirm `rotate_op.confirm_and_start` for both pages, the card waiting for
+  the job's `rotation`); deploy with Mode B follows. A card refused because another operation
+  holds its device listens for `device_holds`, which `device_ops` announces on each release in
+  the app's process, and asks `/v2/device/<name>/when-free` (204 while still held). The
+  client remembers a request under its target's id too, so a fragment a button swaps into
+  another element catches up on an announcement made during the swap (C358). The device
+  page's tabs since: **Intent**
   (read-only: the document committed at HEAD, its last commit, the profile sections it
   inherits), **History** (goldens, intent commits and receipts as one timeline) and
   **Neighbours** (**[modules/neighbours.py](modules/neighbours.py)**, C38: the adjacencies the

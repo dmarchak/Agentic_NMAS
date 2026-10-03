@@ -150,7 +150,8 @@ def device(name):
     op = request.args.get("op")
     ctx["op_card"] = ({"state": "starting", "op": "capture", "host": dev.get("hostname", ""),
                        "list": ref.name, "back": tab} if op == "capture" else
-                      _persist_card(ref, dev, tab) if op == "persist" else None)
+                      _persist_card(ref, dev, tab) if op == "persist" else
+                      _rotate_starting(ref, dev, tab) if op == "rotate" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -491,3 +492,111 @@ def persist_confirm(name):
         persist_result(out, out.get("plan") or {}, actor)))
     c.update(back=_back(request.form), ip=dev.get("ip", ""))
     return _strict(render_template("v2/_persist.html", c=c))
+
+
+def _rotate_starting(ref, dev, back):
+    return {"state": "starting", "op": "rotate", "host": dev.get("hostname", ""),
+            "list": ref.name, "back": back}
+
+
+@bp.route("/device/<name>/rotate", methods=["GET"])
+def rotate(name):
+    """The rotate card, starting: it asks for its own preview (a POST on load), whose plan
+    reads the device's account line live, so the card says it is reading meanwhile."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_rotate.html",
+                                   c=_rotate_starting(ref, dev, _back(request.args))))
+
+
+@bp.route("/device/<name>/rotate/preview", methods=["POST"])
+def rotate_preview(name):
+    """The rotation's plan, drawn as the card: the preflight READS the device's account line
+    live (`rotate_op.plan`), the program masked, the fingerprint to confirm. Changes nothing."""
+    from modules import device_actions, identity
+    from modules.nsot import rotate_op
+    from modules.nsot.device_ops import busy_text
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import confirm_part
+    from modules.preview_confirm import rotate_preview as _preview
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_rotate.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    preview = _preview(rotate_op.plan(ref.name, host), busy=busy_text(ref.name, host),
+                       request=request)
+    c = device_actions.rotate_card(ref, host, mask_payload(preview), viewer=dict(
+        confirm_part(request, "confirm"), actor=identity.identify(request).actor or ""))
+    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_rotate.html", c=c))
+
+
+@bp.route("/device/<name>/rotate/confirm", methods=["POST"])
+def rotate_confirm(name):
+    """Start the confirmed rotation as a job, as the verified person, bound to the plan's
+    fingerprint: the same confirm as `/rotate/apply` (`rotate_op.confirm_and_start`). The card
+    then waits for the job's announcement."""
+    from modules import identity
+    from modules.nsot import rotate_op
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_rotate.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    back = _back(request.form)
+    confirmed = (request.form.get("fingerprint") or "").strip()
+    if not confirmed:
+        return _strict(render_template("v2/_rotate.html", c={
+            "state": "refused_hash", "host": host, "list": ref.name, "back": back}), 400)
+    got = rotate_op.confirm_and_start(ref.name, host, confirmed,
+                                      actor=identity.identify(request).actor or "",
+                                      ident=identity.verified_identity())
+    if "error" in got:
+        return _strict(render_template("v2/_rotate.html", c={
+            "state": "refused", "host": host, "list": ref.name, "back": back,
+            "error": got["error"]}), got["status"])
+    return _strict(render_template("v2/_rotate.html", c={
+        "state": "rotating", "host": host, "list": ref.name, "back": back,
+        "job": got["job"]}))
+
+
+@bp.route("/device/<name>/rotate/job/<job>", methods=["GET"])
+def rotate_job_card(name, job):
+    """The rotate card for its job: rotating, its result, or why there is none. Re-read when
+    the job announces `rotation`."""
+    from modules import device_actions
+    from modules.nsot import capture_job
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    c = device_actions.rotate_job_card(ref, dev.get("hostname", ""), job, capture_job.get(job))
+    c.update(back=_back(request.args), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_rotate.html", c=c))
+
+
+@bp.route("/device/<name>/when-free", methods=["GET"])
+def when_free(name):
+    """For a card refused because another operation held its device, re-read when a hold
+    ends (`device_holds`): 204, nothing redrawn, while the device is still held; once it is
+    free, the operation's card drawn again from its start. Reads one lock file."""
+    from modules.nsot.device_ops import busy_text
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    if busy_text(ref.name, dev.get("hostname", "")):
+        return _strict("", 204)
+    op, back = request.args.get("op", ""), _back(request.args)
+    if op == "persist":
+        return _strict(render_template("v2/_persist.html", c=_persist_card(ref, dev, back)))
+    if op == "rotate":
+        return _strict(render_template("v2/_rotate.html", c=_rotate_starting(ref, dev, back)))
+    return _strict(render_template("v2/_capture.html", c={
+        "state": "starting", "op": "capture", "host": dev.get("hostname", ""),
+        "list": ref.name, "back": back}))

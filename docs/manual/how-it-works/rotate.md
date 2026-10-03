@@ -4,7 +4,7 @@ Rotation replaces the password the tool uses to sign in to one device with a new
 
 ![Rotation: the preview reads the account's line from the device and sends nothing; the apply stages a generated password on the tool's host, sends the new account line on a held session, proves it on a fresh login (a failed proof puts the old line back on the held session), records it in the credential store, the inventory and one commit, then runs the persistence chain: the device's own save first, then the lab's Oxidized and startup-file stages.](diagrams/rotate.svg)
 
-You start it from the device's page (Rotate credential…). The same implementation also runs on the host as `nmas-rotate-credential`.
+You start it from the device's page: Actions > Rotate credential on the redesigned page, whose card reads the account's line, shows the plan and, after the confirm, waits for the job and draws its result in place (a card refused because another operation holds the device reads again when the tool announces that operation finished); or Rotate credential… on today's page. Both reach the same plan and confirm (`/v2/device/<name>/rotate/*`, `/rotate/*`). The same implementation also runs on the host as `nmas-rotate-credential`.
 
 ## The preview
 

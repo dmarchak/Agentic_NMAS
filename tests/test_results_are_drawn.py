@@ -148,6 +148,10 @@ PAGE_RECORD = {
     # (the commit, who, the outcome), and the golden read back on the device's History.
     # The device page's Persist (7.3): the result in place from the apply's answer, and the
     # record read back by job health's rotation row.
+    # The device page's Rotate (7.3): a job; its result drawn by the job's card, and the
+    # record read back by job health's rotation row.
+    "device_v2.rotate_confirm": ("templates/v2/_rotate.html",
+                                 ('id="device-op"', "c.summary", "c.record"), "jobs.jobs_health"),
     "device_v2.persist_confirm": ("templates/v2/_persist.html",
                                   ('id="device-op"', "c.outcome", "c.record"), "jobs.jobs_health"),
     "device_v2.capture_confirm": ("templates/v2/_capture.html",

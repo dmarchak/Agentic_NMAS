@@ -610,17 +610,33 @@ class TestTheShippedScripts:
         monkeypatch.setattr(deploy_job, "state", lambda job: {
             "job": job, "state": "running", "order": ["r3"], "elapsed_s": 1, "payload": None,
             "error": "", "steps": [{"device": "r3", "state": "running", "took_s": 1}]})
-        # The device page's Capture card READING (7.3) listens for its preview job.
-        from modules.nsot import capture_job
+        # The device page's Capture card READING (7.3) listens for its preview job, the
+        # Rotate card ROTATING for its job, and a card refused because its device is held for
+        # the hold's release.
+        from modules.nsot import capture_job, device_ops
         monkeypatch.setattr(capture_job, "get", lambda job: {"state": "running", "elapsed_s": 1})
+        monkeypatch.setattr(device_ops, "busy_text", lambda l, h: "r3 is being deployed to")
         heard = " ".join(_get(lab, u)[1] for u in ("/v2/device/r3", "/v2/device/r3/overview",
                                                     "/v2/device/r3/monitoring", "/v2/attention",
                                                     "/v2/help/installation",
                                                     "/v2/monitoring/coverage/table",
                                                     "/v2/monitoring/apply/job/x",
-                                                    "/v2/device/r3/capture/job/x"))
-        # +6 2026-10-02: every key attention.SOURCE_KEYS names; +1 capture_preview (7.3).
-        assert len(keys) == 25
+                                                    "/v2/device/r3/capture/job/x",
+                                                    "/v2/device/r3/rotate/job/x"))
+        from modules import device_page
+        from modules.nsot import rotate_op
+        from routes import device_v2
+        monkeypatch.setattr(rotate_op, "plan", lambda l, h: {"ok": False, "device": h,
+                                                             "list_name": l, "error": "x"})
+        # This lab's list is in no registry, which a write path refuses: here only the card's
+        # listener is asked for, so the device is found as the page finds it.
+        monkeypatch.setattr(device_v2, "_named_device",
+                            lambda n, l, t="": (*device_page.find_device(n), None))
+        heard += lab["client"].post("/v2/device/r3/rotate/preview",
+                                    data={"list": "Lab"}).get_data(as_text=True)
+        # +6 2026-10-02: every key attention.SOURCE_KEYS names; +1 capture_preview (7.3);
+        # +2 2026-10-03: rotation and device_holds (7.3's rotate card).
+        assert len(keys) == 27
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

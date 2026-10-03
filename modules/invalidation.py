@@ -99,6 +99,7 @@ VOCABULARY = {
                    "app-pushed reader last stored it",
     "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
+    "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
     "deploy_job": "a batch deploy run as a job (the v2 profile Apply): a device finished, or the batch, "
                   "its progress and result ready to read by id",
 }
@@ -109,6 +110,7 @@ VOCABULARY = {
 ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
+    "device-ops": ("device_holds",),           # modules/nsot/device_ops.py, on each release
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (as /deploy/apply declares).
     "deploy-job": ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
@@ -221,6 +223,8 @@ DECLARED = {
                                  "either directly"),
     "v2.profile_apply_confirm": Nothing("starts a job and answers at once; the batch deploys and ANNOUNCES deploy_job as each device finishes, and what a deploy changes at the end (ANNOUNCERS)"),
     "rotate.apply": Nothing("starts a job and answers at once; the job changes the credential and ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
+    "device_v2.rotate_confirm": Nothing("the same confirm as rotate.apply: starts the job and answers at once; the job ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
+    "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     "bulk_execute": ("device_state",),
     "bulk_reload": ("device_state", "inventory"),
     "backup_config": ("backups",),

@@ -55,7 +55,8 @@ BROWSER_DIR = os.environ.get("NMAS_GATE_BROWSER_DIR",
 BROWSER_SKIPPED = "no real browser here"
 BROWSER_TESTS = ("tests/test_update_button.py tests/test_profile_apply_v2.py tests/test_manual.py "
                  "tests/test_v2_layout_in_a_browser.py tests/test_attention_badge.py "
-                 "tests/test_device_capture_v2.py tests/test_device_persist_v2.py")
+                 "tests/test_device_capture_v2.py tests/test_device_persist_v2.py "
+                 "tests/test_device_rotate_v2.py")
 BROWSER = "{py} -m pytest -q -p no:cacheprovider -rEf " + BROWSER_TESTS
 DEFAULT_PY = os.path.expanduser("~/.local/share/nmas-py312/bin/python")
 #: The last line of a run that passed: "7592 passed, 28 skipped in 181.19s (0:03:01)".

@@ -99,7 +99,7 @@ close are marked *written at close*.
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28); the audit's other rows and the multi-worker half (9.S) not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs; the v2 capture's preview half ran on the host (2026-10-03), its record half awaits a real change; persist on v2 awaits its real run |
+| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs; the v2 capture's preview half ran on the host (2026-10-03), its record half awaits a real change; persist and rotate on v2 await their real runs |
 | | 7.4 to 7.10 | Not started |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
@@ -2814,6 +2814,17 @@ The landing page drew every section 1a source from stored or cached values, each
 4. **How they were resolved.** The test pins the builder's words.
 5. **Numbers.** One commit [git: this commit]. 14 tests in `tests/test_device_persist_v2.py`, two in a real browser, run confined in the gate's suite; eight controls, each failing its aimed tests. Findings recorded: none. **Estimate versus actual:** capture's entry made no forecast but set the basis, one action ported in a session; persist, the same kind with a simpler operation (no job), took a fraction of that, so rotate (a job, and the held-device mockup) is forecast between the two.
 6. **Where it left the product.** A device's running configuration can be saved to startup and proved from its v2 page, with the result in place. Rotate and deploy with Mode B are next.
+
+#### 7.3 — Rotate on the v2 device page
+
+*Written at close, 2026-10-03. It awaits its real run on the host, which changes a device's credential and so is the operator's.*
+
+1. **What it was.** The third device action on v2, on the card pattern, including the mockup's held-device artboard: refused while another operation holds the device, the card names the holder and "reads again when it finishes" [tests/signed_off_screens.py].
+2. **How it was implemented.** The card asks for its own preview, whose plan reads the device's account line live; its confirm and `/rotate/apply` call one `rotate_op.confirm_and_start` (the plan computed again, a moved fingerprint refused, the job started with the verified person carried in); the card then waits for the job's `rotation` announcement. For the mockup's promise, `device_ops` announces `device_holds` on each release in the app's process, and a card refused for a hold (capture's and persist's too) asks `when-free`, which answers 204 until the device is free.
+3. **Issues encountered.** C358, found by the real-browser test: an announcement made while a button's request was swapping the answer into another element was lost, because C347's catch-up remembered requests only by the requesting element; the "Rotating" card waited for ever.
+4. **How they were resolved.** The client remembers a request under its target's id as well (C358, fixed the same turn). A hold released by a host script cannot announce (it has no emitter): the card says it reads again "if the tool runs it", and keeps Preview it again.
+5. **Numbers.** One commit [git: this commit]. 15 tests in `tests/test_device_rotate_v2.py`, two in a real browser; nine controls, each failing its aimed tests. Findings: 1 (C358, fixed). **Estimate versus actual:** persist's entry forecast rotate between capture and persist; it took about capture's time, the hold announcement and C358 being the difference.
+6. **Where it left the product.** A device's credential can be rotated, recorded and persisted from its v2 page, with the result and its one next step in place, and a card blocked by a hold clears itself when the hold ends. Deploy with Mode B is next.
 
 ### 7.D — The GUI redesign (open)
 

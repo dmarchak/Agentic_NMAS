@@ -76,6 +76,11 @@ def _bodies(v):
         "golden.capture_preview": (202, ("json", {"devices": ["r1"]}),
                                    "starts a job reading r1 NOW; FOLLOWED to its result "
                                    "(JOB_RESULTS): the golden diff and the intent departure"),
+        # The device page's Rotate (7.3): the plan's live read of r1 is refused here (no
+        # network), so the card draws the failing preflight; it reads no store a GET does not.
+        "device_v2.rotate_preview": (200, ("form", {"list": LIST}),
+                                     "the rotation's plan for r1: its live read refused, drawn as "
+                                     "the failing preflight"),
         # The device page's Capture (7.3): the same job, for one device, its name filled as r1.
         "device_v2.capture_start": (200, ("form", {"list": LIST}),
                                     "starts the same job reading r1 NOW; FOLLOWED to its card "

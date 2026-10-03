@@ -30,7 +30,10 @@
               'approvals', 'device_state', 'intent', 'inventory', 'pending', 'rolled_back',
               // A capture preview's reads finished (modules/nsot/capture_job.py): the
               // device page's Capture card reads its preview (7.3).
-              'capture_preview'];
+              'capture_preview',
+              // An operation the app ran released a device: a card refused because it was
+              // held reads again (modules/nsot/device_ops.py); and a rotation's job finished.
+              'device_holds', 'rotation'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -111,8 +114,12 @@
   }
 
   function noteAsked(e) {
-    var el = e.detail && e.detail.elt;
-    if (el && el.id) askedAt[el.id] = Date.now();
+    var el = e.detail && e.detail.elt, target = e.detail && e.detail.target, now = Date.now();
+    if (el && el.id) askedAt[el.id] = now;
+    // And under the TARGET's id: a button that swaps a fragment into another element (a
+    // card's confirm into the card) begins the request the new fragment answers; a job
+    // announcing while it is in flight was lost (2026-10-03, the rotate card in a real browser).
+    if (target && target.id && target !== el) askedAt[target.id] = now;
   }
 
   function catchUpMissed(e) {
@@ -151,6 +158,8 @@
   function relayPending() { relay('pending'); }
   function relayRolledBack() { relay('rolled_back'); }
   function relayCapturePreview() { relay('capture_preview'); }
+  function relayDeviceHolds() { relay('device_holds'); }
+  function relayRotation() { relay('rotation'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -220,6 +229,8 @@
     NMAS.subscribe('pending', 'v2Pending', relayPending);
     NMAS.subscribe('rolled_back', 'v2RolledBack', relayRolledBack);
     NMAS.subscribe('capture_preview', 'v2CapturePreview', relayCapturePreview);
+    NMAS.subscribe('device_holds', 'v2DeviceHolds', relayDeviceHolds);
+    NMAS.subscribe('rotation', 'v2Rotation', relayRotation);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

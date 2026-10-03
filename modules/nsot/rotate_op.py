@@ -92,6 +92,35 @@ def run(list_name: str, hostname: str, *, actor: str, fingerprint: str,
                 "reason": f"{exc}. Nothing was sent."}
 
 
+def confirm_and_start(list_name: str, hostname: str, confirmed: str, *, actor: str,
+                      ident=None) -> dict:
+    """THE confirm, for `/rotate/apply` and the v2 device page's card alike: the plan
+    computed again (its preflight reads the device), refused with nothing sent if it fails or
+    its fingerprint moved, else the rotation started as a job whose payload is
+    ``{"ok", "list", "result"}`` (`rotate_result`, masked). ``{"job", "plan"}``, or
+    ``{"error", "status", "plan"}``."""
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import rotate_result
+
+    p = plan(list_name, hostname)
+    if not p.get("ok"):
+        return {"status": 409, "plan": p, "error": "Refused before anything was sent: "
+                + (p.get("error") or "the preflight failed")}
+    if p.get("fingerprint") != confirmed:
+        return {"status": 409, "plan": p, "error": (
+            f"The plan changed since the preview you confirmed ({confirmed} -> "
+            f"{p.get('fingerprint')}): the account's line or entry kind moved. Nothing was "
+            "sent; preview again.")}
+
+    def work(list_name_, hostname_, *, actor, fingerprint):
+        out = run(list_name_, hostname_, actor=actor, fingerprint=fingerprint)
+        return mask_payload({"ok": True, "list": list_name_, "result": rotate_result(out, p)})
+
+    job = start(list_name, hostname, actor=actor, fingerprint=confirmed, ident=ident, work=work)
+    log.info("rotate: %s/%s started by %s as job %s", list_name, hostname, actor, job)
+    return {"job": job, "plan": p}
+
+
 def start(list_name: str, hostname: str, *, actor: str, fingerprint: str, ident=None,
           work=None) -> str:
     """Run the rotation as a job and return its id at once. *ident* is the

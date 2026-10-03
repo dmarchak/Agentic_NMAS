@@ -51,8 +51,6 @@ def apply():
     and no job started. Answers 202 with the job's id."""
     from modules import identity
     from modules.nsot import rotate_op
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import rotate_result
 
     data = request.get_json(silent=True) or {}
     list_name, device = _args(data, carried=True)
@@ -64,24 +62,11 @@ def apply():
     confirmed = (data.get("fingerprint") or "").strip()
     if not device or not confirmed:
         return jsonify({"ok": False, "error": "Nothing confirmed: nothing was sent"}), 400
-    p = rotate_op.plan(list_name, device)
-    if not p.get("ok"):
-        return jsonify({"ok": False, "error": "Refused before anything was sent: "
-                                              + (p.get("error") or "the preflight failed")}), 409
-    if p.get("fingerprint") != confirmed:
-        return jsonify({"ok": False, "error": (
-            f"The plan changed since the preview you confirmed ({confirmed} -> "
-            f"{p.get('fingerprint')}): the account's line or entry kind moved. Nothing was "
-            "sent; preview again.")}), 409
-    actor = request_actor()
-
-    def work(list_name_, hostname, *, actor, fingerprint):
-        out = rotate_op.run(list_name_, hostname, actor=actor, fingerprint=fingerprint)
-        return mask_payload({"ok": True, "list": list_name_, "result": rotate_result(out, p)})
-
-    job = rotate_op.start(list_name, device, actor=actor, fingerprint=confirmed,
-                          ident=identity.verified_identity(), work=work)
-    log.info("rotate: %s/%s started by %s as job %s", list_name, device, actor, job)
+    got = rotate_op.confirm_and_start(list_name, device, confirmed, actor=request_actor(),
+                                      ident=identity.verified_identity())
+    if "error" in got:
+        return jsonify({"ok": False, "error": got["error"]}), got["status"]
+    job = got["job"]
     return jsonify({"ok": True, "job": job, "list": list_name, "running": True,
                     "note": ("The rotation runs as a job: this window can close. The in-flight "
                              "panel shows it; its result is read by id when it finishes.")}), 202

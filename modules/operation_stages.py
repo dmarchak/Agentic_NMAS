@@ -47,6 +47,12 @@ STAGES = {
         "rotate.preview", "fingerprint", "modules.nsot.credential_rotation.verify_new_credential",
         "modules.nsot.credential_rotation.revert_commands",
         "modules.nsot.credential_rotation.record_outcome"),
+    # The v2 device page's Rotate (7.3): the same confirm, plan and job, drawn as a card.
+    "device_v2.rotate_confirm": Stages(
+        "device_v2.rotate_preview", "fingerprint",
+        "modules.nsot.credential_rotation.verify_new_credential",
+        "modules.nsot.credential_rotation.revert_commands",
+        "modules.nsot.credential_rotation.record_outcome"),
     "onboard.verify": Stages(
         "onboard.verify_preview", "fingerprint", "modules.nsot.onboard.verify_device",
         "n/a: a failed step stops the phase with the device pending and nothing promoted; the "

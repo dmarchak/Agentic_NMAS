@@ -481,6 +481,22 @@ def release(list_name: str, hostname: str) -> None:
         finally:
             os.close(fd)
     log.info("device_ops: %s released after %s", hostname, mine["holder"]["operation"])
+    _announce_released()
+
+
+def _announce_released() -> None:
+    """Tell open pages a device's hold ended (`device_holds`), so a card refused because
+    another operation held its device reads again (the device-actions mockup, signed off
+    2026-10-02: "this preview reads again when it finishes"). Only the app's own process can
+    announce: a hold released by a host script is not heard, and the card says so and offers
+    Preview it again."""
+    try:
+        from modules import invalidation
+        invalidation.announce(["device_holds"], "device-ops", True)
+    except RuntimeError:
+        pass                              # no emitter: a script's process; nobody to tell
+    except Exception:                     # noqa: BLE001 - a release never fails on telling
+        log.warning("device_ops: the release could not be announced", exc_info=True)
 
 
 def note(step: str) -> None:

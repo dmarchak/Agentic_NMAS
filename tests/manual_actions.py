@@ -72,6 +72,7 @@ NOT_AN_OPERATION = {
     ("_capture.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_capture.html", "Edit intent…"): "navigates to today's device page, where the intent editor is",
     ("_persist.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
+    ("_rotate.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
 }
 
 

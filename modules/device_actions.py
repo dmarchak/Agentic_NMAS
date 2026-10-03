@@ -101,7 +101,7 @@ def capture_card(ref, host: str, job_id: str, got, viewer: dict = None) -> dict:
                 "departs": departs is not None,
                 "lines": list((departs or {}).get("lines") or [])},
         golden=_golden_now(ref.repo_dir, host), intent_commit=_intent_commit(ref.repo_dir, host),
-        gates=gates, failing=failing,
+        gates=gates, failing=failing, held=held(gates),
         # A shrink committed intent does not explain needs a person's reason, given where
         # it is built (today's device page); this card draws the failing check.
         acknowledge=(target.get("acknowledge") or {}).get("prompt", ""),
@@ -176,6 +176,7 @@ def persist_card(ref, host: str, preview: dict, viewer: dict) -> dict:
             "none": program.get("none", ""),
             "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
             "gates": t["gates"], "failing": t["failing"], "may": t["may"],
+            "held": held(t["gates"]),
             "hash": (t["chosen"].get("select_data") or {}).get("hash", ""),
             "effect": confirm.get("effect", ""), "button": confirm.get("button", "")}
 
@@ -197,3 +198,57 @@ def persist_result_card(ref, host: str, out: dict, result: dict) -> dict:
             "record": (result.get("record") or {}).get("statement", ""),
             "not_watched": result.get("not_watched", ""),
             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+
+def held(gates: list) -> bool:
+    """Whether a card was refused because another operation holds its device: it then
+    listens for the hold's release (`device_holds`) and reads again."""
+    from modules.preview_confirm import BUSY_GATE
+    return any(g.get("name") == BUSY_GATE and g.get("state") == "fail" for g in gates or [])
+
+
+def rotate_card(ref, host: str, preview: dict, viewer: dict) -> dict:
+    """The rotate card for *host* from `preview_confirm.rotate_preview`'s preview, whose
+    plan read the device's account line LIVE."""
+    t = _one_target(preview, host, viewer)
+    program = t["target"].get("program") or {}
+    confirm = preview.get("confirm") or {}
+    return {"op": "rotate", "state": "preview", "host": host, "list": ref.name,
+            "summary": (preview.get("what") or {}).get("summary", ""),
+            "sent": list(program.get("lines") or []),
+            "then": [line for n in program.get("notes") or [] for line in n.get("lines") or []],
+            "none": program.get("none", ""),
+            "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
+            "gates": t["gates"], "failing": t["failing"], "may": t["may"],
+            "held": held(t["gates"]),
+            "fingerprint": (t["chosen"].get("select_data") or {}).get("fingerprint", ""),
+            "effect": confirm.get("effect", ""), "button": confirm.get("button", "")}
+
+
+#: A rotation result's level -> the card's level.
+ROTATE_LEVELS = {"success": "ok", "partial": "warn", "failed": "danger"}
+
+
+def rotate_job_card(ref, host: str, job_id: str, got) -> dict:
+    """The rotate card for its job (`capture_job.get`, or None): rotating, its result, or why
+    there is none. The result is `rotate_result`'s, the words today's page draws."""
+    card = {"op": "rotate", "host": host, "list": ref.name, "job": job_id}
+    if got is None:
+        return dict(card, state="unknown")
+    if got["state"] == "running":
+        return dict(card, state="rotating", elapsed_s=got.get("elapsed_s"))
+    if got["state"] == "failed":
+        return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
+    result = (got.get("payload") or {}).get("result") or {}
+    target = ((result.get("happened") or {}).get("targets") or [{}])[0]
+    checks = ((result.get("targets") or [{}])[0].get("checks") or {})
+    nxt = result.get("next") or {}
+    return dict(card, state="result", level=ROTATE_LEVELS.get(result.get("level"), "danger"),
+                outcome=target.get("outcome", "unknown"), words=target.get("words", ""),
+                summary=(result.get("happened") or {}).get("summary", ""),
+                verified=(checks.get("statements") or [checks.get("why", "")])[0],
+                did_not=[i.get("text", "") for i in (result.get("did_not") or {}).get("items")
+                         or [] if i.get("kind") != "not_doing"],
+                record=(result.get("record") or {}).get("statement", ""),
+                not_watched=result.get("not_watched", ""),
+                next=nxt.get("text", ""), export=nxt.get("open") == "breakglass_export")

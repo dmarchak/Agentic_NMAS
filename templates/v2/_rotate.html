@@ -1,0 +1,99 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- The device page's Rotate (7.3; the device-actions mockup signed off 2026-10-02, its
+    "Rotate, a check failing" artboard): the card in place of the tab, from
+    modules/device_actions.py over `rotate_preview` and `rotate_result`, the words today's
+    page draws. It asks for its own preview (whose preflight READS the device's account line
+    live), the confirm starts the rotation as a job, and the card waits for the job's
+    announcement. Refused because another operation holds the device, it reads again when the
+    tool announces the hold's release. Cancel and Close put back the tab it replaced. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- if c.state == 'starting' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-post="{{ url_for('device_v2.rotate_preview', name=c.host) }}" hx-trigger="load" hx-swap="outerHTML"
+         hx-vals='{{ {"list": c.list, "back": c.back} | tojson }}'>
+  <div class="op-hd"><h2 id="op-title">Rotate {{ c.host }}'s credential</h2></div>
+  <div class="op-part"><h3>What</h3><div><p class="op-wait">Reading {{ c.host }}'s account line now. Nothing is sent until you confirm.</p></div></div>
+</section>
+{%- elif c.state == 'preview' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title"
+         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='rotate', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="op-hd"><h2 id="op-title">Rotate {{ c.host }}'s credential</h2>
+    <div class="op-hd-actions">{{ how('rotate') }}{{ close_button('Cancel') }}</div></div>
+  <div class="op-part"><h3>What</h3><div><p>{{ c.summary }}</p></div></div>
+  <div class="op-part"><h3>What will not happen</h3><div>
+    {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}.</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>What is sent</h3><div>
+    {%- if c.sent %}
+    <pre class="op-diff">{% for l in c.sent %}<span class="op-add">{{ l }}</span>
+{% endfor %}</pre>
+    <p class="op-wait">The new password is never shown. Then, in this order:</p>
+    <ul class="op-list">{% for t in c.then %}<li>{{ t }}</li>{% endfor %}</ul>
+    {%- else %}
+    <p>{{ c.none }}</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>Operands</h3><div>
+    <dl class="op-ops">
+      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+    </dl></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      {%- for g in c.gates %}
+      <li>{{ badge({'pass': 'pass', 'fail': 'fail', 'at_apply': 'at confirm', 'not_applicable': 'n/a', 'not_reached': 'not reached'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger', 'at_apply': 'info'}.get(g.state, 'muted')) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
+      {%- endfor %}
+    </ul></div></div>
+  <div class="op-ft">
+    {%- if c.may %}
+    <p class="op-note">{{ c.effect }} Bound to plan {{ c.fingerprint }}: if the account's line moves before you confirm, nothing is sent.</p>
+    <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="rotate"
+            hx-post="{{ url_for('device_v2.rotate_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "fingerprint": c.fingerprint, "back": c.back} | tojson }}'><span class="op-idle">{{ c.button or ('Rotate ' ~ c.host) }}</span><span class="op-busy">Reading {{ c.host }} again and starting the rotation…</span></button>{{ how('rotate', compact=True, op='rotation') }}</span>
+    {%- else %}
+    <p class="op-note">Not available: {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}nothing can be rotated{% endfor %}.
+      {%- if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>
+    <span class="op-act"><button type="button" class="btn" data-op="rotate" hx-get="{{ url_for('device_v2.rotate', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('rotate', compact=True, op='rotation') }}</span>
+    {%- endif %}
+  </div>
+</section>
+{%- elif c.state == 'rotating' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-get="{{ url_for('device_v2.rotate_job_card', name=c.host, job=c.job, back=c.back) }}"
+         hx-trigger="nmas:rotation from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="op-title">Rotating {{ c.host }}'s credential</h2>
+    <div class="op-hd-actions">{{ how('rotate') }}</div></div>
+  <div class="op-part"><h3>What</h3><div><p class="op-wait">The rotation runs as a job, holding {{ c.host }}: it pushes the new password, proves it on a fresh login, records it, then persists it. This page can close; Needs attention keeps it in front of you until it is persisted.</p></div></div>
+</section>
+{%- elif c.state == 'result' %}
+<section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Rotate {{ c.host }} {{ badge(c.words, c.level) }}</h2>
+    <div class="op-hd-actions">{{ how('rotate') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>{{ c.summary }}</p>
+    {%- if c.verified %}<p>{{ c.verified }}</p>{% endif %}
+    {%- for d in c.did_not %}<p><strong>{{ d[0] | upper }}{{ d[1:] }}.</strong></p>{% endfor %}</div></div>
+  <div class="op-part"><h3>What next</h3><div class="op-next">
+    <div><span>{{ c.next }}</span></div>
+    {%- if c.export %}
+    <div><a class="btn" data-op="breakglass-export" href="{{ url_for('manage_device', ip=c.ip) }}">Export the break-glass record…</a>{{ how('breakglass-export', compact=True, op='the break-glass export') }}<span class="muted">on today's device page, where the export is built</span></div>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p></div></div>
+  <div class="op-part"><h3>Still true</h3><div><p>{{ c.not_watched }}</p></div></div>
+  <div class="op-ft"><p class="op-note">This card goes when you close it or leave the page; the rotation record stays where job health reads it.</p></div>
+</section>
+{%- else %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Rotate {{ c.host }} {{ badge('Nothing was sent' if c.state != 'unknown' else 'Not known here', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('rotate') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+  {%- if c.state == 'refused_list' %}Refused: the card names no list this server knows ({{ c.list or 'none given' }}), and a rotation records into one list. Nothing was sent.
+  {%- elif c.state == 'refused_hash' %}Refused: the confirm carried no plan to be bound to. Nothing was sent.
+  {%- elif c.state == 'unknown' %}This server has no record of that rotation: it expired, or the server restarted. The device's rotation row on Needs attention says what the last rotation reached, and a credential it staged and never cleared is named there with the command that settles it.
+  {%- elif c.state == 'failed' %}The rotation job raised: {{ c.error }}. What it reached is in the device's rotation row on Needs attention.
+  {%- else %}{{ c.error }}{% endif %}</p>
+  {%- if c.state not in ('refused_list', 'unknown', 'failed') %}
+  <p><button type="button" class="btn" data-op="rotate" hx-get="{{ url_for('device_v2.rotate', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('rotate', compact=True, op='rotation') }}</p>
+  {%- endif %}</div></div>
+</section>
+{%- endif %}

@@ -17,7 +17,7 @@
     <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="btn btn-outline" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
       <div class="menu" role="menu" x-show="isOpen" x-cloak>
-        <p class="menu-note">Capture and Persist run here; the others open on today's device page, where they are built.</p>
+        <p class="menu-note">Capture, Rotate and Persist run here; the others open on today's device page, where they are built.</p>
         {#- A row built on v2 draws its card in place of the tab; its href opens the page with
             the card for a browser without script. The rest open on today's page. -#}
         {% for label, op, words in [('Capture', 'capture', 'capture')] %}
@@ -27,10 +27,7 @@
         <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('manage_device', ip=device.ip) }}">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
         {% endfor %}
         <div class="menu-rule"></div>
-        {% for label, op, words in [('Rotate credential…', 'rotate', 'rotation')] %}
-        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('manage_device', ip=device.ip) }}">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
-        {% endfor %}
-        {% for label, op, words in [('Persist', 'persist', 'persist')] %}
+        {% for label, op, words in [('Rotate credential…', 'rotate', 'rotation'), ('Persist', 'persist', 'persist')] %}
         <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
         {% endfor %}
         <div class="menu-rule"></div>
