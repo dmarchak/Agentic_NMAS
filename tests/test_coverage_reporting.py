@@ -150,6 +150,20 @@ class TestNotReporting:
         assert got["words"] == "no scrape for 12 min (request timeout)"
         assert _judge(value, "snmp", "r4")["state"] == "reporting"
 
+    def test_one_missed_scrape_is_not_a_device_not_reporting(self, read):
+        """C383, measured on the host 2026-10-03: jobs on 30 s intervals miss a scrape or two
+        for 67 to 73 s; the grid flapped between 9, 7 and 3 of 9 fully covered."""
+        value, _p, _l = read(_down(_capture(), "r1", jobs=("cisco_8000v", "ospfv3"),
+                                   minutes_ago=73 / 60))
+        assert _judge(value, "snmp", "r1")["state"] == "reporting"
+        value, _p, _l = read(_down(_capture(), "r1", minutes_ago=4))
+        assert _judge(value, "snmp", "r1")["state"] == "not_reporting"
+
+    def test_a_missed_scrape_announces_nothing(self, read):
+        a, _p, _l = read()
+        b, _p, _l = read(_down(_capture(), "r4", jobs=("bgp",), minutes_ago=67 / 60))
+        assert not CR.changed(a, b)
+
     def test_one_job_failing_names_the_job_and_says_the_rest_answer(self, read):
         value, _p, _l = read(_down(_capture(), "r3", jobs=("lldp",), minutes_ago=7))
         got = _judge(value, "snmp", "r3")

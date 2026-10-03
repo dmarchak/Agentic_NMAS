@@ -41,8 +41,9 @@ neighbours is not read here yet. Their hover says so, and they are never marked 
 
 To deploy, tick devices in the left column. A device is offered only when the monitoring profile
 supplies something it is missing. A device with nothing to deploy has no box: hover over the
-empty space where its box would be to see why. When no device has anything to deploy, the page
-says so above the grid. The bar above the grid names the devices you ticked and how many missing
+empty space where its box would be to see why. When no device has anything to deploy, a note
+beside the grid says so, names what is missing (IP SLA, and on which devices) and says it goes
+through the IP SLA page until the combined deploy takes it. The bar above the grid names the devices you ticked and how many missing
 templates the profile supplies for them, and it updates as you tick. **Deploy missing
 templates…** opens the preview for those devices. **Clear** unticks them all. The box in the
 header ticks every device that can be ticked. How the deploy works:
@@ -56,8 +57,9 @@ not-reporting cell is never offered for Apply. A reader asks Prometheus and Loki
 with one query per source for the whole fleet:
 
 - **SNMP and IP SLA:** the device's targets in Prometheus, and the last time each one was
-  scraped. A target that fails, or that has not been scraped for two of its intervals, is not
-  reporting. The cell names the failing job when only some of the device's jobs fail.
+  scraped. A target with no successful scrape for two of its intervals, and never less than
+  3 minutes, is not reporting. One or two missed scrapes, which routers have for about a minute
+  now and then, are not. The cell names the failing job when only some of the device's jobs fail.
 - **Telemetry:** no series from the device for 5 minutes.
 - **Heartbeat:** no beat within the window of the device's own heartbeat alert (each window is
   measured from that device's beats). When no alert rule is installed, the window is twice the

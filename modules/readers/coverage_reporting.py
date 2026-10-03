@@ -39,6 +39,11 @@ STEP_SECONDS = 60
 TELEMETRY_SILENT_SECONDS = 300
 #: A target unscraped for twice its interval is one Prometheus has stopped scraping.
 SCRAPE_INTERVALS = 2
+#: The shortest silence a target is judged by (C383, measured on the host 2026-10-03): router
+#: SNMP jobs on 30 s intervals miss one or two scrapes for 67 to 73 s, and the last good
+#: scrape is known only to the subquery's minute; 2.5x the blip, so one missed scrape never
+#: makes a device "not reporting".
+SCRAPE_SILENT_SECONDS = 180
 #: The device's name in a syslog line: the name `logging origin-id hostname` puts after
 #: IOS's sequence number. The same name `device_logs` anchors on (C13), never rsyslog's
 #: hostname field.
@@ -249,11 +254,9 @@ def _targets(value, host, column, now) -> dict:
     ups = ((value.get("up") or {}).get(host) or {})
     failing = []
     for t in mine:
-        last = ups.get(t["job"])
-        if t["health"] != "up":
-            failing.append((t["job"], last, t["error"]))
-        elif t["last_scrape"] is None or now - t["last_scrape"] > SCRAPE_INTERVALS * t["interval"]:
-            failing.append((t["job"], t["last_scrape"], "Prometheus has stopped scraping it"))
+        why = _target_failing(t, ups.get(t["job"]), now)
+        if why:
+            failing.append((t["job"],) + why)
     if not failing:
         newest = max((t["last_scrape"] or 0) for t in mine)
         return _cell("reporting", f"scraped {_ages_words(now - newest)} ago", column)
@@ -266,6 +269,18 @@ def _targets(value, host, column, now) -> dict:
     last = max((f[1] for f in failing if f[1] is not None), default=None)
     return _cell("not_reporting", f"{names} not scraped for {_since(last, value, now)}; "
                  "the rest answer", column)
+
+
+def _target_failing(t, last_up, now):
+    """``(since, why)`` when a target has had no good scrape for its window, else None. The
+    window is twice the job's interval, never under SCRAPE_SILENT_SECONDS: a target down at the
+    instant of the read, its last good scrape a minute ago, is a missed scrape (C383)."""
+    bound = max(SCRAPE_INTERVALS * t["interval"], SCRAPE_SILENT_SECONDS)
+    if t["last_scrape"] is None or now - t["last_scrape"] > bound:
+        return (t["last_scrape"], "Prometheus has stopped scraping it")
+    if t["health"] != "up" and (last_up is None or now - last_up > bound):
+        return (last_up, t["error"])
+    return None
 
 
 def heartbeat_window(value, host) -> tuple:
@@ -345,8 +360,9 @@ def signature(value: dict) -> dict:
     value = value or {}
     now = float(value.get("read_at") or 0)
     sig = {"sources": {k: s.get("ok") for k, s in (value.get("sources") or {}).items()}}
-    sig["targets"] = {h: sorted((t["job"], t["health"], t["last_scrape"] is None or
-                                 now - t["last_scrape"] > SCRAPE_INTERVALS * t["interval"])
+    ups = value.get("up") or {}
+    sig["targets"] = {h: sorted((t["job"], bool(_target_failing(
+                                     t, (ups.get(h) or {}).get(t["job"]), now)))
                                 for t in ts)
                       for h, ts in (value.get("targets") or {}).items()}
     sig["telemetry"] = sorted(h for h, at in (value.get("telemetry") or {}).items()

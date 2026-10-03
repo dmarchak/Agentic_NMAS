@@ -291,7 +291,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   `job_health.py`, `restarts.py`, `monitoring_coverage.py`, `prometheus_targets.py`,
   `update_op.py` (root-owned updater in `deploy/update/`), `manual.py`, and the v2 pages' data
   (`device_page.py`, `device_list.py`, `panels.py`, `neighbours.py`, `device_logs.py`,
-  `device_netbox.py`, `fleet_history.py`).
+  `device_netbox.py`, `history_sources.py`).
 - **Interface:** `routes/` blueprints (`routes.register_blueprints(app)`), v2 in `routes/v2.py` and
   `routes/device_v2.py`, `templates/v2/`, `static/js/nmas_*.js`, `static/css/nmas-v2.css`. Legacy
   pages retire at cutover; the terminal (`modules/terminal.py`) is gated `break_glass` and removed

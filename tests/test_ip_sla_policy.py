@@ -458,6 +458,23 @@ class TestTheWayIn:
         assert 'title="s4 · IP SLA: not configured: no probes yet' in cells[0]
 
 
+class TestCoverageSaysWhereTheMissingGoes:
+    def test_nothing_deployable_names_what_is_missing_and_where_it_goes(self, lab, monkeypatch):
+        """The host's shape (2026-10-03): nothing the profile can send, IP SLA missing; the
+        sentence beside the grid says so, naming the devices and the page."""
+        _coverage_inventory(monkeypatch)
+        assert _policy(lab).status_code == 200
+        page = lab["client"].get("/v2/monitoring/coverage/table").get_data(as_text=True)
+        note = re.search(r'<div class="notice notice-muted cov-nothing" id="cov-nothing">(.*?)</div>',
+                         page, re.S)
+        assert note, "the sentence beside the grid"
+        text = " ".join(re.sub(r"<[^>]+>", " ", note.group(1)).split())
+        assert text.startswith("Nothing can be deployed from here:")
+        assert ("What is missing, IP SLA on s4, goes through the IP SLA page until the combined "
+                "deploy takes it") in text
+        assert page.index('id="cov-nothing"') < page.index('<div class="table-wrap">')
+
+
 class TestADisabledBoxLooksDisabled:
     CSS = os.path.join(ROOT, "static", "css", "nmas-v2.css")
 

@@ -265,7 +265,11 @@ class TestEveryBoxDrawnCanBeTicked:
                 if shape == "host":
                     assert not boxes
                     said = b.js("return document.querySelector('#cov-nothing').textContent")
-                    assert "Nothing to deploy from here" in said, said
+                    assert "Nothing can be deployed from here" in said, said
+                    # Beside the grid, where the missing boxes are (the operator, 2026-10-03: a
+                    # muted line among the profile's details went unseen).
+                    assert b.js("return document.querySelector('#cov-nothing')"
+                                ".nextElementSibling.className") == "table-wrap"
                 else:
                     assert boxes == ["r6"]
             finally:

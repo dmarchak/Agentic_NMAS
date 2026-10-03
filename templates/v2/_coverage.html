@@ -36,9 +36,6 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ c.list }} has no monitoring profile yet, so nothing can be deployed: propose one from the network's connectors first. <a href="{{ url_for('index', open='profile_propose', list=c.list) }}">Propose on today's page</a></p></div>
   {%- endif %}
 
-  {%- if c.total and c.profile.committed and not c.profile.error and not offered %}
-  <p class="cov-profile" id="cov-nothing">Nothing to deploy from here: every device has every template the profile supplies{% if c.ip_sla_missing %}. IP SLA probes are suggested and sent from the IP SLA page: open it from a device's IP SLA ring{% endif %}.</p>
-  {%- endif %}
 
   {%- if c.total %}
   <form method="get" action="{{ url_for('v2.profile_apply') }}" class="cov-form" x-data="coverageSelect">
@@ -52,6 +49,12 @@
         <button type="button" class="btn" x-on:click="clear">Clear</button>
       </span>
     </div>
+    {%- endif %}
+    {%- if c.profile.committed and not c.profile.error and not offered %}
+    {#- Said beside the grid (the operator, 2026-10-03: a muted line among the profile's
+        details went unseen): why there is no box, and where what is missing goes. -#}
+    <div class="notice notice-muted cov-nothing" id="cov-nothing">{{ icon('info') }}<p><strong>Nothing can be deployed from here:</strong> every device has every template the profile supplies.
+      {%- if c.ip_sla_missing %} What is missing, IP SLA on {{ c.ip_sla_missing | join(', ') }}, goes through the IP SLA page until the combined deploy takes it: open it from a device's IP SLA ring.{% endif %}</p></div>
     {%- endif %}
     <div class="table-wrap">
       <table class="table cov-grid">
