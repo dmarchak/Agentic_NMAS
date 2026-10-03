@@ -105,6 +105,10 @@ ROW_KINDS = {
     ("adjacencies", "unmeasured"): ("adjacencies cannot be judged", "check the Prometheus targets"),
     ("restarts", "unplanned"): ("a device restarted and nothing planned it",
                                 "read the device's reason and crash file, and check the host then"),
+    ("operations", "interrupted"): ("an operation on a device did not finish: the process ended "
+                                    "while it held the device",
+                                    "read each device as it is now and compare it with its "
+                                    "golden before changing it, then acknowledge what you found"),
     ("adjacencies", "error"): ("a list's intent could not be read for its adjacencies",
                                "fix the intent file the reason names"),
     ("lab-startup", "moved"): ("a device moved since the baseline its lab file is built from",
@@ -181,6 +185,9 @@ CLEARS = {
     ("adjacencies", "link"): (("resolves",), "the next read finds the adjacency up"),
     ("adjacencies", "unmeasured"): (("resolves",), "Prometheus scrapes the protocol again"),
     ("adjacencies", "error"): (("resolves",), "the intent file can be read"),
+    ("operations", "interrupted"): (("acknowledge",), "a person acknowledges it with a reason, "
+                                    "after reading the devices; the record stays in the list's "
+                                    "interrupted.jsonl"),
     ("restarts", "unplanned"): (("acknowledge", "time"), "a person acknowledges it with a "
                                 "reason, or 7 days after the restart; History keeps it either "
                                 "way"),
@@ -197,7 +204,8 @@ CLEARS = {
 #: acknowledgements.py): an event that cannot un-happen. Each row of these kinds carries
 #: its *event*, so an acknowledgement covers that event and never a later one. Other kinds
 #: whose CLEARS names acknowledge do it through their own control, named in their words.
-ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "repeated")})
+ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "repeated"),
+                               ("operations", "interrupted")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -1931,6 +1939,61 @@ def restart_source(cached=None) -> dict:
                     if v.get("unmanaged") else "")))
 
 
+def interrupted_source(found=None) -> dict:
+    """An operation whose PROCESS ENDED while it held its devices (CONCURRENCY_AUDIT R5): a
+    restart, an update or a crash in the middle of a deploy, restore, capture or rotation.
+    The kernel released every hold, so nothing else says it happened, and what reached each
+    device, and whether a receipt or a golden was recorded, is unknown. ONE row per
+    interrupted operation (the process, the operation and who started it), naming its
+    devices and the last step it recorded, until a person acknowledges it."""
+    from modules.nsot import device_ops
+
+    started = time.time()
+    label = "Operations that did not finish"
+    try:
+        recs = device_ops.interrupted_anywhere() if found is None else found
+    except OSError as exc:
+        return source_result("operations", label, read_at=started,
+                             took_ms=int((time.time() - started) * 1000),
+                             error=f"the device holds could not be read: {exc}")
+    groups = {}
+    for r in recs:
+        key = (str(r.get("list") or ""), r.get("pid"), r.get("operation") or "?",
+               r.get("actor") or "")
+        groups.setdefault(key, []).append(r)
+    rows = []
+    for (lst, pid, op, actor), members in sorted(groups.items(), key=lambda kv: str(kv[0])):
+        devices = sorted({m.get("device") or "?" for m in members})
+        first = min((m.get("started") or 0) for m in members)
+        last = max(members, key=lambda m: ((m.get("progress") or {}).get("at") or 0))
+        step = (last.get("progress") or {}).get("step") or "started"
+        step_at = (last.get("progress") or {}).get("at") or first
+        words = device_ops.STEP_WORDS.get(step, step)
+        rows.append(row(
+            source="operations", kind="interrupted",
+            key=f"{lst}|{pid}|{op}|{first}", event=str(first),
+            level="warning", devices=devices, since=first or None,
+            what=(f"A {op} on {', '.join(devices)} did not finish: the process ended while it "
+                  "held the device" + ("s" if len(devices) > 1 else "")),
+            cause=(f"Started by {actor or 'someone'} at {_iso(first)} (process {pid}, list "
+                   f"{lst}); its last recorded step was {words} at {_iso(step_at)}. A process "
+                   "that ends (a restart, an update, a crash) releases every hold, so nothing "
+                   "else says this happened. What reached each device, and whether a receipt "
+                   "or a golden was recorded, is not known."),
+            operands={"list": lst, "operation": op, "pid": pid, "step": step},
+            action={"label": (f"Read {devices[0]} as it is now and compare it with its golden "
+                              "before changing it" + (", and each other device" if
+                                                      len(devices) > 1 else "")
+                              + "; then acknowledge what you found"),
+                    "href": f"/v2/device/{devices[0]}?tab=history"}))
+    return source_result(
+        "operations", label, read_at=started, took_ms=int((time.time() - started) * 1000),
+        rows=rows,
+        checked=(f"every device lock in every list: {len(recs)} hold(s) left by a process "
+                 "that ended" if recs else
+                 "every device lock in every list: none left by a process that ended"))
+
+
 def adjacency_source(cached=None) -> dict:
     """C38: a routing adjacency committed intent implies and the device does
     not report up, held for two reads (a deploy's settle window passes
@@ -2151,7 +2214,8 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
            reachability_source, netbox_secrets_source, remote_source, pushed_source,
-           host_steps_source, adjacency_source, lab_startup_source, restart_source)
+           host_steps_source, adjacency_source, lab_startup_source, restart_source,
+           interrupted_source)
 
 
 def _attach(rows: list) -> list:
@@ -2203,7 +2267,8 @@ def _without_acknowledged(rows: list):
 
 #: The source each acknowledgeable row comes from, so an acknowledgement checks the row
 #: exists NOW (computed again, never taken from the browser).
-_ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_source"}
+_ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_source",
+                "operations": "interrupted_source"}
 
 
 def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) -> dict:

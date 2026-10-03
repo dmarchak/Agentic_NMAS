@@ -522,14 +522,29 @@ def wait_end_words(doc: dict) -> str:
 
 
 CI_GATE = "CI passed the target"
+#: The gate an update cannot pass while an operation holds a device (CONCURRENCY_AUDIT R5).
+OPERATIONS_GATE = "no operation is running on a device"
+
+
+def operations_words(ops: list) -> str:
+    """Each operation holding a device, in words: what a restart would cut off."""
+    def one(h):
+        started = h.get("started") or 0
+        at = time.strftime("%H:%M:%S UTC", time.gmtime(started)) if started else "?"
+        return (f"{h.get('device', '?')} ({h.get('operation', '?')} by "
+                f"{h.get('actor') or 'someone'} since {at}, list {h.get('list', '?')})")
+    return "; ".join(one(h) for h in ops)
 
 
 def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=None,
-         holder=None, waiting=None) -> dict:
+         holder=None, waiting=None, operations=None) -> dict:
     """What the Update preview draws, with its gates and its hash.
 
     *waiting* is the wait in force (``deferred()`` when None); the release
-    passes ``{}`` so its own wait does not refuse it."""
+    passes ``{}`` so its own wait does not refuse it. *operations* is every device held
+    now (`device_ops.held_anywhere()` when None): the restart an update ends in would cut
+    each off half-applied, with no receipt, no golden and no rollback (CONCURRENCY_AUDIT
+    R5)."""
     from modules.readers import app_pushed
     from routes import health
 
@@ -579,6 +594,13 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
                 f"by {wait.get('requested_by') or 'someone'}" if wait.get("target")
                 else f"the wait record could not be read ({wait['unreadable']})")
           if wait else "none"))
+    if operations is None:
+        from modules.nsot import device_ops
+        operations = device_ops.held_anywhere()
+    gate(OPERATIONS_GATE, not operations,
+         ("none" if not operations else
+          "the restart would end it half-applied: " + operations_words(operations)
+          + ". Update when it finishes"))
     from modules import host_steps as HS
     # Each BEFORE step checked where the tool can check it (the operator,
     # 2026-09-30): a step the check finds done needs no box; one it finds not
@@ -828,7 +850,18 @@ def release_deferred(clock=time.time, **plan_kw):
             return _end(d, "unreadable", "it has no readable time")
         if clock() - asked > int(d.get("bound_s") or DEFER_BOUND_S):
             return _end(d, "gave_up", f"{int(d.get('bound_s') or DEFER_BOUND_S) // 60} min")
-        p = plan(waiting={}, **plan_kw)
+        # An operation holding a device keeps the wait waiting (R5): the request would end
+        # in a restart that cuts it off half-applied. The next read after it finishes asks
+        # again; the wait's own bound still ends it.
+        ops = plan_kw.get("operations")
+        if ops is None:
+            from modules.nsot import device_ops
+            ops = device_ops.held_anywhere()
+        if ops:
+            log.info("update: the waiting update is held back while %s",
+                     operations_words(ops))
+            return None
+        p = plan(waiting={}, **dict(plan_kw, operations=ops))
         f, ci = p["facts"], p["facts"]["ci"] or {}
         if f["target"] and f["target"] != target:
             return _end(d, "superseded", f["target"][:10])

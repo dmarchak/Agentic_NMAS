@@ -3182,15 +3182,10 @@ def ai_clear():
     return jsonify({"status": "cleared"})
 
 
-@app.route("/ai/restart", methods=["POST"])
-def ai_restart():
-    """Restart the Flask server (used after patch_app_file to apply code changes)."""
-    import threading, sys
-    def _restart():
-        time.sleep(2)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
-    threading.Thread(target=_restart, daemon=True).start()
-    return jsonify({"status": "restarting", "message": "Server restarting in ~2 seconds"})
+# `/ai/restart` and `/server/restart` are REMOVED (CONCURRENCY_AUDIT R5, 2026-10-02): each
+# ended the process seconds after answering, checking no held device, running job or
+# commit in progress, so one person could cut off another's deploy half-applied. Neither
+# had a caller (measured 2026-09-27); the Update button restarts, gated on held devices.
 
 
 # ---------------------------------------------------------------------------
@@ -3327,18 +3322,6 @@ def session_pending_restart():
         return jsonify(data)
     except (FileNotFoundError, Exception):
         return jsonify({})
-
-
-@app.route("/server/restart", methods=["POST"])
-def server_restart():
-    """Signal the watchdog launcher to restart the server process."""
-    import threading, os as _os
-    def _do():
-        import time
-        time.sleep(1)
-        _os._exit(3)   # exit code 3 → launcher.py restarts the subprocess
-    threading.Thread(target=_do, daemon=True).start()
-    return jsonify({"status": "restarting", "message": "Server will restart in ~1 second."})
 
 
 @app.route("/ai/playbooks")

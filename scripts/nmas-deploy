@@ -40,6 +40,12 @@ Exit codes. Each means one thing; none is "probably fine":
      version exists. Run it in a terminal on the host
   9  the Update button's updater is moving the checkout now (C242: both take
      data/update/lock): refused, nothing moved. Run it again when it ends
+ 10  an operation holds a device (CONCURRENCY_AUDIT R5): the restart would end
+     it half-applied, with no receipt, no golden and no rollback. Refused
+     before the checkout moved, naming each one. Run it again when it ends.
+     When the service cannot say (not answering, or a version that predates
+     /health/operations), the deploy continues and says so: a deploy is how a
+     service that cannot answer is repaired
 
 "No run found" is exit 2, never a pass. That is the fail-open shape of the
 old Jenkins ci_gate, which was skipped silently whenever it could not ask
@@ -74,6 +80,7 @@ OK, CI_REFUSED, COULD_NOT_ASK, OFFLINE_FAILED, LOCAL_REFUSED, UNHEALTHY = 0, 1, 
 CANNOT_RESTART = 6
 CI_PENDING, CI_CANCELLED = 7, 8
 LOCKED = 9
+BUSY = 10
 
 #: The ONE lock this and the Update button's updater both take (C242): whoever
 #: holds it moves the checkout, and the other refuses by name.
@@ -543,7 +550,8 @@ def wait_for_running(target, pid_before, health, unit, clock, sleep, timeout=90,
 
 
 def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=None,
-         clock=time.time, sleep=time.sleep, unit=unit_state, ready=None, host_check=None) -> int:
+         clock=time.time, sleep=time.sleep, unit=unit_state, ready=None, host_check=None,
+         operations=None) -> int:
     # In the order it happened: over SSH stdout was block-buffered and the
     # verdict (stderr) printed first, above the lines that led to it.
     if hasattr(sys.stdout, "reconfigure"):
@@ -582,7 +590,7 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                               "again when it has finished (Help > About shows the last update)")
     try:
         code = _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit,
-                       ready)
+                       ready, operations)
     finally:
         os.close(lock)
     # LAST on screen: the host steps, when the checkout is at the target (a
@@ -688,7 +696,8 @@ def take_lock(repo):
     return fd
 
 
-def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit, ready):
+def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, unit, ready,
+            operations=None):
     dirty = git(repo, "status", "--porcelain", "--untracked-files=no")
     if dirty:
         return finish(LOCAL_REFUSED, "local changes present, refused:\n" + dirty)
@@ -724,6 +733,22 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                       f"NOT DEPLOYED: cannot restart {SERVICE} from here ({why}). The "
                       f"checkout was NOT moved: still at {head[:10]}, and the target "
                       f"{target[:10]} passed CI. Run nmas-deploy in a terminal on the host.")
+
+    # Is the service in the middle of an operation? Asked before anything moves (R5): the
+    # restart would end it half-applied, with no receipt, no golden and no rollback.
+    state, ops = (operations or _operations)()
+    row.update(operations_state=state)
+    if state == "busy":
+        row.update(operations=ops)
+        return finish(BUSY,
+                      f"NOT DEPLOYED: an operation holds a device, and restarting {SERVICE} "
+                      "would end it half-applied (no receipt, no golden, no rollback): "
+                      f"{operations_words(ops)}. The checkout was NOT moved: still at "
+                      f"{head[:10]}. Run nmas-deploy again when it finishes (the in-flight "
+                      "panel shows it).")
+    if state == "unknown":
+        print(f"Could not ask the service which operations hold a device ({ops}); "
+              "continuing, since a deploy is how a service that cannot answer is repaired.")
 
     if head != target:
         git(repo, "merge", "--ff-only", "--quiet", target)
@@ -801,6 +826,34 @@ def _mixed_headline(health, target: str) -> str:
         return (f"MIXED VERSION: checkout at {target[:10]}, service running {running[:10]} "
                 f"-- run `sudo systemctl restart {SERVICE}`\n")
     return ""
+
+
+def operations_words(ops):
+    """Each operation holding a device, in words."""
+    return "; ".join(f"{o.get('device', '?')} ({o.get('operation', '?')} since "
+                     f"{o.get('since', '?')}, list {o.get('list', '?')}, pid {o.get('pid', '?')})"
+                     for o in ops)
+
+
+def _operations():
+    """``("busy", [ops])`` when the running service holds a device, ``("clear", [])`` when
+    it says it holds none, ``("unknown", why)`` when it cannot say (R5)."""
+    port = os.environ.get("NMAS_PORT", "5000")
+    url = os.environ.get("NMAS_OPERATIONS_URL",
+                         f"http://127.0.0.1:{port}/health/operations")
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            body = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        return "unknown", (f"/health/operations answered {exc.code}"
+                           + (": the running version predates it" if exc.code == 404 else ""))
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return "unknown", f"the service is not answering ({exc})"
+    if not isinstance(body, dict) or not body.get("ok"):
+        return "unknown", str((body or {}).get("error") or "it answered without a verdict")
+    ops = body.get("operations") or []
+    return ("busy", ops) if ops else ("clear", [])
 
 
 def _health():

@@ -211,6 +211,143 @@ def in_flight(list_name: str, now: float = None) -> list:
     return rows
 
 
+#: Where an operation that did not finish is kept once the next operation takes its device
+#: (CONCURRENCY_AUDIT R5), one per list's folder.
+INTERRUPTED_LOG = "interrupted.jsonl"
+
+
+def _list_folders() -> list:
+    """Every list folder that has ever held a device: the folder's own (safe) name."""
+    from modules import config
+
+    root = os.path.join(config.DATA_DIR, "device_ops")
+    try:
+        return sorted(n for n in os.listdir(root) if os.path.isdir(os.path.join(root, n)))
+    except OSError:
+        return []
+
+
+def held_anywhere() -> list:
+    """Every device held now, in EVERY list, by any process (CONCURRENCY_AUDIT R5): what a
+    restart, an update or a deploy of the application would cut off half-way. A READ."""
+    out, seen = [], set()
+    for folder in _list_folders():
+        for h in held(folder):
+            key = (str(h.get("list") or folder).lower(), h.get("device"), h.get("started"))
+            if key not in seen:
+                seen.add(key)
+                out.append(dict(h, list=h.get("list") or folder))
+    return sorted(out, key=lambda h: h.get("started", 0) or 0, reverse=True)
+
+
+def _leftover(path: str, hostname: str):
+    """The record a process left in a lock file nobody holds, or None.
+
+    `release()` empties the file before unlocking it, so a non-empty file that no process
+    holds is an operation whose process ENDED while it held the device: a restart, an
+    update, a crash. The kernel released the `flock`; the record of what was running is
+    the only trace left."""
+    try:
+        import fcntl
+    except ImportError:
+        return None
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return None                     # held: the operation is running
+        try:
+            text = os.read(fd, 1 << 20).decode("utf-8", "replace")
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+    if not text.strip():
+        return None
+    try:
+        found = json.loads(text)
+    except ValueError:
+        found = {}
+    if not isinstance(found, dict):
+        found = {}
+    found.setdefault("device", hostname)
+    return found
+
+
+def _record_interrupted(list_name: str, hostname: str, left: dict, operation: str,
+                        actor: str) -> None:
+    """Keep what an interrupted operation left before the next one overwrites its lock
+    file: appended to the list's `interrupted.jsonl` (0600), with who took the device next.
+    A failure is logged loudly: the record is the only trace of the interruption."""
+    from modules.config import open_secure
+
+    path = os.path.join(os.path.dirname(_path(list_name, hostname)), INTERRUPTED_LOG)
+    entry = {"record": dict(left, device=left.get("device") or hostname),
+             "found_at": time.time(), "found_by": {"operation": operation, "actor": actor}}
+    try:
+        with open_secure(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, sort_keys=True) + "\n")
+    except OSError as exc:
+        log.error("device_ops: an interrupted %s on %s could not be kept (%s); it is lost",
+                  left.get("operation", "operation"), hostname, exc)
+        return
+    log.warning("device_ops: %s's last %s (started by %s, pid %s) did not finish: the "
+                "process ended while it held the device; kept in %s",
+                hostname, left.get("operation", "operation"), left.get("actor", "?"),
+                left.get("pid", "?"), path)
+
+
+def interrupted(list_name: str) -> list:
+    """Every operation on *list_name* whose process ended while it held a device: the ones
+    still in their lock file, and the ones kept when the next operation took the device.
+    Each is the holder's record (device, operation, actor, started, progress, pid) with
+    `found_at` (None while still in the lock file). A READ: it creates nothing."""
+    from modules import config
+
+    folder = os.path.join(config.DATA_DIR, "device_ops", _safe(list_name.lower()))
+    out, seen = [], set()
+
+    def add(rec, found_at):
+        key = (rec.get("device"), rec.get("started"))
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(dict(rec, list=rec.get("list") or list_name, found_at=found_at))
+
+    try:
+        with open(os.path.join(folder, INTERRUPTED_LOG), encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except FileNotFoundError:
+        lines = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            log.error("device_ops: an unreadable line in %s is skipped", INTERRUPTED_LOG)
+            continue
+        if isinstance(entry, dict) and isinstance(entry.get("record"), dict):
+            add(entry["record"], entry.get("found_at"))
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        names = []
+    for name in names:
+        if name.endswith(".lock"):
+            left = _leftover(os.path.join(folder, name), name[:-5])
+            if left:
+                add(left, None)
+    return sorted(out, key=lambda r: r.get("started", 0) or 0)
+
+
+def interrupted_anywhere() -> list:
+    """`interrupted()` for every list folder."""
+    return [r for folder in _list_folders() for r in interrupted(folder)]
+
+
 _held: dict = {}            # key -> {"fd", "count", "thread", "holder"}
 _mu = threading.Lock()
 
@@ -302,6 +439,20 @@ def acquire(list_name: str, hostname: str, operation: str, actor: str,
                 # the first version deadlocked here (found by the cross-process
                 # test, which hung rather than failed).
                 raise DeviceBusy(_read_holder_file(path, hostname)) from None
+            # A record left in the file means the last holder's process ENDED while it
+            # held the device (release empties it first). Kept before it is overwritten:
+            # it is the only trace of an operation that did not finish (R5).
+            size = os.fstat(fd).st_size
+            if size:
+                text = os.pread(fd, size, 0).decode("utf-8", "replace")
+                if text.strip():
+                    try:
+                        left = json.loads(text)
+                    except ValueError:
+                        left = {}
+                    _record_interrupted(list_name, hostname,
+                                        left if isinstance(left, dict) else {},
+                                        operation, actor)
             os.ftruncate(fd, 0)
             os.write(fd, json.dumps(info).encode("utf-8"))
             os.fsync(fd)

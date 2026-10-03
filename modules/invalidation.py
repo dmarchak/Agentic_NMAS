@@ -182,7 +182,6 @@ DECLARED = {
     "ai_agent_resume": ("agent",),
     "ai_agent_timers_post": ("agent",),
     "ai_events_clear": ("agent",),
-    "ai_restart": ("agent",),
     "ai_chat": ("chat", "approvals"),
     "ai_clear": ("chat",),
     "ai_stop": ("chat",),
@@ -284,8 +283,6 @@ DECLARED = {
     "settings_integrations.test_integration": Nothing("tests an integration's connection and reports"),
     "compare_backups_route": Nothing("diffs two stored backups and returns the diff"),
     "freshness.gate": Nothing("the sanitiser's check: per-device verdicts, stored nowhere"),
-    "server_restart": Nothing("no caller (reachability group d); the process restarts, so "
-                              "nothing this process answers is left to act on"),
 }
 
 

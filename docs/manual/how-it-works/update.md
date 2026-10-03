@@ -31,7 +31,17 @@ Each of these is a gate, and any failing refuses the update:
 - CI passed the target;
 - the checkout has no local changes;
 - the updater is installed, root-owned, can run, and its path unit is watching;
-- no update or terminal deploy is waiting or running.
+- no update or terminal deploy is waiting or running;
+- no operation is running on a device. The restart an update ends in would cut a deploy,
+  restore, capture or rotation off half-applied, with no receipt, no golden and no
+  rollback, so the gate names each device held and who is running what, and the update
+  waits until they finish. An update already waiting for CI keeps waiting while one runs.
+  A terminal `nmas-deploy` asks the same question before it restarts, and refuses (exit 10)
+  naming each one.
+
+An operation that a restart or a crash did cut off is a Needs attention row: what was
+running, on which devices, who started it and its last step. Read each device and compare
+it with its golden before changing it, then acknowledge the row with what you found.
 
 Host steps come in two kinds. A `Host-Step:` must be done BEFORE the update: where the tool
 can check it, it does so itself (done needs no tick; not done refuses, saying what it found);

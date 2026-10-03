@@ -68,7 +68,7 @@ and built.
 | Break-glass export | `/breakglass/preview`, `/export` | PLANNED, 7.7 | Settings, and Needs attention's break-glass row (which links to today's page now) |
 | Identity and posture | `/identity/status`, `/identity/posture`, `/identity/posture/ratify` | PLANNED, 7.7 | Settings > Diagnostics |
 | Settings | `/settings` (2), `/settings/integrations/*` (5), `/save_tftp_server` | PLANNED, 7.7 | Settings, split |
-| Server and session | `/server/restart`, `/session/pending-restart` | REMOVE, 7.8 | No caller (measured 2026-09-27); the Update button restarts |
+| Server and session | `/server/restart`, `/session/pending-restart` | `/server/restart` REMOVED 2026-10-02 (with `/ai/restart`, CONCURRENCY_AUDIT R5: each ended the process with no check of held devices); `/session/pending-restart` REMOVE, 7.8 | No caller (measured 2026-09-27); the Update button restarts, gated on held devices |
 | App log | `/logs/server` | PLANNED, 7.7 | Settings > Diagnostics |
 | In-flight operations | `/operations/in_flight` | PLANNED, 7.3 | The v2 frame's running-operations panel (today's pages draw it; v2's pending page only) |
 | Reachability | `/status/<ip>`, `/connection_status/<ip>` | REMOVE, 7.8 | The reachability reader (C92) is what v2 draws |

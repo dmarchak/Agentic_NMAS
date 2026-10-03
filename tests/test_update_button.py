@@ -530,7 +530,7 @@ def _plan_kw(value=None, install="ok"):
     return {"cached": {"state": "ok", "doc": {"last_good": {"value": value or _value(),
                                                              "value_at": "2026-09-30T10:01:00Z"}}},
             "install": {"state": install}, "running": "a" * 40, "pending_now": [],
-            "now_outcome": {"state": "absent"}}
+            "now_outcome": {"state": "absent"}, "operations": []}
 
 
 def _plan(**kw):
@@ -542,7 +542,7 @@ class TestThePreview:
     def test_all_gates_pass_and_the_hash_is_stable(self):
         a, b = _plan(), _plan()
         assert a["selectable"] and a["hash"] == b["hash"]
-        assert all(g["state"] == "pass" for g in a["gates"]) and len(a["gates"]) == 6
+        assert all(g["state"] == "pass" for g in a["gates"]) and len(a["gates"]) == 7
 
     @pytest.mark.parametrize("value,words", [
         (_value(ci={"tip": "b" * 40, "state": "pending", "sentence": "PENDING"}), "CI passed the target"),

@@ -89,7 +89,7 @@ def _fetch_from_real_origin(world):
 
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
-         wait=False, host_check=None):
+         wait=False, host_check=None, operations=None):
     mod = _script()
     calls = []
 
@@ -163,7 +163,8 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
                     + (["--wait"] if wait else []),
                     get=get, run=lambda *a, **k: Out(), restart=restart,
                     health=fake_health, clock=clock, sleep=sleep, unit=unit,
-                    ready=lambda: ready, host_check=host_check or (lambda repo: None))
+                    ready=lambda: ready, host_check=host_check or (lambda repo: None),
+                    operations=operations or (lambda: ("clear", [])))
     return code, restarted, calls
 
 

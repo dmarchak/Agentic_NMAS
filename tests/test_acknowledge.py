@@ -74,7 +74,8 @@ class TestEveryKindSaysHowItClears:
 
     def test_the_kinds_acknowledged_here_say_so(self):
         from modules.attention import ACKNOWLEDGED_HERE, CLEARS
-        assert ACKNOWLEDGED_HERE == {("restarts", "unplanned"), ("authorisations", "repeated")}
+        assert ACKNOWLEDGED_HERE == {("restarts", "unplanned"), ("authorisations", "repeated"),
+                                     ("operations", "interrupted")}
         for kind in ACKNOWLEDGED_HERE:
             assert "acknowledge" in CLEARS[kind][0], kind
         # Every other kind naming acknowledge does it through its OWN control, named.

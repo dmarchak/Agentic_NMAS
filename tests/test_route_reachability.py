@@ -57,6 +57,10 @@ NON_GUI = {
     "GET /v2/monitoring/heartbeat": ("modules/job_health.py",
                                      "the heartbeat check's Needs attention action, "
                                      "built by job health; never a tab"),
+    # CONCURRENCY_AUDIT R5: the terminal deploy asks before it restarts the service.
+    "GET /health/operations": ("scripts/nmas-deploy",
+                               "nmas-deploy refuses to restart the service while an "
+                               "operation holds a device (exit 10), as Update's gate does"),
     "GET /favicon.ico": (None, "requested by browsers by convention; no page "
                                "references it and none needs to"),
 }
@@ -107,8 +111,6 @@ KNOWN_UNREACHABLE = {
     "POST /bulk_clear/<operation_id>": (D, "on the audit's CUT list; removed in 7.8"),
     "POST /drift/check": (D, "the async drift run: the panel uses /drift/check/sync; on the audit's CUT list"),
     "GET /ai/report/<path:filename>": (D, "serves report files, and the AI tools that wrote them went in P.3 step 8; no caller"),
-    "POST /ai/restart": (D, "no caller anywhere in the repository (measured 2026-09-27)"),
-    "POST /server/restart": (D, "no caller anywhere in the repository (measured 2026-09-27); section 1.2 excluded it as non-GUI without naming a consumer"),
     "GET /drift/settings": (D, "a duplicate read: the drift panel takes its interval and toggle from /drift/status"),
     "GET /device_lists": (D, "the list of lists as JSON: the page renders it server-side; on the audit's CUT list"),
     "POST /golden/migrate/plan": (D, "the same dry-run READ as GET, with a JSON body; nothing sends it"),
@@ -133,7 +135,8 @@ KNOWN_UNREACHABLE = {
 # revert never had an entry point, and was counted as reached because the
 # editor's `'/templatize/committed/' + host` matched its stem. A route's
 # words after its converter must now appear near the reference.
-CEILING = 49
+# 49 -> 47 (2026-10-02): /ai/restart and /server/restart removed (CONCURRENCY_AUDIT R5).
+CEILING = 47
 
 
 @pytest.fixture(scope="module")

@@ -100,6 +100,25 @@ def version():
     return jsonify(version_facts())
 
 
+@bp.route("/health/operations", methods=["GET"])
+def operations():
+    """Every operation holding a device now, in any list (CONCURRENCY_AUDIT R5): what a
+    restart of this service would cut off half-applied, with no receipt, no golden and no
+    rollback. `nmas-deploy` asks before it restarts, as the Update preview's gate does.
+    The device, the operation, the list, since when and the holding process; never who (an
+    ungated read). A read of the lock files, so a separate route: `/health` is polled."""
+    from modules.nsot import device_ops
+
+    try:
+        ops = device_ops.held_anywhere()
+    except Exception as exc:                  # noqa: BLE001
+        return jsonify({"ok": False, "error": f"the holds could not be read: {exc}"}), 500
+    return jsonify({"ok": True, "operations": [
+        {"list": h.get("list", ""), "device": h.get("device", ""),
+         "operation": h.get("operation", ""), "pid": h.get("pid"),
+         "since": _iso_ms(h.get("started") or 0)} for h in ops]})
+
+
 @bp.route("/health", methods=["GET"])
 def health():
     body = {"ok": _COMMIT is not None, "commit": _COMMIT,

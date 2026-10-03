@@ -137,8 +137,6 @@ GATES = {
     "ai_agent_timers_post": _g(K, "changes when the background agent runs"),
     "ai_agent_pause": _g(K, "pauses the background agent"),
     "ai_agent_resume": _g(K, "resumes the background agent"),
-    "ai_restart": _g(K, "restarts the AI subsystem"),
-    "server_restart": _g(K, "restarts the application"),
     "ai_delete_playbook": _g(K, "deletes a stored playbook"),
     "ai_events_clear": _g(K, "clears the event record"),
     "clear_netflow_flows": _g(K, "clears the collected flow record"),
