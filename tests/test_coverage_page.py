@@ -151,29 +151,33 @@ class TestThePage:
     def test_before_a_profile_it_says_propose_and_offers_no_apply(self, lab, monkeypatch):
         r, html = _page(lab, monkeypatch)
         assert r.status_code == 200 and "script-src" in r.headers["Content-Security-Policy"]
-        assert "1 of 2 devices lack something the network uses" in html
+        # The redraw (artboard A): the answer first, how many are fully covered.
+        assert re.search(r'1 of 2 devices fully covered\s*<span class="muted">· 1 template '
+                         r'missing on 1 device', html)
         assert "Lab has no monitoring profile yet" in html
         assert "open=profile_propose" in html
-        assert "Preview applying the profile" not in html
-        assert "Not offered: the network has no monitoring profile yet." in html
+        assert "Deploy missing templates" not in html
+        assert "Nothing to deploy: the network has no monitoring profile yet" in html
 
     def test_the_form_takes_the_ticked_devices_to_the_batch_preview(self, lab, monkeypatch):
         _commit_proposal()
         r, html = _page(lab, monkeypatch)
         assert "missing — the profile supplies it" in html
-        form = re.search(r'<form method="get" action="([^"]*)" class="cov-form">(.*?)</form>', html, re.S)
+        form = re.search(r'<form method="get" action="([^"]*)" class="cov-form"[^>]*>(.*?)</form>',
+                         html, re.S)
         # P.9 (d2): the v2 batch preview, carrying the list and the ticked devices.
         assert form and form.group(1) == "/v2/monitoring/apply"
         body = form.group(2)
         assert 'name="open"' not in body
         assert '<input type="hidden" name="list" value="Lab">' in body
-        assert re.search(r'<input type="checkbox" name="device" value="r6" id="cov-r6" checked', body)
+        assert re.search(r'<input type="checkbox" name="device" value="r6" id="cov-r6" '
+                         r'data-missing="1" checked', body)
         # r2 has nothing for Apply to send: no box to tick, and the reason beside it.
         assert 'value="r2"' not in body
-        assert "Not offered: nothing for Apply to send" in body
-        assert "Preview applying the profile…" in body
-        # Words and an icon in every cell, never colour alone.
-        assert html.count('class="cov cov-') == 2 * 5
+        assert "Nothing to deploy: nothing for Apply to send" in body
+        assert "Deploy missing templates…" in body
+        # Every cell drawn, its words for a screen reader and on hover, never colour alone.
+        assert html.count('<td class="gc" data-state=') == 2 * 5
 
     def test_the_table_refreshes_on_keys_the_vocabulary_holds(self, lab, monkeypatch):
         from modules.invalidation import VOCABULARY

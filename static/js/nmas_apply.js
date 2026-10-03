@@ -19,6 +19,12 @@
  * batch Apply scoped to IP SLA lines. Busy on itself; a refusal is said
  * beside it in the server's words. `ipslaBody` and `ipslaOutcome` are PURE,
  * executed in duktape by tests/test_ip_sla_policy.py.
+ *
+ * Also `coverageSelect`, Monitoring > Coverage's selection (artboard A): the row boxes
+ * feed this Apply. The bar above the grid names the devices ticked and how many missing
+ * templates the profile supplies for them, recounted on each change; the header box ticks
+ * every device that has one, and Clear unticks them. `coverageWords` is PURE, executed in
+ * duktape by tests/test_coverage_grid.py.
  */
 (function (root) {
   'use strict';
@@ -50,7 +56,53 @@
     return {go: '', reload: false, error: why};
   }
 
+  /* PURE. The selection bar's words: *names* the ticked devices, *missing* the templates the
+     profile supplies for them, summed. */
+  function coverageWords(names, missing) {
+    var n = names.length;
+    return {summary: n + ' device' + (n === 1 ? '' : 's') + ' selected',
+            detail: '· ' + names.join(', ') + ' · ' + missing + ' missing template' +
+                    (missing === 1 ? '' : 's')};
+  }
+
   function register() {
+    root.Alpine.data('coverageSelect', function () {
+      return {
+        names: [], missing: 0,
+        init: function () { this.recount(); },
+        boxes: function () {
+          return Array.prototype.slice.call(this.$root.querySelectorAll('input[name=device]'));
+        },
+        recount: function () {
+          var all = this.boxes(), names = [], missing = 0;
+          for (var i = 0; i < all.length; i++) {
+            if (!all[i].checked) continue;
+            names.push(all[i].value);
+            missing += parseInt(all[i].getAttribute('data-missing'), 10) || 0;
+          }
+          this.names = names;
+          this.missing = missing;
+          var head = this.$refs.all;
+          if (head) {
+            head.checked = !!all.length && names.length === all.length;
+            head.indeterminate = !!names.length && names.length < all.length;
+          }
+        },
+        pickAll: function () {
+          var on = !!(this.$refs.all && this.$refs.all.checked), all = this.boxes();
+          for (var i = 0; i < all.length; i++) all[i].checked = on;
+          this.recount();
+        },
+        clear: function () {
+          var all = this.boxes();
+          for (var i = 0; i < all.length; i++) all[i].checked = false;
+          this.recount();
+        },
+        get nonePicked() { return !this.names.length; },
+        get summary() { return coverageWords(this.names, this.missing).summary; },
+        get detail() { return coverageWords(this.names, this.missing).detail; }
+      };
+    });
     root.Alpine.data('ipslaPost', function () {
       return {
         busy: false, error: '',
@@ -134,5 +186,5 @@
     root.document.addEventListener('alpine:init', register);
   }
   root.NMAS_APPLY = {confirmOutcome: confirmOutcome, ipslaBody: ipslaBody,
-                     ipslaOutcome: ipslaOutcome};
+                     ipslaOutcome: ipslaOutcome, coverageWords: coverageWords};
 })(typeof window !== 'undefined' ? window : this);

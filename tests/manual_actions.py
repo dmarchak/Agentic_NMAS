@@ -63,6 +63,7 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
     ("_macros.html", "btn btn-small"): "Check again: re-reads origin and CI now, a read",
     ("_apply_job.html", "Check now"): "re-reads the job's progress: a read",
+    ("_coverage.html", "Clear"): "unticks every device in Coverage's selection, recording nothing",
     ("_apply_preview.html", "Earlier"): "moves a device earlier in the rollout order the confirm carries",
     ("_apply_preview.html", "Later"): "moves a device later in the rollout order the confirm carries",
     ("_apply_preview.html", "Leave out"): "leaves a device out of the rollout the confirm carries",

@@ -1,83 +1,107 @@
 {%- from "v2/_macros.html" import icon, stamp, how -%}
-{#- Monitoring > Coverage (P.9 (d), NSOT_GUI_BRIEF 14.3). Every cell's state is
-    decided by modules/monitoring_coverage.fleet(); this draws it, in words and
-    an icon, never colour alone. The answer first: all covered is one line that
-    still makes the positive claim; otherwise how many lack something. -#}
-{%- set ICON = {'ok': 'check', 'gap': 'warn', 'gap_open': 'warn', 'excluded': 'info',
-                'unused': 'dot', 'not_applicable': 'dot', 'unknown': 'info',
-                'not_reporting': 'warn'} -%}
-{%- set gaps = c.devices | selectattr('gaps') | list -%}
+{#- Monitoring > Coverage, the REDRAW (artboard A, signed off 2026-10-02; NSOT_GUI_BRIEF 14.3).
+    Every cell's state is decided by modules/monitoring_coverage.fleet(); this draws it as an
+    icon, its why on hover and in words for a screen reader: a tick for configured, a quiet
+    ring for not configured, an amber mark for not reporting (a link to the device tab where
+    the cause is found, never a redeploy), blank for not applicable. Selection only through the
+    row boxes: a device with nothing the profile can supply has no box to tick, its reason on
+    the disabled box. The answer first: how many devices are fully covered. -#}
+{%- set full = c.devices | rejectattr('gaps') | rejectattr('not_reporting')
+                         | rejectattr('golden', 'equalto', 'unreadable') | list -%}
+{%- set gapped = c.devices | selectattr('gaps') | list -%}
+{%- set n_gaps = gapped | map(attribute='gaps') | map('length') | sum -%}
 {%- set unreadable = c.devices | selectattr('golden', 'equalto', 'unreadable') | list -%}
-{%- set used = c.columns | selectattr('connector') | list -%}
 {%- set offered = c.devices | selectattr('selectable') | list -%}
+{%- set picked = offered | selectattr('checked') | list -%}
+{%- set n_picked = picked | map(attribute='supplies') | map('length') | sum -%}
 <section class="card coverage" id="coverage" hx-get="{{ url_for('v2.coverage_table') }}"
          hx-trigger="nmas:goldens from:body, nmas:intent from:body, nmas:job_health from:body, nmas:coverage_reporting from:body" hx-swap="outerHTML">
   {%- if not c.total %}
   <p class="cov-head">{{ icon('info') }} {{ c.list }} has no devices.</p>
-  {%- elif not gaps and not unreadable %}
-  <p class="cov-head cov-head-ok">{{ icon('check') }} All {{ c.total }} devices are configured for everything the network uses{% if used %} ({% for col in used %}{{ col.words }} through {{ col.connector }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}.</p>
   {%- else %}
-  <p class="cov-head cov-head-warn">{{ icon('warn') }} {{ gaps | length }} of {{ c.total }} devices lack something the network uses{% if unreadable %}, and {{ unreadable | length }} could not be read{% endif %}.</p>
-  {%- endif %}
-  {%- if c.not_reporting %}
-  <p class="cov-head cov-head-warn" id="cov-not-reporting">{{ icon('warn') }} {{ c.not_reporting }} configured template{{ 's' if c.not_reporting != 1 }} not reporting on {{ c.not_reporting_devices }} device{{ 's' if c.not_reporting_devices != 1 }}: the configuration is there and its data is not arriving. Each opens where to find why; a deploy does not fix it.</p>
+  <p class="cov-head" id="cov-summary">{{ full | length }} of {{ c.total }} devices fully covered
+    <span class="muted">· {{ n_gaps }} template{{ 's' if n_gaps != 1 }} missing on {{ gapped | length }} device{{ 's' if gapped | length != 1 }}
+    {%- if c.not_reporting %} · <strong class="cov-nr-count">{{ c.not_reporting }} not reporting</strong> on {{ c.not_reporting_devices }}{% endif %}
+    {%- if unreadable %} · {{ unreadable | length }} golden{{ 's' if unreadable | length != 1 }} could not be read{% endif %}</span></p>
   {%- endif %}
   {%- if c.reporting_unknown %}
   <p class="muted cov-profile" id="cov-reporting-unknown">{{ icon('info') }} For some configured templates, {{ c.reporting_unknown }}.</p>
   {%- endif %}
 
   {%- if c.profile.error %}
-  <div class="notice notice-danger">{{ icon('warn') }}<p>The network's monitoring profile cannot be read ({{ c.profile.error }}), so nothing can be applied until it is fixed.</p></div>
+  <div class="notice notice-danger">{{ icon('warn') }}<p>The network's monitoring profile cannot be read ({{ c.profile.error }}), so nothing can be deployed until it is fixed.</p></div>
   {%- elif c.profile.committed %}
   <p class="muted cov-profile">The monitoring profile: commit <code>{{ c.profile.commit }}</code>, {{ stamp(c.profile.committed_at) }}. Sections: {% for s in c.profile.sections %}{{ s }}{% if c.profile.sources[s] %} (from {{ c.profile.sources[s] }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.</p>
   {%- else %}
-  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ c.list }} has no monitoring profile yet, so nothing can be applied: propose one from the network's connectors first. <a href="{{ url_for('index', open='profile_propose', list=c.list) }}">Propose on today's page</a></p></div>
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ c.list }} has no monitoring profile yet, so nothing can be deployed: propose one from the network's connectors first. <a href="{{ url_for('index', open='profile_propose', list=c.list) }}">Propose on today's page</a></p></div>
   {%- endif %}
 
   {%- if c.total %}
-  <form method="get" action="{{ url_for('v2.profile_apply') }}" class="cov-form">
+  <form method="get" action="{{ url_for('v2.profile_apply') }}" class="cov-form" x-data="coverageSelect">
     <input type="hidden" name="list" value="{{ c.list }}">
+    {%- if offered %}
+    <div class="cov-bar" id="cov-bar"{% if not picked %} hidden{% endif %} x-bind:hidden="nonePicked">
+      <span><strong x-text="summary">{{ picked | length }} device{{ 's' if picked | length != 1 }} selected</strong>
+        <span class="muted" x-text="detail">· {{ picked | map(attribute='host') | join(', ') }} · {{ n_picked }} missing template{{ 's' if n_picked != 1 }}</span></span>
+      <span class="cov-bar-acts">
+        <button type="submit" class="btn btn-primary" data-op="monitoring-templates">Deploy missing templates…</button>{{ how('monitoring-templates') }}
+        <button type="button" class="btn" x-on:click="clear">Clear</button>
+      </span>
+    </div>
+    {%- endif %}
     <div class="table-wrap">
-      <table class="table cov-table">
+      <table class="table cov-grid">
         <thead><tr>
-          <th scope="col"><span class="sr-only">Apply the profile</span></th>
-          <th scope="col">Device</th>
+          <th scope="col" class="gcheck">{% if offered %}<input type="checkbox" x-ref="all" x-on:change="pickAll" aria-label="Select every device with a missing template" title="Select every device with a missing template">{% else %}<span class="sr-only">Select</span>{% endif %}</th>
+          <th scope="col" class="gdev">Device</th>
           {%- for col in c.columns %}
-          <th scope="col">{{ col.words }}{% if col.connector %}<span class="muted cov-conn"> · {{ col.connector }}</span>{% endif %}</th>
+          <th scope="col" class="gc"{% if col.connector %} title="{{ col.words }} through {{ col.connector }}"{% endif %}>{{ col.words }}</th>
           {%- endfor %}
         </tr></thead>
         <tbody>
           {%- for d in c.devices %}
           <tr>
-            <td class="cov-pick">
-              {%- if d.selectable %}<input type="checkbox" name="device" value="{{ d.host }}" id="cov-{{ d.host }}"{% if d.checked %} checked{% endif %} aria-label="Apply the monitoring profile to {{ d.host }}">
-              {%- else %}<input type="checkbox" disabled title="Not offered: {{ d.why_not }}" aria-label="{{ d.host }} cannot receive the profile: {{ d.why_not }}">{% endif -%}
+            <td class="gcheck">
+              {%- if d.selectable %}<input type="checkbox" name="device" value="{{ d.host }}" id="cov-{{ d.host }}" data-missing="{{ d.supplies | length }}"{% if d.checked %} checked{% endif %} x-on:change="recount" aria-label="Select {{ d.host }}: {{ d.supplies | length }} missing" title="{{ d.supplies | length }} missing the profile supplies: {{ d.supplies | join(', ') }}">
+              {%- else %}<input type="checkbox" disabled aria-label="{{ d.host }}: {{ d.why_not }}" title="Nothing to deploy: {{ d.why_not }}{% if d.not_reporting %}. A template not reporting is diagnosed, not redeployed{% endif %}">{% endif -%}
             </td>
-            <th scope="row" class="cov-dev">
-              <a href="{{ url_for('device_v2.device', name=d.host) }}">{{ d.host }}</a>
-              <span class="muted"> · {{ d.platform or 'platform unknown' }}{{ ' · ' ~ d.role if d.role }}</span>
+            <th scope="row" class="gdev">
+              <a href="{{ url_for('device_v2.device', name=d.host) }}">{{ d.host }}</a> <span class="muted">{{ d.platform or 'platform unknown' }}</span>
               {%- if d.golden == 'none' %}<span class="cov-why">No committed golden: nothing shows it configured.</span>{% endif %}
               {%- if d.golden == 'unreadable' %}<span class="cov-why">Its golden could not be read ({{ d.error }}): not the same as not configured.</span>{% endif %}
-              {%- if not d.selectable %}<span class="cov-why">Not offered: {{ d.why_not }}.</span>{% endif %}
             </th>
-            {%- for col in c.columns %}{% set cell = d.cells[col.key] %}
-            <td class="cov cov-{{ cell.state }}"{% if cell.reporting %} title="{{ d.host }} · {{ col.words }}: {{ cell.reporting.words }}"{% endif %}>{{ icon(ICON[cell.state], 14) }}
-              {%- if cell.state == 'not_reporting' %}<a class="cov-nr" href="{{ url_for('device_v2.device', name=d.host, tab=cell.where) }}" aria-label="{{ d.host }} {{ col.words }} {{ cell.words }}; find why on its {{ cell.where | capitalize }} tab">{{ cell.words }}</a>
-              {%- elif cell.reporting and cell.reporting.state == 'unproven' %}<span>{{ cell.words }}</span><span class="muted cov-why">{{ cell.reporting.words }}</span>
-              {%- elif col.key == 'ip_sla' and cell.state == 'unused' %}<a href="{{ url_for('v2.ip_sla', list=c.list, device=d.host) }}">{{ cell.words }}</a>
-              {%- else %}<span>{{ cell.words }}</span>{% endif %}</td>
+            {%- for col in c.columns %}{% set cell = d.cells[col.key] %}{% set at = d.host ~ ' · ' ~ col.words ~ ': ' %}
+            {%- if cell.state == 'ok' %}
+            <td class="gc" data-state="ok" title="{{ at }}configured{% if cell.reporting %}; {{ cell.reporting.words }}{% endif %}"><span class="sr-only">configured</span><span class="m-ok" aria-hidden="true">{{ icon('check', 14) }}</span></td>
+            {%- elif cell.state == 'not_reporting' %}
+            <td class="gc" data-state="not_reporting"><a class="nr-link" href="{{ url_for('device_v2.device', name=d.host, tab=cell.where) }}" title="{{ at }}{{ cell.words }}. Opens {{ d.host }} › {{ cell.where | capitalize }} to find why: a deploy does not fix this" aria-label="{{ d.host }} {{ col.words }} {{ cell.words }}; find why on its {{ cell.where | capitalize }} tab"><span class="m-nr" aria-hidden="true">!</span></a></td>
+            {%- elif col.key == 'ip_sla' and cell.state == 'unused' %}
+            {#- IP SLA is reached from its cells until it folds into the profile (the operator,
+                2026-10-02): the ring is the link to its page, scoped to this device. #}
+            <td class="gc" data-state="unused"><a class="nr-link" href="{{ url_for('v2.ip_sla', list=c.list, device=d.host) }}" title="{{ at }}not configured: {{ cell.words }}" aria-label="{{ d.host }} IP SLA not configured: {{ cell.words }}"><span class="m-no" aria-hidden="true"></span></a></td>
+            {%- elif cell.state in ('gap', 'gap_open') %}
+            <td class="gc" data-state="{{ cell.state }}" title="{{ at }}not configured: {{ cell.words }}{% if cell.state == 'gap' %}. Select the device to deploy it{% endif %}"><span class="sr-only">not configured: {{ cell.words }}</span><span class="m-no" aria-hidden="true"></span></td>
+            {%- elif cell.state == 'unknown' %}
+            <td class="gc" data-state="unknown" title="{{ at }}{{ cell.words }}"><span class="sr-only">{{ cell.words }}</span><span class="m-unk" aria-hidden="true">{{ icon('info', 14) }}</span></td>
+            {%- else %}
+            <td class="gc" data-state="{{ cell.state }}" title="{{ at }}{{ cell.words }}"><span class="sr-only">{{ cell.words }}</span></td>
+            {%- endif %}
             {%- endfor %}
           </tr>
           {%- endfor %}
         </tbody>
       </table>
     </div>
-    {%- if offered %}
-    <p class="cov-actions"><button type="submit" class="btn btn-primary" data-op="monitoring-templates">Preview applying the profile…</button>{{ how('monitoring-templates') }}</p>
-    {%- endif %}
   </form>
+  <p class="cov-legend muted">
+    <span><span class="m-ok">{{ icon('check', 14) }}</span> configured</span>
+    <span><span class="m-no"></span> not configured: select its device to deploy it</span>
+    <span><span class="m-nr">!</span> not reporting: configured, its data not arriving; opens where to find why</span>
+    <span>blank: not applicable (to the device, or its platform)</span>
+  </p>
+  <p class="cov-legend muted">Hover a cell for why. A device with nothing the profile can supply has no box to tick; a template not reporting is never redeployed from here.</p>
   {%- if c.ip_sla_missing and c.profile.committed %}
-  <p class="cov-actions" id="cov-ipsla">IP SLA: {{ c.ip_sla_missing | length }} device(s) run no probe ({{ c.ip_sla_missing | join(', ') }}). Probes are suggested from the profile's policy and sent from their own page, never by the profile's Apply.
+  <p class="cov-actions" id="cov-ipsla">IP SLA: {{ c.ip_sla_missing | length }} device(s) run no probe ({{ c.ip_sla_missing | join(', ') }}). Probes are suggested from the profile's policy and sent from their own page, never by the profile's deploy.
     <a class="btn" data-op="monitoring-templates" href="{{ url_for('v2.ip_sla', list=c.list, device=c.ip_sla_missing) }}">Suggest IP SLA probes for them…</a>{{ how('monitoring-templates', compact=True, op='an IP SLA probe') }}</p>
   {%- endif %}
   {%- endif %}

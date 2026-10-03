@@ -42,9 +42,11 @@ SIGNED_OFF = {
                                     "redeploy; one combined program per device, verified and "
                                     "rolled back as one, in a settable order stopping at the "
                                     "first failure; configured-but-not-reporting templates "
-                                    "excluded and named. The page as BUILT (P.9 d1, 2026-10-01) "
-                                    "predates it and is rebuilt to it: the not-reporting reader "
-                                    "first, then the grid, then the combined deploy"),
+                                    "excluded and named. Built to it in three steps: the "
+                                    "not-reporting reader (2026-10-03), the grid and selection "
+                                    "(2026-10-03; Deploy missing templates opens the profile's "
+                                    "batch preview until the combined deploy replaces it), then "
+                                    "the combined deploy"),
     "update.html": ("2026-10-02", "reviewed IN USE: designed in docs/UPDATE.md, used on the host "
                                   "repeatedly and corrected through C243, C244, C246, C268, "
                                   "C274, C279 and C285. Its next change gets a mockup"),

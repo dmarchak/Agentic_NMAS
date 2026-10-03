@@ -2119,6 +2119,17 @@ Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own
 5. **Numbers.** One commit [git: this commit]. 23 tests in `tests/test_coverage_reporting.py`, on a real capture from the host; nine controls, each failing its aimed tests. Findings: C376 recorded (Loki's series limit at fleet scale). **Estimate versus actual:** no forecast was made; a reader of the 7.2 kind.
 6. **Where it left the product.** Today's Coverage table shows a configured template whose data stopped as its own state, with its age and the tab to look at. The redrawn grid draws the same verdicts as icons.
 
+### Coverage's grid and selection (the second of Coverage's three steps)
+
+*Written at close, 2026-10-03 (overnight). The combined deploy is the third step; NTP and LLDP's columns wait on it.*
+
+1. **What it was.** Artboard A's grid: icons only, with the why on hover. Selection only through the row boxes, and a bar naming what is ticked, with Deploy missing templates and Clear [NSOT_GUI_BRIEF.md 14.3].
+2. **How it was implemented.** The table was redrawn from `fleet()`'s states, with no new server state. The selection is an Alpine component in the CSP build, beside the batch Apply's, with its words a pure function. The ticked row is highlighted by the stylesheet's `:has`, with no script. Deploy missing templates opens the profile's batch preview until the combined deploy replaces it.
+3. **Issues encountered.** The board draws IP SLA's ring as plain. The operator's decision of the same day says IP SLA is reached from its cells until it folds into the profile. The test fixture that installs the reader replaced the lab's settings, not wrapped them, and that turned a gap into "not used".
+4. **How they were resolved.** IP SLA's ring is the link, its words on hover; this is named for the operator's review. The fixture wraps whatever is installed.
+5. **Numbers.** One commit [git: this commit]. 7 tests in `tests/test_coverage_grid.py` (one in a real browser), and the old table's tests moved to the grid; six controls, each failing its aimed tests. Screenshots taken in light and dark.
+6. **Where it left the product.** Coverage reads like the signed board: the answer first, one icon per cell, and a selection that says what a deploy would send to whom.
+
 ## Part II. Stage 7
 
 ### 7.0 — The checks every later step is written against

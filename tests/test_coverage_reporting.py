@@ -69,8 +69,10 @@ def read(monkeypatch):
     """The reader over a (possibly edited) capture, at the capture's own time."""
     monkeypatch.setattr(CR, "windows", lambda: {h: {"window": w, "basis": "measured"}
                                                 for h, w in WINDOWS.items()})
+    from modules import settings_schema
+    before = settings_schema.get_setting      # a lab's settings, when one is installed first
     monkeypatch.setattr("modules.settings_schema.get_setting",
-                        lambda k, d=None: 300 if k == "syslog_heartbeat_seconds" else d)
+                        lambda k, d=None: 300 if k == "syslog_heartbeat_seconds" else before(k, d))
 
     def run(cap=None, prom_fail=(), loki_fail=(), loki_configured=True):
         cap = cap or _capture()
@@ -338,8 +340,10 @@ class TestTheGrid:
         monkeypatch.setattr("modules.device_page._cached", lambda name: (r2_down, "", ""))
         r, html = _page(lab, monkeypatch, "/v2/monitoring/coverage/table")
         assert r.status_code == 200
-        assert re.search(r'<td class="cov cov-not_reporting" title="r2 · SNMP: no scrape for 12 min '
-                         r'\(request timeout\)">', html)
-        assert '<a class="cov-nr" href="/v2/device/r2?tab=monitoring"' in html
-        assert "2 configured templates not reporting on 2 devices" in html
+        cell = re.search(r'<td class="gc" data-state="not_reporting"><a class="nr-link" '
+                         r'href="/v2/device/r2\?tab=monitoring" title="([^"]*)"', html)
+        assert cell and cell.group(1) == ("r2 · SNMP: not reporting — no scrape for 12 min (request "
+                                          "timeout). Opens r2 › Monitoring to find why: a deploy "
+                                          "does not fix this")
+        assert '<strong class="cov-nr-count">2 not reporting</strong> on 2' in html
         assert "nmas:coverage_reporting from:body" in html

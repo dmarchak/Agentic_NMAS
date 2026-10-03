@@ -20,8 +20,25 @@ Monitoring tab.
 
 ## Coverage {#coverage}
 
-Every device against every monitoring section, read from each device's committed golden, and
-the batch Apply for the devices the profile would fix. How Apply works:
+Every device against every monitoring section, read from each device's committed golden. The
+line above the grid gives the answer first: how many devices are fully covered, how many
+templates are missing, and how many are not reporting.
+
+Each cell is an icon. Hover over it to see why:
+
+- **A tick:** configured.
+- **A quiet ring:** not configured.
+- **An amber mark:** configured but not reporting (see below).
+- **Blank:** not applicable to the device or its platform.
+
+IP SLA's ring links to the IP SLA page for that device, where probes are suggested.
+
+To deploy, tick devices in the left column. A device is offered only when the monitoring profile
+supplies something it is missing. A device with nothing to deploy has a faded box that says why
+when you hover over it. The bar above the grid names the devices you ticked and how many missing
+templates the profile supplies for them, and it updates as you tick. **Deploy missing
+templates…** opens the preview for those devices. **Clear** unticks them all. The box in the
+header ticks every device that can be ticked. How the deploy works:
 [Apply a monitoring template](monitoring-templates).
 
 A configured cell can still be **not reporting**: the configuration is there and its data is

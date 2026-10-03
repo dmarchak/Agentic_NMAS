@@ -450,10 +450,12 @@ class TestTheWayIn:
         _coverage_inventory(monkeypatch)
         assert _policy(lab).status_code == 200
         page = lab["client"].get("/v2/monitoring/coverage/table").get_data(as_text=True)
-        cells = [c for c in re.findall(r'<td class="cov cov-unused">.*?</td>', page, re.S)
+        cells = [c for c in re.findall(r'<td class="gc" data-state="unused">.*?</td>', page, re.S)
                  if "probes" in c]
         assert len(cells) == 1, "s4's IP SLA cell (r2 runs a probe)"
-        assert '<a href="/v2/monitoring/ip-sla?list=Lab&amp;device=s4">no probes yet' in cells[0]
+        # The redrawn grid (artboard A): the not-configured ring is the link, its words on hover.
+        assert '<a class="nr-link" href="/v2/monitoring/ip-sla?list=Lab&amp;device=s4"' in cells[0]
+        assert 'title="s4 · IP SLA: not configured: no probes yet' in cells[0]
 
 
 class TestADisabledBoxLooksDisabled:
@@ -472,7 +474,7 @@ class TestADisabledBoxLooksDisabled:
         page = lab["client"].get("/v2/monitoring/coverage/table").get_data(as_text=True)
         boxes = re.findall(r'<input type="checkbox" disabled[^>]*>', page)
         assert len(boxes) >= 2, "the lab offers neither device (the floor)"
-        assert all(re.search(r'title="Not offered: [^"]+"', b) for b in boxes), boxes
+        assert all(re.search(r'title="Nothing to deploy: [^"]+"', b) for b in boxes), boxes
 
     def test_a_real_browser_draws_it_faded(self, lab, monkeypatch):
         from tests import browser
@@ -484,9 +486,9 @@ class TestADisabledBoxLooksDisabled:
         with browser.Served(A.app) as srv, browser.Browser() as b:
             try:
                 b.go(srv.url("/v2/monitoring/coverage"))
-                b.wait_for("return document.querySelector('.cov-pick input[disabled]')")
+                b.wait_for("return document.querySelector('.gcheck input[disabled]')")
                 style = b.js("var s=getComputedStyle(document.querySelector("
-                             "'.cov-pick input[disabled]'));return [s.opacity, s.cursor]")
+                             "'.gcheck input[disabled]'));return [s.opacity, s.cursor]")
                 assert float(style[0]) <= 0.5 and style[1] == "not-allowed", style
             finally:
                 b.go("about:blank")
