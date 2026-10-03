@@ -29,7 +29,18 @@ VIOS = "s3 uptime is 13 hours, 50 minutes\nSystem returned to ROM by reload\n" \
 
 
 def _series():
-    return json.load(open(FIX))["sysUpTime"][0]["values"]
+    """s3's REAL capture, its timestamps moved so it ends an hour before NOW (its shape, the
+    counter values and the gaps between samples, untouched). Its own dates (2026-10-01) held
+    against the seven days a restart stays recent made these tests pass for a week and fail
+    after it (C353's survey, 2026-10-03, the suite a week ahead)."""
+    values = json.load(open(FIX))["sysUpTime"][0]["values"]
+    shift = _ANCHOR - 3600 - values[-1][0]
+    return [[t + shift, u] for t, u in values]
+
+
+#: NOW, once per process: every call moves the capture by the same amount, so two reads of it
+#: in one test agree to the sample.
+_ANCHOR = time.time()
 
 
 def _expected_boot():

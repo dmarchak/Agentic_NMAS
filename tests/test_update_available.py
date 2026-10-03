@@ -75,8 +75,12 @@ class TestTheDecision:
         assert (got is not None) is shows, (name, got)
 
     def test_the_hover_says_how_far_behind_and_since_when(self):
+        # Judged against a stated clock an hour after the date it prints: on the real clock
+        # the 20 h "behind too long" rule hid the pill from 2026-10-03T10:05Z (C353's survey).
+        import calendar
+        now = calendar.timegm(time.strptime("2026-10-02T15:05:00Z", "%Y-%m-%dT%H:%M:%SZ"))
         got = attention.update_available(_value(behind_since="2026-10-02T14:05:00Z"),
-                                         last=NO_UPDATE_ASKED)
+                                         last=NO_UPDATE_ASKED, now=now)
         assert got["title"].startswith("3 commits behind origin/main (aaaaaaa → bbbbbbb)")
         assert "CI passed" in got["title"] and "since 2026-10-02 14:05 UTC" in got["title"]
         one = attention.update_available(_value(behind=1), last=NO_UPDATE_ASKED)

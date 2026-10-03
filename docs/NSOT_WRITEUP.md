@@ -99,7 +99,7 @@ close are marked *written at close*.
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28); the audit's other rows and the multi-worker half (9.S) not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry, the break-glass export and the v2 capture await their real runs |
+| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs; the v2 capture's preview half ran on the host (2026-10-03), its record half awaits a real change |
 | | 7.4 to 7.10 | Not started |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
@@ -2786,7 +2786,7 @@ The landing page drew every section 1a source from stored or cached values, each
 
 #### 7.3 — Capture on the v2 device page
 
-*Written at close, 2026-10-02. It awaits its real run on the host, which records a golden and so is the operator's.*
+*Written at close, 2026-10-02. **First real run, 2026-10-03, by the operator on r2**: the preview half exercised (the card in place of the tab, what will and will not happen, "None: r2's running configuration equals its golden", r2 at its committed intent, the checks split into pass and at confirm, and no confirm offered: "Nothing to confirm: r2 matches its golden"), correct. **The record half was not reached** (the result card, the commit link, the History entry), since nothing differed; the next real change exercises it, and no change was made to manufacture one.*
 
 1. **What it was.** The first of the device page's actions on v2, from the mockup the operator signed off that day ("Device actions on v2": the preview in place of the tab, the result in place with its next steps, the refusal when the device moved, a check failing on a holder, the phone width; the read timings on hover). The order after it: persist, rotate, deploy with Mode B [tests/signed_off_screens.py; NSOT_STAGE7_PLAN.md].
 2. **How it was implemented.**

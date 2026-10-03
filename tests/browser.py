@@ -152,6 +152,11 @@ class Browser:
         # The snap's own common directory is readable by both.
         self.tmp = tempfile.mkdtemp(prefix="nmas-browser-", dir=_profile_parent())
         env = dict(os.environ, TMPDIR=self.tmp)
+        # The browser on the REAL clock: under libfaketime (C353's survey, the suite with the
+        # clock moved forward) Firefox does not start with the preload, and the survey asks
+        # what the SERVER's code does at a later date. Nothing here otherwise.
+        for key in [k for k in env if k == "LD_PRELOAD" or k.startswith("FAKETIME")]:
+            env.pop(key)
         self.proc = subprocess.Popen([_geckodriver(), "--port", str(self.port)], env=env,
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.session = ""
