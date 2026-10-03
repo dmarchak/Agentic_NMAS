@@ -2097,6 +2097,17 @@ than one worker (9.S).
 
 Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own item before 8.6) and P.8 (per-list settings: two lists are two networks) [NSOT_PLAN.md P.7, P.8]. Entries are written when they close.
 
+### P.21 — Credential expiry and health
+
+*Written at close, 2026-10-03 (overnight), except the declared Grafana expiry's field, which waits on the operator's decision.*
+
+1. **What it was.** No code read any credential's expiry or age against a threshold, and Grafana's probe counted a refused token as up (C354). The operator signed off a design: exposed expiries warned 30 and 7 days ahead, ages over 180 days warned, Grafana's expiry declared when its token is entered, a refusal a danger row at once, anything beyond a year listed with no row [NSOT_PLAN.md P.21].
+2. **How it was implemented.** One reader, `credential-health`, hourly, metadata only: NetBox's token by the suffix NetBox shows, Proxmox's token record, the TLS handshake of the verified HTTPS service, Grafana's declared expiry, each device's last rotation, each SNMP community's `last_rotated`. Its value feeds a Needs attention source. Refusal is the integrations reader's: the shared request helper reads 401 and 403 as `refused`, and Grafana and Loki ask endpoints that need their credential.
+3. **Issues encountered.** The declared Grafana expiry is a Settings field, and Settings has no v2 page, while the same night's rule forbids new capability on a v1 page; and a device's last SAVE is not its last rotation, which the age reader had to tell apart (C362's states made that possible).
+4. **How they were resolved.** The setting exists, is documented as waiting on its screen, and is honoured when set; until then Grafana's token is listed as "no expiry declared" and a refusal still raises a danger row within a minute. The age reader counts only rotation rows.
+5. **Numbers.** One commit [git: this commit]. 24 tests in `tests/test_credential_health.py` and 5 more in `tests/test_integration_health.py`; nine controls, each failing its aimed tests. Findings closed: C354. **Estimate versus actual:** no forecast was made; the reader pattern (the fifteenth) made it about half a device card's time.
+6. **Where it left the product.** An expiring, expired, refused or old credential is in front of a person with where to renew it and where to put it, before it breaks a connection; 7.6's Credentials page draws its list from the same stored value.
+
 ## Part II. Stage 7
 
 ### 7.0 — The checks every later step is written against

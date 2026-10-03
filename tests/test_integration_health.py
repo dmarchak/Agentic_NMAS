@@ -54,7 +54,7 @@ class TestTheRead:
         v = IH.read(REG)
         states = {i["name"]: i["state"] for i in v["integrations"]}
         assert states == {"prometheus": "up", "grafana": "down", "s3": "not_configured"}
-        assert v["counts"] == {"up": 1, "down": 1, "not_configured": 1}
+        assert v["counts"] == {"up": 1, "down": 1, "refused": 0, "not_configured": 1}
         assert all(isinstance(i["took_ms"], int) for i in v["integrations"])
 
     def test_the_probes_run_in_parallel_so_one_slow_one_bounds_the_read(self):
@@ -124,8 +124,65 @@ class TestTheSource:
         assert row["id"] == "integrations:grafana" and row["level"] == "danger"
         assert row["what"] == "Grafana is not answering"
         assert "Could not connect" in row["cause"] and "Test button" in row["action"]["label"]
-        assert "1 up, 1 down, 1 not configured" in res["checked"]
+        assert "1 up, 1 down, 0 refusing the credential, 1 not configured" in res["checked"]
         assert res["stale_after_seconds"] == 180 and res["value_at"] == R._iso(T0)
+
+    def test_a_refused_credential_is_its_own_danger_row_naming_where_to_renew(self, monkeypatch):
+        """P.21 (C354): the service answered and refused the credential, so the row names the
+        credential and where it is renewed, and a declared expiry if there is one."""
+        monkeypatch.setattr("modules.settings_schema.get_setting",
+                            lambda key, default=None: "2026-09-30" if key ==
+                            "grafana_token_expires" else default)
+        stored({"grafana": fake("grafana", "Grafana", "refused",
+                                "HTTP 401: Grafana refused the tool's credential")})
+        res = A.integrations_source()
+        (row,) = res["rows"]
+        assert row["kind"] == "refused" and row["level"] == "danger"
+        assert row["what"] == "Grafana refuses the tool's credential"
+        assert "2026-09-30" in row["cause"]
+        assert "Service accounts" in row["action"]["label"]
+        assert "Settings > Integrations > Grafana" in row["action"]["label"]
+
+    def test_a_401_is_refused_never_down_and_grafana_asks_with_its_token(self, monkeypatch):
+        """The probe of the shared client: a 401 or 403 is `refused`; Grafana, holding a
+        token, asks /api/user (which needs it), never only /api/health (C354)."""
+        from modules.integrations.grafana import GrafanaIntegration
+        asked = []
+
+        class _R:
+            status_code = 401
+
+        class _S:
+            def get(self, url, **kw):
+                asked.append(url)
+                return _R()
+        monkeypatch.setattr("modules.integrations.grafana.get_secret", lambda k: "tok")
+        g = GrafanaIntegration()
+        monkeypatch.setattr(g, "is_configured", lambda: True)
+        monkeypatch.setattr(g, "session", lambda: _S())
+        st = g.status()
+        assert st["state"] == "refused" and "refused" in st["message"]
+        assert asked and asked[0].endswith("/api/user")
+
+    def test_loki_with_a_credential_asks_an_endpoint_that_needs_it(self, monkeypatch):
+        """C354: Loki's /ready answers without a credential, so a refused one read as ready."""
+        from modules.integrations.loki import LokiIntegration
+        asked = []
+
+        class _R:
+            status_code = 403
+
+        class _S:
+            def get(self, url, **kw):
+                asked.append(url)
+                return _R()
+        monkeypatch.setattr("modules.integrations.loki.get_setting",
+                            lambda k, d=None: "bearer" if k == "loki_auth_mode" else d)
+        lk = LokiIntegration()
+        monkeypatch.setattr(lk, "is_configured", lambda: True)
+        monkeypatch.setattr(lk, "session", lambda: _S())
+        assert lk.status()["state"] == "refused"
+        assert asked and asked[0].endswith("/loki/api/v1/labels")
 
     def test_unconfigured_is_a_state_never_a_row(self):
         stored({"s3": REG["s3"]})

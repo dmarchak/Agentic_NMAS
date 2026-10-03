@@ -33,7 +33,7 @@
               'capture_preview',
               // An operation the app ran released a device: a card refused because it was
               // held reads again (modules/nsot/device_ops.py); and a rotation's job finished.
-              'device_holds', 'rotation',
+              'device_holds', 'rotation', 'credential_health',
               // A held device's operation reached its next step: a running card redraws its
               // stepper (C370).
               'device_progress'];
@@ -136,6 +136,7 @@
   }
   function relayReachability() { relay('reachability'); }
   function relayIntegrationHealth() { relay('integration_health'); }
+  function relayCredentialHealth() { relay('credential_health'); }
   function relayAlerts() { relay('alerts'); }
   function relayFreshness() { relay('freshness'); }
   function relayDrift() { relay('drift'); }
@@ -210,6 +211,7 @@
     if (!NMAS || !NMAS.subscribe) return;
     NMAS.subscribe('reachability', 'v2Reachability', relayReachability);
     NMAS.subscribe('integration_health', 'v2IntegrationHealth', relayIntegrationHealth);
+    NMAS.subscribe('credential_health', 'v2CredentialHealth', relayCredentialHealth);
     NMAS.subscribe('alerts', 'v2Alerts', relayAlerts);
     NMAS.subscribe('freshness', 'v2Freshness', relayFreshness);
     NMAS.subscribe('drift', 'v2Drift', relayDrift);

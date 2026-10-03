@@ -121,6 +121,12 @@ class IntegrationClient:
         url = f"{self.url}/{path.lstrip('/')}"
         try:
             r = self.session().get(url, params=params or None, timeout=self.timeout)
+            if r.status_code in (401, 403):
+                # REFUSED, never "down" in general (P.21, C354): the service answered and
+                # refused the tool's credential, so the fix is the credential, not the path.
+                return {"ok": False, "status": r.status_code, "refused": True,
+                        "error": f"HTTP {r.status_code}: {self.label} refused the tool's "
+                                 "credential"}
             if r.status_code >= 400:
                 return {"ok": False, "error": f"HTTP {r.status_code}", "status": r.status_code}
             return {"ok": True, "status": r.status_code, "response": r}
@@ -148,7 +154,8 @@ class IntegrationClient:
         result = self.test_connection()
         return {
             "ok": True,
-            "state": "up" if result.get("ok") else "down",
+            "state": ("up" if result.get("ok") else
+                      "refused" if result.get("refused") else "down"),
             "label": self.label,
             "message": result.get("error") or result.get("message", "Connected"),
         }

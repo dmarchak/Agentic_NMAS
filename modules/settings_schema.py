@@ -152,6 +152,10 @@ DEFAULTS: dict = {
     # ── Grafana ─────────────────────────────────────────────────────────────
     "grafana_url":            "",
     "grafana_token":          "",
+    #: The token's expiry, DECLARED by the person who entered it (P.21, signed off 2026-10-03:
+    #: Grafana does not let a Viewer token read its own expiry). YYYY-MM-DD; empty until the
+    #: field is on a screen. A wrong or missing date is caught by refusal detection.
+    "grafana_token_expires":  "",
     "grafana_embed_mode":     "link",    # link | iframe
     "grafana_device_dashboard_url": "",  # supports {hostname} / {ip}
     "grafana_verify_tls":     True,
@@ -676,6 +680,7 @@ SCHEMA: dict = {
         "prometheus_targets_dir": _STR,
 
         "grafana_url": _STR,
+        "grafana_token_expires": _STR,
         "grafana_embed_mode": {"enum": ["link", "iframe"]},
         "grafana_verify_tls": _BOOL,
         "grafana_device_dashboard_uid": _STR,

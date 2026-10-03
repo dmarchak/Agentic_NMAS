@@ -26,6 +26,13 @@ class LokiIntegration(IntegrationClient):
         return s
 
     def test_connection(self) -> dict:
+        # With a credential, ask an endpoint that NEEDS it (C354, P.21: /ready answers without
+        # one, so a refused credential read as ready): the label names, the cheapest query.
+        if get_setting("loki_auth_mode", "none") in ("basic", "bearer"):
+            r = self._get("loki/api/v1/labels")
+            if not r["ok"]:
+                return r
+            return {"ok": True, "message": "Ready; the credential is accepted"}
         # /ready returns text, not JSON.
         r = self._get("ready")
         if not r["ok"]:

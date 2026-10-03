@@ -35,6 +35,15 @@ stopping is one), Oxidized freshness, integrations, reachability, routing adjace
 baselines, the remote's publication, the lab's startup files, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.
 
+**Credentials** (hourly, metadata only, never a value): a credential whose expiry the service
+shows (NetBox's and Proxmox's API tokens, the TLS certificate of a service the tool verifies,
+Grafana's token by the expiry declared for it) is a warning 30 days before it expires and a
+danger row 7 days before, and at once when it has expired; one expiring more than a year out is
+no row. A device's login credential or an SNMP community older than 180 days is a warning
+naming Rotate. Each row says where the credential is renewed and where its new value goes. An
+integration that **refuses** the tool's credential (a 401 or 403 to its probe, every minute) is
+a danger row of its own, never "down".
+
 ## How a row clears {#clearing}
 
 Every row says, under its cause, how it leaves the page: "Clears when …". There are three ways:

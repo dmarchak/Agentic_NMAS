@@ -49,7 +49,15 @@ class GrafanaIntegration(IntegrationClient):
         return {"Authorization": f"Bearer {token}"} if token else {}
 
     def test_connection(self) -> dict:
-        # /api/health needs no auth on most deployments and reports the version.
+        # With a token, ask an endpoint that NEEDS it (C354, P.21: /api/health answers without
+        # one, so a refused token read as up until a Grafana reader raised 401). A refusal is
+        # its own state, naming the token, never "reachable".
+        if get_secret("grafana_token"):
+            r = self._get("api/user")
+            if r["ok"]:
+                return {"ok": True, "message": "Connected; the token is accepted"}
+            return r
+        # No token: /api/health needs no auth on most deployments and reports the version.
         r = self._get("api/health")
         if r["ok"]:
             try:
@@ -57,10 +65,6 @@ class GrafanaIntegration(IntegrationClient):
                 return {"ok": True, "message": f"Grafana {data.get('version', '?')}"}
             except Exception:
                 return {"ok": True, "message": "Connected"}
-        # A reachable Grafana behind an auth proxy can 401/403 on /api/health;
-        # that still proves the endpoint exists.
-        if r.get("status") in (401, 403):
-            return {"ok": True, "message": "Reachable (authentication required)"}
         return r
 
     def monitor(self) -> dict:

@@ -75,6 +75,7 @@ Each with a reason. These are settable by editing
 
 | Setting | Why not in the UI |
 |---|---|
+| `grafana_token_expires` | The Grafana token's expiry (YYYY-MM-DD), **declared** by whoever enters the token, since a Viewer token cannot read its own (P.21, signed off 2026-10-03: a required field beside the token). File-only only until its field is on a screen: Settings has no v2 page, and today's pages take nothing new (2026-10-03). Until then the credential-health reader lists Grafana's token as "no expiry declared", and a refused token is a danger row from the integrations probe within a minute. |
 | `platform_map` | A nested mapping of platform → driver, template dir, transport, NETCONF support. A form for it would be a worse JSON editor. Editing it wrongly breaks every deploy, and it changes when a **vendor** is added, not when an operator changes their mind. |
 | `role_map` | Same shape, same reasoning: NetBox role slug → internal role. |
 | `verify_settle_windows` | Per-protocol convergence timings, nested. Changed when a protocol's behaviour is *measured*, not adjusted by feel — a slider would invite the second. |

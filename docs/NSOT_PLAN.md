@@ -4497,7 +4497,7 @@ The rest, in the order to build them:
 **P.19, SDN controller support, is recorded at the END of this plan** (after Stage 10, whose
 platform-driver layer it depends on).
 
-### P.21 — Credential expiry and health (RECORDED 2026-10-03, the operator; DESIGN SIGNED OFF 2026-10-03; NOT BUILT; placed after the device actions in progress, before 7.6)
+### P.21 — Credential expiry and health (RECORDED 2026-10-03, the operator; DESIGN SIGNED OFF 2026-10-03; BUILT 2026-10-03 overnight except the declared Grafana expiry's field, which waits on the operator's decision: Settings has no v2 page and today's pages take nothing new)
 
 **Signed off 2026-10-03, with the operator's decisions:**
 - Thresholds: a warning 30 days and a danger row 7 days before an exposed expiry; an age of

@@ -16,8 +16,8 @@
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  var CLS = {up: 'bg-success', down: 'bg-danger', not_configured: 'bg-secondary'};
-  var WORD = {up: 'up', down: 'DOWN', not_configured: 'not configured'};
+  var CLS = {up: 'bg-success', down: 'bg-danger', refused: 'bg-danger', not_configured: 'bg-secondary'};
+  var WORD = {up: 'up', down: 'DOWN', refused: 'REFUSES ITS CREDENTIAL', not_configured: 'not configured'};
   var last = null;
 
   function ago(ms) {

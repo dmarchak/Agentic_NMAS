@@ -210,8 +210,10 @@ def strip():
     value, at, why = device_page._cached("integrations")
     rows = (value or {}).get("integrations") or []
     configured = [r for r in rows if r.get("state") != "not_configured"]
-    down = [r for r in configured if r.get("state") != "up"]
-    return _strict(render_template("v2/_strip.html", rows=configured, down=down, value_at=at, why=why,
+    down = [r for r in configured if r.get("state") not in ("up", "refused")]
+    refused = [r for r in configured if r.get("state") == "refused"]
+    return _strict(render_template("v2/_strip.html", rows=configured, down=down, refused=refused,
+                                   value_at=at, why=why,
                                    read=value is not None))
 
 

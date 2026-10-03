@@ -90,6 +90,14 @@ ROW_KINDS = {
     ("freshness", "inconclusive"): ("whether Oxidized's copy is approved cannot be told",
                                     "decide whether its copy is wanted: capture it, or put it back"),
     ("integrations", "down"): ("an integration is down", "check it at its configured URL"),
+    ("integrations", "refused"): ("an integration refuses the tool's credential",
+                                  "renew it where the service issues it and put it in Settings"),
+    ("credential-health", "expiry"): ("a credential expires soon, or has expired",
+                                      "renew it where the service issues it and put it in Settings"),
+    ("credential-health", "age"): ("a credential is older than the age it is kept",
+                                   "rotate it"),
+    ("credential-health", "unread"): ("a credential's expiry cannot be read",
+                                      "read it where the service shows it"),
     ("ci", "verdict"): ("the running commit has no CI pass",
                         "update to a release CI passed, or find why CI could not be asked"),
     ("reachability", "not-answering"): ("devices are not answering", "check the path, then each"),
@@ -172,6 +180,12 @@ CLEARS = {
     ("freshness", "inconclusive"): (("resolves",), "a later comparison can tell whether the "
                                     "copy was approved"),
     ("integrations", "down"): (("resolves",), "it answers the next probe (every 60 s)"),
+    ("integrations", "refused"): (("resolves",), "the next probe (every 60 s) is accepted"),
+    ("credential-health", "expiry"): (("resolves",), "the reader (hourly) reads an expiry more "
+                                      "than 30 days away"),
+    ("credential-health", "age"): (("resolves",), "the reader (hourly) reads it set within "
+                                   "180 days"),
+    ("credential-health", "unread"): (("resolves",), "the reader (hourly) reads its expiry"),
     ("ci", "verdict"): (("resolves",), "the host runs a commit CI passed"),
     ("reachability", "not-answering"): (("resolves",), "every device answers its probe again "
                                         "(every 5 s)"),
@@ -1411,6 +1425,24 @@ def freshness_source(cached=None) -> dict:
 # same stored value the status bar draws, so the two cannot disagree.
 # ---------------------------------------------------------------------------
 
+#: Where each integration's credential is renewed (P.21): the service's own page.
+RENEW_AT = {
+    "netbox": "NetBox: Admin > API tokens", "grafana": "Grafana: Administration > Service "
+    "accounts", "proxmox": "Proxmox: Datacenter > Permissions > API Tokens",
+    "prometheus": "the proxy in front of Prometheus", "loki": "the proxy in front of Loki",
+    "oxidized": "Oxidized's web authentication", "kea": "the Kea control agent's credentials",
+    "topology_service": "the topology service's own token", "nsot_git": "the git host's tokens",
+    "s3": "the S3 provider's access keys",
+}
+#: An expiry a person declares where the service does not let the tool read it (P.21).
+DECLARED_EXPIRY = {"grafana": "grafana_token_expires"}
+
+
+def _setting(key: str) -> str:
+    from modules.settings_schema import get_setting
+    return str(get_setting(key, "") or "").strip()
+
+
 def integrations_source(cached=None) -> dict:
     """A configured integration that does not answer is a row; one left
     unconfigured is a state, counted (job health names the guard it gates)."""
@@ -1430,6 +1462,21 @@ def integrations_source(cached=None) -> dict:
     v = good.get("value") or {}
     rows = []
     for i in v.get("integrations") or []:
+        if i.get("state") == "refused":
+            # P.21: the service answered and refused the credential. Danger at once, naming
+            # where it is renewed, where it goes, and a declared expiry if one was given.
+            name = i.get("name", "?")
+            declared = _setting(DECLARED_EXPIRY.get(name, "")) if DECLARED_EXPIRY.get(name) else ""
+            rows.append(row(
+                source="integrations", kind="refused", key=name, level="danger",
+                what=f"{i.get('label')} refuses the tool's credential",
+                cause=(f"its probe was refused: {i.get('message') or 'no reason recorded'}"
+                       + (f"; the expiry declared for it is {declared}" if declared else "")),
+                operands={"probe_ms": i.get("took_ms")},
+                action={"label": f"Renew it at {RENEW_AT.get(name, i.get('label'))} and put the "
+                                 f"new value in Settings > Integrations > {i.get('label')} "
+                                 "(a blank field keeps the old one)"}))
+            continue
         if i.get("state") != "down":
             continue
         rows.append(row(source="integrations", kind="down", key=i.get("name", "?"), level="danger",
@@ -1448,7 +1495,8 @@ def integrations_source(cached=None) -> dict:
         value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
         reader="integrations",
         checked=(f"{len(v.get('integrations') or [])} integration(s): {c.get('up', 0)} up, "
-                 f"{c.get('down', 0)} down, {c.get('not_configured', 0)} not configured"
+                 f"{c.get('down', 0)} down, {c.get('refused', 0)} refusing the credential, "
+                 f"{c.get('not_configured', 0)} not configured"
                  + (f" ({', '.join(unset)})" if unset else "")))
 
 
@@ -1556,6 +1604,69 @@ def reachability_source(cached=None) -> dict:
         checked=(f"{c.get('answering', 0)} answering, {c.get('not_answering', 0)} not answering"
                  + (f", {c.get('missed_last_probe', 0)} missed only the last probe"
                     if c.get("missed_last_probe") else "")))
+
+
+def credential_health_source(cached=None) -> dict:
+    """P.21: a credential whose exposed expiry is within 30 days (warning), 7 days or past
+    (danger), one older than 180 days (warning, naming Rotate), or one whose expiry cannot be
+    read: each a row naming where it is renewed and where the new value goes. One expiring
+    beyond a year, or with no record of its age, is listed (on Credentials, at 7.6), no row.
+    Metadata only: the reader never holds a value."""
+    from modules import reader_job
+
+    started = time.time()
+    got = reader_job.read_cached("credential-health") if cached is None else cached
+    doc = got.get("doc") or {}
+    good = doc.get("last_good") or {}
+    took = int((time.time() - started) * 1000)
+    if got["state"] != "ok" or not good:
+        why = (got.get("why") if got["state"] != "ok" else
+               "the reader has never stored a value; its last attempt: "
+               + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
+        return source_result("credential-health", "Credential expiry and age", read_at=started,
+                             took_ms=took, error=f"not read yet: {why}")
+    v = good.get("value") or {}
+    rows = []
+    for c in v.get("credentials") or []:
+        state = c.get("state")
+        if state in ("ok", "listed"):
+            continue
+        where = f"Renew it at {c.get('renew_at')}; put the new value in {c.get('put_at')}"
+        if c.get("kind") == "age" and state == "warning":
+            rows.append(row(source="credential-health", kind="age", key=c.get("id", "?"),
+                            level="warning", what=f"{c.get('label')} is {c.get('days')} days old",
+                            cause=(f"last set {c.get('set_at')}, past the {MAX_CREDENTIAL_AGE} days "
+                                   "a credential is kept"),
+                            action={"label": f"{c.get('renew_at')}"}))
+        elif state == "unknown":
+            rows.append(row(source="credential-health", kind="unread", key=c.get("id", "?"),
+                            level="warning", what=f"{c.get('label')}'s expiry cannot be read",
+                            cause=c.get("why") or "no reason recorded",
+                            action={"label": f"Read its expiry at {c.get('renew_at')}; the "
+                                             "reader asks again every hour"}))
+        elif state in ("expired", "danger", "warning"):
+            words = ("has EXPIRED" if state == "expired" else
+                     f"expires in {c.get('days')} days")
+            rows.append(row(source="credential-health", kind="expiry", key=c.get("id", "?"),
+                            level="danger" if state in ("expired", "danger") else "warning",
+                            what=f"{c.get('label')} {words}",
+                            cause=f"it expires {c.get('expires_at')}"
+                                  + (f" ({c.get('why')})" if c.get("why") else ""),
+                            action={"label": where}))
+    counts = {}
+    for c in v.get("credentials") or []:
+        counts[c.get("state")] = counts.get(c.get("state"), 0) + 1
+    return source_result(
+        "credential-health", "Credential expiry and age", read_at=started, took_ms=took,
+        rows=rows, value_at=_ts(good.get("value_at")),
+        stale_after_seconds=doc.get("stale_after_seconds"), reader="credential-health",
+        checked=(f"{len(v.get('credentials') or [])} credential(s): "
+                 + ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
+                 + (f"; not read: {'; '.join(v.get('errors'))}" if v.get("errors") else "")))
+
+
+#: P.21's signed age (days): a credential with no expiry older than this is a row.
+MAX_CREDENTIAL_AGE = 180
 
 
 def netbox_secrets_source(cached=None) -> dict:
@@ -2273,7 +2384,8 @@ def unowned_words(u: dict) -> str:
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
            grafana_source, freshness_source, integrations_source, ci_source,
-           reachability_source, netbox_secrets_source, remote_source, pushed_source,
+           reachability_source, netbox_secrets_source, credential_health_source,
+           remote_source, pushed_source,
            host_steps_source, adjacency_source, lab_startup_source, restart_source,
            interrupted_source)
 
@@ -2298,6 +2410,7 @@ SOURCE_KEYS = {
     "ci_source": ("ci_verdict",),
     "reachability_source": ("reachability",),
     "netbox_secrets_source": ("netbox",),
+    "credential_health_source": ("credential_health",),
     "remote_source": ("remote", "goldens"),
     "pushed_source": ("app_version",),
     "host_steps_source": ("app_version",),

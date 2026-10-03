@@ -479,7 +479,9 @@ def list_template_secrets(list_name: str = "") -> list:
             continue
         out.append({"name": name, "secret_kind": entry.get("secret_kind", "plaintext"),
                     "rotatable": entry.get("secret_kind") != "hash",
-                    "list": slug, "device": entry.get("device", "")})
+                    "list": slug, "device": entry.get("device", ""),
+                    # When it was last set (P.21's age rule): metadata, never the value.
+                    "last_rotated": entry.get("last_rotated")})
     return out
 
 

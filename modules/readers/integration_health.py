@@ -54,7 +54,7 @@ def read(registry=None) -> dict:
         raise ValueError("no integrations are registered, so none can be probed")
     with ThreadPoolExecutor(max_workers=len(reg)) as pool:
         items = list(pool.map(lambda kv: _probe(*kv), reg.items()))
-    counts = {"up": 0, "down": 0, "not_configured": 0}
+    counts = {"up": 0, "down": 0, "refused": 0, "not_configured": 0}
     for i in items:
         counts[i["state"]] = counts.get(i["state"], 0) + 1
     return {"integrations": items, "counts": counts}
