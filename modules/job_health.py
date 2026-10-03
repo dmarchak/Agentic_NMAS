@@ -1157,7 +1157,7 @@ def breakglass_rows(exports=None, current=None) -> list:
     # Written to RAM (/dev/shm, tmpfs on the host), never beside data/key.key:
     # the person copies it off the host and removes it, so one record exists.
     export_cmd = ("python3 scripts/nmas-breakglass export --list <list> "
-                  "--out /dev/shm/rcn-breakglass.bg")
+                  "--out /dev/shm/nmas-breakglass.bg")
     try:
         current = _current_credential_digests() if current is None else current
         exports = bg.last_exports(DATA_DIR) if exports is None else exports

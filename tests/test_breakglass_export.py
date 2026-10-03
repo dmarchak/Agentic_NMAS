@@ -116,7 +116,7 @@ class TestTheExport:
         opened = bg.unseal(blob, PASS)
         assert bg.digests_of(opened["devices"]) == bg.digests_of(DEVICES)
         assert bg.escrowed_key(opened) == lab["key"]
-        assert body["filename"].startswith("rcn-breakglass-Lab-") and body["filename"].endswith(".bg")
+        assert body["filename"].startswith("nmas-breakglass-Lab-") and body["filename"].endswith(".bg")
         res = body["result"]
         assert res["level"] == "success", res
         assert "verify" in res["next"]["text"] and "--against" in res["next"]["text"]

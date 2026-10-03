@@ -138,7 +138,7 @@
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');
       a.href = url;
-      a.download = d.filename || 'rcn-breakglass.bg';
+      a.download = d.filename || 'nmas-breakglass.bg';
       document.body.appendChild(a);
       a.click();
       a.remove();

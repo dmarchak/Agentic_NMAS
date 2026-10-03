@@ -31,7 +31,7 @@ import re
 import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PATTERN = re.compile(r"containerlab|\bclab\b|\bclab[_-]|vrnetlab|rcn-lab|rcn_lab|csci\s?5840|"
+PATTERN = re.compile(r"containerlab|\bclab\b|\bclab[_-]|vrnetlab|\brcn[-_]|csci\s?5840|"
                      r"\b10\.255\.\d|rcn-lab-overview|rcn-lab1-snmp", re.I)
 #: The product: its code and the manual it ships (docs/manual). The project's
 #: records (the register, the write-up, plans, runbooks) stay in this
@@ -68,6 +68,18 @@ INVENTORY = {
     "modules/nsot/credential_rotation.py": (82, LAB_PLATFORM, OPTIONAL,
                                             "the persistence chain's clab-sync and startup-file stages; "
                                             "vrnetlab's injected user (the save and read-back are generic)"),
+    # Found by widening the pattern to any rcn- or rcn_ name (2026-10-03, C374: the break-glass
+    # file carried the lab's name and `rcn-lab` alone did not see it). The topology renderer is
+    # generic (LLDP over Prometheus, drawn as SVG) and carries the lab's name.
+    "deploy/topology/rcn-topology.py": (10, LAB_VALUES, GENERIC,
+                                        "the topology renderer's name and its RCN_ settings"),
+    "modules/host_steps.py": (7, LAB_VALUES, GENERIC, "the renderer's install step, by its name"),
+    "routes/topology_view.py": (2, LAB_VALUES, GENERIC, "the renderer's name in its docstring"),
+    "static/js/gen/partials__topology_service.1.js": (1, LAB_VALUES, GENERIC,
+                                                      "the renderer's name in a message"),
+    "templates/index.html": (1, LAB_VALUES, GENERIC, "the renderer's name on the topology tab"),
+    "templates/partials/topology_service.html": (2, LAB_VALUES, GENERIC,
+                                                 "the renderer's name in its panel"),
     "modules/nsot/rotate_op.py": (1, LAB_PLATFORM, OPTIONAL,
                                   "the stepper's persist step names the chain's clab stages "
                                   "(C370), as credential_rotation runs them"),

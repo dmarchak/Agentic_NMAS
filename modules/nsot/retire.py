@@ -491,7 +491,7 @@ def breakglass_logged(list_name: str, row: dict, exports: dict = None) -> dict:
                        "an unreadable log is not an absent export"}
     newest = (exports.get("by_list") or {}).get(list_name)
     cmd = (f"python3 scripts/nmas-breakglass export --list {list_name} "
-           "--out /dev/shm/rcn-breakglass.bg")
+           "--out /dev/shm/nmas-breakglass.bg")
     if not newest:
         return {"ok": False, "export": None, "statement": limit,
                 "why": f"no break-glass export of {list_name} is logged on this host. "
