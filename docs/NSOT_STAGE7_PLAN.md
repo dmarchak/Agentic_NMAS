@@ -3059,6 +3059,8 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
    screen and its real run.
 4. **P.8**, because Logs, DHCP, Topology and per-network Grafana all read per-network
    settings; then **OBSERVE** (Logs, DHCP, P.11 Topology) and the monitoring templates.
+   OBSERVE's query screens are designed to section 13's requirement (historical querying),
+   mockups first; its store work (13.3) can run before them.
 5. **7.6 and 7.7** (Source of truth, Settings), which close the no-GUI list.
 6. **7.5's remainder**, then **7.8's removals**, last by rule; 7.9 in parallel.
 
@@ -3127,3 +3129,84 @@ NetBox writes on; the template approved for the platform; never during the night
 **Not runnable yet:** **adopt's real run** (a throwaway booting vrnetlab's own `admin`
 config, after adopt's screen is built; about 1 to 2 h then). P.19's SDN lab is the end of the
 plan.
+
+## 13. Historical querying (OBSERVE), the operator's requirement, 2026-10-04
+
+"A data lake nobody can query is pointless; the GUI must make it OBVIOUS how to ask a
+question of the history." A design requirement for OBSERVE's query screens, designed after
+the data-lake survey below; mockups first, nothing built before the operator's sign-off.
+
+### 13.1 The requirement
+
+1. **Questions first.** Ready-made views for the common questions (interface errors and
+   discards over time, CPU and memory trends, routing neighbour changes, critical syslog by
+   device, restarts, telemetry rates), each taking a device and a time range; the PromQL or
+   LogQL shown beneath, editable, never required.
+2. **One time range; the tool picks the store.** Recent from Prometheus, older from Thanos
+   (downsampled for long ranges), logs from Loki, transparently.
+3. **Coverage said.** Each view says how far back its data goes, and says when data exists and
+   cannot be reached (Loki's query length, a retention).
+4. **Provenance.** One line per view (source, collection, resolution) and its "How does this
+   work?" link.
+5. **Saved, shareable views.** A view is a link; saved and pinnable, so a team builds a library
+   of questions.
+6. **raw-telemetry's purpose decided** (13.4).
+
+### 13.2 What can be queried today (measured on the host, read-only, 2026-10-04)
+
+The lake began on 2026-09-07, when MinIO was set up; every bucket's oldest object is that day.
+
+| Store | Holds | Reachable by a query | Retention |
+|---|---|---|---|
+| **Prometheus** (`:9090`) | metrics from 2026-08-30 04:58 (its lowest timestamp) | all of it | 90 days or 100 GiB; the first data leaves on about 2026-11-28 |
+| **Thanos Query** (`:19193`) | the sidecar (Prometheus's local blocks, from 2026-08-30) and the store gateway (the `thanos` bucket's blocks, 2026-09-07 to the last upload) | the same span as Prometheus today | **none**: no `thanos-compact` runs, so the bucket is never compacted, never downsampled and never pruned (951 objects, 755 MiB) |
+| **Loki** (`:3100`, Docker, 3.3.2; the `loki` bucket) | syslog and snmptrapd lines from 2026-09-08; sparse until 2026-09-26, then about 3,200 network syslog lines a day | all of it; one query spans at most `max_query_length: 30d1h`, with no lookback limit (`max_query_lookback: 0s`) | `retention_period: 30d`, the compactor deleting (`retention_enabled: true`, 2 h delay); nothing deleted yet (the first on about 2026-10-07). The bucket is 11 MiB |
+| **raw-telemetry** (a bucket) | `mdt/`: hourly JSON-lines of the MDT stream in Telegraf's metric shape, about 9 MiB an hour (621 files, 4.67 GB); `syslog/`: rotated per-device syslog files (96, about 1 MiB) | **nothing reads it** | **none**: it grows about 216 MiB a day on each side |
+
+**Unreachable but present:** nothing today. Every bucket is versioned and keeps a
+non-current version for 7 days (one lifecycle rule each, on both sides), so once Loki's
+compactor deletes chunks they stay in MinIO for 7 days that no query reaches.
+
+**What the tool reads:** Prometheus directly (`prometheus_url` is the Prometheus address),
+Loki, and Grafana, whose two role dashboards query only the Prometheus and Loki datasources;
+Grafana's "Thanos (lake)" datasource exists and no role dashboard uses it. So from about
+2026-11-28 the tool and its dashboards cannot show a metric older than 90 days, though Thanos
+holds it.
+
+**DR:** the replica MinIO is current for all three buckets (object counts, sizes and newest
+object equal), each by an enabled MinIO replication rule that also replicates deletions.
+
+### 13.3 The stores, before the screens (each a host step, the operator's)
+
+- **Thanos compaction and downsampling** (`thanos-compact`, one instance): compacts the 2 h
+  blocks, downsamples to 5 min and 1 h, and applies a retention per resolution (proposed: raw
+  90 days, 5 min one year, 1 h five years). Without it requirement 2's "downsampled for long
+  ranges" has nothing to read, and long ranges read every raw 2 h block.
+- **The tool reads ranges through Thanos Query.** It speaks PromQL, so the reads are unchanged
+  (NSOT_PLAN: "works against Thanos Query unchanged"). The cost: a second address (a history
+  source) beside `prometheus_url`, because live state (Coverage's `/api/v1/targets` and its
+  `up` reads) stays on Prometheus until Thanos Query is measured to serve the same answer; one
+  router choosing the store by the range's start against Prometheus's lowest timestamp, which
+  the coverage line also states; `max_source_resolution=auto` for long ranges; slower answers
+  for ranges read from the bucket (to be measured); no deduplication, since there is one
+  Prometheus. Grafana's role dashboards can take "Thanos (lake)" the same way.
+- **Loki's retention and query length:** 30 days against Prometheus's 90; the logs are small
+  (11 MiB), so 90 days or a year costs little. A range longer than 30 days must be split by the
+  tool, or `max_query_length` raised with it.
+
+### 13.4 raw-telemetry: its purpose, to decide
+
+The metric trends it could answer are what Telegraf already sends to Prometheus, so Thanos,
+once compacted, covers trends over time. What raw-telemetry adds is every MDT update at the
+device's own cadence, finer than Prometheus's scrape. **Recommended:** if no question needs
+sub-scrape replay, give it a lifecycle rule (current objects expire after 30 days) as a
+forensic buffer, and say so in the coverage line. **If fine-grained replay is wanted:** convert
+each hour's JSON-lines to Parquet partitioned by day, device and path, which a query engine
+reads in place from the bucket (DuckDB reads S3 Parquet directly), behind a reader job that
+answers the ready-made questions; the conversion and its reader are the cost, and its views
+follow 13.1 like the rest.
+
+### 13.5 Recorded
+
+C404 (Thanos never compacted, downsampled or pruned), C405 (raw-telemetry has no reader and no
+retention), C406 (from about 2026-11-28 the tool cannot show a metric older than 90 days).
