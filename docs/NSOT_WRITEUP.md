@@ -2915,6 +2915,24 @@ The landing page drew every section 1a source from stored or cached values, each
 5. **Numbers.** One commit [git: this commit]. 11 tests in `tests/test_device_deploy_v2.py`, one in a real browser, and a deploy-steps test in `test_job_stepper.py`; seven controls, six failing their aimed tests and one showing the redundancy above. **Estimate versus actual:** rotate's entry set the basis (about capture's time); deploy took about that again, less the server work it reused.
 6. **Where it left the product.** All four device actions run on v2: capture, persist, rotate and deploy with Mode B, each a card in place of the tab, the job-backed ones with the stepper. Today's device page keeps restore, seed and retire until their cards.
 
+#### 7.3 — Restore, revert and retry, seed and retire on the v2 device page
+
+*Written at close, 2026-10-03 (evening). Each awaits its real run on the host; restore sends a program to a device and so is the operator's.*
+
+1. **What it was.** The device page's remaining actions, from the canvas's boards 8 to 12, signed off by the operator with two changes (seed shows the device's own lines as such, never blocking; retire drops what is generated and names the rest with how each is removed) and built in the operator's order: restore as a job carrying its list (C396), revert and retry, seed, retire. With them every action under the device page's Actions runs on v2, and a retired device's address shows its record (C185).
+2. **How it was implemented.** Each card draws the operation's own builders, as the first four did: restore the plan the legacy route uses (`restore_plan`, split out of it) and the deploy job; revert and retry `intent_ops`' previews and applies, offered only while a rollback block stands (`block_state`, one read); seed `seed.entry_for` and `seed.apply`; retire `retire.plan` and `retire.apply`, its watchers sorted into generated (dropped at their next regeneration, the scrape targets regenerated and read back after the commit) and surviving (each with how it is removed). Each confirm carries its list. The retired record is read from the retire commit's trailer. The route-reachability scan learned to read the menu's loop of rows, as it reads the panel grid.
+3. **Issues encountered.**
+   - Board 8 had drawn three "unmodelled" lines typed from memory; measured, all nine real configs were fully modelled. Checking the operator's question about those lines found C397: the device's self-signed trustpoint, named after its chassis and regenerated at boot, was parsed into intent, so a deploy after a regeneration would send a trustpoint and keypair the device no longer has.
+   - Board 9 promised a restore could "keep intent and re-apply" a moment before onboarding, and that re-applying the golden now would put lines back; the code does neither (it leaves the device or un-onboards it, and the golden now sends nothing by construction).
+   - Board 12 said Oxidized drops a retired device "at its next sync from the inventory"; nothing regenerates `router.db` (C398).
+   - C395 recurred while gating restore: a child pytest started inside a worker took itself for a worker.
+4. **How they were resolved.**
+   - C397 fixed in the one place every parse, program, residue and round trip already goes through (`strip_for_roundtrip`), the device's own blocks declared as one shape; intent committed before it is never sent the trustpoint either.
+   - Boards 9 and 12 redrawn or drawn true, and C398 recorded for the operator's decision.
+   - C395 decided from the session's own configuration.
+5. **Numbers.** Four commits (4c336be, d354cc2, cd0ffc7, 35b838c), the first three green in CI (#364 to #366) and the fourth running when this was written. Tests: 13 for restore, 19 for revert and retry, 10 for seed, 16 for C397, 12 for retire, each action with a real-browser path from the menu to the result. Controls: about 30, each failing its aimed tests. Findings: C395 recurred and fixed, C396 half fixed (the legacy route waits for cutover, by decision), C397 and C185 fixed, C398 recorded. **Estimate versus actual:** deploy's entry set the basis, about capture's time per action; the four took about that each, restore more (its job and history fixture) and seed less, plus C397's fix.
+6. **Where it left the product.** Every device action runs on the v2 device page, each with its preview, its confirm carrying its list, and its result in place; a device that leaves has an address that says so. The combined deploy's arrival watch is next. It is a different kind of work (a watch after a batch), so this entry forecasts nothing for it.
+
 ### 7.D — The GUI redesign (open)
 
 7.D is open. Commit times are the committer's local time (UTC-6); the operator's decisions are dated in UTC, which is why a decision can read 2026-09-30 beside a commit of 09-29.
