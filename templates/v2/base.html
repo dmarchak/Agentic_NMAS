@@ -12,6 +12,8 @@
 <title>{% block title %}NMAS{% endblock %}</title>
 <meta name="color-scheme" content="light dark">
 <script src="{{ url_for('static', filename='js/nmas_theme.js') }}"></script>
+{#- Before the body: an early click on a script-driven control is kept and replayed (C399). -#}
+<script src="{{ url_for('static', filename='js/nmas_early.js') }}"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/nmas-v2.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/uplot/uPlot.min.css') }}">
 <script defer src="{{ url_for('static', filename='js/vendor/htmx.org/htmx.min.js') }}"></script>

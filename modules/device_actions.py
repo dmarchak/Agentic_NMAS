@@ -405,6 +405,9 @@ RESTORE_CREDENTIAL = {
     "silent": ("would add back an account", "danger", ""),
     "refused": ("predates its credentials", "warn", ""),
     "no_golden": ("no golden for it", "muted", "no golden configuration for it at this moment"),
+    # Beyond the moments drawn, not checked (C399); never drawn unless all are, when all are
+    # checked.
+    "unchecked": ("credentials not checked", "muted", "its credentials were not checked"),
 }
 #: How many moments the chooser draws before "Show N more".
 RESTORE_SHOWN = 5
@@ -444,7 +447,7 @@ def restore_choose_card(ref, host: str, points: list, *, show_all: bool = False,
                  next((r["ref"] for r in rows if not r["why_not"]), ""))
     shown = rows if show_all else rows[:RESTORE_SHOWN]
     return {"op": "restore", "state": "choose", "host": host, "list": ref.name,
-            "moments": shown, "more": len(rows) - len(shown),
+            "moments": shown, "more": len(rows) - len(shown), "show_all": show_all,
             "chosen": chosen if any(r["ref"] == chosen for r in rows) else first}
 
 
@@ -481,9 +484,24 @@ def restore_card(ref, host: str, moment: str, plan: dict, viewer: dict, *,
     lines = list(program.get("lines") or [])
     may = bool(t["may"]) and not blocking and not refused and bool(lines)
     intent = entry.get("intent") or {}
+    # This device and this moment, never the fleet restore's "N of M device(s) you selected"
+    # (C402); and with nothing to send, one statement: nothing to confirm (C401: the shared
+    # preview's "still read back at apply" is the legacy restore's, which confirms it; this
+    # card offers no confirm then, board 9).
+    words = card["moment_words"]
+    if lines:
+        summary = (f"Re-apply {host}'s golden as it was at {words}, and its committed intent "
+                   f"with it: {len(lines)} line(s) to send, merge-only.")
+        none = program.get("none", "")
+    elif blocking or refused:
+        summary = f"Re-apply {host}'s golden as it was at {words}: refused, nothing is sent."
+        none = program.get("none", "")
+    else:
+        summary = f"{host} already holds every line of {words}: nothing to send."
+        none = f"Nothing to send, so nothing to confirm: {host} already matches {words}."
     return dict(card, state="preview",
-                summary=(preview.get("what") or {}).get("summary", ""),
-                sent=lines, none=program.get("none", ""),
+                summary=summary,
+                sent=lines, none=none,
                 notes=[{"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
                        for n in program.get("notes") or []],
                 reasons=reasons, waiting=entry.get("authorisation_ok") is False,

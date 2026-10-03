@@ -19,9 +19,13 @@
 <section class="op-card" id="device-op" aria-labelledby="op-title">
   <div class="op-hd"><h2 id="op-title">Restore {{ c.host }} from a moment</h2>
     <div class="op-hd-actions">{{ how('restore') }}{{ close_button('Cancel') }}</div></div>
+  {#- One request at a time against the card: a newer one replaces (aborts) an older, so a
+      slower answer never lands over a newer card; a tick re-reading disables Preview (C400). -#}
   <form class="op-form" id="restore-choose" hx-get="{{ url_for('device_v2.restore', name=c.host) }}" hx-trigger="change"
+        hx-sync="closest section:replace" hx-disabled-elt="#restore-preview"
         hx-target="#device-op" hx-swap="outerHTML">
   <input type="hidden" name="back" value="{{ c.back }}">
+  {%- if c.show_all %}<input type="hidden" name="all" value="1">{% endif %}
   <div class="op-part"><h3>Choose the moment</h3><div>
     <p>Each moment re-applies {{ c.host }}'s golden as it was then, and its committed intent with it. Merge-only: nothing on {{ c.host }} is removed (that is Mode B, in Plan a deploy).</p>
     {%- if c.moments %}
@@ -46,7 +50,7 @@
   </form>
   <div class="op-ft"><p class="op-note">Reads only: choosing previews; nothing is sent until you confirm the program.</p>
     {%- if c.chosen %}
-    <span class="op-act"><button type="button" class="btn btn-primary" data-op="restore" hx-get="{{ url_for('device_v2.restore_preview', name=c.host) }}" hx-include="#restore-choose" hx-target="#device-op" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Preview {{ 'golden now' if c.chosen == 'HEAD' else c.chosen }}</span><span class="op-busy">Planning the program…</span></button>{{ how('restore', compact=True, op='restore') }}</span>
+    <span class="op-act"><button type="button" class="btn btn-primary" id="restore-preview" data-op="restore" hx-sync="closest section:replace" hx-get="{{ url_for('device_v2.restore_preview', name=c.host) }}" hx-include="#restore-choose" hx-target="#device-op" hx-swap="outerHTML" hx-disabled-elt="this"><span class="op-idle">Preview {{ 'golden now' if c.chosen == 'HEAD' else c.chosen }}</span><span class="op-busy">Planning the program…</span></button>{{ how('restore', compact=True, op='restore') }}</span>
     {%- endif %}
   </div>
 </section>
@@ -122,7 +126,7 @@
     {%- else %}
     <p class="op-note">Not available:
       {%- if c.waiting %} waits on a stated reason for each line above that needs one; give it and the plan is computed again.
-      {%- elif not c.sent %} nothing to send.
+      {%- elif not c.sent %} nothing to confirm.
       {%- else %} {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}{{ c.refused or (c.blocking | join('; ')) or 'nothing can be re-applied' }}{% endfor %}.{% endif %}
       {%- if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>
     <span class="op-act"><button type="button" class="btn" data-op="restore" hx-get="{{ url_for('device_v2.restore_preview', name=c.host, back=c.back, moment=c.moment, un_onboard='1' if c.un_onboard else '') }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('restore', compact=True, op='restore') }}</span>

@@ -206,10 +206,14 @@ def restore_points(hostname):
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
-def restore_points_for(list_name: str, hostname: str) -> list:
+def restore_points_for(list_name: str, hostname: str, checked: int = None) -> list:
     """Where *hostname* can be restored from, newest first, each with its credential state at
     that moment (``current``, ``refused``, ``silent``: an account added back, ``no_golden``).
-    ONE reading for today's chooser and the v2 device page's (board 9). Reads only."""
+    ONE reading for today's chooser and the v2 device page's (board 9). Reads only.
+
+    *checked*: check the credential of only the newest so many moments (the v2 chooser draws
+    five; checking all 32 of r2's took 5.5 to 7.3 s on the host, C399); the rest are
+    ``unchecked``, never called current."""
     from modules.nsot.repo import device_restore_points
     from modules.nsot.restore import baseline_credential_gaps
 
@@ -227,10 +231,13 @@ def restore_points_for(list_name: str, hostname: str) -> list:
         rc, out, _e = git(repo, "rev-parse", f"{ref}:{rel}") if rel else (1, "", "")
         return out.strip() if rc == 0 else ""
     now = blob("HEAD")
-    for point in points:
+    for i, point in enumerate(points):
         point["same_as_now"] = bool(now) and blob(point["ref"]) == now
         if point["kind"] == "head":
             point["credential"] = "current"
+            continue
+        if checked is not None and i >= checked:
+            point["credential"] = "unchecked"
             continue
         gaps = baseline_credential_gaps(repo, point["ref"], list_name, [hostname])
         if hostname in gaps["no_golden"]:

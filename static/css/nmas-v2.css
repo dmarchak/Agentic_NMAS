@@ -797,6 +797,9 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .op-part p { margin: 0 0 6px; }
 .op-part p:last-child { margin-bottom: 0; }
 .op-wait { color: var(--ink-2); }
+/* The part a menu row opened the card at (C403: Mode B opens the deploy at the residue). */
+.op-part.op-focus { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.op-focus-note { margin: 0 0 6px; font-weight: 600; color: var(--ink); }
 .op-list { margin: 0 0 6px; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
 .op-diff { margin: 0 0 8px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r);
   padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto;
@@ -819,11 +822,20 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   flex-wrap: wrap; }
 .op-note { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 520px; }
 .op-act { display: inline-flex; align-items: center; }
-/* Busy on itself until the answer arrives (htmx marks the requesting control). */
-.op-confirm .op-busy { display: none; }
-.op-confirm.htmx-request .op-idle { display: none; }
-.op-confirm.htmx-request .op-busy { display: inline; }
+/* Busy on itself until the answer arrives (htmx marks the requesting control). Keyed on the
+   busy words themselves, never on one class of button (C400: a Preview button without the
+   confirm's class showed "Planning the program…" at rest). */
+.op-busy { display: none; }
+.htmx-request > .op-idle { display: none; }
+.htmx-request > .op-busy { display: inline; }
 .op-confirm[disabled] { opacity: .7; cursor: progress; }
+/* A menu row stays open and busy on itself until its card arrives (C399). */
+.menu-item.htmx-request, .menu-item[aria-busy="true"] { cursor: progress; background: var(--hover); }
+.menu-item.htmx-request::after, .menu-item[aria-busy="true"]::after { content: ""; width: 10px; height: 10px;
+  margin-left: auto; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%;
+  animation: nmas-spin .8s linear infinite; }
+@keyframes nmas-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .menu-item.htmx-request::after { animation: none; } }
 /* Credentials > The break-glass record (board 7). */
 .bg-pass { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
 .bg-pass label { display: flex; flex-direction: column; gap: 4px; }

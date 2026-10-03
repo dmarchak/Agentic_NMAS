@@ -10,8 +10,11 @@ deploy record.
 
 ## What can be chosen
 
-You open the deploy plan for the device (see [Deploy a change](deploy)). Its preview's "What
-will NOT happen" part lists the device's residue: every line the device has, by its committed
+You open the deploy plan for the device (see [Deploy a change](deploy)), or, on the device
+page, Actions › **Remove lines (Mode B)…**, which opens the same card at its lines left on the
+device (a device holding nothing removable opens nothing, and the row says so). On the device
+page that part is "Left on the device"; on today's page it is "What will NOT happen". It
+lists the device's residue: every line the device has, by its committed
 golden, that intent lacks, under its section, and every stanza whose header intent lacks as
 one unit, its lines implied. Each unit has a box, identified by an ID rather than its text,
 because the plan is masked and a line in a secret position could never be sent back by its

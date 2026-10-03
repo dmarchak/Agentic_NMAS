@@ -169,7 +169,10 @@ def close_socketio_sessions() -> int:
 class Browser:
     """One headless Firefox session; stopped on exit, geckodriver with it."""
 
-    def __init__(self, prefs: dict = None):
+    def __init__(self, prefs: dict = None, page_load: str = "normal"):
+        #: WebDriver's pageLoadStrategy: "none" returns from a navigation at once, so a test can
+        #: act on a page before its deferred scripts have run (C399), as a person can.
+        self.page_load = page_load
         """*prefs* are Firefox preferences for the session: a phone's width is
         `{"layout.css.devPixelsPerPx": "2.0"}` in a window twice as wide, because
         geckodriver will not make a window narrower than about 500 px."""
@@ -225,6 +228,7 @@ class Browser:
                         raise
                     time.sleep(0.2)
             self.session = self._call("POST", "/session", {"capabilities": {"alwaysMatch": {
+                "pageLoadStrategy": self.page_load,
                 "moz:firefoxOptions": {"args": ["-headless"], "prefs": self.prefs}}}})["sessionId"]
         except BaseException:
             self.__exit__(None, None, None)

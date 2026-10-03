@@ -20,6 +20,7 @@
   <form class="op-form" hx-get="{{ url_for('device_v2.deploy', name=c.host) }}" hx-trigger="change"
         hx-target="#device-op" hx-swap="outerHTML">
   <input type="hidden" name="back" value="{{ c.back }}">
+  {%- if c.focus %}<input type="hidden" name="focus" value="{{ c.focus }}">{% endif %}
   <div class="op-part"><h3>What</h3><div><p>{{ c.summary }}</p></div></div>
   <div class="op-part"><h3>The program</h3><div>
     {%- for b in c.blocking %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ b }}</p></div>{% endfor %}
@@ -38,7 +39,8 @@
     {%- endfor %}
     {%- if c.authorisation_error %}<p class="op-note">{{ c.authorisation_error }}</p>{% endif %}
   </div></div>
-  <div class="op-part"><h3>Left on the device</h3><div>
+  <div class="op-part{{ ' op-focus' if c.focus == 'removal' }}" id="removal"><h3>Left on the device</h3><div>
+    {%- if c.focus == 'removal' %}<p class="op-focus-note">Removals are made as part of a deploy: tick the lines to remove here; anything intent adds is sent with them.</p>{% endif %}
     {%- if c.residue %}
     <p class="op-wait">On {{ c.host }} and not in its committed intent. Merge-only leaves each as it is, unless you tick it for removal (Mode B) with your reason.</p>
     <ul class="op-list op-residue">

@@ -176,7 +176,7 @@ def device(name):
                        "list": ref.name, "back": tab} if op == "capture" else
                       _persist_card(ref, dev, tab) if op == "persist" else
                       _rotate_starting(ref, dev, tab) if op == "rotate" else
-                      _deploy_card(ref, dev, tab, {}) if op == "deploy" else
+                      _deploy_card(ref, dev, tab, {}, focus=request.args.get("focus", "")) if op == "deploy" else
                       _restore_card(ref, dev, tab, request.args) if op == "restore" else
                       _revert_card(ref, dev, tab, request.args) if op == "revert" else
                       _retry_card(ref, dev, tab, request.args) if op == "retry" else
@@ -668,7 +668,7 @@ def _deploy_form(fields):
     return picked, reasons, danger
 
 
-def _deploy_card(ref, dev, back, fields):
+def _deploy_card(ref, dev, back, fields, focus=""):
     """The deploy card for *dev*: THE plan (`routes.deploy.plan_devices`, captured configs
     only, no device contacted) planned again with what the form carries, each stated reason
     in the hash, and the confirm built HERE from the unmasked plan's hashes, so it sends
@@ -703,6 +703,8 @@ def _deploy_card(ref, dev, back, fields):
                         "command_hash": entry.get("command_hash", ""),
                         "remove": list(rm.get("ids") or []), "authorise": authorise}
     c.update(back=back, ip=dev.get("ip", ""))
+    if focus == "removal":
+        c["focus"] = "removal"
     return c
 
 
@@ -716,8 +718,26 @@ def deploy(name):
     if refusal is not None:
         return refusal
     ref, dev = found
-    return _strict(render_template("v2/_deploy.html",
-                                   c=_deploy_card(ref, dev, _back(request.args), request.args)))
+    c = _deploy_card(ref, dev, _back(request.args), request.args,
+                     focus=request.args.get("focus", ""))
+    # The card's own re-plans (its form, aimed at the card) keep the focus and are only redrawn.
+    if c.get("focus") != "removal" or request.headers.get("HX-Target") == "device-op":
+        return _strict(render_template("v2/_deploy.html", c=c))
+    # The Actions menu's "Remove lines (Mode B)…" (C403): removals are made as part of a
+    # deploy, so the row opens THIS card at what is left on the device. With nothing
+    # removable it opens nothing: the row itself says so, in place, and the menu stays open.
+    residue = c.get("residue") or []
+    if c.get("state") == "preview" and not any(not r.get("why_not") for r in residue):
+        why = (f"{dev.get('hostname', '')} holds no line its committed intent lacks"
+               if not residue else
+               f"of the {len(residue)} line(s) {dev.get('hostname', '')} holds and its intent "
+               f"lacks, none can be removed here ({residue[0].get('why_not')})")
+        return _strict(render_template("v2/_removal_row.html", why=why))
+    resp = _strict(render_template("v2/_deploy.html", c=c))
+    resp.headers["HX-Retarget"] = "#tab-body"
+    resp.headers["HX-Reswap"] = "innerHTML show:#removal:top"
+    resp.headers["HX-Trigger"] = "nmas-close-menu"
+    return resp
 
 
 @bp.route("/device/<name>/deploy/confirm", methods=["POST"])
@@ -789,9 +809,11 @@ def _restore_card(ref, dev, back, fields):
     host = dev.get("hostname", "")
     moment, un_onboard, danger = _restore_form(fields)
     if not moment:
+        show_all = (fields.get("all") or "") == "1"
         c = device_actions.restore_choose_card(
-            ref, host, restore_points_for(ref.name, host),
-            show_all=(fields.get("all") or "") == "1", chosen=(fields.get("chosen") or ""))
+            ref, host, restore_points_for(
+                ref.name, host, checked=None if show_all else device_actions.RESTORE_SHOWN),
+            show_all=show_all, chosen=(fields.get("chosen") or ""))
         c.update(back=back, ip=dev.get("ip", ""))
         return c
     asked = {"un_onboard": [host] if un_onboard else None, "req": request}
