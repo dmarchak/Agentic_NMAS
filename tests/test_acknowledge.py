@@ -102,7 +102,11 @@ class TestEveryKindSaysHowItClears:
         _only(monkeypatch, "restart_source")
         html = _client().get("/v2/attention").get_data(as_text=True)
         assert "Clears when a person acknowledges it with a reason, or 7 days after the " \
-               "restart; History keeps it either way." in html
+               "restart; History keeps it either way" in html
+        # And WHEN the seven days end (the row's clears_at, 2026-10-02): the moment the page
+        # and the sidebar's count re-read on.
+        assert re.search(r"either way \(by <time datetime=\"[0-9TZ:-]+\">[0-9: -]+ UTC</time>\)\.",
+                         html)
         # Today's panel, the SHIPPED renderer executed against the real payload.
         import dukpy
         payload = _client().get("/attention").get_json()

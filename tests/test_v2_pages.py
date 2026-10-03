@@ -194,6 +194,7 @@ class TestThePushedRow:
 
 def _page(rows, sources=None, unreadable=()):
     return {"ok": True, "headline": "", "rows": rows, "unreadable": list(unreadable),
+            "badge": attention.badge_of(rows, []),     # the page's own count (needs_attention)
             "sources": sources or [{"source": "reachability", "label": "Reachability", "state": "read",
                                     "read_at": "2026-09-30T10:00:00Z",
                                     "value_at": "2026-09-30T10:00:00Z", "took_ms": 3,

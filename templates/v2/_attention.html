@@ -8,9 +8,9 @@
 {%- set rows = a.rows or [] -%}
 {%- set sources = a.sources or [] -%}
 <div id="attention" class="attention" hx-get="{{ url_for('v2.attention_list') }}" hx-swap="outerHTML"
-     hx-trigger="nmas:job_health from:body, nmas:alerts from:body, nmas:freshness from:body, nmas:integration_health from:body, nmas:ci_verdict from:body, nmas:app_version from:body, nmas:reachability from:body, nmas:netbox from:body, nmas:remote from:body, nmas:baselines from:body, nmas:drift from:body, nmas:adjacencies from:body, nmas:lab_startup from:body, nmas:restarts from:body, nmas:acknowledgements from:body">
+     hx-trigger="{{ attention_trigger }}">
   <p class="att-summary">
-    {%- if rows %}<strong>{{ rows|length }} item{{ '' if rows|length == 1 else 's' }}</strong>
+    {%- if rows %}<strong>{{ a.badge.n }} item{{ '' if a.badge.n == 1 else 's' }}</strong>
     {%- else %}<strong>Nothing needs attention</strong>{% endif %}
     · {{ sources|length }} source{{ '' if sources|length == 1 else 's' }} checked
     {%- if a.unreadable %} · <span class="warn-text">{{ a.unreadable|length }} could not be read: {{ a.unreadable|join(', ') }}</span>{% endif -%}
@@ -38,7 +38,7 @@
         {%- if r.devices %}{{ r.devices|join(', ') }} · {% endif -%}
         since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %} · {{ r.source }}
       </p>
-      {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}.</p>{% endif %}
+      {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
       <div class="att-action">
         {%- for d in (r.devices or [])[:3] %}<a class="btn btn-small btn-outline" href="{{ url_for('device_v2.device', name=d) }}">Open {{ d }}</a>{% endfor %}
         <span class="att-label{% if r.action.known == false %} muted{% endif %}">{{ r.action.label }}</span>

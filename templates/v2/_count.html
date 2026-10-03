@@ -1,3 +1,22 @@
-{%- if not ok %}<span class="count count-unknown" title="Needs attention could not be read">?</span>
-{%- elif n %}<span class="count">{{ n }}</span>
-{%- else %}<span class="count count-zero" title="nothing needs attention">0</span>{% endif -%}
+{#- The sidebar's Needs attention count: the WHOLE badge, its listener included, so every
+    redraw keeps listening (it was a bare span, swapped in once and deaf after). Its number
+    and level are attention.needs_attention()["badge"]: the page's own rows. `initial` is the
+    first render inside base.html, which loads it; a response never says `load` (it would
+    re-fetch itself for ever). data-next-change-at: when a row clears by time;
+    data-stale-at: when the oldest source passes its promise (nmas_v2.js marks the badge). -#}
+{%- set level = (badge.level if badge else '') -%}
+<span id="attention-count" class="count
+  {%- if initial %} count-zero count-loading
+  {%- elif not ok %} count-unreadable
+  {%- elif not badge.n %} count-zero
+  {%- else %} count-{{ level }}{% endif %}"
+  hx-get="{{ url_for('device_v2.attention_count') }}" hx-swap="outerHTML"
+  hx-trigger="{% if initial %}load, {% endif %}{{ attention_trigger }}"
+  {%- if badge and badge.next_change_at %} data-next-change-at="{{ badge.next_change_at }}"{% endif %}
+  {%- if badge and badge.stale_at %} data-stale-at="{{ badge.stale_at }}"{% endif %}
+  {%- if initial %} title="Reading Needs attention"
+  {%- elif not ok %} title="Needs attention could not be read: this is not the same as nothing needing attention"
+  {%- elif not badge.n %} title="Nothing needs attention"
+  {%- else %} title="{{ badge.n }} item{{ '' if badge.n == 1 else 's' }}; the worst is {{ {'danger': 'critical', 'warning': 'a warning', 'unknown': 'unknown'}[level] }}"{% endif %}>
+  {%- if initial %}&#8230;{% elif not ok %}?{% else %}{{ badge.n }}{% endif -%}
+</span>

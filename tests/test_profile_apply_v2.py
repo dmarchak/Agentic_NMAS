@@ -539,6 +539,7 @@ class TestNeedsAttentionOpensIt:
                "key": "k", "triage": None}
         with A.app.test_request_context("/v2/"):
             html = render_template("v2/_attention.html", a={
-                "ok": True, "rows": [row], "sources": [], "headline": "1", "counts": {}})
+                "ok": True, "rows": [row], "sources": [], "headline": "1", "counts": {},
+                "badge": {"n": 1, "level": "warning"}})     # needs_attention()'s own count
         assert 'href="/v2/monitoring/apply?device=r6&amp;list=Lab">Preview the apply…</a>' in html
         assert "today&#39;s page" not in html.split("r6 is not monitored")[1].split("</article>")[0]

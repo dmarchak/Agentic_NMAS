@@ -15,6 +15,18 @@ The landing page answers one question: does anything need you?
   said under "What was checked", beside the source that found it, or on its own page.
 - **Recent changes**: the last deploys and restores, from their receipts.
 
+## The count in the sidebar {#count}
+
+Beside "Needs attention" in the sidebar, on every page, is the number of rows this page shows
+now, coloured by the worst of them: red for a critical row, amber for warnings only, grey when
+every row is unknown. It is this page's own count, from the same rows, and it changes the
+moment a row appears or clears, without a reload: it listens for everything that can move a
+row, and it reads again at the moment a row clears by time (an approval expiring, a restart's
+seven days). While live updates are stopped, or a source it counts is older than it promised,
+it is drawn faded with a dashed outline, and its hover says it may be out of date; it catches
+up when they come back. A "?" means the count could not be read, which is not the same as
+nothing needing attention.
+
 ## Where the rows come from {#sources}
 
 Background readers keep each source's value: job health (the host's scheduled checks), drift,

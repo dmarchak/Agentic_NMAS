@@ -118,7 +118,14 @@ a { color: var(--accent); }
 .spike-note { font-size: 11px; color: var(--side-ink-2); padding: 0 10px; margin: 0 0 6px; }
 .count { background: var(--danger); color: var(--on-danger); border-radius: 10px; font-size: 11px; font-weight: 600; padding: 1px 7px; }
 .count-zero { background: var(--side-on); color: var(--side-ink-2); }
-.count-unknown { background: var(--warn-mark); }
+/* The worst row's level (the operator, 2026-10-02): critical red (the default), a warning
+   amber, an unknown-only list neutral; "?" when Needs attention could not be read. */
+.count-warning { background: var(--warn-mark); color: var(--side); }
+.count-unknown { background: var(--side-ink-2); color: var(--side); }
+.count-unreadable { background: var(--warn-mark); color: var(--side); }
+/* May be out of date (live updates stopped, or a source past its promise): a quiet mark on
+   the number, never a confident wrong one. The title says why. */
+.count-maybe { opacity: 0.55; outline: 1px dashed currentColor; outline-offset: 1px; }
 .drawer-close, .menu-btn { display: none; }
 .scrim { display: none; }
 

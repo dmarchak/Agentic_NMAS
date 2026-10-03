@@ -230,17 +230,30 @@ def update_available():
     return _strict(render_template("v2/_update_available.html", avail=avail))
 
 
+@bp.app_context_processor
+def _attention_trigger():
+    """What re-reads Needs attention and the sidebar's count, on every v2 page: every key
+    that can move a row (`attention.ATTENTION_KEYS`, ONE list) and the moment a row clears
+    by time. Both fragments draw this string; neither keeps its own (the operator,
+    2026-10-02: the count's hand-kept list lacked keys the page heard)."""
+    from modules.attention import ATTENTION_KEYS, DUE_EVENT
+    return {"attention_trigger": ", ".join(f"nmas:{k} from:body"
+                                           for k in ATTENTION_KEYS + (DUE_EVENT,))}
+
+
 @bp.route("/attention-count", methods=["GET"])
 def attention_count():
-    """The sidebar's Needs attention count: rows that ask for action."""
+    """The sidebar's Needs attention count: `needs_attention()`'s own badge, the same rows
+    the page draws, with their worst level. The fragment is the WHOLE badge, its listener
+    included: the badge it replaces (`outerHTML`) was a bare span, so it updated once after
+    the page loaded and never again (the operator, 2026-10-02)."""
     try:
         from modules import attention
-        page = attention.needs_attention()
-        n = sum(1 for r in page.get("rows") or [] if r.get("level") in ("danger", "warning"))
-        return _strict(render_template("v2/_count.html", n=n, ok=True))
+        b = attention.needs_attention()["badge"]
+        return _strict(render_template("v2/_count.html", badge=b, ok=True))
     except Exception as exc:                            # noqa: BLE001
         log.warning("v2 attention count failed: %s", exc)
-        return _strict(render_template("v2/_count.html", n=None, ok=False))
+        return _strict(render_template("v2/_count.html", badge=None, ok=False))
 
 
 @bp.route("/device/<name>/monitored-by", methods=["GET"])

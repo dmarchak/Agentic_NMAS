@@ -224,7 +224,7 @@ def _iso(ts) -> str:
 
 def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict,
         level: str, devices=(), since=None, operands: dict = None,
-        attach_to: str = None, event: str = None) -> dict:
+        attach_to: str = None, event: str = None, clears_at=None) -> dict:
     """The only constructor for a Needs attention row.
 
     *kind* names the row's declared kind (ROW_KINDS): what is wrong and the
@@ -264,6 +264,11 @@ def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict
         raise RowRefused(f"a {source}/{kind} row is acknowledged per event, and names none")
     return {"id": f"{source}:{key}", "source": source, "kind": kind, "what": what,
             "clears": {"ways": list(ways), "when": when},
+            # When a row that clears by TIME will clear (an approval's expiry, an unplanned
+            # restart's seven days): nothing announces that moment, so the page and the
+            # sidebar's count re-read at it (the operator, 2026-10-02: the count must be right
+            # at all times).
+            "clears_at": _iso(clears_at) if clears_at else None,
             "event": str(event) if event else None, "acknowledge": acknowledgeable,
             "devices": [d for d in devices if d], "since": _iso(since),
             "cause": cause, "operands": dict(operands or {}),
@@ -667,6 +672,8 @@ def approvals_source(read=None) -> dict:
                              + (": approving opens the capture preview"
                                 if e.get("action_type") in Q.CONFIRM_ENDING_ACTIONS else "")},
             level="warning", devices=[host] if host else [], since=e.get("created_ts"),
+            clears_at=((e.get("created_ts") or 0) + Q.EXPIRY_HOURS * 3600
+                       if e.get("created_ts") else None),
             operands={"kind": e.get("action_type", ""), "list": lst},
             attach_to=f"drift:{lst}:drifted:{host}" if drift_item else None))
     return source_result("approvals", "Approvals", read_at=started, took_ms=took,
@@ -1923,6 +1930,8 @@ def restart_source(cached=None) -> dict:
                         key=f"{r.get('list', '')}|{r['device']}|{r['at']}",
                         level="danger" if crash else "warning", what=R.words(r),
                         devices=[r["device"]], since=_ts(r.get("at")), event=r["at"],
+                        clears_at=(_ts(r.get("at")) + R.ATTENTION_DAYS * 86400
+                                   if _ts(r.get("at")) else None),
                         cause=(f"Its uptime counter reset (found {r.get('seen_at', '?')} in "
                                "Prometheus's sysUpTime), and no reload by the tool and no planned "
                                "window covers it."),
@@ -2219,6 +2228,61 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            interrupted_source)
 
 
+#: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
+#: announcement, or a response's invalidation, means it must be read again. The ONE list
+#: the page, the sidebar's count and the client's relays are built from (the operator,
+#: 2026-10-02: the count was a hand-kept list, short of keys the page heard); a test holds
+#: it to SOURCES both ways and every key to a relay.
+SOURCE_KEYS = {
+    "job_health_source": ("job_health",),
+    "drift_source": ("drift",),
+    "approvals_source": ("approvals", "drift"),
+    "pending_onboarding_source": ("pending", "inventory"),
+    "rollback_source": ("rolled_back", "intent"),
+    "deploy_source": ("deploy_job", "goldens"),
+    "baseline_source": ("baselines", "goldens"),
+    "authorisation_source": ("deploy_job", "goldens"),
+    "grafana_source": ("alerts",),
+    "freshness_source": ("freshness",),
+    "integrations_source": ("integration_health",),
+    "ci_source": ("ci_verdict",),
+    "reachability_source": ("reachability",),
+    "netbox_secrets_source": ("netbox",),
+    "remote_source": ("remote", "goldens"),
+    "pushed_source": ("app_version",),
+    "host_steps_source": ("app_version",),
+    "adjacency_source": ("adjacencies",),
+    "lab_startup_source": ("lab_startup",),
+    "restart_source": ("restarts",),
+    # A hold left by a process that ended is found at the next read; the page's catch-up on
+    # reconnect (the process that ended was this app) is what re-reads it.
+    "interrupted_source": ("deploy_job", "device_state"),
+}
+
+#: Every key that can move a row, and a person's acknowledgement.
+ATTENTION_KEYS = tuple(sorted({k for ks in SOURCE_KEYS.values() for k in ks}
+                              | {"acknowledgements"}))
+
+#: The event the page and the count also re-read on: the moment a row clears by TIME.
+DUE_EVENT = "attention_due"
+
+
+def badge_of(rows: list, results: list) -> dict:
+    """The sidebar's count, from the SAME rows the page draws, after attaching, folding and
+    acknowledgements (the operator, 2026-10-02: the count was computed apart and left out
+    rows the page showed): how many, the worst level, when a row next clears by time, and
+    when the oldest source's value passes its promise. The page's own count is this one."""
+    worst = min((LEVELS.index(r["level"]) for r in rows), default=None)
+    due = [_ts(r["clears_at"]) for r in rows if r.get("clears_at")]
+    stale = [_ts(res["value_at"]) + res["stale_after_seconds"] for res in results
+             if res.get("value_at") and res.get("stale_after_seconds")]
+    unreadable = [res["label"] for res in results if res.get("state") != "read"]
+    return {"n": len(rows), "level": LEVELS[worst] if worst is not None else "",
+            "next_change_at": _iso(min(due)) if due else None,
+            "stale_at": _iso(min(stale)) if stale else None,
+            "unreadable": len(unreadable)}
+
+
 def _attach(rows: list) -> list:
     """Fold each row that is ABOUT another row into it (NSOT_PLAN 8.6: two
     rows about one event is the three-reports problem). The target keeps its
@@ -2355,6 +2419,7 @@ def needs_attention(sources=None) -> dict:
         headline = "Nothing needs attention"
     return {"ok": True, "headline": headline, "rows": rows,
             "unreadable": unreadable, "acknowledged": acknowledged,
+            "badge": badge_of(rows, results),
             "sources": [{k: res[k] for k in ("source", "label", "state", "read_at",
                                              "value_at", "took_ms", "checked")}
                         | {"count": len(res["rows"])} for res in results]}

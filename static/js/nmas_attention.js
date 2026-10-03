@@ -220,7 +220,8 @@
       + (r.attach_to ? '<div class="text-muted">It is about ' + esc(r.attach_to)
          + ', which is not on this page: the last run no longer reports it</div>' : '')
       + '<div>Action: ' + actionHtml(r.action) + '</div>'
-      + (r.clears ? '<div class="text-muted">Clears when ' + esc(r.clears.when) + '.</div>' : '')
+      + (r.clears ? '<div class="text-muted">Clears when ' + esc(r.clears.when)
+         + (r.clears_at ? ' (by ' + when(r.clears_at) + ')' : '') + '.</div>' : '')
       // Stage 8's triage attaches HERE, on the row it answers (NSOT_PLAN 8.6).
       + (r.triage ? '<div class="border-start ps-2 mt-1">Triage: ' + esc(r.triage.summary)
          + '</div>' : '')

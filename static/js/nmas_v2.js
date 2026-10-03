@@ -25,7 +25,9 @@
               // A device restart, planned or not (modules/restarts.py).
               'restarts',
               // A person acknowledged an event row (modules/acknowledgements.py).
-              'acknowledgements'];
+              'acknowledgements',
+              // What else moves a Needs attention row (attention.SOURCE_KEYS).
+              'approvals', 'device_state', 'intent', 'inventory', 'pending', 'rolled_back'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -85,8 +87,39 @@
   /* An announcement becomes an htmx event on <body>; the fragment that draws
      that key names it in its hx-trigger. One loader per key, written out, so
      the subscription scan (tests/test_invalidation_map.py) reads each one. */
+  var relayedAt = {}, askedAt = {};
   function relay(key) {
+    relayedAt[key] = Date.now();
     if (root.htmx) root.htmx.trigger(root.document.body, 'nmas:' + key);
+  }
+
+  /* PURE: the keys a fragment listens for (its hx-trigger) that were relayed AFTER its
+     request began, so the answer it just drew may predate them. Measured 2026-10-02 in a
+     real browser: an announcement relayed 18 ms after the sidebar's count began loading
+     was dropped (a fragment's listener is not attached while it is fetching and settling),
+     and the count stayed wrong until the next one. */
+  function missedKeys(trigger, relayed, asked) {
+    var out = [], re = /nmas:([a-z_]+) from:body/g, m;
+    while ((m = re.exec(trigger || '')) !== null) {
+      // Strictly later: a relay starts its own request in the same millisecond.
+      if (relayed[m[1]] !== undefined && relayed[m[1]] > asked) out.push(m[1]);
+    }
+    return out;
+  }
+
+  function noteAsked(e) {
+    var el = e.detail && e.detail.elt;
+    if (el && el.id) askedAt[el.id] = Date.now();
+  }
+
+  function catchUpMissed(e) {
+    var el = e.detail && e.detail.elt;
+    if (!el || !el.id || askedAt[el.id] === undefined) return;
+    var asked = askedAt[el.id];
+    delete askedAt[el.id];
+    var now = root.document.getElementById(el.id);
+    var missed = missedKeys(now ? now.getAttribute('hx-trigger') : '', relayedAt, asked);
+    if (missed.length) relay(missed[0]);       // one re-read covers every key it listens to
   }
   function relayReachability() { relay('reachability'); }
   function relayIntegrationHealth() { relay('integration_health'); }
@@ -106,6 +139,54 @@
   function relayLabStartup() { relay('lab_startup'); }
   function relayRestarts() { relay('restarts'); }
   function relayAcknowledgements() { relay('acknowledgements'); }
+  // What else moves a Needs attention row (attention.SOURCE_KEYS, the operator,
+  // 2026-10-02): the page and the sidebar's count could not hear these.
+  function relayApprovals() { relay('approvals'); }
+  function relayDeviceState() { relay('device_state'); }
+  function relayIntent() { relay('intent'); }
+  function relayInventory() { relay('inventory'); }
+  function relayPending() { relay('pending'); }
+  function relayRolledBack() { relay('rolled_back'); }
+
+  /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
+     state and the moment its oldest source passes its promise (data-stale-at). '' when it
+     is current. */
+  function badgeDoubt(liveState, staleAtMs, nowMs) {
+    if (liveState && liveState !== 'connected') {
+      return 'May be out of date: ' + liveWords(liveState).toLowerCase()
+        + '. It catches up when they reconnect.';
+    }
+    if (staleAtMs === staleAtMs && staleAtMs !== null && nowMs > staleAtMs) {
+      return 'May be out of date: a source it counts has not been read within its promise.';
+    }
+    return '';
+  }
+
+  /* The sidebar's count (on every v2 page): marked while it may be out of date, and read
+     again at the moment a row clears by time (data-next-change-at), once per moment.
+     Run on the frame's one-second tick; it asks nothing unless a row is due. */
+  function drawBadge() {
+    var el = root.document.getElementById('attention-count');
+    if (!el) return;
+    var now = Date.now();
+    var stale = Date.parse(el.getAttribute('data-stale-at') || '');
+    var live = root.NMAS && root.NMAS.live ? (root.NMAS.live().state || '') : '';
+    var doubt = badgeDoubt(live, stale === stale ? stale : null, now);
+    if (doubt) {
+      el.classList.add('count-maybe');
+      if (!el.hasAttribute('data-title')) el.setAttribute('data-title', el.getAttribute('title') || '');
+      el.setAttribute('title', doubt);
+    } else if (el.classList.contains('count-maybe')) {
+      el.classList.remove('count-maybe');
+      el.setAttribute('title', el.getAttribute('data-title') || '');
+      el.removeAttribute('data-title');
+    }
+    var due = Date.parse(el.getAttribute('data-next-change-at') || '');
+    if (due === due && now >= due && el.getAttribute('data-due-fired') !== String(due)) {
+      el.setAttribute('data-due-fired', String(due));
+      if (root.htmx) root.htmx.trigger(root.document.body, 'nmas:attention_due');
+    }
+  }
 
   function wireAnnouncements() {
     var NMAS = root.NMAS;
@@ -128,6 +209,12 @@
     NMAS.subscribe('lab_startup', 'v2LabStartup', relayLabStartup);
     NMAS.subscribe('restarts', 'v2Restarts', relayRestarts);
     NMAS.subscribe('acknowledgements', 'v2Acknowledgements', relayAcknowledgements);
+    NMAS.subscribe('approvals', 'v2Approvals', relayApprovals);
+    NMAS.subscribe('device_state', 'v2DeviceState', relayDeviceState);
+    NMAS.subscribe('intent', 'v2Intent', relayIntent);
+    NMAS.subscribe('inventory', 'v2Inventory', relayInventory);
+    NMAS.subscribe('pending', 'v2Pending', relayPending);
+    NMAS.subscribe('rolled_back', 'v2RolledBack', relayRolledBack);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
@@ -277,10 +364,12 @@
       wireAnnouncements();
       drawAges();
       drawLive();
-      root.setInterval(drawLive, 1000);
+      drawBadge();
+      root.setInterval(function () { drawLive(); drawBadge(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
-    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); catchUpMissed(e); });
+    root.document.addEventListener('htmx:beforeRequest', noteAsked);
     root.document.addEventListener('htmx:beforeRequest', markTab);
     root.document.addEventListener('keydown', function (e) {
       var t = e.target && e.target.tagName;
@@ -291,5 +380,6 @@
   }
 
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
-                  reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal};
+                  reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
+                  badgeDoubt: badgeDoubt, missedKeys: missedKeys};
 })(typeof window !== 'undefined' ? window : this);

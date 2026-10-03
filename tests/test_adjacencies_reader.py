@@ -190,8 +190,13 @@ class TestDrawn:
         assert "modules.readers.adjacencies" in reader_job.DECLARED_MODULES
         assert "adjacencies" in invalidation.VOCABULARY
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        for path in ("templates/v2/_attention.html", "templates/v2/base.html",
-                     "templates/v2/_neighbours.html"):
-            assert "nmas:adjacencies from:body" in open(os.path.join(root, path)).read(), path
+        assert "nmas:adjacencies from:body" in open(
+            os.path.join(root, "templates/v2/_neighbours.html")).read()
+        # Needs attention and the sidebar's count listen to ONE generated list (2026-10-02):
+        # the key is in it, and both templates draw it.
+        from modules import attention
+        assert "adjacencies" in attention.ATTENTION_KEYS
+        for path in ("templates/v2/_attention.html", "templates/v2/_count.html"):
+            assert "{{ attention_trigger }}" in open(os.path.join(root, path)).read(), path
         src = open(os.path.join(root, "static/js/nmas_attention.js")).read()
         assert re.search(r"NMAS\.subscribe\('adjacencies', 'attention'", src)

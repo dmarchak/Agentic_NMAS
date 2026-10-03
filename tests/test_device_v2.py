@@ -615,7 +615,7 @@ class TestTheShippedScripts:
                                                     "/v2/help/installation",
                                                     "/v2/monitoring/coverage/table",
                                                     "/v2/monitoring/apply/job/x"))
-        assert len(keys) == 18       # restarts and acknowledgements joined 2026-10-02
+        assert len(keys) == 24       # +6 2026-10-02: every key attention.SOURCE_KEYS names
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

@@ -21,7 +21,11 @@ def needs_attention():
     # Rows quote their sources' own words (a job's error line, an approval's
     # description): masked on the way out, like every read that draws text
     # a store holds.
-    return jsonify(mask_payload(build()))
+    page = build()
+    # The badge is the v2 sidebar's count (/v2/attention-count draws it); today's panel
+    # counts its own rows, stale sources included, and retires at cutover.
+    page.pop("badge", None)
+    return jsonify(mask_payload(page))
 
 
 @bp.route("/acknowledge", methods=["POST"])
