@@ -193,19 +193,22 @@ def export_in_memory(list_name: str, passphrase: str, confirm: str, confirmed: s
                                  "action is never unrecorded")
     at = time.time()
     when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(at))
+    filename = ("nmas-breakglass-" + "".join(c if c.isalnum() or c in "-_." else "_"
+                                             for c in list_name)
+                + time.strftime("-%Y%m%dT%H%M%SZ.bg", time.gmtime(at)))
     logged = True
     try:
         from modules.config import DATA_DIR
+        # The name the download is GIVEN, recorded: the host never sees what it is called where
+        # it is kept, so the drill card shows this labelled, never as the file to open (C387).
         record_export(DATA_DIR, list_name=list_name, devices=devices,
                       path=f"downloaded by {actor} at {when}", key_fingerprint=key_fingerprint(key),
-                      actor=actor, at=at, via="browser", sha256=sha)
+                      actor=actor, at=at, via="browser", sha256=sha, filename=filename)
     except OSError as exc:
         logged = False
         log.error("breakglass: the browser export was not logged (%s)", exc)
     return {"ok": True, "blob": blob, "sha256": sha, "at": when, "logged": logged,
-            "filename": ("nmas-breakglass-" + "".join(c if c.isalnum() or c in "-_." else "_"
-                                                      for c in list_name)
-                         + time.strftime("-%Y%m%dT%H%M%SZ.bg", time.gmtime(at))),
+            "filename": filename,
             "verified": {"devices": len(devices), "key_fingerprint": key_fingerprint(key),
                          "key_opens": f"{escrow_check['opened']} of {escrow_check['total']}"},
             "plan": plan}

@@ -124,7 +124,10 @@ with nothing of the tool running. Credentials shows when the last one was done a
 next is due, every 90 days. Needs attention raises a row only once it is overdue. To do it:
 
 1. **On the machine that keeps the file**, run the command Credentials shows (**Copy** puts it
-   on the clipboard): `nmas-breakglass drill <the file>`. Read: the file and its passphrase,
+   on the clipboard) with the .bg file you kept: `nmas-breakglass drill <the .bg file you
+   kept>`. The host never sees what the file is called where you keep it, so Credentials gives
+   only the name the newest export was given when it was downloaded, labelled as that; it may
+   have been renamed or moved since. Read: the file and its passphrase,
    typed at the terminal. Sent: nothing. Recorded: nothing. It opens the file, names the
    devices it can recover and prints one receipt line: the list, the file's sha256, when it
    was made, how many devices it recovers, the key's fingerprint and when it was opened. It

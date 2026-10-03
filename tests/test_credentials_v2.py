@@ -565,12 +565,50 @@ class TestTheOfflineDrill:
         assert not [r for r in rows if r["state"] == "breakglass_drill_overdue"]
 
     def test_the_page_shows_the_drill_with_the_newest_files_command(self, page):
+        """C387: the command takes "the .bg file you kept"; the name the download was GIVEN is
+        recorded and shown labelled as that, never printed as the file to open."""
         d = _export(page).get_json()
+        rows = [json.loads(l) for l in (page["dir"] / bg.EXPORT_LOG).read_text().splitlines()]
+        assert rows[-1]["filename"] == d["filename"], "the export records the name it gave"
         _r, html = _get(page, f"/v2/credentials?list={LIST}")
         card = html[html.index('id="bg-drill"'):]
-        assert f"nmas-breakglass drill {d['filename']}" in card and 'x-data="copy"' in card
+        assert "nmas-breakglass drill &lt;the .bg file you kept&gt;" in card and 'x-data="copy"' in card
+        assert f"drill {d['filename']}" not in card
+        assert (f'was named <span class="mono">{d["filename"]}</span> when it was downloaded'
+                in card)
         assert "Never: nothing has shown the record opens without the tool" in card
         assert 'name="receipt"' in card
+
+    def test_an_export_whose_name_was_not_recorded_is_never_given_a_guessed_one(self, page):
+        """C387, the host's case: an export logged before the name was recorded (the
+        operator's, named by an earlier scheme) shows no name at all."""
+        from modules import breakglass_page
+        old = {"list": LIST, "at": 1_790_000_000.0, "via": "browser", "path": "downloaded by x"}
+        got = breakglass_page.drill(LIST, now=1_790_000_100.0,
+                                    exports={"state": "ok", "rows": [old]},
+                                    drills={"state": "absent", "rows": []})
+        assert got["newest"]["how"] == "unrecorded" and got["newest"]["name"] == ""
+        host = dict(old, via="host", path="/var/backups/kept-record.bg")
+        assert breakglass_page.kept_name(host) == {"name": "kept-record.bg", "how": "written"}
+
+    @pytest.mark.parametrize("days,want", [
+        (85.9, "due in 85 days"), (1.2, "due in 1 day"), (0.4, "due today"),
+        (-0.3, "overdue by 1 day"), (-3.5, "overdue by 4 days")])
+    def test_one_due_answer(self, days, want):
+        from modules import breakglass_page
+        got = breakglass_page.due_words(days, 1_798_329_600.0 + 0)   # 2026-12-27 UTC
+        assert got["short"] == want and got["full"].startswith(want)
+        assert got["full"].endswith("2026-12-27")
+
+    def test_the_heading_and_the_line_below_say_the_same(self, page):
+        """C386: "due in 85 days" above, "Due just now" below (a relative age of a future
+        time). Both now read one computation."""
+        _export(page)
+        _r, html = _get(page, f"/v2/credentials?list={LIST}")
+        card = html[html.index('id="bg-drill"'):]
+        chip = re.search(r'id="bg-drill-title">The offline drill <span[^>]*>([^<]+)<', card)
+        assert chip and chip.group(1).strip() == "due in 89 days", card[:400]
+        assert "Due in 89 days, on " in card and "just now" not in card.split("To do it")[0]
 
     def test_history_has_the_drill(self, page, tmp_path, capsys, monkeypatch):
         from modules import history_sources as HS

@@ -447,10 +447,11 @@ def compare(record: dict, current: dict) -> list:
 
 def record_export(data_dir: str, *, list_name: str, devices: list, path: str,
                   key_fingerprint: str, actor: str, at: float = None,
-                  via: str = "host", sha256: str = "") -> dict:
+                  via: str = "host", sha256: str = "", filename: str = "") -> dict:
     """Append this export to the log: when, which list, where it was written
-    (or ``via: browser``, downloaded, with the file's sha256), the key's
-    fingerprint and each device's digest. Never a value."""
+    (or ``via: browser``, downloaded, with the file's sha256 and the name the
+    download was given), the key's fingerprint and each device's digest. Never
+    a value."""
     from modules.config import open_secure
 
     row = {"at": at if at is not None else time.time(), "list": list_name,
@@ -458,6 +459,8 @@ def record_export(data_dir: str, *, list_name: str, devices: list, path: str,
            "via": via, "devices": digests_of(devices)}
     if sha256:
         row["sha256"] = sha256
+    if filename:
+        row["filename"] = filename
     with open_secure(os.path.join(data_dir, EXPORT_LOG), "a") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
     return row

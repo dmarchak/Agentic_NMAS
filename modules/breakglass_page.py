@@ -13,6 +13,8 @@ as such: it held the credentials in use when it was made, and the next read judg
 """
 
 import logging
+import math
+import os
 import time
 
 log = logging.getLogger(__name__)
@@ -99,15 +101,38 @@ def _epoch(iso: str) -> float:
         return 0.0
 
 
-def export_filename(list_name: str, at: float) -> str:
-    """The name the browser export gives a file (breakglass_export.export_in_memory's)."""
-    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in list_name)
-    return "nmas-breakglass-" + safe + time.strftime("-%Y%m%dT%H%M%SZ.bg", time.gmtime(at))
+def due_words(days, due_at) -> dict:
+    """The drill's one answer, for the heading and the line below alike (C386: they said
+    "due in 85 days" and "Due just now", a relative age drawn of a future time).
+    ``{"short": "due in 85 days", "full": "due in 85 days, on 2026-12-27"}``."""
+    if days is None or due_at is None:
+        return {"short": "", "full": ""}
+    on = time.strftime("%Y-%m-%d", time.gmtime(due_at))
+    if days < 0:
+        n = math.ceil(-days)
+        short = f"overdue by {n} day{'' if n == 1 else 's'}"
+        return {"short": short, "full": f"{short}, since {on}"}
+    n = int(days)
+    short = "due today" if n == 0 else f"due in {n} day{'' if n == 1 else 's'}"
+    return {"short": short, "full": f"{short}, on {on}"}
+
+
+def kept_name(row) -> dict:
+    """What the host knows of the newest export's file (C387): the name it was GIVEN when
+    downloaded (recorded since 2026-10-03), or where this host wrote it; never what it is called
+    where it is kept now, which the host never sees. ``{"name", "how"}``."""
+    if not row:
+        return {"name": "", "how": ""}
+    if row.get("filename"):
+        return {"name": row["filename"], "how": "downloaded"}
+    if row.get("via") != "browser" and row.get("path"):
+        return {"name": os.path.basename(row["path"]), "how": "written"}
+    return {"name": "", "how": "unrecorded"}
 
 
 def drill(list_name: str, now: float = None, exports=None, drills=None) -> dict:
-    """The offline drill's card (board 7, D): ``{"state", "days", "due_at", "last",
-    "file", "errors"}``. Two file reads, no credential."""
+    """The offline drill's card (board 7, D): ``{"state", "days", "due_at", "due",
+    "last", "newest", "errors"}``. Two file reads, no credential."""
     import modules.breakglass as bg
     from modules.config import DATA_DIR
 
@@ -123,7 +148,8 @@ def drill(list_name: str, now: float = None, exports=None, drills=None) -> dict:
     last = due["last"]
     return {"state": due["state"], "days": None if due["days"] is None else int(due["days"]),
             "due_at": _iso(due["due_at"]) if due["due_at"] else "", "errors": errors,
-            "file": export_filename(list_name, newest["at"]) if newest else "",
+            "due": due_words(due["days"], due["due_at"]),
+            "newest": (dict(kept_name(newest), at=_iso(newest.get("at", 0))) if newest else None),
             "last": ({"at": _iso(last["at"]), "actor": last.get("actor", ""),
                       "created": last.get("created", ""), "devices": last.get("devices"),
                       "sha256": last.get("sha256", "")} if last else None)}

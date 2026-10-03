@@ -3,9 +3,10 @@
     WITHOUT the tool. A command run where the file is kept prints one receipt line; pasted here,
     it is checked against a logged export and recorded (breakglass.record_drill). Every 90 days:
     a quiet reminder before, a Needs attention row only once overdue (job health). -#}
-{%- set CHIP = {'ok': (('due in ' ~ d.days ~ ' days') if d.days is not none else 'recorded', 'muted'),
-                'due_soon': (('due in ' ~ d.days ~ ' days') if d.days is not none else 'due soon', 'warn'),
-                'overdue': ('overdue', 'danger'), 'none': ('nothing to drill', 'muted')} -%}
+{#- One answer (C386): the chip and the line below both read d.due, computed once. -#}
+{%- set CHIP = {'ok': (d.due.short or 'recorded', 'muted'),
+                'due_soon': (d.due.short or 'due soon', 'warn'),
+                'overdue': (d.due.short or 'overdue', 'danger'), 'none': ('nothing to drill', 'muted')} -%}
 {%- set chip = CHIP.get(d.state, (d.state, 'muted')) -%}
 <section class="op-card op-muted bg-drill" id="bg-drill" aria-labelledby="bg-drill-title">
   <div class="op-hd"><h2 id="bg-drill-title">The offline drill {{ badge(chip[0], chip[1]) }}</h2>
@@ -15,12 +16,16 @@
   <div class="op-part"><h3>Why not yet</h3><div><p>No export of {{ list_name }}'s record is logged, so there is no file to drill. Export the record first.</p></div></div>
   {%- else %}
   <div class="op-part"><h3>Last done</h3><div>
-    {%- if d.last %}<p>{{ stamp(d.last.at) }}, by {{ d.last.actor or 'nobody recorded' }}: the file made {{ stamp(d.last.created) if d.last.created else '(no date)' }} opened on the machine that keeps it, without the tool, {{ d.last.devices }} device(s).</p>
-    {%- else %}<p>Never: nothing has shown the record opens without the tool. Due {{ stamp(d.due_at) }}, 90 days after the first export.</p>{% endif %}</div></div>
+    {%- if d.last %}<p>{{ stamp(d.last.at) }}, by {{ d.last.actor or 'nobody recorded' }}: the file made {{ stamp(d.last.created) if d.last.created else '(no date)' }} opened on the machine that keeps it, without the tool, {{ d.last.devices }} device(s). The next is {{ d.due.full }}, 90 days after it.</p>
+    {%- else %}<p>Never: nothing has shown the record opens without the tool. {{ d.due.full | capitalize }}: 90 days after the first export.</p>{% endif %}</div></div>
   <div class="op-part"><h3>To do it</h3><div>
-    <p>On the machine that keeps the file, with nothing of the tool running:</p>
-    {%- set cmd = 'nmas-breakglass drill ' ~ (d.file or '<the file you keep>') %}
-    <p class="bg-cmd"><code class="mono">{{ cmd }}</code><button type="button" class="btn btn-small" x-data="copy" data-copy="{{ cmd }}" x-on:click="copy" x-text="label">Copy</button></p>
+    <p>On the machine that keeps the file, with nothing of the tool running, give it the .bg file you kept:</p>
+    <p class="bg-cmd"><code class="mono">nmas-breakglass drill &lt;the .bg file you kept&gt;</code><button type="button" class="btn btn-small" x-data="copy" data-copy="nmas-breakglass drill" x-on:click="copy" x-text="label">Copy</button></p>
+    {#- C387: the host never sees what the file is called where it is kept; what it knows is
+        labelled as what it is, never printed as the file to open. -#}
+    {%- if d.newest and d.newest.how == 'downloaded' %}<p class="muted small">The newest export, {{ stamp(d.newest.at) }}, was named <span class="mono">{{ d.newest.name }}</span> when it was downloaded; it may have been renamed or moved since.</p>
+    {%- elif d.newest and d.newest.how == 'written' %}<p class="muted small">The newest export, {{ stamp(d.newest.at) }}, was written on this host as <span class="mono">{{ d.newest.name }}</span>; it may have been renamed or moved since.</p>
+    {%- elif d.newest %}<p class="muted small">The newest export, {{ stamp(d.newest.at) }}, was downloaded before the tool recorded a download's name.</p>{% endif %}
     <p class="muted small">It opens the file with its passphrase, lists the devices it can recover and prints one receipt line. Paste the line here to record the drill (who, when, the file's sha256, the device count; no credential):</p>
     <form class="bg-receipt" method="post" action="{{ url_for('v2.credentials_drill') }}" hx-post="{{ url_for('v2.credentials_drill') }}" hx-target="#bg-drill" hx-swap="outerHTML">
       <input type="hidden" name="list" value="{{ list_name }}">
