@@ -98,6 +98,9 @@
     <span><span class="m-no"></span> not configured: select its device to deploy it</span>
     <span><span class="m-nr">!</span> not reporting: configured, its data not arriving; opens where to find why</span>
     <span>blank: not applicable (to the device, or its platform)</span>
+    {%- if c.unknown_cells %}
+    <span id="cov-legend-unknown"><span class="m-unk">{{ icon('info', 14) }}</span> unknown: what decides it could not be read or is not measured; hover for which</span>
+    {%- endif %}
   </p>
   <p class="cov-legend muted">Hover a cell for why. A device with nothing the profile can supply has no box to tick; a template not reporting is never redeployed from here.</p>
   {%- if c.ip_sla_missing and c.profile.committed %}

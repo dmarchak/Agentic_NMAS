@@ -251,14 +251,25 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
 #: words, the regex that finds it in a committed golden (CHECKS, plus IP SLA),
 #: and the profile section that supplies it.
 COLUMNS = (("snmp", "SNMP"), ("syslog", "Syslog"), ("heartbeat", "Heartbeat"),
-           ("telemetry", "Telemetry"), ("ip_sla", "IP SLA"))
+           ("ntp", "NTP"), ("lldp", "LLDP"), ("telemetry", "Telemetry"), ("ip_sla", "IP SLA"))
 _IP_SLA = re.compile(r"^ip sla \d+", re.M)
-_SECTION_OF_COLUMN = {**SECTION_OF, "ip_sla": "ip_sla"}
+#: NTP and LLDP (artboard A's seven): the grid's alone, never a Needs attention row (`rows()`
+#: reads CHECKS). An absent `lldp run` is LLDP off only where the platform's default is
+#: MEASURED off; where it is not measured, the cell is unknown, never "not configured".
+_NTP = re.compile(r"^ntp server \S+", re.M)
+_LLDP_ON = re.compile(r"^lldp run\s*$", re.M)
+_LLDP_OFF = re.compile(r"^no lldp run\s*$", re.M)
+_SECTION_OF_COLUMN = {**SECTION_OF, "ip_sla": "ip_sla", "ntp": "ntp", "lldp": "lldp"}
 
 
 #: The connector that makes each integration one the network uses.
 _CONNECTOR_OF = {"snmp": "Prometheus", "syslog": "Loki", "heartbeat": "Loki",
                  "telemetry": "Telegraf listener (telemetry_receiver)"}
+#: A column the network does not use, in words (NTP and LLDP have no connector of their own).
+_UNUSED_WORDS = {"ntp": "not used — no NTP servers are set (ntp_servers) and the profile has no "
+                         "NTP section",
+                 "lldp": "not used — nothing scrapes LLDP (no Prometheus connector) and the "
+                          "profile has no LLDP section"}
 _SECTION_WORDS = {"snmp": "SNMP", "syslog": "syslog", "telemetry": "telemetry",
                   "ip_sla": "IP SLA", "ntp": "NTP", "lldp": "LLDP", "cdp": "CDP"}
 _PLATFORM_WORDS = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}
@@ -306,12 +317,36 @@ def _ip_sla_words(doc: dict) -> str:
             "review the suggested probes on the IP SLA page")
 
 
+def _lldp(text, platform: str) -> tuple:
+    """(True | False | None, why when None): does LLDP run, from the committed golden. A
+    present `lldp run` or `no lldp run` decides; an absent line is the platform's MEASURED
+    default (platform_defaults.json), and unknown where that is not measured."""
+    from modules.nsot.profile_propose import platform_default
+
+    if not text:
+        return False, ""
+    if _LLDP_ON.search(text):
+        return True, ""
+    if _LLDP_OFF.search(text):
+        return False, ""
+    state = platform_default(platform, "lldp run").get("state")
+    if state in ("on", "off"):
+        return state == "on", ""
+    where = _PLATFORM_WORDS.get(platform, platform or "its platform")
+    return None, (f"unknown — its configuration has no `lldp run`, and whether LLDP runs "
+                  f"without it on {where} is not measured")
+
+
 def _expected_columns(get) -> dict:
     """``{column: connector}`` for what this network USES: SNMP and syslog as
     `expected()` decides, telemetry when Telegraf's listener is set. IP SLA is
     a per-device policy (MONITORING_PROFILE.md section 9, decision 5), never
     expected of every device."""
     out = dict(expected(get))
+    if get("ntp_servers", None):
+        out["ntp"] = "ntp_servers"
+    if str(get("prometheus_url", "") or "").strip():
+        out["lldp"] = "Prometheus"
     if str(get("telemetry_receiver", "") or "").strip():
         out["telemetry"] = "Telegraf"
     return out
@@ -325,7 +360,9 @@ def _reporting(key, host, report, heartbeat_configured) -> dict:
     from modules.readers import coverage_reporting as CR
 
     value, _at, why = report
-    if value is None:
+    if key in CR.NOT_READ:
+        got = {"state": "not_read", "words": CR.NOT_READ[key]}
+    elif value is None:
         got = {"state": "unjudged", "words": f"whether it reports is unknown: {why}"}
     else:
         got = CR.judge(key, host, value, heartbeat_configured=heartbeat_configured)
@@ -380,6 +417,11 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
         prof.update(commit=sha, committed_at=at,
                     sources={k: ((doc["sections"].get(k) or {}).get("source") or "")
                              for k in prof["sections"]})
+    for key in ("ntp", "lldp"):
+        # NTP and LLDP have no connector of their own: a profile holding the section is the
+        # network using it.
+        if key in prof["sections"]:
+            want.setdefault(key, "the monitoring profile")
     rows, covered = [], 0
     for _ref, dev in devices:
         host = (dev.get("hostname") or "").strip()
@@ -407,6 +449,8 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
                     "excluded": _p.excluded(intent or {}), "error": prof["error"]}
         have = configured(text) if text else {}
         have["ip_sla"] = bool(text and _IP_SLA.search(text))
+        have["ntp"] = bool(text and _NTP.search(text))
+        have["lldp"], lldp_why = _lldp(text, platform)
         for key, words in COLUMNS:
             section = _SECTION_OF_COLUMN[key]
             # Every cell in a person's words, saying WHY (the operator,
@@ -415,14 +459,16 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
                 cell = {"state": "unknown", "words": "unknown — its golden could not be read"}
             elif have.get(key):
                 cell = _reporting(key, host, report, bool(have.get("heartbeat")))
+            elif have.get(key) is None:
+                cell = {"state": "unknown", "words": lldp_why}
             elif section in (view.get("excluded") or {}):
                 cell = {"state": "excluded",
                         "words": f"excluded — {view['excluded'][section]}"}
             elif key == "ip_sla":
                 cell = {"state": "unused", "words": _ip_sla_words(doc)}
             elif key not in want:
-                cell = {"state": "unused",
-                        "words": f"not used — this network has no {_CONNECTOR_OF[key]} connector"}
+                cell = {"state": "unused", "words": _UNUSED_WORDS.get(key) or (
+                    f"not used — this network has no {_CONNECTOR_OF[key]} connector")}
             elif section in (view.get("applies") or ()):
                 cell = {"state": "gap", "words": "missing — the profile supplies it"}
                 row["supplies"].append(key)
@@ -467,6 +513,8 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
             # head: "3 not reporting on 2"); and, once, why reporting could not be judged.
             "not_reporting": sum(len(r["not_reporting"]) for r in rows),
             "not_reporting_devices": sum(1 for r in rows if r["not_reporting"]),
+            "unknown_cells": sum(1 for r in rows for c in r["cells"].values()
+                                 if c["state"] == "unknown"),
             "reporting_unknown": next((c["reporting"]["words"] for r in rows
                                        for c in r["cells"].values()
                                        if (c.get("reporting") or {}).get("state") == "unjudged"),

@@ -46,6 +46,11 @@ NAME_RX = r"\d+:\s(?P<dev>[A-Za-z][A-Za-z0-9._-]*):\s"
 TELEMETRY_SELECTOR = '{source!=""}'
 IPSLA_FILE = "nmas-snmp-ipsla.json"
 
+#: Columns whose arrival nothing here reads yet, said as such, never judged (NTP's
+#: synchronisation and LLDP's neighbours are device state, not an arrival).
+NOT_READ = {"ntp": "whether it synchronises is not read here",
+            "lldp": "whether it finds neighbours is not read here"}
+
 #: Where each template's cause is looked for: the device page's tab (board A).
 WHERE = {"snmp": "monitoring", "ip_sla": "monitoring", "telemetry": "monitoring",
          "syslog": "logs", "heartbeat": "logs"}
@@ -324,6 +329,8 @@ def judge(column: str, host: str, value, now: float = None,
         return _cell("unproven", "nothing proves it arrives: no heartbeat, and "
                      + ("no line in " + _since(None, value, now) if at is None
                         else f"the last line {_ages_words(now - at)} ago"), column)
+    if column in NOT_READ:
+        return {"state": "not_read", "words": NOT_READ[column]}
     raise ValueError(f"no reporting rule for {column!r}")
 
 

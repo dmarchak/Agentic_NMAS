@@ -33,6 +33,12 @@ Each cell is an icon. Hover over it to see why:
 
 IP SLA's ring links to the IP SLA page for that device, where probes are suggested.
 
+The columns are SNMP, Syslog, Heartbeat, NTP, LLDP, Telemetry and IP SLA. NTP's server lines and
+LLDP's `lldp run` are read from the golden. A golden with no `lldp run` means LLDP is off only
+where that platform's default has been measured as off. Where the default has not been measured,
+the cell reads unknown, never "not configured". Whether NTP synchronises and whether LLDP finds
+neighbours is not read here yet. Their hover says so, and they are never marked not reporting.
+
 To deploy, tick devices in the left column. A device is offered only when the monitoring profile
 supplies something it is missing. A device with nothing to deploy has a faded box that says why
 when you hover over it. The bar above the grid names the devices you ticked and how many missing

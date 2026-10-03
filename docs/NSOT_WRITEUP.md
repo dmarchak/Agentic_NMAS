@@ -2121,14 +2121,15 @@ Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own
 
 ### Coverage's grid and selection (the second of Coverage's three steps)
 
-*Written at close, 2026-10-03 (overnight). The combined deploy is the third step; NTP and LLDP's columns wait on it.*
+*Written at close, 2026-10-03 (overnight), and extended the same night by NTP and LLDP's columns. The combined deploy is the third step.*
 
 1. **What it was.** Artboard A's grid: icons only, with the why on hover. Selection only through the row boxes, and a bar naming what is ticked, with Deploy missing templates and Clear [NSOT_GUI_BRIEF.md 14.3].
 2. **How it was implemented.** The table was redrawn from `fleet()`'s states, with no new server state. The selection is an Alpine component in the CSP build, beside the batch Apply's, with its words a pure function. The ticked row is highlighted by the stylesheet's `:has`, with no script. Deploy missing templates opens the profile's batch preview until the combined deploy replaces it.
 3. **Issues encountered.** The board draws IP SLA's ring as plain. The operator's decision of the same day says IP SLA is reached from its cells until it folds into the profile. The test fixture that installs the reader replaced the lab's settings, not wrapped them, and that turned a gap into "not used".
 4. **How they were resolved.** IP SLA's ring is the link, its words on hover; this is named for the operator's review. The fixture wraps whatever is installed.
 5. **Numbers.** One commit [git: this commit]. 7 tests in `tests/test_coverage_grid.py` (one in a real browser), and the old table's tests moved to the grid; six controls, each failing its aimed tests. Screenshots taken in light and dark.
-6. **Where it left the product.** Coverage reads like the signed board: the answer first, one icon per cell, and a selection that says what a deploy would send to whom.
+6. **Where it left the product.** Coverage reads like the signed board: the answer first, one icon per cell across its seven templates, and a selection that says what a deploy would send to whom.
+7. **NTP and LLDP (the second commit).** Their columns are the grid's alone, never Needs attention rows. An absent `lldp run` is LLDP off only where the platform's default is measured off (platform_defaults.json). On IOS-XE it is not measured, so r6's real golden reads unknown, never "not configured". Whether NTP synchronises and whether LLDP finds neighbours is not read yet, and the cells say so. A first draft let the reader's absence call them unknown; a test caught it. 5 more tests, five controls.
 
 ## Part II. Stage 7
 

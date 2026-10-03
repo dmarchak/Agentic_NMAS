@@ -151,3 +151,64 @@ class TestTheSelection:
             finally:
                 b.go("about:blank")
                 browser.close_socketio_sessions()
+
+
+class TestNtpAndLldp:
+    """Artboard A's seven columns. NTP and LLDP are the grid's alone (never a Needs attention
+    row); an absent `lldp run` is LLDP off only where the platform's default is MEASURED off."""
+
+    def test_configured_and_what_is_not_read_said(self, lab, monkeypatch):
+        html = _table(lab, monkeypatch)
+        ntp, lldp = _cell(html, "r2", "NTP"), _cell(html, "r2", "LLDP")
+        assert 'data-state="unknown"' in _cell(html, "r6", "LLDP")
+        assert 'data-state="ok"' in ntp and "configured; whether it synchronises is not read here" in ntp
+        assert 'data-state="ok"' in lldp and "whether it finds neighbours is not read here" in lldp
+        # Not read is not "unknown": the page's one line for an unjudged reader stays away.
+        assert 'id="cov-reporting-unknown"' not in html or "not read here" not in html.split(
+            'id="cov-reporting-unknown"')[1].split("</p>")[0]
+
+    def test_an_absent_lldp_run_where_the_default_is_not_measured_is_unknown(self, lab, monkeypatch):
+        """r6 in its real shape carries no `lldp run`; IOS-XE's default is not measured."""
+        _commit_proposal()
+        html = _table(lab, monkeypatch)
+        cell = _cell(html, "r6", "LLDP")
+        assert 'data-state="unknown"' in cell
+        assert ("unknown — its configuration has no `lldp run`, and whether LLDP runs without it "
+                "on IOS-XE is not measured") in cell
+        assert 'data-missing="1"' in _box(html, "r6"), "r6 offered for SNMP alone, never LLDP"
+        assert 'id="cov-legend-unknown"' in html
+
+    def test_where_the_default_is_measured_off_it_is_missing(self, lab, monkeypatch, tmp_path):
+        from modules.nsot import profile_propose
+        planted = tmp_path / "defaults.json"
+        planted.write_text(json.dumps({"by_dialect": {"cisco_iosxe": {"lldp run": {"state": "off"}}}}))
+        monkeypatch.setattr(profile_propose, "DEFAULTS_FILE", str(planted))
+        _commit_proposal()
+        html = _table(lab, monkeypatch)
+        cell = _cell(html, "r6", "LLDP")
+        assert 'data-state="gap"' in cell and "missing — the profile supplies it" in cell
+        assert 'data-missing="2"' in _box(html, "r6")
+        assert 'id="cov-legend-unknown"' not in html, "no unknown cell, no legend for one"
+
+    def test_ntp_with_no_servers_set_and_no_section_is_not_used(self, lab):
+        from tests.test_coverage_page import _fleet, _row
+        from modules import prometheus_targets as P
+
+        def golden(ref, host):
+            text = P.read_golden(ref, host)
+            return "\n".join(l for l in text.splitlines() if not l.startswith("ntp server"))
+        cell = _row(_fleet(lab, golden=golden), "r2")["cells"]["ntp"]
+        assert cell == {"state": "unused", "words": "not used — no NTP servers are set (ntp_servers) "
+                                                   "and the profile has no NTP section"}
+        cell = _row(_fleet(lab, settings={"ntp_servers": ["192.0.2.1"]}, golden=golden),
+                    "r2")["cells"]["ntp"]
+        assert cell["state"] == "gap_open"
+        # A profile holding an NTP section (proposed from the fleet) is the network using NTP,
+        # with no ntp_servers set: the gap is one the profile supplies.
+        _commit_proposal()
+        cell = _row(_fleet(lab, golden=golden), "r2")["cells"]["ntp"]
+        assert cell == {"state": "gap", "words": "missing — the profile supplies it"}
+
+    def test_no_needs_attention_row_reads_them(self):
+        from modules import monitoring_coverage as M
+        assert set(M.CHECKS) == {"snmp", "syslog", "heartbeat", "telemetry"}

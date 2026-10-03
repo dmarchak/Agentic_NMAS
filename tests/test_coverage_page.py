@@ -177,7 +177,7 @@ class TestThePage:
         assert "Nothing to deploy: nothing for Apply to send" in body
         assert "Deploy missing templates…" in body
         # Every cell drawn, its words for a screen reader and on hover, never colour alone.
-        assert html.count('<td class="gc" data-state=') == 2 * 5
+        assert html.count('<td class="gc" data-state=') == 2 * 7   # artboard A's seven
 
     def test_the_table_refreshes_on_keys_the_vocabulary_holds(self, lab, monkeypatch):
         from modules.invalidation import VOCABULARY
