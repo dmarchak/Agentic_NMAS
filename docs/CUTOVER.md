@@ -36,7 +36,7 @@ and built.
 | Clab map, freshness gate | `/clab/sync_targets`, `/freshness/gate` | STAYS | The clab host's sync and `nmas-oxidized-freshness` |
 | Deploy | `/deploy/plan`, `/deploy/apply` | PLANNED, 7.3 and 7.4 | A device's deploy (Device, "Plan a deploy…") and a batch (Devices selection); the v2 batch Apply already uses the same apply |
 | Deploy receipts | `/deploy/receipts` | BUILT | The device page's History tab |
-| Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | PLANNED, 7.3 and 7.4 | Device Actions "Capture now…" and Devices "Save All" |
+| Capture, Save All | `/golden/capture/preview`, `/apply`, `/preview/<job>` | PLANNED, 7.4 (one device BUILT, 7.3) | The device page's Actions > Capture is built (2026-10-02, the same job and apply, through `/v2/device/<name>/capture/*`); Devices "Save All" (7.4) is not, so the routes stay until it is |
 | Restore, baselines | `/golden/restore/preview`, `/apply`, `/golden/restore_points/<host>`, `/golden/baselines` | PLANNED, History (signed off 2026-10-02) and 7.3 | History > Baselines (re-apply); Device Actions "Restore from…" |
 | Golden versions | `/golden/history/<host>`, `/golden/version/<host>`, `/golden/diff/<host>` | PLANNED, History | History's commit rows and the device page's History tab (reveal a version, a person, audited) |
 | Git | `/git/status`, `/git/log`, `/git/commit/<sha>` | BUILT | History > Commits (2026-10-02): the log, its filters and each commit's masked change |

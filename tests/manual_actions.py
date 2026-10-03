@@ -69,6 +69,8 @@ NOT_AN_OPERATION = {
     ("_apply_preview.html", "Leave out"): "leaves a device out of the rollout the confirm carries",
     ("_history_commits.html", "Show the change"): "reads one commit's masked change",
     ("device.html", "Actions"): "opens the actions menu; each row carries its own link",
+    ("_capture.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
+    ("_capture.html", "Edit intent…"): "navigates to today's device page, where the intent editor is",
 }
 
 

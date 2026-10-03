@@ -76,6 +76,10 @@ def _bodies(v):
         "golden.capture_preview": (202, ("json", {"devices": ["r1"]}),
                                    "starts a job reading r1 NOW; FOLLOWED to its result "
                                    "(JOB_RESULTS): the golden diff and the intent departure"),
+        # The device page's Capture (7.3): the same job, for one device, its name filled as r1.
+        "device_v2.capture_start": (200, ("form", {"list": LIST}),
+                                    "starts the same job reading r1 NOW; FOLLOWED to its card "
+                                    "(JOB_RESULTS): the golden diff and the intent departure"),
         "golden.migrate_plan": (200, ("json", {}), "a dry run over the legacy store"),
         "golden.restore_preview": (200, ("json", {"ref": v["_first_golden"],
                                                   "devices": ["r1"]}),
@@ -159,7 +163,7 @@ def _bodies(v):
 #: Responses that draw stored config: the masked slot must be in them.
 #: `drift_check_sync` is not among them: it answers with counts and queues
 #: the diff as an approval item, which the GET sweep covers.
-REACHES = {"compare_backups_route", "deploy.plan", "freshness.gate",
+REACHES = {"compare_backups_route", "deploy.plan", "device_v2.capture_start", "freshness.gate",
            "golden.capture_preview", "golden.restore_preview", "templates.preview",
            "templatize.preview_committed_edit"}
 # `netbox_safety.preview_import` LEFT this set in 7.1: its response no longer
@@ -169,7 +173,9 @@ REACHES = {"compare_backups_route", "deploy.plan", "freshness.gate",
 
 #: The two masks: the outbound redactor's, and the template preview's
 #: (`render_artifact.MASK`, which JSON carries escaped).
-MASKS = ("<redacted:", "\\u2022\\u2022")
+MASKS = ("<redacted:", "\\u2022\\u2022",
+         # The v2 card is HTML: the same slot, escaped by Jinja.
+         "&lt;redacted:")
 
 #: Integrations whose connection test cannot be driven here, with the reason.
 INTEGRATIONS_NOT_DRIVEN = {
@@ -317,7 +323,9 @@ def _store_state():
 #: each to its result, because the result is where stored config lands now:
 #: stopping at the 202 would sweep a body that holds no config at all, and
 #: the GET sweep cannot reach a job (it fills arguments with planted names).
-JOB_RESULTS = {"golden.capture_preview": "/golden/capture/preview/{job}"}
+JOB_RESULTS = {"golden.capture_preview": "/golden/capture/preview/{job}",
+               # The v2 card names its job in the URL it re-reads (an HTML answer).
+               "device_v2.capture_start": "/v2/device/r1/capture/job/{job}"}
 
 
 def _follow_job(client, endpoint, r):
@@ -325,6 +333,10 @@ def _follow_job(client, endpoint, r):
     from modules.nsot import capture_job
 
     job = (r.get_json(silent=True) or {}).get("job") if r.status_code == 202 else None
+    if job is None and r.status_code == 200 and endpoint in JOB_RESULTS:
+        import re
+        m = re.search(r"/capture/job/([0-9a-f]+)", r.get_data(as_text=True))
+        job = m.group(1) if m else None
     if endpoint not in JOB_RESULTS or not job:
         return r.get_data(as_text=True)
     assert capture_job.wait(job, 60), f"{endpoint}: job {job} still running after 60 s"
@@ -359,6 +371,9 @@ def _drive(v, person, writes=None):
                 url = _fill(rule, dict(v, **({"_integration": name} if name else {})))
                 if name:
                     url = url.replace("/planted-profile/", f"/{name}/")
+                if endpoint.startswith("device_v2."):
+                    # A device page route names its device `name`: the planted device.
+                    url = url.replace("/planted-profile/", f"/{DEVICE['hostname']}/")
                 before = _store_state() if writes is not None else None
                 r = (client.post(url, data=body) if kind == "form"
                      else client.post(url, json=body))

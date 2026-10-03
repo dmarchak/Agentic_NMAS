@@ -610,12 +610,17 @@ class TestTheShippedScripts:
         monkeypatch.setattr(deploy_job, "state", lambda job: {
             "job": job, "state": "running", "order": ["r3"], "elapsed_s": 1, "payload": None,
             "error": "", "steps": [{"device": "r3", "state": "running", "took_s": 1}]})
+        # The device page's Capture card READING (7.3) listens for its preview job.
+        from modules.nsot import capture_job
+        monkeypatch.setattr(capture_job, "get", lambda job: {"state": "running", "elapsed_s": 1})
         heard = " ".join(_get(lab, u)[1] for u in ("/v2/device/r3", "/v2/device/r3/overview",
                                                     "/v2/device/r3/monitoring", "/v2/attention",
                                                     "/v2/help/installation",
                                                     "/v2/monitoring/coverage/table",
-                                                    "/v2/monitoring/apply/job/x"))
-        assert len(keys) == 24       # +6 2026-10-02: every key attention.SOURCE_KEYS names
+                                                    "/v2/monitoring/apply/job/x",
+                                                    "/v2/device/r3/capture/job/x"))
+        # +6 2026-10-02: every key attention.SOURCE_KEYS names; +1 capture_preview (7.3).
+        assert len(keys) == 25
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

@@ -17,8 +17,13 @@
     <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="btn btn-outline" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
       <div class="menu" role="menu" x-show="isOpen" x-cloak>
-        <p class="menu-note">These open on today's device page, where they are built.</p>
-        {% for label, op, words in [('Capture now…', 'capture', 'capture'), ('Persist…', 'persist', 'persist'), ('Rotate the credential…', 'rotate', 'rotation'), ('Seed intent…', 'seed', 'seeding'), ('Restore from…', 'restore', 'restore')] %}
+        <p class="menu-note">Capture runs here; the others open on today's device page, where they are built.</p>
+        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="capture" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='capture') }}" hx-get="{{ url_for('device_v2.capture', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">Capture</a>{{ how('capture', compact=True, op='capture') }}</div>
+        {% for label, op, words in [('Restore from…', 'restore', 'restore'), ('Remove lines (Mode B)…', 'removal', 'removal'), ('Seed intent', 'seed', 'seeding')] %}
+        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('manage_device', ip=device.ip) }}">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
+        {% endfor %}
+        <div class="menu-rule"></div>
+        {% for label, op, words in [('Rotate credential…', 'rotate', 'rotation'), ('Persist', 'persist', 'persist')] %}
         <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('manage_device', ip=device.ip) }}">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
         {% endfor %}
         <div class="menu-rule"></div>
@@ -39,6 +44,6 @@
   {% endfor %}
 </div>
 <div id="tab-body" class="tab-body">
-  {% if tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% elif tab == 'history' %}{% include "v2/_history.html" %}{% elif tab == 'intent' %}{% include "v2/_intent.html" %}{% elif tab == 'neighbours' %}{% include "v2/_neighbours.html" %}{% elif tab == 'logs' %}{% include "v2/_logs.html" %}{% elif tab == 'netbox' %}{% include "v2/_netbox.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
+  {% if op_card %}{% with c=op_card %}{% include "v2/_capture.html" %}{% endwith %}{% elif tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% elif tab == 'history' %}{% include "v2/_history.html" %}{% elif tab == 'intent' %}{% include "v2/_intent.html" %}{% elif tab == 'neighbours' %}{% include "v2/_neighbours.html" %}{% elif tab == 'logs' %}{% include "v2/_logs.html" %}{% elif tab == 'netbox' %}{% include "v2/_netbox.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
 </div>
 {% endblock %}

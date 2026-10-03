@@ -240,7 +240,8 @@ class TestEveryChangingPathHoldsIt:
 HOLDERS = {
     # `apply_batch` is THE apply (/deploy/apply and the v2 batch confirm, P.9 d2).
     "routes/deploy.py": ("apply_batch", "run_targets"),
-    "routes/golden.py": ("capture_apply",),
+    # `apply_captures` is THE capture apply (/golden/capture/apply and the v2 device page).
+    "routes/golden.py": ("apply_captures",),
     "modules/nsot/credential_rotation.py": ("rotate", "persist"),
     "modules/nsot/persist_op.py": ("apply",),
     "modules/nsot/rotate_op.py": ("run",),

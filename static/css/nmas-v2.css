@@ -713,3 +713,57 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .menu-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .menu-row .menu-item { flex-grow: 1; }
 .menu-row .how-link.compact { margin: 0 6px 0 0; }
+
+/* The device page's actions on v2 (7.3; the mockup signed off 2026-10-02): an operation's
+   card in place of the tab's content. The border says the state: accent while it is a
+   preview, ok when recorded, warn when nothing was. */
+.op-card { background: var(--surface); border: 1px solid var(--accent); border-radius: var(--r-card);
+  max-width: 860px; }
+.op-card.op-ok { border-color: var(--ok); }
+.op-card.op-warn { border-color: var(--warn-mark); }
+.op-card.op-danger { border-color: var(--danger); }
+.op-card.op-muted { border-color: var(--line); }
+.op-hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 20px;
+  border-bottom: 1px solid var(--line-2); flex-wrap: wrap; }
+.op-hd h2 { margin: 0; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; }
+.op-hd-actions { display: flex; gap: 14px; align-items: center; }
+.op-hd-actions .how-link { margin-left: 0; }
+.op-part { padding: 14px 20px; border-top: 1px solid var(--line-2); display: grid;
+  grid-template-columns: 150px minmax(0, 1fr); gap: 16px; }
+.op-hd + .op-part { border-top: none; }
+.op-part h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3);
+  font-weight: 600; }
+.op-part p { margin: 0 0 6px; }
+.op-part p:last-child { margin-bottom: 0; }
+.op-wait { color: var(--ink-2); }
+.op-diff { margin: 0 0 8px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r);
+  padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto;
+  white-space: pre; }
+.op-diff .op-ctx { color: var(--ink-2); }
+.op-diff .op-add { color: var(--ok); font-weight: 500; }
+.op-diff .op-del { color: var(--danger); font-weight: 500; }
+.op-ops { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px;
+  font-size: 13px; }
+.op-ops dt { color: var(--ink-2); }
+.op-ops dd { margin: 0; overflow-wrap: anywhere; }
+.op-gates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px;
+  font-size: 13px; }
+.op-gates li { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.op-gates .badge { justify-content: center; }
+.op-next { display: flex; flex-direction: column; gap: 8px; }
+.op-next > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.op-ft { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 20px;
+  border-top: 1px solid var(--line); background: var(--surface-2); border-radius: 0 0 var(--r-card) var(--r-card);
+  flex-wrap: wrap; }
+.op-note { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 520px; }
+.op-act { display: inline-flex; align-items: center; }
+/* Busy on itself until the answer arrives (htmx marks the requesting control). */
+.op-confirm .op-busy { display: none; }
+.op-confirm.htmx-request .op-idle { display: none; }
+.op-confirm.htmx-request .op-busy { display: inline; }
+.op-confirm[disabled] { opacity: .7; cursor: progress; }
+@media (max-width: 700px) {
+  .op-part { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .op-hd, .op-part, .op-ft { padding-left: 14px; padding-right: 14px; }
+}

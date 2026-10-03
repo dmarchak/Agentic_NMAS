@@ -135,6 +135,7 @@ DECLARED = {
     # Goldens, the repository and the remote.
     # Capture (7.1 step 4): Save All is now the whole-fleet form of it.
     "golden.capture_apply": _COMMIT + ("baselines", "drift", "approvals"),   # closes handed-off drift items
+    "device_v2.capture_confirm": _COMMIT + ("baselines", "drift", "approvals"),   # the same apply
     "golden.migrate_apply": _COMMIT,
     "golden.sync_renames": _COMMIT,
     "golden.restore_apply": ("device_state", "intent", "baselines", "drift",
@@ -249,6 +250,9 @@ DECLARED = {
                                       "and computes a preview; it records nothing, and the "
                                       "job ANNOUNCES capture_preview when it finishes "
                                       "(ANNOUNCERS, C188)"),
+    "device_v2.capture_start": Nothing("starts the same capture preview job for one device "
+                                       "(golden.capture_preview); it records nothing, and the "
+                                       "job ANNOUNCES capture_preview when it finishes"),
     "onboard.plan": Nothing("a plan reads and computes; its templates write was removed (C33)"),
     "onboard.verify_preview": Nothing("reads one device and computes what Verify would send; "
                                       "it writes nothing"),

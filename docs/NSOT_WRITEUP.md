@@ -99,7 +99,7 @@ close are marked *written at close*.
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
 | | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28); the audit's other rows and the multi-worker half (9.S) not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
-| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs |
+| | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry, the break-glass export and the v2 capture await their real runs |
 | | 7.4 to 7.10 | Not started |
 | Stage 8, Stage 9 | | Not started |
 | Side campaigns | The store-hardening family (C20, C157, C158, C160), the Grafana rule audit (C165 to C168), the verify family (C62 to C68, C108, C114, C115, C178), Mode B's probe campaign | Backfilled below (Part III). The verify family's last member, C178, is built and awaits its real-device run |
@@ -2783,6 +2783,26 @@ The landing page drew every section 1a source from stored or cached values, each
    - Suite: 5,685, then 5,694, then 5,704.
    - The next Save All (the operator, 2026-09-29 morning): preview nine devices at once in 25.1 s (serial 102.7 s: connecting 50.9 s, reading 42.7 s), slowest s3 at a 13.7 s connect; the apply read 8 of 9 and took no baseline, s3's connect failing at 11.2 s (C204, C205).
 6. **Where it left the product.** Save All is 2.5 times faster to preview and 7.4 times faster to apply, and no request waits on a device. The varying reads are device-side execution (C94's question now), and a device that cannot be read says why and what to do.
+
+#### 7.3 — Capture on the v2 device page
+
+*Written at close, 2026-10-02. It awaits its real run on the host, which records a golden and so is the operator's.*
+
+1. **What it was.** The first of the device page's actions on v2, from the mockup the operator signed off that day ("Device actions on v2": the preview in place of the tab, the result in place with its next steps, the refusal when the device moved, a check failing on a holder, the phone width; the read timings on hover). The order after it: persist, rotate, deploy with Mode B [tests/signed_off_screens.py; NSOT_STAGE7_PLAN.md].
+2. **How it was implemented.**
+   - One home: the JSON routes' job start and apply were lifted out as `routes.golden.start_capture_preview` and `apply_captures`, and the card calls those, so the v2 card and today's modal share one read, one hash check and one commit.
+   - `modules/device_actions.py` turns the job's preview and the apply's outcome into one card; `templates/v2/_capture.html` draws every state (starting, reading, the preview, the result, each refusal).
+   - The card starts its own read (a POST on load) and then listens for `capture_preview`, so the card that waits is the element that asked, which C347's catch-up keys on. The confirm is an htmx button, busy on itself through CSS, and the write carries its list.
+   - The Actions menu takes the mockup's order; the rows not yet built still open today's page.
+3. **Issues encountered.**
+   - The verified-person check first read the preview's own confirm part, which is also false when nothing would be recorded, so a device equal to its golden showed a failing identity check. It is now decided when the card is drawn, from who is viewing.
+   - The commit link named an endpoint that does not exist (500 on the result); the route tests caught it.
+   - The POST secret sweep had never driven an HTML answer: the card's masked slot is `&lt;redacted:`, and the sweep only knew the JSON spelling. Its follower now reads a job id from an HTML answer.
+   - C348: masking a secret that ends a quoted line swallows the quote's close and the separator (seen in the sweep's own output; bucket C).
+   - The real-browser click-through failed in 3 of 12 cold runs: htmx binds a swapped control during its settle (about 20 ms), and the test clicked before that. Measured with the page's own htmx events.
+4. **How they were resolved.** The check and the link fixed with tests; the sweep extended (the escaped mask, the HTML job id, the device route driven as r1); C348 recorded and left open (C: nothing exposed); the browser test clicks only once nothing settles, then eight cold runs clean.
+5. **Numbers.** One commit [git: this commit]. 14 tests in `tests/test_device_capture_v2.py`, two of them in a real browser; fourteen controls, each failing its aimed tests. Findings recorded: 1 (C348). **Estimate versus actual: no forecast was made**; recorded so persist, rotate and Mode B on v2 get one from this, the same kind of work: one action ported to a card with its tests in one session.
+6. **Where it left the product.** A device's golden can be recorded from its v2 page, with what it will and will not do, what it was checked against, and the result in place. Save All stays on today's page until 7.4.
 
 ### 7.D — The GUI redesign (open)
 

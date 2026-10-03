@@ -9,11 +9,14 @@ and it writes one commit in the list's repository.
 
 ## The preview
 
-You start a capture from one of four places: the Device page's **Capture as golden** (that
+You start a capture from one of five places: the device page's **Actions > Capture** (that
+device, its card drawn in place of the tab); today's Device page's **Capture as golden** (that
 device); **Save All Configs** in today's device list toolbar (every device in the list);
 **Capture devices with no golden** beside it (every device with no committed golden, decided
 from git, never from files on disk); or an approved drift item in the approval queue, which
-opens this preview for its device. The browser posts the devices to `/golden/capture/preview`.
+opens this preview for its device. Today's pages post the devices to `/golden/capture/preview`;
+the device page's card posts its device to `/v2/device/<name>/capture/start`, which starts the
+same job, and its confirm reaches the same apply through `/v2/device/<name>/capture/confirm`.
 
 1. **Start the job.** Read: this list's inventory, and for the no-golden scope each device's
    committed golden. Sent: nothing. Recorded: a job in the server's memory (a restart loses
@@ -54,9 +57,13 @@ opens this preview for its device. The browser posts the devices to `/golden/cap
 ## The confirm and the apply
 
 You tick the devices to record and press the confirm button. The browser posts each device's
-capture hash, as the preview showed it, to `/golden/capture/apply`. The apply needs a verified
-person (the request's Cloudflare Access assertion, from a trusted peer), who is the actor
-recorded below.
+capture hash, as the preview showed it, to `/golden/capture/apply`. On the device page's card,
+**Record <device>'s golden** posts that one device's hash and its list, and stays busy on
+itself until the result replaces the card; the steps below are the same. A structure that
+shrank without committed intent explaining it needs your reason, which today's device page
+takes; the card names that check and offers no confirm. The apply needs a verified person
+(the request's Cloudflare Access assertion, from a trusted peer), who is the actor recorded
+below.
 
 1. **Hold the devices.** Read: the device lock. Sent: nothing. Recorded: a lock per device
    until the commit is made. A device another operation holds is refused alone, by name,

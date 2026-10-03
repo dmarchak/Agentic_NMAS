@@ -436,8 +436,6 @@ def capture_preview():
     compares with its committed intent. No `devices` is the whole fleet (what
     Save All now opens). Masked on the way out; writes nothing."""
     from modules.nsot.restore import _devices_of
-    from modules.outbound import mask_payload
-    from modules.preview_confirm import capture_preview as _parts
 
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
@@ -475,14 +473,30 @@ def capture_preview():
     else:
         fleet = not wanted
         devices = [d for d in inventory if fleet or d.get("hostname") in set(wanted)]
-    # C188 step 2: the reads run as a JOB, and this answers at once. The
-    # request no longer waits on a device, so no edge limit can end it (107 s
-    # for nine devices read in series, past Cloudflare's 100 s). What needs
-    # the request (who would confirm) is decided HERE, before the thread.
+    names = [d.get("hostname", "") for d in devices]
+    job = start_capture_preview(list_name, inventory, devices, fleet=fleet, excluded=excluded)
+    # `nothing` is always carried (empty here): one payload shape with the
+    # nothing-to-capture answer above, so the client reads a key that is there.
+    return jsonify({"ok": True, "list": list_name, "job": job, "devices": names,
+                    "nothing": ""}), 202
+
+
+def start_capture_preview(list_name: str, inventory: list, devices: list, *, fleet: bool,
+                          excluded: list = None) -> str:
+    """Start the capture preview's reads as a job and return its id: THE start, for
+    `/golden/capture/preview` and the v2 device page's Capture (7.3) alike.
+
+    C188 step 2: the reads run as a JOB, and the request answers at once. It no longer
+    waits on a device, so no edge limit can end it (107 s for nine devices read in series,
+    past Cloudflare's 100 s). What needs the request (who would confirm) is decided HERE,
+    before the thread."""
     from modules import identity, op_progress
     from modules.nsot import capture_job
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import capture_preview as _parts
     from modules.preview_confirm import confirm_part
 
+    repo = _repo_for(list_name)
     confirm = confirm_part(request, "approve")
     who = identity.identify(request)
     actor = who.actor if who.is_identified else "an unidentified viewer"
@@ -496,7 +510,7 @@ def capture_preview():
         read, timing = _read_all(list_name, repo, devices, progress=progress)
         entries = [e for e, _t in read]
         preview = _parts(entries, fleet=fleet, inventory=inventory, confirm=confirm,
-                         not_read=excluded, timing=timing)
+                         not_read=excluded or [], timing=timing)
         # The preview alone: it draws each device's read, and its
         # `select_data` carries the hash the confirm is bound to. The raw
         # reads are not sent. `nothing` is always carried (empty here): one
@@ -504,12 +518,7 @@ def capture_preview():
         return mask_payload({"list": list_name, "fleet": fleet, "preview": preview,
                              "nothing": ""})
 
-    names = [d.get("hostname", "") for d in devices]
-    job = capture_job.start(list_name, f"{list_name}: {len(names)} device(s)", actor, work)
-    # `nothing` is always carried (empty here): one payload shape with the
-    # nothing-to-capture answer above, so the client reads a key that is there.
-    return jsonify({"ok": True, "list": list_name, "job": job, "devices": names,
-                    "nothing": ""}), 202
+    return capture_job.start(list_name, f"{list_name}: {len(devices)} device(s)", actor, work)
 
 
 @bp.route("/capture/preview/<job>", methods=["GET"])
@@ -546,12 +555,7 @@ def capture_apply():
     verified person, through `save_golden()`, which writes the computed
     `Intent-Match:` trailer and takes a baseline only for a whole-fleet
     capture with every device at its committed intent (C89 (c))."""
-    from modules.identity import request_actor
-    from modules.nsot.repo import GoldenItem, save_golden
-    from modules.nsot.restore import _devices_of
     from modules.outbound import mask_payload
-    from modules.preview_confirm import capture_result
-    from routes.deploy import _capture_hash
 
     data = request.get_json(silent=True) or {}
     confirmations = {k: v for k, v in (data.get("confirmations") or {}).items() if k}
@@ -569,6 +573,24 @@ def capture_apply():
         return jsonify({"ok": False, "error": "Nothing confirmed: nothing recorded"}), 400
     list_name = _active_list(data)
     fleet = bool(data.get("fleet"))
+    got = apply_captures(list_name, confirmations, fleet=fleet, acknowledged=acknowledged,
+                         approvals=data.get("approvals") or {}, mode=data.get("mode") or "")
+    return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
+                                 "result": got["result"], "approvals": got["approvals"]}))
+
+
+def apply_captures(list_name: str, confirmations: dict, *, fleet: bool, acknowledged: dict,
+                   approvals: dict, mode: str = "") -> dict:
+    """Record the confirmed captures: THE apply, for `/golden/capture/apply` and the v2
+    device page's Capture (7.3) alike. ``{"result", "approvals", "outcomes", "save",
+    "timing"}``: the result as `capture_result` draws it, the queue items closed, each
+    device's outcome, `save_golden()`'s answer and the re-read's timing. Unmasked: the
+    caller masks what it sends."""
+    from modules.identity import request_actor
+    from modules.nsot.repo import GoldenItem, save_golden
+    from modules.nsot.restore import _devices_of
+    from modules.preview_confirm import capture_result
+
     inventory = _devices_of(list_name)
     repo = _repo_for(list_name)
     # One operation per device (C98): a capture recording a device while a
@@ -576,7 +598,7 @@ def capture_apply():
     from modules.nsot import device_ops
     # The mode the confirmed preview named, for the in-flight panel's words
     # only; an unknown one is the ordinary capture.
-    mode = data.get("mode") if data.get("mode") in device_ops.CAPTURE_MODES else "record"
+    mode = mode if mode in device_ops.CAPTURE_MODES else "record"
     held, refused_busy = device_ops.acquire_many(
         list_name, [d.get("hostname", "") for d in inventory
                     if d.get("hostname", "") in confirmations], "capture", request_actor(),
@@ -608,7 +630,10 @@ def capture_apply():
             if entry["capture_hash"] != confirmations[host]:
                 outcomes.append({"device": host, "outcome": "moved",
                                  "reason": f"its running config moved since the preview "
-                                           f"({confirmations[host]} -> {entry['capture_hash']})"})
+                                           f"({confirmations[host]} -> {entry['capture_hash']})",
+                                 # Both operands, for a card that names them apart.
+                                 "confirmed_hash": confirmations[host],
+                                 "current_hash": entry["capture_hash"]})
                 skipped.append({"hostname": host, "reason": "moved since the preview"})
                 continue
             outcomes.append({"device": host, "outcome": "pending", "diff": entry["diff"],
@@ -632,7 +657,7 @@ def capture_apply():
                                skipped=skipped, baseline=None if fleet else False,
                                acknowledge_structural_change=acknowledged,
                                # Items handed to this capture close as done below.
-                               leave_items=[i for ids in (data.get("approvals") or {}).values()
+                               leave_items=[i for ids in approvals.values()
                                             for i in (ids or [])])
             # Each device's own outcome (C310): a device the save refused is
             # named with ITS reason, never another device's.
@@ -647,9 +672,9 @@ def capture_apply():
                                     else "unchanged")
                     o["intent"] = (save.get("intent") or {}).get(o["device"], o["intent"])
         result = capture_result(outcomes, save, fleet=fleet, timing=timing)
-        closed = _close_handed_off(data.get("approvals") or {}, outcomes)
-        return jsonify(mask_payload({"ok": True, "list": list_name, "fleet": fleet,
-                                     "result": result, "approvals": closed}))
+        closed = _close_handed_off(approvals, outcomes)
+        return {"result": result, "approvals": closed, "outcomes": outcomes, "save": save,
+                "timing": timing}
     finally:
         device_ops.release_many(list_name, held)
 

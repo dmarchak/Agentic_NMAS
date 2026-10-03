@@ -706,7 +706,13 @@ tracked in git.
   (2026-10-02, the operator): a Save All that found it unchanged counts, so every save names
   each device it read in `Devices-Measured:`, and `device_list.last_measured()` is the one
   reader (the Overview's Last measured uses it too); the selection
-  plans a deploy on today's page until v2 carries one. The device page's tabs since: **Intent**
+  plans a deploy on today's page until v2 carries one. **The device page's actions on v2**
+  (7.3; the mockup signed off 2026-10-02), **[modules/device_actions.py](modules/device_actions.py)**
+  and `templates/v2/_capture.html`: an operation's card drawn in place of the tab, from the
+  operation's OWN job and apply (`routes.golden.start_capture_preview`, `apply_captures`,
+  which `/golden/capture/*` call too); the card starts its read and then listens for its
+  job's announcement, the confirm carries the read's hash and the list, and the result is
+  drawn in place. Capture first; persist, rotate and deploy with Mode B follow. The device page's tabs since: **Intent**
   (read-only: the document committed at HEAD, its last commit, the profile sections it
   inherits), **History** (goldens, intent commits and receipts as one timeline) and
   **Neighbours** (**[modules/neighbours.py](modules/neighbours.py)**, C38: the adjacencies the

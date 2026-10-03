@@ -62,8 +62,9 @@ class TestTheGitTabDescribesWhatSaveAllDoes:
         capture (7.1 step 4): one `save_golden` call, after the confirm."""
         import routes.golden as golden
 
-        assert calls_in(golden.capture_apply, "save_golden") == 1
-        assert calls_in(golden.capture_apply, "write_and_stage") == 0
+        # `apply_captures` is the apply both routes call (the v2 device page, 7.3).
+        assert calls_in(golden.apply_captures, "save_golden") == 1
+        assert calls_in(golden.apply_captures, "write_and_stage") == 0
 
     def test_the_tab_no_longer_says_it_stages(self, git_tab):
         assert "stages device configs" not in git_tab

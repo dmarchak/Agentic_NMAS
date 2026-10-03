@@ -75,6 +75,11 @@ STAGES = {
         "golden.capture_preview", "confirmations",
         "n/a: records what the device holds; the apply re-reads it and refuses a moved capture",
         FORWARD, "modules.nsot.repo.save_golden"),
+    # The v2 device page's Capture (7.3): the same job and apply, one device.
+    "device_v2.capture_confirm": Stages(
+        "device_v2.capture_start", "hash",
+        "n/a: records what the device holds; the apply re-reads it and refuses a moved capture",
+        FORWARD, "modules.nsot.repo.save_golden"),
     "templatize.seed_apply": Stages(
         "templatize.seed_preview", "confirmations", NO_DEVICE,
         "n/a: a failed commit puts the file back; a seeded intent is corrected forward",

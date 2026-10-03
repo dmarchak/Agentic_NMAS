@@ -145,6 +145,11 @@ def device(name):
                _neighbours_ctx(ref, dev) if tab == "neighbours" else
                _logs_ctx(ref, dev) if tab == "logs" else
                _netbox_ctx(ref, dev) if tab == "netbox" else _monitoring_ctx(ref, dev))
+    # An action's card opened without script (the menu row's href): drawn in place of the
+    # tab, starting as the row's own request would.
+    ctx["op_card"] = ({"state": "starting", "op": "capture", "host": dev.get("hostname", ""),
+                       "list": ref.name, "back": tab}
+                      if request.args.get("op") == "capture" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -321,3 +326,110 @@ def netbox(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_netbox.html", **_netbox_ctx(ref, dev)))
+
+
+# ---------------------------------------------------------------------------
+# The device's actions on v2 (7.3; the mockup signed off 2026-10-02): each operation's card
+# drawn in place of the tab's content. The preview, confirm and apply are the operation's
+# own (`routes.golden.start_capture_preview`, `apply_captures`); these draw one card.
+# ---------------------------------------------------------------------------
+
+def _back(fields) -> str:
+    """The tab a card returns to when it is cancelled or closed: the one it replaced."""
+    back = (fields.get("back") or "").strip()
+    return back if back in BUILT else "overview"
+
+
+def _named_device(name, list_name):
+    """``(ref, dev, refusal)`` for a WRITE path: the device in the list the card carries
+    (a write path carries its list; only a read derives the active one)."""
+    from modules.nsot import listref
+
+    if not list_name or not listref.exists(list_name):
+        return None, None, _strict(render_template(
+            "v2/_capture.html", c={"state": "refused_list", "host": name,
+                                   "list": list_name}), 400)
+    try:
+        ref, dev = device_page.find_device(name, ref=listref.resolve(list_name))
+    except device_page.NoSuchDevice as exc:
+        return None, None, _strict(render_template(
+            "v2/_capture.html", c={"state": "failed", "host": name, "list": list_name,
+                                   "error": str(exc)}), 404)
+    return ref, dev, None
+
+
+@bp.route("/device/<name>/capture", methods=["GET"])
+def capture(name):
+    """The capture card, starting: drawn in place of the tab, it starts its own read (a
+    POST on load), so the card that waits for the read is the one that asked for it."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_capture.html", c={
+        "state": "starting", "op": "capture", "host": dev.get("hostname", ""),
+        "list": ref.name, "back": _back(request.args)}))
+
+
+@bp.route("/device/<name>/capture/start", methods=["POST"])
+def capture_start(name):
+    """Start reading the device for its capture preview, as a job, and answer at once with
+    the card that waits for it. A READ of the device: nothing is recorded."""
+    from modules.nsot.restore import _devices_of
+    from routes.golden import start_capture_preview
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""))
+    if refusal is not None:
+        return refusal
+    job = start_capture_preview(ref.name, _devices_of(ref.name), [dev], fleet=False)
+    return _strict(render_template("v2/_capture.html", c={
+        "state": "reading", "op": "capture", "host": dev.get("hostname", ""),
+        "list": ref.name, "job": job, "back": _back(request.form)}))
+
+
+@bp.route("/device/<name>/capture/job/<job>", methods=["GET"])
+def capture_job_card(name, job):
+    """The capture card for its preview job: reading, the preview, or why there is none.
+    Re-read when the job announces `capture_preview`."""
+    from modules import device_actions, identity
+    from modules.nsot import capture_job
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    from modules.preview_confirm import confirm_part
+    c = device_actions.capture_card(ref, dev.get("hostname", ""), job, capture_job.get(job),
+                                    viewer=dict(confirm_part(request, "approve"),
+                                                actor=identity.identify(request).actor or ""))
+    c.update(back=_back(request.args), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_capture.html", c=c))
+
+
+@bp.route("/device/<name>/capture/confirm", methods=["POST"])
+def capture_confirm(name):
+    """Record the device's golden, as the verified person, bound to the read the preview
+    showed (`hash`): the apply reads it again and refuses one that moved. The result is
+    drawn in place of the preview."""
+    from modules import device_actions, identity
+    from routes.golden import apply_captures
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""))
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    confirmed = (request.form.get("hash") or "").strip()
+    if not confirmed:
+        return _strict(render_template("v2/_capture.html", c={
+            "state": "refused_hash", "host": host, "list": ref.name}), 400)
+    got = apply_captures(ref.name, {host: confirmed}, fleet=False, acknowledged={},
+                         approvals={})
+    # Who is drawn as having recorded it: the identity the gate verified (the commit's
+    # `Actor:` is written by the apply itself).
+    ident = identity.identify(request)
+    c = device_actions.capture_result_card(ref, host, got, confirmed, ident.actor or "",
+                                           ident.kind or "")
+    from modules.outbound import mask_payload
+    c = mask_payload(c)
+    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_capture.html", c=c))

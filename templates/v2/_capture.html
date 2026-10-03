@@ -1,0 +1,123 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- The device page's Capture (7.3; the mockup signed off 2026-10-02, "Device actions on v2"):
+    one card drawn in place of the tab's content, from modules/device_actions.py. It starts
+    its own read (`starting` POSTs on load), waits for the job's announcement (`reading`),
+    draws the preview with the confirm bound to this read's hash, then the result in place.
+    The read timings are on hover. Cancel and Close put back the tab it replaced. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- if c.state == 'starting' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title"
+         hx-post="{{ url_for('device_v2.capture_start', name=c.host) }}" hx-trigger="load" hx-swap="outerHTML"
+         hx-vals='{{ {"list": c.list, "back": c.back} | tojson }}'>
+  <div class="op-hd"><h2 id="op-title">Capture {{ c.host }} as its golden</h2></div>
+  <div class="op-part"><h3>What</h3><div><p class="op-wait">Starting the read of {{ c.host }}…</p></div></div>
+</section>
+{%- elif c.state == 'reading' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-get="{{ url_for('device_v2.capture_job_card', name=c.host, job=c.job, back=c.back) }}"
+         hx-trigger="nmas:capture_preview from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="op-title">Capture {{ c.host }} as its golden</h2>
+    <div class="op-hd-actions">{{ how('capture') }}{{ close_button('Cancel') }}</div></div>
+  <div class="op-part"><h3>What</h3><div><p class="op-wait">Reading {{ c.host }}'s running configuration now. Nothing is recorded until you confirm.</p></div></div>
+</section>
+{%- elif c.state in ('unknown', 'failed', 'refused_list', 'refused_hash') %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Capture {{ c.host }} {{ badge('Not recorded', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('capture') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+  {%- if c.state == 'unknown' %}This server has no record of that read: it finished more than 30 minutes ago, or the server restarted. Nothing was recorded.
+  {%- elif c.state == 'refused_list' %}Refused: the card names no list this server knows ({{ c.list or 'none given' }}), and a capture records into one list's repository. Nothing was recorded.
+  {%- elif c.state == 'refused_hash' %}Refused: the confirm carried no read to be bound to. Nothing was recorded.
+  {%- else %}Nothing was recorded: {{ c.error }}.{% endif %}</p>
+  {%- if c.state != 'refused_list' %}
+  <p><button type="button" class="btn" data-op="capture" hx-get="{{ url_for('device_v2.capture', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('capture', compact=True, op='capture') }}</p>
+  {%- endif %}</div></div>
+</section>
+{%- elif c.state == 'preview' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Capture {{ c.host }} as its golden</h2>
+    <div class="op-hd-actions">{{ how('capture') }}{{ close_button('Cancel') }}</div></div>
+  <div class="op-part"><h3>What</h3><div>
+    <p>Reads {{ c.host }}'s running configuration now and records it as {{ c.host }}'s golden: one commit, <span class="mono">Source: capture</span>, as you. {{ stamp(c.read_at, 'Read just now', 'read in ' ~ c.read_in) }}</p></div></div>
+  <div class="op-part"><h3>What will not happen</h3><div>
+    <p>Nothing is sent to {{ c.host }}.</p>
+    <p>{% if c.intent.departs %}Intent is not changed: {{ c.host }} still departs from its committed intent, as below, until intent or the device moves.{% else %}Intent is not changed.{% endif %}</p>
+    <p>No baseline is taken: one device is not the fleet.</p></div></div>
+  <div class="op-part"><h3>The difference</h3><div>
+    {%- if not c.read %}
+    <p>{{ c.host }} could not be read, so there is nothing to record: {{ c.error }}</p>
+    {%- elif c.changed %}
+    <p>From {{ c.host }}'s golden now.</p>
+    <pre class="op-diff">{% for l in c.diff %}<span class="{{ 'op-add' if l.startswith('+') else 'op-del' if l.startswith('-') else 'op-ctx' }}">{{ l }}</span>
+{% endfor %}</pre>
+    {%- else %}
+    <p>None: {{ c.host }}'s running configuration equals its golden, so confirming would record nothing.</p>
+    {%- endif %}
+    {%- if c.read %}
+    <p>Against committed intent, {{ c.host }} {{ c.intent.sentence }}.</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>Operands</h3><div>
+    <dl class="op-ops">
+      <dt>Golden now</dt><dd class="mono">{% if c.golden.commit %}{{ c.golden.commit }} · {{ stamp(c.golden.at, c.golden.at[:16] | replace('T', ' ')) }}{% elif c.golden.error %}could not be read: {{ c.golden.error }}{% else %}none committed{% endif %}</dd>
+      <dt>This read</dt><dd class="mono">{{ 'capture ' ~ c.hash if c.hash else 'none: not read' }}</dd>
+      <dt>Committed intent</dt><dd class="mono">{% if c.intent_commit.commit %}host_vars/{{ c.host }}.yml at {{ c.intent_commit.commit }}{% elif c.intent_commit.error %}could not be read: {{ c.intent_commit.error }}{% else %}none committed{% endif %}</dd>
+    </dl></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      {%- for g in c.gates %}
+      <li>{{ badge({'pass': 'pass', 'fail': 'fail', 'at_apply': 'at confirm', 'not_applicable': 'n/a', 'not_reached': 'not reached'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger', 'at_apply': 'info'}.get(g.state, 'muted')) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- if c.acknowledge %}<p class="op-note">{{ c.acknowledge }}: give it on <a href="{{ url_for('manage_device', ip=c.ip) }}">today's device page</a>, where the reason field is built.</p>{% endif %}
+  </div></div>
+  <div class="op-ft">
+    {%- if c.may %}
+    <p class="op-note">Bound to capture {{ c.hash }}: if {{ c.host }} changes before you confirm, nothing is recorded, and the card says so.</p>
+    <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="capture"
+            hx-post="{{ url_for('device_v2.capture_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "hash": c.hash, "back": c.back} | tojson }}'><span class="op-idle">Record {{ c.host }}'s golden</span><span class="op-busy">Reading {{ c.host }} again and recording…</span></button>{{ how('capture', compact=True, op='capture') }}</span>
+    {%- elif c.read and not c.changed and not c.failing %}
+    <p class="op-note">Nothing to confirm: {{ c.host }} matches its golden, so nothing would be recorded.</p>
+    {%- else %}
+    <p class="op-note">Not available: {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}{{ c.host }} could not be read{% endfor %}. Nothing is queued.</p>
+    <span class="op-act"><button type="button" class="btn" data-op="capture" hx-get="{{ url_for('device_v2.capture', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('capture', compact=True, op='capture') }}</span>
+    {%- endif %}
+  </div>
+</section>
+{%- elif c.state == 'result' %}
+<section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">{{ 'Captured' if c.outcome == 'captured' else 'Capture ' ~ c.host }} {{ badge(c.chip, c.level) }}</h2>
+    <div class="op-hd-actions">{{ how('capture') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+    {%- if c.outcome == 'captured' %}{{ c.host }}'s golden is recorded at commit <a class="mono" href="{{ url_for('v2.history_page', device=c.host) }}">{{ c.commit }}</a>, as {{ c.actor }}{{ ' (verified)' if c.verified }}, {{ stamp(c.at, c.at[11:19] ~ ' UTC', 'read again at confirm: capture ' ~ c.confirmed ~ ', unchanged since the preview; ' ~ c.read_in) }}.
+    {%- elif c.outcome == 'unchanged' %}{{ c.host }}'s running configuration still equals its golden: nothing was recorded, and no commit was made. {{ stamp(c.at, 'Measured ' ~ c.at[11:19] ~ ' UTC', c.read_in) }}
+    {%- elif c.outcome == 'moved' %}Nothing was recorded: the read at confirm is capture {{ c.current }}, and you confirmed {{ c.confirmed }}. Nothing was committed.
+    {%- elif c.outcome == 'busy' %}Nothing was recorded: {{ c.reason }}. Nothing is queued.
+    {%- elif c.outcome == 'unread' %}Nothing was recorded: {{ c.host }} could not be read at confirm: {{ c.reason }}.
+    {%- else %}Nothing was recorded: the save refused it: {{ c.reason }}.{% endif %}</p>
+    {%- if c.outcome not in ('captured', 'unchanged') %}
+    <p><button type="button" class="btn" data-op="capture" hx-get="{{ url_for('device_v2.capture', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('capture', compact=True, op='capture') }} to see what {{ c.host }} holds now.</p>
+    {%- endif %}</div></div>
+  {%- if c.outcome in ('captured', 'unchanged') %}
+  <div class="op-part"><h3>Still true</h3><div>
+    {%- if c.intent.departs %}
+    <p>{{ c.host }} {{ c.intent.sentence }}. A golden is a record, not a target: the next deploy would send intent's version.</p>
+    {%- elif c.intent.unknown %}
+    <p>{{ c.host }} {{ c.intent.sentence }}.</p>
+    {%- else %}
+    <p>{{ c.host }} matches its committed intent.</p>
+    {%- endif %}</div></div>
+  {%- if c.intent.departs %}
+  <div class="op-part"><h3>What next</h3><div class="op-next">
+    <div><a class="btn" href="{{ url_for('manage_device', ip=c.ip) }}">Edit intent…</a><span class="muted">to make intent hold what the device holds, in today's device page's editor: the device stays as it is</span></div>
+    <div><a class="btn" data-op="removal" href="{{ url_for('manage_device', ip=c.ip) }}">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}<span class="muted">to take them off the device, on today's device page: intent stays as it is</span></div>
+  </div></div>
+  {%- endif %}
+  <div class="op-ft"><p class="op-note">Kept in History and in the commit; this card goes when you close it or leave the page.</p>
+    <a href="{{ url_for('device_v2.device', name=c.host, tab='history') }}">Open in History</a></div>
+  {%- endif %}
+</section>
+{%- endif %}

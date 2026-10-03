@@ -5,11 +5,16 @@ address and the account the tool signs in as; Actions lists the operations on th
 
 ## Actions {#actions}
 
-Plan a deploy, Capture now, Persist, Rotate the credential, Seed intent, Restore from, and
-Retire. They open on today's device page until the redesign carries each (plan 7.3). How each
-works: [Deploy a change](deploy), [Capture and Save All](capture), [Persist](persist),
-[Rotate a credential](rotate), [Seed intent](seed), [Restore and re-apply a baseline](restore),
-[Retire a device](retire).
+Plan a deploy, and under Actions: Capture, Restore from, Remove lines (Mode B), Seed intent,
+Rotate credential, Persist and Retire. **Capture runs here**: its card takes the place of the
+tab you were on, reads the device, and shows what its golden would become, against the golden
+now and against committed intent, with the checks and the confirm bound to that read; once you
+record it, the same card shows the commit, who and when (the read's timings on hover), what is
+still true against intent, and what to do next. Cancel or Close puts the tab back. The others
+open on today's device page until the redesign carries each (plan 7.3). How each works:
+[Deploy a change](deploy), [Capture and Save All](capture), [Remove lines (Mode B)](removal),
+[Persist](persist), [Rotate a credential](rotate), [Seed intent](seed),
+[Restore and re-apply a baseline](restore), [Retire a device](retire).
 
 ## Overview {#overview}
 

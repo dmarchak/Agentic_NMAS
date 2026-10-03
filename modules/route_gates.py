@@ -119,6 +119,7 @@ GATES = {
     # the old one-click route is gone, because nothing in it asked whether the
     # state being enshrined was the one intended.
     "golden.capture_apply": _g(A, "commits confirmed captures as the approved goldens"),
+    "device_v2.capture_confirm": _g(A, "commits a device's confirmed capture as its golden, from the v2 device page (7.3; the same apply as golden.capture_apply)"),
     "refresh_hostnames": _g(A, "renames devices and records a pending golden rename"),
     "onboard.create": _g(A, "commits a new device's identity and intent", "onboard_device"),
     "netbox_safety.apply_import": _g(A, "writes to NetBox"),
@@ -176,6 +177,7 @@ GATES = {
     # ---- not gated: reads, previews, tests, layout, the schedule's work --
     "deploy.plan": _g(N, "computes a program; sends nothing"),
     "golden.restore_preview": _g(N, "computes a restore program; sends nothing"),
+    "device_v2.capture_start": _g(N, "starts the capture preview's read of one device, from the v2 device page (the same job as golden.capture_preview); records nothing"),
     "golden.capture_preview": _g(N, "reads each device's running config and computes a "
                                     "capture preview; records nothing"),
     "golden.migrate_plan": _g(N, "a dry run"),

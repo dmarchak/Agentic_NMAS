@@ -144,6 +144,10 @@ PAGE_RECORD = {
     # The IP SLA probes (P.9 d4): committed to intent, then the page goes to
     # the scoped Apply, whose preview draws each new probe in the device's
     # program FROM that committed intent; the device's Intent tab re-reads it.
+    # The device page's Capture (7.3): the result drawn in place from the apply's outcome
+    # (the commit, who, the outcome), and the golden read back on the device's History.
+    "device_v2.capture_confirm": ("templates/v2/_capture.html",
+                                  ('id="device-op"', "c.commit", "c.outcome"), "device_v2.history"),
     "v2.ip_sla_commit": ("templates/v2/_apply_preview.html",
                          ('id="apply-preview"', "r.program"), "device_v2.intent"),
 }

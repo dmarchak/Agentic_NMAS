@@ -27,7 +27,10 @@
               // A person acknowledged an event row (modules/acknowledgements.py).
               'acknowledgements',
               // What else moves a Needs attention row (attention.SOURCE_KEYS).
-              'approvals', 'device_state', 'intent', 'inventory', 'pending', 'rolled_back'];
+              'approvals', 'device_state', 'intent', 'inventory', 'pending', 'rolled_back',
+              // A capture preview's reads finished (modules/nsot/capture_job.py): the
+              // device page's Capture card reads its preview (7.3).
+              'capture_preview'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -147,6 +150,7 @@
   function relayInventory() { relay('inventory'); }
   function relayPending() { relay('pending'); }
   function relayRolledBack() { relay('rolled_back'); }
+  function relayCapturePreview() { relay('capture_preview'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -215,6 +219,7 @@
     NMAS.subscribe('inventory', 'v2Inventory', relayInventory);
     NMAS.subscribe('pending', 'v2Pending', relayPending);
     NMAS.subscribe('rolled_back', 'v2RolledBack', relayRolledBack);
+    NMAS.subscribe('capture_preview', 'v2CapturePreview', relayCapturePreview);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */
