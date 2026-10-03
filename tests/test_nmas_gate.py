@@ -151,6 +151,8 @@ def _ci_suite_args():
     text = open(os.path.join(ROOT, ".github", "workflows", "ci.yml"), encoding="utf-8").read()
     step = text[text.index("scripts/nmas-test", text.index("name: Tests")):]
     cmd = " ".join(step[:step.index("\n\n")].split())
+    # The job's shard of the files is compared on its own (test_each_job_is_a_gate_command).
+    cmd = re.sub(r"\$\(python scripts/nmas-shards \$\{\{ matrix\.shard \}\}\)", "", cmd)
     env = text[text.index("name: Tests"):text.index("scripts/nmas-test", text.index("name: Tests"))]
     return cmd.split()[1:], dict(re.findall(r"(\w+): \"?([\w.]+)\"?", env.split("env:")[1]))
 
@@ -172,6 +174,37 @@ def test_the_default_suite_is_cis_command():
             assert a in suite, (a, gate.SUITE)
     for k, v in env.items():
         assert f"{k}={v}" in gate.SUITE, (k, v)
+
+
+def test_each_job_is_a_gate_command():
+    """CI runs the suite as a matrix of jobs, each its shard (`scripts/nmas-shards`); the gate
+    runs the SAME shards, each with the same selector, at once (2026-10-03, C349's parity)."""
+    import yaml
+    gate = _gate_module()
+    doc = yaml.safe_load(open(os.path.join(ROOT, ".github", "workflows", "ci.yml"),
+                              encoding="utf-8"))
+    job = doc["jobs"]["test"]
+    assert tuple(job["strategy"]["matrix"]["shard"]) == gate.SHARDS
+    assert job["strategy"].get("fail-fast") is False, "every job reports, a failure or not"
+    tests = next(s for s in job["steps"] if str(s.get("name", "")).startswith("Tests"))
+    assert "$(python scripts/nmas-shards ${{ matrix.shard }})" in tests["run"]
+    assert "scripts/nmas-shards {shard})" in gate.SUITE
+    for s in gate.SHARDS:
+        assert gate.SUITE.format(py="P", shard=s).endswith(f"$(P scripts/nmas-shards {s})")
+    once = [s for s in job["steps"] if s.get("if") == "matrix.shard == 'a'"]
+    assert {s["name"][:20] for s in once} == {"No removed definitio", "Every host-installed"}
+
+
+def test_the_three_jobs_run_at_once_and_each_is_judged(repo, tmp_path, monkeypatch):
+    """Each job's result file is its own and is judged alone: one job failing refuses, naming
+    it, whatever the others said."""
+    gate = _gate_module()
+    runs = {s: (f"echo '{'1 failed, ' if s == 'b' else ''}3 passed in 0.10s'",
+                str(tmp_path / f"{s}.out")) for s in gate.SHARDS}
+    codes = gate.run_all_to_files(runs, str(repo), dict(os.environ))
+    assert set(codes) == set(gate.SHARDS)
+    whys = {s: gate.verdict(path, codes[s]) for s, (_c, path) in runs.items()}
+    assert whys["browser"] is None and whys["a"] is None and whys["b"]
 
 
 def test_a_browser_test_skipped_in_the_suite_refuses(repo, tmp_path):

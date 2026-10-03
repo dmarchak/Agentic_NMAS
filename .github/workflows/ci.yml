@@ -27,6 +27,15 @@ concurrency:
 
 jobs:
   test:
+    # Three jobs at once (the operator, 2026-10-03: a run took 6.5 to 9 minutes, 93% of it the
+    # tests): the browser tests' files and two more shares of the rest, each about a third of
+    # the measured work (scripts/nmas-shards, tests/shard_weights.json). The gate runs the
+    # same three commands (C349). Each job reports its own coverage; none gates on it.
+    name: test (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [browser, a, b]
     runs-on: ubuntu-24.04
     # From a measurement, not a round number (the operator, 2026-09-28), and
     # RE-DERIVED when it moves (2026-10-01): the tests step grew from 207 s
@@ -47,6 +56,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12.3"   # the host's interpreter
+          # The downloads, keyed on the exact sets installed: the install stays --no-deps.
+          cache: pip
+          cache-dependency-path: |
+            requirements.lock
+            requirements-ci.txt
+            requirements-test.txt
 
       # --no-deps: EXACTLY the host's set. PyPI's metadata refuses combinations
       # the host really runs (netmiko 4.3.0 declares textfsm>=1.1.3; the host
@@ -87,8 +102,11 @@ jobs:
         run: >
           scripts/nmas-test -q -p no:cacheprovider -n auto
           --cov=modules --cov=routes --cov=app --cov-report=term
+          $(python scripts/nmas-shards ${{ matrix.shard }})
 
+      # The two range checks read the pushed range, not the tests: once, in job a.
       - name: No removed definition is still called (R2)
+        if: matrix.shard == 'a'
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
@@ -106,6 +124,7 @@ jobs:
       # what the host needs: Host-Step or Host-Step-None (2026-09-30). The
       # commit-msg hook refuses it locally; this refuses a bypass.
       - name: Every host-installed change says what the host needs
+        if: matrix.shard == 'a'
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}

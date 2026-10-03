@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Which test files a CI job runs: `nmas-shards <browser|a|b>` prints them, space-separated.
+
+CI runs the suite as three jobs at once (the operator, 2026-10-03: a run took 6.5 to 9
+minutes, 93% of it the tests): the BROWSER job runs every file that starts a real browser
+(`= browser.available()`, the population tests/test_nmas_gate.py reads), and the rest are
+shared among the three jobs by each file's measured seconds (tests/shard_weights.json), the
+heaviest first, each to the lightest job. A file the weights do not know weighs their median,
+so a new file is placed the moment it exists and the same way every time. The gate runs the
+same three commands (C349: argument for argument).
+"""
+
+import json
+import os
+import re
+import statistics
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+TESTS = os.path.join(ROOT, "tests")
+SHARDS = ("browser", "a", "b")
+_BROWSER = re.compile(r"=\s*browser\.available\(\)")
+
+
+def test_files() -> list:
+    return sorted(f"tests/{n}" for n in os.listdir(TESTS)
+                  if n.startswith("test_") and n.endswith(".py"))
+
+
+def uses_a_browser(path: str) -> bool:
+    with open(os.path.join(ROOT, path), encoding="utf-8") as fh:
+        return bool(_BROWSER.search(fh.read()))
+
+
+def weights() -> dict:
+    with open(os.path.join(TESTS, "shard_weights.json"), encoding="utf-8") as fh:
+        return json.load(fh)["seconds"]
+
+
+def assign() -> dict:
+    """``{shard: [file, ...]}``: every test file in exactly one shard."""
+    files = test_files()
+    out = {"browser": [f for f in files if uses_a_browser(f)], "a": [], "b": []}
+    w = weights()
+    median = statistics.median(w.values()) if w else 1.0
+    rest = sorted((f for f in files if f not in out["browser"]),
+                  key=lambda f: (-w.get(f, median), f))
+    # The browser shard starts with its browser files and takes its share of the rest, so the
+    # three jobs end near the same time.
+    load = {"browser": sum(w.get(f, median) for f in out["browser"]), "a": 0.0, "b": 0.0}
+    for f in rest:
+        shard = min(SHARDS, key=lambda s: (load[s], SHARDS.index(s)))
+        out[shard].append(f)
+        load[shard] += w.get(f, median)
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 1 or argv[0] not in SHARDS:
+        sys.stderr.write(f"usage: nmas-shards <{'|'.join(SHARDS)}>\n")
+        return 2
+    print(" ".join(assign()[argv[0]]))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

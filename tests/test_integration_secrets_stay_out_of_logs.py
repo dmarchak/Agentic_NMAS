@@ -82,6 +82,16 @@ def _sent(requests_seen, planted):
     return sorted({p for p in planted if p in blob})
 
 
+@pytest.fixture(autouse=True)
+def _no_backoff(monkeypatch):
+    """The clients retry a 500 and a refused connection with a backoff (urllib3's `Retry`,
+    0.3 s and 0.5 s factors): every retry still runs and logs here, with no wait between them.
+    What is measured is what reaches a log or a message, never the clock (measured
+    2026-10-03: the waits were 37 s of this file's 38)."""
+    from urllib3.util.retry import Retry
+    monkeypatch.setattr(Retry, "get_backoff_time", lambda self: 0)
+
+
 @pytest.fixture
 def planted(tmp_path, monkeypatch):
     """A settings file of the test's own, every integration secret planted in it."""

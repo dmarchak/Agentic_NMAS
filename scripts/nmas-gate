@@ -46,9 +46,13 @@ CI_WORKERS = 4
 #: from ca52963 to 64d4377 they ran only in a separate clean process here, and CI was red for
 #: five commits on a failure no local run could meet (a Socket.IO test client earlier in the
 #: same worker, 2026-10-03).
+#: CI runs it as three jobs at once (2026-10-03), each its shard of the files
+#: (`scripts/nmas-shards`): the gate runs the SAME three commands, at once, each with CI's
+#: workers, so each job's company in a worker is the one CI's has (C349).
+SHARDS = ("browser", "a", "b")
 SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 "
          f"scripts/nmas-test -q -p no:cacheprovider -n {CI_WORKERS} --cov=modules --cov=routes "
-         "--cov=app --cov-report= -rEfs")
+         "--cov=app --cov-report= -rEfs $({py} scripts/nmas-shards {shard})")
 BROWSER_DIR = os.environ.get("NMAS_GATE_BROWSER_DIR",
                              os.path.expanduser("~/.local/share/nmas-browser"))
 #: The words tests/browser.py's skip says when no browser can start.
@@ -121,6 +125,25 @@ def run_to_file(cmd, repo, path, env=None):
     return rc
 
 
+def run_all_to_files(runs, repo, env):
+    """Run every ``{name: (cmd, path)}`` at once, each to its own file (each removed first:
+    step 3's rule), and wait for all; ``{name: exit code}``."""
+    procs = {}
+    for name, (cmd, path) in runs.items():
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        fh = open(path, "w", encoding="utf-8")
+        procs[name] = (subprocess.Popen(cmd, shell=True, cwd=repo, stdout=fh,
+                                        stderr=subprocess.STDOUT, env=env), fh)
+    codes = {}
+    for name, (proc, fh) in procs.items():
+        codes[name] = proc.wait()
+        fh.close()
+    return codes
+
+
 def last_line(path):
     lines = [ln for ln in open(path, encoding="utf-8", errors="replace").read().splitlines()
              if ln.strip()]
@@ -163,15 +186,30 @@ def main(argv=None):
         refuse("the stage guard", (guard.stderr or guard.stdout).strip()[-400:])
 
     suite_out = os.path.join(gitdir, "nmas-gate-suite.out")
-    say("3. the suite, CI's command in CI's interpreter, the browser tests among it")
-    cmd = os.environ.get("NMAS_GATE_SUITE") or SUITE.format(py=shlex.quote(a.python))
+    say("3. the suite, CI's three commands in CI's interpreter, at once, the browser tests "
+        "among them")
     path = os.pathsep.join([BROWSER_DIR, os.path.join(BROWSER_DIR, "firefox"),
                             os.environ.get("PATH", "")])
-    rc = run_to_file(cmd, repo, suite_out, env=dict(os.environ, PATH=path))
-    why = verdict(suite_out, rc) or browser_skipped(suite_out)
-    say(f"4. the suite: {last_line(suite_out) if os.path.isfile(suite_out) else '(no output)'}")
-    if why:
-        refuse("the suite", why, suite_out)
+    env = dict(os.environ, PATH=path)
+    if os.environ.get("NMAS_GATE_SUITE"):           # the gate's own tests: one stand-in run
+        runs = {"suite": (os.environ["NMAS_GATE_SUITE"], suite_out)}
+    else:
+        runs = {s: (SUITE.format(py=shlex.quote(a.python), shard=s),
+                    os.path.join(gitdir, f"nmas-gate-suite-{s}.out")) for s in SHARDS}
+    codes = run_all_to_files(runs, repo, env)
+    whys, lines = [], []
+    for name, (_cmd, out) in runs.items():
+        why = verdict(out, codes[name]) or browser_skipped(out)
+        if why:
+            whys.append((name, why, out))
+        lines.append((f"{name}: " if len(runs) > 1 else "")
+                     + (last_line(out) if os.path.isfile(out) else "(no output)"))
+    result_line = "; ".join(lines)
+    say(f"4. the suite: {result_line}")
+    if whys:
+        name, why, out = whys[0]
+        refuse("the suite", (f"job {name}: " if len(runs) > 1 else "") + why
+               + (f" (and {len(whys) - 1} more)" if len(whys) > 1 else ""), out)
 
     browser_line = ""
     if a.browser:
@@ -189,7 +227,7 @@ def main(argv=None):
     if not first_line().startswith(a.expect):
         refuse("the message", f"its first line changed during the run to {first_line()!r}")
     body = open(a.message, encoding="utf-8").read()
-    result = last_line(suite_out) + (f"; browser tests: {browser_line}" if browser_line else "")
+    result = result_line + (f"; browser tests: {browser_line}" if browser_line else "")
     body = body.replace("@SUITE@", result)
     final = os.path.join(gitdir, "nmas-gate-message.txt")
     with open(final, "w", encoding="utf-8") as fh:
