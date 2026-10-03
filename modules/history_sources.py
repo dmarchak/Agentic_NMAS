@@ -642,6 +642,26 @@ def breakglass(ctx):
                                      ("Written to", r.get("path")), ("Via", r.get("via"))]))
         if len(events) >= ctx["limit"]:
             break
+    got = bg.checks(config.DATA_DIR)
+    if got["state"] == "unreadable":
+        return _out(events, errors=[f"the break-glass checks could not be read: {got.get('error')}"])
+    for r in reversed(got["rows"][-ctx["limit"]:]):
+        held = list(r.get("devices") or {})
+        if r.get("list") != ctx["ref"].name or not any(_mine(ctx, d) for d in held):
+            continue
+        bad = sorted(d for d, st in (r.get("devices") or {}).items() if st in ("differs", "missing"))
+        events.append(_event(r.get("at"), "breakglass",
+                             "Break-glass file checked: " + (f"{len(bad)} of {len(held)} not current"
+                                                            if bad else "every device current"),
+                             held, who=r.get("actor", ""),
+                             detail=(f"the file made {r.get('created') or '(no date)'}; the key "
+                                     f"{r.get('key', '?')}"
+                                     + (f"; it cannot recover {', '.join(bad)}" if bad else "")),
+                             marks=["not current"] if bad or r.get("key") != "current" else [],
+                             outcome="not_intact" if bad or r.get("key") != "current" else "",
+                             record=[("File sha256", r.get("sha256")), ("Made", r.get("created")),
+                                     ("Key", r.get("key")),
+                                     ("Not current", ", ".join(bad))]))
     return _out(events)
 
 

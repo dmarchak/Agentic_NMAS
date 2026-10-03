@@ -1,0 +1,43 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- "Check a break-glass file" (board 7, C; signed off 2026-10-03): the copy a person keeps,
+    opened IN MEMORY with its passphrase (breakglass_export.check_file) and compared, by digest,
+    with the credentials in use: per device and for the key. Never written, logged or kept;
+    recorded: who, when, the file's sha256 and the verdict, no credential. -#}
+{%- set WORDS = {'current': ('current', 'ok'), 'differs': ('not current', 'danger'),
+                 'missing': ('not in the file', 'danger'), 'left': ('no longer managed', 'muted')} -%}
+<section class="op-card{{ ' op-danger' if c and (not c.ok or c.counts.get('differs') or c.counts.get('missing') or c.key != 'current') else ' op-ok' if c and c.ok else '' }}" id="bg-check" aria-labelledby="bg-check-title">
+  <div class="op-hd"><h2 id="bg-check-title">Check a break-glass file{% if c and c.ok %} {% set bad = (c.counts.get('differs', 0) + c.counts.get('missing', 0)) %}{{ badge((bad ~ ' of ' ~ (c.devices | length) ~ ' not current') if bad else 'every device current', 'danger' if bad else 'ok') }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('breakglass-export', 'check') }}<a class="btn" href="{{ url_for('v2.credentials', list=list_name) }}">Close</a></div></div>
+  {%- if c and c.ok %}
+  <div class="op-part"><h3>Opened</h3><div>
+    <p>{{ filename or 'The file' }}{% if c.created %}, made {{ stamp(c.created) }}{% endif %}, sha256 <span class="mono">{{ c.sha256[:4] }}…{{ c.sha256[-4:] }}</span>, sealed for {{ c.file_list }}: opened in memory with its passphrase, compared, and discarded.</p></div></div>
+  <div class="op-part"><h3>The verdict</h3><div>
+    <table class="table bg-verdict">
+      <thead><tr><th scope="col">Device</th><th scope="col">Credential in the file</th></tr></thead>
+      <tbody>
+        {%- for d in c.devices if d.state != 'current' %}{% set w = WORDS.get(d.state, (d.state, 'muted')) %}
+        <tr><td class="mono">{{ d.device }}</td><td>{{ badge(w[0], w[1]) }}{% if d.state == 'differs' %} <span class="muted">the file holds an older credential: rotated since it was made</span>{% elif d.state == 'missing' %} <span class="muted">managed now, and not in the file</span>{% endif %}</td></tr>
+        {%- endfor %}
+        {%- set ok_devices = c.devices | selectattr('state', 'equalto', 'current') | map(attribute='device') | list %}
+        {%- if ok_devices %}<tr><td class="mono">{{ ok_devices | join(', ') }}</td><td>{{ badge('current', 'ok') }}</td></tr>{% endif %}
+        <tr><td>The key</td><td>{{ badge({'current': 'current', 'differs': 'not the key in use', 'absent': 'not in the file'}.get(c.key, c.key), 'ok' if c.key == 'current' else 'danger') }}{% if c.key_fingerprint %} <span class="muted mono">{{ c.key_fingerprint }}</span>{% endif %}</td></tr>
+      </tbody>
+    </table>
+    {%- set cannot = c.devices | selectattr('state', 'in', ['differs', 'missing']) | map(attribute='device') | list %}
+    {%- if cannot or c.key != 'current' %}
+    <p>This copy cannot recover {{ (cannot | join(', ')) if cannot else 'the stored secrets: its key is not the one in use' }}. <a data-op="breakglass-export" href="{{ url_for('v2.credentials', list=list_name, open='export') }}">Export the record again…</a>{{ how('breakglass-export', compact=True, op='the export') }}</p>
+    {%- else %}<p>This copy recovers every device in {{ list_name }} and the stored secrets.</p>{% endif %}
+    {%- if not c.recorded %}<p class="bg-refused">This check was NOT recorded: its record could not be written.</p>{% endif %}</div></div>
+  {%- else %}
+  {%- if c %}<div class="op-part"><h3>Not checked</h3><div><p class="bg-refused">{{ c.error[0] | upper }}{{ c.error[1:] }}</p></div></div>{% endif %}
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('v2.credentials_check') }}" hx-post="{{ url_for('v2.credentials_check') }}" hx-encoding="multipart/form-data" hx-target="#bg-check" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ list_name }}">
+    <div class="op-part"><h3>The file</h3><div class="bg-pass">
+      <label><span class="muted small">The record you keep (.bg)</span><input type="file" name="file" accept=".bg,application/octet-stream" required></label>
+      <label><span class="muted small">Its passphrase</span><input type="password" name="passphrase" autocomplete="off" required></label>
+      <p class="muted small">The tool opens it in memory, compares each credential with the one in use now, and discards both. Recorded: who, when, the file's sha256, and the verdict per device; no credential.</p></div></div>
+    <div class="op-ft"><p class="op-note">Nothing on a device or in the stores changes.</p>
+      <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="breakglass-export"><span class="op-idle">Check it</span><span class="op-busy">Opening it in memory and comparing…</span></button>{{ how('breakglass-export', 'check', compact=True, op='the check') }}</span></div>
+  </form>
+  {%- endif %}
+</section>

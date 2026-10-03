@@ -330,6 +330,7 @@ def credentials():
            "open": request.args.get("open", "")}
     if ctx["known"] and ctx["open"] == "export":
         ctx.update(_breakglass_export_ctx(name))
+    ctx["check"] = ctx["known"] and ctx["open"] == "check"
     return _page("v2/credentials.html", active_nav="credentials", **ctx)
 
 
@@ -345,6 +346,46 @@ def credentials_export():
         return _strict(render_template("v2/_breakglass_refused.html",
                                        why=f"No list is named {name!r}: nothing to export.")), 404
     return _strict(render_template("v2/_breakglass_export.html", **_breakglass_export_ctx(name)))
+
+
+@bp.route("/credentials/check", methods=["GET"])
+def credentials_check_form():
+    """"Check a break-glass file" (board 7, C), opened in place: a file and its passphrase."""
+    from flask import request
+
+    from modules.nsot import listref
+
+    name = _credentials_list(request)
+    if not listref.exists(name):
+        return _strict(render_template("v2/_breakglass_refused.html",
+                                       why=f"No list is named {name!r}: nothing to check.")), 404
+    return _strict(render_template("v2/_breakglass_check.html", list_name=name, c=None))
+
+
+@bp.route("/credentials/check", methods=["POST"])
+def credentials_check():
+    """Open the kept file IN MEMORY, compare each credential and the key with the ones in use,
+    record who, when, the file's sha256 and the verdict, and draw the verdict in place. The
+    passphrase and the file leave in nothing this route writes or answers."""
+    from flask import request
+
+    from modules import identity
+    from modules.breakglass_export import check_file
+    from modules.nsot import listref
+
+    name = (request.form.get("list") or "").strip()
+    if not listref.exists(name):
+        return _strict(render_template("v2/_breakglass_refused.html", why=(
+            f"No list is named {name!r}: nothing was opened."))), 404
+    upload = request.files.get("file")
+    blob = upload.read() if upload else b""
+    actor = identity.identify(request).actor
+    out = check_file(name, blob, request.form.get("passphrase") or "", actor=actor)
+    blob = None
+    log.info("breakglass: %s checked a file for %s: %s", actor, name,
+             out.get("counts") if out.get("ok") else f"refused at {out.get('stage')}")
+    return _strict(render_template("v2/_breakglass_check.html", list_name=name, c=out,
+                                   filename=(upload.filename if upload else "")))
 
 
 @bp.route("/credentials/intact", methods=["POST"])

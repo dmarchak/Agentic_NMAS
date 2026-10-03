@@ -89,6 +89,34 @@ platform, list and container. Beside them: the application key, a short written 
 procedure, and when the record was made. Anyone holding the file and the passphrase can read
 every one of these, so keep the two apart.
 
+## Check a break-glass file {#check}
+
+The copy you keep is the only one, and the host never sees it. **Check a break-glass file…**,
+on Credentials and on the export's result, opens the copy here and says whether it still
+recovers every device. You choose the file and type its passphrase. Then:
+
+1. **The file is opened in memory** (`open`). Read: the file you chose, and its passphrase.
+   Sent: nothing. Recorded: nothing yet. A file that is not a break-glass record, a wrong
+   passphrase, or a file sealed for another list is refused, naming why, and nothing is
+   compared.
+2. **Each credential is compared** (`compare`). Read: the list's credentials in use, decrypted
+   in memory. Sent: nothing. Recorded: nothing yet. The comparison is by salted digest, as job
+   health compares, and no value moves.
+3. **The verdict is recorded** (`record`). Read: nothing. Sent: nothing. Recorded: who, when,
+   the file's sha256, when it was made, and the verdict per device and for the key; never a
+   credential. The opened file is discarded.
+
+Each device in the verdict reads one of these:
+
+- **current:** the file recovers it;
+- **not current:** rotated since the file was made;
+- **not in the file:** managed now, and absent from the file;
+- **no longer managed.**
+
+The key reads **current** when it is the key in use. A copy that cannot recover a device, or
+holds another key, says so in danger, with **Export the record again…**. Each check is a row in
+History.
+
 ## What it does not do {#not-done}
 
 - It never writes the file to the host's disk: built, sealed and verified in memory, then

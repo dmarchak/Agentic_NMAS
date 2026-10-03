@@ -309,3 +309,136 @@ def test_a_real_browser_says_bytes_altered_on_the_way_are_not_intact(page, monke
             browser.close_socketio_sessions()
     rows = [json.loads(l) for l in (page["dir"] / bg.INTACT_LOG).read_text().splitlines()]
     assert rows[-1]["ok"] is False and rows[-1]["browser_sha256"] != rows[-1]["sha256"]
+
+
+class TestCheckABreakglassFile:
+    """Board 7, C: the copy a person keeps, opened in memory with its passphrase and compared by
+    digest with the credentials in use; recorded with its verdict, never a value."""
+
+    def _file(self, lab):
+        import base64
+        d = _export(lab).get_json()
+        return base64.b64decode(d["file"]), d
+
+    def _check(self, lab, blob, passphrase=PASS, list_name=LIST, name="kept.bg"):
+        import io
+        r = lab["client"].post("/v2/credentials/check", data={
+            "list": list_name, "passphrase": passphrase, "file": (io.BytesIO(blob), name)},
+            content_type="multipart/form-data")
+        return r, r.get_data(as_text=True)
+
+    def _rows(self, lab):
+        path = lab["dir"] / bg.CHECK_LOG
+        return [json.loads(l) for l in path.read_text().splitlines()] if path.exists() else []
+
+    def test_a_current_copy_recovers_every_device(self, page):
+        blob, d = self._file(page)
+        r, html = self._check(page, blob)
+        assert r.status_code == 200 and "every device current" in html and "op-ok" in html
+        assert "This copy recovers every device in Lab and the stored secrets" in html
+        assert d["sha256"][:4] in html
+        row = self._rows(page)[-1]
+        assert row["devices"] == {"r1": "current", "s1": "current"} and row["key"] == "current"
+        assert row["sha256"] == d["sha256"]
+        leaked = [v for v in VALUES + [PASS] if v in html + json.dumps(row)]
+        assert not leaked, "no value and no passphrase in the answer or the record"
+
+    def test_a_rotation_since_is_named_and_in_danger(self, page, monkeypatch):
+        from modules import breakglass_export as BE
+        blob, _d = self._file(page)
+        rotated = [dict(x) for x in DEVICES]
+        rotated[0]["password"] = "R1-Rotated-Value-55"
+        monkeypatch.setattr(BE, "list_devices", lambda ln: [dict(x) for x in rotated])
+        _r, html = self._check(page, blob)
+        assert "1 of 2 not current" in html and "op-danger" in html
+        assert "This copy cannot recover r1" in html and "Export the record again…" in html
+        assert self._rows(page)[-1]["devices"]["r1"] == "differs"
+
+    def test_a_file_holding_another_key_cannot_recover_the_stored_secrets(self, page):
+        from cryptography.fernet import Fernet
+        other = bg.seal(bg.build_payload(DEVICES, list_name=LIST, fernet_key=Fernet.generate_key()),
+                        PASS)
+        _r, html = self._check(page, other)
+        assert "not the key in use" in html and "op-danger" in html
+        assert "This copy cannot recover the stored secrets" in html
+        assert self._rows(page)[-1]["key"] == "differs"
+
+    @pytest.mark.parametrize("case", ["passphrase", "other_list", "not_a_record", "too_big"])
+    def test_what_cannot_be_checked_is_refused_naming_why(self, page, case):
+        blob, _d = self._file(page)
+        if case == "passphrase":
+            r, html = self._check(page, blob, passphrase="not the passphrase at all")
+            want = "the passphrase does not open this record"
+        elif case == "other_list":
+            other = bg.seal(bg.build_payload(DEVICES, list_name="Other", fernet_key=page["key"]),
+                            PASS)
+            r, html = self._check(page, other)
+            want = "this file is sealed for other, not lab"
+        elif case == "not_a_record":
+            r, html = self._check(page, b"just some bytes")
+            want = "not a break-glass record"
+        else:
+            r, html = self._check(page, b"x" * (2 * 1024 * 1024 + 1))
+            want = "more than a break-glass record"
+        assert r.status_code == 200 and want in html.lower() and "nothing was" in html.lower()
+        assert 'name="file"' in html, "the form stays to try again"
+        assert not self._rows(page), "nothing compared, nothing recorded"
+        assert "not the passphrase at all" not in html
+
+    def test_it_opens_from_the_record_the_page_and_the_exports_result(self, page):
+        _r, html = _get(page, f"/v2/credentials?list={LIST}")
+        assert 'hx-get="/v2/credentials/check?list=Lab"' in html
+        _r, html = _get(page, f"/v2/credentials?list={LIST}&open=check")
+        assert 'id="bg-check"' in html and 'name="passphrase"' in html
+        blob, d = self._file(page)
+        html = page["client"].post("/v2/credentials/intact", data={
+            "list": LIST, "sha256": d["sha256"], "browser_sha256": d["sha256"]}).get_data(as_text=True)
+        assert 'hx-get="/v2/credentials/check?list=Lab"' in html
+
+    def test_history_has_the_check(self, page):
+        from modules import history_sources as HS
+        blob, _d = self._file(page)
+        self._check(page, blob)
+        ref = type("Ref", (), {"name": LIST})()
+        got = HS.breakglass({"ref": ref, "device": "", "limit": 30, "since": None,
+                             "members": None})
+        whats = [e["what"] for e in got["events"]]
+        assert "Break-glass file checked: every device current" in whats
+
+
+def test_a_real_browser_checks_a_kept_file(page, tmp_path):
+    """The form in a real browser: choose the file, type its passphrase, Check it; the verdict
+    in place."""
+    import base64
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    import pathlib
+    import tempfile
+    # Where the browser can read it (a snap Firefox has its own /tmp): beside its profile.
+    where = pathlib.Path(tempfile.mkdtemp(dir=browser._profile_parent(), prefix="nmas-upload-"))
+    kept = where / "kept.bg"
+    kept.write_bytes(base64.b64decode(_export(page).get_json()["file"]))
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url(f"/v2/credentials?list={LIST}&open=check"))
+            b.wait_for("return document.querySelector('#bg-check input[name=file]')")
+            el = b._call("POST", f"/session/{b.session}/element",
+                         {"using": "css selector", "value": "#bg-check input[name=file]"})
+            import urllib.error
+            try:
+                b._call("POST", f"/session/{b.session}/element/{next(iter(el.values()))}/value",
+                        {"text": str(kept)})
+            except urllib.error.HTTPError as exc:
+                raise AssertionError(exc.read()[:400])
+            b.js("document.querySelector('#bg-check input[name=passphrase]').value = arguments[0];", PASS)
+            b.click("#bg-check .op-confirm")
+            b.wait_for("return /every device current/.test(document.querySelector('#bg-check')"
+                       ".textContent)", 20)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+            import shutil
+            shutil.rmtree(where, ignore_errors=True)

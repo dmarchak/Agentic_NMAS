@@ -514,6 +514,34 @@ def currency(last: dict, now_digests: dict, verdict: dict = None) -> dict:
     return {"state": "stale" if stale else "current", "stale": stale, "intact": intact}
 
 
+#: Each check of a kept file (board 7, C): who, when, the file's sha256 and the verdict per
+#: device and for the key. Never a value: the file is opened in memory and discarded.
+CHECK_LOG = "breakglass_checks.jsonl"
+
+
+def record_check(data_dir: str, *, list_name: str, actor: str, sha256: str, created: str,
+                 devices: dict, key: str, at: float = None) -> dict:
+    from modules.config import open_secure
+
+    row = {"at": at if at is not None else time.time(), "list": list_name, "actor": actor,
+           "sha256": sha256, "created": created, "devices": devices, "key": key}
+    with open_secure(os.path.join(data_dir, CHECK_LOG), "a") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    return row
+
+
+def checks(data_dir: str) -> dict:
+    """``{"state", "rows"}`` (oldest first); absent and unreadable differ."""
+    path = os.path.join(data_dir, CHECK_LOG)
+    if not os.path.exists(path):
+        return {"state": "absent", "rows": []}
+    try:
+        return {"state": "ok", "rows": [json.loads(line) for line in open(path, encoding="utf-8")
+                                         if line.strip()]}
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "rows": [], "error": str(exc)}
+
+
 def last_exports(data_dir: str) -> dict:
     """``{"state": absent|unreadable|ok, "by_list": {list: newest row}}``.
     Absent and unreadable are different answers (the settings erasure)."""

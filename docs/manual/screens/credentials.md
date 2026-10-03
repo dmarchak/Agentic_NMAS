@@ -31,7 +31,9 @@ gives the last export: when, by whom, how many devices, the key's fingerprint an
 sha256, and whether the browser confirmed the download arrived intact.
 
 **Export the record…** opens the export on this page. How it works:
-[Export the break-glass record](breakglass-export).
+[Export the break-glass record](breakglass-export). **Check a break-glass file…** opens the
+copy you keep, here, in memory, and says device by device whether it still recovers them:
+[Check a break-glass file](breakglass-export#check).
 
 ## Where a credential comes from {#what-it-is-for}
 

@@ -20,9 +20,9 @@ import os
 import time
 
 from modules.breakglass import (MIN_PASSPHRASE, BreakglassError, build_payload,
-                                check_key_opens, describe, digests_of, escrowed_key,
-                                key_fingerprint, live_ciphertexts, record_export, seal,
-                                unseal)
+                                check_key_opens, compare, describe, digests_of, escrowed_key,
+                                key_fingerprint, live_ciphertexts, record_check, record_export,
+                                seal, unseal)
 
 log = logging.getLogger(__name__)
 
@@ -209,3 +209,63 @@ def export_in_memory(list_name: str, passphrase: str, confirm: str, confirmed: s
             "verified": {"devices": len(devices), "key_fingerprint": key_fingerprint(key),
                          "key_opens": f"{escrow_check['opened']} of {escrow_check['total']}"},
             "plan": plan}
+
+
+#: A sealed record of a list is a few kilobytes; anything larger is not one.
+MAX_CHECK_BYTES = 2 * 1024 * 1024
+
+
+def check_file(list_name: str, blob: bytes, passphrase: str, *, actor: str) -> dict:
+    """"Check a break-glass file" (board 7, C): open a kept file IN MEMORY with its passphrase
+    and say, per device and for the key, whether it holds what is in use now. Compared by
+    digest; no value leaves this function, and the opened payload is dropped before it returns.
+    Recorded: who, when, the file's sha256 and the verdict (`breakglass.record_check`).
+
+    ``{ok, sha256, created, file_list, devices: [{device, state}], key, counts}`` or
+    ``{ok: False, stage, error}``; the passphrase appears in no error."""
+    def refused(stage, why):
+        return {"ok": False, "stage": stage, "error": _scrub(why, passphrase)}
+
+    if not blob:
+        return refused("file", "no file was chosen. Nothing was opened.")
+    if len(blob) > MAX_CHECK_BYTES:
+        return refused("file", f"the file is {len(blob)} bytes, more than a break-glass record "
+                                f"({MAX_CHECK_BYTES} at most). Nothing was opened.")
+    sha = hashlib.sha256(blob).hexdigest()
+    try:
+        payload = unseal(blob, passphrase)
+    except BreakglassError as exc:
+        return refused("open", f"{exc} Nothing was compared.")
+    try:
+        created = str(payload.get("created", ""))
+        file_list = str(payload.get("list_name", ""))
+        if file_list and file_list != list_name:
+            return refused("list", f"this file is sealed for {file_list}, not {list_name}: open "
+                                    f"Credentials for {file_list} to check it. Nothing was compared.")
+        in_file = digests_of(payload.get("devices") or [])
+        file_key = describe(payload)["key_fingerprint"]
+    finally:
+        payload = None
+    try:
+        now = digests_of(list_devices(list_name))
+    except BreakglassError as exc:
+        return refused("compare", f"{exc}. Nothing was compared.")
+    key = live_key()
+    live = key_fingerprint(key) if key else ""
+    key_state = ("absent" if not file_key else "current" if file_key == live else "differs")
+    rows = compare(in_file, now)
+    verdict = {r["device"]: r["state"] for r in rows}
+    try:
+        from modules.config import DATA_DIR
+        record_check(DATA_DIR, list_name=list_name, actor=actor, sha256=sha, created=created,
+                     devices=verdict, key=key_state)
+        recorded = True
+    except OSError as exc:
+        recorded = False
+        log.error("breakglass: a file check was not recorded (%s)", exc)
+    counts = {}
+    for r in rows:
+        counts[r["state"]] = counts.get(r["state"], 0) + 1
+    return {"ok": True, "sha256": sha, "created": created, "file_list": file_list or list_name,
+            "devices": rows, "key": key_state, "key_fingerprint": file_key, "counts": counts,
+            "recorded": recorded}
