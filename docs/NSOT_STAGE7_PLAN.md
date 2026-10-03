@@ -2929,10 +2929,17 @@ page's four signed actions are built: capture, persist, rotate, and deploy with 
 has its not-reporting reader and its grid and selection; its third step, the combined deploy, is
 next. History became one timeline (C369, board D). Credentials carries the break-glass record
 (board 7), which passed its first real run end to end on 2026-10-03.
-**Owed a sign-off before building:** seed, restore, revert and retry, and retire on the v2 device
-page, drawn 2026-10-03 as boards 8 to 12 of the mockups' "Device actions on v2" page (with the
-Actions menu every action runs from, and the retired record at a retired device's address,
-C185). The signed boards 1 to 6 drew the four actions built.
+**SIGNED OFF 2026-10-03 (the operator), boards 8 to 12:** seed, restore, revert and retry, and
+retire on the v2 device page, with the Actions menu every action runs from. The changes asked
+are redrawn:
+- Seed shows device-owned lines as such, never blocking (C397).
+- Retire's result says the generated watchers (scrape targets, heartbeat rules) are dropped at
+  their next regeneration, and names the rest with how each is removed.
+The two flagged choices are agreed:
+- A stated reason replaces the typed confirmation for an account a restore adds back.
+- A retired device's address shows its retired record, closing C185.
+**Build order (the operator):** restore (as a job, carrying its list: C396), revert and retry,
+seed, retire, then the combined deploy's arrival watch.
 
 Read from the code, the register, docs/CUTOVER.md (265 routes: 43 the redesign's; of the
 legacy families, 5 BUILT, 32 PLANNED, 17 REMOVE, 3 STAYS, none UNDECIDED) and the
@@ -3021,8 +3028,13 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
      after 2 verify failures and counts nothing else (C10).
    - **Every line of the program is read back,** quick or full, and a line that did not land
      rolls the device's program back as one.
-   - **DECISION OWED (the operator): what "a scrape, a log line and a heartbeat arriving"
-     does.** A2 draws it as part of verify. Two things decide what it can be:
+   - **DECIDED (the operator, 2026-10-03): arrival is WATCHED for 15 minutes after the
+     batch, never blocking and never rolling back.** The result reports each device's first
+     scrape, line and heartbeat as it arrives. Anything still missing at 15 minutes says so
+     and points to its diagnosis. The operator's next real Coverage deploy measures the
+     real arrival times, and the 15 minutes is revisited against them. Built after the
+     device actions below.
+   - **The question as it was put:** A2 draws it as part of verify. Two things decide what it can be:
      - The heartbeat fires every 5 minutes, and the reader looks once a minute.
      - SNMP's scrape target exists only after the batch's golden commit regenerates the
        targets, which is after the last device.
