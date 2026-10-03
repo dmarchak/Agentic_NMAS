@@ -47,7 +47,6 @@ else:
 from tests.store_guard import data_tree, tree_changes  # noqa: E402
 from tests import store_guard  # noqa: E402
 from tests import home_guard  # noqa: E402
-home_guard.start_run()  # this session's own id, set before xdist starts the workers that inherit it
 
 # Every write the test process makes under the checkout's data/ is SEEN (an
 # audit hook), so a change there can be attributed rather than assumed.
@@ -131,6 +130,12 @@ def _no_spawned_process_reaches_a_network(request, _fakes_live_under_pytests_tem
         pytest.fail("a process this test started did something no test may do (a "
                     "network, C46; or a write into the checkout's data/), and the harness "
                     f"recorded it: {tried[:5]}", pytrace=False)
+
+
+def pytest_configure(config):
+    # This session's own id (C395), decided from the config, before xdist starts the workers
+    # that inherit it: a pytest a test starts is a session of its own, never a worker.
+    home_guard.start_run(is_worker=hasattr(config, "workerinput"))
 
 
 def pytest_report_header(config):

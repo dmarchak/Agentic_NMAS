@@ -84,6 +84,8 @@ NOT_AN_OPERATION = {
     ("_persist.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_rotate.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_deploy.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
+    ("_restore.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
+    ("_restore.html", "Choose another moment"): "returns to the moments, a read",
 }
 
 

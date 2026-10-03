@@ -110,6 +110,48 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
     return job
 
 
+#: What a restore changes (`/golden/restore/apply`'s declaration), announced at its end.
+RESTORE_DONE_KEYS = ("deploy_job", "device_state", "intent", "baselines", "drift", "approvals",
+                     "rolled_back", "goldens", "remote")
+
+
+def start_restore(list_name: str, ref: str, confirmations: dict, command_hashes: dict, *,
+                  authorise: dict, un_onboard: list, actor: str, actor_kind: str,
+                  ident) -> str:
+    """A restore (re-apply *ref*) run as a JOB, as the v2 device page's deploy is (board 10):
+    the same apply as `/golden/restore/apply` (`restore.build_targets`, `routes.deploy.
+    run_targets`: the program computed again and refused alone if its hash moved, the device
+    held, verify, rollback, ONE commit of the golden and the intent half, the receipts), in
+    the LIST the preview was drawn in (C396), as the person who confirmed. Returns the job's
+    id at once."""
+    from modules import identity
+    from modules.nsot import capture_job
+
+    devices = list(confirmations)
+    label = f"re-apply {ref} to " + ", ".join(devices)
+
+    def work(job_id):
+        from modules.nsot.restore import build_targets
+        from modules.outbound import mask_payload
+        from routes.deploy import run_targets
+
+        with identity.carried(ident):
+            targets, skipped = build_targets(list_name, ref, devices,
+                                             un_onboard=un_onboard, authorise=authorise)
+            report = run_targets(list_name, targets,
+                                 {"confirmations": confirmations,
+                                  "command_hashes": command_hashes, "authorise": authorise},
+                                 label=label, source_ref=ref, skipped=skipped,
+                                 actor=actor, actor_kind=actor_kind)
+        return mask_payload({"ok": True, "list": list_name, "ref": ref, "mode": "re-apply",
+                             **report})
+
+    job = capture_job.start(list_name, label, actor, work, kind="restore",
+                            announce_keys=RESTORE_DONE_KEYS, announcer=ANNOUNCER)
+    log.info("deploy job %s: restore %s started by %s", job, label, actor)
+    return job
+
+
 def state(job_id: str):
     """``{"job", "state", "order", "steps", "elapsed_s", "payload", "error"}``,
     or None when this server has no record of the job. Each step is a device

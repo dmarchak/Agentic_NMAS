@@ -23,7 +23,12 @@ SIGNED_OFF = {
                                   "in place with its next steps, the refusal when the device "
                                   "moved, a check failing on a holder, and the phone width; one "
                                   "change, the read timings on hover. Built in the order "
-                                  "capture, persist, rotate, deploy with Mode B"),
+                                  "capture, persist, rotate, deploy with Mode B. The rest "
+                                  "(boards 8 to 12, signed off 2026-10-03 with two changes, "
+                                  "redrawn): seed, restore (a job, carrying its list), revert "
+                                  "and retry, retire (its retired record at the address), the "
+                                  "Actions menu every action runs from; built in the order "
+                                  "restore, revert and retry, seed, retire"),
     "about.html": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, mockup version 7 (Help > About carries "
                                  "the version)"),
     "monitoring.html": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (fleet-wide "

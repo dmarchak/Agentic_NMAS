@@ -893,7 +893,8 @@ def _merge_refusals(report: dict, refused: list) -> None:
 
 
 def run_targets(list_name: str, targets: list, data: dict,
-                label: str = "", source_ref: str = "", skipped: list = None) -> dict:
+                label: str = "", source_ref: str = "", skipped: list = None, *,
+                actor: str = None, actor_kind: str = None) -> dict:
     """Run a batch of already-built targets. Shared by deploy and re-apply.
 
     Everything below the intent layer is the same operation whether the target
@@ -960,8 +961,11 @@ def run_targets(list_name: str, targets: list, data: dict,
     # receipt; a device another operation holds is refused alone, by name.
     from modules import identity
     from modules.nsot import device_ops
-    actor = identity.request_actor()
-    actor_kind = getattr(identity.identify(request), "kind", "")
+    # Carried in by a job (the v2 device page's restore: a job's thread has no request to
+    # read them from), else this request's.
+    if actor is None:
+        actor = identity.request_actor()
+        actor_kind = getattr(identity.identify(request), "kind", "")
     action = "restore" if source_ref else "reapply"
     held, busy = device_ops.acquire_many(
         list_name, [t.device for t in accepted], "restore", actor,
@@ -982,7 +986,7 @@ def run_targets(list_name: str, targets: list, data: dict,
             # and its rows. Two copies of a fold is how they come to differ.
             _merge_refusals(report, refused)
         report["golden"] = _commit_batch_golden(list_name, report, label=label,
-                                                source_ref=source_ref)
+                                                source_ref=source_ref, actor=actor)
         # Before the result is drawn, so it names the devices the ref did not
         # touch (the restore's own skip list) as well as the ones it did.
         report["skipped"] = list(skipped or [])

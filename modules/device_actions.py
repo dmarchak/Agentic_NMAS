@@ -237,6 +237,8 @@ JOB_STEPPERS = {
     "rotate": ("modules.nsot.rotate_op", "STEPS", "DETOURS"),
     # The pipeline notes each stage as it STARTS (rotation notes a step once done).
     "deploy": ("modules.pipeline", "STEPS", None, "starts"),
+    # A restore runs the same pipeline (`run_targets`), as a job.
+    "restore": ("modules.pipeline", "STEPS", None, "starts"),
     "capture": ("one step: the preview's read of the device, which holds nothing and so notes "
                 "no progress; its card names what it reads"),
 }
@@ -389,6 +391,127 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
 
 #: A deploy's outcome -> the card's level.
 DEPLOY_LEVELS = {"success": "ok", "partial": "warn", "failed": "danger", "nothing": "warn"}
+
+
+# ---------------------------------------------------------------------------
+# Restore from a moment (7.3; the device-actions canvas, boards 9 and 10): choose the moment,
+# its preview (THE restore plan, `routes.golden.restore_plan`), run as a job (`deploy_job.
+# start_restore`) in the list the preview was drawn in (C396), its result from the receipt.
+# ---------------------------------------------------------------------------
+
+#: A moment's credential state -> (badge words, level, why it cannot be chosen or "").
+RESTORE_CREDENTIAL = {
+    "current": ("credentials current", "ok", ""),
+    "silent": ("would add back an account", "danger", ""),
+    "refused": ("predates its credentials", "warn", ""),
+    "no_golden": ("no golden for it", "muted", "no golden configuration for it at this moment"),
+}
+#: How many moments the chooser draws before "Show N more".
+RESTORE_SHOWN = 5
+
+
+def _moment_words(point: dict) -> str:
+    if point.get("kind") == "head":
+        return "Golden now"
+    when = (point.get("created") or "")[:16].replace("T", " ")
+    if point.get("kind") == "baseline":
+        return f"Baseline {when}"
+    return f"Its golden {when}"
+
+
+def restore_choose_card(ref, host: str, points: list, *, show_all: bool = False,
+                        chosen: str = "") -> dict:
+    """The chooser (board 9's first card): every moment *host* can be restored from, newest
+    first, each with its credential state; a moment that cannot be chosen says why. An
+    account a moment would ADD BACK is said here and asked for at the preview, as a stated
+    reason (the operator, 2026-10-03), never as typed words."""
+    rows = []
+    for p in points:
+        words, level, why_not = RESTORE_CREDENTIAL.get(p.get("credential"),
+                                                       (p.get("credential", "unknown"), "muted",
+                                                        "its credential state is unknown"))
+        rows.append({"ref": p.get("ref", ""), "words": _moment_words(p),
+                     "kind": p.get("kind", ""), "subject": p.get("subject", ""),
+                     "claim": p.get("claim", ""), "claim_detail": p.get("claim_detail", ""),
+                     "badge": words, "level": level, "why_not": why_not,
+                     "adds_back": p.get("credential") == "silent",
+                     "same_as_now": bool(p.get("same_as_now")) and p.get("kind") != "head"})
+    # The golden now, and any moment holding the same golden, sends nothing by construction
+    # (the program is a moment's golden against today's), so the newest moment that DIFFERS is
+    # ticked first, when there is one.
+    first = next((r["ref"] for r in rows if not r["why_not"] and r["kind"] != "head"
+                  and not r["same_as_now"]),
+                 next((r["ref"] for r in rows if not r["why_not"]), ""))
+    shown = rows if show_all else rows[:RESTORE_SHOWN]
+    return {"op": "restore", "state": "choose", "host": host, "list": ref.name,
+            "moments": shown, "more": len(rows) - len(shown),
+            "chosen": chosen if any(r["ref"] == chosen for r in rows) else first}
+
+
+def restore_card(ref, host: str, moment: str, plan: dict, viewer: dict, *,
+                 danger_reasons=None, un_onboard: bool = False) -> dict:
+    """The restore preview for *host* at *moment* from `restore_plan`'s *plan*, MASKED: the
+    program and what each line replaces, each line needing a stated reason (a dangerous line,
+    an account added back) with its reason in the hash, what is left on the device (merge-only),
+    the operands and checks, and the confirm bound to the program. A moment that predates the
+    device's onboarding asks: leave it as it is, or un-onboard it too."""
+    danger_reasons = danger_reasons or {}
+    card = {"op": "restore", "host": host, "list": ref.name, "moment": moment,
+            "moment_words": "golden now" if moment == "HEAD" else moment,
+            "un_onboard": un_onboard}
+    entry = next((d for d in plan.get("devices") or [] if d.get("device") == host), None)
+    skip = next((s for s in plan.get("skipped") or [] if s.get("hostname") == host), None)
+    if entry is None:
+        if skip and skip.get("un_onboardable"):
+            return dict(card, state="predates", detail=skip.get("detail", ""))
+        return dict(card, state="not_restorable",
+                    reason=(skip or {}).get("reason", "this moment holds nothing for it"),
+                    detail=(skip or {}).get("detail", ""))
+    preview = plan.get("preview") or {}
+    t = _one_target(preview, host, viewer)
+    program = t["target"].get("program") or {}
+    flagged = list(entry.get("dangerous") or []) + list(entry.get("secret_readded") or [])
+    secret = set(entry.get("secret_readded") or [])
+    reasons = [{"index": i, "line": line, "reason": danger_reasons.get(i, ""),
+                "why": ("adds back an account the device does not hold" if line in secret
+                        else "a dangerous line")}
+               for i, line in enumerate(flagged)]
+    blocking = list(entry.get("blocking_reasons") or [])
+    refused = entry.get("error") or ""
+    lines = list(program.get("lines") or [])
+    may = bool(t["may"]) and not blocking and not refused and bool(lines)
+    intent = entry.get("intent") or {}
+    return dict(card, state="preview",
+                summary=(preview.get("what") or {}).get("summary", ""),
+                sent=lines, none=program.get("none", ""),
+                notes=[{"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
+                       for n in program.get("notes") or []],
+                reasons=reasons, waiting=entry.get("authorisation_ok") is False,
+                authorisation_error=entry.get("authorisation_error", ""),
+                residue=list(entry.get("residue_in_context") or entry.get("residue") or []),
+                excluded=list(entry.get("excluded_unrenderable") or []),
+                intent_words=intent.get("detail", ""), intent_action=intent.get("action", ""),
+                blocking=blocking, refused=refused, what_not=t["what_not"],
+                operands=list(t["target"].get("operands") or []), gates=t["gates"],
+                failing=t["failing"], may=may, held=held(t["gates"]),
+                effect=(preview.get("confirm") or {}).get("effect", ""),
+                command_hash=entry.get("command_hash", ""),
+                confirm=({"capture_hash": entry.get("capture_hash", ""),
+                          "command_hash": entry.get("command_hash", ""),
+                          "authorise": list(entry.get("authorised") or [])} if may else None))
+
+
+def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict:
+    """The restore card for its job: running with the pipeline's stepper, its result from the
+    receipt (the deploy's own reading of it), or why there is none."""
+    c = deploy_job_card(ref, host, job_id, got)
+    payload = (got or {}).get("payload") or {}
+    moment = moment or payload.get("ref", "")
+    c.update(op="restore", moment=moment,
+             moment_words="golden now" if moment == "HEAD" else moment)
+    if c.get("state") == "deploying":
+        c["state"] = "restoring"
+    return c
 
 
 def deploy_job_card(ref, host: str, job_id: str, got) -> dict:

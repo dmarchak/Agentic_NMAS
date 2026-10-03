@@ -37,6 +37,10 @@ STAGES = {
     "device_v2.deploy_confirm": Stages(
         "device_v2.deploy", "command_hash", "modules.pipeline._stage_verify",
         "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
+    # The v2 device page's Restore (7.3, boards 9 and 10): THE restore plan and apply, as a job.
+    "device_v2.restore_confirm": Stages(
+        "device_v2.restore_preview", "command_hash", "modules.pipeline._stage_verify",
+        "modules.pipeline._stage_rollback", "routes.deploy._write_receipts"),
     # ---- Device operations of their own
     "persist.apply": Stages(
         "persist.preview", "hash", "modules.nsot.onboard.persist_on_device",
@@ -214,6 +218,7 @@ HISTORY = {
     "golden.restore_apply": ("receipts", "golden"),
     "v2.profile_apply_confirm": ("receipts", "golden"),
     "device_v2.deploy_confirm": ("receipts", "golden"),
+    "device_v2.restore_confirm": ("receipts", "golden"),
     "persist.apply": ("rotation",),
     "device_v2.persist_confirm": ("rotation",),
     "rotate.apply": ("rotation", "golden", "intent"),

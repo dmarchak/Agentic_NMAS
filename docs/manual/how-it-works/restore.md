@@ -9,8 +9,9 @@ and startup configuration, its golden, and its committed intent, which moves bac
 
 ## The preview
 
-You start a restore from one of four places: the Device page's **Restore from…**, which lists
-that device's restore points; the Baselines panel's **Re-apply this baseline**, which asks for
+You start a restore from one of four places: the device page's **Actions › Restore from…**,
+which opens the restore in place of the tab, listing that device's restore points (pick one,
+then **Preview** it); the Baselines panel's **Re-apply this baseline**, which asks for
 a scope first (no device is ticked, and the whole fleet is a box of its own); **Restore Golden
 Config**, on the Device page for that device or on today's device list for the ticked devices,
 at their golden now (HEAD); or an
@@ -33,14 +34,18 @@ answers from git and the credential store. The preview opens no device session:
    no committed intent at the moment; or the moment's intent no longer reproduces its own
    golden through today's template, or names a secret the credential store does not hold.
 3. **Ask about un-onboarding.** Read: nothing. Sent: nothing. Recorded: nothing. For a device
-   that had no committed intent at the moment, the browser asks whether to include it AND
-   remove its committed intent. Cancel (the default) leaves it skipped; OK previews again with
-   it, because a skipped device had no program to show.
+   that had no committed intent at the moment, its configuration cannot be re-applied while
+   today's intent stays (the next plan would offer to undo the restore), so you are asked to
+   leave it as it is (the default: nothing sent, nothing recorded) or to un-onboard it too
+   (its configuration re-applied and its committed intent removed, in the same record). Choosing
+   to un-onboard previews again with it, because a skipped device had no program to show.
 4. **Authorise the lines that need a reason.** Read: the program's dangerous lines, and any
    line in a secret position the moment would add that the device does not hold (an old
-   community, an account removed since). Sent: nothing. Recorded: nothing. A dialog asks for
-   each line and its reason before the program is drawn; the preview runs again with them, and
-   the reasons go into the hash.
+   community, an account removed since). Sent: nothing. Recorded: nothing. Each such line asks
+   for your stated reason beside it (on today's pages, a dialog before the program is drawn);
+   the preview runs again with them, and the reasons go into the hash. An account added back is
+   never typed past: it is a line with its reason, like a dangerous one, and an account the
+   device holds is never changed.
 5. **Compute the program.** Read: the moment's golden and the device's golden as committed at
    HEAD. Sent: nothing. Recorded: nothing. The program is what the moment had and today's
    golden lacks, each line under its section, built by the deploy's own builder; a running IP
@@ -69,7 +74,11 @@ hand change added is residue, which only a [removal](removal) takes away.
 
 ## The run
 
-You tick the devices and confirm. The browser posts the capture and command hashes it was
+On the device page, the confirm starts the restore as a job holding the device, in the list
+the card was drawn in (never whichever list is active), and the card shows the pipeline's
+stages as they run, then the result from the receipt. It answers at once, so a restore that
+waits out BGP's hold time is never cut off by a proxy's time limit. From the Baselines panel,
+you tick the devices and confirm. The browser posts the capture and command hashes it was
 shown to `/golden/restore/apply`, which needs a verified person (the request's Cloudflare
 Access assertion, from a trusted peer). Before anything else, any revert the old path queued in
 the approval queue is rejected with a reason, because it carries whole-config text that path

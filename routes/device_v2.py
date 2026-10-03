@@ -152,7 +152,8 @@ def device(name):
                        "list": ref.name, "back": tab} if op == "capture" else
                       _persist_card(ref, dev, tab) if op == "persist" else
                       _rotate_starting(ref, dev, tab) if op == "rotate" else
-                      _deploy_card(ref, dev, tab, {}) if op == "deploy" else None)
+                      _deploy_card(ref, dev, tab, {}) if op == "deploy" else
+                      _restore_card(ref, dev, tab, request.args) if op == "restore" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -603,6 +604,9 @@ def when_free(name):
         return _strict(render_template("v2/_rotate.html", c=_rotate_starting(ref, dev, back)))
     if op == "deploy":
         return _strict(render_template("v2/_deploy.html", c=_deploy_card(ref, dev, back, {})))
+    if op == "restore":
+        return _strict(render_template("v2/_restore.html",
+                                       c=_restore_card(ref, dev, back, request.args)))
     return _strict(render_template("v2/_capture.html", c={
         "state": "starting", "op": "capture", "host": dev.get("hostname", ""),
         "list": ref.name, "back": back}))
@@ -713,6 +717,154 @@ def deploy_confirm(name):
     return _strict(render_template("v2/_deploy.html", c={
         "state": "deploying", "op": "deploy", "host": host, "list": ref.name, "job": job,
         "back": _back(request.form), "steps": device_actions.job_steps("deploy", ref.name, host)}))
+
+
+# ---------------------------------------------------------------------------
+# Restore from a moment (7.3; the device-actions canvas, boards 9 and 10)
+# ---------------------------------------------------------------------------
+
+def _restore_form(fields):
+    """What the restore card's form carries: the moment, whether to un-onboard (a moment that
+    predates the device's onboarding), and each flagged line's stated reason (by its index)."""
+    moment = (fields.get("moment") or "").strip()
+    un_onboard = (fields.get("un_onboard") or "") == "1"
+    danger = {}
+    for k in list(fields.keys()):
+        if k.startswith("dz::") and k[4:].isdigit():
+            danger[int(k[4:])] = (fields.get(k) or "").strip()
+    return moment, un_onboard, danger
+
+
+def _restore_card(ref, dev, back, fields):
+    """The restore card for *dev*: the chooser when no moment is chosen, else THE restore plan
+    (`routes.golden.restore_plan`, captured configs only, no device contacted) at that moment,
+    planned again with each stated reason (keyed from the UNMASKED plan, as the deploy card's),
+    masked on the way out, the confirm built HERE from its hashes."""
+    from modules import device_actions, identity
+    from modules.nsot.authorisation import key
+    from modules.nsot.restore import WithdrawnBaseline
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import confirm_part
+    from routes.golden import restore_plan, restore_points_for
+
+    host = dev.get("hostname", "")
+    moment, un_onboard, danger = _restore_form(fields)
+    if not moment:
+        c = device_actions.restore_choose_card(
+            ref, host, restore_points_for(ref.name, host),
+            show_all=(fields.get("all") or "") == "1", chosen=(fields.get("chosen") or ""))
+        c.update(back=back, ip=dev.get("ip", ""))
+        return c
+    asked = {"un_onboard": [host] if un_onboard else None, "req": request}
+    authorise = []
+    try:
+        plan = restore_plan(ref.name, moment, [host], **asked)
+        entry = next((d for d in plan.get("devices") or [] if d.get("device") == host), None)
+        if entry is not None:
+            flagged = list(entry.get("dangerous") or []) + list(entry.get("secret_readded") or [])
+            authorise = [{"line": key(line), "reason": danger[i]}
+                         for i, line in enumerate(flagged) if danger.get(i)]
+            if authorise:
+                plan = restore_plan(ref.name, moment, [host], authorise={host: authorise},
+                                    **asked)
+    except WithdrawnBaseline as exc:
+        c = {"op": "restore", "state": "not_restorable", "host": host, "list": ref.name,
+             "moment": moment, "moment_words": moment, "reason": str(exc), "detail": ""}
+        c.update(back=back, ip=dev.get("ip", ""))
+        return c
+    c = device_actions.restore_card(
+        ref, host, moment, mask_payload(plan),
+        viewer=dict(confirm_part(request, "confirm"), actor=identity.identify(request).actor or ""),
+        danger_reasons=danger, un_onboard=un_onboard)
+    if c.get("confirm"):
+        entry = next(d for d in plan["devices"] if d.get("device") == host)
+        c["confirm"] = {"capture_hash": entry.get("capture_hash", ""),
+                        "command_hash": entry.get("command_hash", ""), "authorise": authorise}
+    c.update(back=back, ip=dev.get("ip", ""))
+    return c
+
+
+@bp.route("/device/<name>/restore", methods=["GET"])
+def restore(name):
+    """Restore from a moment: the chooser (board 9), each moment with its credential state. A
+    READ: the points and their credential states come from the repository."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_restore.html",
+                                   c=_restore_card(ref, dev, _back(request.args), request.args)))
+
+
+@bp.route("/device/<name>/restore/preview", methods=["GET"])
+def restore_preview(name):
+    """The restore preview at the chosen moment (board 9): the exact program, each line needing
+    a stated reason, what is left on the device, the operands and checks, and the confirm bound
+    to the program. A READ: the plan reads captured configs only; the form plans again on each
+    change."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    # The chooser's Preview carries its ticked moment as `chosen`.
+    fields = request.args.to_dict()
+    fields["moment"] = fields.get("moment") or fields.get("chosen", "")
+    return _strict(render_template("v2/_restore.html",
+                                   c=_restore_card(ref, dev, _back(request.args), fields)))
+
+
+@bp.route("/device/<name>/restore/confirm", methods=["POST"])
+def restore_confirm(name):
+    """Re-apply the confirmed moment as the verified person, as a job holding the device
+    (`deploy_job.start_restore`, the same apply as `/golden/restore/apply`) in the list the
+    preview was drawn in, which the confirm CARRIES (C396): the program is computed again and a
+    different hash refuses with nothing sent. Answers with the card that follows the job."""
+    import json
+
+    from modules import deploy_job, device_actions, identity
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_restore.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    moment = (request.form.get("moment") or "").strip()
+    capture_hash = (request.form.get("capture_hash") or "").strip()
+    command_hash = (request.form.get("command_hash") or "").strip()
+    try:
+        authorise = json.loads(request.form.get("authorise") or "[]")
+    except ValueError:
+        authorise = None
+    if not moment or not capture_hash or not command_hash or authorise is None:
+        return _strict(render_template("v2/_restore.html", c={
+            "op": "restore", "state": "refused_hash", "host": host, "list": ref.name,
+            "moment": moment, "moment_words": moment, "back": _back(request.form)}), 400)
+    un_onboard = [host] if (request.form.get("un_onboard") or "") == "1" else None
+    job = deploy_job.start_restore(
+        ref.name, moment, {host: capture_hash}, {host: command_hash},
+        authorise={host: authorise} if authorise else {}, un_onboard=un_onboard,
+        actor=identity.identify(request).actor or "",
+        actor_kind=getattr(identity.identify(request), "kind", ""),
+        ident=identity.verified_identity())
+    return _strict(render_template("v2/_restore.html", c={
+        "op": "restore", "state": "restoring", "host": host, "list": ref.name, "job": job,
+        "moment": moment, "moment_words": "golden now" if moment == "HEAD" else moment,
+        "back": _back(request.form), "steps": device_actions.job_steps("restore", ref.name, host)}))
+
+
+@bp.route("/device/<name>/restore/job/<job>", methods=["GET"])
+def restore_job_card(name, job):
+    """The restore card for its job: restoring with its stepper, its result from the receipt,
+    or why there is none. Re-read when the job announces `deploy_job` and on each step."""
+    from modules import deploy_job, device_actions
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    c = device_actions.restore_job_card(ref, dev.get("hostname", ""), job, deploy_job.state(job),
+                                        moment=request.args.get("moment", ""))
+    c.update(back=_back(request.args), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_restore.html", c=c))
 
 
 @bp.route("/device/<name>/deploy/job/<job>", methods=["GET"])

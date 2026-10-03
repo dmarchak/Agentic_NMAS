@@ -78,11 +78,27 @@ def test_every_session_has_its_own_id_and_its_workers_share_it(monkeypatch):
     """A child pytest a test starts is its own session: with its parent's id it judged the
     folders the parent's other workers were using as left behind (the gate, 2026-10-03)."""
     monkeypatch.setenv(home_guard.RUN_ENV, "111")
-    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
-    assert home_guard.start_run() == str(os.getpid()), "a session: its own id"
-    monkeypatch.setenv(home_guard.RUN_ENV, "111")
+    # A child started from inside a worker inherits PYTEST_XDIST_WORKER: still a session.
     monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw1")
-    assert home_guard.start_run() == "111", "a worker: its session's id"
+    assert home_guard.start_run(is_worker=False) == str(os.getpid()), "a session: its own id"
+    monkeypatch.setenv(home_guard.RUN_ENV, "111")
+    assert home_guard.start_run(is_worker=True) == "111", "a worker: its session's id"
+
+
+def test_a_child_started_from_a_worker_is_a_session_of_its_own(tmp_path):
+    """The wiring, end to end, the shape that failed the gate twice: a child pytest run with
+    a worker's environment (PYTEST_XDIST_WORKER and the parent's run id) takes a NEW id."""
+    planted = tmp_path / "test_planted.py"
+    planted.write_text("import os\n\ndef test_id():\n"
+                       f"    print('RUN=' + os.environ[{home_guard.RUN_ENV!r}])\n")
+    env = dict(os.environ, PYTHONPATH=ROOT, PYTEST_XDIST_WORKER="gw0")
+    env[home_guard.RUN_ENV] = "424242"
+    out = subprocess.run([sys.executable, "-m", "pytest", "-q", "-s", "-p", "no:cacheprovider",
+                          "-p", "tests.conftest", "--rootdir", str(tmp_path), str(planted)],
+                         cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
+    assert "1 passed" in out.stdout, out.stdout[-800:] + out.stderr[-800:]
+    got = [l for l in out.stdout.splitlines() if l.strip().startswith("RUN=")]
+    assert got and got[0].strip() != "RUN=424242", got
 
 
 def test_the_run_fails_when_a_test_writes_into_the_download_folder(tmp_path):

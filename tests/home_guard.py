@@ -27,12 +27,14 @@ def run_id() -> str:
     return os.environ.setdefault(RUN_ENV, str(os.getpid()))
 
 
-def start_run() -> str:
+def start_run(is_worker: bool) -> str:
     """This session's id: a NEW one for every pytest session, inherited only by its own xdist
-    workers (`PYTEST_XDIST_WORKER`). A pytest a test starts as a child is its own session:
-    sharing its parent's id, it judged the folders the parent's other workers were using as
-    left behind (the gate's browser shard, 2026-10-03, test_network_guard's child)."""
-    if not os.environ.get("PYTEST_XDIST_WORKER"):
+    workers. *is_worker* comes from the session's config (`workerinput`), never from the
+    environment: a pytest a test starts inherits `PYTEST_XDIST_WORKER` from the worker that
+    started it, took itself for a worker and kept its parent's id, and so judged the folders
+    the parent's other workers were using as left behind (C395, twice: test_network_guard's
+    child, then test_harness_isolation's, 2026-10-03)."""
+    if not is_worker:
         os.environ[RUN_ENV] = str(os.getpid())
     return run_id()
 

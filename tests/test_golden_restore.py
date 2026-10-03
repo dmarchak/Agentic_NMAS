@@ -794,10 +794,15 @@ class TestTheHandoffScopesToOneDevice:
 
         import routes.golden as golden
 
+        # The route hands it to THE restore plan (`restore_plan`, shared with the v2 device
+        # page), and the only thing done with it there is echoing it back.
         source = inspect.getsource(golden.restore_preview)
-        # The only thing done with it is echoing it back.
         uses = [l.strip() for l in source.splitlines() if "advisory_diff" in l]
-        assert uses == ['"advisory_diff": (data.get("advisory_diff") or ""),'], uses
+        assert uses == ['advisory_diff=data.get("advisory_diff") or "",'], uses
+        source = inspect.getsource(golden.restore_plan)
+        uses = [l.strip() for l in source.splitlines() if "advisory_diff" in l]
+        assert uses == ['authorise: dict = None, req=None, advisory_diff: str = "",',
+                        '"advisory_diff": advisory_diff,'], uses
 
 class TestBaselineCredentialGaps:
     """Measure whether re-applying would change the credential. Not the name.

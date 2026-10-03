@@ -116,8 +116,9 @@ ANNOUNCERS = {
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (as /deploy/apply declares).
+    # A restore run as a job (the v2 device page) also moves intent and approvals.
     "deploy-job": ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
-                   "freshness", "goldens", "remote"),
+                   "freshness", "goldens", "remote", "intent", "approvals"),
 }
 
 _COMMIT = ("goldens", "remote")        # a golden commit also moves the remote's state
@@ -233,6 +234,7 @@ DECLARED = {
                                  "either directly"),
     "v2.profile_apply_confirm": Nothing("starts a job and answers at once; the batch deploys and ANNOUNCES deploy_job as each device finishes, and what a deploy changes at the end (ANNOUNCERS)"),
     "rotate.apply": Nothing("starts a job and answers at once; the job changes the credential and ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
+    "device_v2.restore_confirm": Nothing("starts a job and answers at once; the restore ANNOUNCES deploy_job as it finishes, and what a restore changes (ANNOUNCERS deploy-job)"),
     "device_v2.deploy_confirm": Nothing("starts a job and answers at once; the deploy ANNOUNCES deploy_job as it finishes, and what a deploy changes (ANNOUNCERS)"),
     "device_v2.rotate_confirm": Nothing("the same confirm as rotate.apply: starts the job and answers at once; the job ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),

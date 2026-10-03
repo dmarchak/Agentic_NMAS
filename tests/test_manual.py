@@ -363,7 +363,8 @@ class TestEveryActionHasItsLink:
         """The device page's Actions rows name their pages in a loop: each is a page."""
         text = _templates()["device.html"]
         ops = re.findall(r"\('[^']+', '([a-z-]+)', '[^']+'\)", text)
-        assert len(ops) >= 5
+        assert len(ops) >= 4      # capture, restore, rotate, persist (2026-10-03); removal and
+        #                           seed stand alone, each held by the action test above
         assert unresolved([(o, "") for o in ops]) == []
 
     def test_an_unlinked_action_is_found(self):

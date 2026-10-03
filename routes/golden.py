@@ -191,31 +191,57 @@ def restore_points(hostname):
     click: ``current``, ``refused`` (the restore's own guards stop it),
     ``silent`` (an account the ref has and the device lacks would be ADDED
     back) or ``no_golden``. The username lines themselves never leave."""
-    from modules.nsot.repo import device_restore_points
-    from modules.nsot.restore import baseline_credential_gaps
 
     list_name = _active_list()
-    repo = _repo_for(list_name)
     try:
-        points = device_restore_points(repo, hostname)
+        points = restore_points_for(list_name, hostname)
         for point in points:
-            if point["kind"] == "head":
-                point["credential"] = "current"
-                continue
-            gaps = baseline_credential_gaps(repo, point["ref"], list_name, [hostname])
-            if hostname in gaps["no_golden"]:
-                point["credential"] = "no_golden"
-            elif hostname in gaps["silent"]:
-                point["credential"] = "silent"
-            elif hostname in set(gaps["refused"]) | set(gaps["guarded"]):
-                point["credential"] = "refused"
-            else:
-                point["credential"] = "current"
+            # Drawn by the v2 chooser only: today's pages gain no capability (they shrink
+            # until cutover), so it is not carried to a page that would not draw it.
+            point.pop("same_as_now", None)
         return jsonify({"ok": True, "hostname": hostname, "list": list_name,
                         "points": points})
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: restore points failed for %s", hostname)
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+def restore_points_for(list_name: str, hostname: str) -> list:
+    """Where *hostname* can be restored from, newest first, each with its credential state at
+    that moment (``current``, ``refused``, ``silent``: an account added back, ``no_golden``).
+    ONE reading for today's chooser and the v2 device page's (board 9). Reads only."""
+    from modules.nsot.repo import device_restore_points
+    from modules.nsot.restore import baseline_credential_gaps
+
+    from modules.nsot import manifest as _mf
+    from modules.nsot.repo import committed_golden_for, git
+
+    repo = _repo_for(list_name)
+    points = device_restore_points(repo, hostname)
+    # Which moments hold the SAME golden as now: every golden commit is tagged, so the newest
+    # tag is usually today's, and re-applying it sends nothing, as the golden now does (the
+    # program is a moment's golden against today's). One blob id per moment, compared.
+    rel = committed_golden_for(repo, _mf.find_by_name(repo, hostname)[1]).get("path") or ""
+
+    def blob(ref):
+        rc, out, _e = git(repo, "rev-parse", f"{ref}:{rel}") if rel else (1, "", "")
+        return out.strip() if rc == 0 else ""
+    now = blob("HEAD")
+    for point in points:
+        point["same_as_now"] = bool(now) and blob(point["ref"]) == now
+        if point["kind"] == "head":
+            point["credential"] = "current"
+            continue
+        gaps = baseline_credential_gaps(repo, point["ref"], list_name, [hostname])
+        if hostname in gaps["no_golden"]:
+            point["credential"] = "no_golden"
+        elif hostname in gaps["silent"]:
+            point["credential"] = "silent"
+        elif hostname in set(gaps["refused"]) | set(gaps["guarded"]):
+            point["credential"] = "refused"
+        else:
+            point["credential"] = "current"
+    return points
 
 
 def _read_running(device: dict, phases: dict = None) -> tuple:
@@ -695,35 +721,51 @@ def restore_preview():
     not be removed". The previous report listed every device line absent from
     the target, which included lines about to be overwritten.
     """
-    from modules.nsot.deploy import (NotAuthorised, assert_authorised,
-                                     command_fingerprint, dangerous_in,
-                                     merge_diff, prepare_restore,
-                                     residue_in_context)
-    from modules.nsot import normalize
-    from modules.nsot.restore import WithdrawnBaseline, build_targets
-    from routes.deploy import _capture_hash
+    from modules.nsot.restore import WithdrawnBaseline
+    from modules.outbound import mask_payload
 
     data = request.get_json(silent=True) or {}
     ref = (data.get("ref") or "").strip()
     if not ref:
         return jsonify({"ok": False, "error": "ref is required"}), 400
-
-    list_name = _active_list(data)
-    # Per device, exactly as /deploy/plan: an authorisation for one device
-    # never covers another. It is folded into the command hash, so the apply
-    # (run_targets) recomputes both, and a restore can now carry a dangerous
-    # line that a person authorised. It could not before (P.3 step 4).
-    authorise = data.get("authorise") or {}
     try:
-        targets, skipped = build_targets(list_name, ref, data.get("devices"),
-                                         un_onboard=data.get("un_onboard"),
-                                         authorise=authorise)
+        plan = restore_plan(_active_list(data), ref, data.get("devices"),
+                            un_onboard=data.get("un_onboard"),
+                            authorise=data.get("authorise") or {}, req=request,
+                            advisory_diff=data.get("advisory_diff") or "",
+                            approval_id=data.get("approval_id") or "")
     except WithdrawnBaseline as exc:
         return jsonify({"ok": False, "withdrawn": exc.record, "error": str(exc)}), 409
     except Exception as exc:                  # noqa: BLE001
         log.exception("golden: restore preview failed")
         return jsonify({"ok": False, "error": str(exc)}), 500
+    # Masked on the way out, AFTER every hash is computed from the truthful
+    # program (C77): stored config lines (the program, residue, what a line
+    # replaces) came back verbatim.
+    return jsonify(mask_payload(plan))
 
+
+def restore_plan(list_name: str, ref: str, devices_asked, *, un_onboard=None,
+                 authorise: dict = None, req=None, advisory_diff: str = "",
+                 approval_id: str = "") -> dict:
+    """THE restore preview, unmasked: every device's program, gates and intent half, and the
+    six parts. One computation for `/golden/restore/preview` and the v2 device page's restore
+    (board 9); raises `WithdrawnBaseline` for a withdrawn restore point."""
+    from modules.nsot.deploy import (NotAuthorised, assert_authorised,
+                                     command_fingerprint, dangerous_in,
+                                     merge_diff, prepare_restore,
+                                     residue_in_context)
+    from modules.nsot import normalize
+    from modules.nsot.restore import build_targets
+    from routes.deploy import _capture_hash
+
+    # Per device, exactly as /deploy/plan: an authorisation for one device
+    # never covers another. It is folded into the command hash, so the apply
+    # (run_targets) recomputes both, and a restore can now carry a dangerous
+    # line that a person authorised. It could not before (P.3 step 4).
+    authorise = authorise or {}
+    targets, skipped = build_targets(list_name, ref, devices_asked, un_onboard=un_onboard,
+                                     authorise=authorise)
     devices = []
     for target in targets:
         # A device refused ONLY because it would add a secret (C79) is waiting
@@ -811,7 +853,7 @@ def restore_preview():
         devices.append(entry)
 
     from modules.nsot.restore import coverage
-    cov = coverage(list_name, data.get("devices"), skipped)
+    cov = coverage(list_name, devices_asked, skipped)
     residue_total = sum(len(d.get("residue") or []) for d in devices)
     excluded_total = sum(len(d.get("excluded_unrenderable") or [])
                          for d in devices)
@@ -848,19 +890,16 @@ def restore_preview():
         d["busy"] = busy_text(list_name, d.get("device", ""))    # C99
     from modules.preview_confirm import restore_preview as _parts
     preview = _parts(devices, skipped, ref=ref, summary=summary, scope=scope,
-                     request=request)
-    # Masked on the way out, AFTER every hash is computed from the truthful
-    # program (C77): stored config lines (the program, residue, what a line
-    # replaces) came back verbatim.
-    from modules.outbound import mask_payload
-    return jsonify(mask_payload({
+                     request=req if req is not None else request)
+    # UNMASKED: every caller masks on the way out, after the hashes (C77).
+    return {
         "ok": True, "ref": ref, "list": list_name, "mode": "re-apply",
         "devices": devices, "skipped": skipped, "preview": preview,
         "intent_restored": intent_restored, "un_onboarding": un_onboarding,
         # Echoed back so the confirm dialog can show "what the agent saw"
         # beside the freshly computed program. Never an input to anything.
-        "advisory_diff": (data.get("advisory_diff") or ""),
-        "approval_id": (data.get("approval_id") or ""),
+        "advisory_diff": advisory_diff,
+        "approval_id": approval_id,
         "scope": scope,
         # C23: the denominator is the INVENTORY for a whole restore and the
         # selection for a scoped one, never "whatever the ref happened to
@@ -868,7 +907,7 @@ def restore_preview():
         "inventory_size": cov["inventory_size"],
         "partial": cov["partial"],
         "summary": summary,
-    }))
+    }
 
 
 def _intent_preview(list_name: str, target) -> dict:
