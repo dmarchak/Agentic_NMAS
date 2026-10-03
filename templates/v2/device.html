@@ -17,9 +17,9 @@
     <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="btn btn-outline" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
       <div class="menu" role="menu" x-show="isOpen" x-cloak>
-        <p class="menu-note">Deploy, Capture, Seed, Restore, Revert, Retry, Rotate and Persist run here; Retire opens on today's device page until it is built here.</p>
+        <p class="menu-note">Every action runs here. Revert and Retry are offered only while a rollback blocks a change on {{ device.hostname }}; otherwise they say why.</p>
         {#- A row built on v2 draws its card in place of the tab; its href opens the page with
-            the card for a browser without script. The rest open on today's page. -#}
+            the card for a browser without script. -#}
         {% for label, op, words in [('Capture', 'capture', 'capture'), ('Seed intent…', 'seed', 'seeding'), ('Restore from…', 'restore', 'restore')] %}
         <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
         {% endfor %}
@@ -40,7 +40,7 @@
         <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
         {% endfor %}
         <div class="menu-rule"></div>
-        <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('manage_device', ip=device.ip) }}">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
+        <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retire') }}" hx-get="{{ url_for('device_v2.retire', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
       </div>
     </div>
   </div>

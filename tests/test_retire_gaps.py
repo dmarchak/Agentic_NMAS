@@ -12,8 +12,11 @@ gaps that retirement left, each measured on the host afterwards:
 - C176: r5's file stayed in the deprecated `golden_configs/` store. Retire
   now deletes it when its content survives in the repository, and says
   where; a file whose lines exist nowhere else is kept and named;
-- the heartbeat rule and the scrape targets (C168): not NMAS's to write, so
-  retire READS what is still live and names who removes it.
+- what still watches it (board 12, 2026-10-03): the heartbeat rule and, where a target
+  directory is set, the scrape targets are GENERATED, so dropped at their next regeneration
+  and said with when; the rest (targets not generated here, Oxidized's row, a hand-built
+  panel, NetBox, approvals) SURVIVES, named with how it is removed. Retire READS what is
+  still live.
 
 Every NetBox case drives r5's REAL config through FakeNetBox, the shape the
 live NetBox held (C139's measurement).
@@ -216,6 +219,10 @@ class TestTheLegacyFile:
 
 
 class TestWhatStillWatchesIt:
+    """Board 12 (the operator, 2026-10-03): what is GENERATED is dropped at its next
+    regeneration, said with when; what SURVIVES is named with how it is removed. Both are
+    the commit's Not-Done trailers too."""
+
     def _rules(self, tmp_path, monkeypatch, devices):
         doc = {"apiVersion": 1, "groups": [{"name": "nmas-heartbeat", "rules": [
             {"labels": {"device": d, "window_basis": "measured"},
@@ -225,23 +232,39 @@ class TestWhatStillWatchesIt:
         path.write_text(yaml.safe_dump(doc))
         monkeypatch.setattr(RT, "_heartbeat_rules_path", lambda hb: str(path))
 
-    def test_a_live_heartbeat_rule_is_named_with_the_command(self, world, tmp_path,  # noqa: F811
-                                                            monkeypatch):
+    @staticmethod
+    def _kind(p, kind, what):
+        return " ".join(w["how"] for w in p[kind] if what in w["what"])
+
+    def test_a_live_heartbeat_rule_is_generated_and_said_with_when(self, world, tmp_path,  # noqa: F811
+                                                                  monkeypatch):
         self._rules(tmp_path, monkeypatch, ["r4", "r5"])
-        joined = " ".join(RT.plan("Lab", "r5", "x y z")["not_doing"])
-        assert "heartbeat rule (window 915 s) stays until the rules are regenerated" in joined
-        assert "EXTRA meanwhile" in joined
+        p = RT.plan("Lab", "r5", "x y z")
+        assert [w["what"] for w in p["generated"] if "heartbeat" in w["what"]] == [
+            "its Grafana heartbeat rule (window 915 s)"]
+        how = self._kind(p, "generated", "heartbeat")
+        assert "leaves with this commit" in how and "EXTRA until the windows are re-measured" in how
+        assert "its Grafana heartbeat rule (window 915 s): generated" in " ".join(p["not_doing"])
 
     def test_no_rule_is_said_as_read(self, world, tmp_path, monkeypatch):  # noqa: F811
         self._rules(tmp_path, monkeypatch, ["r4"])
-        assert "no Grafana heartbeat rule names it" in " ".join(
-            RT.plan("Lab", "r5", "x y z")["not_doing"])
+        assert "none names it (the generated rules file was read)" in self._kind(
+            RT.plan("Lab", "r5", "x y z"), "generated", "heartbeat")
 
     def test_a_missing_rules_file_is_unknown_not_none(self, world, tmp_path,  # noqa: F811
                                                       monkeypatch):
         monkeypatch.setattr(RT, "_heartbeat_rules_path", lambda hb: str(tmp_path / "absent"))
-        joined = " ".join(RT.plan("Lab", "r5", "x y z")["not_doing"])
-        assert "whether one exists is unknown" in joined
+        assert "whether one names it is unknown" in self._kind(
+            RT.plan("Lab", "r5", "x y z"), "generated", "heartbeat")
+
+    def test_generated_targets_are_dropped_at_the_keepers_next_run(self, world,  # noqa: F811
+                                                                    monkeypatch):
+        monkeypatch.setattr("modules.prometheus_targets.target_dir", lambda: "/srv/targets")
+        p = RT.plan("Lab", "r5", "x y z")
+        how = self._kind(p, "generated", "Prometheus")
+        assert "a device with no committed golden is no target" in how
+        assert "drops it at its next run" in how
+        assert not [w for w in p["survives"] if "Prometheus" in w["what"]]
 
     def _prom(self, monkeypatch, targets=None, fail=""):
         from modules.integrations import prometheus as P
@@ -254,27 +277,36 @@ class TestWhatStillWatchesIt:
         monkeypatch.setattr(P.PrometheusIntegration, "_get", lambda self, path, **kw: (
             {"ok": False, "error": fail} if fail else {"ok": True, "response": Resp()}))
 
-    def test_scrape_targets_still_polling_it_are_named_with_their_job(self, world,  # noqa: F811
-                                                                      monkeypatch):
+    def test_targets_not_generated_here_survive_named_with_their_job(self, world,  # noqa: F811
+                                                                     monkeypatch):
         self._prom(monkeypatch, [
             {"labels": {"instance": "192.0.2.15", "job": "snmp"}},
             {"labels": {"instance": "x", "job": "snmp_if"},
              "discoveredLabels": {"__param_target": "192.0.2.15"}},
             {"labels": {"instance": "192.0.2.14:161", "job": "snmp"}}])
-        joined = " ".join(RT.plan("Lab", "r5", "x y z")["not_doing"])
-        assert "Prometheus still scrapes 192.0.2.15 (2 target(s), job snmp, snmp_if)" in joined
-        assert "hand-kept on the host" in joined and "C168" in joined
+        how = self._kind(RT.plan("Lab", "r5", "x y z"), "survives", "Prometheus")
+        assert "Prometheus still scrapes 192.0.2.15 (2 target(s), job snmp, snmp_if)" in how
+        assert "remove them where they are configured" in how
 
     def test_nothing_scraped_is_said_as_read(self, world, monkeypatch):  # noqa: F811
         self._prom(monkeypatch, [{"labels": {"instance": "192.0.2.14:9116", "job": "snmp"}}])
-        assert "Prometheus scrapes nothing at 192.0.2.15" in " ".join(
-            RT.plan("Lab", "r5", "x y z")["not_doing"])
+        assert "Prometheus scrapes nothing at 192.0.2.15" in self._kind(
+            RT.plan("Lab", "r5", "x y z"), "survives", "Prometheus")
 
-    def test_prometheus_not_answering_is_may_still_poll(self, world, monkeypatch):  # noqa: F811
+    def test_prometheus_not_answering_says_remove_it_there(self, world, monkeypatch):  # noqa: F811
         self._prom(monkeypatch, fail="connection refused")
-        joined = " ".join(RT.plan("Lab", "r5", "x y z")["not_doing"])
-        assert "could not be asked (connection refused)" in joined
-        assert "may still poll 192.0.2.15" in joined
+        how = self._kind(RT.plan("Lab", "r5", "x y z"), "survives", "Prometheus")
+        assert "could not be asked (connection refused)" in how
+        assert "remove 192.0.2.15 where its targets are configured" in how
+
+    def test_what_survives_is_named_with_how_it_is_removed(self, world):  # noqa: F811
+        p = RT.plan("Lab", "r5", "x y z")
+        survives = {w["what"]: w["how"] for w in p["survives"]}
+        assert "remove the row on the host (C398)" in survives["Oxidized's polling"]
+        assert "removed in Grafana" in survives["a hand-built Grafana dashboard panel naming it"]
+        netbox = [h for w, h in survives.items() if w.startswith("the NetBox device")]
+        assert netbox and "delete it in NetBox if it is gone for good" in netbox[0]
+        assert all(w["how"] for w in p["survives"] + p["generated"]), "each says how or when"
 
 
 def test_the_screen_draws_the_new_steps_and_statements(world, tmp_path,  # noqa: F811

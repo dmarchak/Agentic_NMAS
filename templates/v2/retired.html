@@ -1,0 +1,23 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{%- set active_nav = 'devices' -%}
+{#- A retired device's address (C185; the device-actions canvas, board 12, signed off
+    2026-10-03): it is in no inventory and has no tabs, so its page is its retired record,
+    read from its retire commit (`retire.retired_record`), never a bare 404. -#}
+{% block title %}{{ name }} (retired) · NMAS{% endblock %}
+{% block main %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices') }}">Devices</a><span aria-hidden="true">/</span><span>{{ name }}</span></nav>
+<div class="page-head">
+  <div class="page-title">
+    <div class="title-row"><h1 class="mono">{{ name }} {{ info('retire', 'afterwards') }}</h1> {{ badge('Retired', 'muted') }}</div>
+    <p class="sub">Retired {{ stamp(r.at) }} · network {{ list_name }} · out of management: nothing in NMAS checks, captures or deploys it</p>
+  </div>
+</div>
+<section class="card retired-card">
+  <h2>Its record</h2>
+  <p>Retired by {{ r.actor or 'nobody recorded' }}{% if r.verified %} ({{ r.verified }}){% endif %}{% if r.reason %}: &ldquo;{{ r.reason }}&rdquo;{% endif %}. Commit <span class="mono">{{ r.sha[:12] }}</span>; its last intent and golden are in history, the parent of that commit.</p>
+  <p class="dev-actions"><a class="btn" href="{{ url_for('v2.history_page', device=name, since='') }}">Its history (the same timeline, filtered to {{ name }})</a>
+    <a class="btn" data-op="onboard" href="{{ url_for('index') }}">Onboard it again (today's page)…</a>{{ how('onboard') }}</p>
+  <p class="muted small">To manage {{ name }} again is onboarding or adopt, not an undo: its credential survives only in the break-glass record.</p>
+</section>
+{% endblock %}

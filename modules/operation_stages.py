@@ -117,6 +117,10 @@ STAGES = {
     # The v2 device page's Revert and Retry (7.3, board 11): the same applies, carrying the list.
     "device_v2.revert_confirm": Stages(
         "device_v2.revert", "hash", NO_DEVICE, FORWARD, "modules.nsot.intent_ops.revert_apply"),
+    "device_v2.retire_confirm": Stages(
+        "device_v2.retire", "hash",
+        "n/a: retirement changes no device; the NetBox mask is read back inside the apply",
+        "n/a: one commit; a failed commit restores the tree", "modules.nsot.repo.commit"),
     "device_v2.seed_confirm": Stages(
         "device_v2.seed", "hash", NO_DEVICE,
         "n/a: a failed commit puts the file back; a seeded intent is corrected forward",
@@ -265,6 +269,7 @@ HISTORY = {
     "device_v2.revert_confirm": ("intent",),
     "device_v2.retry_confirm": ("retries",),
     "device_v2.seed_confirm": ("intent",),
+    "device_v2.retire_confirm": ("n/a: a retired device has no History tab; its address shows its retired record, read from the retire commit (C185)"),
     "v2.ip_sla_commit": ("intent",),
     "retire.apply": ("n/a: a retired device has no page to hold a History tab; its record is "
                      "the retire commit, read by the legacy golden history (C185)"),

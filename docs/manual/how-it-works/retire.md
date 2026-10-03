@@ -10,10 +10,10 @@ the tool wrote them.
 
 ## How you start it {#start}
 
-On today's Device page, the **Retire…** button (the new device page's Actions menu links
-there). You type a reason and preview; the reason is part of the plan's hash, so a reason
-edited after the preview must be previewed again. Confirming sends that hash back to be
-checked. On the host, `nmas-retire --list <list> --device <device>
+On the device page, under Actions, **Retire…**: its card opens in place of the tab. You type
+a reason, and the card plans again with it; the reason is part of the plan's hash, so the
+confirm is bound to the reason you see. Confirming sends that hash back to be checked, and
+the result is drawn in the same card. On the host, `nmas-retire --list <list> --device <device>
 --reason "<why>"` prints the same plan and a hash; `nmas-retire ... --apply <hash> --actor
 <you> --breakglass <file>` carries it out, reading the break-glass passphrase from the
 terminal. Both run the same code.
@@ -46,10 +46,10 @@ NOT do. It refuses when:
   from the [break-glass export](breakglass-export).
 - **Another operation holds the device.**
 
-The preview also reads, and states as read, what still watches the device after it leaves:
-the generated heartbeat rules file (does a Grafana heartbeat rule name it) and Prometheus's
-active targets (is its address still scraped). An advisory says when its golden carries the
-`NMAS-HEARTBEAT` applet, which stays on the device: the tool cannot remove it.
+The preview also reads, and states as read, what still watches the device after it leaves,
+in two kinds (see [What watches it afterwards](#afterwards)): what is generated and so
+dropped, and what survives with how it is removed. An advisory says when its golden carries
+the `NMAS-HEARTBEAT` applet, which stays on the device: the tool cannot remove it.
 
 ## The apply
 
@@ -103,17 +103,43 @@ for an omission:
   tool created it, Remove could still delete it, as a separate decision.
 - A template approval is not withdrawn: an approval is of the template, never of its
   devices.
-- Its Grafana heartbeat rule stays until the rules are regenerated on the host; the hourly
-  check names it EXTRA meanwhile.
-- Prometheus: the preview says what it read for the device's address. (The code's sentence
-  still calls the scrape targets hand-kept, from before the app generated them from the
-  inventory.)
-- Oxidized keeps polling it (lab integration): the tool does not write its device list, so
-  its config history continues.
+- What still watches it is said in two kinds, below.
 - Its lab startup file freezes at its last sync (lab integration).
 - Its running configuration is not changed, and its backups are kept.
 - A session the app has pooled to it is closed by the app's idle reaper within two minutes,
   not by retiring.
+
+## What watches it afterwards {#afterwards}
+
+**Generated, so dropped.** The tool regenerates these from what retiring removes, so each
+drops at its next regeneration, and the card says when:
+
+- Prometheus's scrape targets, where the app writes them (a target directory is set): they
+  are generated from the inventory, and a device with no committed golden is no target, so
+  the retire commit drops it at the target keeper's next run. After the commit the result
+  regenerates them and reads the files back, saying whether the device is gone from them.
+  Where no target directory is set, the targets are not the tool's, and they are listed under
+  what survives, with what Prometheus answered for the address.
+- Its Grafana heartbeat rule: generated from committed intent, which leaves with the retire
+  commit. The hourly check names it EXTRA until the heartbeat windows are re-measured and the
+  rules installed without it (Monitoring, then its host step).
+
+**What survives**, each with how it is removed:
+
+- The NetBox device, its credential masked: delete it in NetBox if it is gone for good.
+- Oxidized's row in its device list (`router.db`): nothing regenerates that file, and the tool
+  writes it only to rotate a credential, so Oxidized keeps polling until the row is removed
+  on the host.
+- A Grafana dashboard panel built by hand that names it: removed in Grafana by hand; the tool
+  does not edit dashboards.
+- A template's approval: it stays, because an approval is of the template.
+- Its credential, only in the break-glass record. Managing it again is onboarding or adopt,
+  not an undo.
+
+**Its address afterwards.** The device has no device page once retired: its address shows
+its retired record instead, read from the retire commit (who retired it, the reason, the
+commit, when), with its history (the History page filtered to it) and a way to onboard it
+again.
 
 ## Two ways in, two kinds of evidence
 

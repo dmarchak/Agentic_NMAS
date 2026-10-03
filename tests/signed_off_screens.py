@@ -85,6 +85,9 @@ SIGNED_OFF = {
     "tab:neighbours": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the device tabs approved, step (a)"),
     "tab:ask": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the device tabs approved, step (a); not "
                               "built (drawn disabled)"),
+    "retired.html": ("2026-10-03", "the device-actions canvas, board 12 (Retire), its last card: "
+                                   "a retired device's address shows its retired record (C185); "
+                                   "NSOT_STAGE7_PLAN, the boards 8 to 12 sign-off"),
 }
 
 #: built without a recorded sign-off: (why, what happens to it). Only shrinks.

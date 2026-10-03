@@ -58,14 +58,19 @@ Either way an export taken before the last rotation does not count.
 **What retire does NOT do, stated every time**, because each is correct and
 each looks like an omission unless it is named: the NetBox device stays
 (NetBox records what exists, not what NMAS manages); Oxidized keeps polling
-(NMAS does not write ``router.db``) so config history continues; the
+(nothing regenerates ``router.db``, C398) so config history continues; the
 startup config freezes at its last sync; the device's running configuration
 is not changed; backups are kept; and a session the app has pooled is not
-closed by a command that runs outside it. And two things NMAS does not
-own, each named with what is still live: the device's Grafana heartbeat
-rule stays until the rules are regenerated on the host (the hourly check
-names it EXTRA meanwhile), and Prometheus's scrape targets, hand-kept on the
-host (C168), keep polling its address until they are edited there.
+closed by a command that runs outside it.
+
+**What watches it afterwards, in two kinds** (board 12, the operator,
+2026-10-03; `_watchers`): GENERATED, dropped at the next regeneration and
+said with when (Prometheus's scrape targets, generated from the inventory
+when a target directory is set, drop a device with no golden at the
+keeper's next run; the heartbeat rule, generated from committed intent, is
+named EXTRA by the hourly check until the windows are re-measured), and
+SURVIVES, named with how it is removed (the NetBox device, Oxidized's row,
+a hand-built dashboard panel, the template's approval).
 """
 
 import hashlib
@@ -248,10 +253,23 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
             f"never of its devices (scheme 3), so it stays approved; its recorded "
             f"evidence still names {hostname}, as history")
     out["not_doing"] += [n for n in (mask.get("not_doing"), legacy.get("not_doing")) if n]
-    out["not_doing"] += _watchers(hostname, ip)
+    # Board 12: what is GENERATED is dropped at its next regeneration, said with when; what
+    # SURVIVES is named with how it is removed. Both are the commit's Not-Done trailers too.
+    watchers = _watchers(hostname, ip)
+    out["generated"] = [w for w in watchers if w["kind"] == "generated"]
+    out["survives"] = [w for w in watchers if w["kind"] == "survives"]
+    if nb.get("checked") and nb.get("exists"):
+        out["survives"].insert(0, {
+            "kind": "survives", "what": f"the NetBox device {nb['id']}",
+            "how": ("KEPT, its credential masked: delete it in NetBox if it is gone for good"
+                    + (" (NMAS created it, so Remove could also delete it, a separate "
+                       "decision)" if nb["created_by_nmas"] else
+                       " (NMAS did not create it, so NMAS never deletes it)"))})
+    out["survives"] += [{"kind": "survives", "what": f"the approval of {tpl}",
+                         "how": "stays: an approval is of the template, never of its devices"}
+                        for tpl in still_approved]
+    out["not_doing"] += [f"{w['what']}: {w['how']}" for w in watchers]
     out["not_doing"] += [
-        "Oxidized keeps polling it: NMAS does not write router.db, so its "
-        "config history continues",
         f"its startup config {startup} freezes at its last sync, declared "
         "deliberately unmapped",
         "its running configuration is not changed",
@@ -373,9 +391,15 @@ def _heartbeat_rules_path(hb) -> str:
 
 
 def _watchers(hostname: str, ip: str) -> list:
-    """What still watches the device after it leaves, that NMAS does not own.
-    Each line names what was READ and who removes it."""
+    """What still watches the device after it leaves, each ``{"kind", "what", "how"}``:
+    GENERATED (the tool regenerates it from what retire removes, so it is dropped at the next
+    regeneration, said with when) or SURVIVES (nobody regenerates it: named with how it is
+    removed). Board 12 (the operator, 2026-10-03). Each names what was READ."""
     out = []
+
+    def item(kind, what, how):
+        out.append({"kind": kind, "what": what, "how": how})
+
     try:
         import importlib.machinery
         import importlib.util
@@ -390,47 +414,132 @@ def _watchers(hostname: str, ip: str) -> list:
         loader.exec_module(hb)
         rules_path = _heartbeat_rules_path(hb)
         if not os.path.exists(rules_path):
-            out.append(f"its Grafana heartbeat rule: the generated rules file ({rules_path}) "
-                       "is not here, so whether one exists is unknown; regenerate the "
-                       "rules on the host after retiring")
+            item("generated", "its Grafana heartbeat rule",
+                 f"generated from committed intent, which leaves with this commit; the "
+                 f"generated rules file ({rules_path}) is not here, so whether one names it is "
+                 "unknown: the hourly check names one EXTRA if it does, and re-measuring the "
+                 "heartbeat windows (Monitoring, then its host step) removes it")
         else:
             with open(rules_path, encoding="utf-8") as fh:
                 rules = hb.installed(yaml.safe_load(fh) or {})
             if hostname in rules:
-                out.append(
-                    f"its Grafana heartbeat rule (window {rules[hostname][0]} s) stays until "
-                    "the rules are regenerated on the host (scripts/nmas-heartbeat-rules "
-                    "--datasource-uid <uid> --loki-url <url>): its committed intent leaves "
-                    "with this commit, so the next generation omits it, and the hourly "
-                    "--check names it EXTRA meanwhile")
+                item("generated", f"its Grafana heartbeat rule (window {rules[hostname][0]} s)",
+                     "generated from committed intent, which leaves with this commit: the "
+                     "hourly check names it EXTRA until the windows are re-measured and the "
+                     "rules installed without it (Monitoring, then its host step)")
             else:
-                out.append("no Grafana heartbeat rule names it (the generated rules file "
-                           "was read)")
+                item("generated", "its Grafana heartbeat rule",
+                     "none names it (the generated rules file was read)")
     except Exception as exc:                   # noqa: BLE001
-        out.append(f"its Grafana heartbeat rule: the rules file could not be read ({exc})")
+        item("generated", "its Grafana heartbeat rule",
+             f"the generated rules file could not be read ({exc}), so whether one names it is "
+             "unknown")
     try:
-        from modules.integrations import get_integration
+        from modules import prometheus_targets
 
-        prom = get_integration("prometheus")
-        if prom is None or not prom.is_configured():
-            out.append(f"Prometheus is not configured here, so whether its hand-kept scrape "
-                       f"targets still poll {ip or hostname} is unknown (C168)")
+        if prometheus_targets.target_dir():
+            item("generated", "Prometheus's scrape targets",
+                 f"generated from the inventory, and a device with no committed golden is no "
+                 f"target: retire's commit removes {hostname}'s golden, so the targets keeper "
+                 "drops it at its next run, and the result reads the target files back")
         else:
-            t = prom.targets_for(ip)
-            if not t["ok"]:
-                out.append(f"Prometheus could not be asked ({t['error']}): its hand-kept "
-                           f"scrape targets may still poll {ip} (C168)")
-            elif t["count"]:
-                out.append(f"Prometheus still scrapes {ip} ({t['count']} target(s), job "
-                           f"{', '.join(t['jobs'])}): its scrape targets are hand-kept on "
-                           "the host and NMAS does not write them (C168); remove them there "
-                           "(P.7 generates them from the inventory)")
+            from modules.integrations import get_integration
+
+            prom = get_integration("prometheus")
+            if prom is None or not prom.is_configured():
+                item("survives", "Prometheus's scrape targets",
+                     f"not generated here (no target directory is set) and Prometheus is not "
+                     f"configured, so whether its targets still poll {ip or hostname} is "
+                     "unknown: remove it where Prometheus is configured")
             else:
-                out.append(f"Prometheus scrapes nothing at {ip} (its active targets were "
-                           "read)")
+                t = prom.targets_for(ip)
+                if not t["ok"]:
+                    item("survives", "Prometheus's scrape targets",
+                         f"not generated here (no target directory is set), and Prometheus "
+                         f"could not be asked ({t['error']}): remove {ip} where its targets "
+                         "are configured")
+                elif t["count"]:
+                    item("survives", "Prometheus's scrape targets",
+                         f"Prometheus still scrapes {ip} ({t['count']} target(s), job "
+                         f"{', '.join(t['jobs'])}), and its targets are not generated here "
+                         "(no target directory is set): remove them where they are "
+                         "configured")
+                else:
+                    item("survives", "Prometheus's scrape targets",
+                         f"Prometheus scrapes nothing at {ip} (its active targets were read): "
+                         "nothing to remove")
     except Exception as exc:                   # noqa: BLE001
-        out.append(f"Prometheus's scrape targets could not be checked ({exc})")
+        item("survives", "Prometheus's scrape targets", f"could not be checked ({exc})")
+    item("survives", "Oxidized's polling",
+         f"its row in Oxidized's router.db stays, and Oxidized keeps polling {hostname}: "
+         "nothing regenerates that file, and NMAS writes it only to rotate a credential, so "
+         "remove the row on the host (C398)")
+    item("survives", "a hand-built Grafana dashboard panel naming it",
+         "stays until removed in Grafana: NMAS does not edit dashboards")
     return out
+
+
+def targets_after(hostname: str, ip: str) -> dict:
+    """After retire's commit, regenerate Prometheus's targets now (the keeper the commit
+    woke does the same) and READ THE FILES BACK: ``{"state", "statement", "at"}``, state one
+    of ``dropped``, ``still`` (a file still names it), ``failed`` (the regeneration did not
+    happen) or ``not_managed`` (no target directory is set, so the tool writes none)."""
+    from modules import prometheus_targets as PT
+
+    directory = PT.target_dir()
+    if not directory:
+        return {"state": "not_managed", "at": "",
+                "statement": "Prometheus's targets are not generated here (no target "
+                             "directory is set)"}
+    rec = PT.sync(f"retire of {hostname}")
+    if not rec.get("ok"):
+        return {"state": "failed", "at": rec.get("at", ""),
+                "statement": (f"Prometheus's targets were NOT regenerated "
+                              f"({rec.get('error') or 'no reason recorded'}): the keeper "
+                              "tries again at its next run")}
+    still = []
+    for name in sorted(os.listdir(directory)):
+        if not (name.startswith(PT.PREFIX) and name.endswith(".json")):
+            continue
+        with open(os.path.join(directory, name), encoding="utf-8") as fh:
+            groups = json.load(fh) or []
+        if any((g.get("labels") or {}).get("device") == hostname
+               or (ip and ip in (g.get("targets") or [])) for g in groups):
+            still.append(name)
+    if still:
+        return {"state": "still", "at": rec["at"],
+                "statement": (f"Prometheus's targets were regenerated, and still name "
+                              f"{hostname} ({', '.join(still)}, read back at {rec['at']})")}
+    return {"state": "dropped", "at": rec["at"],
+            "statement": f"Prometheus's targets were regenerated without {hostname} (read "
+                         f"back at {rec['at']})"}
+
+
+def retired_record(repo: str, hostname: str):
+    """The newest retire commit of *hostname* in *repo* (its `Retired-Device:` trailer, matched
+    exactly), as ``{"sha", "at", "actor", "verified", "reason"}``, or None: what the device's
+    address shows once it has left (C185; board 12). A read of git only."""
+    from modules.nsot import repo as R
+
+    rc, out, _err = R.git(repo, "log", "--format=%H%x1f%cI%x1f%B%x1e", "--fixed-strings",
+                          f"--grep=Retired-Device: {hostname}")
+    if rc != 0:
+        return None
+    for chunk in out.split("\x1e"):
+        parts = chunk.strip().split("\x1f")
+        if len(parts) != 3:
+            continue
+        sha, at, body = parts
+        trailers = {}
+        for line in body.splitlines():
+            key, sep, value = line.partition(": ")
+            if sep and key in ("Retired-Device", "Actor", "Actor-Verified", "Reason"):
+                trailers.setdefault(key, value.strip())
+        if trailers.get("Retired-Device") == hostname:
+            return {"sha": sha, "at": at, "actor": trailers.get("Actor", ""),
+                    "verified": trailers.get("Actor-Verified", ""),
+                    "reason": trailers.get("Reason", "")}
+    return None
 
 
 def _blob(path: str) -> str:

@@ -117,6 +117,21 @@ def _monitoring_ctx(ref, dev):
         model=(hw.get("model") or "", hw.get("model_from") or ""))}
 
 
+def _retired(name):
+    """``(list ref, record)`` for a device retired from the active list (a read may derive its
+    list), from its retire commit (`retire.retired_record`), or None. An unreadable history
+    is logged and is not a record."""
+    from modules.nsot import listref, retire
+
+    try:
+        ref = listref.active()
+        rec = retire.retired_record(ref.repo_dir, name)
+    except Exception as exc:                          # noqa: BLE001
+        log.warning("device_v2: the retire record could not be read for %s: %s", name, exc)
+        return None
+    return (ref, rec) if rec else None
+
+
 @bp.route("/device/<name>", methods=["GET"])
 def device(name):
     """The whole page, opened on the tab the URL names. A device onboarded
@@ -132,6 +147,12 @@ def device(name):
         if pending:
             ref, p = pending
             return _strict(render_template("v2/pending.html", p=p, list_name=ref.name, who=_who()))
+        # A device that LEFT shows its retired record (C185; board 12), never a bare 404.
+        retired = _retired(name)
+        if retired:
+            ref, rec = retired
+            return _strict(render_template("v2/retired.html", r=rec, name=name,
+                                           list_name=ref.name, who=_who()))
         return refusal
     ref, dev = found
     tab = request.args.get("tab", "overview")
@@ -159,7 +180,8 @@ def device(name):
                       _restore_card(ref, dev, tab, request.args) if op == "restore" else
                       _revert_card(ref, dev, tab, request.args) if op == "revert" else
                       _retry_card(ref, dev, tab, request.args) if op == "retry" else
-                      _seed_card(ref, dev, tab) if op == "seed" else None)
+                      _seed_card(ref, dev, tab) if op == "seed" else
+                      _retire_card(ref, dev, tab, request.args) if op == "retire" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -615,6 +637,9 @@ def when_free(name):
                                        c=_restore_card(ref, dev, back, request.args)))
     if op == "seed":
         return _strict(render_template("v2/_seed.html", c=_seed_card(ref, dev, back)))
+    if op == "retire":
+        return _strict(render_template("v2/_retire.html",
+                                       c=_retire_card(ref, dev, back, request.args)))
     if op == "revert":
         return _strict(render_template("v2/_revert.html",
                                        c=_revert_card(ref, dev, back, request.args)))
@@ -1080,6 +1105,78 @@ def seed_confirm(name):
         seed_result(done["outcomes"], done["save"])))
     c.update(back=_back(request.form), ip=dev.get("ip", ""))
     return _strict(render_template("v2/_seed.html", c=c))
+
+
+# ---------------------------------------------------------------------------
+# Retire (7.3; the device-actions canvas, board 12)
+# ---------------------------------------------------------------------------
+
+def _retire_card(ref, dev, back, fields):
+    """The retire card: THE retire plan (`retire.plan`, the one today's route uses) with the
+    reason typed so far, masked on the way out, the confirm bound to the plan's hash."""
+    from modules import device_actions
+    from modules.nsot import retire
+    from modules.nsot.device_ops import busy_text
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import retire_preview
+
+    host = dev.get("hostname", "")
+    p = retire.plan(ref.name, host, (fields.get("reason") or "").strip())
+    out = mask_payload({"plan": p, "preview": retire_preview(
+        p, busy=busy_text(ref.name, host), request=request)})
+    c = device_actions.retire_card(ref, host, out["preview"], _viewer(), out["plan"])
+    c.update(back=back, ip=dev.get("ip", ""))
+    return c
+
+
+@bp.route("/device/<name>/retire", methods=["GET"])
+def retire(name):
+    """Retire the device from management (board 12): the reason, what retire changes in
+    order, what is generated and so dropped, what survives and how each is removed, the
+    checks and the confirm bound to the plan. A READ: the repository, the CSV, the
+    credential store, the settings and the export log; nothing is sent to the device."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_retire.html",
+                                   c=_retire_card(ref, dev, _back(request.args), request.args)))
+
+
+@bp.route("/device/<name>/retire/confirm", methods=["POST"])
+def retire_confirm(name):
+    """Retire the device as the verified person, with its reason, in the list the card
+    CARRIES: the same apply as `/retire/apply` (`retire.apply`: the plan computed again and
+    refused if it moved, the row deleted last against the export log). Once its commit
+    landed, Prometheus's targets are regenerated and read back. Nothing is sent."""
+    from modules import device_actions, identity
+    from modules.nsot import retire as retire_op
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import retire_result
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_retire.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    confirmed = (request.form.get("hash") or "").strip()
+    reason = (request.form.get("reason") or "").strip()
+    if not confirmed:
+        return _strict(render_template("v2/_retire.html", c={
+            "op": "retire", "state": "refused_hash", "host": host, "list": ref.name,
+            "back": _back(request.form)}), 400)
+    before = retire_op.plan(ref.name, host, reason)
+    actor = identity.identify(request).actor or ""
+    out = retire_op.apply(ref.name, host, reason=reason, actor=actor,
+                          confirmed_hash=confirmed, breakglass_log=True)
+    log.info("retire (v2): %s/%s by %s: ok=%s done=%s", ref.name, host, actor,
+             out.get("ok"), out.get("done"))
+    targets = (retire_op.targets_after(host, before.get("ip", ""))
+               if "commit" in (out.get("done") or []) else {})
+    c = device_actions.retire_result_card(
+        ref, host, mask_payload(retire_result(out, out.get("plan") or before)),
+        mask_payload(before), targets)
+    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_retire.html", c=c))
 
 
 @bp.route("/device/<name>/deploy/job/<job>", methods=["GET"])

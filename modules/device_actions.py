@@ -640,6 +640,71 @@ def seed_result_card(ref, host: str, result: dict) -> dict:
             "not_watched": result.get("not_watched", "")}
 
 
+def retire_card(ref, host: str, preview: dict, viewer: dict, plan: dict) -> dict:
+    """The retire card for *host* (board 12) from `preview_confirm.retire_preview`'s preview
+    and `retire.plan()` (both MASKED): the reason, what retire changes in order (each step
+    skipped when already done), what is GENERATED and so dropped at its next regeneration,
+    what SURVIVES with how it is removed, what it leaves unchanged, the checks (the
+    break-glass one pointing at Credentials), and the confirm bound to the plan's hash."""
+    from modules.preview_confirm import BREAKGLASS_GATE
+
+    t = _one_target(preview, host, viewer)
+    confirm = preview.get("confirm") or {}
+    watched = {f"{w['what']}: {w['how']}" for w in plan.get("generated") or []}
+    watched |= {f"{w['what']}: {w['how']}" for w in plan.get("survives") or []}
+    unchanged = [n for n in plan.get("not_doing") or []
+                 if n not in watched and not n.startswith(("NetBox device ", "the approval of "))]
+    breakglass = next((g for g in t["gates"] if g.get("name") == BREAKGLASS_GATE), {})
+    return {"op": "retire", "state": "preview", "host": host, "list": ref.name,
+            "reason": plan.get("reason") or "",
+            "steps": [{"what": s.get("what", ""), "done": bool(s.get("done"))}
+                      for s in plan.get("steps") or []],
+            "generated": list(plan.get("generated") or []),
+            "survives": list(plan.get("survives") or []),
+            "unchanged": unchanged, "advisories": list(plan.get("advisories") or []),
+            "operands": list(t["target"].get("operands") or []),
+            "gates": t["gates"], "failing": t["failing"], "may": t["may"],
+            "held": held(t["gates"]),
+            "breakglass_failing": breakglass.get("state") == "fail",
+            "hash": (t["chosen"].get("select_data") or {}).get("hash", ""),
+            "effect": confirm.get("effect", ""), "button": confirm.get("button", "")}
+
+
+#: A retire result's level (`retire_result`) -> the card's.
+RETIRE_LEVELS = {"success": "ok", "partial": "warn", "failed": "danger"}
+
+
+def retire_result_card(ref, host: str, result: dict, plan: dict, targets: dict) -> dict:
+    """The retire result card from `preview_confirm.retire_result` (MASKED), the plan it ran
+    and `retire.targets_after`'s read-back: what happened and the record, what was DROPPED
+    (generated, so gone or going, with when), what is still to remove and how, and, once
+    retired, that this address now shows its retired record."""
+    target = next((x for x in result.get("targets") or [] if x.get("name") == host), {})
+    checks = target.get("checks") or {}
+    stopped = next((i for i in (result.get("did_not") or {}).get("items") or []
+                    if i.get("kind") == "stopped"), None)
+    retired = target.get("outcome") == "retired"
+    dropped = ([targets["statement"]] if targets.get("statement") else [])
+    dropped += [f"{w['what'][0].upper()}{w['what'][1:]}: {w['how']}"
+                for w in plan.get("generated") or []
+                if not (w["what"] == "Prometheus's scrape targets" and targets.get("statement"))]
+    return {"op": "retire", "state": "result", "host": host, "list": ref.name,
+            "level": RETIRE_LEVELS.get(result.get("level"), "danger"), "retired": retired,
+            "words": target.get("words", ""),
+            "summary": (result.get("happened") or {}).get("summary", ""),
+            "done": list((target.get("sent") or {}).get("lines") or []),
+            "stopped": (stopped or {}).get("text", ""),
+            "remaining": list((stopped or {}).get("lines") or []),
+            "basis": " ".join(checks.get("statements") or ([checks["why"]]
+                                                           if checks.get("why") else [])),
+            # Only once the commit landed (the route reads the targets back only then).
+            "dropped": dropped if targets else [],
+            "targets_state": targets.get("state", ""),
+            "survives": list(plan.get("survives") or []),
+            "record": (result.get("record") or {}).get("statement", ""),
+            "not_watched": result.get("not_watched", "")}
+
+
 def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict:
     """The restore card for its job: running with the pipeline's stepper, its result from the
     receipt (the deploy's own reading of it), or why there is none."""
