@@ -28,6 +28,8 @@ import threading
 import time
 import urllib.request
 
+from tests import home_guard
+
 GECKODRIVER_CANDIDATES = ("/snap/firefox/current/usr/lib/firefox/geckodriver",)
 
 
@@ -41,9 +43,36 @@ def _geckodriver():
     return ""
 
 
+def _snap_firefox() -> bool:
+    """Whether the `firefox` on PATH is the snap's (itself, or the shell wrapper that runs it)."""
+    found = shutil.which("firefox") or ""
+    real = os.path.realpath(found) if found else ""
+    if real.startswith("/snap/"):
+        return True
+    try:
+        with open(real, "rb") as fh:
+            head = fh.read(4096)
+    except OSError:
+        return False
+    return not head.startswith(b"\x7fELF") and b"/snap/bin/firefox" in head
+
+
 def _profile_parent() -> str:
+    """Where a session's own folder goes: the system's temporary directory, except for snap
+    Firefox, whose private /tmp cannot see it (so the snap's common directory, in the home).
+    C392: it was the home's whenever that directory EXISTED, whichever Firefox ran."""
     snap = os.path.expanduser("~/snap/firefox/common")
-    return snap if os.path.isdir(snap) else tempfile.gettempdir()
+    return snap if _snap_firefox() and os.path.isdir(snap) else tempfile.gettempdir()
+
+
+#: Folders a session could not remove (C392): the session-end guard names them.
+LEFT_BEHIND = []
+
+
+def remove_folder(path: str) -> bool:
+    """Remove *path*, and say whether it is gone: an `ignore_errors` removal said nothing."""
+    shutil.rmtree(path, ignore_errors=True)
+    return not os.path.exists(path)
 
 
 _PROBED = []
@@ -144,14 +173,25 @@ class Browser:
         """*prefs* are Firefox preferences for the session: a phone's width is
         `{"layout.css.devPixelsPerPx": "2.0"}` in a window twice as wide, because
         geckodriver will not make a window narrower than about 500 px."""
-        self.prefs = dict(prefs or {})
         self.port = free_port()
         # The profile geckodriver writes must be readable by Firefox: snap
         # Firefox has a PRIVATE /tmp, so a profile in the host's /tmp is
         # invisible to it and it exits with status 1 (measured 2026-09-30).
         # The snap's own common directory is readable by both.
-        self.tmp = tempfile.mkdtemp(prefix="nmas-browser-", dir=_profile_parent())
+        self.tmp = tempfile.mkdtemp(prefix=home_guard.session_prefix("browser"),
+                                    dir=_profile_parent())
+        # C391: a download lands in this session's own folder, never the person's Downloads
+        # (the export tests had saved 45 test records there). Not overridable by *prefs*.
+        self.downloads = os.path.join(self.tmp, "downloads")
+        os.mkdir(self.downloads)
+        self.prefs = dict(prefs or {}, **{"browser.download.folderList": 2,
+                                          "browser.download.dir": self.downloads,
+                                          "browser.download.useDownloadDir": True})
         env = dict(os.environ, TMPDIR=self.tmp)
+        if not _snap_firefox():
+            # And nothing else of Firefox's in the person's home (its caches, its default
+            # Downloads); the snap's own wrapper decides its HOME, so it is left alone.
+            env.update(HOME=self.tmp, XDG_DOWNLOAD_DIR=self.downloads)
         # The browser on the REAL clock: under libfaketime (C353's survey, the suite with the
         # clock moved forward) Firefox does not start with the preload, and the survey asks
         # what the SERVER's code does at a later date. Nothing here otherwise.
@@ -170,17 +210,25 @@ class Browser:
             return json.loads(r.read())["value"]
 
     def __enter__(self):
-        deadline = time.time() + 20
-        while True:
-            try:
-                self._call("GET", "/status", timeout=2)
-                break
-            except OSError:
-                if time.time() > deadline:
-                    raise
-                time.sleep(0.2)
-        self.session = self._call("POST", "/session", {"capabilities": {"alwaysMatch": {
-            "moz:firefoxOptions": {"args": ["-headless"], "prefs": self.prefs}}}})["sessionId"]
+        # C392: a session that cannot start (snap Firefox inside the confined suite, where
+        # `available()` probes once per process) never reaches __exit__, so it stops its own
+        # geckodriver and removes its folder here. It had not: 442 geckodriver processes
+        # (2.9 GB) and 442 folders were left, one per confined test process since 2026-09-30.
+        try:
+            deadline = time.time() + 20
+            while True:
+                try:
+                    self._call("GET", "/status", timeout=2)
+                    break
+                except OSError:
+                    if time.time() > deadline:
+                        raise
+                    time.sleep(0.2)
+            self.session = self._call("POST", "/session", {"capabilities": {"alwaysMatch": {
+                "moz:firefoxOptions": {"args": ["-headless"], "prefs": self.prefs}}}})["sessionId"]
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def go(self, url: str) -> None:
@@ -227,4 +275,5 @@ class Browser:
                 self.proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
-            shutil.rmtree(self.tmp, ignore_errors=True)
+            if not remove_folder(self.tmp):
+                LEFT_BEHIND.append(self.tmp)

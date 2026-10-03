@@ -46,6 +46,8 @@ else:
 
 from tests.store_guard import data_tree, tree_changes  # noqa: E402
 from tests import store_guard  # noqa: E402
+from tests import home_guard  # noqa: E402
+home_guard.run_id()     # set before xdist starts its workers, which inherit it
 
 # Every write the test process makes under the checkout's data/ is SEEN (an
 # audit hook), so a change there can be attributed rather than assumed.
@@ -140,6 +142,7 @@ def pytest_sessionstart(session):
         pytest.exit(f"{network_guard.REQUIRE_ENV}=1 and this run is not confined: "
                     f"{network_guard.report_line(_NETWORK_STATE)}", returncode=2)
     session.nmas_checkout_data_before = data_tree(_CHECKOUT_DATA_DIR)
+    session.nmas_home_before = home_guard.snapshot()
     _register_stack_dump(session)
     session.config._nmas_t0 = __import__("time").time()
 
@@ -165,6 +168,18 @@ def pytest_sessionfinish(session, exitstatus):
         if fail:
             _ci_annotate("error", "the session guard failed the run", message)
     if fail:
+        session.exitstatus = 1
+    # The person's home (C391, C392): judged by the process that ran the whole session, so a
+    # session still open in another xdist worker is not one left behind; each worker names
+    # the folders its own sessions could not remove.
+    browser_mod = sys.modules.get("tests.browser")
+    left = list(getattr(browser_mod, "LEFT_BEHIND", []) or [])
+    worker = hasattr(session.config, "workerinput")
+    home = (home_guard.judge({}, {}, left) if worker else
+            home_guard.judge(getattr(session, "nmas_home_before", {}), home_guard.snapshot(), left))
+    if home:
+        sys.stderr.write("\n" + home + "\n")
+        _ci_annotate("error", "the run touched the home", home)
         session.exitstatus = 1
     leaked = leaked_threads()
     if leaked:

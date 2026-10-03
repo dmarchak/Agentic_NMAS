@@ -271,6 +271,12 @@ def test_a_real_browser_exports_and_checks_the_download(page, monkeypatch):
                 "return document.querySelector('#bg-record').textContent")
             assert "T" in b.js("return document.querySelector('#bg-export time').getAttribute("
                                "'datetime')"), "a time, never an epoch number"
+            # C391: the download is in this session's own folder, never the person's Downloads.
+            import os as _os
+            deadline = time.time() + 10
+            while not [n for n in _os.listdir(b.downloads) if n.endswith(".bg")]:
+                assert time.time() < deadline, f"no .bg in the session's folder: {_os.listdir(b.downloads)}"
+                time.sleep(0.1)
             # What next's "Check a break-glass file…", clicked in the result card, opens the
             # check (C385: every opener is clicked, not reached by its address).
             b.click("#bg-export .op-part a[data-op=breakglass-export]")
@@ -453,8 +459,10 @@ def test_a_real_browser_checks_a_kept_file(page, tmp_path):
     import app as A
     import pathlib
     import tempfile
+    from tests import home_guard
     # Where the browser can read it (a snap Firefox has its own /tmp): beside its profile.
-    where = pathlib.Path(tempfile.mkdtemp(dir=browser._profile_parent(), prefix="nmas-upload-"))
+    where = pathlib.Path(tempfile.mkdtemp(dir=browser._profile_parent(),
+                                            prefix=home_guard.session_prefix("upload")))
     kept = where / "kept.bg"
     kept.write_bytes(base64.b64decode(_export(page).get_json()["file"]))
     with browser.Served(A.app) as srv, browser.Browser() as b:

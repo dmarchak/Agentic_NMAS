@@ -130,6 +130,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   that the mockup drew every control: not mechanised]
 - **No new capability on a v1 page: today's interface only shrinks until cutover; a v1 control,
   handler or function count may fall and never rise.** [tests/test_no_new_v1_capability.py]
+- **An element carrying `hx-select` disinherits it; a v2 action that cannot draw its answer says
+  "Couldn't load: <why>" in place.** [tests/test_v2_swaps_never_silent.py]
 - **The manual covers every screen and operation:** a page per sidebar item and device tab, a How
   it works page per operation naming each step its code declares, a diagram on each in the flow
   of the text, "How does this work?" beside every action, all clicked in a real browser. A v2
