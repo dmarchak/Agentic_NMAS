@@ -97,6 +97,7 @@ close are marked *written at close*.
 | Before the P-items | Phases 0, 1, 2, 3a, 3b, 3c; Stage 2; 3.3; 4C; r6 phase 1; the branch site; Phase 2 (DHCP) | Backfilled below (Part 0) |
 | P-items | P.1 to P.6 | Backfilled below |
 | | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
+| | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28); the audit's other rows and the multi-worker half (9.S) not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
 | | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs |
 | | 7.4 to 7.10 | Not started |
@@ -2017,6 +2018,80 @@ operation cannot be edited in place) was designed and built the same night as (d
 prerequisite [git 1215d3e], its delete refused until staged run 9 measures it. Commits: 4 from
 03:42 to 03:51 local (UTC-6) on 2026-10-01. Not recoverable: when (d2)'s build began (it
 was written in a session summarised before its first commit, after C290's at 03:21). (d4), the profile's IP SLA policy, waits on staged run 9.
+
+### P.15 — Several people at once (open): the decided fixes
+
+*Written 2026-10-02, when the last of the fixes the operator ordered closed (R5's per-device
+receipts). P.15 stays open: the audit's other rows are scheduled by risk, and its multi-worker
+half lands with 9.S.*
+
+**1. What it was**
+
+Every write path made safe against another person, another tab and, after 9.S, another
+worker process. A read-only audit (CONCURRENCY_AUDIT.md, each finding checked by a second
+reader) ranked the write paths; the operator ordered the high and medium ones that affect
+today's single-process install fixed first: R1, R24, R25 (the list repository), R4 (the
+approval queue), then R5, R13, R19, R20, R28, and R2 [NSOT_PLAN.md P.15; CONCURRENCY_AUDIT.md
+section 1].
+
+**2. How it was implemented**
+
+- **The repository** (R1, R24, R25) [git a5e7a2f]: one `flock` across processes from the first
+  write to the last tag; staging and commit refused outside it; a commit names its paths; a
+  save compares HEAD; retire's undo puts back only its own paths.
+- **The approval queue** (R4) [git 723e758]: one lock across processes, an atomic replace, an
+  unreadable queue refusing every write, reads that write nothing.
+- **R20** as register C326 [git acb0f49]: an approved revert closes as approved.
+- **R2** [git c3a21a6]: the intent editor's save carries the blob the person opened and is
+  refused under the repository lock, naming who moved it, when intent moved since.
+- **R5** [git 5bb86cb and the per-device receipts commit]: Update, `nmas-deploy` and every
+  restart refuse while a device is held; the two restart routes removed; an operation whose
+  process ended is kept and drawn on Needs attention; each device's receipt row written as it
+  finishes, commit pending, and completed after the batch's commit, drawn PENDING by every
+  reader.
+- **R13** [git a682b4b]: the template approvals record locked, refusing when unreadable, the
+  gate counting what is committed.
+- **R19** [git 43aa91c]: drift state locked and never emptied by an unreadable read; one drift
+  run per list across processes.
+- **R28** [git 2d029a5]: one run per reader at a time, and never an older value stored over a
+  newer one.
+
+Each has a test that runs the collision for real where it can (a second process, a child that
+holds devices and dies), and every check was shown able to fail.
+
+**3. Issues it found** (register IDs)
+
+C345 (the approvals record's damaged copy and a write's temp file inside the repository, where
+seeding staged them), found building R13 [OPEN_FINDINGS.md]. Caught by the fixes' own tests
+before commit, never registered: R13's lock first placed inside `templates/`, and R19's run
+lock resolved through the active list (which created a list) and then by a relative path
+(which wrote into the checkout).
+
+**4. How each was resolved**
+
+C345 fixed with a test that seeding never stages either file [git 8f84711]. The two caught
+before commit were moved: the approvals lock beside the repository, the drift run lock under
+`DATA_DIR/drift_runs/<list>.lock`.
+
+**5. Numbers**
+
+Commits (rule: subjects naming P.15, a CONCURRENCY_AUDIT row or C326, since the audit's commit
+b217f12 at 2026-10-01 23:10 UTC-6): 10, the audit and nine fixes, the last being the per-device
+receipts. The fixes run from acb0f49 (2026-10-02 11:52 UTC-6) to that commit. Findings recorded:
+1 (C345). **Estimate versus actual: no forecast was made** (none in the plan, the audit or the
+register); recorded so the remaining rows get one, made from this finished batch: ten rows in
+about one working day, interleaved with the sidebar badge and the sign-offs.
+
+**6. Where it left the product**
+
+In one process, two people or two tabs can no longer erase each other's intent, approvals,
+drift state or reader values, or commit over each other; nothing restarts the app under a
+running operation; and an operation cut off by a process exit leaves a receipt for each
+device it finished and a Needs attention row for the rest. Not built: the per-device progress
+step under `deploy_max_workers > 1`, the audit's other rows, and everything that needs more
+than one worker (9.S).
+
+*Not recoverable:* when each fix's build began; the commit times bound only its end.
 
 ### P.7 and P.8
 

@@ -33,8 +33,8 @@ Each of these is a gate, and any failing refuses the update:
 - the updater is installed, root-owned, can run, and its path unit is watching;
 - no update or terminal deploy is waiting or running;
 - no operation is running on a device. The restart an update ends in would cut a deploy,
-  restore, capture or rotation off half-applied, with no receipt, no golden and no
-  rollback, so the gate names each device held and who is running what, and the update
+  restore, capture or rotation off half-applied, with no golden and no rollback (a
+  deploy's or restore's devices that finished have their receipts, commit pending), so the gate names each device held and who is running what, and the update
   waits until they finish. An update already waiting for CI keeps waiting while one runs.
   A terminal `nmas-deploy` asks the same question before it restarts, and refuses (exit 10)
   naming each one.

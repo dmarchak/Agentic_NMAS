@@ -125,9 +125,11 @@ def state(job_id: str):
     for name in p["order"]:
         if name in p["done"]:
             row = p["done"][name]
-            steps.append({"device": name, "state": "done", **row,
-                          "words": OUTCOME_WORDS.get(row["outcome"],
-                                                     row["outcome"].replace("_", " "))})
+            words = OUTCOME_WORDS.get(row["outcome"], row["outcome"].replace("_", " "))
+            if job["state"] == "running":
+                # Its receipt row is written, commit pending, until the batch commits.
+                words += "; its record is committed when the batch ends"
+            steps.append({"device": name, "state": "done", **row, "words": words})
         elif name == p["current"]:
             steps.append({"device": name, "state": "running",
                           "took_s": round(now - p["started"].get(name, now), 1)})

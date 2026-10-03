@@ -25,7 +25,7 @@
         taller than its neighbours). -#}
     <li class="tl-item">
       <details class="tl-row">
-        <summary class="tl-sum"><span class="tl-when">{{ stamp(e.at) }}</span><span class="tl-line">{{ badge(k[0], 'danger' if failed else k[1]) }} <strong>{{ e.what }}</strong>
+        <summary class="tl-sum"><span class="tl-when">{{ stamp(e.at) }}</span><span class="tl-line">{{ badge(k[0], 'danger' if failed else 'warn' if e.pending else k[1]) }} <strong>{{ e.what }}</strong>
           {%- for m in e.marks or [] %}<span class="tl-mark"> · {{ m }}</span>{% endfor %}
           {%- if e.who_short %}<span class="muted"> · {{ e.who_short }}</span>{% endif %}</span></summary>
         <div class="tl-more">

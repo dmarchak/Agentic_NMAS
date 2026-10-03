@@ -192,8 +192,14 @@ After the last device, in this order:
 4. **Write the receipts.** Recorded: one masked row per device, sent, failed or refused, in
    `deploy_receipts.jsonl` in the list's data folder: the program, its hash against the
    confirmed one, you, each authorisation's reason, the checks verify ran, the rollback and the
-   commit. The result on screen is drawn from these rows, and the device page's History tab
-   reads them back. Then the device locks are released.
+   commit. Each device's row is written the moment that device finishes, marked **commit
+   pending**, and here a second line names it and fills in the batch's commit (or that it
+   recorded none); a device refused before it started gets its whole row here. So a restart
+   or a crash in the middle of a batch still leaves a receipt for each device it reached.
+   Every screen draws a row still pending as PENDING, never as done; when its process ended,
+   Needs attention's "did not finish" row names it. The result on screen is drawn from these
+   rows, and the device page's History tab reads them back. Then the device locks are
+   released.
 
 ## Many devices at once
 

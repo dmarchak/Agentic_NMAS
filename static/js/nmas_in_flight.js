@@ -66,6 +66,9 @@
             return '<li>' + esc(r.device) + ': ' + esc(r.action) + ' by '
               + esc(r.actor || 'unknown') + ' at ' + esc((r.at || '').slice(11, 19))
               + ' UTC: <strong>' + esc(r.outcome) + '</strong>'
+              + (r.commit_state === 'pending'
+                 ? ' <span class="badge bg-warning text-dark" data-commit-state="pending">'
+                   + 'commit pending</span>' : '')
               + (r.reason ? ' (' + esc(r.reason) + ')' : '') + '</li>';
           }).join('') + '</ul></div>';
     }

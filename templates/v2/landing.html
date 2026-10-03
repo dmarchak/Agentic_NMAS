@@ -19,7 +19,7 @@
   <ul class="recent">
     {%- for r in recent.rows %}
     <li>
-      <span class="grow"><strong>{{ r.action|capitalize }} {{ r.device }}</strong> · {{ r.outcome }}{% if r.program_lines %} · {{ r.program_lines }} line{{ '' if r.program_lines == 1 else 's' }}{% endif %}{% if r.reason %}<span class="muted"> · {{ r.reason }}</span>{% endif %}</span>
+      <span class="grow"><strong>{{ r.action|capitalize }} {{ r.device }}</strong> · {{ r.outcome }}{% if r.commit_state == 'pending' %} {{ badge('commit pending', 'warn', title='Its batch has not recorded its commit yet: still running, or its process ended (then Needs attention names it)') }}{% endif %}{% if r.program_lines %} · {{ r.program_lines }} line{{ '' if r.program_lines == 1 else 's' }}{% endif %}{% if r.reason %}<span class="muted"> · {{ r.reason }}</span>{% endif %}</span>
       <span class="muted small">{{ stamp(r.at) }}{% if r.actor %}, by {{ r.actor }}{% endif %}</span>
     </li>
     {%- endfor %}

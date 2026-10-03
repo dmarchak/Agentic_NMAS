@@ -771,9 +771,14 @@ def build_result(*, action: str, level: str, summary: str, targets: list,
 
 
 def result_level(rows: list, receipt_ok: bool, breaker_tripped: bool = False) -> str:
-    """``success`` only when nothing is left to qualify it."""
+    """``success`` only when nothing is left to qualify it. A row whose batch
+    has not committed it yet (`receipts.is_pending`) is never done: partial."""
+    from modules.nsot.receipts import is_pending
+
     if not rows:
         return "nothing"
+    if any(is_pending(r) for r in rows):
+        return "partial"
     done = [r for r in rows if r.get("outcome") == "deployed"]
     if not done:
         return "failed"
@@ -789,7 +794,7 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
     """A deploy's or restore's result, built FROM THE RECEIPT ROWS the apply
     has just written, so the screen and the record are one computation.
     Every field is already masked in the rows (`receipts.rows_for`)."""
-    from modules.nsot.receipts import FOLLOW_UP_NOT_BUILT
+    from modules.nsot.receipts import FOLLOW_UP_NOT_BUILT, PENDING_WORDS, is_pending
 
     verb = {"deploy": "deployed"}.get(action, "re-applied")
     receipt_ok = bool((receipt_status or {}).get("ok"))
@@ -798,6 +803,14 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
         name = r.get("device", "?")
         outcome = r.get("outcome", "")
         words = OUTCOME_WORDS.get(outcome, outcome.replace("_", " "))
+        if is_pending(r):
+            # Never "done": the device finished, and its batch's commit is not recorded.
+            words = ("sent" if outcome == "deployed" else words) + "; " + PENDING_WORDS
+            did_not.append({"target": name, "kind": "commit_pending",
+                            "text": "Its batch's golden commit and the rest of its receipt are "
+                                    "NOT recorded: the batch is still running, or its process "
+                                    "ended before recording them (then Needs attention names "
+                                    "the interrupted operation).", "lines": []})
         sent = r.get("sent")
         matches = r.get("matches_confirmed")
         targets.append({
@@ -891,7 +904,7 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
                           "error": (receipt_status or {}).get("error", "")},
               "statement": statement}
 
-    done = sum(1 for r in rows if r.get("outcome") == "deployed")
+    done = sum(1 for r in rows if r.get("outcome") == "deployed" and not is_pending(r))
     if from_receipt and from_receipt.get("device"):
         # One device's row of a batch: never "every device appears here".
         summary = (f"{from_receipt['device']}: "
@@ -1627,7 +1640,10 @@ def receipt_history(rows: list, device: str = "") -> list:
     apply. ``rows`` come from `receipts.read()` and are already masked."""
     batches, order = {}, []
     for r in rows:
-        key = r.get("batch_id") or f"{r.get('at', '')}|{r.get('action', '')}"
+        # A row written as its device finished carries its run's id: its batch id (or none,
+        # when nothing was committed) arrives later, and its `at` is its own device's.
+        key = (r.get("batch_id") or r.get("run_id")
+               or f"{r.get('at', '')}|{r.get('action', '')}")
         if key not in batches:
             batches[key] = []
             order.append(key)

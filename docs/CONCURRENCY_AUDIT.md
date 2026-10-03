@@ -108,7 +108,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R2 | h | intent | Intent editor save | `host_vars/<dev>.yml`, one commit | none: no base, write before the lock, save not bound to preview | no | FIXED 2026-10-02 (was UNSAFE; tests/test_intent_editor_concurrency.py) | yes | Base blob from the open; compare at HEAD under the lock; 409 with three-way diff |
 | R3 | h | stores, live | The server-wide active list (`device_lists.json` `current_list`) | the registry, and which list every derived write lands in | none; truncate in place; a torn read answers "Default" | no | UNSAFE | yes | Active list per session; every write carries its list; locked atomic registry |
 | R4 | h | approvals | Approval queue store | `approval_queue.json` | none; GETs write it; unreadable reads as `[]`; `resolve` saves a stale list twice | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approval_queue_store.py) | yes | PathLock, atomic write, refuse unreadable, pure reads, compare-and-set; SQLite WAL candidate |
-| R5 | h | locks, live | An operation interrupted by a process exit, including the two restart routes (added on review) | devices already pushed; no receipt, no golden, no rollback | none: Update gates and the restart routes ignore held devices; crash staging unread; leftover lock file unread | n/a | PARTLY FIXED 2026-10-02 (was UNSAFE; tests/test_interrupted_operations.py): Update and `nmas-deploy` refuse while a device is held, both restart routes removed, an interrupted operation kept and drawn on Needs attention; per-device receipts OPEN (decision under R5) | yes | Refuse Update, restarts and `nmas-deploy` while any device is held (or retire the restart routes); per-device receipts; draw the interrupted state |
+| R5 | h | locks, live | An operation interrupted by a process exit, including the two restart routes (added on review) | devices already pushed; no receipt, no golden, no rollback | none: Update gates and the restart routes ignore held devices; crash staging unread; leftover lock file unread | n/a | FIXED 2026-10-02 (was UNSAFE; tests/test_interrupted_operations.py, tests/test_pending_receipts.py): Update and `nmas-deploy` refuse while a device is held, both restart routes removed, an interrupted operation kept and drawn on Needs attention, each device's receipt written as it finishes, commit pending; not built: the per-device step under `deploy_max_workers > 1`, and the gunicorn half (9.S) | yes | Refuse Update, restarts and `nmas-deploy` while any device is held (or retire the restart routes); per-device receipts; draw the interrupted state |
 | R6 | h (m today) | git, stores, locks | Manifest store | `.nsot/manifest.json` | `threading.Lock`, shared `.tmp`, unreadable becomes empty; rename rollback writes blind | no | UNSAFE | yes (CLI; rename rollback) | PathLock, `write_atomic`, `read_json_for_write`, inside the repo lock |
 | R7 | h under workers | live | Background services start only under `__main__` | readers, drift, keeper, heartbeat, UDP listeners | started once by `__main__` | no | UNSAFE-MULTI-PROCESS | no | One designated service runner with a leader lock; web workers start nothing |
 | R8 | h under workers | live | Socket.IO | announcements, heartbeat, terminal | no message queue; polling needs sticky sessions; terminal state per process | no | UNSAFE-MULTI-PROCESS | no | Sticky sessions plus a message queue, or one Socket.IO process |
@@ -222,7 +222,7 @@ record (who approved, rejected or withdrew, and why) is not in git, so a lost up
 it for good. `read_pending()` (approval_queue.py:141-163) is the one non-writing reader and
 only Needs attention uses it.
 
-*PARTLY FIXED 2026-10-02 (tests/test_interrupted_operations.py).* Built:
+*FIXED 2026-10-02 (tests/test_interrupted_operations.py).* Built:
 `device_ops.held_anywhere()` reads every hold in every list by any process; the Update
 preview has a gate, "no operation is running on a device", naming each holder, and a waiting
 update keeps waiting while one runs; `GET /health/operations` lists the holds (never who), and
@@ -232,14 +232,23 @@ say does not stop a deploy: a deploy is how it is repaired); `/server/restart` a
 lock file nobody holds is listed by `device_ops.interrupted()`, kept in the list's
 `interrupted.jsonl` when the next operation takes the device, and drawn on Needs attention
 (one row per interrupted process, its devices and last step, acknowledged per event).
-**Still open, a decision for the operator:** per-device receipts. The batch still writes its
-receipts and golden after the whole batch, and every device of a batch shares one progress
-step, so an interrupted batch says which devices were held and the batch's last step, not
-which device got how far. Recommendation: write each device's receipt row when the device
-finishes (its outcome and checks, `commit: pending`), and the commit into the batch's rows
-after it, so an interruption leaves a row per device that did finish; and have the pipeline
-note its step per device. Not built here because it changes the receipt contract every
-reader (History, the result component, Needs attention's failed-deploy row) relies on. The
+*Per-device receipts, FIXED 2026-10-02 (the operator's decision; tests/test_pending_receipts.py).*
+Both apply paths (`apply_batch`, `run_targets`) write each device's receipt row the moment the
+device finishes, `commit_state: pending`, with its outcome, program and checks
+(`routes/deploy.py` `_pending_receipts`); after the batch's golden commit `_write_receipts`
+appends one completion line per such row (`completes: <id>`, the commit or `no_golden`) and a
+whole row for a device refused before it started, every row carrying the run's id. The file
+stays append-only and `receipts.read()` merges each completion into its row. Every reader
+draws a pending row as PENDING, never done or green: the result component
+(`result_level` is partial, the target's words "sent; commit PENDING", a `commit_pending`
+item), the device page's History (a warning badge), the landing's recent changes, the
+in-flight panel and the running apply's stepper. Needs attention: a pending receipt whose
+device is held (its batch is running) or whose process ended (the interrupted-operation row
+names it, with the devices that finished and the one whose state is unknown) is no second row;
+one named by neither (its completion could not be written) is a deploy row of its own.
+**Not built:** the per-device progress step. With the default sequential batch the batch's last
+step is the step of the one device in progress, and every device before it now has its
+receipt; under `deploy_max_workers > 1` the step does not say which device it belongs to. The
 gunicorn half (graceful restart and worker recycling) stays with 9.S, as section 6 says.
 
 **R5. An operation interrupted by a process exit leaves a half-applied batch nobody is told

@@ -671,13 +671,15 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
         batch = plan_batch(artifacts, confirmations, fresh_captures)
 
         extra = {**({"remove": remove} if remove else {}), **({"scope": scope} if scope else {})}
+        record, pending = _pending_receipts(list_name, "deploy", confirmations, command_hashes,
+                                            actor=actor, actor_kind=actor_kind)
         def _one(entry):
             # *on_device* (a job, P.9 d2) hears each device start and finish,
             # in the rollout order, so its page can draw where the batch is.
             name = entry["artifact"].device
             if on_device:
                 on_device("start", name, None)
-            result = _deploy_one(entry, list_name, device_rows, authorise, **extra)
+            result = record(_deploy_one(entry, list_name, device_rows, authorise, **extra))
             if on_device:
                 on_device("done", name, result)
             return result
@@ -691,7 +693,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             **({"label": "after the monitoring profile was applied"} if scope else {}))
         report["receipts"] = _write_receipts(list_name, report, "deploy", confirmations,
                                              command_hashes, actor=actor,
-                                             actor_kind=actor_kind)
+                                             actor_kind=actor_kind, pending=pending)
     finally:
         device_ops.release_many(list_name, held)
     return report
@@ -771,12 +773,41 @@ def _prior_authorised(list_name: str, hostname: str, lines) -> dict:
         return {"state": "unreadable", "lines": {}, "error": str(exc)}
 
 
+def _pending_receipts(list_name: str, action: str, confirmations: dict, command_hashes: dict,
+                      source_ref: str = "", *, actor: str, actor_kind: str):
+    """``(record, pending)``: *record(result)* writes ONE device's receipt row the moment
+    that device finishes, marked commit pending (CONCURRENCY_AUDIT R5), and returns the
+    result unchanged; *pending* is the run's id and, by device, each row so recorded, for
+    `_write_receipts` to complete after the batch's commit. The batch's golden commit
+    comes after every device, so a process that ended in between used to leave devices
+    already pushed with no receipt at all. A row that could not be written is not in
+    *pending*: the device's whole row is written at the end instead, as before."""
+    from modules.nsot import receipts
+
+    run_id = os.urandom(8).hex()
+    pending = {"run_id": run_id, "ids": {}}
+
+    def record(result: dict) -> dict:
+        row = receipts.pending_row(result, list_name=list_name, action=action, actor=actor,
+                                   actor_kind=actor_kind or "", confirmations=confirmations,
+                                   command_hashes=command_hashes, source_ref=source_ref,
+                                   run_id=run_id)
+        if receipts.write(list_name, [row])["ok"]:
+            pending["ids"][row["device"]] = row["id"]
+        return result
+
+    return record, pending
+
+
 def _write_receipts(list_name: str, report: dict, action: str, confirmations: dict,
                     command_hashes: dict, source_ref: str = "", *, actor: str = None,
-                    actor_kind: str = None) -> dict:
+                    actor_kind: str = None, pending: dict = None) -> dict:
     """Record what was sent, after the commit it names (C60). A failure is
     loud in the response and the log, and never turns a deploy that happened
-    into one that reads as failed.
+    into one that reads as failed. A device whose row was written as it
+    finished (*pending*, from `_pending_receipts`) gets a completion line
+    naming that row and filling in the commit; every other device (refused
+    before it started, left unattempted by the breaker) gets its whole row.
 
     It also draws the RESULT (7.1 step 2) into ``report["result"]``, from the
     SAME rows it writes: the screen and the record are one computation, so
@@ -792,7 +823,20 @@ def _write_receipts(list_name: str, report: dict, action: str, confirmations: di
                              actor=actor, actor_kind=actor_kind or "",
                              confirmations=confirmations,
                              command_hashes=command_hashes, source_ref=source_ref)
-    status = receipts.write(list_name, rows)
+    pending = pending or {}
+    lines = []
+    for row in rows:
+        # One run id on every row of the run, so a history groups a batch that committed
+        # nothing (no batch id) as one batch, its refusals with its finished devices.
+        if pending.get("run_id"):
+            row["run_id"] = pending["run_id"]
+        pid = (pending.get("ids") or {}).get(row["device"])
+        if pid:
+            row["id"] = pid
+            lines.append(receipts.completion(row, pid))
+        else:
+            lines.append(row)
+    status = receipts.write(list_name, lines)
     report["result"] = operation_result(rows, report, status,
                                         "deploy" if action == "deploy" else "restore")
     return status
@@ -892,16 +936,21 @@ def run_targets(list_name: str, targets: list, data: dict,
     # receipt; a device another operation holds is refused alone, by name.
     from modules import identity
     from modules.nsot import device_ops
+    actor = identity.request_actor()
+    actor_kind = getattr(identity.identify(request), "kind", "")
+    action = "restore" if source_ref else "reapply"
     held, busy = device_ops.acquire_many(
-        list_name, [t.device for t in accepted], "restore", identity.request_actor(),
+        list_name, [t.device for t in accepted], "restore", actor,
         detail=label or (f"re-apply {source_ref}" if source_ref else ""))
     accepted = [t for t in accepted if t.device in held]
     refused += busy
     try:
         batch = plan_batch(accepted, confirmations, fresh_captures)
+        record, pending = _pending_receipts(list_name, action, confirmations, command_hashes,
+                                            source_ref, actor=actor, actor_kind=actor_kind)
         report = run_batch(batch,
-                           lambda entry: _deploy_one(entry, list_name, device_rows,
-                                                     authorise, source_ref),
+                           lambda entry: record(_deploy_one(entry, list_name, device_rows,
+                                                            authorise, source_ref)),
                            CircuitBreaker())
         if refused:
             # Same helper as the deploy path: the restore path merged refusals
@@ -914,8 +963,8 @@ def run_targets(list_name: str, targets: list, data: dict,
         # touch (the restore's own skip list) as well as the ones it did.
         report["skipped"] = list(skipped or [])
         report["receipts"] = _write_receipts(
-            list_name, report, "restore" if source_ref else "reapply",
-            confirmations, command_hashes, source_ref=source_ref)
+            list_name, report, action, confirmations, command_hashes, source_ref=source_ref,
+            actor=actor, actor_kind=actor_kind, pending=pending)
     finally:
         device_ops.release_many(list_name, held)
     return report

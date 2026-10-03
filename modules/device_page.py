@@ -767,8 +767,10 @@ def history(ref, dev: dict, limit: int = None) -> dict:
         errors.append(f"the deploy receipts could not be read: {got.get('error', '')}")
     for r in got.get("rows") or []:
         verb = {"deploy": "Deployed", "restore": "Restored"}.get(r.get("action", ""), "Changed")
-        events.append({"at": r.get("at", ""), "kind": "receipt",
-                       "what": f"{verb}: {r.get('outcome', '?').replace('_', ' ')}",
+        pending = receipts.is_pending(r)
+        events.append({"at": r.get("at", ""), "kind": "receipt", "pending": pending,
+                       "what": f"{verb}: {r.get('outcome', '?').replace('_', ' ')}"
+                               + (f", {receipts.PENDING_WORDS}" if pending else ""),
                        "who": r.get("actor", ""),
                        "detail": (f"{r.get('program_lines', 0)} line(s) sent"
                                   + (f"; {r['reason']}" if r.get("reason") else "")),

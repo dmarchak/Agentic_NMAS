@@ -831,8 +831,14 @@ def deploy_source(read=None) -> dict:
     latest = {}
     for r in got.get("rows") or []:                # newest first
         latest.setdefault(r.get("device") or "?", r)
-    rows = []
+    rows, pending_named = [], 0
     for host, r in sorted(latest.items()):
+        if receipts.is_pending(r) and _pending_is_named(lst, host, r):
+            # Written as the device finished, its batch's commit not recorded yet: its batch
+            # is still running (the device is held), or its process ended and the
+            # interrupted-operation row names it. Either way not clean, and not a second row.
+            pending_named += 1
+            continue
         if result_level([r], receipt_ok=True) == "success":
             continue
         outcome = r.get("outcome", "")
@@ -850,13 +856,19 @@ def deploy_source(read=None) -> dict:
             if unread else "",
             f"rollback: {rb.get('state')}" if rb.get("performed") else "",
             "the program sent does NOT match the one confirmed"
-            if r.get("matches_confirmed") is False else "") if x) or \
+            if r.get("matches_confirmed") is False else "",
+            # Pending, held by nothing and named by no interrupted operation: the line that
+            # completes it could not be written (its result said RECEIPT NOT WRITTEN).
+            "its receipt was written as the device finished and never completed with its "
+            "batch's commit" if receipts.is_pending(r) else "") if x) or \
             f"its receipt records {outcome or 'no outcome'} with no reason"
+        words = OUTCOME_WORDS.get(outcome, outcome.replace('_', ' ') or 'no outcome')
+        if receipts.is_pending(r):
+            words = ("sent" if outcome == "deployed" else words) + ", " + receipts.PENDING_WORDS
         rows.append(row(
             source="deploys", kind="failed", key=f"{lst}:{host}",
             level="danger" if r.get("sent") else "warning",
-            what=f"The last {r.get('action') or 'deploy'} to {host}: "
-                 f"{OUTCOME_WORDS.get(outcome, outcome.replace('_', ' ') or 'no outcome')}",
+            what=f"The last {r.get('action') or 'deploy'} to {host}: {words}",
             cause=cause,
             action={"label": "Read its receipt on the device's Changes tab, then plan again"},
             devices=[host], since=_ts(r.get("at")),
@@ -868,7 +880,23 @@ def deploy_source(read=None) -> dict:
                          checked=(f"list {lst}: no deploy or restore recorded"
                                   if got.get("state") == "absent" else
                                   f"list {lst}: the latest receipt of {len(latest)} device(s), "
-                                  f"{len(latest) - len(rows)} clean"))
+                                  f"{len(latest) - len(rows) - pending_named} clean"
+                                  + (f", {pending_named} commit PENDING (a batch still "
+                                     "running, or an interrupted operation named under "
+                                     "Operations that did not finish)" if pending_named
+                                     else "")))
+
+
+def _pending_is_named(lst: str, host: str, r: dict) -> bool:
+    """Whether a pending receipt is accounted for elsewhere: its device is held now (its
+    batch is still running) or an interrupted operation on it started before the row."""
+    from modules.nsot import device_ops
+
+    if device_ops.holder(lst, host):
+        return True
+    at = _ts(r.get("at")) or 0
+    return any(i.get("device") == host and (i.get("started") or 0) <= at + 1
+               for i in device_ops.interrupted(lst))
 
 
 # ---------------------------------------------------------------------------
@@ -1971,7 +1999,7 @@ def interrupted_source(found=None) -> dict:
         key = (str(r.get("list") or ""), r.get("pid"), r.get("operation") or "?",
                r.get("actor") or "")
         groups.setdefault(key, []).append(r)
-    rows = []
+    rows, pending_by_list = [], {}
     for (lst, pid, op, actor), members in sorted(groups.items(), key=lambda kv: str(kv[0])):
         devices = sorted({m.get("device") or "?" for m in members})
         first = min((m.get("started") or 0) for m in members)
@@ -1979,6 +2007,17 @@ def interrupted_source(found=None) -> dict:
         step = (last.get("progress") or {}).get("step") or "started"
         step_at = (last.get("progress") or {}).get("at") or first
         words = device_ops.STEP_WORDS.get(step, step)
+        if lst not in pending_by_list:
+            pending_by_list[lst] = _pending_receipts_of(lst)
+        # The devices this operation finished before it ended: each has its receipt row,
+        # written as it finished, whose batch commit never came (CONCURRENCY_AUDIT R5).
+        finished = sorted({p.get("device") for p in pending_by_list[lst]
+                           if p.get("device") in devices
+                           and (_ts(p.get("at")) or 0) + 1 >= first})
+        known = (f" {', '.join(finished)} finished before it ended: each has a receipt, "
+                 "commit PENDING, naming the program sent and the checks that ran; their "
+                 "golden was not recorded." if finished else "")
+        unknown = [d for d in devices if d not in finished]
         rows.append(row(
             source="operations", kind="interrupted",
             key=f"{lst}|{pid}|{op}|{first}", event=str(first),
@@ -1988,9 +2027,11 @@ def interrupted_source(found=None) -> dict:
             cause=(f"Started by {actor or 'someone'} at {_iso(first)} (process {pid}, list "
                    f"{lst}); its last recorded step was {words} at {_iso(step_at)}. A process "
                    "that ends (a restart, an update, a crash) releases every hold, so nothing "
-                   "else says this happened. What reached each device, and whether a receipt "
-                   "or a golden was recorded, is not known."),
-            operands={"list": lst, "operation": op, "pid": pid, "step": step},
+                   "else says this happened." + known
+                   + (f" What reached {', '.join(unknown)}, and whether a golden was "
+                      "recorded, is not known." if unknown else "")),
+            operands={"list": lst, "operation": op, "pid": pid, "step": step,
+                      **({"pending_receipts": finished} if finished else {})},
             action={"label": (f"Read {devices[0]} as it is now and compare it with its golden "
                               "before changing it" + (", and each other device" if
                                                       len(devices) > 1 else "")
@@ -2002,6 +2043,15 @@ def interrupted_source(found=None) -> dict:
         checked=(f"every device lock in every list: {len(recs)} hold(s) left by a process "
                  "that ended" if recs else
                  "every device lock in every list: none left by a process that ended"))
+
+
+def _pending_receipts_of(list_name: str) -> list:
+    """The receipt rows of *list_name* still waiting for their batch's commit; none when the
+    record cannot be read (the deploy source says that it cannot)."""
+    from modules.nsot import receipts
+
+    got = receipts.read(list_name, limit=10 ** 6)
+    return [r for r in got.get("rows") or [] if receipts.is_pending(r)]
 
 
 def adjacency_source(cached=None) -> dict:

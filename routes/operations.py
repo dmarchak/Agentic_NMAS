@@ -46,7 +46,8 @@ def _recent(list_name: str, now: float) -> tuple:
             break                                   # newest first
         rows.append({"device": r.get("device", ""), "action": r.get("action", ""),
                      "outcome": r.get("outcome", ""), "at": r.get("at", ""),
-                     "actor": r.get("actor", ""), "reason": r.get("reason", "")})
+                     "actor": r.get("actor", ""), "reason": r.get("reason", ""),
+                     "commit_state": r.get("commit_state", "")})
     return rows, "ok"
 
 

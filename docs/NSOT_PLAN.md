@@ -4413,9 +4413,13 @@ a failed tag reported; a save compares HEAD; retire's undo puts back only its ow
 with a test that runs a real second process. **R4 fixed** the same day (the approval queue:
 one lock across processes, an atomic replace, an unreadable queue refusing every write and
 answering every read with its reason, reads that write nothing, `resolve` updating only its
-own item after its execution). Next, in the operator's order: R5, R13,
-R19, R20, R28; R2 (two people editing one intent) remains, since the intent file is still
-written before the lock is taken.
+own item after its execution). Then, in the operator's order, all fixed on 2026-10-02: R2 (the
+intent editor saves against the version the person opened), R5 (nothing restarts the app under
+a held device, an interrupted operation is drawn, and each device's receipt is written as it
+finishes, commit pending), R13 (the template approvals record), R19 (drift state and one drift
+run per list), R20 (as C326) and R28 (one run per reader). Not built: the per-device progress
+step under `deploy_max_workers > 1`, the audit's other rows, and the multi-worker half (9.S).
+The writeup's P.15 entry holds the commits.
 
 ### P.16 — Build or adopt the job machinery (DECIDED 2026-10-02, the operator; NOT STARTED; an evaluation, placed BEFORE Stage 10's release)
 

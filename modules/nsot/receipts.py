@@ -50,6 +50,25 @@ FOLLOW_UP_NOT_BUILT = {
 }
 SECOND_READING_NOT_BUILT = {"state": "not_built", "why": "NSOT_PLAN 8.8, not built"}
 
+#: A row's commit state (CONCURRENCY_AUDIT R5's open half, the operator, 2026-10-02). A
+#: device's row is written as the device FINISHES, ``pending``: the batch's golden commit
+#: comes after the whole batch, and a process that ended in between used to leave the
+#: devices already pushed with no receipt at all. After the commit a COMPLETION line names
+#: the row (``completes``) and fills in the commit: ``committed`` (the golden is in it) or
+#: ``no_golden`` (this device's outcome recorded none). The file stays append-only;
+#: `read()` merges each completion into its row. A row still pending is drawn PENDING by
+#: every reader, never as done; after a restart it is named by the interrupted-operation row.
+PENDING, COMMITTED, NO_GOLDEN = "pending", "committed", "no_golden"
+COMMIT_STATES = (PENDING, COMMITTED, NO_GOLDEN)
+
+#: How every reader words a pending row: never done, never green.
+PENDING_WORDS = "commit PENDING: its batch has not recorded it yet"
+
+
+def is_pending(row: dict) -> bool:
+    """Whether *row* still waits for its batch's commit (a row read by `read()`)."""
+    return (row or {}).get("commit_state") == PENDING
+
 
 def path_for(list_name: str) -> str:
     from modules.config import list_data_path
@@ -186,9 +205,57 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
                 "not_undone": list(result.get("rollback_not_undone") or []),
             },
             "golden_commit": golden.get("commit", "") if host in golden_devices else "",
+            "commit_state": (COMMITTED if golden.get("commit") and host in golden_devices
+                             else NO_GOLDEN),
             "second_reading": dict(SECOND_READING_NOT_BUILT),
             "follow_up": dict(FOLLOW_UP_NOT_BUILT),
         })
+    return rows
+
+
+def pending_row(result: dict, *, list_name: str, action: str, actor: str, actor_kind: str,
+                confirmations: dict = None, command_hashes: dict = None,
+                source_ref: str = "", run_id: str = "") -> dict:
+    """The row for ONE device as it finishes, before the batch's commit: `rows_for`'s row
+    with ``commit_state: pending`` and no commit. *run_id* names the batch run it is part of
+    (the commit's own batch id does not exist yet)."""
+    (row,) = rows_for({"results": [result], "golden": {}}, list_name=list_name,
+                      action=action, actor=actor, actor_kind=actor_kind,
+                      confirmations=confirmations, command_hashes=command_hashes,
+                      source_ref=source_ref)
+    row.update(commit_state=PENDING, golden_commit="", run_id=run_id)
+    return row
+
+
+def completion(row: dict, pending_id: str) -> dict:
+    """The line that fills in a pending row's commit, from the final *row*."""
+    return {"completes": pending_id,
+            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "commit_state": row.get("commit_state", NO_GOLDEN),
+            "golden_commit": row.get("golden_commit", ""),
+            "batch_id": row.get("batch_id", "")}
+
+
+def _merged(lines: list) -> list:
+    """Rows in file order, each completion applied to the row it names. A row written
+    before commit states existed is final: its state is derived from its commit."""
+    rows, by_id = [], {}
+    for line in lines:
+        if "completes" in line:
+            target = by_id.get(line["completes"])
+            if target is None:
+                log.error("receipts: a completion names %s, which no row has",
+                          line["completes"])
+                continue
+            target.update(commit_state=line.get("commit_state", NO_GOLDEN),
+                          golden_commit=line.get("golden_commit", ""),
+                          completed_at=line.get("at", ""))
+            if line.get("batch_id"):
+                target["batch_id"] = line["batch_id"]
+            continue
+        line.setdefault("commit_state", COMMITTED if line.get("golden_commit") else NO_GOLDEN)
+        by_id[line.get("id")] = line
+        rows.append(line)
     return rows
 
 
@@ -227,7 +294,7 @@ def read(list_name: str, device: str = "", limit: int = 50) -> dict:
         return {"state": "absent", "rows": []}
     try:
         with open(path, encoding="utf-8") as fh:
-            rows = [json.loads(line) for line in fh if line.strip()]
+            rows = _merged([json.loads(line) for line in fh if line.strip()])
     except Exception as exc:                   # noqa: BLE001
         return {"state": "unreadable", "rows": [], "error": str(exc)}
     if device:

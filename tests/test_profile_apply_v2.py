@@ -254,7 +254,8 @@ class TestTheConfirm:
             r6 = frag.index(">r6<")
             r2 = frag.index(">r2<")
             assert r6 < r2
-            assert "step-done" in frag and "done (" in frag              # r6 finished
+            # r6 finished; its record is committed only when the batch ends (R5's receipts)
+            assert "step-done" in frag and "done; its record is committed when the batch ends (" in frag
             assert "step-current" in frag and "being applied" in frag     # r2 running
             assert "Check now" in frag
         finally:
