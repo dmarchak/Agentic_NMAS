@@ -4497,7 +4497,19 @@ The rest, in the order to build them:
 **P.19, SDN controller support, is recorded at the END of this plan** (after Stage 10, whose
 platform-driver layer it depends on).
 
-### P.21 — Credential expiry and health (RECORDED 2026-10-03, the operator; INVENTORY DONE, DESIGN AWAITING SIGN-OFF; NOT BUILT)
+### P.21 — Credential expiry and health (RECORDED 2026-10-03, the operator; DESIGN SIGNED OFF 2026-10-03; NOT BUILT; placed after the device actions in progress, before 7.6)
+
+**Signed off 2026-10-03, with the operator's decisions:**
+- Thresholds: a warning 30 days and a danger row 7 days before an exposed expiry; an age of
+  180 days from the last rotation for device credentials and SNMP communities.
+- Grafana: the expiry is DECLARED in Settings when the token is entered, a REQUIRED field,
+  never blank, rather than granting `serviceaccounts:read` (C230 moves the token down to
+  Viewer, and Grafana OSS has no narrower role). Refusal detection covers a wrong or missing
+  date: the first 401 or 403 is an immediate danger row naming the declared date.
+- A credential expiring more than a year out is listed on Source of truth > Credentials with
+  its date, and is no Needs attention row.
+- C354 is built with it. C356 is measured as its row names. C357: the operator revokes the
+  second NetBox token, and the row closes when the operator confirms.
 
 **The problem.** The tool uses many connections, and an expired or revoked credential breaks
 one silently or late. Measured: no product code reads any credential's expiry or age against a
@@ -4572,8 +4584,8 @@ login is detected when it fails; the Access service token the two lab scripts se
 expiry Cloudflare shows on its dashboard, and a line in those scripts' failure naming it is
 the most it is worth. Nothing outside the product becomes a row.
 
-**Not decided:** the thresholds (30 and 7 days; 180 days of age), Grafana's choice above, and
-whether an expiry beyond a year is drawn at all.
+**Decided** (above): the thresholds, Grafana's declared expiry, and that an expiry beyond a year
+is listed and draws no row.
 
 ### Course labs against the plan (decided 2026-09-26)
 
