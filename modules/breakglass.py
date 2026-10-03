@@ -46,6 +46,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import time
 
@@ -540,6 +541,102 @@ def checks(data_dir: str) -> dict:
                                          if line.strip()]}
     except (OSError, ValueError) as exc:
         return {"state": "unreadable", "rows": [], "error": str(exc)}
+
+
+#: The offline drill (board 7, D): the only proof the record opens WITHOUT the tool. Run where
+#: the file is kept (`nmas-breakglass drill <file>`), it prints one receipt line, which a person
+#: pastes into Credentials; the tool checks it against a logged export and records it. Every
+#: DRILL_DAYS days, a quiet reminder before, a Needs attention row once overdue.
+DRILL_LOG = "breakglass_drills.jsonl"
+DRILL_DAYS = 90
+DRILL_PREFIX = "nmas-drill v1"
+_DRILL_KEYS = ("list", "sha256", "created", "devices", "key", "opened")
+
+
+def drill_receipt(payload: dict, blob: bytes, opened_at: float = None) -> str:
+    """The one line `nmas-breakglass drill` prints: what was opened, never a value."""
+    from urllib.parse import quote
+
+    report = describe(payload)
+    fields = {"list": quote(str(report["list_name"]), safe=""),
+              "sha256": hashlib.sha256(blob).hexdigest(),
+              "created": quote(str(report["created"]), safe=""),
+              "devices": str(sum(1 for d in report["devices"] if d["has_password"])),
+              "key": quote(report["key_fingerprint"] or "none", safe=""),
+              "opened": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                      time.gmtime(opened_at if opened_at is not None
+                                                  else time.time()))}
+    return DRILL_PREFIX + " " + " ".join(f"{k}={fields[k]}" for k in _DRILL_KEYS)
+
+
+def parse_drill_receipt(line: str) -> dict:
+    """The receipt's fields, or BreakglassError naming what is wrong with it."""
+    from urllib.parse import unquote
+
+    text = (line or "").strip()
+    if not text.startswith(DRILL_PREFIX + " "):
+        raise BreakglassError(f"not a drill receipt: it must begin \"{DRILL_PREFIX}\", as "
+                              "`nmas-breakglass drill` prints it")
+    out = {}
+    for part in text[len(DRILL_PREFIX) + 1:].split():
+        key, sep, value = part.partition("=")
+        if sep and key in _DRILL_KEYS:
+            out[key] = unquote(value)
+    missing = [k for k in _DRILL_KEYS if k not in out]
+    if missing:
+        raise BreakglassError("the receipt lacks " + ", ".join(missing) + ": paste the whole line")
+    if not re.fullmatch(r"[0-9a-f]{64}", out["sha256"]) or not out["devices"].isdigit():
+        raise BreakglassError("the receipt's sha256 or device count is not one the command prints")
+    out["devices"] = int(out["devices"])
+    return out
+
+
+def record_drill(data_dir: str, *, list_name: str, actor: str, receipt: dict,
+                 at: float = None) -> dict:
+    from modules.config import open_secure
+
+    row = {"at": at if at is not None else time.time(), "list": list_name, "actor": actor,
+           **{k: receipt[k] for k in _DRILL_KEYS if k != "list"}}
+    with open_secure(os.path.join(data_dir, DRILL_LOG), "a") as fh:
+        fh.write(json.dumps(row, sort_keys=True) + "\n")
+    return row
+
+
+def _jsonl(data_dir: str, name: str) -> dict:
+    path = os.path.join(data_dir, name)
+    if not os.path.exists(path):
+        return {"state": "absent", "rows": []}
+    try:
+        return {"state": "ok", "rows": [json.loads(line) for line in open(path, encoding="utf-8")
+                                         if line.strip()]}
+    except (OSError, ValueError) as exc:
+        return {"state": "unreadable", "rows": [], "error": str(exc)}
+
+
+def drills(data_dir: str) -> dict:
+    """``{"state", "rows"}`` (oldest first); absent and unreadable differ."""
+    return _jsonl(data_dir, DRILL_LOG)
+
+
+def all_exports(data_dir: str) -> dict:
+    """Every logged export (oldest first), for a receipt naming an older record."""
+    return _jsonl(data_dir, EXPORT_LOG)
+
+
+def drill_due(list_name: str, exports: list, drill_rows: list, now: float) -> dict:
+    """``{"state": none|ok|due_soon|overdue, "due_at", "days", "last"}``: the drill is due
+    DRILL_DAYS after the last one recorded for the list, or after its first export when none
+    is. No export, nothing to drill (``none``); within 14 days of due, ``due_soon``."""
+    mine = [r for r in exports if r.get("list") == list_name]
+    if not mine:
+        return {"state": "none", "due_at": None, "days": None, "last": None}
+    done = [r for r in drill_rows if r.get("list") == list_name]
+    last = max(done, key=lambda r: r.get("at", 0)) if done else None
+    start = last["at"] if last else min(r.get("at", 0) for r in mine)
+    due_at = start + DRILL_DAYS * 86400
+    days = (due_at - now) / 86400
+    state = "overdue" if days < 0 else "due_soon" if days <= 14 else "ok"
+    return {"state": state, "due_at": due_at, "days": days, "last": last}
 
 
 def last_exports(data_dir: str) -> dict:

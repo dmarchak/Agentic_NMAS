@@ -331,6 +331,7 @@ def credentials():
     if ctx["known"] and ctx["open"] == "export":
         ctx.update(_breakglass_export_ctx(name))
     ctx["check"] = ctx["known"] and ctx["open"] == "check"
+    ctx["drill"] = breakglass_page.drill(name) if ctx["known"] else None
     return _page("v2/credentials.html", active_nav="credentials", **ctx)
 
 
@@ -386,6 +387,48 @@ def credentials_check():
              out.get("counts") if out.get("ok") else f"refused at {out.get('stage')}")
     return _strict(render_template("v2/_breakglass_check.html", list_name=name, c=out,
                                    filename=(upload.filename if upload else "")))
+
+
+@bp.route("/credentials/drill", methods=["POST"])
+def credentials_drill():
+    """Record the offline drill (board 7, D): the receipt line `nmas-breakglass drill` printed
+    where the file is kept, checked against a logged export of the list (its sha256, device
+    count and key), then recorded; the drill's card redrawn in place. A receipt that matches no
+    export is refused naming what it said and what the log holds."""
+    import modules.breakglass as bg
+    from flask import request
+
+    from modules import breakglass_page, identity
+    from modules.config import DATA_DIR
+    from modules.nsot import listref
+
+    name = (request.form.get("list") or "").strip()
+    if not listref.exists(name):
+        return _strict(render_template("v2/_breakglass_refused.html", why=(
+            f"No list is named {name!r}: nothing was recorded."))), 404
+    error = ""
+    try:
+        receipt = bg.parse_drill_receipt(request.form.get("receipt", ""))
+        if receipt["list"] != name:
+            raise bg.BreakglassError(f"the receipt is for {receipt['list']}, not {name}: record it "
+                                     f"on {receipt['list']}'s Credentials")
+        rows = [r for r in bg.all_exports(DATA_DIR).get("rows") or [] if r.get("list") == name]
+        match = next((r for r in rows if r.get("sha256") == receipt["sha256"]), None)
+        if not match:
+            raise bg.BreakglassError(
+                f"no export of {name} logged here has sha256 {receipt['sha256'][:12]}: this host "
+                f"logged {len(rows)} export(s), the newest {str((rows[-1] if rows else {}).get('sha256', 'none'))[:12]}")
+        held = len(match.get("devices") or {})
+        if receipt["devices"] != held or receipt["key"] != (match.get("key_fingerprint") or "none"):
+            raise bg.BreakglassError(
+                f"the receipt says {receipt['devices']} device(s) and the key {receipt['key']}; that "
+                f"export holds {held} and the key {match.get('key_fingerprint') or 'none'}")
+        bg.record_drill(DATA_DIR, list_name=name, actor=identity.identify(request).actor,
+                        receipt=receipt)
+    except bg.BreakglassError as exc:
+        error = f"Not recorded: {exc}."
+    return _strict(render_template("v2/_breakglass_drill.html", list_name=name,
+                                   d=breakglass_page.drill(name), error=error))
 
 
 @bp.route("/credentials/intact", methods=["POST"])

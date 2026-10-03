@@ -63,6 +63,7 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
     ("_macros.html", "btn btn-small"): "Check again: re-reads origin and CI now, a read",
     ("_apply_job.html", "Check now"): "re-reads the job's progress: a read",
+    ("_breakglass_drill.html", "Copy"): "copies the drill's command to the clipboard",
     ("_breakglass_check.html", "Close"): "closes the check, opening nothing",
     ("_breakglass_done.html", "Close"): "puts back the record's card, recording nothing",
     ("_breakglass_export.html", "Cancel"): "closes the export, building nothing",

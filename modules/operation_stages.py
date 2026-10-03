@@ -274,6 +274,7 @@ HISTORY = {
                                             "record of who or when"),
     "v2.credentials_intact": ("breakglass",),
     "v2.credentials_check": ("breakglass",),
+    "v2.credentials_drill": ("breakglass",),
     "v2.heartbeat_apply": ("MISSING: the heartbeat windows' record "
                            "(heartbeat_rules.jsonl) has no History source yet"),
     "monitoring_config": "n/a: the collectors' settings, never one device's record",

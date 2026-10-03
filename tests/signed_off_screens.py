@@ -38,7 +38,7 @@ SIGNED_OFF = {
                                        "Credentials (its placement signed off 2026-10-03, the card "
                                        "the same night's revision): the record's state, the export "
                                        "(A), checked intact by the browser (B), Check a break-glass "
-                                       "file (C); the offline drill (D) follows in its own commit"),
+                                       "file (C) and the offline drill (D), every section built"),
     "help.html": ("2026-10-02", "NSOT_GUI_BRIEF 10b, the manual's mockup"),
     "apply.html": ("2026-10-02", "the stepper mockup (\"Applying to 3 devices... in the order you "
                                  "set\"), signed off 2026-10-02, with the rollout order decided "

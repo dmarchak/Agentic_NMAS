@@ -28,6 +28,9 @@ OPENERS = {
     # refusal drawn.
     "breakglass_export": ("location.pathname === '/v2/credentials' && "
                           "document.querySelector('#bg-export .op-ft')"),
+    # The overdue drill's row (board 7, D): the drill's receipt field on Credentials.
+    "breakglass_drill": ("location.pathname === '/v2/credentials' && "
+                         "document.querySelector('#bg-drill input[name=receipt]')"),
     "intent_editor": ("document.querySelector('#intentEditorModal.show') && "
                       "document.getElementById('intentEditorTitle').textContent"
                       ".indexOf('r2') >= 0"),

@@ -117,6 +117,27 @@ The key reads **current** when it is the key in use. A copy that cannot recover 
 holds another key, says so in danger, with **Export the record again…**. Each check is a row in
 History.
 
+## The offline drill {#drill}
+
+Only a drill proves the record opens without the tool: on the machine that keeps the file,
+with nothing of the tool running. Credentials shows when the last one was done and when the
+next is due, every 90 days. Needs attention raises a row only once it is overdue. To do it:
+
+1. **On the machine that keeps the file**, run the command Credentials shows (**Copy** puts it
+   on the clipboard): `nmas-breakglass drill <the file>`. Read: the file and its passphrase,
+   typed at the terminal. Sent: nothing. Recorded: nothing. It opens the file, names the
+   devices it can recover and prints one receipt line: the list, the file's sha256, when it
+   was made, how many devices it recovers, the key's fingerprint and when it was opened. It
+   prints no credential and no key.
+2. **Paste the line into Credentials** and choose **Record the drill** (`record`). Read: the
+   export log. Sent: nothing. Recorded: the drill (who, when, the file's sha256, the device
+   count; no credential). The line must name this list and a file this host exported, with
+   that export's device count and key. Anything else is refused, naming what the receipt said
+   and what the log holds.
+
+A recorded drill clears the overdue row and starts the next 90 days. Each drill is a row in
+History.
+
 ## What it does not do {#not-done}
 
 - It never writes the file to the host's disk: built, sealed and verified in memory, then

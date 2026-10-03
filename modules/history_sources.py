@@ -642,6 +642,19 @@ def breakglass(ctx):
                                      ("Written to", r.get("path")), ("Via", r.get("via"))]))
         if len(events) >= ctx["limit"]:
             break
+    done = bg.drills(config.DATA_DIR)
+    if done["state"] == "unreadable":
+        return _out(events, errors=[f"the break-glass drills could not be read: {done.get('error')}"])
+    for r in reversed(done["rows"][-ctx["limit"]:]):
+        if r.get("list") != ctx["ref"].name or ctx["device"]:
+            continue
+        events.append(_event(r.get("at"), "breakglass",
+                             f"Offline drill recorded: the file opened without the tool, "
+                             f"{r.get('devices')} device(s)", [], who=r.get("actor", ""),
+                             detail=f"the file made {r.get('created') or '(no date)'}, opened "
+                                    f"{r.get('opened', '?')}",
+                             record=[("File sha256", r.get("sha256")), ("Key", r.get("key")),
+                                     ("Opened", r.get("opened"))]))
     got = bg.checks(config.DATA_DIR)
     if got["state"] == "unreadable":
         return _out(events, errors=[f"the break-glass checks could not be read: {got.get('error')}"])

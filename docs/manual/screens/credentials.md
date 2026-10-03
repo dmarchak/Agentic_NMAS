@@ -35,6 +35,12 @@ sha256, and whether the browser confirmed the download arrived intact.
 copy you keep, here, in memory, and says device by device whether it still recovers them:
 [Check a break-glass file](breakglass-export#check).
 
+**The offline drill**, below the record, is the only proof the record opens without the tool.
+It shows when the last drill was done and when the next is due, every 90 days. It gives the
+command to run where the file is kept, and the field for the receipt line that command prints:
+[The offline drill](breakglass-export#drill). Needs attention raises a row only once a drill is
+overdue.
+
 ## Where a credential comes from {#what-it-is-for}
 
 A device's credential is found in this order, first match wins: its own override, the list's

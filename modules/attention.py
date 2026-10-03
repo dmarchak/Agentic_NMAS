@@ -377,6 +377,8 @@ _JOB_STATES = {
                          "older credential", "danger"),
     "breakglass_not_intact": ("break-glass record's last download did not arrive intact",
                               "danger"),
+    "breakglass_drill_overdue": ("break-glass record has not been opened offline for 90 days",
+                                 "warning"),
     # The Update button's root-owned updater (docs/UPDATE.md).
     "writable": ("is run as root and writable by someone else", "danger"),
     "cannot_run": ("cannot run: a program it needs is missing or not root's", "danger"),

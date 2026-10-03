@@ -97,3 +97,33 @@ def _epoch(iso: str) -> float:
         return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
     except ValueError:
         return 0.0
+
+
+def export_filename(list_name: str, at: float) -> str:
+    """The name the browser export gives a file (breakglass_export.export_in_memory's)."""
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in list_name)
+    return "nmas-breakglass-" + safe + time.strftime("-%Y%m%dT%H%M%SZ.bg", time.gmtime(at))
+
+
+def drill(list_name: str, now: float = None, exports=None, drills=None) -> dict:
+    """The offline drill's card (board 7, D): ``{"state", "days", "due_at", "last",
+    "file", "errors"}``. Two file reads, no credential."""
+    import modules.breakglass as bg
+    from modules.config import DATA_DIR
+
+    now = time.time() if now is None else now
+    exports = bg.all_exports(DATA_DIR) if exports is None else exports
+    drills = bg.drills(DATA_DIR) if drills is None else drills
+    errors = [f"{n} could not be read ({g.get('error')})" for n, g in
+              (("the export log", exports), ("the drill log", drills))
+              if g.get("state") == "unreadable"]
+    due = bg.drill_due(list_name, exports.get("rows") or [], drills.get("rows") or [], now)
+    mine = [r for r in exports.get("rows") or [] if r.get("list") == list_name]
+    newest = max(mine, key=lambda r: r.get("at", 0)) if mine else None
+    last = due["last"]
+    return {"state": due["state"], "days": None if due["days"] is None else int(due["days"]),
+            "due_at": _iso(due["due_at"]) if due["due_at"] else "", "errors": errors,
+            "file": export_filename(list_name, newest["at"]) if newest else "",
+            "last": ({"at": _iso(last["at"]), "actor": last.get("actor", ""),
+                      "created": last.get("created", ""), "devices": last.get("devices"),
+                      "sha256": last.get("sha256", "")} if last else None)}

@@ -13,6 +13,7 @@ which otherwise exists only inside `devices.csv`, encrypted with
     python3 scripts/nmas-breakglass reveal /media/usb/rcn.bg --device r1
     python3 scripts/nmas-breakglass verify /media/usb/rcn.bg --live      # on the NMAS host
     python3 scripts/nmas-breakglass restore-key /media/usb/rcn.bg --out data/key.key
+    python3 scripts/nmas-breakglass drill /media/usb/rcn.bg              # the offline drill
 
 Is the record CURRENT (C182)? The record is on one machine and the credentials
 NMAS holds are on the NMAS host, so each side computes the same salted digest
@@ -195,6 +196,38 @@ def _verify(args):
     return 2 if check["verdict"] == "unproven" else 1
 
 
+def _drill(args):
+    """THE OFFLINE DRILL (board 7, D): on the machine that keeps the file, with nothing of the
+    tool running, open it with its passphrase, list the devices it can recover (names only),
+    and print ONE receipt line to paste into Credentials. No credential is printed."""
+    import modules.breakglass as bg
+
+    try:
+        with open(args.path, "rb") as fh:
+            blob = fh.read()
+        payload = bg.unseal(blob, _passphrase())
+    except bg.BreakglassError as exc:
+        print(f"FAILED: {exc}")
+        return 1
+    except OSError as exc:
+        print(f"FAILED: {exc}")
+        return 1
+    report = bg.describe(payload)
+    can = [d["hostname"] for d in report["devices"] if d["has_password"]]
+    cannot = [d["hostname"] for d in report["devices"] if not d["has_password"]]
+    receipt = bg.drill_receipt(payload, blob)
+    payload = None
+    print(f"\nopened  : {args.path}, made {report['created']}, sealed for {report['list_name']}")
+    print(f"recovers: {len(can)} device(s): {', '.join(can) or 'none'}")
+    if cannot:
+        print(f"CANNOT  : {', '.join(cannot)} (no password in the record)")
+    print(f"key     : {'escrowed, ' + report['key_fingerprint'] if report['has_fernet_key'] else 'NOT ESCROWED'}")
+    print("\nPaste this line into Credentials > The break-glass record > Record the drill:\n")
+    print(receipt)
+    print("\nNo credential and no key was printed.")
+    return 0 if can and not cannot and report["has_fernet_key"] else 1
+
+
 def _digests(args):
     """On the NMAS host: each device's currency digest from the credentials
     it holds NOW, as JSON on stdout and nothing else, for `verify --against`
@@ -360,6 +393,11 @@ def main() -> int:
     verify.add_argument("--data-dir", default="",
                         help="the application's data directory (default: this checkout's)")
     verify.set_defaults(run=_verify)
+
+    drill = sub.add_parser("drill", help="the offline drill: open the file where it is kept, "
+                                         "list what it recovers, print the receipt line")
+    drill.add_argument("path")
+    drill.set_defaults(run=_drill)
 
     digests = sub.add_parser("digests", help="on the NMAS host: current digests, as "
                                              "JSON, for verify --against; prints no value")

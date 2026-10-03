@@ -2144,6 +2144,31 @@ Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own
 5. **Numbers.** One commit [git: this commit]. `tests/test_history_one_timeline.py` (4) is the check; `tests/test_history_v2.py` (28) was rebuilt from the Commits tab to the timeline; the browser layout test was moved to the timeline. Five controls, each failing its aimed tests. Screenshots in light, dark and 390 px. **Estimate versus actual:** no forecast was made. It ran longer than a 7.2-kind read-only screen, because the readers were merged.
 6. **Where it left the product.** "What happened recently" is answered in one place, for the fleet or one device, and the two can no longer disagree.
 
+### The break-glass record on Credentials (board 7)
+
+*Written at close, 2026-10-03.*
+
+1. **What it was.** The break-glass export lived in a modal on today's pages. The operator's revision of board 7 asked for four things: the browser confirms the download arrived intact; "Check a break-glass file" opens the copy a person keeps; an offline drill every 90 days; and all of it on v2 only. The placement review moved it to Source of truth › Credentials, because the record is fleet-wide (signed off 2026-10-03).
+2. **How it was implemented.** Three commits on one page.
+   - **The record's state** is read from job health's stored judgement, so no credential is decrypted per page view.
+   - **A, the export,** draws the real preview and posts to the ONE export route.
+   - **B:** the browser hashes the bytes it received against the server's sha256, and its verdict is recorded. `breakglass.currency` became the one judgement for job health's rows, the page and History.
+   - **C** opens a kept file in memory and compares it by digest.
+   - **D:** a CLI receipt is checked against a logged export, with a row once overdue.
+   - **The openers:** every way in, today's included, opens Credentials.
+3. **Issues encountered.**
+   - The preview crashed on a credential the key could not open (C384).
+   - A first version of the tests let a browser that echoed the server's sha256 pass, because every test download arrived intact.
+   - Firefox under snap cannot read the test's /tmp for an upload.
+   - htmx's out-of-band swap was needed so the record's card is never "none exported" above a finished export.
+4. **How they were resolved.**
+   - Undecryptable credentials are named and refused.
+   - A real-browser test alters a byte in transit and expects Not intact.
+   - The upload is written beside the browser's profile.
+   - The intact answer redraws the record's card with it.
+5. **Numbers.** Three commits. `tests/test_credentials_v2.py`: 38 tests, five in a real browser. Seventeen controls, each failing its aimed tests. Findings: C384 recorded and closed. **Estimate versus actual:** no forecast was made. It was the kind of 7.3's device cards, about a card per commit.
+6. **Where it left the product.** The way back into the devices can be exported, confirmed intact, checked where it is kept, and drilled offline, from one page, with Needs attention saying when any of it lapses.
+
 ## Part II. Stage 7
 
 ### 7.0 — The checks every later step is written against

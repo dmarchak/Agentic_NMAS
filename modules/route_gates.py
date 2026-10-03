@@ -112,6 +112,7 @@ GATES = {
     "templatize.profile_propose_apply": _g(A, "commits the network's monitoring profile, intent every device inherits (P.9 step b)"),
     "v2.ip_sla_policy_set": _g(A, "commits the monitoring profile's IP SLA policy, which decides the probes suggested (P.9 d4)"),
     "v2.ip_sla_commit": _g(A, "commits suggested IP SLA probes into the devices' intent (P.9 d4)"),
+    "v2.credentials_drill": _g(K, "records the offline drill's receipt, checked against a logged export (board 7, D)"),
     "v2.credentials_check": _g(K, "opens a kept break-glass file in memory and records the verdict per device; no value is shown, kept or logged (board 7, C)"),
     "v2.credentials_intact": _g(K, "records the browser's word on a break-glass download: its sha256 of the bytes received against the server's (board 7)"),
     "v2.heartbeat_apply": _g(K, "writes the re-measured heartbeat alert rules file (P.7); a person installs it on the host"),

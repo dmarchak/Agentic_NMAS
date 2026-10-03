@@ -204,7 +204,10 @@ class TestEveryWayInOpensItHere:
         read = lambda p: open(os.path.join(root, p), encoding="utf-8").read()  # noqa: E731
         want = "url_for('v2.credentials', list="
         assert want + "c.list, open='export')" in read("templates/v2/_rotate.html")
-        assert want + "r.action.list, open='export')" in read("templates/v2/_attention.html")
+        attention = read("templates/v2/_attention.html")
+        assert want + "r.action.list, open='export')" in attention
+        assert "r.action.open == 'breakglass_drill'" in attention
+        assert want + "r.action.list) }}#bg-drill" in attention, "the overdue drill's row opens it"
         settings = read("templates/partials/settings_integrations.html")
         assert "url_for('v2.credentials')" in settings
         assert 'data-nmas-open="breakglass_export"' not in settings, "nothing exports there now"
@@ -442,3 +445,126 @@ def test_a_real_browser_checks_a_kept_file(page, tmp_path):
             browser.close_socketio_sessions()
             import shutil
             shutil.rmtree(where, ignore_errors=True)
+
+
+class TestTheOfflineDrill:
+    """Board 7, D: `nmas-breakglass drill` where the file is kept prints one receipt line;
+    pasted on Credentials it is checked against a logged export and recorded; every 90 days, a
+    quiet reminder before and a Needs attention row once overdue."""
+
+    def _receipt(self, lab, tmp_path, capsys, monkeypatch):
+        """The CLI's own drill of a file the real export made."""
+        import base64
+        from tests.test_breakglass_currency import _cli
+        d = _export(lab).get_json()
+        kept = tmp_path / d["filename"]
+        kept.write_bytes(base64.b64decode(d["file"]))
+        monkeypatch.setattr("getpass.getpass", lambda prompt="": PASS)
+        monkeypatch.setattr("sys.argv", ["nmas-breakglass", "drill", str(kept)])
+        rc = _cli().main()
+        out = capsys.readouterr().out
+        line = next(l for l in out.splitlines() if l.startswith(bg.DRILL_PREFIX + " "))
+        assert rc == 0 and "recovers: 2 device(s): r1, s1" in out
+        assert not [v for v in VALUES + [PASS] if v in out], "no value and no passphrase printed"
+        return line, d
+
+    def _record(self, lab, line, list_name=LIST):
+        r = lab["client"].post("/v2/credentials/drill", data={"list": list_name, "receipt": line})
+        return r, r.get_data(as_text=True)
+
+    def _rows(self, lab):
+        path = lab["dir"] / bg.DRILL_LOG
+        return [json.loads(l) for l in path.read_text().splitlines()] if path.exists() else []
+
+    def test_the_commands_receipt_is_recorded(self, page, tmp_path, capsys, monkeypatch):
+        line, d = self._receipt(page, tmp_path, capsys, monkeypatch)
+        got = bg.parse_drill_receipt(line)
+        assert got["list"] == LIST and got["sha256"] == d["sha256"] and got["devices"] == 2
+        r, html = self._record(page, line)
+        from tests.conftest import TEST_PERSON
+        assert r.status_code == 200 and "due in 89 days" in html, html[:400]
+        assert f"by {TEST_PERSON}" in html and "Not recorded" not in html
+        row = self._rows(page)[-1]
+        assert row["sha256"] == d["sha256"] and row["devices"] == 2 and row["list"] == LIST
+
+    @pytest.mark.parametrize("case", ["garbage", "other_list", "not_logged", "wrong_count"])
+    def test_a_receipt_that_matches_no_export_is_refused_naming_both(self, page, tmp_path,
+                                                                     capsys, monkeypatch, case):
+        line, d = self._receipt(page, tmp_path, capsys, monkeypatch)
+        if case == "garbage":
+            line, want = "I opened it, honest", "not a drill receipt"
+        elif case == "other_list":
+            line, want = line.replace("list=Lab", "list=Other"), "the receipt is for Other, not Lab"
+        elif case == "not_logged":
+            line, want = line.replace(d["sha256"], "ee" * 32), d["sha256"][:12]
+        else:
+            line, want = line.replace("devices=2", "devices=9"), "says 9 device(s)"
+        _r, html = self._record(page, line)
+        assert "Not recorded:" in html and want in html
+        assert not self._rows(page)
+
+    def test_due_states(self):
+        day = 86400.0
+        exports = [{"list": LIST, "at": 1000.0}]
+        assert bg.drill_due(LIST, [], [], 0)["state"] == "none"
+        assert bg.drill_due(LIST, exports, [], 1000 + 10 * day)["state"] == "ok"
+        assert bg.drill_due(LIST, exports, [], 1000 + 80 * day)["state"] == "due_soon"
+        assert bg.drill_due(LIST, exports, [], 1000 + 91 * day)["state"] == "overdue"
+        drilled = [{"list": LIST, "at": 1000 + 80 * day}]
+        assert bg.drill_due(LIST, exports, drilled, 1000 + 91 * day)["state"] == "ok"
+
+    def test_job_health_raises_it_only_once_overdue(self):
+        from modules import job_health
+        day = 86400.0
+        now = 10_000_000.0
+        ex = {"state": "ok", "by_list": {LIST: {"at": now - 100 * day, "devices": {"r1": "a"},
+                                              "via": "browser", "actor": "x"}}}
+        every = {"state": "ok", "rows": [{"list": LIST, "at": now - 100 * day}]}
+        none = {"state": "absent", "rows": []}
+        verdicts = {"state": "absent", "by_sha": {}}
+        rows = job_health.breakglass_rows(exports=ex, current={LIST: {"r1": "a"}}, intact=verdicts,
+                                          drills=none, all_exports=every, now=now)
+        overdue = [r for r in rows if r["state"] == "breakglass_drill_overdue"]
+        assert len(overdue) == 1 and overdue[0]["action"]["open"] == "breakglass_drill"
+        recent = {"state": "ok", "rows": [{"list": LIST, "at": now - 5 * day}]}
+        rows = job_health.breakglass_rows(exports=ex, current={LIST: {"r1": "a"}}, intact=verdicts,
+                                          drills=recent, all_exports=every, now=now)
+        assert not [r for r in rows if r["state"] == "breakglass_drill_overdue"]
+
+    def test_the_page_shows_the_drill_with_the_newest_files_command(self, page):
+        d = _export(page).get_json()
+        _r, html = _get(page, f"/v2/credentials?list={LIST}")
+        card = html[html.index('id="bg-drill"'):]
+        assert f"nmas-breakglass drill {d['filename']}" in card and 'x-data="copy"' in card
+        assert "Never: nothing has shown the record opens without the tool" in card
+        assert 'name="receipt"' in card
+
+    def test_history_has_the_drill(self, page, tmp_path, capsys, monkeypatch):
+        from modules import history_sources as HS
+        line, _d = self._receipt(page, tmp_path, capsys, monkeypatch)
+        self._record(page, line)
+        ref = type("Ref", (), {"name": LIST})()
+        got = HS.breakglass({"ref": ref, "device": "", "limit": 30, "since": None,
+                             "members": None})
+        assert any(e["what"].startswith("Offline drill recorded") for e in got["events"])
+
+
+def test_a_real_browser_records_the_drill(page, tmp_path, capsys, monkeypatch):
+    """Paste the receipt, Record the drill: the card in place reads when it was done."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    line, _d = TestTheOfflineDrill()._receipt(page, tmp_path, capsys, monkeypatch)
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b.go(srv.url(f"/v2/credentials?list={LIST}"))
+            b.wait_for("return window.htmx && document.querySelector('#bg-drill input[name=receipt]')")
+            b.js("document.querySelector('#bg-drill input[name=receipt]').value = arguments[0];", line)
+            b.click("#bg-drill .op-confirm")
+            b.wait_for("return /due in 89 days/.test(document.querySelector('#bg-drill').textContent)"
+                       " && !/Never:/.test(document.querySelector('#bg-drill').textContent)", 15)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()

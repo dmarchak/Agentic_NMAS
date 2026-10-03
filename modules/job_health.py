@@ -1140,7 +1140,8 @@ def startup_rows(read=None, now: float = None) -> list:
     return rows
 
 
-def breakglass_rows(exports=None, current=None, intact=None) -> list:
+def breakglass_rows(exports=None, current=None, intact=None, drills=None,
+                    all_exports=None, now=None) -> list:
     """C182: does the break-glass record hold the credential NMAS holds NOW?
 
     The record lives off the host, so this compares the newest EXPORT this
@@ -1162,6 +1163,8 @@ def breakglass_rows(exports=None, current=None, intact=None) -> list:
         current = _current_credential_digests() if current is None else current
         exports = bg.last_exports(DATA_DIR) if exports is None else exports
         intact = bg.intact_verdicts(DATA_DIR) if intact is None else intact
+        drills = bg.drills(DATA_DIR) if drills is None else drills
+        all_exports = bg.all_exports(DATA_DIR) if all_exports is None else all_exports
     except Exception as exc:                          # noqa: BLE001
         return [{"unit": "breakglass", "what": what, "state": "unknown", "max_age_minutes": 0,
                  "detail": f"could not be checked: {type(exc).__name__}: {exc}"}]
@@ -1173,7 +1176,22 @@ def breakglass_rows(exports=None, current=None, intact=None) -> list:
                  "detail": f"{bg.EXPORT_LOG} is unreadable ({exports.get('error')}); not the "
                            "same as current"}]
     rows = []
+    now = time.time() if now is None else now
     for list_name, now_digests in sorted(current.items()):
+        # THE OFFLINE DRILL (board 7, D): a row only once overdue (every DRILL_DAYS days); the
+        # Credentials page carries the quiet reminder before.
+        due = bg.drill_due(list_name, all_exports.get("rows") or [], drills.get("rows") or [], now)
+        if due["state"] == "overdue":
+            since = (time.strftime("%Y-%m-%d", time.gmtime(due["last"]["at"])) if due["last"]
+                     else "never, since the first export")
+            rows.append({"unit": f"breakglass-drill:{list_name}", "what": what, "list": list_name,
+                         "state": "breakglass_drill_overdue", "max_age_minutes": 0,
+                         "action": {"label": "Run the drill where the file is kept and record its "
+                                             "receipt on Credentials",
+                                    "open": "breakglass_drill", "list": list_name},
+                         "detail": (f"{list_name}'s break-glass record has not been opened offline "
+                                    f"for {bg.DRILL_DAYS} days (last: {since}): run the drill "
+                                    "where the file is kept")})
         last = (exports.get("by_list") or {}).get(list_name)
         if not last:
             rows.append({"unit": f"breakglass:{list_name}", "what": what, "state": "unknown",

@@ -221,6 +221,8 @@ DECLARED = {
     "update.step_done": ("app_version",),
     "attention.acknowledge": ("acknowledgements",),
     "restarts.planned": ("restarts",),
+    "v2.credentials_drill": Nothing("appends the drill to its own log, which job health's reader "
+                                    "and History read; the answer is the drill's card, drawn in place"),
     "v2.credentials_check": Nothing("appends the check's verdict to its own log, which History "
                                     "reads; the answer is the verdict, drawn in place"),
     "v2.credentials_intact": Nothing("appends the browser's word on a download to its own log, "

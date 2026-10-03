@@ -807,6 +807,13 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .bg-refused { margin: 0; padding: 10px 20px; color: var(--danger); }
 .op-part .bg-refused { padding: 0; }
 #bg-op:not(:empty) { margin-top: 14px; }
+.bg-drill { margin-top: 14px; }
+.bg-cmd { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.bg-cmd code { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r); padding: 6px 10px;
+  overflow-wrap: anywhere; }
+.bg-receipt { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 0; }
+.bg-receipt input[type=text] { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r);
+  min-width: min(380px, 100%); flex: 1 1 380px; background: var(--surface); color: var(--ink); }
 @media (max-width: 700px) {
   .op-part { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .op-hd, .op-part, .op-ft { padding-left: 14px; padding-right: 14px; }
