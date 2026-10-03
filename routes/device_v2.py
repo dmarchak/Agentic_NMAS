@@ -138,7 +138,10 @@ def device(name):
     tab = tab if tab in BUILT else "overview"
     ctx = {"device": dev, "list_name": ref.name, "tabs": TABS, "built": BUILT, "tab": tab,
            "answer": device_page.answering(dev), "who": _who(),
-           "hw": device_page.hardware(ref, dev)}
+           "hw": device_page.hardware(ref, dev),
+           # Revert and Retry are offered only while a rollback block stands (board 11): one
+           # read of the record.
+           "block": _block_state(ref, dev)}
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
                _intent_ctx(ref, dev) if tab == "intent" else
                _history_ctx(ref, dev) if tab == "history" else
@@ -153,7 +156,9 @@ def device(name):
                       _persist_card(ref, dev, tab) if op == "persist" else
                       _rotate_starting(ref, dev, tab) if op == "rotate" else
                       _deploy_card(ref, dev, tab, {}) if op == "deploy" else
-                      _restore_card(ref, dev, tab, request.args) if op == "restore" else None)
+                      _restore_card(ref, dev, tab, request.args) if op == "restore" else
+                      _revert_card(ref, dev, tab, request.args) if op == "revert" else
+                      _retry_card(ref, dev, tab, request.args) if op == "retry" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -607,6 +612,12 @@ def when_free(name):
     if op == "restore":
         return _strict(render_template("v2/_restore.html",
                                        c=_restore_card(ref, dev, back, request.args)))
+    if op == "revert":
+        return _strict(render_template("v2/_revert.html",
+                                       c=_revert_card(ref, dev, back, request.args)))
+    if op == "retry":
+        return _strict(render_template("v2/_retry.html",
+                                       c=_retry_card(ref, dev, back, request.args)))
     return _strict(render_template("v2/_capture.html", c={
         "state": "starting", "op": "capture", "host": dev.get("hostname", ""),
         "list": ref.name, "back": back}))
@@ -865,6 +876,147 @@ def restore_job_card(name, job):
                                         moment=request.args.get("moment", ""))
     c.update(back=_back(request.args), ip=dev.get("ip", ""))
     return _strict(render_template("v2/_restore.html", c=c))
+
+
+# ---------------------------------------------------------------------------
+# Revert and Retry, the two ways out of a rollback (7.3; the device-actions canvas, board 11)
+# ---------------------------------------------------------------------------
+
+def _block_state(ref, dev) -> dict:
+    from modules.nsot import intent_ops
+    try:
+        return intent_ops.block_state(ref.name, dev.get("hostname", ""))
+    except Exception as exc:                            # noqa: BLE001
+        log.warning("device_v2: the rollback record could not be read for %s: %s",
+                    dev.get("hostname", ""), exc)
+        return {"blocked": False, "at": "",
+                "why": f"the rollback record could not be read ({type(exc).__name__})"}
+
+
+def _viewer():
+    from modules import identity
+    from modules.preview_confirm import confirm_part
+    return dict(confirm_part(request, "approve"), actor=identity.identify(request).actor or "")
+
+
+def _revert_card(ref, dev, back, fields):
+    """The revert card: THE revert preview (`intent_ops.revert_entry`, the builder today's
+    route uses) for the chosen commit, masked on the way out, the confirm built from its hash."""
+    from modules import device_actions
+    from modules.nsot import intent_ops
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import revert_preview as parts
+
+    host = dev.get("hostname", "")
+    entry = intent_ops.public(intent_ops.revert_entry(ref.name, host,
+                                                      (fields.get("sha") or "").strip()))
+    out = mask_payload({"entry": entry, "preview": parts(entry, list_name=ref.name,
+                                                          request=request)})
+    chosen = out["entry"].get("target") or ""
+    commits = [dict(c, chosen=bool(chosen) and c.get("sha", "").startswith(chosen[:12]))
+               for c in out["entry"].get("commits") or []]
+    c = device_actions.intent_op_card("revert", ref, host, out["preview"], _viewer(),
+                                      commits=commits)
+    c.update(back=back, ip=dev.get("ip", ""), chosen=chosen)
+    return c
+
+
+def _retry_card(ref, dev, back, fields):
+    """The retry card: THE retry preview (`intent_ops.retry_entry`) with the reason typed so
+    far; the confirm is offered only once a reason in the shape of one is given."""
+    from modules import device_actions
+    from modules.nsot import intent_ops
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import retry_preview as parts
+
+    host = dev.get("hostname", "")
+    entry = intent_ops.retry_entry(ref.name, host)
+    preview = mask_payload(parts(entry, list_name=ref.name, request=request))
+    c = device_actions.intent_op_card("retry", ref, host, preview, _viewer(),
+                                      reason=(fields.get("reason") or "").strip())
+    c.update(back=back, ip=dev.get("ip", ""))
+    return c
+
+
+@bp.route("/device/<name>/revert", methods=["GET"])
+def revert(name):
+    """Revert a change to the device's intent (board 11): the commit to revert (the one a
+    rollback undid by default), the document after it, what it will not do, the checks and the
+    confirm bound to its hash. A READ: git only; nothing is sent to the device."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_revert.html",
+                                   c=_revert_card(ref, dev, _back(request.args), request.args)))
+
+
+@bp.route("/device/<name>/revert/confirm", methods=["POST"])
+def revert_confirm(name):
+    """Revert the confirmed commit as the verified person, in the list the card CARRIES: the
+    same apply as `/templatize/revert/apply` (`intent_ops.revert_apply`: computed again,
+    refused if it moved, one intent commit, the block measured after it). Nothing is sent."""
+    from modules import device_actions, identity
+    from modules.nsot import intent_ops
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import revert_result
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_revert.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    sha, confirmed = (request.form.get("sha") or "").strip(), (request.form.get("hash") or "").strip()
+    if not sha or not confirmed:
+        return _strict(render_template("v2/_revert.html", c={
+            "op": "revert", "state": "refused_hash", "host": host, "list": ref.name,
+            "back": _back(request.form)}), 400)
+    out = intent_ops.revert_apply(ref.name, host, sha, confirmed,
+                                  identity.identify(request).actor or "")
+    c = device_actions.intent_op_result_card("revert", ref, host,
+                                             mask_payload(revert_result(out)))
+    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_revert.html", c=c))
+
+
+@bp.route("/device/<name>/retry", methods=["GET"])
+def retry(name):
+    """Retry the change a rollback blocked (board 11): the blocked program, how often this
+    device was retried before, the reason asked for, the checks and the confirm bound to the
+    block's hash. A READ: the record only; nothing is sent."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_retry.html",
+                                   c=_retry_card(ref, dev, _back(request.args), request.args)))
+
+
+@bp.route("/device/<name>/retry/confirm", methods=["POST"])
+def retry_confirm(name):
+    """Authorise the retry as the verified person, with the stated reason, in the list the card
+    CARRIES: the same apply as `/templatize/retry/apply` (`intent_ops.retry_apply`: the block
+    must be the one previewed, the reason in the shape of one). Nothing is sent."""
+    from modules import device_actions, identity
+    from modules.nsot import intent_ops
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import retry_result
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_retry.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    confirmed = (request.form.get("hash") or "").strip()
+    if not confirmed:
+        return _strict(render_template("v2/_retry.html", c={
+            "op": "retry", "state": "refused_hash", "host": host, "list": ref.name,
+            "back": _back(request.form)}), 400)
+    out = intent_ops.retry_apply(ref.name, host, confirmed,
+                                 (request.form.get("reason") or "").strip(),
+                                 identity.identify(request).actor or "")
+    c = device_actions.intent_op_result_card("retry", ref, host,
+                                             mask_payload(retry_result(out)))
+    c.update(back=_back(request.form), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_retry.html", c=c))
 
 
 @bp.route("/device/<name>/deploy/job/<job>", methods=["GET"])

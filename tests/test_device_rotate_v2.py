@@ -94,7 +94,7 @@ class TestTheMenu:
         menu = html[html.index('role="menu"'):html.index('class="tabs"')]
         row = menu[menu.index('data-op="rotate"') - 200:menu.index('data-op="rotate"') + 1500]
         assert 'hx-get="/v2/device/r2/rotate?back=overview"' in row
-        assert "Capture, Restore, Rotate and Persist run here" in menu
+        assert "Capture, Restore, Revert, Retry, Rotate and Persist run here" in menu
         page = rot["client"].get("/v2/device/r2?op=rotate").get_data(as_text=True)
         assert 'hx-post="/v2/device/r2/rotate/preview"' in page[page.index('id="tab-body"'):]
 

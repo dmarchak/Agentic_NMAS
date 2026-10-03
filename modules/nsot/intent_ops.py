@@ -67,6 +67,20 @@ def _note(repo: str, hostname: str):
     return data.get(hostname), ""
 
 
+def block_state(list_name: str, hostname: str) -> dict:
+    """Whether a rollback block stands on *hostname*, from ONE read of the record (the v2 device
+    page's menu offers Revert and Retry only while one does, board 11): ``{"blocked", "why",
+    "at"}``. An unreadable record is said as such, never as "no block"."""
+    note, error = _note(_repo(list_name), hostname)
+    if error:
+        return {"blocked": False, "why": f"the rollback record could not be read ({error})",
+                "at": ""}
+    if not note:
+        return {"blocked": False, "at": "",
+                "why": f"no rollback block stands on {hostname}: nothing to revert or retry"}
+    return {"blocked": True, "why": "", "at": note.get("at", "")}
+
+
 def _note_public(note: dict) -> dict:
     return {"at": note.get("at", ""), "reason": note.get("reason", ""),
             "intent_commit": (note.get("intent_commit") or "")[:12],

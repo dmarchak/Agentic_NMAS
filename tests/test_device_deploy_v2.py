@@ -193,7 +193,9 @@ class TestTheConfirm:
         _r, out = _get(deploy, f"/v2/device/r2/deploy/job/{job}")
         assert "Rolled back" in out and "read r2 back as it was" in out
         assert 'data-next-acts="revert"' in out and 'data-next-acts="retry"' in out
-        assert "open=revert" in out and "open=retry" in out and "device=r2" in out
+        # The two ways out open their cards here (board 11), in place of this one.
+        assert 'hx-get="/v2/device/r2/revert?back=' in out and 'hx-get="/v2/device/r2/retry?back=' in out
+        assert "op=revert" in out and "op=retry" in out
 
     @pytest.mark.parametrize("change, words", [
         ({"list": ""}, "names no list"),

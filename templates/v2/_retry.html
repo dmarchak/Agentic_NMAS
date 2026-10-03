@@ -1,0 +1,82 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- The device page's Retry rolled-back change (7.3; the device-actions canvas, board 11): the
+    change was RIGHT, so the block a rollback left is lifted, with a stated reason recorded as
+    said. The card in place of the tab, from modules/device_actions.py over THE retry preview
+    (`intent_ops.retry_entry`); the reason typed plans again; the confirm records as the person,
+    in the list the card carries. Nothing is sent now. Cancel and Close put back the tab. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- set GATE = {'pass': ('pass', 'ok'), 'fail': ('fail', 'danger'), 'at_apply': ('at confirm', 'info'),
+                'not_applicable': ('n/a', 'muted'), 'not_reached': ('not reached', 'muted')} -%}
+{%- if c.state == 'preview' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title"
+         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='retry', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="op-hd"><h2 id="op-title">Retry the blocked change on {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('revert-retry') }}{{ close_button('Cancel') }}</div></div>
+  <form class="op-form" hx-get="{{ url_for('device_v2.retry', name=c.host) }}" hx-trigger="change"
+        hx-target="#device-op" hx-swap="outerHTML">
+  <input type="hidden" name="back" value="{{ c.back }}">
+  <div class="op-part"><h3>The blocked program</h3><div>
+    {%- if c.sent %}
+    <pre class="op-diff">{% for l in c.sent %}<span class="op-add">{{ l }}</span>
+{% endfor %}</pre>
+    <p class="muted small">{{ c.caption }}.</p>
+    {%- else %}<p>{{ c.none }}</p>{% endif %}</div></div>
+  {%- if c.sent %}
+  <div class="op-part"><h3>Why</h3><div>
+    <label class="op-reason">Why is this change right after all? (Recorded in the retry log as you say it.)
+      <input type="text" name="reason" value="{{ c.reason }}" placeholder="the neighbour's OSPF was down for the carrier's maintenance, unrelated"></label>
+    {%- if c.reason_problem %}<p class="op-note">Not yet a reason: {{ c.reason_problem }}.</p>{% endif %}</div></div>
+  {%- endif %}
+  <div class="op-part"><h3>What it will not do</h3><div>
+    {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}{{ '' if n.endswith('.') else '.' }}</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Operands</h3><div>
+    <dl class="op-ops">
+      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+    </dl></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      {%- for g in c.gates %}
+      {%- set gs = GATE.get(g.state, (g.state, 'muted')) %}
+      <li>{{ badge(gs[0], gs[1]) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
+      {%- endfor %}
+    </ul></div></div>
+  </form>
+  <div class="op-ft">
+    {%- if c.may %}
+    <p class="op-note">{{ c.effect }}</p>
+    <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="revert-retry"
+            hx-post="{{ url_for('device_v2.retry_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "hash": c.confirm.hash, "reason": c.reason} | tojson }}'><span class="op-idle">{{ c.button or ('Authorise the retry on ' ~ c.host) }}</span><span class="op-busy">Reading the block again and recording the retry…</span></button>{{ how('revert-retry', compact=True, op='retry') }}</span>
+    {%- else %}
+    <p class="op-note">Not available:
+      {%- if c.sent and not c.reason %} waits on your reason.
+      {%- elif c.sent and c.reason_problem %} waits on a reason in the shape of one.
+      {%- else %} {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}{{ c.none or 'nothing to retry' }}{% endfor %}.{% endif %}
+      {%- if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>
+    {%- endif %}
+  </div>
+</section>
+{%- elif c.state == 'result' %}
+<section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Retry on {{ c.host }} {{ badge(c.words, c.level) }}</h2>
+    <div class="op-hd-actions">{{ how('revert-retry') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>{{ c.summary }}</p>
+    {%- for s in c.checks %}{% if s %}<p>{{ s }}</p>{% endif %}{% endfor %}
+    {%- for d in c.did_not %}<p><strong>{{ d[0] | upper }}{{ d[1:] }}</strong></p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p><p class="muted">{{ c.not_watched }}</p></div></div>
+  <div class="op-ft"><p class="op-note">Kept in the retry log and History; this card goes when you close it or leave the page.</p>
+    <a href="{{ url_for('device_v2.device', name=c.host, tab='history') }}">Open in History</a></div>
+</section>
+{%- else %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Retry on {{ c.host }} {{ badge('Nothing was recorded', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('revert-retry') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+  {%- if c.state == 'refused_list' %}Refused: the card names no list this server knows ({{ c.list or 'none given' }}), and a retry is recorded into one list. Nothing was recorded.
+  {%- elif c.state == 'refused_hash' %}Refused: the confirm carried no block to be bound to. Nothing was recorded.
+  {%- else %}{{ c.error }}{% endif %}</p></div></div>
+</section>
+{%- endif %}

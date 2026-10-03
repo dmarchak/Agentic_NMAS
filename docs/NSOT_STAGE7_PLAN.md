@@ -2939,7 +2939,8 @@ The two flagged choices are agreed:
 - A stated reason replaces the typed confirmation for an account a restore adds back.
 - A retired device's address shows its retired record, closing C185.
 **Build order (the operator):** restore (as a job, carrying its list: C396), revert and retry,
-seed, retire, then the combined deploy's arrival watch.
+seed, retire, then the combined deploy's arrival watch. Restore built 2026-10-03 (4c336be);
+revert and retry built 2026-10-03, offered only while a block stands.
 
 Read from the code, the register, docs/CUTOVER.md (265 routes: 43 the redesign's; of the
 legacy families, 5 BUILT, 32 PLANNED, 17 REMOVE, 3 STAYS, none UNDECIDED) and the

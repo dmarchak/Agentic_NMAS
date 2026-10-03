@@ -17,7 +17,7 @@
     <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="btn btn-outline" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
       <div class="menu" role="menu" x-show="isOpen" x-cloak>
-        <p class="menu-note">Deploy, Capture, Restore, Rotate and Persist run here; Seed intent and Retire open on today's device page until they are built here.</p>
+        <p class="menu-note">Deploy, Capture, Restore, Revert, Retry, Rotate and Persist run here; Seed intent and Retire open on today's device page until they are built here.</p>
         {#- A row built on v2 draws its card in place of the tab; its href opens the page with
             the card for a browser without script. The rest open on today's page. -#}
         {% for label, op, words in [('Capture', 'capture', 'capture'), ('Restore from…', 'restore', 'restore')] %}
@@ -26,6 +26,16 @@
         {#- Mode B lives in the deploy card: the residue is ticked for removal there. -#}
         <div class="menu-row"><a role="menuitem" class="menu-item" data-op="removal" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='deploy') }}" hx-get="{{ url_for('device_v2.deploy', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}</div>
         <div class="menu-row"><a role="menuitem" class="menu-item" data-op="seed" href="{{ url_for('manage_device', ip=device.ip) }}">Seed intent</a>{{ how('seed', compact=True, op='seeding') }}</div>
+        <div class="menu-rule"></div>
+        {#- The two ways out of a rollback (board 11): offered only while a block stands; else
+            each says why, on hover and for a screen reader. -#}
+        {%- if block.blocked %}
+        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="revert-retry" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='revert') }}" hx-get="{{ url_for('device_v2.revert', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">Revert intent…</a>{{ how('revert-retry', compact=True, op='revert') }}</div>
+        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="revert-retry" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retry') }}" hx-get="{{ url_for('device_v2.retry', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">Retry rolled-back change…</a>{{ how('revert-retry', compact=True, op='retry') }}</div>
+        {%- else %}
+        <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ block.why }}">Revert intent…<span class="sr-only"> (not offered: {{ block.why }})</span></span></div>
+        <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ block.why }}">Retry rolled-back change…<span class="sr-only"> (not offered: {{ block.why }})</span></span></div>
+        {%- endif %}
         <div class="menu-rule"></div>
         {% for label, op, words in [('Rotate credential…', 'rotate', 'rotation'), ('Persist', 'persist', 'persist')] %}
         <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:click="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>

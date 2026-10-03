@@ -46,7 +46,7 @@ class TestTheMenu:
         row = menu[menu.index('data-op="persist"') - 200:menu.index('data-op="persist"') + 1500]
         assert 'hx-get="/v2/device/r2/persist?back=overview"' in row
         assert 'aria-label="How does persist work?"' in row
-        assert "Capture, Restore, Rotate and Persist run here" in menu
+        assert "Capture, Restore, Revert, Retry, Rotate and Persist run here" in menu
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
         assert labels.index("Rotate credential…") + 1 == labels.index("Persist")
 

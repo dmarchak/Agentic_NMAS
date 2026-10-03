@@ -163,6 +163,8 @@ DECLARED = {
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
     "templatize.retry_apply": ("rolled_back",),
+    "device_v2.revert_confirm": ("intent", "remote", "rolled_back"),
+    "device_v2.retry_confirm": ("rolled_back",),
     "templates.write_template": ("templates", "remote"),
     "templates.approve": ("templates", "remote"),
     "templates.revoke_approval": ("templates", "remote"),

@@ -114,6 +114,13 @@ STAGES = {
     "templatize.revert_apply": Stages(
         "templatize.revert_preview", "hash", NO_DEVICE, FORWARD,
         "modules.nsot.intent_ops.revert_apply"),
+    # The v2 device page's Revert and Retry (7.3, board 11): the same applies, carrying the list.
+    "device_v2.revert_confirm": Stages(
+        "device_v2.revert", "hash", NO_DEVICE, FORWARD, "modules.nsot.intent_ops.revert_apply"),
+    "device_v2.retry_confirm": Stages(
+        "device_v2.retry", "hash", NO_DEVICE,
+        "n/a: a retry is a recorded decision; a new rollback re-records the block",
+        "modules.nsot.intent_ops.retry_apply"),
     "templatize.retry_apply": Stages(
         "templatize.retry_preview", "hash", NO_DEVICE,
         "n/a: a retry is a recorded decision; a new rollback re-records the block",
@@ -251,6 +258,8 @@ HISTORY = {
     "templatize.bulk_apply": ("intent",),
     "templatize.revert_apply": ("intent",),
     "templatize.retry_apply": ("retries",),
+    "device_v2.revert_confirm": ("intent",),
+    "device_v2.retry_confirm": ("retries",),
     "v2.ip_sla_commit": ("intent",),
     "retire.apply": ("n/a: a retired device has no page to hold a History tab; its record is "
                      "the retire commit, read by the legacy golden history (C185)"),

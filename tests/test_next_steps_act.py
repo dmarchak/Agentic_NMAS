@@ -8,8 +8,8 @@ address and nothing on it; a link that only navigates is a dead end).
   as its `open`, and never an address.
 - Every `open` the server can put on an action has its own control (the fallback that opened a
   page is gone).
-- In a real browser, each opener of today's pages, loaded as the link loads it, leaves its tool
-  OPEN (the modal shown, its own controls in it), not just a page; a link naming another list
+- In a real browser, each opener, loaded as the link loads it, leaves its tool OPEN (today's
+  modal shown with its own controls in it, or the v2 device page's card), not just a page; a link naming another list
   than the page's is refused naming both, and opens nothing; and end to end, the rotate
   result's export link, clicked, opens the export.
 """
@@ -36,10 +36,15 @@ OPENERS = {
                       ".indexOf('r2') >= 0"),
     "deploy_plan": "document.querySelector('#deployPlanModal.show #deployPlanBody')",
     "profile_propose": "document.querySelector('.modal.show [data-profile-body]')",
-    "revert": ("document.querySelector('.modal.show [data-intent-op-confirm]') && "
-               "document.querySelector('.modal.show .modal-title').textContent.indexOf('r2') >= 0"),
-    "retry": ("document.querySelector('.modal.show [data-intent-op-confirm]') && "
-              "document.querySelector('.modal.show .modal-title').textContent.indexOf('r2') >= 0"),
+    # The two ways out of a rollback, on the v2 device page (board 11, 2026-10-03): the card
+    # in place of the tab, naming the device.
+    "revert": ("document.querySelector('#device-op h2') && /Revert a change to r2/"
+               ".test(document.querySelector('#device-op h2').textContent)"),
+    "retry": ("document.querySelector('#device-op h2') && /Retry the blocked change on r2/"
+              ".test(document.querySelector('#device-op h2').textContent)"),
+    # The v2 device page's deploy card (a revert whose block still stands offers it).
+    "deploy_card": ("document.querySelector('#device-op h2') && /Deploy committed intent to r2/"
+                    ".test(document.querySelector('#device-op h2').textContent)"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,
@@ -132,11 +137,17 @@ class TestEachOpenerActsInARealBrowser:
         ("intent_editor", "open=intent_editor&device=r2&list=Lab"),
         ("deploy_plan", "open=deploy_plan&device=r2&list=Lab"),
         ("profile_propose", "open=profile_propose&list=Lab"),
-        ("revert", "open=revert&device=r2&list=Lab"),
-        ("retry", "open=retry&device=r2&list=Lab"),
+        # The v2 device page's cards, loaded as their links load without script.
+        ("revert", "/v2/device/r2?op=revert"),
+        ("retry", "/v2/device/r2?op=retry"),
+        ("deploy_card", "/v2/device/r2?op=deploy"),
     ])
     def test_the_link_leaves_its_tool_open(self, page, name, query):
-        b = _open_index(page, query)
+        if query.startswith("/"):
+            b = page["b"]
+            b.go(page["srv"].url(query))
+        else:
+            b = _open_index(page, query)
         b.wait_for(f"return !!({OPENERS[name]})", 15)
 
     def test_a_link_naming_another_list_is_refused_naming_both(self, page, monkeypatch):

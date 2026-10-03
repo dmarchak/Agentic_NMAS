@@ -154,8 +154,8 @@
   {%- endif %}
   {%- if c.rolled_back %}
   <div class="op-part"><h3>What next</h3><div class="op-next">
-    <div><a class="btn" data-op="revert-retry" data-next-acts="revert" href="{{ url_for('index', open='revert', device=c.host, list=c.list) }}">Revert intent…</a>{{ how('revert-retry', compact=True, op='revert') }}<span class="muted">to take the change back out of committed intent</span></div>
-    <div><a class="btn" data-op="revert-retry" data-next-acts="retry" href="{{ url_for('index', open='retry', device=c.host, list=c.list) }}">Retry with a reason…</a>{{ how('revert-retry', compact=True, op='retry') }}<span class="muted">to lift the rollback's block once you know why verify failed</span></div>
+    <div><a class="btn" data-op="revert-retry" data-next-acts="revert" href="{{ url_for('device_v2.device', name=c.host, op='revert') }}" hx-get="{{ url_for('device_v2.revert', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Revert intent…</a>{{ how('revert-retry', compact=True, op='revert') }}<span class="muted">to take the change back out of committed intent</span></div>
+    <div><a class="btn" data-op="revert-retry" data-next-acts="retry" href="{{ url_for('device_v2.device', name=c.host, op='retry') }}" hx-get="{{ url_for('device_v2.retry', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Retry with a reason…</a>{{ how('revert-retry', compact=True, op='retry') }}<span class="muted">to lift the rollback's block once you know why verify failed</span></div>
   </div></div>
   {%- endif %}
   <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p></div></div>

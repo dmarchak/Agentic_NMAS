@@ -152,6 +152,10 @@ PAGE_RECORD = {
     # record read back by job health's rotation row.
     # The device page's Deploy (7.3): a job; its result drawn by the job's card from the
     # receipt, and the record read back on the device's History.
+    "device_v2.revert_confirm": ("templates/v2/_revert.html",
+                                 ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
+    "device_v2.retry_confirm": ("templates/v2/_retry.html",
+                                ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     "device_v2.restore_confirm": ("templates/v2/_restore.html",
                                   ('id="device-op"', "c.words", "c.record"), "device_v2.history"),
     "device_v2.deploy_confirm": ("templates/v2/_deploy.html",

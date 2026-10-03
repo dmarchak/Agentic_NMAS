@@ -203,6 +203,9 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--hover); }
 .menu-item.on { background: var(--accent-soft); }
 .menu-item.danger { color: var(--danger); }
+/* A row not offered now (Revert and Retry with no rollback block): its why on hover. */
+.menu-item[aria-disabled="true"] { color: var(--ink-3); cursor: not-allowed; }
+.menu-item[aria-disabled="true"]:hover { background: none; }
 .menu-note { font-size: 11px; color: var(--ink-2); padding: 4px 8px; margin: 0; }
 .menu-rule { height: 1px; background: var(--line-2); margin: 4px 0; }
 

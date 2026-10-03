@@ -501,6 +501,72 @@ def restore_card(ref, host: str, moment: str, plan: dict, viewer: dict, *,
                           "authorise": list(entry.get("authorised") or [])} if may else None))
 
 
+# ---------------------------------------------------------------------------
+# Revert and Retry (7.3; the device-actions canvas, board 11): the two ways out of a rollback,
+# each committing or recording only (nothing sent to the device), drawn from the builders
+# today's routes use (`preview_confirm.revert_preview`/`retry_preview` and their results).
+# ---------------------------------------------------------------------------
+
+#: An intent operation's result level -> the card's level.
+INTENT_OP_LEVELS = {"success": "ok", "partial": "warn", "failed": "danger"}
+
+
+def intent_op_card(op: str, ref, host: str, preview: dict, viewer: dict, *,
+                   commits=None, reason: str = "") -> dict:
+    """The revert or retry preview card (*op*) for *host* from its six parts (MASKED): what
+    would be committed or authorised (none of it sent to the device), what it will not do,
+    the operands and checks, and the confirm bound to the preview's hash. A revert carries the
+    commits to choose from; a retry its stated reason, required before the confirm."""
+    t = _one_target(preview, host, viewer)
+    program = t["target"].get("program") or {}
+    data = t["chosen"].get("select_data") or t["target"].get("select_data") or {}
+    lines = list(program.get("lines") or [])
+    need_reason = op == "retry"
+    reason_problem = ""
+    if need_reason and reason:
+        from modules.nsot.authorisation import reason_problem as _problem
+        reason_problem = (_problem({"line": "retry the rolled-back change", "reason": reason})
+                          or "").split(": ", 1)[-1]
+    may = bool(t["may"]) and bool(lines) and not (need_reason and (not reason or reason_problem))
+    confirm = preview.get("confirm") or {}
+    return {"op": op, "state": "preview", "host": host, "list": ref.name,
+            "summary": (preview.get("what") or {}).get("summary", ""),
+            "sent": lines, "caption": program.get("caption", ""), "none": program.get("none", ""),
+            "notes": [{"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
+                      for n in program.get("notes") or []],
+            "commits": list(commits or []), "reason": reason, "reason_problem": reason_problem,
+            "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
+            "gates": t["gates"], "failing": t["failing"], "held": held(t["gates"]),
+            "may": may, "effect": confirm.get("effect", ""),
+            "button": confirm.get("button", ""),
+            "confirm": ({"hash": data.get("hash", ""), "sha": data.get("sha", "")}
+                        if may else None)}
+
+
+def intent_op_result_card(op: str, ref, host: str, result: dict) -> dict:
+    """The revert or retry result card from its `build_result`: what was committed or
+    authorised, the check after it (a revert's block measured again), what it did not do, the
+    record, and, for a revert whose block still stands, its ways on."""
+    happened = next((x for x in (result.get("happened") or {}).get("targets") or []
+                     if x.get("name") == host), {})
+    target = next((x for x in result.get("targets") or [] if x.get("name") == host), {})
+    checks = target.get("checks") or {}
+    did_not = [i for i in (result.get("did_not") or {}).get("items") or []
+               if i.get("kind") != "not_sent"]
+    return {"op": op, "state": "result", "host": host, "list": ref.name,
+            "level": INTENT_OP_LEVELS.get(result.get("level"), "danger"),
+            "outcome": happened.get("outcome", target.get("outcome", "unknown")),
+            "words": happened.get("words", ""),
+            "summary": (result.get("happened") or {}).get("summary", ""),
+            "checks": list(checks.get("statements") or ([checks["why"]]
+                                                        if checks.get("why") else [])),
+            "did_not": [i.get("text", "") for i in did_not],
+            "standing": any(i.get("kind") in ("block_standing", "block_unknown")
+                            for i in did_not),
+            "record": (result.get("record") or {}).get("statement", ""),
+            "not_watched": result.get("not_watched", "")}
+
+
 def restore_job_card(ref, host: str, job_id: str, got, moment: str = "") -> dict:
     """The restore card for its job: running with the pipeline's stepper, its result from the
     receipt (the deploy's own reading of it), or why there is none."""

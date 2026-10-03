@@ -1,0 +1,89 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- The device page's Revert intent (7.3; the device-actions canvas, board 11): undo one intent
+    commit's change, the change was WRONG. The card in place of the tab, from
+    modules/device_actions.py over THE revert preview (`intent_ops.revert_entry`); choosing
+    another commit plans again; the confirm commits as the person, in the list the card carries.
+    Nothing is sent to the device. Cancel and Close put back the tab it replaced. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- set GATE = {'pass': ('pass', 'ok'), 'fail': ('fail', 'danger'), 'at_apply': ('at confirm', 'info'),
+                'not_applicable': ('n/a', 'muted'), 'not_reached': ('not reached', 'muted')} -%}
+{%- if c.state == 'preview' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title"
+         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='revert', back=c.back, sha=c.chosen) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="op-hd"><h2 id="op-title">Revert a change to {{ c.host }}'s intent</h2>
+    <div class="op-hd-actions">{{ how('revert-retry') }}{{ close_button('Cancel') }}</div></div>
+  <form class="op-form" hx-get="{{ url_for('device_v2.revert', name=c.host) }}" hx-trigger="change"
+        hx-target="#device-op" hx-swap="outerHTML">
+  <input type="hidden" name="back" value="{{ c.back }}">
+  <div class="op-part"><h3>Which change</h3><div>
+    {%- if c.commits %}
+    <label class="op-reason">Commit to revert
+      <select name="sha">
+        {%- for m in c.commits %}
+        <option value="{{ m.sha }}"{% if m.chosen %} selected{% endif %}>{{ m.sha }} · {{ m.date }} · "{{ m.subject }}"{% if m.rolled_back %} (the change a rollback undid){% endif %}</option>
+        {%- endfor %}
+      </select></label>
+    {%- else %}<p>{{ c.none }}</p>{% endif %}
+    <p class="muted small">A revert says the change was WRONG: intent stops asserting it. A retry says it was right and the failure was elsewhere. They mean opposite things.</p></div></div>
+  <div class="op-part"><h3>What will be committed</h3><div>
+    {%- if c.sent %}
+    <p>{{ c.caption }}.</p>
+    <pre class="op-diff">{% for l in c.sent %}<span class="{{ 'op-add' if l.startswith('+') else 'op-del' if l.startswith('-') else '' }}">{{ l }}</span>
+{% endfor %}</pre>
+    {%- for n in c.notes %}<p class="op-wait">{{ n.title }}</p>{% if n.lines %}<pre class="op-diff">{{ n.lines | join('\n') }}</pre>{% endif %}{% endfor %}
+    {%- else %}<p>{{ c.none }}</p>{% endif %}</div></div>
+  <div class="op-part"><h3>What it will not do</h3><div>
+    {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}{{ '' if n.endswith('.') else '.' }}</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Operands</h3><div>
+    <dl class="op-ops">
+      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+    </dl></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      {%- for g in c.gates %}
+      {%- set gs = GATE.get(g.state, (g.state, 'muted')) %}
+      <li>{{ badge(gs[0], gs[1]) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
+      {%- endfor %}
+    </ul></div></div>
+  </form>
+  <div class="op-ft">
+    {%- if c.may %}
+    <p class="op-note">{{ c.effect }} Bound to this preview: if {{ c.host }}'s intent moves before you confirm, nothing is committed.</p>
+    <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="revert-retry"
+            hx-post="{{ url_for('device_v2.revert_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "sha": c.confirm.sha, "hash": c.confirm.hash} | tojson }}'><span class="op-idle">{{ c.button or ('Revert ' ~ c.chosen ~ ' on ' ~ c.host) }}</span><span class="op-busy">Computing the revert again and committing it…</span></button>{{ how('revert-retry', compact=True, op='revert') }}</span>
+    {%- else %}
+    <p class="op-note">Not available: {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}{{ c.none or 'nothing to revert' }}{% endfor %}.{% if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>
+    {%- endif %}
+  </div>
+</section>
+{%- elif c.state == 'result' %}
+<section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Revert on {{ c.host }} {{ badge('Block still stands' if c.standing else c.words, c.level) }}</h2>
+    <div class="op-hd-actions">{{ how('revert-retry') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>{{ c.summary }}</p>
+    {%- for s in c.checks %}{% if s %}<p>{{ s }}</p>{% endif %}{% endfor %}
+    {%- for d in c.did_not %}<p><strong>{{ d[0] | upper }}{{ d[1:] }}</strong></p>{% endfor %}</div></div>
+  {%- if c.standing %}
+  <div class="op-part"><h3>What next</h3><div class="op-next">
+    <div><button type="button" class="btn" data-op="revert-retry" data-next-acts="revert" hx-get="{{ url_for('device_v2.revert', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Revert another commit…</button>{{ how('revert-retry', compact=True, op='revert') }}</div>
+    <div><button type="button" class="btn" data-op="deploy" data-next-acts="deploy_card" hx-get="{{ url_for('device_v2.deploy', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Plan a deploy…</button>{{ how('deploy', compact=True, op='deploy') }}</div>
+  </div></div>
+  {%- endif %}
+  <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p><p class="muted">{{ c.not_watched }}</p></div></div>
+  <div class="op-ft"><p class="op-note">Kept in History (the intent commit); this card goes when you close it or leave the page.</p>
+    <a href="{{ url_for('device_v2.device', name=c.host, tab='history') }}">Open in History</a></div>
+</section>
+{%- else %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Revert on {{ c.host }} {{ badge('Nothing was committed', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('revert-retry') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+  {%- if c.state == 'refused_list' %}Refused: the card names no list this server knows ({{ c.list or 'none given' }}), and a revert commits into one list. Nothing was committed.
+  {%- elif c.state == 'refused_hash' %}Refused: the confirm carried no commit or preview to be bound to. Nothing was committed.
+  {%- else %}{{ c.error }}{% endif %}</p></div></div>
+</section>
+{%- endif %}
