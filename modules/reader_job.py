@@ -346,7 +346,18 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
     good value kept (rule 3). A store that cannot be written raises, because
     nothing else can record it; the stale row then says the reader stopped
     (rule 7). *trigger* is what caused this run (rule 13): the schedule when
-    omitted."""
+    omitted.
+
+    **One run per reader at a time, across processes** (CONCURRENCY_AUDIT R28): the
+    scheduled loop, a run on request and the post-commit refresh could all run one reader
+    at once, each reading before the store's lock, so a slower run that started first
+    stored last over a fresher value, and two `app-pushed` runs fetched one checkout at
+    once. A run now waits for the one in progress, so it reads after that one stored."""
+    with _filestore.PathLock(store_path(reader.name) + ".run"):
+        return _run_once(reader, announce, clock, trigger)
+
+
+def _run_once(reader: Reader, announce, clock, trigger) -> dict:
     trigger = dict(trigger or SCHEDULED)
     # Asked for (a person's request, or a host job that finished): logged, and
     # announced even when the answer did not change, because something is
@@ -399,9 +410,15 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
             log.error("reader %s: the read failed (%s); the last good value from %s is kept",
                       reader.name, doc["last_attempt"]["error"],
                       (doc["last_good"] or {}).get("value_at", "never"))
+        elif ((before.get("last_good") or {}).get("read_started") or 0) > started:
+            # A value read AFTER this read began is already stored (a run in another
+            # process, or one that did not wait): it is kept, never replaced by an older
+            # one (R28). This attempt is still in `runs`.
+            log.warning("reader %s: a value read later is already stored; this run's older "
+                        "value is not stored over it", reader.name)
         else:
             doc["last_good"] = {"value": value, "value_at": _iso(started), "took_ms": took,
-                                "trigger": trigger}
+                                "trigger": trigger, "read_started": started}
         _filestore.write_atomic(path, json.dumps(doc, indent=1, sort_keys=True))
     if requested:
         # Rule 13: "did my click run, and how long did it take" in the log too.

@@ -131,7 +131,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
 | R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | UNSAFE | yes | Lease, recorded release, canonical key, no flock probe |
 | R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE | yes | Broadcast mutations; live holder strip; previews subscribe |
-| R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | UNSAFE | yes | One run per reader at a time; never store an older value |
+| R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | UNSAFE | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
 | R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | UNSAFE | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
 | R40 | m | stores (added on review) | Persistence-chain host files: Oxidized `router.db` and the lab sync | `router.db`, lab startup files and their repositories | `router.db`: atomic replace, no lock; sync script: no lock | no | UNSAFE | yes | `flock` in the root helper and in the sync script |
@@ -527,6 +527,13 @@ apply preview names a holder once, at preview time (templates/v2/_apply_preview.
 filled at routes/deploy.py:496-497), and redraws only on the person's own changes
 (:21-22). The approvals list does learn within 30 s, because it polls. Template approvals
 and freshness authorisations have no announcement and no poll.
+
+*FIXED 2026-10-02 (tests/test_reader_runs_one_at_a_time.py):* `run_once` holds a per-reader
+run lock across processes (`<store>.run`, a `PathLock`), so a run that starts while another
+reads waits and reads after it stored; inside the store, a value whose read began after this
+run's is never replaced by this run's older one (`last_good.read_started`), and the attempt is
+still recorded. A run on request can now wait behind a scheduled run of the same reader before
+its own read; its page's answer bound already allows 2.5x the slowest run.
 
 **R28. Reader runs overlap in one process** (live-6). The scheduled loop
 (modules/reader_job.py:509-517), `request_run` (:572-597) and the post-commit refresh
