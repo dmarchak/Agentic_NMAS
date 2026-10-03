@@ -62,7 +62,7 @@
     <span class="grow"></span>
     <span class="update-slot" id="nmas-update" hx-get="{{ url_for('device_v2.update_available') }}" hx-trigger="load, nmas:app_version from:body" hx-swap="innerHTML"></span>
     <span class="strip" id="nmas-strip" hx-get="{{ url_for('device_v2.strip') }}" hx-trigger="load, nmas:integration_health from:body" hx-swap="innerHTML"></span>
-    <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Live</span></span>
+    <span class="live" id="nmas-live" data-live="unknown"><span class="live-dot"></span><span class="live-word">Connecting</span></span>
     <div class="menu-wrap theme" x-data="theme" x-on:keydown.escape="close" x-on:click.outside="close">
       <button type="button" class="icon-btn" aria-haspopup="true" x-bind:aria-expanded="expanded" x-bind:aria-label="label" x-bind:title="label" x-on:click="toggle">{{ icon('theme', 18) }}</button>
       <div class="menu theme-menu" role="menu" aria-label="Theme" x-show="isOpen" x-cloak>

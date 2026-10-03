@@ -53,6 +53,10 @@ Nothing you click goes quiet. When an answer cannot be drawn (the server refused
 card, did not answer, or answered with nothing for that place), the place it would have
 appeared says **Couldn't load:** and why, and keeps what it showed.
 
+Every page also checks that it arrived as the tool sent it. If something between the tool and
+your browser added scripts (a proxy rewriting pages, or a browser extension), the top of the
+page says **This page arrived changed**, names each script, and says what to turn off.
+
 ## A baseline is a moment
 
 A baseline tag (`baseline/<time>`) names one commit at which every device's golden and

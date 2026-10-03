@@ -478,6 +478,46 @@
     };
   }
 
+  /* C389: the page as this browser received it, against what the tool sends. Every script a v2
+     page loads is the tool's own, from /static/ (the strict policy, vendored libraries); any
+     other was added between the tool and this browser: a proxy rewriting pages (an email
+     decoder and an analytics beacon, measured on the host), or an extension. PURE: the added
+     ones, from each script's [src, type] (a data block, typed JSON, is not a script). */
+  function injectedScripts(scripts, origin) {
+    var out = [];
+    for (var i = 0; i < scripts.length; i++) {
+      var src = scripts[i][0] || '', type = (scripts[i][1] || '').toLowerCase();
+      if (type && !/javascript|ecmascript|module/.test(type)) continue;
+      if (src && src.indexOf(origin + '/static/') === 0) continue;
+      out.push(src || '(an inline script)');
+    }
+    return out;
+  }
+
+  function rewrittenWords(added) {
+    return 'This page arrived changed: ' + added.length + ' script' + (added.length === 1 ? '' : 's') +
+      ' the tool did not send (' + added.join(', ') + ') ' + (added.length === 1 ? 'was' : 'were') +
+      ' added on the way, so what you see is not what the tool served and its tests check. ' +
+      'Turn off page rewriting at the proxy in front of the tool (email obfuscation, analytics ' +
+      'injection), or the browser extension adding ' + (added.length === 1 ? 'it' : 'them') + '.';
+  }
+
+  function checkServedPage(doc, origin) {
+    var list = [], els = doc.getElementsByTagName('script');
+    for (var i = 0; i < els.length; i++) list.push([els[i].src, els[i].getAttribute('type')]);
+    var added = injectedScripts(list, origin);
+    if (!added.length || doc.querySelector('[data-rewritten]')) return added;
+    var box = doc.createElement('div'), p = doc.createElement('p');
+    box.className = 'notice notice-warn';
+    box.setAttribute('data-rewritten', '');
+    box.setAttribute('role', 'alert');
+    p.textContent = rewrittenWords(added);
+    box.appendChild(p);
+    var main = doc.querySelector('main') || doc.body;
+    main.insertBefore(box, main.firstChild);
+    return added;
+  }
+
   /* A page the browser RESTORES from its back/forward cache comes back with its
      script state as it was left, and its live channel closed: a wait that
      ended hours ago still reads "waiting", with Stop waiting beside it (the
@@ -494,6 +534,7 @@
   if (root.document && root.document.addEventListener) {
     root.document.addEventListener('alpine:init', registerAlpine);
     root.document.addEventListener('DOMContentLoaded', function () {
+      if (root.location) checkServedPage(root.document, root.location.origin);
       wireAnnouncements();
       drawAges();
       drawLive();
@@ -521,5 +562,6 @@
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
                   badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
-                  failWords: failWords};
+                  failWords: failWords, injectedScripts: injectedScripts,
+                  rewrittenWords: rewrittenWords};
 })(typeof window !== 'undefined' ? window : this);

@@ -33,6 +33,15 @@ class TestHTMLIsNeverReusedWithoutAsking:
         assert "no-cache" in cc
         assert "must-revalidate" in cc
 
+    def test_it_asks_that_the_page_is_not_rewritten(self, client):
+        """C389: a proxy injected scripts into the served pages; `no-transform` asks every
+        intermediary to pass the body as sent (RFC 9111, 5.2.2.6), the page and its
+        fragments alike."""
+        for path in ("/", "/v2/help/credentials/panel"):
+            r = client.get(path)
+            assert r.mimetype == "text/html", path
+            assert "no-transform" in r.headers.get("Cache-Control", "").split(", "), path
+
     def test_and_NOT_no_store(self, client):
         """`no-store` forbids keeping a copy, so every navigation is a full
         re-download of a third of a megabyte. `no-cache` keeps it and

@@ -227,7 +227,12 @@ def _cache_policy(resp):
             return resp
 
         if resp.mimetype == "text/html":
-            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+            # `no-transform` (C389): an intermediary must not change the
+            # body. A proxy injected scripts into the pages (an email
+            # decoder and an analytics beacon), so what was served was not
+            # what the tests see. The page also checks itself
+            # (nmas_v2.js, `injectedScripts`), whatever the proxy does.
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate, no-transform"
             # The validator that makes revalidation a 304 instead of a
             # re-download. Only for complete, non-streamed responses.
             if not resp.direct_passthrough and resp.status_code == 200:
