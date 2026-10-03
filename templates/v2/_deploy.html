@@ -1,0 +1,141 @@
+{%- from "v2/_macros.html" import icon, badge, how, job_stepper -%}
+{#- The device page's Deploy, with Mode B (7.3; the device-actions canvas, boards 5 and 6):
+    the card in place of the tab, from modules/device_actions.py over THE plan
+    (`routes.deploy.plan_devices`) and `deploy_preview`. The form plans again on each change
+    (a line ticked for removal, a reason typed), so the confirm always binds the program on the
+    screen; the confirm starts the deploy as a job (`deploy_job`), whose card draws the
+    pipeline's stages as they run, then the result from the receipt. Cancel and Close put back
+    the tab it replaced. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- set GATE = {'pass': ('pass', 'ok'), 'fail': ('fail', 'danger'), 'at_apply': ('at confirm', 'info'),
+                'not_applicable': ('n/a', 'muted'), 'not_reached': ('not reached', 'muted')} -%}
+{%- if c.state == 'preview' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title"
+         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='deploy', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="op-hd"><h2 id="op-title">Deploy committed intent to {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('deploy') }}{{ close_button('Cancel') }}</div></div>
+  <form class="op-form" hx-get="{{ url_for('device_v2.deploy', name=c.host) }}" hx-trigger="change"
+        hx-target="#device-op" hx-swap="outerHTML">
+  <input type="hidden" name="back" value="{{ c.back }}">
+  <div class="op-part"><h3>What</h3><div><p>{{ c.summary }}</p></div></div>
+  <div class="op-part"><h3>The program</h3><div>
+    {%- for b in c.blocking %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ b }}</p></div>{% endfor %}
+    {%- if c.refused %}<div class="notice notice-danger">{{ icon('warn') }}<p>Not sent: {{ c.refused }}</p></div>{% endif %}
+    {%- if c.sent %}
+    <p>Exactly these {{ c.sent | length }} line(s), in order.</p>
+    <pre class="op-diff">{% for l in c.sent %}<span class="op-add">{{ l }}</span>
+{% endfor %}</pre>
+    {%- for n in c.notes %}<p class="op-wait">{{ n.title }}</p>{% if n.lines %}<pre class="op-diff">{{ n.lines | join('\n') }}</pre>{% endif %}{% endfor %}
+    {%- else %}
+    <p>{{ c.none or 'Nothing to send: the device already holds every line its committed intent declares.' }}</p>
+    {%- endif %}
+    {%- for d in c.dangerous %}
+    <label class="op-reason"><code>{{ d.line }}</code> is a dangerous line. Why (your stated reason, recorded with the change and in the hash):
+      <input type="text" name="dz::{{ d.index }}" value="{{ d.reason }}" placeholder="the link is being retired"></label>
+    {%- endfor %}
+    {%- if c.authorisation_error %}<p class="op-note">{{ c.authorisation_error }}</p>{% endif %}
+  </div></div>
+  <div class="op-part"><h3>Left on the device</h3><div>
+    {%- if c.residue %}
+    <p class="op-wait">On {{ c.host }} and not in its committed intent. Merge-only leaves each as it is, unless you tick it for removal (Mode B) with your reason.</p>
+    <ul class="op-list op-residue">
+      {%- for r in c.residue %}
+      <li>
+        {%- if r.why_not %}
+        <input type="checkbox" disabled id="rm-{{ r.id }}" title="Cannot be removed: {{ r.why_not }}">
+        <label for="rm-{{ r.id }}"><code>{{ r.text }}</code></label> <span class="muted">Cannot be removed here: {{ r.why_not }}. It stays.</span>
+        {%- else %}
+        <input type="checkbox" name="rm" value="{{ r.id }}" id="rm-{{ r.id }}"{% if r.picked %} checked{% endif %}>
+        <label for="rm-{{ r.id }}"><code>{{ r.text }}</code>{% if r.picked %} <strong>will be removed</strong>{% endif %}</label>
+        {%- if r.picked %}
+        <label class="op-reason">Why (recorded with the change and in the hash)
+          <input type="text" name="why::{{ r.id }}" value="{{ r.reason }}" placeholder="left over from the old design"></label>
+        {%- endif %}
+        {%- endif %}
+      </li>
+      {%- endfor %}
+    </ul>
+    {%- else %}
+    <p>Nothing: {{ c.host }} holds no line its committed intent lacks.</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>What will not happen</h3><div>
+    {%- for n in c.what_not %}<p>{{ n[0] | upper }}{{ n[1:] }}{{ '' if n.endswith('.') else '.' }}</p>{% else %}<p>No line is removed that you did not tick.</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Operands</h3><div>
+    <dl class="op-ops">
+      {%- for o in c.operands %}<dt>{{ o.name[0] | upper }}{{ o.name[1:] }}</dt><dd class="mono">{{ o.value }}</dd>{% endfor %}
+    </dl></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      {%- for g in c.gates %}
+      {%- set gs = GATE.get(g.state, (g.state, 'muted')) %}
+      <li>{{ badge(gs[0], gs[1]) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
+      {%- endfor %}
+    </ul></div></div>
+  </form>
+  <div class="op-ft">
+    {%- if c.may %}
+    <p class="op-note">{{ c.effect }} Bound to program {{ c.command_hash[:12] }}: if {{ c.host }} or its intent moves before you confirm, nothing is sent.</p>
+    <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="deploy"
+            hx-post="{{ url_for('device_v2.deploy_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "capture_hash": c.confirm.capture_hash, "command_hash": c.confirm.command_hash, "remove": c.confirm.remove | tojson, "authorise": c.confirm.authorise | tojson} | tojson }}'><span class="op-idle">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again and starting the deploy…</span></button>{{ how('deploy', compact=True, op='deploy') }}</span>
+    {%- else %}
+    <p class="op-note">Not available:
+      {%- if c.waiting %} waits on a stated reason for each dangerous or ticked line; give it above and the plan is computed again.
+      {%- elif not c.sent %} nothing to send.
+      {%- else %} {% for g in c.failing %}{{ g.name }}{% if g.detail %} ({{ g.detail }}){% endif %}{{ '; ' if not loop.last }}{% else %}{{ c.refused or (c.blocking | join('; ')) or 'nothing can be deployed' }}{% endfor %}.{% endif %}
+      {%- if c.held %} This preview reads again when that operation finishes, if the tool runs it.{% endif %} Nothing is queued.</p>
+    <span class="op-act"><button type="button" class="btn" data-op="deploy" hx-get="{{ url_for('device_v2.deploy', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('deploy', compact=True, op='deploy') }}</span>
+    {%- endif %}
+  </div>
+</section>
+{%- elif c.state == 'deploying' %}
+<section class="op-card" id="device-op" aria-labelledby="op-title" aria-busy="true"
+         hx-get="{{ url_for('device_v2.deploy_job_card', name=c.host, job=c.job, back=c.back) }}"
+         hx-trigger="nmas:deploy_job from:body, nmas:device_progress from:body" hx-swap="outerHTML">
+  <div class="op-hd"><h2 id="op-title">Deploying to {{ c.host }}</h2>
+    <div class="op-hd-actions">{{ how('deploy') }}</div></div>
+  <div class="op-part"><h3>Where it is</h3><div>
+    {{ job_stepper(c.steps, 'Deploy progress') }}
+    <p class="op-wait">It holds {{ c.host }} until it ends; a failed verify rolls back what landed. This page can close: the receipt and History keep the result.</p></div></div>
+</section>
+{%- elif c.state == 'result' %}
+<section class="op-card op-{{ c.level }}" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Deploy to {{ c.host }} {{ badge('Rolled back' if c.rolled_back else c.words, c.level) }}</h2>
+    <div class="op-hd-actions">{{ how('deploy') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>{{ c.host }}: {{ c.words }}.{% if c.sent %} It received {{ c.sent | length }} line(s); {{ c.match_words }}.{% else %} {{ c.none }}{% endif %}</p>
+    {%- for s in c.checks %}{% if s %}<p>{{ s }}</p>{% endif %}{% endfor %}
+    {%- if c.rolled_back %}<p><strong>Rolled back ({{ c.rollback_state | replace('_', ' ') }}):</strong> {{ c.rollback_detail }}</p>{% endif %}
+    {%- for d in c.did_not %}<p><strong>{{ d[0] | upper }}{{ d[1:] }}</strong></p>{% endfor %}</div></div>
+  {%- if c.authorised %}
+  <div class="op-part"><h3>With your reasons</h3><div>
+    {%- for a in c.authorised %}<p><code>{{ a.line }}</code>: {{ a.reason }}</p>{% endfor %}</div></div>
+  {%- endif %}
+  {%- if c.rolled_back %}
+  <div class="op-part"><h3>What next</h3><div class="op-next">
+    <div><a class="btn" data-op="revert-retry" data-next-acts="revert" href="{{ url_for('index', open='revert', device=c.host, list=c.list) }}">Revert intent…</a>{{ how('revert-retry', compact=True, op='revert') }}<span class="muted">to take the change back out of committed intent</span></div>
+    <div><a class="btn" data-op="revert-retry" data-next-acts="retry" href="{{ url_for('index', open='retry', device=c.host, list=c.list) }}">Retry with a reason…</a>{{ how('revert-retry', compact=True, op='retry') }}<span class="muted">to lift the rollback's block once you know why verify failed</span></div>
+  </div></div>
+  {%- endif %}
+  <div class="op-part"><h3>Recorded</h3><div><p>{{ c.record }}</p></div></div>
+  <div class="op-ft"><p class="op-note">Kept in History (the receipt and the commit); this card goes when you close it or leave the page.</p>
+    <a href="{{ url_for('device_v2.device', name=c.host, tab='history') }}">Open in History</a></div>
+</section>
+{%- else %}
+<section class="op-card op-warn" id="device-op" aria-labelledby="op-title">
+  <div class="op-hd"><h2 id="op-title">Deploy to {{ c.host }} {{ badge('Nothing was sent' if c.state != 'unknown' else 'Not known here', 'warn') }}</h2>
+    <div class="op-hd-actions">{{ how('deploy') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>What happened</h3><div><p>
+  {%- if c.state == 'refused_list' %}Refused: the card names no list this server knows ({{ c.list or 'none given' }}), and a deploy records into one list. Nothing was sent.
+  {%- elif c.state == 'refused_hash' %}Refused: the confirm carried no program to be bound to. Nothing was sent.
+  {%- elif c.state == 'unknown' %}This server has no record of that deploy: it expired, or the server restarted. What reached {{ c.host }} is in its receipt, on its History.
+  {%- elif c.state == 'failed' %}The deploy job raised: {{ c.error }}. What reached {{ c.host }} is in its receipt, on its History; read it before deploying again.
+  {%- else %}{{ c.error }}{% endif %}</p>
+  {%- if c.state not in ('refused_list', 'unknown', 'failed') %}
+  <p><button type="button" class="btn" data-op="deploy" hx-get="{{ url_for('device_v2.deploy', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Preview it again</button>{{ how('deploy', compact=True, op='deploy') }}</p>
+  {%- endif %}</div></div>
+</section>
+{%- endif %}

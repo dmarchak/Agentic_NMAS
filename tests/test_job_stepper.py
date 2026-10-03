@@ -127,6 +127,20 @@ class TestTheStepper:
                                            ("revert", 1025)), detours=RO.DETOURS, now=1026.0)
         assert rows[3]["state"] == "running" and rows[3]["last"] == "revert"
 
+    def test_the_deploy_steps_are_the_pipelines_stages_noted_as_they_start(self):
+        from modules import pipeline
+        assert [s[0] for s in pipeline.STEPS] == pipeline.STAGE_NAMES
+        assert all(len(s[1]) >= 4 and len(s[2]) > 15 for s in pipeline.STEPS)
+        assert DA.JOB_STEPPERS["deploy"][3] == "starts"
+        rows = DA.stepper(pipeline.STEPS, _trail(("netbox_query", 1001), ("template_render", 1002),
+                                                 ("ci_gate", 1003), ("pre_snapshot", 1004),
+                                                 ("config_diff", 1009), ("deploy", 1010),
+                                                 ("post_snapshot", 1014), ("verify", 1020)),
+                          now=1050.0, starts=True)
+        assert [r["state"] for r in rows] == ["done"] * 7 + ["running", "waiting", "waiting"]
+        assert rows[7]["took_s"] == 30 and "settle window" in rows[7]["waits"]
+        assert rows[3]["took_s"] == 5, "read before ran from its start to the compare's"
+
     def test_the_last_stage_done_leaves_nothing_running(self):
         rows = DA.stepper(RO.STEPS, _trail(("commit", 1030), ("startup_safe", 1080)),
                           now=1081.0)

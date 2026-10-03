@@ -29,6 +29,10 @@ import time
 log = logging.getLogger(__name__)
 
 KIND = "monitoring profile apply"
+#: What the in-flight panel calls the job, by its scope (C364: an IP SLA send and, since the
+#: device page's deploy runs here too, a whole-intent deploy were both "monitoring profile
+#: apply").
+KINDS = {"profile": KIND, "ip_sla": "IP SLA send", "": "deploy"}
 ANNOUNCER = "deploy-job"
 #: Announced as each device finishes: the page's progress moved.
 PROGRESS_KEYS = ("deploy_job",)
@@ -98,9 +102,10 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
                                        "reason": r.get("reason", ""), "took_s": 0}
         return mask_payload({"ok": True, "list": list_name, **report})
 
-    job = capture_job.start(list_name, label, actor, work, kind=KIND,
+    kind = KINDS.get(scope, KIND)
+    job = capture_job.start(list_name, label, actor, work, kind=kind,
                             announce_keys=DONE_KEYS, announcer=ANNOUNCER)
-    log.info("deploy job %s: %s on %s started by %s", job, KIND, label, actor)
+    log.info("deploy job %s: %s on %s started by %s", job, kind, label, actor)
     return job
 
 

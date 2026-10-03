@@ -37,12 +37,13 @@ function nsotAction(name, hostname, asArray) {
 }
 
 // Opened by a link from the redesigned pages (C372: a next step that only NAVIGATED was a dead
-// end): ?open=intent_editor|deploy_plan&device=<name>&list=<list> opens the tool itself. These
+// end): ?open=intent_editor|deploy_plan|revert|retry&device=<name>&list=<list> opens the tool itself. These
 // tools act on this page's list; a link naming another list is refused, naming both, never
 // switched to (only a read may derive the active list).
 document.addEventListener('DOMContentLoaded', function () {
   const q = new URLSearchParams(window.location.search);
-  const opens = {intent_editor: ['showIntentEditor', false], deploy_plan: ['openDeployPlan', true]};
+  const opens = {intent_editor: ['showIntentEditor', false], deploy_plan: ['openDeployPlan', true],
+                 revert: ['openRevert', false], retry: ['openRetry', false]};
   // No `open` asked for: nothing to do, and nothing to say.
   const o = opens[q.get('open')];
   const device = q.get('device') || '', list = q.get('list') || '';

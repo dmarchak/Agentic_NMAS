@@ -315,6 +315,25 @@ _STAGE_TABLE: list[tuple[str, str]] = [
 
 STAGE_NAMES: list[str] = [s[0] for s in _STAGE_TABLE]
 
+#: Each stage as a person reads it on a running deploy's stepper (the signed Stepper board,
+#: 2026-10-02: "the steps are the code's own, here the pipeline's ten stages"), with what it
+#: waits on. `run()` notes each stage as it STARTS.
+STAGE_WORDS = {
+    "netbox_query": ("NetBox record", "the device's NetBox record and its parameters"),
+    "template_render": ("Program", "the program rendered from committed intent"),
+    "ci_gate": ("Dangerous lines", "every dangerous line checked against its stated reason"),
+    "pre_snapshot": ("Read before", "the device's running configuration, read before anything "
+                                    "is sent"),
+    "config_diff": ("Compare", "the program compared with the one you confirmed"),
+    "deploy": ("Send", "the program sent to the device, merge-only"),
+    "post_snapshot": ("Read after", "the running configuration read again"),
+    "verify": ("Verify", "each protocol's settle window, and BGP's hold time"),
+    "save_golden": ("Record golden", "the golden recorded from what was sent"),
+    "audit_log": ("Audit", "the receipt written"),
+}
+#: The stepper's declared steps (`device_actions.stepper`): ``(key, words, waits, names)``.
+STEPS = tuple((n, STAGE_WORDS[n][0], STAGE_WORDS[n][1], (n,)) for n in STAGE_NAMES)
+
 
 # ---------------------------------------------------------------------------
 # Pipeline runner

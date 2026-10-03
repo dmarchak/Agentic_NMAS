@@ -2826,6 +2826,17 @@ The landing page drew every section 1a source from stored or cached values, each
 5. **Numbers.** One commit [git: this commit]. 15 tests in `tests/test_device_rotate_v2.py`, two in a real browser; nine controls, each failing its aimed tests. Findings: 1 (C358, fixed). **Estimate versus actual:** persist's entry forecast rotate between capture and persist; it took about capture's time, the hold announcement and C358 being the difference.
 6. **Where it left the product.** A device's credential can be rotated, recorded and persisted from its v2 page, with the result and its one next step in place, and a card blocked by a hold clears itself when the hold ends. Deploy with Mode B is next.
 
+#### 7.3 — Deploy with Mode B on the v2 device page
+
+*Written at close, 2026-10-03 (overnight). It awaits its real run on the host, which sends a program to a device and so is the operator's.*
+
+1. **What it was.** The last of the four device actions on v2 (canvas boards 5 and 6): the device's whole committed intent, merge-only, with a dangerous line's stated reason and the residue a person ticks for removal (Mode B), each reason in the hash; run as a job with the stepper; the result from its receipt, and a rolled-back verify's two ways out.
+2. **How it was implemented.** Nothing new on the server's deploy path: the card draws THE plan (`plan_devices`) and its preview, planned again on each change of the form, and the confirm runs the batch apply's job (`deploy_job`) for one device with the whole intent. The stepper is the pipeline's ten declared stages; since the pipeline notes a stage as it starts and rotation notes a step once done, each job declares which (`JOB_STEPPERS`). The rollback's next steps open today's revert and retry tools through the index's openers (map entries, no new function).
+3. **Issues encountered.** The deploy job named every job "monitoring profile apply" (C364's shape), which a whole-intent deploy would have inherited; a control showed the card's own "waiting on a reason" guard decided nothing the preview's check did not already decide.
+4. **How they were resolved.** The job's kind follows its scope (`deploy`, `IP SLA send`, the profile apply). The redundant guard left the confirm's condition and stays for the wording, one owner for the decision.
+5. **Numbers.** One commit [git: this commit]. 11 tests in `tests/test_device_deploy_v2.py`, one in a real browser, and a deploy-steps test in `test_job_stepper.py`; seven controls, six failing their aimed tests and one showing the redundancy above. **Estimate versus actual:** rotate's entry set the basis (about capture's time); deploy took about that again, less the server work it reused.
+6. **Where it left the product.** All four device actions run on v2: capture, persist, rotate and deploy with Mode B, each a card in place of the tab, the job-backed ones with the stepper. Today's device page keeps restore, seed and retire until their cards.
+
 ### 7.D — The GUI redesign (open)
 
 7.D is open. Commit times are the committer's local time (UTC-6); the operator's decisions are dated in UTC, which is why a decision can read 2026-09-30 beside a commit of 09-29.

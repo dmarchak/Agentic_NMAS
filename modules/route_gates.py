@@ -90,6 +90,7 @@ GATES = {
     "upload_file": _g(C, "copies a file onto a device's flash"),
     "delete_file": _g(C, "deletes a file from a device's flash"),
     "rotate.apply": _g(C, "rotates a device's login credential: the device then accepts only the new password"),
+    "device_v2.deploy_confirm": _g(C, "deploys a device's committed intent from the v2 device page (7.3; the same plan and apply as deploy.apply and the batch apply, run as a job), merge-only, with any line ticked for removal (Mode B) and every dangerous line's stated reason in the hash"),
     "device_v2.rotate_confirm": _g(C, "rotates a device's login credential from the v2 device page (7.3; the same confirm as rotate.apply): the device then accepts only the new password"),
     "v2.profile_apply_confirm": _g(C, "deploys the monitoring profile's confirmed programs to the chosen devices, one after another (P.9 d2)"),
     "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),

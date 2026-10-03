@@ -151,7 +151,8 @@ def device(name):
     ctx["op_card"] = ({"state": "starting", "op": "capture", "host": dev.get("hostname", ""),
                        "list": ref.name, "back": tab} if op == "capture" else
                       _persist_card(ref, dev, tab) if op == "persist" else
-                      _rotate_starting(ref, dev, tab) if op == "rotate" else None)
+                      _rotate_starting(ref, dev, tab) if op == "rotate" else
+                      _deploy_card(ref, dev, tab, {}) if op == "deploy" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -598,6 +599,130 @@ def when_free(name):
         return _strict(render_template("v2/_persist.html", c=_persist_card(ref, dev, back)))
     if op == "rotate":
         return _strict(render_template("v2/_rotate.html", c=_rotate_starting(ref, dev, back)))
+    if op == "deploy":
+        return _strict(render_template("v2/_deploy.html", c=_deploy_card(ref, dev, back, {})))
     return _strict(render_template("v2/_capture.html", c={
         "state": "starting", "op": "capture", "host": dev.get("hostname", ""),
         "list": ref.name, "back": back}))
+
+
+# ---------------------------------------------------------------------------
+# Deploy, with Mode B (7.3; the device-actions canvas, boards 5 and 6)
+# ---------------------------------------------------------------------------
+
+def _deploy_form(fields):
+    """What the deploy card's form carries: the residue ticked for removal (by id), each
+    ticked line's stated reason, and each dangerous line's (by its index in the plan)."""
+    getlist = getattr(fields, "getlist", lambda k: [])
+    picked = [i for i in getlist("rm") if i]
+    reasons = {i: (fields.get(f"why::{i}") or "").strip() for i in picked}
+    danger = {}
+    for k in list(fields.keys()):
+        if k.startswith("dz::") and k[4:].isdigit():
+            danger[int(k[4:])] = (fields.get(k) or "").strip()
+    return picked, reasons, danger
+
+
+def _deploy_card(ref, dev, back, fields):
+    """The deploy card for *dev*: THE plan (`routes.deploy.plan_devices`, captured configs
+    only, no device contacted) planned again with what the form carries, each stated reason
+    in the hash, and the confirm built HERE from the unmasked plan's hashes, so it sends
+    exactly the program on the screen."""
+    from modules import device_actions, identity
+    from modules.nsot.authorisation import key
+    from modules.outbound import mask_payload
+    from modules.preview_confirm import confirm_part, deploy_preview
+    from routes.deploy import plan_devices
+
+    host = dev.get("hostname", "")
+    picked, reasons, danger = _deploy_form(fields)
+    remove = {host: picked} if picked else {}
+    entry = plan_devices(ref.name, [host], remove=remove)[0]
+    rm = entry.get("removals") or {}
+    authorise = [{"line": k, "reason": reasons[rid]}
+                 for rid, k in zip(rm.get("ids") or [], rm.get("keys") or [])
+                 if reasons.get(rid)]
+    authorise += [{"line": key(line), "reason": danger[i]}
+                  for i, line in enumerate(entry.get("dangerous") or []) if danger.get(i)]
+    if authorise:
+        entry = plan_devices(ref.name, [host], remove=remove,
+                             authorise={host: authorise})[0]
+    out = mask_payload({"entry": entry, "preview": deploy_preview([entry], request, scope="")})
+    c = device_actions.deploy_card(
+        ref, host, out["entry"], out["preview"],
+        viewer=dict(confirm_part(request, "confirm"), actor=identity.identify(request).actor or ""),
+        reasons=reasons, danger_reasons=danger)
+    if c["may"]:
+        rm = entry.get("removals") or {}
+        c["confirm"] = {"capture_hash": entry.get("capture_hash", ""),
+                        "command_hash": entry.get("command_hash", ""),
+                        "remove": list(rm.get("ids") or []), "authorise": authorise}
+    c.update(back=back, ip=dev.get("ip", ""))
+    return c
+
+
+@bp.route("/device/<name>/deploy", methods=["GET"])
+def deploy(name):
+    """The deploy card: the exact program from committed intent, merge-only, what is left on
+    the device (tick a line for removal, Mode B, with a reason), what will not happen, the
+    operands and checks, and the confirm bound to the program's hash. A READ: the plan reads
+    captured configs only, so it is drawn at once; the form plans again on each change."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_deploy.html",
+                                   c=_deploy_card(ref, dev, _back(request.args), request.args)))
+
+
+@bp.route("/device/<name>/deploy/confirm", methods=["POST"])
+def deploy_confirm(name):
+    """Deploy the confirmed program as the verified person, as a job holding the device (the
+    same apply as `/deploy/apply` and the batch apply, `deploy_job`): the program is computed
+    again and a different hash refuses with nothing sent. Answers with the card that follows
+    the job."""
+    import json
+
+    from modules import deploy_job, device_actions, identity
+
+    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_deploy.html")
+    if refusal is not None:
+        return refusal
+    host = dev.get("hostname", "")
+    capture_hash = (request.form.get("capture_hash") or "").strip()
+    command_hash = (request.form.get("command_hash") or "").strip()
+    if not capture_hash or not command_hash:
+        return _strict(render_template("v2/_deploy.html", c={
+            "state": "refused_hash", "host": host, "list": ref.name,
+            "back": _back(request.form)}), 400)
+    try:
+        remove = json.loads(request.form.get("remove") or "[]")
+        authorise = json.loads(request.form.get("authorise") or "[]")
+    except ValueError:
+        return _strict(render_template("v2/_deploy.html", c={
+            "state": "refused_hash", "host": host, "list": ref.name,
+            "back": _back(request.form)}), 400)
+    job = deploy_job.start(
+        ref.name, [host], {host: capture_hash}, {host: command_hash},
+        authorise={host: authorise} if authorise else {}, remove={host: remove} if remove else {},
+        scope="", actor=identity.identify(request).actor or "",
+        actor_kind=getattr(identity.identify(request), "kind", ""),
+        ident=identity.verified_identity())
+    return _strict(render_template("v2/_deploy.html", c={
+        "state": "deploying", "op": "deploy", "host": host, "list": ref.name, "job": job,
+        "back": _back(request.form), "steps": device_actions.job_steps("deploy", ref.name, host)}))
+
+
+@bp.route("/device/<name>/deploy/job/<job>", methods=["GET"])
+def deploy_job_card(name, job):
+    """The deploy card for its job: deploying with its stepper, its result from the receipt,
+    or why there is none. Re-read when the job announces `deploy_job` and on each step."""
+    from modules import deploy_job, device_actions
+
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    c = device_actions.deploy_job_card(ref, dev.get("hostname", ""), job, deploy_job.state(job))
+    c.update(back=_back(request.args), ip=dev.get("ip", ""))
+    return _strict(render_template("v2/_deploy.html", c=c))

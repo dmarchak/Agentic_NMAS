@@ -30,6 +30,10 @@ OPENERS = {
                       ".indexOf('r2') >= 0"),
     "deploy_plan": "document.querySelector('#deployPlanModal.show #deployPlanBody')",
     "profile_propose": "document.querySelector('.modal.show [data-profile-body]')",
+    "revert": ("document.querySelector('.modal.show [data-intent-op-confirm]') && "
+               "document.querySelector('.modal.show .modal-title').textContent.indexOf('r2') >= 0"),
+    "retry": ("document.querySelector('.modal.show [data-intent-op-confirm]') && "
+              "document.querySelector('.modal.show .modal-title').textContent.indexOf('r2') >= 0"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,
@@ -122,6 +126,8 @@ class TestEachOpenerActsInARealBrowser:
         ("intent_editor", "open=intent_editor&device=r2&list=Lab"),
         ("deploy_plan", "open=deploy_plan&device=r2&list=Lab"),
         ("profile_propose", "open=profile_propose&list=Lab"),
+        ("revert", "open=revert&device=r2&list=Lab"),
+        ("retry", "open=retry&device=r2&list=Lab"),
     ])
     def test_the_link_leaves_its_tool_open(self, page, name, query):
         b = _open_index(page, query)

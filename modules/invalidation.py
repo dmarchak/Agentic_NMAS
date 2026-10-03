@@ -224,6 +224,7 @@ DECLARED = {
                                  "either directly"),
     "v2.profile_apply_confirm": Nothing("starts a job and answers at once; the batch deploys and ANNOUNCES deploy_job as each device finishes, and what a deploy changes at the end (ANNOUNCERS)"),
     "rotate.apply": Nothing("starts a job and answers at once; the job changes the credential and ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
+    "device_v2.deploy_confirm": Nothing("starts a job and answers at once; the deploy ANNOUNCES deploy_job as it finishes, and what a deploy changes (ANNOUNCERS)"),
     "device_v2.rotate_confirm": Nothing("the same confirm as rotate.apply: starts the job and answers at once; the job ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "device_v2.rotate_preview": Nothing("reads the device's account line live and computes the plan; it writes nothing"),
     "bulk_execute": ("device_state",),

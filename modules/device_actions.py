@@ -235,6 +235,8 @@ ROTATE_LEVELS = {"success": "ok", "partial": "warn", "failed": "danger"}
 #: they land as jobs. tests/test_job_stepper.py holds every job card in the templates to this.
 JOB_STEPPERS = {
     "rotate": ("modules.nsot.rotate_op", "STEPS", "DETOURS"),
+    # The pipeline notes each stage as it STARTS (rotation notes a step once done).
+    "deploy": ("modules.pipeline", "STEPS", None, "starts"),
     "capture": ("one step: the preview's read of the device, which holds nothing and so notes "
                 "no progress; its card names what it reads"),
 }
@@ -244,13 +246,14 @@ def _iso(epoch: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
 
 
-def stepper(steps, progress, *, detours=None, now=None) -> list:
+def stepper(steps, progress, *, detours=None, now=None, starts=False) -> list:
     """The signed-off stepper's rows (NSOT_GUI_BRIEF 10a) for a running job: the operation's
     DECLARED *steps* (``(key, words, waits, names)``), each done (with how long it took),
     running (since when, what it waits on, the last thing it did) or waiting, read from the
     hold's progress trail (`device_ops.note`: ``{"step", "at", "trail": [[name, at], ...]}``).
-    A step is done once its last name is noted. With no progress (the hold not taken yet, or
-    held by another process) the first step runs, from now."""
+    A step is done once its last name is noted; with *starts* (an operation that notes a step
+    as it begins, the pipeline), a noted name is the step now running. With no progress (the
+    hold not taken yet, or held by another process) the first step runs, from now."""
     now = time.time() if now is None else now
     index = {name: i for i, s in enumerate(steps) for name in s[3]}
     keys = [s[0] for s in steps]
@@ -267,7 +270,7 @@ def stepper(steps, progress, *, detours=None, now=None) -> list:
         for j in range(i):
             ends.setdefault(j, at)
         last = name
-        if name == steps[i][3][-1]:
+        if name == steps[i][3][-1] and not starts:
             ends[i], current = at, i + 1
         else:
             current = i
@@ -300,7 +303,8 @@ def job_steps(op: str, list_name: str, host: str, *, now=None) -> list:
     mod = importlib.import_module(ref[0])
     holder = device_ops.holder(list_name, host) or {}
     return stepper(getattr(mod, ref[1]), holder.get("progress"),
-                   detours=getattr(mod, ref[2], None), now=now)
+                   detours=getattr(mod, ref[2], None) if ref[2] else None, now=now,
+                   starts=len(ref) > 3 and ref[3] == "starts")
 
 
 def rotate_job_card(ref, host: str, job_id: str, got) -> dict:
@@ -328,3 +332,96 @@ def rotate_job_card(ref, host: str, job_id: str, got) -> dict:
                 record=(result.get("record") or {}).get("statement", ""),
                 not_watched=result.get("not_watched", ""),
                 next=nxt.get("text", ""), export=nxt.get("open") == "breakglass_export")
+
+
+# ---------------------------------------------------------------------------
+# Deploy, with Mode B (7.3; the device-actions canvas, boards 5 and 6): the device's whole
+# committed intent, merge-only, with a dangerous line's stated reason and the residue a person
+# ticks for removal, each reason in the hash; run as a job (`deploy_job`), its stepper the
+# pipeline's stages; the result from the receipt the apply wrote.
+# ---------------------------------------------------------------------------
+
+def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
+                reasons=None, danger_reasons=None) -> dict:
+    """The deploy card for *host* from `routes.deploy.plan_devices`'s *entry* and
+    `deploy_preview`'s *preview*, both masked (the ticked residue is the plan's own `removals`),
+    *reasons* each ticked line's stated reason (by id), *danger_reasons* each dangerous line's (by its
+    index in the plan's list): the form carries them and the plan is computed again with them,
+    so the confirm binds the program on the screen."""
+    reasons, danger_reasons = reasons or {}, danger_reasons or {}
+    t = _one_target(preview, host, viewer)
+    program = t["target"].get("program") or {}
+    removals = entry.get("removals") or {}
+    chosen = set(removals.get("ids") or [])
+    residue = [{"id": r.get("id", ""),
+                "text": " > ".join(list(r.get("chain") or []) + [str(r.get("line", "")).strip()]),
+                "why_not": r.get("why_not", ""), "picked": r.get("id") in chosen,
+                "reason": reasons.get(r.get("id"), "")}
+               for r in entry.get("removable") or []]
+    dangerous = [{"index": i, "line": line, "reason": danger_reasons.get(i, "")}
+                 for i, line in enumerate(entry.get("dangerous") or [])]
+    waiting = entry.get("authorisation_ok") is False
+    blocking = list(entry.get("blocking_reasons") or [])
+    refused = entry.get("refused") or entry.get("error") or ""
+    lines = list(program.get("lines") or [])
+    # A line waiting on its reason fails the preview's own "dangerous lines" check (ticked
+    # removals included), so `t["may"]` decides it; `waiting` only chooses the words.
+    may = bool(t["may"]) and not blocking and not refused and bool(lines)
+    confirm = preview.get("confirm") or {}
+    return {"op": "deploy", "state": "preview", "host": host, "list": ref.name,
+            "summary": (preview.get("what") or {}).get("summary", ""),
+            "sent": lines, "none": program.get("none", ""),
+            "notes": [{"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
+                      for n in program.get("notes") or []],
+            "dangerous": dangerous, "residue": residue,
+            "waiting": waiting, "authorisation_error": entry.get("authorisation_error", ""),
+            "blocking": blocking, "refused": refused,
+            "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
+            "gates": t["gates"], "failing": t["failing"], "may": may,
+            "held": held(t["gates"]),
+            "effect": confirm.get("effect", ""),
+            "confirm": ({"capture_hash": entry.get("capture_hash", ""),
+                         "command_hash": entry.get("command_hash", ""),
+                         "remove": list(removals.get("ids") or []),
+                         "authorise": list(entry.get("authorised") or [])} if may else None),
+            "command_hash": entry.get("command_hash", "")}
+
+
+#: A deploy's outcome -> the card's level.
+DEPLOY_LEVELS = {"success": "ok", "partial": "warn", "failed": "danger", "nothing": "warn"}
+
+
+def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
+    """The deploy card for its job (`deploy_job.state`, or None): deploying with its stepper,
+    its result from the receipt, or why there is none. A failed verify that rolled back
+    offers its two ways out (revert intent, retry with a reason)."""
+    card = {"op": "deploy", "host": host, "list": ref.name, "job": job_id}
+    if got is None:
+        return dict(card, state="unknown")
+    if got["state"] == "running":
+        return dict(card, state="deploying", elapsed_s=got.get("elapsed_s"),
+                    steps=job_steps("deploy", ref.name, host))
+    if got["state"] == "failed":
+        return dict(card, state="failed", error=got.get("error") or "no reason was recorded")
+    result = (got.get("payload") or {}).get("result") or {}
+    happened = next((x for x in (result.get("happened") or {}).get("targets") or []
+                     if x.get("name") == host), {})
+    target = next((x for x in result.get("targets") or [] if x.get("name") == host), {})
+    sent = target.get("sent") or {}
+    checks = target.get("checks") or {}
+    rollback = target.get("rollback") or {}
+    outcome = happened.get("outcome", "unknown")
+    rolled_back = bool(rollback.get("performed"))
+    return dict(card, state="result", level=DEPLOY_LEVELS.get(result.get("level"), "danger"),
+                outcome=outcome, words=happened.get("words", outcome.replace("_", " ")),
+                summary=(result.get("happened") or {}).get("summary", ""),
+                sent=list(sent.get("lines") or []), match_words=sent.get("match_words", ""),
+                none=sent.get("none", ""), authorised=list(sent.get("authorised") or []),
+                checks=list(checks.get("statements") or ([checks["why"]]
+                                                         if checks.get("why") else [])),
+                rolled_back=rolled_back, rollback_state=rollback.get("state", ""),
+                rollback_detail=rollback.get("detail", ""),
+                did_not=[i.get("text", "") for i in (result.get("did_not") or {}).get("items")
+                         or [] if i.get("target") in (host, "this batch")],
+                record=(result.get("record") or {}).get("statement", ""),
+                not_watched=result.get("not_watched", ""))
