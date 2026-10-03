@@ -12,6 +12,7 @@ the store its own.
 
 import os
 import shutil
+import sys
 import tempfile
 
 import pytest
@@ -88,6 +89,29 @@ def _no_test_writes_into_the_checkout_data(request):
     if mine:
         pytest.fail(f"this test wrote into the checkout's data/: {[(e, p) for _t, e, p in mine][:5]}",
                     pytrace=False)
+
+
+#: What Flask-SocketIO's test client replaces on the APP'S OWN server and never puts back
+#: (flask_socketio/test_client.py, 5.3.6: `socketio.server._send_packet = _mock_send_packet`).
+SOCKETIO_PATCHED = ("_send_packet", "_send_eio_packet")
+
+
+@pytest.fixture(autouse=True)
+def _socketio_server_sends_to_real_clients():
+    """After each test, the app's Socket.IO server sends through its own methods again.
+
+    A test that makes `socketio.test_client(app)` diverts every packet the server sends,
+    for the rest of the process, into that client's mock: a real browser's page in a later
+    test then never hears its connect, and its live channel never connects. That was CI's
+    red from ca52963 to 64d4377 (test_attention_badge's three live tests, run in a worker
+    after test_announce); the local gate never ran a browser test in the same process as
+    a test client. Restored for every test, so no list of offending files is kept."""
+    yield
+    app = sys.modules.get("app")
+    server = getattr(getattr(app, "socketio", None), "server", None)
+    if server is not None:
+        for name in SOCKETIO_PATCHED:
+            server.__dict__.pop(name, None)
 
 
 @pytest.fixture(autouse=True)

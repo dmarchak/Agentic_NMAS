@@ -90,7 +90,23 @@ def line():
     return (f"kernel {platform.release()}; python {sys.version.split()[0]}; "
             f"{tmp} on {_fs_type(tmp)}; CONFIG_HZ {_config_hz()}; "
             f"mtime step {step_text}; directory mtime unchanged after a create "
-            f"in {unchanged} of {tries}")
+            f"in {unchanged} of {tries}; cpus {os.cpu_count()} (what `-n auto` uses); "
+            f"{_version('firefox')}; {_version('geckodriver')}")
+
+
+def _version(tool: str) -> str:
+    """A browser tool's first version line, or that it is absent: the browser tests run in
+    CI's suite with whatever the runner has, and the gate matches it (2026-10-03)."""
+    import shutil
+    import subprocess
+    path = shutil.which(tool)
+    if not path:
+        return f"no {tool}"
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=20)
+        return (out.stdout or out.stderr).strip().splitlines()[0]
+    except (OSError, subprocess.SubprocessError, IndexError) as exc:
+        return f"{tool} at {path} did not say its version ({type(exc).__name__})"
 
 
 def main(argv=None):

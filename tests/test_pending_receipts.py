@@ -243,6 +243,17 @@ def ops():
             D.release(LIST, host)
 
 
+@pytest.fixture
+def own_store(tmp_path, monkeypatch):
+    """A data directory of this test's own. The process's store is shared by every test it
+    runs, and test_interrupted_operations leaves dead holds on r1 and r2 of the same list:
+    after it, "named by nothing" was false (CI #333, reproduced in one process)."""
+    from modules import config
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "LISTS_DIR", str(tmp_path / "lists"))
+
+
+@pytest.mark.usefixtures("own_store")
 class TestNeedsAttention:
     def _deploys(self, monkeypatch):
         from modules import attention

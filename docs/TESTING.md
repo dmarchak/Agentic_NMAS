@@ -197,17 +197,37 @@ own command in an environment that IS CI's:
 # it is unpacked; then the venv with CI's three requirement files, --no-deps.
 scripts/nmas-ci-env ~/.local/opt/cpython-3.12.3/bin/python3
 
-# The gate: CI's command, CI's worker count, coverage on, confined.
-PYTHON=~/.local/share/nmas-py312/bin/python COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 \
-  scripts/nmas-test -q -p no:cacheprovider -n 2 \
-  --cov=modules --cov=routes --cov=app --cov-report=
+# The gate (scripts/nmas-gate runs exactly this): CI's command, CI's worker count (its
+# `-n auto` on a 4-vCPU hosted runner), coverage on, confined, the browser tests among it.
+D=~/.local/share/nmas-browser
+PATH=$D:$D/firefox:$PATH PYTHON=~/.local/share/nmas-py312/bin/python COVERAGE_CORE=sysmon \
+  NMAS_TEST_TIMEOUT=740 scripts/nmas-test -q -p no:cacheprovider -n 4 \
+  --cov=modules --cov=routes --cov=app --cov-report= -rEfs
 ```
 
 `nmas-ci-env` refuses an interpreter whose version is not the one `ci.yml`
-pins, so a stale environment cannot pass for CI's. The browser tests skip in
-the confined runner (snap Firefox cannot start in its namespace) and run in CI,
-which has a Firefox outside any snap: run `tests/test_update_button.py`
-unconfined too.
+pins, so a stale environment cannot pass for CI's. `tests/test_nmas_gate.py` reads CI's test
+command from `ci.yml` and holds the gate's to every argument of it.
+
+### The browser tests
+
+CI's runner has a Firefox that starts inside the loopback namespace, so in CI the browser tests
+run IN the confined, parallel suite, after whatever else their worker ran. The laptop's snap
+Firefox cannot start there, so until 2026-10-03 they skipped in the gate's suite and ran only
+in a separate clean process: CI was red for five commits (ca52963 to 64d4377) on a failure no
+local run could meet, a Socket.IO test client earlier in the same worker that had diverted the
+app server's packets (now restored after every test, `tests/conftest.py`). The gate now puts a
+Mozilla build of Firefox and geckodriver first on PATH and REFUSES a suite in which any browser
+test skipped. Once, without root:
+
+```bash
+D=~/.local/share/nmas-browser; mkdir -p $D && cd $D
+curl -sSfLO https://ftp.mozilla.org/pub/firefox/releases/156.0.1/linux-x86_64/en-US/firefox-156.0.1.tar.xz
+tar xf firefox-156.0.1.tar.xz
+curl -sSfL https://github.com/mozilla/geckodriver/releases/download/v0.36.0/geckodriver-v0.36.0-linux64.tar.gz | tar xz
+```
+
+The version is the laptop's own snap Firefox's; CI's is in each run's `nmas-env-facts` notice.
 
 ## Reproducing these numbers
 
@@ -508,7 +528,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_restarts.py` | The restarts reader (2026-10-02) on s3's REAL reboot series: a restart found where the counter fell, its time kept inside the gap (a minimal edit with uptime longer than the gap), a slow clock alone no restart; the device's own reason and crash file (r3's crash, vIOS's Unknown reason); recorded once, planned only inside a window that names the device or `*` for its list, a planned record refused without who, why or a forward window, an unreadable record a failed read; Needs attention's row DANGER with a crash file, a warning without, none when planned; every restart in History; the tool's reload records its window before sending; C344: a window recorded after the restart was seen is refused naming it unless a correction with its reason, one already in the record clears nothing, a correction counts and History says so, the command takes `--correction`. Four controls |
 | `test_acknowledge.py` | C344 (2026-10-02), on s3's REAL reboot and a repeated authorisation in `authorisations_by_device`'s shape: `CLEARS` covers every declared kind both ways (floor 40), each with known ways and words, and the kinds acknowledged here are the ones whose ways say so; every row carries "Clears when …", the v2 page and today's SHIPPED panel (duktape) draw it; an event row without its event is refused. Acknowledging through the real route as the verified person: recorded with who, `access` and when, the row leaves and is named under what was checked, the response invalidates `acknowledgements`; a reason without the shape of one, a row not on the page, another event and a kind that clears by itself refused; a new restart is a new row; one more authorisation raises the row again; History keeps the restart unexpected, marked acknowledged; an unreadable record hides nothing. `POST /restarts/planned` records as the verified person (never the body's name), refuses a late window naming the restart and accepts a correction, refuses malformed requests by name; the tool's Reload stops when its window cannot be recorded. Six controls, with `test_restarts.py`'s |
 | `test_v2_layout_in_a_browser.py` | C338 (2026-10-02), in a REAL browser where Firefox runs. Every info and how link on 16 v2 pages and tabs is clicked with every row opened, the panel closed between clicks. Each must fill the panel with ITS section while the page stays put (floor 30; the Baselines card's inherited `hx-select` had blanked it). Nothing is drawn past a one-line row, with long realistic text at 1366 and 500 px (4fe12ea's Baseline badge overflowed on a lab that held no baseline decision). The top bar fits, avatar and "Update available" included, in a same-origin frame of 320 to 1280 px (geckodriver will not size a window under 500 px). Three controls |
-| `test_nmas_gate.py` | `scripts/nmas-gate`, the commit gate as one program (2026-10-02), in real temporary repositories with the suite's command faked: a passing run commits with "@SUITE@" filled from the run's own last line; a failure, an error, a non-zero exit, a last line not saying what passed, and no output each refuse with nothing committed and the output kept; an earlier run's result file is never read (a run exiting 0 and writing nothing is refused); a message whose first line is not this commit's refuses before the suite; a staged secret refuses at the stage guard; the browser tests are their own step. Three controls |
+| `test_nmas_gate.py` | `scripts/nmas-gate`, the commit gate as one program (2026-10-02), in real temporary repositories with the suite's command faked: a passing run commits with "@SUITE@" filled from the run's own last line; a failure, an error, a non-zero exit, a last line not saying what passed, and no output each refuse with nothing committed and the output kept; an earlier run's result file is never read (a run exiting 0 and writing nothing is refused); a message whose first line is not this commit's refuses before the suite; a staged secret refuses at the stage guard; the browser tests are their own step. C349 (2026-10-03): the gate's suite holds every argument of CI's test command READ FROM ci.yml (it had pinned "-n 2" while CI ran `-n auto`), a browser test skipped in the suite refuses (CI runs them there), and every file asking `browser.available()` skips in the words the refusal reads. Five controls (the skip refusal removed; an argument dropped); not mechanised: that CI's `auto` is 4 |
 | `test_claude_host_writes_hook.py` | The agent guards (2026-10-02): `scripts/hooks/claude-no-host-writes`, driven as Claude Code drives it, refuses `nmas-deploy` and every git verb that writes in the part of a command run on a lab host (through `nmas-host` or `ssh`), naming it; reading on a host and git on the laptop's checkout run; unreadable input is a visible hook error. The committed settings wire it to every Bash call and deny the personal-data connectors. Control: nmas-deploy let through |
 | `test_signed_off_screens.py` | Every v2 page template extending the frame and every device-page tab is in `tests/signed_off_screens.py` with its sign-off (date and where recorded) or UNSIGNED with why and what happens to it, exact both ways with floors, the unsigned list only shrinking; a planted page is found and a fragment is not. Control: a page left out |
 | `test_claude_md.py` | CLAUDE.md cites real checks (2026-10-02): every standing rule ends in its enforcement; every path it names exists; every rule's [why] link opens a docs/LESSONS.md section and every section is linked; every section citation in the repository (`docs/<file>.md#<section>`, a relative link, a same-file anchor) resolves against GitHub's anchors or an explicit `{#id}`; a quote of CLAUDE.md quotes text it still holds. Its first run found two LESSONS-free rules and two anchors renamed long ago. Planted controls for each, and the slug against GitHub's |

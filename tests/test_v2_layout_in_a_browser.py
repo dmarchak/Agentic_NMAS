@@ -93,10 +93,16 @@ def served(lab, monkeypatch):  # noqa: F811
     from routes import health
     monkeypatch.setattr(health, "_COMMIT", "a" * 40)
     monkeypatch.setattr("modules.update_op.outcome", lambda: {"value": {}})
+    # Its times are NOW's: behind for longer than attention.BEHIND_TOO_LONG_S (20 h) turns the
+    # quiet pill into a Needs attention row, and fixed dates made this test pass until
+    # 2026-10-03T04:00Z and fail everywhere after (CI #333's runs, measured 2026-10-03).
+    import time as _time
+    def _iso(ago_s):
+        return _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(_time.time() - ago_s))
     pushed = {"state": "ok", "doc": {"stale_after_seconds": 750, "last_good": {
-        "value_at": "2026-10-02T09:00:00Z", "value": {
+        "value_at": _iso(60), "value": {
             "running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 3,
-            "branch": "main", "behind_since": "2026-10-02T08:00:00Z",
+            "branch": "main", "behind_since": _iso(3600),
             "ci": {"tip": "b" * 40, "state": "verified"}}}}}
     stored = {"baseline-usability": BASELINES, "app-pushed": pushed}
     monkeypatch.setattr(reader_job, "read_cached",

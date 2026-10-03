@@ -10,8 +10,11 @@ everything after it:
                     run that did not happen leaves nothing to read (e986e66);
   4. the verdict:   from that file AND the exit status: the last line must read "N passed"
                     with no failure or error anywhere (a pipe into tail decides nothing,
-                    195fdbe; d0ce454 shipped two failures);
-  5. browser tests: optional (--browser), unconfined, the same verdict rule;
+                    195fdbe; d0ce454 shipped two failures), and NO browser test skipped: CI
+                    runs them in this suite, with CI's workers (2026-10-03, "The browser
+                    tests" in docs/TESTING.md);
+  5. browser tests: optional (--browser), unconfined, in one clean process, the same verdict
+                    rule: an extra, never a stand-in for step 3's;
   6. the message:   its first line must start with --expect (a failed write leaves the
                     previous message, df17b55, 17e9c7d), and "@SUITE@" in it is replaced by
                     the run's own result line (a count is never written before the run that
@@ -32,9 +35,24 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+#: CI's `-n auto` on GitHub's hosted Ubuntu runner for a public repository: 4 vCPUs (GitHub's
+#: runner specification; each run's own count is in its nmas-env-facts notice). The gate ran
+#: `-n 2` until 2026-10-03 and so never placed tests in CI's workers.
+CI_WORKERS = 4
+#: The suite as CI runs it: confined, CI's workers, coverage, AND the browser tests among the
+#: rest. CI's runner has a Firefox that starts inside the loopback namespace; the laptop's snap
+#: Firefox does not, so the gate puts BROWSER_DIR's (a Mozilla build and geckodriver,
+#: docs/TESTING.md) first on PATH, and refuses a run in which any browser test was skipped:
+#: from ca52963 to 64d4377 they ran only in a separate clean process here, and CI was red for
+#: five commits on a failure no local run could meet (a Socket.IO test client earlier in the
+#: same worker, 2026-10-03).
 SUITE = ("{py} -c 0 && PYTHON={py} COVERAGE_CORE=sysmon NMAS_TEST_TIMEOUT=740 "
-         "scripts/nmas-test -q -p no:cacheprovider -n 2 --cov=modules --cov=routes --cov=app "
-         "--cov-report= -rEf")
+         f"scripts/nmas-test -q -p no:cacheprovider -n {CI_WORKERS} --cov=modules --cov=routes "
+         "--cov=app --cov-report= -rEfs")
+BROWSER_DIR = os.environ.get("NMAS_GATE_BROWSER_DIR",
+                             os.path.expanduser("~/.local/share/nmas-browser"))
+#: The words tests/browser.py's skip says when no browser can start.
+BROWSER_SKIPPED = "no real browser here"
 BROWSER_TESTS = ("tests/test_update_button.py tests/test_profile_apply_v2.py tests/test_manual.py "
                  "tests/test_v2_layout_in_a_browser.py tests/test_attention_badge.py "
                  "tests/test_device_capture_v2.py")
@@ -78,13 +96,26 @@ def verdict(path, rc):
     return None
 
 
-def run_to_file(cmd, repo, path):
+def browser_skipped(path):
+    """None, or why the suite is not CI's run: a browser test skipped because no browser could
+    start, where CI's runner starts one (the gap, 2026-10-03)."""
+    text = open(path, encoding="utf-8", errors="replace").read()
+    n = text.count(BROWSER_SKIPPED)
+    if not n:
+        return None
+    return (f"{n} browser test skip(s) ({BROWSER_SKIPPED!r}): CI runs them in this suite, "
+            f"so a pass here would not be CI's. Put a Firefox that starts confined and its "
+            f"geckodriver in {BROWSER_DIR} (docs/TESTING.md, \"The browser tests\")")
+
+
+def run_to_file(cmd, repo, path, env=None):
     try:
         os.remove(path)                    # step 3's rule: nothing from an earlier run survives
     except FileNotFoundError:
         pass
     with open(path, "w", encoding="utf-8") as fh:
-        rc = subprocess.run(cmd, shell=True, cwd=repo, stdout=fh, stderr=subprocess.STDOUT).returncode
+        rc = subprocess.run(cmd, shell=True, cwd=repo, stdout=fh, stderr=subprocess.STDOUT,
+                            env=env).returncode
     return rc
 
 
@@ -130,10 +161,12 @@ def main(argv=None):
         refuse("the stage guard", (guard.stderr or guard.stdout).strip()[-400:])
 
     suite_out = os.path.join(gitdir, "nmas-gate-suite.out")
-    say("3. the suite, CI's command in CI's interpreter")
+    say("3. the suite, CI's command in CI's interpreter, the browser tests among it")
     cmd = os.environ.get("NMAS_GATE_SUITE") or SUITE.format(py=shlex.quote(a.python))
-    rc = run_to_file(cmd, repo, suite_out)
-    why = verdict(suite_out, rc)
+    path = os.pathsep.join([BROWSER_DIR, os.path.join(BROWSER_DIR, "firefox"),
+                            os.environ.get("PATH", "")])
+    rc = run_to_file(cmd, repo, suite_out, env=dict(os.environ, PATH=path))
+    why = verdict(suite_out, rc) or browser_skipped(suite_out)
     say(f"4. the suite: {last_line(suite_out) if os.path.isfile(suite_out) else '(no output)'}")
     if why:
         refuse("the suite", why, suite_out)

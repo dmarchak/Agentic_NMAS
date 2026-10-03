@@ -134,9 +134,69 @@ class TestEveryWayAStepFails:
         assert r.returncode == 2 and _commits(repo) == 1
 
 
+def _gate_module():
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("nmas_gate", GATE)
+    spec = importlib.util.spec_from_loader("nmas_gate", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def _ci_suite_args():
+    """CI's own test command, read from the workflow: every argument after nmas-test, its
+    environment, and its worker count."""
+    import re
+    text = open(os.path.join(ROOT, ".github", "workflows", "ci.yml"), encoding="utf-8").read()
+    step = text[text.index("scripts/nmas-test", text.index("name: Tests")):]
+    cmd = " ".join(step[:step.index("\n\n")].split())
+    env = text[text.index("name: Tests"):text.index("scripts/nmas-test", text.index("name: Tests"))]
+    return cmd.split()[1:], dict(re.findall(r"(\w+): \"?([\w.]+)\"?", env.split("env:")[1]))
+
+
 def test_the_default_suite_is_cis_command():
-    """The command the gate runs is the one docs/TESTING.md names (CI's, two workers)."""
-    src = open(GATE, encoding="utf-8").read()
-    for part in ("COVERAGE_CORE=sysmon", "-n 2", "--cov=modules", "--cov=routes", "--cov=app",
-                 "-rEf", "scripts/nmas-test"):
-        assert part in src, part
+    """The gate's suite is CI's, read from the workflow itself (it pinned "-n 2" as CI's while
+    CI ran `-n auto`, 2026-10-03): every argument CI passes, in CI's environment, with CI's
+    runner's worker count for `auto`. Only the coverage REPORT differs (a terminal table)."""
+    gate = _gate_module()
+    args, env = _ci_suite_args()
+    assert len(args) >= 8 and env, (args, env)
+    suite = gate.SUITE.split()
+    for a in args:
+        if a == "auto":
+            assert suite[suite.index("-n") + 1] == str(gate.CI_WORKERS)
+        elif a.startswith("--cov-report"):
+            assert any(s.startswith("--cov-report") for s in suite)
+        else:
+            assert a in suite, (a, gate.SUITE)
+    for k, v in env.items():
+        assert f"{k}={v}" in gate.SUITE, (k, v)
+
+
+def test_a_browser_test_skipped_in_the_suite_refuses(repo, tmp_path):
+    """CI's runner starts a browser inside the confinement; a local suite whose browser tests
+    SKIPPED is not CI's run, and from ca52963 to 64d4377 that is how CI's red went unseen."""
+    r = _gate(repo, tmp_path, suite=_suite([
+        "SKIPPED [3] tests/test_attention_badge.py:192: no real browser here (no firefox)",
+        "12 passed, 3 skipped in 3.10s"]))
+    assert r.returncode == 1 and "REFUSED at the suite" in r.stdout
+    assert "browser test skip" in r.stdout and _commits(repo) == 1
+
+
+def test_every_browser_test_skips_in_the_words_the_gate_refuses():
+    """The refusal reads one phrase; a browser test skipping in other words would pass a gate
+    that never ran it. Population: every test file that asks `browser.available()`."""
+    import re
+    phrase = _gate_module().BROWSER_SKIPPED
+    users = []
+    for name in sorted(os.listdir(os.path.join(ROOT, "tests"))):
+        if not name.endswith(".py"):
+            continue
+        text = open(os.path.join(ROOT, "tests", name), encoding="utf-8").read()
+        if re.search(r"=\s*browser\.available\(\)", text):
+            users.append(name)
+            skips = re.findall(r"pytest\.skip\(f?\"([^\"]*)", text)
+            about = [s for s in skips if re.search(r"(?i)browser|firefox|gecko", s)]
+            assert about and all(s.startswith(phrase) for s in about), (name, skips)
+    assert len(users) >= 7, users
