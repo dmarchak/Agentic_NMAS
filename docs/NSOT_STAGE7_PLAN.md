@@ -3641,3 +3641,124 @@ recommendation is to move them after the compactor has run for a week without ha
 a compactor fault cannot reach them first. **DECIDED 2026-10-04 (the operator): as
 recommended.** Live reads stay on Prometheus until the compactor has run a week without
 halting.
+
+## 15. The operator's review of three canvas pages (2026-10-04): revise, then show again
+
+Nothing on these pages is built until the revised boards are signed off. Each item is the
+operator's words, then what the revision draws.
+
+### 15.1 7.4 Fleet
+
+- **a. One Actions dropdown** on the Devices list, as on the device pages, in place of the
+  separate Deploy, Save running and Edit intent buttons.
+- **b. One stepper.** The horizontal stepper for every operation, single and bulk (a single
+  operation uses the vertical tracker today): one component, turning vertical at phone width.
+- **c. Two operations, named exactly:** "record the running config as the golden" and "save
+  to startup (write memory)". "Save running" updated the golden without saying whether the
+  device was SAVED. Both are offered in bulk where they apply.
+- **d and J. Fields protect only what intent models.** Three layers:
+  1. structured fields for what is modelled;
+  2. "Add a setting": the platform's modelled fields this device does not use yet, from a
+     per-platform catalog;
+  3. a clearly marked raw-lines escape hatch (`unmodeled:`), checked against the platform
+     before commit, with fidelity (100% reproduction) as the assurance that nothing added is
+     lost.
+
+  **What each covers today** (measured on the host, read-only, `GET /templatize/report`):
+  - **Layer 1:** the parsers model 17 top-level keys: interfaces (30 keys each,
+    `hostvars.INTERFACE_DEFAULTS`), VLANs, users, routing, static routes, ACLs, SNMP,
+    logging, NTP, line blocks, tracks, services, global flags, spanning tree, secrets,
+    hostname and platform. On this fleet's nine devices every golden line is modelled:
+    coverage 100%, fidelity 100%, 0 `unmodeled:` lines.
+  - **Layer 2:** no per-platform catalog exists. The schema is one set for both platforms.
+  - **Layer 3:** `unmodeled:` exists in the document and round-trips. It is not yet checked
+    against the platform before commit, beyond the render and the dangerous-line check.
+- **e. Onboarding.**
+  - Say on screen what "role" does: a note, or what it selects (templates and credentials
+    through `role_map`).
+  - Interfaces come from a dropdown of what the device actually has, never typed.
+  - "DHCP" becomes two named choices: "DHCP, any address" (no IP) and "DHCP reservation
+    (fixed address)" (IP required).
+  - ZTP follows section 16.
+  - **Layout rule:** a message under a field never moves the field. Its space is
+    reserved; s7's address error and J's GigabitEthernet3 help text both moved it. A browser
+    check holds the class (C448).
+- **f.** No notes.
+- **g. Adopt** rotates the credential automatically as its last step once every step passes,
+  then prompts the break-glass export.
+- **H.** Signed off as THE intent editor's layout.
+- **I.** Conflicts with H as a second intent-editing section: one editor, H's layout,
+  everywhere. Bulk intent (D) is redrawn on H's layout too.
+
+### 15.2 P.11 Topology
+
+- **A, the desk view:**
+  - Port identifiers on every link (the interface at each end).
+  - Routing-protocol state on links: wherever a neighbourship is established, or intended by
+    intent, its live state on that link (OSPF, OSPFv3, BGP, RIPng: FULL, 2WAY, down, missing).
+  - The toggles stay (weak points, paths, what-ifs).
+  - The edge devices' links to the ISP (r5) are drawn, though it is not monitored: an
+    external node, with link state and BGP sessions as seen from OUR side.
+- **B, phone:** fine; apply A.
+- **C, the wall:** apply A.
+
+### 15.3 Section 13, Questions
+
+- **A.** Renamed **Query**, a tab of History: Timeline | Query | Baselines | Authorisations
+  (not a sidebar item).
+- **B.** Charts here and on Monitoring: labelled axes with units, and a hover crosshair with the
+  exact values at that time, as in Grafana.
+- **C.** Results drill down. From "s3 sent 96 syslog lines", open the lines, filter them
+  (severity, mnemonic, time, text), and see trends by mnemonic.
+
+## 16. ZTP: discovery before reservation (the operator, 2026-10-04)
+
+It replaces "type the MAC" in 7.4e, and keeps today's reservation step, with discovery in
+front of it:
+
+1. **A discovery range on the ZTP segment.** Short leases (minutes), and NO boot file, router
+   or DNS option: the existing rule, that a configless device never reaches out and phones
+   Cisco.
+2. **A reader job reads Kea's leases in that range** through `lease_cmds` and lists "Devices
+   asking for an address that the tool doesn't know": MAC, vendor class (option 60),
+   client-id (option 61), hostname if sent, first and last seen. MACs already reserved or in
+   inventory are excluded.
+3. **The operator PICKS one, names it and assigns its address.** The tool writes the
+   reservation as today (the fragment, R22's lock, the reload), with the MAC from what Kea
+   saw. The short lease makes the device ask again within minutes and get its reservation
+   and boot file. It is never automatic: a person confirms which device it is (by MAC, or a
+   serial where one is sent).
+
+**Measured first, read-only (the NMAS host, via LAN, 2026-10-04):**
+- **Kea:** 2.4.1. Hook libraries installed: `lease_cmds` (loaded), `flex_option`,
+  `run_script`, `stat_cmds`, `bootp`, `ha`, `mysql_cb`, `pgsql_cb`. There is no
+  forensic-logging hook.
+- **The ZTP subnet (id 255):** no pool, no option data, and reservations only, included from
+  the tool's fragment. So no device the tool has not reserved gets an address there today.
+  Subnets 10 and 20 have a pool each and hand out `routers`, `domain-name-servers` and
+  `domain-name`. Global lifetimes are 3600 s valid, 900 s renew and 1800 s rebind.
+- **`lease4-get-all`** answers through the app's Kea client: result 3 (no leases anywhere),
+  so the command and the hook work.
+- **What a lease records:** a Kea lease holds the hardware address, client-id (option 61) and
+  hostname, never options 60, 124 or 125.
+- **History:** 30 days of `kea-dhcp4-server`'s journal hold only lease-file maintenance, no
+  packet or lease lines, and nothing mentioning option 60 or "ciscopnp". So **what a C8000v
+  sends during ZTP is not recorded anywhere today.**
+
+**Still to measure, the operator's (root):** a capture of one ZTP boot of a throwaway C8000v
+on the ZTP interface:
+
+    sudo tcpdump -i <the ZTP interface> -nn -vvv -s0 'udp port 67 or udp port 68'
+
+read for options 60, 61, 124 and 125, and whether any carries a serial. Its answer decides
+how the vendor class reaches the list:
+- **If the device sends option 60:** two pools in the discovery range, one for a client
+  class matching it (for example `substring(option[60].hex,0,8) == 'ciscopnp'`) and one for
+  the rest. A lease's address then says its vendor class, read through `lease_cmds` alone.
+- **If it sends none:** the list shows MAC, client-id and hostname.
+
+The Kea host step (the discovery pool), and 7.4e redrawn with the discovery list, follow that
+measurement.
+
+**Lab note (optional, lab tooling):** containerlab knows each node's MAC and could pre-match
+it.
