@@ -28,6 +28,7 @@ permanently.
 
 import logging
 import os
+import re
 
 log = logging.getLogger(__name__)
 
@@ -569,6 +570,54 @@ def syslog_block_problems(host_vars: dict) -> list:
     return problems
 
 
+#: Descriptions that are a run's notes, not the network's design (C428, the operator,
+#: 2026-10-04: leftovers of live checks had sat in committed intent). Each pattern with why;
+#: a refusal by resemblance is the safe direction, and it names the pattern it matched.
+SESSION_DESCRIPTIONS = (
+    (re.compile(r"\bNSoT-managed\s+-\s", re.I), "the tool's own test-run prefix"),
+    (re.compile(r"\bsmoke\b", re.I), "a smoke run's note"),
+    (re.compile(r"\bcheck\b", re.I), "a check run's note"),
+    (re.compile(r"\b(?!VLAN\b)[A-Z]{2,5} ?\d{4}\b"), "a course code"),
+)
+
+
+def _descriptions(node, path="") -> list:
+    """``[(path, value)]`` for every ``description`` anywhere in *node*."""
+    out = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            where = f"{path}.{key}" if path else str(key)
+            if key == "description" and isinstance(value, str):
+                out.append((where, value))
+            else:
+                out += _descriptions(value, where)
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            out += _descriptions(value, f"{path}[{i}]")
+    return out
+
+
+def description_problems(host_vars: dict) -> list:
+    """Why this AUTHORED intent's descriptions may not be committed; ``[]`` if they may: a
+    description naming a test or a lab session (`SESSION_DESCRIPTIONS`). Like the syslog
+    block's rule, this judges authored intent only: extracted intent records a device as it
+    is, leftovers included, so they can be seen and changed."""
+    problems = []
+    for where, value in _descriptions(host_vars or {}):
+        for rx, why in SESSION_DESCRIPTIONS:
+            m = rx.search(value)
+            if m:
+                problems.append(f"{where} is {value!r}: {m.group(0).strip()!r} is {why}. A "
+                                "description says what the port or address is for in the "
+                                "design, never a run's notes")
+                break
+    return problems
+
+
+class SessionDescription(ValueError):
+    """Authored intent carrying a description that is a run's notes (C428)."""
+
+
 def write_committed(repo: str, host_vars: dict) -> str:
     """Write committed intent. Refuses anything carrying a resolved secret.
 
@@ -592,8 +641,13 @@ def write_committed(repo: str, host_vars: dict) -> str:
     return path
 
 
-def write_committed_text(repo: str, hostname: str, text: str) -> str:
+def write_committed_text(repo: str, hostname: str, text: str, *,
+                         judge_descriptions: bool = True) -> str:
     """Write edited YAML verbatim, after the same refusal.
+
+    *judge_descriptions* False is for a RECORD, never authoring: a restore writes the intent a
+    past ref held after the device is restored to it, and refusing there would leave the
+    device restored and its intent not (C428's rule is about authored intent).
 
     The editor path. Round-tripping through ``from_yaml``/``to_yaml`` would
     silently discard anything the model does not know about, so the operator's
@@ -611,6 +665,9 @@ def write_committed_text(repo: str, hostname: str, text: str) -> str:
     problems = syslog_block_problems(parsed)
     if problems:
         raise PartialSyslogBlock(f"{hostname}: " + "; ".join(problems))
+    problems = description_problems(parsed) if judge_descriptions else []
+    if problems:
+        raise SessionDescription(f"{hostname}: " + "; ".join(problems))
     assert_no_secret_values(text, hostname)
     path = _ensure_dir(committed_path(repo, hostname))
     with open(path, "w", encoding="utf-8", newline="\n") as fh:

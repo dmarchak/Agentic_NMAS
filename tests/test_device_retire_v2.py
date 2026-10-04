@@ -314,6 +314,26 @@ class TestTheOxidizedRow:
         _r, page = _get(exported, "/v2/device/r5")
         assert "Finish this retirement" not in page, "nothing left to finish"
 
+    def test_finishing_says_the_helper_pruned_its_older_backups(self, exported, oxidized,
+                                                                monkeypatch):
+        """C430 (the operator, 2026-10-04: r5's Finish was the helper's first write since C415,
+        and its result could not say whether it pruned): the result carries the pruning."""
+        from modules.nsot import credential_rotation as CR
+        monkeypatch.setattr(CR, "oxidized_managed", lambda: False)
+        _r, card = _card(exported)
+        exported["client"].post("/v2/device/r5/retire/confirm", data=_vals(card))
+        monkeypatch.setattr(CR, "oxidized_managed", lambda: True)
+        for stamp in ("20260901-000000", "20260902-000000", "20260903-000000",
+                      "20260904-000000"):
+            (oxidized["db"].parent / f"router.db.nmas-bak-{stamp}").write_text("x\n")
+        out = html_mod.unescape(exported["client"].post(
+            "/v2/device/r5/retire/finish", data={"list": "Lab"}).get_data(as_text=True))
+        assert ("The helper kept its backup of router.db from before this write and removed 2 "
+                "older backups.") in out, out[:600]
+        kept = sorted(p.name for p in oxidized["db"].parent.iterdir()
+                      if p.name.startswith("router.db.nmas-bak-"))
+        assert len(kept) == 3
+
     def _orphans(self, monkeypatch):
         from modules import host_helpers
         from modules.nsot import credential_rotation as CR

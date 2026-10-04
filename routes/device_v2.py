@@ -1240,7 +1240,8 @@ def retire_finish(name):
              got["error"])
     return _strict(render_template("v2/_retire_finish.html", f=dict(
         f, ip=rec["ip"], state="done" if got["ok"] else "failed", removed=got["removed"],
-        error=got["error"])))
+        error=got["error"], backups_removed=got.get("backups_removed", 0),
+        prune_error=got.get("prune_error", ""))))
 
 
 @bp.route("/device/<name>/deploy/job/<job>", methods=["GET"])

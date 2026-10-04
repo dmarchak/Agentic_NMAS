@@ -1335,7 +1335,7 @@ def _write_restored_intent(list_name: str, report: dict,
         # ref and the committed intent is not, and a crash in that window is
         # exactly the state this pairing exists to prevent.
         stage_restored_intent(repo, device, text)
-        hostvars.write_committed_text(repo, device, text)
+        hostvars.write_committed_text(repo, device, text, judge_descriptions=False)  # a record
         restored.append(device)
 
     if restored or un_onboarded:

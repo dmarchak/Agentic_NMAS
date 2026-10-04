@@ -47,7 +47,9 @@ name is never touched.
    reasons are given at once.
 5. **Apply the steps and check the result**. Read: nothing more. Sent: nothing. Recorded:
    nothing. The new document must pass the same checks a hand edit does: the syslog block
-   whole or absent, no unknown interface key, printable characters only, no secret value.
+   whole or absent, no unknown interface key, no description that is a run's notes (the
+   tool's "NSoT-managed - " prefix, "smoke", "check", a course code: C428), printable
+   characters only, no secret value.
    A device whose result would be refused is named with why.
 6. **Render before and after**. Read: the device's captured configuration and its template,
    with the monitoring profile merged in. Sent: nothing. Recorded: nothing. Both intents are

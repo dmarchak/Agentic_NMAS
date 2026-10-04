@@ -346,6 +346,16 @@ def _validate_edit(hostname: str, text: str):
         return None, (jsonify({"ok": False, "stage": "schema", "line": line,
                         "column": 1, "error": "; ".join(problems)}), 400)
 
+    # 2d. NO RUN'S NOTES AS A DESCRIPTION (C428). Refused here with the line, as at the
+    #     commit (`write_committed_text`).
+    problems = hostvars.description_problems(parsed)
+    if problems:
+        bad = problems[0].split(" is ", 1)[1].split(":", 1)[0].strip("'\"")
+        line = next((n for n, l in enumerate(text.splitlines(), 1)
+                     if l.strip().startswith("description:") and bad in l), 1)
+        return None, (jsonify({"ok": False, "stage": "schema", "line": line,
+                        "column": 1, "error": "; ".join(problems)}), 400)
+
     # 3. The secret guards, BEFORE anything is rendered or written. Same two
     #    checks `write_committed_text()` applies, run here so the editor
     #    refuses rather than the commit.

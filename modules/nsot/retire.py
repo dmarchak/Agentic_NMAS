@@ -597,8 +597,10 @@ def _address_before(repo: str, sha: str, hostname: str) -> str:
 
 def remove_oxidized(ip: str) -> dict:
     """Remove *ip*'s row from Oxidized's router.db through the helper's REMOVE mode, then READ
-    IT BACK through the address list: ``{"ok", "error", "removed"}``. One home for retire's step
-    and a retired record's "Finish this retirement" (C398)."""
+    IT BACK through the address list: ``{"ok", "error", "removed", "backups_removed",
+    "prune_error"}``. One home for retire's step and a retired record's "Finish this
+    retirement" (C398). The helper's pruning of its older backups (C415) is carried, so the
+    result can say it (C430: the first real Finish could not)."""
     from modules.nsot import credential_rotation as CR
 
     if not ip:
@@ -615,7 +617,9 @@ def remove_oxidized(ip: str) -> dict:
     if back["held"]:
         return {"ok": False, "removed": False,
                 "error": f"the helper said done and router.db still holds {ip}"}
-    return {"ok": True, "error": "", "removed": bool(got.get("removed"))}
+    return {"ok": True, "error": "", "removed": bool(got.get("removed")),
+            "backups_removed": int(got.get("backups_removed") or 0),
+            "prune_error": got.get("prune_error") or ""}
 
 
 def oxidized_row(ip: str) -> dict:

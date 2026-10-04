@@ -7,7 +7,8 @@
   <p><strong>Still to remove:</strong> Oxidized's router.db holds {{ f.ip }}, so Oxidized keeps polling {{ f.name }}.</p>
   <p class="dev-actions"><button type="button" class="btn btn-primary op-confirm" data-op="retire" hx-post="{{ url_for('device_v2.retire_finish', name=f.name) }}" hx-target="#retire-finish" hx-swap="outerHTML" hx-disabled-elt="this" hx-vals='{{ {"list": f.list} | tojson }}'><span class="op-idle">Finish this retirement</span><span class="op-busy">Removing the row and reading it back…</span></button>{{ how('retire', 'afterwards', compact=True, op='retirement') }}</p>
 {%- elif f.state == 'done' %}
-  <p><strong>Finished:</strong> {{ f.ip }}'s row {{ 'was removed from' if f.removed else 'was already gone from' }} Oxidized's router.db, read back. Oxidized no longer polls {{ f.name }}.</p>
+  <p><strong>Finished:</strong> {{ f.ip }}'s row {{ 'was removed from' if f.removed else 'was already gone from' }} Oxidized's router.db, read back. Oxidized no longer polls {{ f.name }}.
+  {%- if f.removed %} The helper kept its backup of router.db from before this write{% if f.backups_removed %} and removed {{ f.backups_removed }} older backup{{ '' if f.backups_removed == 1 else 's' }}{% endif %}{% if f.prune_error %}; removing older backups failed ({{ f.prune_error }}), and they are still beside it{% endif %}.{% endif %}</p>
 {%- elif f.state == 'unknown' %}
   <p>Whether Oxidized's router.db still holds {{ f.ip or f.name }} could not be read: {{ f.error }}.</p>
 {%- elif f.state == 'failed' %}

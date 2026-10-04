@@ -380,7 +380,7 @@ class TestCommittedIntentMustBePrintableAscii:
         from modules.nsot import hostvars
         hostvars.write_committed_text(
             str(tmp_path), "s4",
-            "hostname: s4\ndescription: NSoT-managed - CSCI 5840 Lab 4\n")
+            "hostname: s4\ndescription: mgmt identity - a b\n")
 
     def test_write_committed_refuses_it_too(self, tmp_path):
         """Both entry points, not just the editor."""
