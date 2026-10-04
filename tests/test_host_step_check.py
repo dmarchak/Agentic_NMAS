@@ -71,7 +71,9 @@ class TestTheRange:
     @pytest.mark.parametrize("path", ["deploy/update/nmas-update", "deploy/systemd/x.service",
                                       "deploy/topology/rcn-topology.py", "scripts/nmas-deploy"])
     def test_a_step_said_passes(self, repo, path):
-        _commit(repo, path, "change\n\nHost-Step: re-install it as root")
+        check = {"deploy/update/nmas-update": "[updater] ", "scripts/nmas-deploy": "[updater] ",
+                 "deploy/topology/rcn-topology.py": "[topology-renderer] "}.get(path, "")
+        _commit(repo, path, f"change\n\nHost-Step: {check}re-install it as root")
         assert _run(repo, "--range", "HEAD~1..HEAD").returncode == 0
 
     def test_none_with_its_reason_passes(self, repo):
@@ -98,6 +100,42 @@ class TestTheRange:
         assert p.returncode == 2 and "COULD NOT ASK" in p.stderr
 
 
+class TestAStepNamesTheCheckThatMeasuresIt:
+    """C416 (the operator, 2026-10-04): c2440a6's step for the Oxidized helper asked the
+    operator to say it was done, while C375's check already measured it. A commit changing a
+    path a check answers for names that check in its step."""
+
+    def test_the_helpers_step_without_its_check_is_refused_naming_it(self, repo):
+        sha = _commit(repo, "scripts/nmas-oxidized-cred",
+                      "change\n\nHost-Step-After: re-install the Oxidized helper")
+        p = _run(repo, "--range", "HEAD~1..HEAD")
+        assert p.returncode == 1 and sha[:12] in p.stderr
+        assert "scripts/nmas-oxidized-cred (check [oxidized-cred])" in p.stderr
+
+    def test_with_its_check_it_passes(self, repo):
+        _commit(repo, "scripts/nmas-oxidized-cred",
+                "change\n\nHost-Step-After: [oxidized-cred] re-install the Oxidized helper")
+        assert _run(repo, "--range", "HEAD~1..HEAD").returncode == 0
+
+    def test_another_checks_name_does_not_cover_it(self, repo):
+        _commit(repo, "scripts/nmas-oxidized-cred",
+                "change\n\nHost-Step-After: [updater] re-install the Oxidized helper")
+        assert _run(repo, "--range", "HEAD~1..HEAD").returncode == 1
+
+    def test_none_needs_no_check(self, repo):
+        _commit(repo, "scripts/nmas-oxidized-cred", "a comment\n\nHost-Step-None: a comment only")
+        assert _run(repo, "--range", "HEAD~1..HEAD").returncode == 0
+
+    def test_two_helpers_need_both_checks(self, hs):
+        msg = "x\n\nHost-Step-After: [updater] re-install the updater"
+        why = hs.unnamed_check(["scripts/nmas-deploy", "scripts/nmas-oxidized-cred"], msg)
+        assert "scripts/nmas-oxidized-cred (check [oxidized-cred])" in why
+        assert "scripts/nmas-deploy" not in why
+
+    def test_a_path_no_check_answers_for_needs_none(self, hs):
+        assert hs.unnamed_check(["deploy/systemd/x.service"], "x\n\nHost-Step: install x") == ""
+
+
 class TestTheCommitBeingMade:
     def test_the_staged_files_and_the_message_are_read(self, repo, tmp_path_factory):
         (repo / "deploy" / "update").mkdir(parents=True)
@@ -106,7 +144,7 @@ class TestTheCommitBeingMade:
         msg = tmp_path_factory.mktemp("m") / "MSG"
         msg.write_text("change\n\n# Host-Step: in git's comment template, not said\n")
         assert _run(repo, "--message", str(msg)).returncode == 1
-        msg.write_text("change\n\nHost-Step: re-install the updater\n")
+        msg.write_text("change\n\nHost-Step: [updater] re-install the updater\n")
         assert _run(repo, "--message", str(msg)).returncode == 0
 
     def test_the_hook_runs_the_check(self):

@@ -116,7 +116,28 @@ def check_updater(root: str = ROOT) -> dict:
                                               if st.get("differs") else "")}
 
 
-CHECKS = {"topology-renderer": check_topology_renderer, "updater": check_updater}
+def check_oxidized_helper(root: str = ROOT) -> dict:
+    """Done when the installed Oxidized credential helper is this release's copy, root-owned
+    and writable by no one else: the helper's own check (`credential_rotation.helper_status`,
+    C375), so a person never vouches for what it measures (C416). No helper installed and no
+    Oxidized configured: nothing to re-install."""
+    from modules.nsot import credential_rotation as cr
+    from modules.settings_schema import get_setting
+
+    st = cr.helper_status()
+    if st["state"] == "ok":
+        return {"state": "done", "detail": f"{cr.HELPER_INSTALLED} is this release's "
+                                           f"{cr.HELPER_SOURCE_REL} ({st.get('source_sha')})"}
+    if st["state"] == "not_installed" and not str(get_setting("oxidized_url", "") or "").strip():
+        return {"state": "done", "detail": "no helper is installed and no Oxidized is "
+                                           "configured: nothing to re-install"}
+    return {"state": "not_done", "detail": (st.get("reason") or st["state"]) + (
+        f" (installed {st['installed_sha']}, this release {st['source_sha']})"
+        if st.get("installed_sha") else "")}
+
+
+CHECKS = {"topology-renderer": check_topology_renderer, "updater": check_updater,
+          "oxidized-cred": check_oxidized_helper}
 
 
 def check(step: dict, root: str = ROOT) -> dict:

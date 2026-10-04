@@ -60,3 +60,47 @@ def test_an_owed_step_of_another_check_does_not_absorb_it(page):
     other = dict(STEP, id="aaaa:0", check="topology-renderer")
     rows = page("differs", steps=(other,))
     assert sorted(r["source"] for r in rows) == ["host_steps", "job_health"]
+
+
+# C419 (the operator, 2026-10-04): the Oxidized helper's drift was two rows again, the host
+# step's and job health's "helper:oxidized-cred differs". Every root-installed helper folds,
+# by the registry (modules/host_helpers.py), not the updater alone.
+
+def _helper(unit, state):
+    return {"jobs": [{"unit": unit, "state": state, "what": "a root-installed helper",
+                      "detail": f"{unit}: {state}", "since": None}]}
+
+
+@pytest.fixture
+def helper_page(monkeypatch):
+    from routes import health
+    monkeypatch.setattr(health, "_COMMIT", "f" * 40)
+
+    def render(check, unit, state):
+        step = dict(STEP, id="c2440a6000:0", check=check, step=f"re-install {unit}")
+        sources = [lambda: attention.host_steps_source(owed={"ok": True, "steps": [step]}),
+                   lambda: attention.job_health_source(health=lambda: _helper(unit, state))]
+        return attention.needs_attention(sources=sources)["rows"]
+    return render
+
+
+@pytest.mark.parametrize("check,unit,state", [
+    ("oxidized-cred", "helper:oxidized-cred", "differs"),
+    ("oxidized-cred", "helper:oxidized-cred", "not_installed"),
+    ("topology-renderer", "helper:topology-renderer", "differs")])
+def test_every_helpers_drift_folds_into_its_host_step(helper_page, check, unit, state):
+    rows = helper_page(check, unit, state)
+    assert [r["source"] for r in rows] == ["host_steps"], [r["what"] for r in rows]
+    assert [a["source"] for a in rows[0]["attached"]] == ["job_health"]
+    assert rows[0]["action"]["label"].startswith("Do it on the host")
+
+
+@pytest.mark.parametrize("state", ["writable", "cannot_run", "unknown"])
+def test_a_helper_state_one_install_does_not_clear_stays_its_own_row(helper_page, state):
+    rows = helper_page("oxidized-cred", "helper:oxidized-cred", state)
+    assert sorted(r["source"] for r in rows) == ["host_steps", "job_health"]
+
+
+def test_a_helpers_step_does_not_absorb_another_helpers_row(helper_page):
+    rows = helper_page("topology-renderer", "helper:oxidized-cred", "differs")
+    assert sorted(r["source"] for r in rows) == ["host_steps", "job_health"]

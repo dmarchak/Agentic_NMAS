@@ -46,7 +46,19 @@ HOST_STEP_PATHS = (
     "scripts/nmas-oxidized-cred",
 )
 
+#: The host-installed paths a check can answer for (modules/host_steps.py CHECKS; the
+#: registry, modules/host_helpers.py, names the same pairs and tests/test_host_helpers.py
+#: holds them equal). A commit changing one that gives a host step names the check in it, so
+#: the tool says the step is done by measuring, never a person by vouching (C416).
+STEP_CHECKS = {
+    "deploy/update/": "updater",
+    "scripts/nmas-deploy": "updater",
+    "deploy/topology/": "topology-renderer",
+    "scripts/nmas-oxidized-cred": "oxidized-cred",
+}
+
 TRAILER = re.compile(r"^(Host-Step|Host-Step-After|Host-Step-None):\s*\S", re.M)
+STEP_CHECK = re.compile(r"^Host-Step(?:-After)?:[ \t]*\[([a-z0-9-]+)\]", re.M)
 
 
 class CannotAsk(Exception):
@@ -119,11 +131,34 @@ def unsafe_step(message: str) -> str:
     return ""
 
 
+def unnamed_check(paths, message) -> str:
+    """A commit changing a path a check answers for, whose host steps name none of them: ""
+    when it names each, or gives no step (Host-Step-None alone)."""
+    body = "\n".join(l for l in message.splitlines() if not l.startswith("#"))
+    if not STEP_TEXT.search(body):
+        return ""
+    named = set(STEP_CHECK.findall(body))
+    wanted = {}
+    for p in paths:
+        for prefix, check in STEP_CHECKS.items():
+            if p == prefix or (prefix.endswith("/") and p.startswith(prefix)):
+                wanted.setdefault(check, p)
+    missing = sorted(c for c in wanted if c not in named)
+    if not missing:
+        return ""
+    return ("changes " + ", ".join(f"{wanted[c]} (check [{c}])" for c in missing) + ", and no "
+            "host step names its check: write 'Host-Step-After: [<check>] <the step>' so the "
+            "tool measures it done (modules/host_steps.py CHECKS) instead of a person vouching")
+
+
 def problem(paths, message) -> str:
     """The refusal for one commit, or "" when it passes."""
     unsafe = unsafe_step(message)
     if unsafe:
         return unsafe
+    unnamed = unnamed_check(paths, message)
+    if unnamed:
+        return unnamed
     touched = host_paths(paths)
     if not touched or says_host(message):
         return ""

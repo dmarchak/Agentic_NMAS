@@ -23,13 +23,17 @@ from modules import host_helpers as HH
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _host_step_paths():
+def _load_step_check():
     path = os.path.join(ROOT, "scripts", "nmas-host-step-check")
     loader = importlib.machinery.SourceFileLoader("hsc", path)
     spec = importlib.util.spec_from_loader("hsc", loader)
     mod = importlib.util.module_from_spec(spec)
     loader.exec_module(mod)
-    return mod.HOST_STEP_PATHS
+    return mod
+
+
+def _host_step_paths():
+    return _load_step_check().HOST_STEP_PATHS
 
 
 class TestTheRegistryAndTheHostStepCheck:
@@ -54,6 +58,25 @@ class TestTheRegistryAndTheHostStepCheck:
         unused = [p for p in _host_step_paths()
                   if not any(s.startswith(p) for s in HH.sources())]
         assert unused == [], unused
+
+    def test_every_helpers_check_exists_and_the_step_check_names_the_same_pairs(self):
+        """C416: the commit-msg check's path -> check list and the registry are one fact."""
+        from modules import host_steps
+        reg = HH.registry()
+        assert {h["check"] for h in reg} <= set(host_steps.CHECKS)
+        step_checks = _load_step_check().STEP_CHECKS
+        for h in reg:
+            covering = [c for p, c in step_checks.items() if h["source"].startswith(p)]
+            assert covering == [h["check"]], (h["source"], covering)
+        for p, c in step_checks.items():
+            assert any(h["source"].startswith(p) and h["check"] == c for h in reg), (p, c)
+
+    def test_folds_name_each_helpers_job_health_row(self):
+        assert HH.folds() == {"updater": ("job_health:updater", ("differs",)),
+                              "oxidized-cred": ("job_health:helper:oxidized-cred",
+                                                ("differs", "not_installed")),
+                              "topology-renderer": ("job_health:helper:topology-renderer",
+                                                    ("differs",))}
 
 
 @pytest.fixture
@@ -98,6 +121,40 @@ class TestTheOxidizedHelper:
         assert row["state"] == "cannot_run" and "NOPASSWD" in row["action"]["command"]
         monkeypatch.setattr(cr, "helper_sudo_status", lambda run=None: {"ok": True})
         assert HH.oxidized_row()["state"] == "ok"
+
+
+class TestTheHelpersHostStepCheck:
+    """C416: `[oxidized-cred]` answers a step by the helper's own check (C375)."""
+
+    def test_this_releases_copy_is_done(self, settings, monkeypatch):
+        from modules import host_steps
+        from modules.nsot import credential_rotation as cr
+        monkeypatch.setattr(cr, "helper_status", lambda: _status("ok", source_sha="bbbb33334444"))
+        got = host_steps.check({"check": "oxidized-cred"})
+        assert got["state"] == "done" and "bbbb33334444" in got["detail"]
+
+    def test_a_drifted_copy_is_not_done_naming_both(self, settings, monkeypatch):
+        from modules import host_steps
+        from modules.nsot import credential_rotation as cr
+        monkeypatch.setattr(cr, "helper_status", lambda: _status(
+            "drifted", installed_sha="aaaa11112222", source_sha="bbbb33334444"))
+        got = host_steps.check({"check": "oxidized-cred"})
+        assert got["state"] == "not_done"
+        assert "installed aaaa11112222, this release bbbb33334444" in got["detail"]
+
+    def test_wrongly_owned_is_not_done(self, settings, monkeypatch):
+        from modules import host_steps
+        from modules.nsot import credential_rotation as cr
+        monkeypatch.setattr(cr, "helper_status", lambda: _status("not_root_owned"))
+        assert host_steps.check({"check": "oxidized-cred"})["state"] == "not_done"
+
+    def test_missing_is_done_only_where_no_oxidized_is_configured(self, settings, monkeypatch):
+        from modules import host_steps
+        from modules.nsot import credential_rotation as cr
+        monkeypatch.setattr(cr, "helper_status", lambda: _status("not_installed"))
+        assert host_steps.check({"check": "oxidized-cred"})["state"] == "done"
+        settings["oxidized_url"] = "http://192.0.2.5:8888"
+        assert host_steps.check({"check": "oxidized-cred"})["state"] == "not_done"
 
 
 class TestTheTopologyRenderer:

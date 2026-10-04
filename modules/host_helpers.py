@@ -25,22 +25,35 @@ RENDERED = ("deploy/systemd/",)
 
 
 def registry() -> list:
-    """``[{"name", "installed", "source", "how", "needed_by", "checked_by"}]``: every
-    root-installed file and the repository file it is a copy of (or links to)."""
+    """``[{"name", "installed", "source", "how", "needed_by", "checked_by", "check", "unit",
+    "folds"}]``: every root-installed file and the repository file it is a copy of (or links
+    to). *check* is its host-step check (`host_steps.CHECKS`), which a commit changing it
+    names in its step (scripts/nmas-host-step-check); *unit* is its job-health row; *folds*
+    are that row's states one install clears, so while a step with that check is owed the row
+    attaches to the step's (C419: one cause, one row, for every helper)."""
     from modules import host_steps, update_op
     from modules.nsot import credential_rotation as cr
 
     out = [{"name": name, "installed": path, "source": source, "how": "copy",
-            "needed_by": "the Update button", "checked_by": "updater_rows"}
+            "needed_by": "the Update button", "checked_by": "updater_rows",
+            "check": "updater", "unit": "updater", "folds": ("differs",)}
            for name, path, source in update_op.INSTALLED if source]
     out.append({"name": "the Oxidized credential helper", "installed": cr.HELPER_INSTALLED,
                 "source": cr.HELPER_SOURCE_REL, "how": "copy",
                 "needed_by": "a rotation's persistence (its Oxidized row) and its preflight",
-                "checked_by": "helper_rows"})
+                "checked_by": "helper_rows", "check": "oxidized-cred",
+                "unit": "helper:oxidized-cred", "folds": ("differs", "not_installed")})
     out.append({"name": "the topology renderer", "installed": host_steps.TOPOLOGY_LINK,
                 "source": host_steps.TOPOLOGY_SOURCE_REL, "how": "symlink",
-                "needed_by": "the topology panel", "checked_by": "helper_rows"})
+                "needed_by": "the topology panel", "checked_by": "helper_rows",
+                "check": "topology-renderer", "unit": "helper:topology-renderer",
+                "folds": ("differs",)})
     return out
+
+
+def folds() -> dict:
+    """``{check: (job-health row id, states it folds)}``, from the registry."""
+    return {h["check"]: (f"job_health:{h['unit']}", tuple(h["folds"])) for h in registry()}
 
 
 def sources() -> list:

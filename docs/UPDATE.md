@@ -205,10 +205,22 @@ Host-Step-After: [<check>] <text>   AFTER: never blocks; a Needs attention row
 
 - **`[<check>]` names one of the tool's checks** (`host_steps.CHECKS`):
   `topology-renderer` (the installed renderer is a symlink to the checkout's, and
-  `rcn-topology.service` started after the file changed) and `updater` (the
-  updater's install check reads ok). A checked step is never ticked: done is
-  measured, and a step the check finds NOT done blocks the update, naming what
-  it found, whatever a box says.
+  `rcn-topology.service` started after the file changed), `updater` (the
+  updater's install check reads ok) and `oxidized-cred` (the installed Oxidized
+  credential helper is this release's copy, root-owned, by the helper's own check;
+  C416). A checked step is never ticked: done is measured, and a step the check
+  finds NOT done blocks the update, naming what it found, whatever a box says.
+- **A commit changing a file a check answers for names that check in its step**
+  (`STEP_CHECKS` in `scripts/nmas-host-step-check`, the same pairs as the
+  registry in `modules/host_helpers.py`): `deploy/update/` and `scripts/nmas-deploy`
+  take `[updater]`, `deploy/topology/` `[topology-renderer]`, and
+  `scripts/nmas-oxidized-cred` `[oxidized-cred]`. A step without it is refused.
+  `Host-Step-None` alone needs no check.
+- **While such a step is owed, job health's row for the same helper is part of the
+  step's row** (C419): one install clears both, so the page draws one row, the
+  step's, with job health's beneath it as "Also:". The states one install clears
+  are the registry's (`differs`; for the Oxidized helper also `not_installed`);
+  any other state (writable, cannot run) stays its own row.
 - **A step with no check** is said done by the person: a box on the preview for a
   BEFORE step (recorded in the request), and "It is done" on the Update page for
   an AFTER step (recorded in `data/host_steps_done.jsonl`, 0600, with who and when).

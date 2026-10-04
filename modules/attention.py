@@ -2526,16 +2526,29 @@ def _fold_one_cause(rows: list) -> list:
     ("updater differs from this release's copy"), cleared together by one re-install. While
     an owed host step is checked by the updater's own check, job health's `differs` row
     attaches to it, and the host step's row keeps its action: it is the one that says what
-    to do. Any other updater state (writable, cannot run) is its own danger and stays."""
-    step = next((r for r in rows if r["source"] == "host_steps"
-                 and (r.get("operands") or {}).get("check") == "updater"), None)
-    if step is None:
-        return rows
+    to do. Any other updater state (writable, cannot run) is its own danger and stays.
+
+    For EVERY root-installed helper, not the updater alone (C419, the operator, 2026-10-04:
+    the Oxidized helper's drift was the host step's row and job health's): the registry
+    (`host_helpers.folds`) names each helper's check, its job-health row and the states one
+    install clears."""
+    from modules import host_helpers
+
+    owed = {}
     for r in rows:
-        if (r["id"] == "job_health:updater"
-                and (r.get("operands") or {}).get("state") == "differs"):
-            r["attach_to"] = step["id"]
-            r["attach_action"] = False
+        check = (r.get("operands") or {}).get("check") if r["source"] == "host_steps" else None
+        if check and check not in owed:
+            owed[check] = r
+    if not owed:
+        return rows
+    for check, (unit_id, states) in host_helpers.folds().items():
+        step = owed.get(check)
+        if step is None:
+            continue
+        for r in rows:
+            if r["id"] == unit_id and (r.get("operands") or {}).get("state") in states:
+                r["attach_to"] = step["id"]
+                r["attach_action"] = False
     return rows
 
 
