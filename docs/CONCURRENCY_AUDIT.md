@@ -129,7 +129,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | HOLD FIXED 2026-10-04 (tests/test_onboard_serialised.py); binding Abandon to its dry run not built | yes | Hold the hostname; bind Abandon to its dry run |
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
-| R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | UNSAFE | yes | Lease, recorded release, canonical key, no flock probe |
+| R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | KEY AND PROBE FIXED 2026-10-04 (tests/test_device_hold_key_and_probe.py); lease and recorded release a decision | yes | Lease, recorded release, canonical key, no flock probe |
 | R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE | yes | Broadcast mutations; live holder strip; previews subscribe |
 | R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
@@ -722,6 +722,28 @@ holder probe takes a shared `flock` (device_ops.py:244-265), which can make a re
 fail and read the truncated file as operation "?" by "unknown", held for decades
 (:229-238, 327). The in-flight panel polls that probe every 5 s, and 1.5 s during an apply
 (static/js/nmas_in_flight.js:91-96).
+
+*The key and the probe, FIXED 2026-10-04 (tests/test_device_hold_key_and_probe.py):*
+- **One key per list.** Every place `device_ops` names a list's folder or in-process key uses
+  `config.list_slug` (`_list_key`). A process holding a device under the slug now refuses
+  the display name, and the reverse.
+- **No false refusals from the probe.** An acquire that meets an EMPTY holder record (a
+  probe's instant shared lock) retries for up to ~100 ms, and refuses only a real holder.
+- **Measured.** Another process probing in a tight loop for 6 s while 300 acquires ran: no
+  refusal.
+- **Controls**, each failing its aimed test. The old key took two locks for one device. No
+  retry reproduced the audit's exact words, "r9 is being ? by unknown … held for 497538 h",
+  15 times in 300.
+- **A DECISION for the operator (the lease, and a recorded release):** a suspended CLI or a
+  deadlocked thread holds a device until its process ends, and nothing can release it.
+  - (A) A lease: a hold whose progress has not moved for `STALL_AFTER_SECONDS` may be taken
+    over by a person, recorded with who and why. This is recommended: the refusal already
+    says "it may be stuck" at ten minutes, so the lease turns that sentence into an action.
+    It is a control on the refusal, so it needs a mockup first.
+  - (B) An administrator's release from the in-flight panel, recorded. Also a control, and
+    the same mockup.
+  - (C) Neither, until roles exist (9.I), with the process restart as the remedy.
+  Recommendation: (A) on v2's refusal card, with (C) until the card is signed off.
 
 **R27. Nobody is told what another person is doing** (live-4, live-14, intent-20,
 approvals-18, locks-13). Invalidation keys go only in the mutating request's own response

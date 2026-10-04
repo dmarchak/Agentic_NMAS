@@ -83,6 +83,12 @@ def _words(holder: dict) -> tuple:
 #: so ten minutes without a step is past anything a working operation does.
 STALL_AFTER_SECONDS = 600
 
+#: An acquire meeting an EMPTY holder record retries this often, this far apart (R26): a
+#: probe's shared lock lasts microseconds, so ~100 ms is far past it, and short enough that a
+#: real refusal still answers at once.
+PROBE_RETRIES = 5
+PROBE_WAIT_S = 0.02
+
 
 def _for(seconds: float) -> str:
     seconds = max(0, int(seconds))
@@ -165,10 +171,10 @@ def held(list_name: str) -> list:
     out, seen = [], set()
     with _mu:
         for (lst, host), mine in _held.items():
-            if lst == list_name.lower():
+            if lst == _list_key(list_name):
                 out.append(dict(mine["holder"]))
                 seen.add(host)
-    folder = os.path.join(config.DATA_DIR, "device_ops", _safe(list_name.lower()))
+    folder = os.path.join(config.DATA_DIR, "device_ops", _list_key(list_name))
     try:
         names = sorted(os.listdir(folder))
     except OSError:
@@ -308,7 +314,7 @@ def interrupted(list_name: str) -> list:
     `found_at` (None while still in the lock file). A READ: it creates nothing."""
     from modules import config
 
-    folder = os.path.join(config.DATA_DIR, "device_ops", _safe(list_name.lower()))
+    folder = os.path.join(config.DATA_DIR, "device_ops", _list_key(list_name))
     out, seen = [], set()
 
     def add(rec, found_at):
@@ -356,10 +362,19 @@ def _safe(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", name or "") or "_"
 
 
+def _list_key(list_name: str) -> str:
+    """ONE key for a list, its folder slug (CONCURRENCY_AUDIT R26): the key kept `-` and `.`
+    where `config.list_slug` collapses them to `_`, so a command-line tool given the slug and
+    the app given the display name took two locks for one device."""
+    from modules.config import list_slug
+
+    return list_slug(list_name or "")
+
+
 def _path(list_name: str, hostname: str) -> str:
     from modules import config
 
-    return os.path.join(config.DATA_DIR, "device_ops", _safe(list_name.lower()),
+    return os.path.join(config.DATA_DIR, "device_ops", _list_key(list_name),
                         f"{_safe(hostname)}.lock")
 
 
@@ -377,7 +392,7 @@ def _read_holder_file(path: str, hostname: str) -> dict:
 
 def holder(list_name: str, hostname: str):
     """Who holds this device now, or None. A READ: it creates nothing."""
-    key = (list_name.lower(), hostname)
+    key = (_list_key(list_name), hostname)
     with _mu:
         mine = _held.get(key)
         if mine:
@@ -407,7 +422,7 @@ def holder(list_name: str, hostname: str):
 def acquire(list_name: str, hostname: str, operation: str, actor: str,
             detail: str = "", ip: str = "") -> None:
     """Hold *hostname* for *operation*, or raise :class:`DeviceBusy`."""
-    key = (list_name.lower(), hostname)
+    key = (_list_key(list_name), hostname)
     me = threading.get_ident()
     now = time.time()
     info = {"device": hostname, "list": list_name, "operation": operation,
@@ -431,14 +446,23 @@ def acquire(list_name: str, hostname: str, operation: str, actor: str,
             path = _path(list_name, hostname)
             secure_dir(os.path.dirname(path))
             fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                os.close(fd)
-                # Not holder(): that takes _mu, which this thread holds, and
-                # the first version deadlocked here (found by the cross-process
-                # test, which hung rather than failed).
-                raise DeviceBusy(_read_holder_file(path, hostname)) from None
+            for attempt in range(PROBE_RETRIES + 1):
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    # Not holder(): that takes _mu, which this thread holds, and
+                    # the first version deadlocked here (found by the cross-process
+                    # test, which hung rather than failed).
+                    found = _read_holder_file(path, hostname)
+                    # An EMPTY record is a probe's instant shared lock (`holder()`,
+                    # `_leftover()`), not a holder: a real holder writes its record as it
+                    # takes the lock. Waited out briefly, never reported as "?" by
+                    # "unknown" (CONCURRENCY_AUDIT R26).
+                    if found.get("operation") != "?" or attempt == PROBE_RETRIES:
+                        os.close(fd)
+                        raise DeviceBusy(found) from None
+                    time.sleep(PROBE_WAIT_S)
             # A record left in the file means the last holder's process ENDED while it
             # held the device (release empties it first). Kept before it is overwritten:
             # it is the only trace of an operation that did not finish (R5).
@@ -462,7 +486,7 @@ def acquire(list_name: str, hostname: str, operation: str, actor: str,
 
 
 def release(list_name: str, hostname: str) -> None:
-    key = (list_name.lower(), hostname)
+    key = (_list_key(list_name), hostname)
     with _mu:
         mine = _held.get(key)
         if not mine or mine["thread"] != threading.get_ident():
