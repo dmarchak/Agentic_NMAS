@@ -178,11 +178,18 @@ class TestTheReaderAsksOncePerFailedTip:
 def _source(ci, monkeypatch, state="behind"):
     from routes import health
 
+    import time
+
     monkeypatch.setattr(health, "_COMMIT", "a" * 40)
+
+    def ago(seconds):
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - seconds))
+    # Dated from NOW (C441): a fixed date crossed attention.BEHIND_TOO_LONG_S (20 h) at
+    # 2026-10-04T20:30Z, and the 20 h rule's own row then failed this file's tests.
     value = {"running": "a" * 40, "tip": "b" * 40, "state": state, "behind": 2,
-             "branch": "main", "behind_since": "2026-10-04T00:30:00Z", "ci": ci}
+             "branch": "main", "behind_since": ago(3600), "ci": ci}
     return attention.pushed_source(cached={"state": "ok", "doc": {"last_good": {
-        "value": value, "value_at": "2026-10-04T00:40:00Z"}, "stale_after_seconds": 750}})
+        "value": value, "value_at": ago(3000)}, "stale_after_seconds": 750}})
 
 
 def _failed(**extra):

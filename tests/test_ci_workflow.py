@@ -91,9 +91,12 @@ def test_it_installs_the_hosts_versions_and_never_gates_on_coverage(path):
 
 
 @pytest.mark.parametrize("path", WORKFLOWS)
-def test_superseded_runs_are_cancelled_and_docs_are_skipped(path):
+def test_superseded_runs_are_cancelled_except_on_main_and_docs_are_skipped(path):
+    """C440 (the operator, 2026-10-04): a run on main is never cancelled, since the Update
+    button needs every commit's verdict (C436); a run on any other ref still is."""
     doc, _ = _load(path)
-    assert (doc.get("concurrency") or {}).get("cancel-in-progress") is True
+    assert (doc.get("concurrency") or {}).get("cancel-in-progress") == \
+        "${{ github.ref != 'refs/heads/main' }}"
     triggers = doc.get(True) or doc.get("on")      # YAML 1.1 reads `on` as True
     assert "docs/**" in (triggers.get("push") or {}).get("paths-ignore", [])
 

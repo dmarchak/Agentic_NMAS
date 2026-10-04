@@ -19,11 +19,14 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same ref makes the older run irrelevant: cancel it,
-# rather than spend minutes on a result nobody will read.
+# On any other ref a newer push makes the older run irrelevant: cancel it.
+# On main every commit keeps its run (C440, the operator, 2026-10-04): the
+# Update button offers the newest commit CI PASSED (C436), and a cancelled
+# run is no verdict, so cancelling there left only a batch's last commit
+# installable. Public repository, standard runner: the runs cost nothing.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
