@@ -3483,6 +3483,9 @@ MinIO's trace shows only `lake-archive` on the bucket at the next :15
 - `lake-archive` holds only `lake-archive-write`.
 - A manual run exited 0.
 - The administrator credential's backup is deleted.
+- **VERIFIED by the scheduled run (the operator):** the 19:15 UTC run, as `lake-archive`,
+  wrote `mdt-raw.2026-10-04-1791140105.json` (9.0 MiB) to `raw-telemetry/mdt/`. The narrow
+  user can write.
 
 ### 14.12 Host step: Loki keeps logs 90 days (the operator's)
 
@@ -3592,6 +3595,15 @@ systemctl is-active thanos-query                                         # activ
 ps -C thanos -o args= | grep -c -- '--query.auto-downsampling'           # 1
 curl -s -G 127.0.0.1:19193/api/v1/query --data-urlencode 'query=count(up)'   # status success
 ```
+
+**DONE 2026-10-04 (the operator):**
+- Checked first: 7 × 5 m blocks and 1 × 1 h block present, and the running `thanos-query`
+  command line matched the step exactly.
+- The drop-in `/etc/systemd/system/thanos-query.service.d/auto-downsampling.conf` is
+  installed and the service restarted. It is active, with the flag in the running process,
+  and `count(up)` = 39.
+- 14.10 to 14.14 are all done. One finding from it goes to Stage 9's hardening list: Thanos
+  Query listens on every address with no login (C438).
 
 ### 14.14 Host step: the tool reads history from Thanos (the operator's)
 

@@ -892,6 +892,17 @@ the helper (the commit's Host-Step-After):*
   pass its sync stage, then fail closed at the next: `startup_file` checks the new hash is in
   the lab's startup file. The persist stops, but naming the hash rather than the skipped
   sync.
+- **Installed on the host (the operator, 2026-10-04).** They reviewed the diff (the flock
+  taken before the read and held to the replace and prune; none for `--addresses`), and the
+  check printed 1, a match.
+- **The wait is bounded (C437, the operator's follow-up the same day).** The helper's flock
+  had no timeout, so one hung helper would make every later rotation wait forever. A waiter
+  now gives up after `LOCK_WAIT_S` (5 s; one whole run measured 35 ms) and refuses, changing
+  nothing. Its refusal names the lock and the holder its record names (pid, running or not,
+  act, address, since), or says no holder is recorded. The holder writes that record into the
+  lock file once it has the lock. Test: `test_a_hung_holder_is_waited_for_a_bounded_time_then_named`,
+  where a second process holds the lock, both with a record and without. Three controls
+  fail it: a 20 s bound, no holder words, and no record written.
 
 **R41. The remote publication acknowledgement records values nobody was shown** (confirms-30,
 added on review). `POST /remote/acknowledge` checks only that the typed text names the gated

@@ -6066,6 +6066,11 @@ the environment does.
       manager's path and shows no LLDP neighbour, because the manager speaks no LLDP. So the
       candidate list is LLDP's silent ports minus every port NetBox cables or the management
       path name, read per device and confirmed by the operator before any shutdown;
+  - **Thanos Query answers anyone on the LAN** (C438; the operator, 2026-10-04, after 14.13).
+    It listens on `0.0.0.0:19193` (HTTP) and `0.0.0.0:19094` (gRPC) with no login, so the
+    whole metrics history is readable from the LAN. Grafana and the tool reach it on
+    localhost. The step: first read what else connects to both ports (read-only, on the
+    host), then propose binding both to `127.0.0.1` as its own host step;
 
   - SNMPv3 (C249, the operator, 2026-09-30): nothing the tool runs speaks it, so every
     device must run a community. REQUIRED before Stage 10's release. **Designed the same

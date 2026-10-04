@@ -243,22 +243,66 @@ def write_checked(path, before, after, check, no_backup):
     return backup
 
 
-def hold_router_db(path):
+LOCK_WAIT_S = 5.0
+# One whole run of this helper measured 35 ms (200 rows, 2026-10-04), so a lock held for
+# seconds is a hung holder, never a busy one. The bound is not 2.5x that run: rotations
+# queue, and a fleet rotation can put several writers behind one another. 5 s is "a few
+# seconds" (the operator, 2026-10-04), and it covers a queue of about a hundred such runs.
+
+
+def hold_router_db(path, act, ip):
     """An exclusive `flock` beside *path*, held until this process ends (CONCURRENCY_AUDIT R40).
 
     Two rotations of different devices each hold only their own device, so both ran this
     helper at once: each read the whole of router.db, replaced its own row and wrote the file
     back, and the later replace put the other device's row back to its old password, so
     Oxidized could no longer log in to it. Every write here now reads and replaces under this
-    lock; a second writer waits (a write takes milliseconds). The lock file is
-    `.router.db.nmas-lock`, never a name the backup pruning counts."""
+    lock; a second writer waits (a write takes milliseconds), for at most LOCK_WAIT_S, and then
+    refuses, changing nothing and naming the lock and the holder its record names (the
+    operator, 2026-10-04: an unbounded wait behind a hung helper would hang every later
+    rotation). The lock file is `.router.db.nmas-lock`, never a name the backup pruning
+    counts; the holder writes its pid, act, address and start time into it."""
     import fcntl
 
     lock = os.path.join(os.path.dirname(path) or ".",
                         f".{os.path.basename(path)}.nmas-lock")
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, stat.S_IRUSR | stat.S_IWUSR)
-    fcntl.flock(fd, fcntl.LOCK_EX)
+    deadline = time.monotonic() + LOCK_WAIT_S
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                _fail(f"{lock} is still held after {LOCK_WAIT_S:g} s; nothing was changed. "
+                      f"{_holder_words(lock)}", lock=lock)
+            time.sleep(0.05)
+    os.ftruncate(fd, 0)
+    os.pwrite(fd, json.dumps({"pid": os.getpid(), "since": time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "act": act, "ip": ip}).encode(), 0)
     return fd
+
+
+def _holder_words(lock):
+    """Who holds *lock*, from the record its holder writes once it has the lock. A holder that
+    has not written yet (the first milliseconds), or a helper older than the record, leaves
+    none, and this says so rather than guessing."""
+    try:
+        with open(lock, encoding="utf-8") as fh:
+            held = json.loads(fh.read() or "{}")
+        pid = int(held["pid"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return "No holder is recorded in it."
+    try:
+        os.kill(pid, 0)
+        alive = "running"
+    except ProcessLookupError:
+        alive = "no longer running"
+    except PermissionError:
+        alive = "running"
+    return (f"Recorded holder: pid {pid} ({alive}), {held.get('act', '?')} for "
+            f"{held.get('ip') or '?'} since {held.get('since', '?')}.")
 
 
 def pruned(path, backup):
@@ -295,7 +339,7 @@ def main():
     except (ValueError, OSError) as exc:
         _fail(str(exc))
     if not args.addresses and os.path.exists(path):
-        hold_router_db(path)           # from the read below to the replace (R40)
+        hold_router_db(path, "remove" if args.remove else "rotate", args.ip)   # read→replace (R40)
     if args.remove or args.addresses:
         if not os.path.exists(path):
             _fail(f"{path} does not exist")
