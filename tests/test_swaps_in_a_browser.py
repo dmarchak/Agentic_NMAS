@@ -48,8 +48,8 @@ return out;
 
 #: Controls this sweep found failing for another reason, each a registered finding: its answer is
 #: checked to STILL fail, so an exemption leaves the moment its finding is fixed.
-KNOWN = {"/v2/device/r3/persist": "C410: the persist preview answers 500 (InvalidToken) for a "
-                                  "device whose stored credential the key cannot open"}
+#: Empty since C410 was fixed (2026-10-04): the persist preview refuses r3 by name.
+KNOWN = {}
 
 CLICK = """
 var els = document.querySelectorAll('a[hx-get], button[hx-get]');

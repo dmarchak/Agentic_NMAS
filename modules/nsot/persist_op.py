@@ -71,7 +71,7 @@ def plan(list_name: str, hostname: str) -> dict:
     """Everything persist would do, what it will not, and why it would refuse.
     Reads only: the registry, the inventory and the check's record. It never
     contacts the device, so a preview is safe to repeat."""
-    from modules.device import decrypt_field, load_saved_devices
+    from modules.device import load_saved_devices, open_stored
     from modules.nsot.listref import UnknownList, resolve
 
     out = {"ok": True, "list_name": list_name, "hostname": hostname, "refusals": [],
@@ -95,8 +95,13 @@ def plan(list_name: str, hostname: str) -> dict:
     if row and not row.get("device_type"):
         refuse("device_type", f"{hostname} has no device_type in the inventory, and the "
                               "driver that saves it is not guessed")
-    if row and not decrypt_field(row.get("password", "")):
-        refuse("credential", f"the inventory holds no credential for {hostname}")
+    if row:
+        # Opened by the one reader that names an unopenable value (C410: it raised, a 500).
+        password, unopened = open_stored(row)
+        if unopened:
+            refuse("credential", unopened)
+        elif not password:
+            refuse("credential", f"the inventory holds no credential for {hostname}")
 
     out["ip"] = row.get("ip", "")
     out["device_type"] = row.get("device_type", "")

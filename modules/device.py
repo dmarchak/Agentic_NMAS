@@ -66,6 +66,22 @@ def decrypt_field(value: str) -> str:
     return fernet.decrypt(value.encode()).decode()
 
 
+def open_stored(row: dict, field: str = "password") -> tuple:
+    """``(value, "")`` for a row's stored credential, ``("", "")`` when it holds none, or
+    ``("", why)`` when this host's key cannot open it, naming the device and the error (C410,
+    C423: a preview that opened it crashed instead of refusing, as C384's export no longer
+    does). Never raises for the value."""
+    raw = row.get(field) or ""
+    if not raw:
+        return "", ""
+    try:
+        return decrypt_field(raw), ""
+    except Exception as exc:                   # noqa: BLE001 (InvalidToken, a malformed value)
+        return "", (f"{row.get('hostname') or '(no name)'}'s stored {field} could not be "
+                    f"opened with this host's key ({type(exc).__name__}): enter it again for "
+                    "the device, or restore the key that sealed it")
+
+
 def _list_name_for_path(filename: str) -> str:
     """Reverse a ``data/lists/{slug}/devices.csv`` path to its list name."""
     try:

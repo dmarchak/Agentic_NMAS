@@ -617,10 +617,12 @@ def _blob(path: str) -> str:
 def breakglass_covers(payload: dict, list_name: str, row: dict) -> str:
     """"" if *payload* holds this device's CURRENT credential, else why not.
     Compared in memory; nothing is printed or returned but the verdict."""
-    from modules.device import decrypt_field
+    from modules.device import open_stored
 
     want_user = row.get("username", "")
-    want_pw = decrypt_field(row.get("password", "")) if row.get("password") else ""
+    want_pw, unopened = open_stored(row)
+    if unopened:
+        return unopened
     if not want_pw:
         return "the CSV row holds no password to compare"
     hits = [e for e in payload.get("devices", [])
@@ -652,7 +654,7 @@ def breakglass_logged(list_name: str, row: dict, exports: dict = None) -> dict:
 
     from modules import breakglass as bg
     from modules.config import DATA_DIR
-    from modules.device import decrypt_field
+    from modules.device import open_stored
 
     limit = ("This trusts the export log on this host: it records what an export WROTE, "
              "and cannot show the file still exists or that its passphrase is known. "
@@ -673,7 +675,10 @@ def breakglass_logged(list_name: str, row: dict, exports: dict = None) -> dict:
                 "why": f"no break-glass export of {list_name} is logged on this host. "
                        f"Export one ({cmd}), copy it off the host, then preview again"}
     host = row.get("hostname", "")
-    pw = decrypt_field(row.get("password", "")) if row.get("password") else ""
+    # Opened by the one reader that names an unopenable value (C423: it raised).
+    pw, unopened = open_stored(row)
+    if unopened:
+        return {"ok": False, "export": None, "statement": limit, "why": unopened}
     if not pw:
         return {"ok": False, "export": None, "statement": limit,
                 "why": "the CSV row holds no password to compare"}
