@@ -76,7 +76,10 @@ class TestTheRegistryAndTheHostStepCheck:
                               "oxidized-cred": ("job_health:helper:oxidized-cred",
                                                 ("differs", "not_installed")),
                               "topology-renderer": ("job_health:helper:topology-renderer",
-                                                    ("differs",))}
+                                                    ("differs",)),
+                              # C443: the pin's own check; an unpinned helper reads differs.
+                              "oxidized-pin": ("job_health:helper:oxidized-cred",
+                                               ("differs",))}
 
 
 @pytest.fixture

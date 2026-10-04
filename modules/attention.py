@@ -2157,8 +2157,13 @@ def host_steps_source(owed=None) -> dict:
     rows = [row(source="host_steps", kind="owed", key=s["id"], level="warning",
                 what=(f"A host step for {', '.join(x[:10] for x in s.get('shas') or [s['sha']])}"
                       f" is still to do: {s['step']}"),
-                cause=(f"checked: {s['check_detail']}" if s["check_state"] != "not_checkable"
-                       else "it is done after the update, and nothing can check it"),
+                cause=((f"checked: {s['check_detail']}" if s["check_state"] != "not_checkable"
+                        else "it is done after the update, and nothing can check it")
+                       # One artifact, one row (C442): the newest step's words lead.
+                       + (f". It supersedes the step of "
+                          f"{', '.join(x[:10] for x in s['superseded'])}: one check, one "
+                          "artifact, so doing this one does each" if s.get("superseded")
+                          else "")),
                 operands={"check": s.get("check") or "", "state": s["check_state"]},
                 action={"label": ("Open the Update page and say it is done"
                                   if s["check_state"] == "not_checkable"

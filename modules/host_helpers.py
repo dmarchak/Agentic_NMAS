@@ -52,8 +52,12 @@ def registry() -> list:
 
 
 def folds() -> dict:
-    """``{check: (job-health row id, states it folds)}``, from the registry."""
-    return {h["check"]: (f"job_health:{h['unit']}", tuple(h["folds"])) for h in registry()}
+    """``{check: (job-health row id, states it folds)}``, from the registry. The helper's pin
+    has its own check (C443) and no row of its own: an unpinned helper is the helper's row,
+    reading ``differs``, so a pin step owed takes that row too (one cause, one row)."""
+    out = {h["check"]: (f"job_health:{h['unit']}", tuple(h["folds"])) for h in registry()}
+    out["oxidized-pin"] = (out["oxidized-cred"][0], ("differs",))
+    return out
 
 
 def sources() -> list:

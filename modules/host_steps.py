@@ -136,8 +136,24 @@ def check_oxidized_helper(root: str = ROOT) -> dict:
         if st.get("installed_sha") else "")}
 
 
+def check_oxidized_pin(root: str = ROOT) -> dict:
+    """Done when the helper's pin (`/etc/nmas/oxidized-cred.conf`) is a root-owned file
+    writable by no one else naming the router.db this tool is configured with: what a pin
+    step DID (C443), never the helper's hash, which every helper release changes. No Oxidized
+    configured: nothing to pin."""
+    from modules.nsot import credential_rotation as cr
+    from modules.settings_schema import get_setting
+
+    pin = cr.helper_pin_status()
+    if pin["ok"]:
+        return {"state": "done", "detail": pin["reason"]}
+    if not str(get_setting("oxidized_url", "") or "").strip():
+        return {"state": "done", "detail": "no Oxidized is configured: nothing to pin"}
+    return {"state": "not_done", "detail": pin["reason"]}
+
+
 CHECKS = {"topology-renderer": check_topology_renderer, "updater": check_updater,
-          "oxidized-cred": check_oxidized_helper}
+          "oxidized-cred": check_oxidized_helper, "oxidized-pin": check_oxidized_pin}
 
 
 def check(step: dict, root: str = ROOT) -> dict:
@@ -197,13 +213,30 @@ def _log(root: str, rng: str, limit: int, run=subprocess.run) -> str:
     return p.stdout
 
 
+#: A check a PUSHED commit named that does not test what its step did, corrected by commit:
+#: history is never rewritten, so the correction lives here, with its reason (C443, the
+#: operator, 2026-10-04: a step must be checked by what THAT step did).
+CHECK_CORRECTIONS = {
+    "487b1dafcd189b48ecff0121272ec591cfff09b0": (
+        "oxidized-pin",
+        "its step pinned the helper to a router.db; it named [oxidized-cred], the helper's "
+        "hash, so every later helper release reopened it. Its re-install half is superseded "
+        "by each later [oxidized-cred] step"),
+}
+
+
 def steps_in(text: str, when: str = None) -> list:
-    """[{sha, step, check, when, id}] from `git log` output, oldest first."""
+    """[{sha, step, check, when, id}] from `git log` output, oldest first. A step whose
+    commit's check is corrected (`CHECK_CORRECTIONS`) carries the corrected one, and
+    ``check_corrected`` says why."""
     out = []
     for chunk in reversed(text.split("\x1e")):
         sha, _sep, body = chunk.strip().partition("\x1f")
         for s in parse(body):
             if when is None or s["when"] == when:
+                fix = CHECK_CORRECTIONS.get(sha)
+                if fix and s["check"]:
+                    s = dict(s, check=fix[0], check_corrected=fix[1])
                 out.append(dict(s, sha=sha, id=step_id(sha, s["step"])))
     return out
 
@@ -234,17 +267,26 @@ def owed(running: str, root: str = ROOT, log_text: str = None) -> dict:
 
 
 def grouped(steps: list) -> list:
-    """One row per STEP, naming every commit that asked for it (the operator,
-    2026-10-01: "re-install the updater's copy of scripts/nmas-deploy" was
-    listed twice, for 4a61081 and dde8495, and it is one re-install). Keyed on
-    the step's words and its check, oldest commit first; ``sha`` and ``id``
-    stay the first commit's, and ``shas``/``ids`` hold them all."""
+    """One row per ARTIFACT, naming every commit that asked for it.
+
+    A checked step is keyed on its CHECK alone (C442, the operator, 2026-10-04: three
+    `[oxidized-cred]` re-installs, each worded differently, were three rows cleared by one
+    install). The check tests one artifact as it is now, so the NEWEST step's words lead, and
+    the older steps are ``superseded`` by it: doing the newest does each. An unchecked step is
+    keyed on its words (2026-10-01: one re-install listed for 4a61081 and dde8495), and keeps
+    the first commit's ``sha`` and ``id`` (a person's "It is done" is recorded against it).
+    ``shas``/``ids`` hold every commit, oldest first."""
     out, by = [], {}
     for s in steps:
-        key = (s["step"], s.get("check") or "")
+        key = ("check", s["check"]) if s.get("check") else ("step", s["step"])
         if key not in by:
-            by[key] = dict(s, shas=[], ids=[])
+            by[key] = dict(s, shas=[], ids=[], superseded=[])
             out.append(by[key])
-        by[key]["shas"].append(s["sha"])
-        by[key]["ids"].append(s["id"])
+        g = by[key]
+        if key[0] == "check" and g["shas"]:
+            g.update(step=s["step"], sha=s["sha"], id=s["id"], when=s["when"])
+        g["shas"].append(s["sha"])
+        g["ids"].append(s["id"])
+        if key[0] == "check":
+            g["superseded"] = g["shas"][:-1]
     return out
