@@ -6035,6 +6035,23 @@ the environment does.
     `transport input ssh`. The hardening is one bulk-intent change of the vty stanza's transport
     to `ssh` on r1 to r4, deployed through the normal path (C307 makes its rollback per line);
     the switches' vty lines to be read and decided with it;
+  - **The switches, read 2026-10-04** (the operator's notes from s3's page; every committed
+    golden on the host read, read-only, and Prometheus's LLDP table):
+    - **vty transport:** s1 to s4 all run `transport input telnet ssh` on `line vty 0 4` AND
+      `line vty 5 15`. The routers' item above extends to them: the same one bulk-intent change
+      to `ssh`, both stanzas, all four switches. The routers' `line vty 5 15` is not in their
+      goldens, so its transport is the platform default, unmeasured: read it before the change.
+    - **`ip http server`:** all four switches run it, and nothing the tool runs uses it (the
+      operator, for s3). Remove it on all four (a removal, so Mode B, one measured shape). The
+      routers run only `ip http secure-server`, which RESTCONF uses: not this item.
+    - **Unused ports:** no switch's Gi0/1 has an LLDP neighbour. On s1 and s2 it is an
+      untouched default port, not shut down; on s3 and s4 it carries C428's leftover
+      description (to become "spare"). **Candidates for `shutdown` come only from ports with
+      no link in the topology, and LLDP alone is not the topology:** s3's Gi1/1 carries the
+      manager's path and shows no LLDP neighbour, because the manager speaks no LLDP. So the
+      candidate list is LLDP's silent ports minus every port NetBox cables or the management
+      path name, read per device and confirmed by the operator before any shutdown;
+
   - SNMPv3 (C249, the operator, 2026-09-30): nothing the tool runs speaks it, so every
     device must run a community. REQUIRED before Stage 10's release. **Designed the same
     day, tied to the monitoring profile (P.9): the profile's SNMP section produces secure SNMP
