@@ -20,12 +20,12 @@ def client(monkeypatch):
     secrets = {"proxmox_token_secret": "0000-token-secret"}
     import modules.integrations.base as base
 
-    # Both bindings: the client reads its own keys through P.get_setting and
-    # its URL through the base class's (CLAUDE.md: *a test that passes alone
-    # and fails in the suite is telling you which binding it is missing*).
-    for mod in (P, base):
+    # One binding since P.8 step 3: every client reads through the base class's
+    # `_setting` and `_secret`, so the base's `get_setting` and `get_secret` are
+    # the only ones to patch.
+    for mod in (base,):
         monkeypatch.setattr(mod, "get_setting", lambda k, d=None: settings.get(k, d))
-    monkeypatch.setattr(P, "get_secret", lambda k, d="": secrets.get(k, d))
+    monkeypatch.setattr(base, "get_secret", lambda k, d="": secrets.get(k, d))
     c = P.ProxmoxIntegration()
     c._settings, c._secrets = settings, secrets
     return c

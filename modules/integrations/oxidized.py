@@ -1,8 +1,6 @@
 """Oxidized (oxidized-web REST) integration (Phase 0: connection test only)."""
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
-from modules.settings_schema import get_setting
 
 
 class OxidizedIntegration(IntegrationClient):
@@ -14,9 +12,9 @@ class OxidizedIntegration(IntegrationClient):
 
     def session(self):
         s = super().session()
-        user = get_setting("oxidized_username", "")
+        user = self._setting("oxidized_username", "")
         if user:
-            s.auth = (user, get_secret("oxidized_password"))
+            s.auth = (user, self._secret("oxidized_password"))
         return s
 
     def test_connection(self) -> dict:

@@ -5,7 +5,6 @@ embed. The built-in CDP/LLDP/OSPF/BGP discovery is unaffected.
 """
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
 
 
 class TopologyServiceIntegration(IntegrationClient):
@@ -16,7 +15,7 @@ class TopologyServiceIntegration(IntegrationClient):
     plain_keys = ("topology_service_type", "topology_service_verify_tls")
 
     def _auth_headers(self) -> dict:
-        token = get_secret("topology_service_token")
+        token = self._secret("topology_service_token")
         return {"Authorization": f"Bearer {token}"} if token else {}
 
     def test_connection(self) -> dict:

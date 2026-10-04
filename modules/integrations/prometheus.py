@@ -1,8 +1,6 @@
 """Prometheus / Thanos Query integration (Phase 0: connection test only)."""
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
-from modules.settings_schema import get_setting
 
 
 class PrometheusIntegration(IntegrationClient):
@@ -14,17 +12,17 @@ class PrometheusIntegration(IntegrationClient):
                   "prometheus_targets_dir")
 
     def _auth_headers(self) -> dict:
-        mode = get_setting("prometheus_auth_mode", "none")
+        mode = self._setting("prometheus_auth_mode", "none")
         if mode == "bearer":
-            token = get_secret("prometheus_bearer_token")
+            token = self._secret("prometheus_bearer_token")
             return {"Authorization": f"Bearer {token}"} if token else {}
         return {}
 
     def session(self):
         s = super().session()
-        if get_setting("prometheus_auth_mode", "none") == "basic":
-            s.auth = (get_setting("prometheus_username", ""),
-                      get_secret("prometheus_password"))
+        if self._setting("prometheus_auth_mode", "none") == "basic":
+            s.auth = (self._setting("prometheus_username", ""),
+                      self._secret("prometheus_password"))
         return s
 
     def test_connection(self) -> dict:

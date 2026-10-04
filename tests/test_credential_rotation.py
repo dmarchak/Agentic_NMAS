@@ -1426,8 +1426,7 @@ def _patch_settings(monkeypatch, values):
     """
     stub = lambda k, d=None: values.get(k, d)              # noqa: E731
     for target in ("modules.settings_schema.get_setting",
-                   "modules.integrations.base.get_setting",
-                   "modules.integrations.oxidized.get_setting"):
+                   "modules.integrations.base.get_setting"):
         monkeypatch.setattr(target, stub)
 
 
@@ -2830,8 +2829,8 @@ class TestOneOwnerForTheOxidizedConnection:
         self._settings(monkeypatch, {"oxidized_url": "http://ox:8888",
                                      "oxidized_username": "oxi"})
         # `oxidized.py` holds its own `get_secret` too — same binding rule.
-        monkeypatch.setattr("modules.integrations.oxidized.get_secret",
-                            lambda _k: "s3cret")
+        monkeypatch.setattr("modules.integrations.base.get_secret",
+                            lambda _k, _d="": "s3cret")
         client, _refusal = cr.oxidized_client()
         assert client.session().auth == ("oxi", "s3cret")
 
@@ -2914,8 +2913,8 @@ class TestOneOwnerForTheOxidizedConnection:
         not become a second transport, so the auth still rides along."""
         self._settings(monkeypatch, {"oxidized_url": "http://from-settings",
                                      "oxidized_username": "oxi"})
-        monkeypatch.setattr("modules.integrations.oxidized.get_secret",
-                            lambda _k: "s")
+        monkeypatch.setattr("modules.integrations.base.get_secret",
+                            lambda _k, _d="": "s")
         client, refusal = cr.oxidized_client("http://explicit/")
         assert refusal is None
         assert client.url == "http://explicit"

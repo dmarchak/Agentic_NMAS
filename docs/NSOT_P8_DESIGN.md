@@ -226,7 +226,14 @@ pages.
      is kept.
    - Nothing reads it yet; step 3 gives the integration clients a list.
 3. **Integration clients built for a list.** Reads may derive the active list; writes carry
-   theirs.
+   theirs. **BUILT 2026-10-04:**
+   - Every client takes `list_name` (`get_integration(name, list_name=…)`) and reads only
+     through the base class's `_setting` and `_secret`, which resolve through `list_settings`.
+   - `save_config` for a list writes that list's store.
+   - `tests/test_integrations_read_for_a_list.py` parses `modules/integrations/` and refuses a
+     direct `get_setting` or `get_secret` outside the base class, so a later client cannot
+     read past its list.
+   - No caller passes a list yet; that is step 4.
 4. **Thread the list** through the "one level up" call sites, then make `get_setting` refuse
    a network key.
 5. **Readers loop lists;** caches are keyed by group identity.

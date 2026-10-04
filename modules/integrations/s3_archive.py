@@ -9,8 +9,6 @@ rather than raising.
 import logging
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
-from modules.settings_schema import get_setting
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +21,7 @@ class S3ArchiveIntegration(IntegrationClient):
     plain_keys = ("s3_bucket", "s3_region", "s3_prefix", "s3_verify_tls")
 
     def is_configured(self) -> bool:
-        return bool(self.url and get_setting("s3_bucket", ""))
+        return bool(self.url and self._setting("s3_bucket", ""))
 
     def test_connection(self) -> dict:
         if not self.is_configured():
@@ -40,12 +38,12 @@ class S3ArchiveIntegration(IntegrationClient):
         try:
             client = Minio(
                 host,
-                access_key=get_secret("s3_access_key"),
-                secret_key=get_secret("s3_secret_key"),
+                access_key=self._secret("s3_access_key"),
+                secret_key=self._secret("s3_secret_key"),
                 secure=secure,
-                region=get_setting("s3_region", "") or None,
+                region=self._setting("s3_region", "") or None,
             )
-            bucket = get_setting("s3_bucket", "")
+            bucket = self._setting("s3_bucket", "")
             if client.bucket_exists(bucket):
                 return {"ok": True, "message": f"Bucket '{bucket}' reachable"}
             return {"ok": False, "error": f"Bucket '{bucket}' not found"}

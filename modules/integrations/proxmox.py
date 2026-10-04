@@ -30,8 +30,6 @@ import warnings
 import logging
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
-from modules.settings_schema import get_setting
 
 log = logging.getLogger(__name__)
 
@@ -48,17 +46,17 @@ class ProxmoxIntegration(IntegrationClient):
 
     @property
     def node(self) -> str:
-        return (get_setting("proxmox_node", "") or "").strip()
+        return (self._setting("proxmox_node", "") or "").strip()
 
     @property
     def storage(self) -> str:
-        return (get_setting("proxmox_backup_storage", "") or "").strip()
+        return (self._setting("proxmox_backup_storage", "") or "").strip()
 
     def vmids(self) -> list:
         """``proxmox_backup_vmids`` is text (``"100,102"``), so the settings
         card can carry it; a token that is not a number is an error, never
         silently dropped, because a dropped VM is a VM nobody watches."""
-        raw = str(get_setting("proxmox_backup_vmids", "") or "")
+        raw = str(self._setting("proxmox_backup_vmids", "") or "")
         out, bad = [], []
         for token in raw.replace(" ", ",").split(","):
             if not token:
@@ -71,8 +69,8 @@ class ProxmoxIntegration(IntegrationClient):
     def missing_settings(self) -> list:
         missing = [k for k in ("proxmox_url", "proxmox_node", "proxmox_token_id",
                                "proxmox_backup_storage", "proxmox_backup_vmids")
-                   if not str(get_setting(k, "") or "").strip()]
-        if not get_secret("proxmox_token_secret", ""):
+                   if not str(self._setting(k, "") or "").strip()]
+        if not self._secret("proxmox_token_secret", ""):
             missing.append("proxmox_token_secret")
         return missing
 
@@ -80,8 +78,8 @@ class ProxmoxIntegration(IntegrationClient):
         return not self.missing_settings()
 
     def _auth_headers(self) -> dict:
-        token_id = (get_setting("proxmox_token_id", "") or "").strip()
-        secret = get_secret("proxmox_token_secret", "")
+        token_id = (self._setting("proxmox_token_id", "") or "").strip()
+        secret = self._secret("proxmox_token_secret", "")
         if not (token_id and secret):
             return {}
         return {"Authorization": f"PVEAPIToken={token_id}={secret}"}

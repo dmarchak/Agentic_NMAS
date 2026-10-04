@@ -156,7 +156,7 @@ class TestTheSource:
             def get(self, url, **kw):
                 asked.append(url)
                 return _R()
-        monkeypatch.setattr("modules.integrations.grafana.get_secret", lambda k: "tok")
+        monkeypatch.setattr("modules.integrations.base.get_secret", lambda k, d="": "tok")
         g = GrafanaIntegration()
         monkeypatch.setattr(g, "is_configured", lambda: True)
         monkeypatch.setattr(g, "session", lambda: _S())
@@ -176,7 +176,7 @@ class TestTheSource:
             def get(self, url, **kw):
                 asked.append(url)
                 return _R()
-        monkeypatch.setattr("modules.integrations.loki.get_setting",
+        monkeypatch.setattr("modules.integrations.base.get_setting",
                             lambda k, d=None: "bearer" if k == "loki_auth_mode" else d)
         lk = LokiIntegration()
         monkeypatch.setattr(lk, "is_configured", lambda: True)

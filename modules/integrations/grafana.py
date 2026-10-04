@@ -6,8 +6,6 @@ link mode exists and is preferred.
 """
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
-from modules.settings_schema import get_setting
 
 
 class GrafanaIntegration(IntegrationClient):
@@ -46,14 +44,14 @@ class GrafanaIntegration(IntegrationClient):
             return {"ok": False, "error": "Grafana's answer is not JSON"}
 
     def _auth_headers(self) -> dict:
-        token = get_secret("grafana_token")
+        token = self._secret("grafana_token")
         return {"Authorization": f"Bearer {token}"} if token else {}
 
     def test_connection(self) -> dict:
         # With a token, ask an endpoint that NEEDS it (C354, P.21: /api/health answers without
         # one, so a refused token read as up until a Grafana reader raised 401). A refusal is
         # its own state, naming the token, never "reachable".
-        if get_secret("grafana_token"):
+        if self._secret("grafana_token"):
             r = self._get("api/user")
             if r["ok"]:
                 return {"ok": True, "message": "Connected; the token is accepted"}
@@ -79,7 +77,7 @@ class GrafanaIntegration(IntegrationClient):
         probe = self.test_connection()
         if not probe.get("ok"):
             return probe
-        url = get_setting("grafana_device_dashboard_url", "") or self.url
+        url = self._setting("grafana_device_dashboard_url", "") or self.url
         return {
             "ok": True,
             "metrics": [{"label": "status", "value": probe.get("message", "Connected")}],

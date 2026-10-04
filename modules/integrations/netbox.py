@@ -6,8 +6,6 @@ exposes its settings through the shared Integrations panel and carries the
 """
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
-from modules.settings_schema import get_setting
 
 
 class NetBoxIntegration(IntegrationClient):
@@ -18,25 +16,25 @@ class NetBoxIntegration(IntegrationClient):
     plain_keys = ("netbox_auth_scheme", "netbox_verify_tls", "netbox_allow_writes")
 
     def is_configured(self) -> bool:
-        return bool(self.url and get_secret("netbox_token"))
+        return bool(self.url and self._secret("netbox_token"))
 
     def _auth_headers(self) -> dict:
-        token = get_secret("netbox_token")
+        token = self._secret("netbox_token")
         if not token:
             return {}
-        scheme = get_setting("netbox_auth_scheme", "Bearer")
+        scheme = self._setting("netbox_auth_scheme", "Bearer")
         if scheme not in ("Bearer", "Token"):
             scheme = "Bearer"
         return {"Authorization": f"{scheme} {token}"}
 
     @property
     def allow_writes(self) -> bool:
-        return bool(get_setting("netbox_allow_writes", False))
+        return bool(self._setting("netbox_allow_writes", False))
 
     def test_connection(self) -> dict:
         if not self.url:
             return {"ok": False, "error": "Not configured — set in Settings"}
-        if not get_secret("netbox_token"):
+        if not self._secret("netbox_token"):
             return {"ok": False, "error": "API token is not set"}
         r = self._get("api/status/")
         if not r["ok"]:

@@ -1,8 +1,6 @@
 """Loki integration (Phase 0: connection test only)."""
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
-from modules.settings_schema import get_setting
 
 
 class LokiIntegration(IntegrationClient):
@@ -14,21 +12,21 @@ class LokiIntegration(IntegrationClient):
                   "loki_selector_template")
 
     def _auth_headers(self) -> dict:
-        if get_setting("loki_auth_mode", "none") == "bearer":
-            token = get_secret("loki_bearer_token")
+        if self._setting("loki_auth_mode", "none") == "bearer":
+            token = self._secret("loki_bearer_token")
             return {"Authorization": f"Bearer {token}"} if token else {}
         return {}
 
     def session(self):
         s = super().session()
-        if get_setting("loki_auth_mode", "none") == "basic":
-            s.auth = (get_setting("loki_username", ""), get_secret("loki_password"))
+        if self._setting("loki_auth_mode", "none") == "basic":
+            s.auth = (self._setting("loki_username", ""), self._secret("loki_password"))
         return s
 
     def test_connection(self) -> dict:
         # With a credential, ask an endpoint that NEEDS it (C354, P.21: /ready answers without
         # one, so a refused credential read as ready): the label names, the cheapest query.
-        if get_setting("loki_auth_mode", "none") in ("basic", "bearer"):
+        if self._setting("loki_auth_mode", "none") in ("basic", "bearer"):
             r = self._get("loki/api/v1/labels")
             if not r["ok"]:
                 return r
@@ -49,7 +47,7 @@ class LokiIntegration(IntegrationClient):
         """
         import time
 
-        selector = get_setting("loki_selector_template", '{host="{ip}"}') or ""
+        selector = self._setting("loki_selector_template", '{host="{ip}"}') or ""
         if "{ip}" in selector or "{hostname}" in selector:
             selector = '{job=~".+"}'
         now = time.time()

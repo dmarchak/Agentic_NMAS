@@ -40,10 +40,11 @@ REGISTRY: dict = {
 }
 
 
-def get_integration(name: str):
-    """Return an instance for *name*, or None if unknown."""
+def get_integration(name: str, list_name: str = ""):
+    """Return an instance for *name*, FOR the network *list_name* when given (P.8 step 3),
+    or None if unknown."""
     cls = REGISTRY.get(name)
-    return cls() if cls else None
+    return cls(list_name=list_name) if cls else None
 
 
 def all_statuses() -> list:

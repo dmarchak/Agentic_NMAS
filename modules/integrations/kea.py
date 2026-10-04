@@ -9,8 +9,6 @@ import logging
 import requests
 
 from modules.integrations.base import IntegrationClient
-from modules.secrets_store import get_secret
-from modules.settings_schema import get_setting
 
 log = logging.getLogger(__name__)
 
@@ -56,16 +54,16 @@ class KeaIntegration(IntegrationClient):
         if not self.is_configured():
             return {"ok": False, "error": "Not configured — set in Settings"}
         payload = {"command": command}
-        services = service or get_setting("kea_services", ["dhcp4"])
+        services = service or self._setting("kea_services", ["dhcp4"])
         if isinstance(services, str):
             services = [services]
         if services:
             payload["service"] = list(services)
         try:
             s = self.session()
-            user = get_setting("kea_username", "")
+            user = self._setting("kea_username", "")
             if user:
-                s.auth = (user, get_secret("kea_password"))
+                s.auth = (user, self._secret("kea_password"))
             r = s.post(self.url, json=payload, timeout=self.timeout)
             if r.status_code >= 400:
                 return {"ok": False, "error": f"HTTP {r.status_code}",

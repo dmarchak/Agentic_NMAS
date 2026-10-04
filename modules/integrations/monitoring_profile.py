@@ -19,7 +19,6 @@ import socket
 import struct
 
 from modules.integrations.base import IntegrationClient
-from modules.settings_schema import get_setting
 
 #: Bounds from the lab, not a round number: a LAN TCP connect and an SNTP
 #: answer each take milliseconds; 2 s is far past both and keeps the Test
@@ -71,11 +70,11 @@ class MonitoringProfileIntegration(IntegrationClient):
         return ""
 
     def is_configured(self) -> bool:
-        return any(get_setting(k) for k in ("syslog_host", "snmp_exporter_config",
+        return any(self._setting(k) for k in ("syslog_host", "snmp_exporter_config",
                                             "telemetry_receiver", "ntp_servers"))
 
     def get_config(self) -> dict:
-        cfg = {key: get_setting(key) for key in self.plain_keys}
+        cfg = {key: self._setting(key) for key in self.plain_keys}
         cfg["_secrets"] = {}
         cfg["_configured"] = self.is_configured()
         return cfg
@@ -83,6 +82,12 @@ class MonitoringProfileIntegration(IntegrationClient):
     def save_config(self, values: dict) -> dict:
         from modules.config import set_user_setting
 
+        if self.list_name:
+            # FOR a network (P.8): its own store, through the one write path for lists.
+            from modules import list_settings
+
+            updates = {k: values[k] for k in self.plain_keys if k in values}
+            return list_settings.write(self.list_name, updates) if updates else {"ok": True}
         for key in self.plain_keys:
             if key in values:
                 set_user_setting(key, values[key])
@@ -93,7 +98,7 @@ class MonitoringProfileIntegration(IntegrationClient):
         from modules.nsot.profile_propose import exporter_community
 
         out = []
-        path, auth = get_setting("snmp_exporter_config") or "", get_setting("snmp_exporter_auth") or ""
+        path, auth = self._setting("snmp_exporter_config") or "", self._setting("snmp_exporter_auth") or ""
         if path:
             value, why = exporter_community(path, auth or "public_v2")
             out.append({"name": "snmp_exporter config", "state": "ok" if value else "failed",
@@ -102,14 +107,14 @@ class MonitoringProfileIntegration(IntegrationClient):
         else:
             out.append({"name": "snmp_exporter config", "state": "not_set",
                         "detail": "not set: the profile's SNMP section falls back to the fleet"})
-        recv = get_setting("telemetry_receiver") or ""
+        recv = self._setting("telemetry_receiver") or ""
         if recv:
             ok, words = tcp_accepts(recv)
             out.append({"name": "Telegraf listener", "state": "ok" if ok else "failed", "detail": words})
         else:
             out.append({"name": "Telegraf listener", "state": "not_set",
                         "detail": "not set: the profile's telemetry section falls back to the fleet"})
-        servers = get_setting("ntp_servers") or []
+        servers = self._setting("ntp_servers") or []
         if servers:
             for host in servers:
                 ok, words = sntp_answers(str(host))
@@ -118,7 +123,7 @@ class MonitoringProfileIntegration(IntegrationClient):
             out.append({"name": "NTP servers", "state": "not_set",
                         "detail": "not set: the profile's NTP section falls back to the fleet"})
         for key, what in (("syslog_host", "syslog"), ("snmp_trap_host", "SNMP traps")):
-            val = get_setting(key) or ""
+            val = self._setting(key) or ""
             out.append({"name": f"{what} to {val}" if val else what,
                         "state": "not_testable" if val else "not_set",
                         "detail": (f"{what} is one-way UDP: nothing answers, so it cannot be "

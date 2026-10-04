@@ -43,19 +43,43 @@ class IntegrationClient:
     #: non-secret settings keys this integration owns
     plain_keys: tuple = ()
 
-    def __init__(self, timeout: float = DEFAULT_TIMEOUT):
+    def __init__(self, timeout: float = DEFAULT_TIMEOUT, list_name: str = ""):
         self.timeout = timeout
         self._session = None
+        #: The network this client is FOR (P.8 step 3): its settings resolve through
+        #: `list_settings`. Empty is the installation's values, as before P.8.
+        self.list_name = list_name or ""
 
     # ── configuration ───────────────────────────────────────────────────────
 
+    def _setting(self, key: str, default=None):
+        """A setting FOR this client's network: the one way a client reads its settings
+        (tests/test_integrations_read_for_a_list.py refuses a direct read)."""
+        if not self.list_name:
+            return get_setting(key, default)
+        from modules import list_settings
+
+        value, origin = list_settings.resolve(self.list_name, key)
+        if origin in (list_settings.UNSET_EVERYWHERE, list_settings.NOT_APPLICABLE) \
+                and value in (None, ""):
+            return default if default is not None else value
+        return value
+
+    def _secret(self, key: str, default: str = "") -> str:
+        """A secret FOR this client's network, decrypted."""
+        if not self.list_name:
+            return get_secret(key, default)
+        from modules import list_settings
+
+        return list_settings.secret(self.list_name, key) or default
+
     @property
     def url(self) -> str:
-        return (get_setting(self.url_key, "") or "").rstrip("/")
+        return (self._setting(self.url_key, "") or "").rstrip("/")
 
     @property
     def verify_tls(self) -> bool:
-        return bool(get_setting(f"{self.name}_verify_tls", True))
+        return bool(self._setting(f"{self.name}_verify_tls", True))
 
     def is_configured(self) -> bool:
         """True when the integration has enough settings to attempt a call."""
@@ -67,9 +91,10 @@ class IntegrationClient:
         Secret values never leave the process: the UI receives only a
         set/unset indicator.
         """
-        cfg = {key: get_setting(key) for key in self.plain_keys}
+        cfg = {key: self._setting(key) for key in self.plain_keys}
         cfg[self.url_key] = self.url
-        cfg["_secrets"] = {key: is_set(key) for key in self.secret_keys}
+        cfg["_secrets"] = {key: (bool(self._secret(key)) if self.list_name else is_set(key))
+                           for key in self.secret_keys}
         cfg["_configured"] = self.is_configured()
         return cfg
 
@@ -81,6 +106,14 @@ class IntegrationClient:
         """
         from modules.config import set_user_setting
 
+        if self.list_name:
+            # FOR a network (P.8): its own store, the group rule and validation in one place.
+            from modules import list_settings
+
+            updates = {k: values[k] for k in self.plain_keys + (self.url_key,) if k in values}
+            updates.update({k: values[k] for k in self.secret_keys if values.get(k)})
+            self._session = None
+            return list_settings.write(self.list_name, updates) if updates else {"ok": True}
         for key in self.plain_keys + (self.url_key,):
             if key in values:
                 set_user_setting(key, values[key])
