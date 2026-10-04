@@ -7,8 +7,12 @@
 {#- attributesToSettle is EMPTY (C279, 2026-10-01): htmx's settle step copied `class` and
     `style` from the old element with the same id, then restored the server's attributes,
     which removed the `display: none` Alpine had set on the new one ("Stop waiting" drawn
-    with no wait). A swapped-in fragment is the server's HTML, and Alpine alone styles it. -#}
-<meta name="htmx-config" content='{"allowEval": false, "allowScriptTags": false, "includeIndicatorStyles": false, "historyCacheSize": 0, "attributesToSettle": []}'>
+    with no wait). A swapped-in fragment is the server's HTML, and Alpine alone styles it.
+    disableInheritance (C409, 2026-10-04): a control's hx-* attributes are its own, never its
+    container's. Monitoring's `#fleet` set `hx-swap="outerHTML"` for its own refresh, its range
+    links took it, and their first swap replaced #tab-body itself, so every later click had no
+    target (since 2026-10-01). tests/test_swap_targets_resolve.py. -#}
+<meta name="htmx-config" content='{"allowEval": false, "allowScriptTags": false, "includeIndicatorStyles": false, "historyCacheSize": 0, "attributesToSettle": [], "disableInheritance": true}'>
 <title>{% block title %}NMAS{% endblock %}</title>
 <meta name="color-scheme" content="light dark">
 <script src="{{ url_for('static', filename='js/nmas_theme.js') }}"></script>

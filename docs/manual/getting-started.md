@@ -51,7 +51,10 @@ Every operation that changes a device or the record works the same way:
 
 Nothing you click goes quiet. When an answer cannot be drawn (the server refused without a
 card, did not answer, or answered with nothing for that place), the place it would have
-appeared says **Couldn't load:** and why, and keeps what it showed.
+appeared says what could not be loaded, for example **Couldn't load the 6-hour view.**, and
+keeps what it showed. Point at the words for the technical reason; **Try again** asks once
+more. The notice sits in that place, below the control you used, so the control itself never
+moves.
 
 Every page also checks that it arrived as the tool sent it. If something between the tool and
 your browser added scripts (a proxy rewriting pages, or a browser extension), the top of the

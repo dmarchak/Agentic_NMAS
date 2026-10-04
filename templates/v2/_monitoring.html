@@ -16,7 +16,7 @@
       <p class="menu-note">Only dashboards with a <span class="mono">{{ m.settings.variable }}</span> variable:
         {{ m.offered|length }} of the {{ m.total_dashboards or 0 }} Grafana holds. Choosing one changes this view, not the default.</p>
       {% for d in m.offered %}
-      <a role="option" class="menu-item{% if d.uid == dash_uid %} on{% endif %}" aria-selected="{{ 'true' if d.uid == dash_uid else 'false' }}"
+      <a role="option" data-what="the {{ d.title }} dashboard" class="menu-item{% if d.uid == dash_uid %} on{% endif %}" aria-selected="{{ 'true' if d.uid == dash_uid else 'false' }}"
          href="{{ url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=d.uid, range=cur_range) }}"
          hx-get="{{ url_for('device_v2.monitoring', name=dev_name, dashboard=d.uid, range=cur_range) }}" hx-target="#tab-body"
          hx-push-url="{{ url_for('device_v2.device', name=dev_name, tab='monitoring', dashboard=d.uid, range=cur_range) }}">

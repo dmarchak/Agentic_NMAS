@@ -204,19 +204,22 @@ class TestTheWords:
     def test_why_comes_from_the_answer(self):
         got = _eval("failWords(404, 'NOT FOUND', JSON.stringify({ok: false, error: 'There is no "
                     "device list named X.'}), 'application/json')")
-        assert got == "Couldn't load: There is no device list named X. (HTTP 404 NOT FOUND)"
+        assert got == "There is no device list named X. (HTTP 404 NOT FOUND)"
         got = _eval("failWords(500, 'INTERNAL SERVER ERROR', '<!doctype html>\\n<title>500 "
                     "Internal Server Error</title>', 'text/html')")
-        assert got == ("Couldn't load: 500 Internal Server Error "
+        assert got == ("500 Internal Server Error "
                        "(HTTP 500 INTERNAL SERVER ERROR)")
+        assert _eval("couldntWords('the 6-hour view', false)") == "Couldn't load the 6-hour view."
+        assert _eval("couldntWords('', true)") == "Couldn't load this card."
+        assert _eval("couldntWords('', false)") == "Couldn't load this view."
         assert _eval("failWords(502, 'Bad Gateway', '', 'text/plain')") == \
-            "Couldn't load: the server answered HTTP 502 Bad Gateway"
+            "the server answered HTTP 502 Bad Gateway"
 
 
 # ------------------------------------------------------------ in a real browser
 
-PROBE = ('<div id="probe"><div id="probe-sel" hx-select="#nothing-here">'
-         '<a id="probe-a" hx-get="/v2/help/credentials/panel" hx-target="#probe-out" '
+PROBE = ('<div id="probe"><div id="probe-sel">'
+         '<a id="probe-a" hx-select="#nothing-here" hx-get="/v2/help/credentials/panel" hx-target="#probe-out" '
          'hx-swap="innerHTML">a</a></div>'
          '<a id="probe-json" hx-get="/v2/credentials?list=No-Such-List" hx-target="#probe-out" '
          'hx-swap="innerHTML">b</a>'
@@ -237,7 +240,9 @@ def test_a_real_browser_says_couldnt_load_in_place(page):
         pytest.skip(f"no real browser here ({why})")
     import app as A
     from tests.test_credentials_v2 import LIST
-    words = "return (document.querySelector('#probe-out [data-couldnt]') || {}).textContent || ''"
+    # What a person reads, then the technical reason on hover (C409).
+    words = ("var n = document.querySelector('#probe-out [data-couldnt] p');"
+             "return n ? n.textContent + ' | ' + n.title : ''")
     with browser.Served(A.app) as srv, browser.Browser() as b:
         try:
             b.go(srv.url(f"/v2/credentials?list={LIST}"))

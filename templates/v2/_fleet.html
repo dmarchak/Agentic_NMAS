@@ -15,7 +15,7 @@
     <div class="menu menu-wide" role="listbox" x-show="isOpen" x-cloak>
       <p class="menu-note">Every dashboard Grafana holds: {{ m.offered|length }}. Choosing one changes this view, not the default.</p>
       {%- for d in m.offered %}
-      <a role="option" class="menu-item{% if d.uid == dash_uid %} on{% endif %}" aria-selected="{{ 'true' if d.uid == dash_uid else 'false' }}"
+      <a role="option" data-what="the {{ d.title }} dashboard" class="menu-item{% if d.uid == dash_uid %} on{% endif %}" aria-selected="{{ 'true' if d.uid == dash_uid else 'false' }}"
          href="{{ url_for('v2.monitoring_page', dashboard=d.uid, range=cur_range) }}"
          hx-get="{{ url_for('v2.monitoring_dashboard', dashboard=d.uid, range=cur_range) }}" hx-target="#tab-body"
          hx-push-url="{{ url_for('v2.monitoring_page', dashboard=d.uid, range=cur_range) }}">

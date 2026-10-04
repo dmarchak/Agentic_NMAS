@@ -377,7 +377,9 @@
      down from an ancestor unless one disinherits it) matches nothing in the answer: C385, the
      break-glass record's buttons, did nothing on the host. A drawn refusal (an HTML fragment,
      whatever its status) is the server's answer and is drawn; anything else says
-     "Couldn't load: <why>" in place, keeping what the target showed. */
+     "Couldn't load <what>." in the region that was meant to update, keeping what it showed,
+     the technical reason on hover and Try again beside it (C409: it was inserted beside the
+     control, pushing its row apart). */
   function isFragment(body, contentType) {
     return /text\/html/i.test(contentType || '') && !!(body || '').replace(/\s+/g, '') &&
       !/^\s*<(!doctype|html)\b/i.test(body);
@@ -395,49 +397,83 @@
       why = body.trim();
     }
     var code = 'HTTP ' + status + (statusText ? ' ' + statusText : '');
-    return "Couldn't load: " + (why ? why + ' (' + code + ')' : 'the server answered ' + code);
+    return why ? why + ' (' + code + ')' : 'the server answered ' + code;
   }
 
-  /* hx-select as htmx 2 resolves it for the element that asked (its own, else the nearest
-     ancestor's, stopped by an hx-disinherit naming it; "unset" is none). */
+  /* hx-select as htmx 2 resolves it for the element that asked: its own only, since the v2
+     pages turn inheritance off (C409; "unset" is none). */
   function selectFor(el) {
-    for (var e = el; e && e.getAttribute; e = e.parentElement) {
-      var dis = e !== el ? (e.getAttribute('hx-disinherit') || e.getAttribute('data-hx-disinherit')) : '';
-      if (dis && (dis === '*' || (' ' + dis + ' ').indexOf(' hx-select ') >= 0)) return null;
-      var v = e.getAttribute('hx-select') || e.getAttribute('data-hx-select');
-      if (v) return v === 'unset' ? null : v;
-    }
-    return null;
+    var v = el && el.getAttribute ? (el.getAttribute('hx-select') || el.getAttribute('data-hx-select')) : '';
+    return v && v !== 'unset' ? v : null;
   }
 
   var COULDNT = 'data-couldnt';
   var INLINE = /^(A|BUTTON|INPUT|SELECT|TEXTAREA|SPAN|LABEL|IMG)$/;
 
-  /* The notice beside a target that cannot hold one (a control), else first inside it. */
-  function couldntSlot(target) {
-    var beside = INLINE.test(target.tagName || '');
-    var at = beside ? target.nextElementSibling : target.firstElementChild;
-    return {beside: beside, at: (at && at.hasAttribute(COULDNT)) ? at : null};
+  /* The region that was meant to update: the target, when it is on the page and can hold a
+     notice; else the control's own card or section (its target is gone: C409's case). */
+  function regionFor(target, control) {
+    var r = (target && target.ownerDocument && target.ownerDocument.contains(target)) ? target : null;
+    var BLOCK = '[role=menu], .op-card, .card, section, .tab-body, main';
+    if (!r && control && control.closest) r = control.closest(BLOCK);
+    // A control that is its own target (a menu row asking for itself): the notice goes in its
+    // menu or card, below its row, never beside it.
+    if (r && INLINE.test(r.tagName || '')) r = (r.parentElement && r.parentElement.closest(BLOCK)) || r.parentElement;
+    return r;
   }
 
-  function sayCouldnt(target, words) {
-    if (!target || !target.ownerDocument) return;
-    var slot = couldntSlot(target), box = slot.at;
+  /* What the control would have loaded, in a person's words: its own `data-what` ("the 6-hour
+     view"), else what its region is. PURE. */
+  function couldntWords(what, inCard) {
+    return "Couldn't load " + (what || (inCard ? 'this card' : 'this view')) + '.';
+  }
+
+  function sayCouldnt(target, control, reason) {
+    var region = regionFor(target, control);
+    if (!region) return;
+    var doc = region.ownerDocument, box = null;
+    for (var c = region.firstElementChild; c; c = c.nextElementSibling) {
+      if (c.hasAttribute(COULDNT)) { box = c; break; }
+    }
     if (!box) {
-      box = target.ownerDocument.createElement('div');
-      box.className = 'notice notice-warn';
+      box = doc.createElement('div');
+      box.className = 'notice notice-warn couldnt';
       box.setAttribute(COULDNT, '');
       box.setAttribute('role', 'alert');
-      box.appendChild(target.ownerDocument.createElement('p'));
-      if (slot.beside) target.parentNode.insertBefore(box, target.nextSibling);
-      else target.insertBefore(box, target.firstChild);
+      var p = doc.createElement('p'), again = doc.createElement('button');
+      again.type = 'button';
+      again.className = 'btn btn-small';
+      again.textContent = 'Try again';
+      box.appendChild(p);
+      box.appendChild(again);
+      // After the part of the region that holds the control, never above or beside it, so the
+      // control's own row does not move.
+      var holder = null;
+      if (control && control !== region && region.contains(control)) {
+        holder = control;
+        while (holder.parentElement && holder.parentElement !== region) holder = holder.parentElement;
+      }
+      region.insertBefore(box, holder ? holder.nextSibling : region.firstChild);
     }
-    box.firstChild.textContent = words;
+    var what = control && control.getAttribute ? control.getAttribute('data-what') : '';
+    box.firstChild.textContent = couldntWords(what, !!(region.closest && region.closest('.op-card, .card')));
+    box.firstChild.title = reason;
+    box.lastChild.onclick = function () {
+      if (box.parentNode) box.parentNode.removeChild(box);
+      if (control && doc.contains(control)) control.click();
+      else if (root.location) root.location.reload();
+    };
   }
 
   function clearCouldnt(target) {
-    var slot = target && target.tagName ? couldntSlot(target) : null;
-    if (slot && slot.at) slot.at.parentNode.removeChild(slot.at);
+    if (!target || !target.firstElementChild) return;
+    for (var c = target.firstElementChild; c; c = c.nextElementSibling) {
+      if (c.hasAttribute(COULDNT)) { target.removeChild(c); return; }
+    }
+  }
+
+  function askedBy(d, e) {
+    return (d.requestConfig && d.requestConfig.elt) || d.elt || (e && e.target) || null;
   }
 
   function neverSilent(e) {
@@ -447,7 +483,7 @@
     if (d.isError) {
       if (!isFragment(body, type)) {
         d.shouldSwap = false;
-        sayCouldnt(target, failWords(xhr.status, xhr.statusText, body, type));
+        sayCouldnt(target, askedBy(d, e), failWords(xhr.status, xhr.statusText, body, type));
         return;
       }
       d.shouldSwap = true;
@@ -463,7 +499,7 @@
       try { found = !!doc.querySelector(sel); } catch (x) { found = false; }
       if (!found) {
         d.shouldSwap = false;
-        sayCouldnt(target, "Couldn't load: the answer held nothing matching " + sel +
+        sayCouldnt(target, askedBy(d, e), "the answer held nothing matching " + sel +
                    ' (HTTP ' + xhr.status + ')');
         return;
       }
@@ -474,7 +510,7 @@
   function noAnswer(words) {
     return function (e) {
       var d = e.detail || {}, path = d.pathInfo ? d.pathInfo.requestPath : '';
-      sayCouldnt(d.target || e.target, "Couldn't load: " + words + (path ? ' (' + path + ')' : ''));
+      sayCouldnt(d.target, askedBy(d, e), words + (path ? ' (' + path + ')' : ''));
     };
   }
 
@@ -549,7 +585,7 @@
     root.document.addEventListener('htmx:sendError', noAnswer('the server did not answer'));
     root.document.addEventListener('htmx:timeout', noAnswer('no answer in time'));
     root.document.addEventListener('htmx:targetError', function (e) {
-      sayCouldnt(e.target, "Couldn't load: nothing on this page is " + (e.detail && e.detail.target));
+      sayCouldnt(null, e.target, "no " + (e.detail && e.detail.target) + " on this page");
     });
     root.document.addEventListener('keydown', function (e) {
       var t = e.target && e.target.tagName;
@@ -562,6 +598,6 @@
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
                   badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
-                  failWords: failWords, injectedScripts: injectedScripts,
+                  failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords};
 })(typeof window !== 'undefined' ? window : this);

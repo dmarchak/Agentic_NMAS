@@ -64,10 +64,11 @@
 <div class="seg" role="group" aria-label="Time range" title="{{ hint }}">
   {%- for key in ['1h', '6h', '24h', '7d'] %}
   <a class="seg-btn{% if cur == key %} on{% endif %}" aria-pressed="{{ 'true' if cur == key else 'false' }}"
-     href="{{ links[key].href }}" hx-get="{{ links[key].hx }}" hx-target="#tab-body" hx-push-url="{{ links[key].href }}">{{ key }}</a>
+     href="{{ links[key].href }}" hx-get="{{ links[key].hx }}" hx-target="#tab-body" hx-push-url="{{ links[key].href }}"
+     data-what="the {{ {'1h': '1-hour', '6h': '6-hour', '24h': '24-hour', '7d': '7-day'}[key] }} view">{{ key }}</a>
   {%- endfor %}
 </div>
-<form class="range-custom" hx-get="{{ action }}" hx-target="#tab-body">
+<form class="range-custom" hx-get="{{ action }}" hx-target="#tab-body" data-what="the view for this range">
   {%- for k, v in hidden.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
   <label class="sr" for="{{ input_id }}">Custom range ({{ limit }})</label>
   <input id="{{ input_id }}" type="text" name="range" placeholder="last 90 minutes" title="{{ hint }}" value="{{ cur if cur not in ['1h', '6h', '24h', '7d'] else '' }}"{% if refused %} aria-invalid="true" aria-describedby="{{ input_id }}-err"{% endif %}>
