@@ -250,7 +250,8 @@ window.remoteAcknowledge = async function () {
   if (typed === null) return;
   const r = await fetch('/remote/acknowledge', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({typed: typed})});
+    // The fingerprints this prompt showed (R41): the acknowledgement covers those or none.
+    body: JSON.stringify({typed: typed, shown: Object.keys(values)})});
   const out = await r.json();
   _remoteOut(out.ok
     ? `<span class="text-success">acknowledged</span> — ${_gEsc(JSON.stringify(out.acknowledged.counts))}`

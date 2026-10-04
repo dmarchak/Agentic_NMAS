@@ -850,7 +850,7 @@ def gated_summary(scan: dict) -> dict:
 
 
 def acknowledge(list_name: str, *, actor: str, actor_kind: str,
-                repo_dir: str = "") -> dict:
+                repo_dir: str = "", shown=None) -> dict:
     """Record that a person accepted publishing the gated material.
 
     Bound to **what was acknowledged** — the kinds, their counts, and the
@@ -871,6 +871,19 @@ def acknowledge(list_name: str, *, actor: str, actor_kind: str,
 
     scan = scan_history_secrets(repo_dir, list_name)
     gated = gated_summary(scan)
+    # Only the values the person was SHOWN (CONCURRENCY_AUDIT R41): the gate's unit is the
+    # value, and a secret committed between the card being drawn and the click was recorded
+    # as acknowledged without anyone seeing it. *shown* is the card's fingerprints; None for
+    # a caller with no card.
+    if shown is not None:
+        now, seen = set(gated["values"]), {str(s) for s in shown}
+        if now != seen:
+            new, gone = sorted(now - seen), sorted(seen - now)
+            return {"ok": False, "error": (
+                "Not acknowledged: the history's secrets changed after the card was drawn"
+                + (f"; not shown: {', '.join(new)}" if new else "")
+                + (f"; shown and no longer there: {', '.join(gone)}" if gone else "")
+                + ". Open the acknowledgement again to read what it now covers.")}
     head = _run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
                 timeout=60).stdout.strip()
 

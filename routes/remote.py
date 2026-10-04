@@ -154,8 +154,15 @@ def acknowledge():
             "counts": gated["counts"],
         }), 400
 
+    # The fingerprints the card showed (R41): the acknowledgement covers those or none.
+    shown = payload.get("shown")
+    if not isinstance(shown, list):
+        return jsonify({"ok": False, "error": (
+            "Not acknowledged: this page did not say which values it showed, so the "
+            "acknowledgement could cover a secret nobody saw. Reload the panel and "
+            "acknowledge again.")}), 400
     result = R.acknowledge(list_name, actor=ident.actor,
-                           actor_kind=ident.kind)
+                           actor_kind=ident.kind, shown=shown)
     log.info("remote: publish acknowledged for '%s' by %s (%s)",
              list_name, ident.actor, ident.kind)
     return jsonify(result), (200 if result["ok"] else 400)

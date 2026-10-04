@@ -135,7 +135,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
 | R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | UNSAFE | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
 | R40 | m | stores (added on review) | Persistence-chain host files: Oxidized `router.db` and the lab sync | `router.db`, lab startup files and their repositories | `router.db`: atomic replace, no lock; sync script: no lock | no | UNSAFE | yes | `flock` in the root helper and in the sync script |
-| R41 | m | confirms (added on review) | Remote publication acknowledge | `remote.json` acknowledgement | typed kinds checked; values recorded at click time; list derived | no | UNSAFE | yes | Bind the confirm to the values fingerprint the card showed; carry the list |
+| R41 | m | confirms (added on review) | Remote publication acknowledge | `remote.json` acknowledgement | typed kinds checked; values recorded at click time; list derived | no | VALUES FIXED 2026-10-04 (tests/test_ack_binds_values.py); the list waits for P.8 (R3) | yes | Bind the confirm to the values fingerprint the card showed; carry the list |
 | R29 | m under workers | live | Reader on-request registry ("Check again") | in-memory request record | per process | no | UNSAFE-MULTI-PROCESS | no | Request record in a shared file |
 | R30 | m (fresh install, several processes) | stores | Key file creation | `key.key`, session key | check, then create with truncate | no | FIXED 2026-10-04 (was UNSAFE-MULTI-PROCESS; tests/test_key_created_once.py) | no (fresh install) | Exclusive create, or an install step |
 | R31 | m (roles stage) | approvals | Four-eyes and the requester | n/a (missing control) | none | n/a | UNSAFE | no (roles stage) | Record the requester; host-side policy |
@@ -809,6 +809,16 @@ is acknowledged without anyone seeing it: the same shape as R12. The list falls 
 active list (routes/remote.py:22-29, R3). The fix: the card returns the fingerprint of the
 values it drew, the confirm carries it and the list, and the route refuses when the scan's
 values moved, naming the new ones.
+
+*The values, FIXED 2026-10-04 (tests/test_ack_binds_values.py):*
+- The prompt already showed each value's fingerprint; the card now sends them (`shown`).
+- `remote.acknowledge(shown=…)` compares them with its own scan at record time and refuses,
+  naming each value not shown and each one gone, with nothing recorded.
+- The route refuses an acknowledgement that sends none. The command-line caller passes none
+  and keeps its kind check.
+- Controls, each failing its aimed test: the values not compared; the route accepting none;
+  the card sending none.
+- **The list:** carried once P.8 makes the URL authoritative (R3, decided 2026-10-04).
 
 ### Low findings
 
