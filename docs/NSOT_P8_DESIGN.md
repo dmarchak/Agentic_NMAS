@@ -207,6 +207,11 @@ pages.
 ## 6. The build, in order
 
 1. **Scopes in the schema,** with the test refusing an undeclared key. No behaviour changes.
+   **BUILT 2026-10-04** as `modules/settings_scope.py`, beside the schema: all 143 keys with
+   their scope (network, host, retiring, dead) and group. `tests/test_settings_scope.py`
+   holds every declared setting to one row and keeps each network credential in a group with
+   its URL. The twelve form-only keys are `retiring` until decision 3's check outside the app
+   is done.
 2. **The store and the resolver,** with Default as the global layer. Every reader is
    unchanged and reads the same values.
 3. **Integration clients built for a list.** Reads may derive the active list; writes carry

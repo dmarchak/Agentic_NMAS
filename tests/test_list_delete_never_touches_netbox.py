@@ -84,4 +84,8 @@ def test_nothing_reads_the_retired_setting():
             text = open(p, encoding="utf-8", errors="replace").read()
             if re.search(r"\bnetbox_remove_on_list_delete\b", text):
                 readers.append(os.path.relpath(p, root))
-    assert readers == ["modules/settings_schema.py"], readers
+    # The schema declares it, and P.8's scope table declares it DEAD (never split); neither
+    # reads its value.
+    assert readers == ["modules/settings_schema.py", "modules/settings_scope.py"], readers
+    from modules.settings_scope import DEAD, scope_of
+    assert scope_of("netbox_remove_on_list_delete")[0] == DEAD
