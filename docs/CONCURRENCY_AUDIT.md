@@ -130,7 +130,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
 | R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | KEY AND PROBE FIXED 2026-10-04 (tests/test_device_hold_key_and_probe.py); lease and recorded release a decision | yes | Lease, recorded release, canonical key, no flock probe |
-| R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE; the holder strip waits for a mockup, the broadcast half is next (recorded 2026-10-04) | yes | Broadcast mutations; live holder strip; previews subscribe |
+| R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE; the holder strip waits for a mockup, the broadcast half for C435 (recorded 2026-10-04) | yes | Broadcast mutations; live holder strip; previews subscribe |
 | R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
 | R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | UNSAFE; a decision, recommended: remove the terminal now (7.8 brought forward) | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
@@ -765,7 +765,10 @@ and freshness authorisations have no announcement and no poll.
 CLAUDE.md requires a mockup and the operator's sign-off for a new element. Recommended: build
 the broadcast half first (it alone makes the open intent editor and the approvals list learn
 of another person's change), and draw the holder strip on the canvas for sign-off, beside the
-7.4 Fleet boards.
+7.4 Fleet boards. **The broadcast half waits for C435** (found surveying its subscribers, the
+same day). A subscriber that holds a person's input re-renders it away: Coverage re-ticks every
+row on `goldens` or `intent`. Each such subscriber must keep its input across a re-render
+first, or the broadcast turns every write into a reset.
 
 *FIXED 2026-10-02 (tests/test_reader_runs_one_at_a_time.py):* `run_once` holds a per-reader
 run lock across processes (`<store>.run`, a `PathLock`), so a run that starts while another

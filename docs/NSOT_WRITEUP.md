@@ -2218,7 +2218,9 @@ One commit per row, each gated, each with a test that runs the collision for rea
 - R30 is fixed in its own commit's batch: one helper links a whole key into place.
 - R17's two defects are fixed in R17's commit.
 - The substring test was rewritten to parse.
-- R27 (the holder strip, a new element) waits for a mockup; its broadcast half is next.
+- R27 (the holder strip, a new element) waits for a mockup. Its broadcast half waits for
+  C435, found surveying its subscribers: Coverage re-ticks every row on `goldens`, so a
+  broadcast on every write would reset a person's selection.
 - R39 is a decision, with removing the terminal now recommended.
 - R26's lease and release is a decision, with a lease on v2's refusal card recommended.
 - R23's binding to its dry run waits for v2's onboarding screen.
