@@ -2939,9 +2939,14 @@ def sync_list_to_netbox(list_name: str, devices: list[dict],
                 "error": "NetBox writes are disabled. Review the import preview and "
                          "confirm, or enable writes in Settings → Integrations."}
 
-    with _guard.for_list(list_name, actor=actor, authority=authority):
-        return _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers,
-                                         progress_id)
+    # One NetBox writer per list at a time, across processes (R21): refused, naming the first.
+    try:
+        with _guard.list_writer(list_name, "import", actor), \
+                _guard.for_list(list_name, actor=actor, authority=authority):
+            return _sync_list_to_netbox_impl(list_name, devices, status_cache, max_workers,
+                                             progress_id)
+    except _guard.NetBoxBusy as exc:
+        return {"ok": False, "busy": True, "error": f"Not imported: {exc}. Nothing was written."}
 
 
 def _count_requests(session, progress_id: str) -> None:
@@ -3427,8 +3432,13 @@ def remove_device_from_netbox(list_name: str, hostname: str,
             with _guard.dry_run(), _guard.for_list(list_name, actor=actor, authority=authority):
                 _run()
         else:
-            with _guard.for_list(list_name, actor=actor, authority=authority):
+            # One NetBox writer per list at a time, across processes (R21).
+            with _guard.list_writer(list_name, f"removal of {hostname}", actor), \
+                    _guard.for_list(list_name, actor=actor, authority=authority):
                 _run()
+    except _guard.NetBoxBusy as exc:
+        return {"ok": False, "busy": True, "error": f"Not removed: {exc}. Nothing was deleted.",
+                "deleted": deleted, "skipped": skipped, "failed": failed, "complete": False}
     except Exception as exc:                    # noqa: BLE001
         log.exception("netbox: remove_device_from_netbox failed for %r", hostname)
         return {"ok": False, "error": str(exc), "deleted": deleted,
@@ -3561,9 +3571,13 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
             with _guard.dry_run(), _guard.for_list(list_name, actor=actor, authority=authority):
                 _run()
         else:
-            with _guard.for_list(list_name, actor=actor, authority=authority):
+            # One NetBox writer per list at a time, across processes (R21).
+            with _guard.list_writer(list_name, "list removal", actor), \
+                    _guard.for_list(list_name, actor=actor, authority=authority):
                 _run()
                 _clear_sync_status(list_name)
+    except _guard.NetBoxBusy as exc:
+        return {"ok": False, "busy": True, "error": f"Not removed: {exc}. Nothing was deleted."}
     except Exception as exc:
         log.exception("netbox: remove_list_from_netbox failed for '%s'", list_name)
         return {"ok": False, "error": str(exc)}
@@ -3597,20 +3611,29 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
     }
 
 
+def _update_sync_status(change, what: str) -> None:
+    """THE write of the sync-status file (CONCURRENCY_AUDIT R21): under its lock across
+    processes, read, *change(data)*, replaced whole. Its writers shared one ``.tmp`` and the
+    spinner flag truncated the file in place, under an in-process lock only. A cache: an
+    unreadable file is rebuilt, and a failed write is logged, never raised."""
+    from modules.filestore import PathLock, write_atomic
+
+    try:
+        with _status_lock, PathLock(lambda: _SYNC_STATUS_FILE):
+            data = load_sync_status()
+            change(data)
+            write_atomic(_SYNC_STATUS_FILE, json.dumps(data, indent=2))
+    except Exception as exc:                    # noqa: BLE001
+        log.warning("netbox: could not %s in the sync status: %s", what, exc)
+
+
 def _clear_sync_status(list_name: str) -> None:
     """Drop a list's entry from the persisted sync-status file."""
-    with _status_lock:
-        data = load_sync_status()
+    def change(data):
         data.get("lists",   {}).pop(list_name, None)
         data.get("running", {}).pop(list_name, None)
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            tmp = _SYNC_STATUS_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, indent=2)
-            os.replace(tmp, _SYNC_STATUS_FILE)
-        except Exception as exc:
-            log.warning("netbox remove: could not update sync status: %s", exc)
+
+    _update_sync_status(change, f"drop {list_name}")
 
 
 def sync_all_lists_to_netbox(lists_with_devices: list[tuple[str, list[dict]]],
@@ -3674,18 +3697,11 @@ def _merge_plans(plans) -> dict:
 
 def _record_sync_status(list_name: str, summary: dict) -> None:
     """Persist the latest sync summary per list to disk."""
-    with _status_lock:
-        data = load_sync_status()
+    def change(data):
         data.setdefault("lists", {})[list_name] = summary
         data["last_sync"] = summary.get("timestamp")
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            tmp = _SYNC_STATUS_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, indent=2)
-            os.replace(tmp, _SYNC_STATUS_FILE)
-        except Exception as exc:
-            log.warning("netbox: could not write sync status: %s", exc)
+
+    _update_sync_status(change, f"record {list_name}'s sync")
 
 
 def load_sync_status() -> dict:
@@ -3715,15 +3731,9 @@ def sync_status_with_results() -> dict:
 
 def set_sync_running(list_name: str, running: bool) -> None:
     """Mark a list's sync as in-progress or done (for UI spinner state)."""
-    with _status_lock:
-        data = load_sync_status()
-        data.setdefault("running", {})[list_name] = bool(running)
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            with open(_SYNC_STATUS_FILE, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, indent=2)
-        except Exception:
-            pass
+    _update_sync_status(
+        lambda data: data.setdefault("running", {}).__setitem__(list_name, bool(running)),
+        f"mark {list_name}'s sync {'running' if running else 'done'}")
 
 
 # ---------------------------------------------------------------------------

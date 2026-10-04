@@ -832,9 +832,13 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             if a["holds"]:
                 if not a["may"]:
                     raise RuntimeError(a["why"])
-                with for_list(list_name, actor=actor,
-                              authority=(f"retire of {hostname}, confirmed by {actor} "
-                                         f"(plan {p['hash']})")):
+                from modules.netbox_guard import list_writer
+
+                # One NetBox writer per list at a time, across processes (R21).
+                with list_writer(list_name, f"the mask for retiring {hostname}", actor), \
+                        for_list(list_name, actor=actor,
+                                 authority=(f"retire of {hostname}, confirmed by {actor} "
+                                            f"(plan {p['hash']})")):
                     got = mask_one(session, base, a["item"], checker_scan())
                 if not got["ok"]:
                     raise RuntimeError(got["why"])

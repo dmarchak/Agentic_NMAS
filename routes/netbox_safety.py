@@ -218,6 +218,16 @@ def apply_import():
     if not authorized:
         op_progress.finish(pid, "refused")
         return jsonify(err), status
+    # Another writer of this list's NetBox objects, by any process (R21): refused here, naming
+    # it, rather than on a thread after an answer that said "started".
+    from modules import netbox_guard as _nbg
+
+    busy = _nbg.list_writer_now(list_name)
+    if busy is not None:
+        op_progress.finish(pid, "refused")
+        return jsonify({"ok": False, "busy": True, "error": (
+            f"Not imported: {_nbg.NetBoxBusy(list_name, busy)}. Nothing was written; "
+            "import again once it finishes.")}), 409
 
     def _run(name=list_name, devs=devices):
         # The import runs on after the response: it keeps reporting under the

@@ -124,7 +124,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R18 | m | git, stores, locks | `remote.json` and the post-commit push | the remote, `remote.json` | thread per commit; unlocked read-modify-write; unreadable reads as "no remote" | no | FIXED 2026-10-04 (was UNSAFE; tests/test_remote_store.py) | yes | One publisher per repository; PathLock; push an explicit sha |
 | R19 | m | stores, live, approvals | Drift state and overlapping drift runs | `drift_state.json`, queue items | one RLock in one function; truncate; legacy re-adoption; Check now overlaps | no | FIXED 2026-10-02 (was UNSAFE; tests/test_drift_state_concurrency.py) | yes | PathLock; refuse unreadable; one drift run at a time across processes |
 | R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | FIXED 2026-10-02 as C326 (was UNSAFE; tests/test_approved_revert_closes.py) | yes | Never reject the item named by `approval_id` |
-| R21 | m | locks, confirms, live | Every NetBox writer: the tab's import and Remove, onboarding phase two, adopt, retire's mask, the mask script (widened on review) | NetBox, sync status | nothing refuses a second writer; status truncate; tokens in memory | partly | UNSAFE | yes | Per-list NetBox lock with holder, taken by every writer; shared token store |
+| R21 | m | locks, confirms, live | Every NetBox writer: the tab's import and Remove, onboarding phase two, adopt, retire's mask, the mask script (widened on review) | NetBox, sync status | nothing refuses a second writer; status truncate; tokens in memory | partly | WRITER LOCK FIXED 2026-10-04 (tests/test_netbox_one_writer.py); the shared token store is 9.S's | yes | Per-list NetBox lock with holder, taken by every writer; shared token store |
 | R22 | m | stores | Kea ZTP fragment | the fragment, Kea's running config | none | no | FIXED 2026-10-04 (was UNSAFE; tests/test_ztp_fragment_lock.py) | yes | PathLock from read to read-back |
 | R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | HOLD FIXED 2026-10-04 (tests/test_onboard_serialised.py); binding Abandon to its dry run not built | yes | Hold the hostname; bind Abandon to its dry run |
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
@@ -628,6 +628,29 @@ through `sync_list_to_netbox` (modules/nsot/onboard.py:1325). Adopt imports the 
 None of them takes a per-list NetBox lock, so any of them can race an import on the same
 list's shared objects (site, region, VRF): get-then-create, inferred from the code, not
 reproduced. The fix is the same lock, taken by every writer, not only by the tab's routes.
+
+*The writer lock, FIXED 2026-10-04 (tests/test_netbox_one_writer.py):*
+- **The lock.** `netbox_guard.list_writer(list, operation, actor)` holds a list's NetBox
+  objects across processes. A second writer is refused, naming the first (who, what, since
+  when, process), never queued. It is re-entrant on the holding thread only, so phase two
+  calling the import holds once and the import's own worker threads (which enter `for_list`)
+  are never refused.
+- **Who takes it.** The import (`sync_list_to_netbox`, which onboarding's phase two and adopt
+  call), both removals, and retire's mask.
+- **The import confirm** refuses before starting its thread, rather than after answering
+  "started".
+- **The sync-status file** is locked across processes and replaced whole, all three writers
+  through one function.
+- **Measured.** Another process holding Lab refused a second writer, the import, and the
+  confirm. Another thread was refused while the holder re-entered. Two processes marking 40
+  lists each lost no entry.
+- **Controls**, each failing its aimed tests: never refusing; not re-entrant; the confirm
+  starting anyway; the status file without its cross-process lock.
+- **Not covered.**
+  - `scripts/nmas-netbox-mask-context` masks across every list under `for_list("")`, so it
+    names no list to lock. Its devices' lists are not known to it: recorded, not built.
+  - The confirm tokens live per process; that is 9.S's multi-worker half, and it already
+    fails closed.
 
 **R22. Two ZTP onboardings can lose a Kea reservation** (stores-6).
 `write_reservations` reads the fragment, builds a candidate, tests, replaces, reloads and

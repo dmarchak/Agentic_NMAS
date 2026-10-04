@@ -915,6 +915,112 @@ class for_list:
         return False
 
 
+class NetBoxBusy(RuntimeError):
+    """Another writer holds this list's NetBox objects (CONCURRENCY_AUDIT R21)."""
+
+    def __init__(self, list_name: str, holder: dict):
+        self.holder = holder
+        who = holder.get("actor") or "someone"
+        what = holder.get("operation") or "a NetBox write"
+        since = holder.get("started", "")
+        super().__init__(f"{what} by {who} is writing {list_name}'s NetBox objects"
+                         + (f" (since {since}, process {holder.get('pid')})" if since else ""))
+
+
+_writers = threading.local()
+
+
+class list_writer:
+    """``with list_writer(list_name, operation, actor):`` ONE NetBox writer per list at a time,
+    across processes (CONCURRENCY_AUDIT R21). Two imports of one list raced get-then-create on
+    its shared objects (site, region, VRF), and onboarding's phase two, adopt, retire's mask
+    and the mask script took nothing either.
+
+    A second writer is REFUSED, naming the first (:class:`NetBoxBusy`), never queued: the
+    rule for device holds. Re-entrant on the holding thread, so an operation that calls
+    another (phase two calling the import) holds once. Taken at each operation's entry, never
+    inside `for_list`, which the import's worker threads enter themselves."""
+
+    def __init__(self, list_name: str, operation: str, actor: str = ""):
+        self.list_name, self.operation, self.actor = list_name, operation, actor
+        self._fd = None
+
+    def _path(self) -> str:
+        import re
+
+        from modules import config
+
+        folder = os.path.join(config.DATA_DIR, "locks")
+        os.makedirs(folder, exist_ok=True)
+        safe = re.sub(r"[^a-z0-9_.-]", "_", (self.list_name or "").lower()) or "_"
+        return os.path.join(folder, f"netbox-{safe}.lock")
+
+    def __enter__(self):
+        held = getattr(_writers, "held", None)
+        if held is None:
+            held = _writers.held = {}
+        key = (self.list_name or "").lower()
+        if key in held:
+            held[key][1] += 1
+            return self
+        import fcntl
+        import time
+
+        path = self._path()
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            try:
+                holder = json.loads(os.read(fd, 1 << 16).decode("utf-8", "replace") or "{}")
+            except ValueError:
+                holder = {}
+            os.close(fd)
+            raise NetBoxBusy(self.list_name, holder) from None
+        os.ftruncate(fd, 0)
+        os.write(fd, json.dumps({"operation": self.operation, "actor": self.actor,
+                                 "pid": os.getpid(), "started": time.strftime(
+                                     "%Y-%m-%dT%H:%M:%SZ", time.gmtime())}).encode())
+        held[key] = [fd, 1]
+        return self
+
+    def __exit__(self, *exc):
+        import fcntl
+
+        key = (self.list_name or "").lower()
+        slot = _writers.held.get(key)
+        slot[1] -= 1
+        if slot[1] == 0:
+            del _writers.held[key]
+            os.ftruncate(slot[0], 0)
+            fcntl.flock(slot[0], fcntl.LOCK_UN)
+            os.close(slot[0])
+        return False
+
+
+def list_writer_now(list_name: str):
+    """Who writes *list_name*'s NetBox objects now, by any process, or None. A READ."""
+    import fcntl
+
+    path = list_writer(list_name, "")._path()
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            try:
+                return json.loads(os.read(fd, 1 << 16).decode("utf-8", "replace") or "{}")
+            except ValueError:
+                return {}
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return None
+    finally:
+        os.close(fd)
+
+
 def get_current_authority() -> str:
     return getattr(_local, "authority", None) or ""
 
