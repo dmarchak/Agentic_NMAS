@@ -393,19 +393,22 @@ def commit_profile(list_name: str, doc: dict, actor: str, summary: str) -> dict:
         raise ProfileRefused("a profile commit records who made it, and no actor was given")
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
     path = os.path.join(repo, PROFILE_REL)
-    before = None
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as fh:
-            before = fh.read()
-    text = dump(doc)
-    write_atomic(path, text)
-    out = R._commit_paths(list_name, [PROFILE_REL], f"profile: {summary}",
-                          [f"Actor: {actor}"], "profile")
-    if not out.get("ok"):
-        if before is None:
-            os.remove(path)
-        else:
-            write_atomic(path, before)
+    # Read, write, commit and any restore under the repository's lock (CONCURRENCY_AUDIT
+    # R15): the restore on failure wrote the earlier bytes back over another writer's.
+    with R.repo_lock(repo):
+        before = None
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                before = fh.read()
+        text = dump(doc)
+        write_atomic(path, text)
+        out = R._commit_paths(list_name, [PROFILE_REL], f"profile: {summary}",
+                              [f"Actor: {actor}"], "profile")
+        if not out.get("ok"):
+            if before is None:
+                os.remove(path)
+            else:
+                write_atomic(path, before)
     return out
 
 

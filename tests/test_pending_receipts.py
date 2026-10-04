@@ -127,9 +127,15 @@ class TestTheApplyWritesEachDeviceAsItFinishes:
             raise RuntimeError("the process ended here")
 
         monkeypatch.setattr(rd, "_commit_batch_golden", commit)
+        # A stand-in target: its program and hash stood in for too (R16 requires the hash).
+        monkeypatch.setattr(D, "prepare_for_deploy", lambda t: {"config": ""})
+        monkeypatch.setattr(rd, "_program", lambda *a, **k: {"commands": [],
+                                                            "recreate": {"refused": []}})
+        monkeypatch.setattr(D, "command_fingerprint", lambda *a, **k: "h")
         with A.app.test_request_context("/golden/reapply", method="POST"):
             with pytest.raises(RuntimeError):
-                rd.run_targets("Default", [target], {"confirmations": {"s4": "h"}},
+                rd.run_targets("Default", [target], {"confirmations": {"s4": "h"},
+                                                     "command_hashes": {"s4": "h"}},
                                source_ref="golden/s4/1")
         (row,) = receipts.read("Default")["rows"]
         assert (row["device"], row["action"], row["commit_state"]) == ("s4", "restore", "pending")

@@ -118,8 +118,8 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R12 | m | approvals, intent, confirms | Template approve | `.approvals.json`, a commit | client sends `{}`; validates, then fingerprints the working tree | no | SERVER HALF FIXED 2026-10-04 (tests/test_approve_one_snapshot.py); the client half (the v1 editor sends what it reviewed) UNSAFE | yes | Approve carries the reviewed fingerprint; fingerprint one snapshot first |
 | R13 | m | approvals, stores | `.approvals.json` record | approvals and tombstones | unlocked read-modify-write, shared `.tmp`, `{}` on unreadable; edits' revocations not committed; gate reads the working tree | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approvals_record.py) | yes | PathLock and atomic write; commit tombstones with the template; read at HEAD |
 | R14 | m | intent, approvals | Template and bindings editors | templates, `bindings.yml` | no base; truncate in place; bindings fall back to defaults silently | no | SERVER HALF FIXED 2026-10-04 (tests/test_template_store_writes.py); the client half (the v1 editor sends what it reviewed) UNSAFE | yes | Base blob; `write_atomic`; refuse an unreadable bindings file |
-| R15 | m | intent, confirms | Hash-confirmed intent writers (bulk, profile propose, IP SLA) | `host_vars`, `profiles/monitoring.yml` | hash checked, then write, then commit, nothing spanning; no device holds | no | UNSAFE | yes | Repo lock across recompute, write and commit; hold devices |
-| R16 | m | confirms | Deploy and restore confirm gaps | devices, commit | command hash optional; compared before the hold; list derived | partly | UNSAFE | yes | Require the hash; hold first; list in the hash |
+| R15 | m | intent, confirms | Hash-confirmed intent writers (bulk, profile propose, IP SLA) | `host_vars`, `profiles/monitoring.yml` | hash checked, then write, then commit, nothing spanning; no device holds | no | FIXED 2026-10-04 (was UNSAFE; tests/test_hash_writers_hold_the_lock.py) | yes | Repo lock across recompute, write and commit; hold devices |
+| R16 | m | confirms | Deploy and restore confirm gaps | devices, commit | command hash optional; compared before the hold; list derived | partly | THE HASH GAP FIXED 2026-10-04 (tests/test_confirm_carries_its_hash.py); the compare before the hold is bounded by the pipeline's fresh capture, recorded; the derived list is R3's | yes | Require the hash; hold first; list in the hash |
 | R17 | m | intent | Settings forms | `user_settings.json`, `.env` | file safe; forms resend every field; `.env` unlocked | yes (file) | UNSAFE | yes | Send changed fields only, with the value as loaded |
 | R18 | m | git, stores, locks | `remote.json` and the post-commit push | the remote, `remote.json` | thread per commit; unlocked read-modify-write; unreadable reads as "no remote" | no | UNSAFE | yes | One publisher per repository; PathLock; push an explicit sha |
 | R19 | m | stores, live, approvals | Drift state and overlapping drift runs | `drift_state.json`, queue items | one RLock in one function; truncate; legacy re-adoption; Check now overlaps | no | FIXED 2026-10-02 (was UNSAFE; tests/test_drift_state_concurrency.py) | yes | PathLock; refuse unreadable; one drift run at a time across processes |
@@ -453,6 +453,14 @@ writer's bytes (modules/nsot/profile.py:395-409). Revert and seed hold the devic
 (intent_ops.py:167; seed.py:177), but that excludes only other holders. The editor, bulk,
 IP SLA and profile writers never take a hold.
 
+*FIXED 2026-10-04 (tests/test_hash_writers_hold_the_lock.py):* bulk intent's apply, profile
+propose's apply, IP SLA's `set_policy` and `apply`, and `profile.commit_profile` (its read,
+write, commit and restore) each run under the repository's lock (`RepoLock`, cross-process,
+re-entrant), the lock the intent editor takes since R2, so an editor commit waits instead of
+landing between the hash check and the commit. Shown by spying on each writer's own recompute:
+the lock is held when it runs; with the lock swapped for a no-op, all four tests fail. A device
+hold is not taken: these write intent, never a device.
+
 **R16. Deploy and restore confirms have three gaps** (confirms-5, confirms-6, confirms-7).
 The binding itself is SAFE across processes (routes/deploy.py:575-646;
 modules/nsot/deploy.py:1388-1393, 1590-1591). But the command hash is optional: with none,
@@ -461,6 +469,17 @@ is pushed unseen (routes/deploy.py:575-576, 648; run_targets the same). The ship
 send it, so the gap is latent, the bypass-by-omission shape. The compare runs before the
 device hold (routes/deploy.py:561-660, then 666; run_targets 853-889, then 895). And the
 list is derived when the client sends none (see R3).
+
+*The hash gap, FIXED 2026-10-04 (tests/test_confirm_carries_its_hash.py):* a deploy or
+restore confirm without the program's command hash is refused for that device, by name,
+before anything else ("needs the command hash the preview showed"). Every shipped client
+sends it (the wizard, today's restore, the v2 jobs); four tests that omitted it now send the
+hash their own plan computed. Shown: under the old rule both a hash-less deploy and a
+hash-less restore went on to connect. *The compare before the hold, measured narrower than
+stated:* the program is fixed in memory at the compare, so an intent or template change after
+it cannot reach what is sent; a device change in that window is caught by the pipeline's
+fresh capture against the confirmed capture hash (stage 4). Recorded, not restructured. *The
+derived list* is R3's per-session half.
 
 **R17. A stale settings tab reverts another person's decision** (intent-14, intent-15,
 intent-16). The file is safe (settings_lock, modules/config.py:283-336). But the Settings

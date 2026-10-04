@@ -159,11 +159,18 @@ class TestEveryChangingPathHoldsIt:
         ran = _spy_pipeline(monkeypatch)
         target = _target("r1", target_config="hostname r1\nlogging buffered 4096\n",
                          captured="hostname r1\n")
-        from routes.deploy import _capture_hash
+        from modules.nsot.deploy import command_fingerprint, prepare_for_deploy
+        from routes.deploy import _capture_hash, _program
+        # The hash the preview showed, computed as the confirm recomputes it (R16: a restore
+        # without its command hash is refused before anything else).
+        full = _program(prepare_for_deploy(target)["config"], "hostname r1\n", [], None,
+                        getattr(target, "platform", ""))
+        shown = command_fingerprint(full["commands"], [])
         with Holder("Lab", "r1", operation="deploy", actor="other@example.invalid",
                     detail=""):
             report = rd.run_targets("Lab", [target],
-                                    {"confirmations": {"r1": _capture_hash("hostname r1\n")}},
+                                    {"confirmations": {"r1": _capture_hash("hostname r1\n")},
+                                     "command_hashes": {"r1": shown}},
                                     label="re-apply X", source_ref="X")
         assert ran == []
         row = next(r for r in report["results"] if r["device"] == "r1")

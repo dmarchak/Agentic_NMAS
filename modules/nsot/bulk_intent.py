@@ -299,13 +299,24 @@ def _plan_hash(report: dict) -> str:
 def apply(list_name: str, repo: str, devices: list, steps: list,
           confirmed_hash: str, *, render, eligible=None, summary: str,
           actor: str) -> dict:
-    """Recompute, compare with what the operator saw, write, ONE commit."""
-    from modules.nsot import hostvars
-    from modules.nsot.repo import save_host_vars
+    """Recompute, compare with what the operator saw, write, ONE commit: all under the
+    repository's lock (CONCURRENCY_AUDIT R15), so an editor commit cannot land between the
+    hash check and this commit and be overwritten."""
+    from modules.nsot.repo import repo_lock
 
     if not (summary or "").strip():
         return {"ok": False, "error": "a one-line summary is required -- it "
                                       "becomes the commit subject"}
+    with repo_lock(repo):
+        return _apply_locked(list_name, repo, devices, steps, confirmed_hash, render=render,
+                             eligible=eligible, summary=summary, actor=actor)
+
+
+def _apply_locked(list_name: str, repo: str, devices: list, steps: list, confirmed_hash: str,
+                  *, render, eligible, summary: str, actor: str) -> dict:
+    from modules.nsot import hostvars
+    from modules.nsot.repo import save_host_vars
+
     report = plan(repo, devices, steps, render=render, eligible=eligible,
                   summary=summary)
     if not report["ok"]:

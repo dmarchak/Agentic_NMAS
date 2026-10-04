@@ -598,7 +598,18 @@ def document_diff(proposal: dict) -> list:
 def apply(list_name: str, confirmed_hash: str, actor: str, choose: dict = None) -> dict:
     """Recompute (with the person's *choose*, as previewed), refuse a proposal
     that moved, store each agreed secret under the network's key, and commit
-    the document as *actor*, naming every chosen version."""
+    the document as *actor*, naming every chosen version. Recompute to commit under the
+    repository's lock (CONCURRENCY_AUDIT R15)."""
+    import os
+
+    from modules.config import get_list_data_dir
+    from modules.nsot.repo import repo_lock
+
+    with repo_lock(os.path.join(get_list_data_dir(list_name), "config_repo")):
+        return _apply_locked(list_name, confirmed_hash, actor, choose)
+
+
+def _apply_locked(list_name: str, confirmed_hash: str, actor: str, choose: dict = None) -> dict:
     from modules.nsot import profile as _p
 
     now = propose(list_name, choose=choose)

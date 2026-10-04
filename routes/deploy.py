@@ -669,12 +669,15 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                               else "intent_or_template")})
                 continue
 
-        if scope and expected is None:
-            # A scoped apply is only ever a program a person confirmed: with no
-            # command hash there is nothing to hold the scope to.
+        if expected is None:
+            # What is confirmed is what is sent (CONCURRENCY_AUDIT R16): with no command hash
+            # only the capture was compared, so an intent or template change between plan
+            # and apply was pushed unseen, the bypass-by-omission shape. Every apply now
+            # carries the program's hash, scoped or not.
             refused.append({"device": hostname, "outcome": "refused",
-                            "reason": (f"{SCOPE_ACTION.get(scope, 'a scoped deploy')} needs the "
-                                       "command hash the preview showed. Nothing was sent.")})
+                            "reason": (f"{SCOPE_ACTION.get(scope, 'a deploy')} needs the "
+                                       "command hash the preview showed (what is confirmed "
+                                       "is what is sent). Nothing was sent.")})
             continue
         artifacts.append(artifact)
         device_rows[hostname] = device
@@ -959,6 +962,12 @@ def run_targets(list_name: str, targets: list, data: dict,
                                 "confirmed_hash": expected,
                                 "current_hash": now})
                 continue
+        else:
+            # The same rule as the deploy's (R16): a program without its hash is never sent.
+            refused.append({"device": hostname, "outcome": "refused",
+                            "reason": ("needs the command hash the preview showed (what is "
+                                       "confirmed is what is sent). Nothing was sent.")})
+            continue
 
         accepted.append(target)
         device_rows[hostname] = getattr(target, "device_row", {}) or {}

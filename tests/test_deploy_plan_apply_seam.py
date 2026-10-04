@@ -74,7 +74,8 @@ class TestTheCaptureHashHandshake:
         things, this is the only test that can tell."""
         device = _plan(client)
         result = client.post("/deploy/apply",
-                             json={"confirmations": {"r6": device["capture_hash"]}})
+                             json={"confirmations": {"r6": device["capture_hash"]},
+                                   "command_hashes": {"r6": device["command_hash"]}})
         body = result.get_json()
         assert body["ok"] is True
         assert "r6" in body.get("deployed", []), (
@@ -84,9 +85,10 @@ class TestTheCaptureHashHandshake:
     def test_a_stale_hash_is_skipped_as_drifted(self, client):
         """**The floor.** Without it the test above passes against a guard
         that was deleted."""
-        _plan(client)
+        device = _plan(client)
         result = client.post("/deploy/apply",
-                             json={"confirmations": {"r6": "0" * 16}})
+                             json={"confirmations": {"r6": "0" * 16},
+                                   "command_hashes": {"r6": device["command_hash"]}})
         body = result.get_json()
         assert "r6" not in body.get("deployed", [])
         outcomes = body.get("by_outcome") or {}
@@ -96,9 +98,10 @@ class TestTheCaptureHashHandshake:
         """Register B1, through the real route. The skip entry used to carry
         the whole capture, so this JSON response held the device's
         `username ... secret 9` line. The hashes are what a reader needs."""
-        _plan(client)
+        device = _plan(client)
         result = client.post("/deploy/apply",
-                             json={"confirmations": {"r6": "0" * 16}})
+                             json={"confirmations": {"r6": "0" * 16},
+                                   "command_hashes": {"r6": device["command_hash"]}})
         text = result.get_data(as_text=True)
         body = result.get_json()
         assert "r6" in (body.get("by_outcome") or {}).get("skipped_drifted", [])

@@ -332,7 +332,14 @@ def policy_view(ref) -> dict:
 def set_policy(ref, policy: str, frequency: int, actor: str, profile_hash: str) -> dict:
     """Commit the profile with its IP SLA section set to *policy* every
     *frequency* seconds (one commit, `Source: profile`). Refuses a profile
-    that moved since it was read, and a network with no profile."""
+    that moved since it was read, and a network with no profile. Recompute to commit under
+    the repository's lock (CONCURRENCY_AUDIT R15)."""
+    from modules.nsot.repo import repo_lock
+    with repo_lock(ref.repo_dir):
+        return _set_policy_locked(ref, policy, frequency, actor, profile_hash)
+
+
+def _set_policy_locked(ref, policy: str, frequency: int, actor: str, profile_hash: str) -> dict:
     from modules.nsot import profile as _p
     view = policy_view(ref)
     if view["error"]:
@@ -412,7 +419,14 @@ def apply(ref, chosen: list, picked: list, fingerprint: str, actor: str) -> dict
     ONE commit, recomputing the plan first and refusing one that moved. Returns
     the devices to deploy (scope `ip_sla`). Refuses while host_vars/ holds an
     uncommitted change (the commit would carry it), and a failed commit puts
-    every file back as committed (bulk intent's `_put_back`, C106)."""
+    every file back as committed (bulk intent's `_put_back`, C106). Recompute to commit under
+    the repository's lock (CONCURRENCY_AUDIT R15)."""
+    from modules.nsot.repo import repo_lock
+    with repo_lock(ref.repo_dir):
+        return _apply_locked(ref, chosen, picked, fingerprint, actor)
+
+
+def _apply_locked(ref, chosen: list, picked: list, fingerprint: str, actor: str) -> dict:
     from modules.nsot import hostvars
     from modules.nsot.bulk_intent import _put_back
     from modules.nsot.repo import git, save_host_vars
