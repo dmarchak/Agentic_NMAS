@@ -229,6 +229,20 @@ sites, each a cross-cutting pass over one property. This plan is nine steps. Ste
 
 ## 7. Decisions for the operator
 
+**DECIDED 2026-10-04 (the operator), all five; build P.8 after the current queue, starting
+from this document:**
+1. **Default = the global file, no migration:** yes.
+2. **A page's network is carried in its URL:** yes. This also decides CONCURRENCY_AUDIT R3:
+   **the URL is authoritative.** The session only remembers the last network, as the default
+   when a URL names none, so two tabs on two networks never collide.
+3. **Retire the twelve form-only settings:** yes. First check that nothing outside the app
+   reads them (scripts, host jobs, lab tooling). Record each retirement in CUTOVER.
+4. **`yang_push_script` is global:** yes. It is Lab 2's NETCONF demo, so it is added to
+   Stage 10's lab-tooling inventory (NSOT_STAGE10_PLAN 6.0b).
+5. **Several Grafanas per network are supported, one shared Grafana is the default.**
+
+The questions as put:
+
 1. **The Default layer is the global file** (zero-copy migration). Recommended. The
    alternative is a copy at migration, rejected in section 3.
 2. **A page's network:** carried in the URL, defaulting to the viewer's own active list.

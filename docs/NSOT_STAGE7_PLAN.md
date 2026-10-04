@@ -3199,7 +3199,9 @@ line, the series on hover; the PromQL editable beneath); C, a log question past 
 Monitoring (recommended: separate, as Topology is, because a question is not a dashboard); saved
 views shared across the team with their author named (recommended), stored as a reader-free
 settings-like store per network once P.8 lands. Point 6 (raw-telemetry) is not drawn: it is
-14.4's decision.
+14.4's decision. **DECIDED 2026-10-04 (the operator): both as recommended.** Questions is a
+separate OBSERVE destination, and saved views are shared across the team with their author
+named. The boards themselves await the operator's sign-off.
 
 ## 14. The data lake (the operator's decisions, 2026-10-04)
 

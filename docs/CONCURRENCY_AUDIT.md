@@ -106,7 +106,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 |---|---|---|---|---|---|---|---|---|---|
 | R1 | h | git | Every commit to a list's repository (`save_golden`, `_commit_paths`, renames, migrate); abandon and retire stage outside | index, commits, tags | `threading.Lock` per repo; `stage_exactly` checks once; `commit()` takes the whole index | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Cross-process lock held from first write to last tag, holder recorded; commit explicit paths; every stager inside |
 | R2 | h | intent | Intent editor save | `host_vars/<dev>.yml`, one commit | none: no base, write before the lock, save not bound to preview | no | FIXED 2026-10-02 (was UNSAFE; tests/test_intent_editor_concurrency.py) | yes | Base blob from the open; compare at HEAD under the lock; 409 with three-way diff |
-| R3 | h | stores, live | The server-wide active list (`device_lists.json` `current_list`) | the registry, and which list every derived write lands in | none; truncate in place; a torn read answers "Default" | no | STORE HALF FIXED 2026-10-04 (tests/test_list_registry_store.py); the per-session half UNSAFE, a decision (below) | yes | Active list per session; every write carries its list; locked atomic registry |
+| R3 | h | stores, live | The server-wide active list (`device_lists.json` `current_list`) | the registry, and which list every derived write lands in | none; truncate in place; a torn read answers "Default" | no | STORE HALF FIXED 2026-10-04 (tests/test_list_registry_store.py); the per-session half UNSAFE, DECIDED 2026-10-04 (the URL is authoritative; built with P.8) | yes | Active list per session; every write carries its list; locked atomic registry |
 | R4 | h | approvals | Approval queue store | `approval_queue.json` | none; GETs write it; unreadable reads as `[]`; `resolve` saves a stale list twice | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approval_queue_store.py) | yes | PathLock, atomic write, refuse unreadable, pure reads, compare-and-set; SQLite WAL candidate |
 | R5 | h | locks, live | An operation interrupted by a process exit, including the two restart routes (added on review) | devices already pushed; no receipt, no golden, no rollback | none: Update gates and the restart routes ignore held devices; crash staging unread; leftover lock file unread | n/a | FIXED 2026-10-02 (was UNSAFE; tests/test_interrupted_operations.py, tests/test_pending_receipts.py): Update and `nmas-deploy` refuse while a device is held, both restart routes removed, an interrupted operation kept and drawn on Needs attention, each device's receipt written as it finishes, commit pending; not built: the per-device step under `deploy_max_workers > 1`, and the gunicorn half (9.S) | yes | Refuse Update, restarts and `nmas-deploy` while any device is held (or retire the restart routes); per-device receipts; draw the interrupted state |
 | R6 | h (m today) | git, stores, locks | Manifest store | `.nsot/manifest.json` | `threading.Lock`, shared `.tmp`, unreadable becomes empty; rename rollback writes blind | no | FIXED 2026-10-04 (was UNSAFE; tests/test_manifest_store.py) | yes (CLI; rename rollback) | PathLock, `write_atomic`, `read_json_for_write`, inside the repo lock |
@@ -228,6 +228,12 @@ pages that retire at cutover.
 (C) **leave it until cutover**: v2 carries its list; v1 retires.
 **Recommendation: (A)**, now. It removes the cross-person retargeting on today's pages without
 touching v1 controls, and (B) then follows naturally as v2 replaces them.
+
+**DECIDED 2026-10-04 (the operator, with P.8's decision 2): the URL is authoritative.** A page's
+network is carried in its URL. The session only remembers the last network, as the default
+when a URL names none, so two tabs on two networks never collide. This is (A) with the URL
+over the session, and (B) on every write. It is built with P.8 (NSOT_P8_DESIGN, section 5,
+build step 8), not before.
 
 **R4. The approval queue store loses and erases decisions** (approvals-1, approvals-2,
 stores-1, live-12, confirms-22). `_save_queue` truncates in place with no lock
@@ -400,6 +406,12 @@ saving; if it moved, nothing is approved, the refusal names both fingerprints, a
 revocation stands. Shown with an edit landing during the real validation: without the check
 the edited closure was approved and the revocation erased. *The client half* (the editor sends
 the fingerprint it reviewed) is the v1 template editor's JavaScript, recorded, not built.
+*The client half, recommended 2026-10-04 and taken by the operator the same day ("unless it
+changes what a screen shows"):* the approval state the row already loads
+(`/templates/approval/<path>`) carries the closure's fingerprint, the row keeps it, and
+Approve sends it. A closure that moved since the row was drawn is refused, naming both
+fingerprints, in the "Cannot approve" alert that already draws approve refusals. No new
+control, function or element, so no mockup.
 
 *FIXED 2026-10-02 (tests/test_approvals_record.py):* every approve and revoke is a locked
 read-modify-write (`<repo>.approvals.lock`, beside the repository) with a temp file per write;
@@ -440,6 +452,15 @@ for any device, and the template listing answers 409 naming it. *The client half
 editor's GET returns a base blob and its save is refused when the file moved since, with the
 three-way diff, as R2 built for intent) is the v1 template editor's JavaScript, recorded, not
 built: no new v1 capability while v2's template screen is drawn.
+*The client half, recommended 2026-10-04 and taken by the operator the same day ("unless it
+changes what a screen shows"):*
+- The editor's open returns the file's blob at HEAD. Save sends it, and the server compares it
+  under the repository lock. A file that moved is refused (409), naming the commit, who and
+  when, in the editor's status line, which already draws a save's refusal.
+- The three-way diff is NOT drawn on v1, because it would change the screen. v2's template
+  screen draws it after its mockup.
+- Bindings: no control in the interface posts `/templates/bindings`, so there is no client
+  half to build. The server half stands.
 
 **R15. Intent writers that check a hash do not hold it to the commit** (git-10, intent-5,
 intent-11, intent-12, intent-13, confirms-9, confirms-10). Bulk intent recomputes its plan

@@ -3782,6 +3782,9 @@ only. The rate is `deriv(sysUpTime[1h]) / 100`, which needs an hour of history b
 re-measures the keys (143 now), adds the migration (none: the global file is Default's layer),
 every reader it touches, how the OBSERVE screens and Grafana roles depend on it, a nine-step
 build and five decisions with a recommendation each. The counts below are 2026-09-28's.
+**All five DECIDED 2026-10-04 (the operator)** (the design's section 7); among them the URL
+carries the network and is authoritative, which also decides CONCURRENCY_AUDIT R3. P.8 is
+built after the current queue, from the design.
 
 **DECIDED 2026-09-28 (the operator), closing every ambiguity below: 71 keys per
 network, 47 global, 11 read by nothing, none ambiguous; and one per-list key
