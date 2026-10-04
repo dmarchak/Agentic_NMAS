@@ -22,6 +22,7 @@ model and fake Grafana as tests/test_telemetry_fold.py.
 
 import json
 import os
+import re
 
 import pytest
 
@@ -96,7 +97,8 @@ class TestAFoldIsChecked:
         assert "measured on s3" in basis
         assert "no series matched cempMemPoolUsed{" in basis and 'device="s3"' in basis
         assert basis.endswith("in the last hour")
-        (asked,) = [b for b in g.bodies if [q["refId"] for q in b["queries"]] == ["S"]]
+        (asked,) = [b for b in g.bodies if [q["refId"] for q in b["queries"]] == ["S"]
+                    and "cempMemPoolUsed" in b["queries"][0]["expr"]]
         expr = asked["queries"][0]["expr"]
         assert expr.startswith("count(count_over_time(cempMemPoolUsed{") and "[3600s]" in expr
 
@@ -110,6 +112,83 @@ class TestAFoldIsChecked:
         by = {f["title"]: f for f in _s3(_Asked(series=None))["folded"]["panels"]}
         assert by["Memory used"]["basis"].endswith(
             "whether a series matches could not be asked now")
+
+
+class TestAKnownPlatformLimitLeadsWithItsReason:
+    """C429 (the operator, 2026-10-04, s3 at 17cb78f): Memory used and Platform CPU read "No
+    series matched ..." where they said the vIOS limit. s3's golden on the host names no model
+    (C426), so its panels are drawn, not folded; their reason still leads."""
+
+    @pytest.mark.parametrize("title", ["Memory used", "Platform CPU (the whole route processor)"])
+    def test_an_unknown_or_matching_model_is_explained_a_known_other_is_not(self, stored, title):  # noqa: F811
+        from modules import panels
+        p = _panel(stored, title)
+        assert panels.known_limit(p, "") is not None
+        assert panels.known_limit(p, "vios_l2") is not None
+        assert panels.known_limit(p, "C8000V") is None
+
+    def test_traffic_is_no_platform_limit(self, stored):  # noqa: F811
+        from modules import panels
+        assert panels.known_limit(_panel(stored, "Traffic in"), "") is None
+
+    def _page(self, stored, model):  # noqa: F811
+        from flask import render_template
+
+        import app as A
+        from modules import device_page
+        m = device_page.monitoring({"hostname": "s3", "ip": "192.0.2.23"}, client=_Asked(False),
+                                   streams=(False, "s3 doesn't stream model-driven telemetry"),
+                                   model=model)
+        with A.app.test_request_context("/"):
+            return m, render_template("v2/_monitoring.html", device={"hostname": "s3"}, m=m)
+
+    def test_with_no_model_the_cells_are_marked_and_drawn(self, stored):  # noqa: F811
+        m, html = self._page(stored, ("", "the golden names no model"))
+        cells = {c["panel"]["title"]: c for c in m["layout"] if c["kind"] == "panel"}
+        assert cells["Memory used"].get("limit") is True
+        assert cells["Platform CPU (the whole route processor)"].get("limit") is True
+        assert not cells["Traffic in"].get("limit")
+        assert html.count('data-panel-limit="1"') == 2
+
+    def test_a_router_is_not_excused(self, stored):  # noqa: F811
+        _m, html = self._page(stored, ("C8000V", "the golden's license udi line"))
+        assert 'data-panel-limit="1"' not in html
+
+
+class TestTheHiddenListSaysOneSentenceEach:
+    """C425 (the operator, 2026-10-04, s3's list): "Up for" showed its raw PromQL condition
+    with `$device` unfilled; each telemetry entry gave two reasons for one fact."""
+
+    def _items(self, stored):  # noqa: F811
+        from flask import render_template
+
+        import app as A
+        m = _s3(_Asked(False))
+        with A.app.test_request_context("/"):
+            html = render_template("v2/_monitoring.html", device={"hostname": "s3"}, m=m)
+        return {f["title"]: f for f in m["folded"]["panels"]}, html
+
+    def test_up_for_shows_its_reason_and_its_condition_on_hover_filled(self, stored):  # noqa: F811
+        by, html = self._items(stored)
+        up = by["Up for"]
+        assert up["words"].startswith("Not shown: this device's own clock runs slow")
+        assert 'rate(sysUpTime{device="s3"}' in up["hover"] and "$device" not in up["hover"]
+        visible = re.sub(r'title="[^"]*"', "", html)
+        assert "rate(sysUpTime" not in visible and "$device" not in html
+
+    def test_a_telemetry_entry_says_the_configurations_reason_once(self, stored):  # noqa: F811
+        by, _html = self._items(stored)
+        t = by["Telemetry stream"]
+        assert t["words"] == "s3 doesn't stream model-driven telemetry."
+        assert t["hover"].startswith("The dashboard says: No stream:")
+
+    def test_a_platform_limit_shows_its_reason_and_its_measurement_on_hover(self, stored):  # noqa: F811
+        by, html = self._items(stored)
+        mem = by["Memory used"]
+        assert mem["words"] == "Memory isn't available over SNMP on vIOS."
+        assert "measured on s3" in mem["hover"] and "no series matched" in mem["hover"]
+        visible = re.sub(r'title="[^"]*"', "", html)
+        assert "measured on s3" not in visible
 
 
 def _js(expr):
@@ -139,6 +218,17 @@ class TestTheWordsDrawn:
     def test_nothing_asked_keeps_the_panels_own_sentence(self):
         assert _js("window.NMAS_PANELS.emptyWords({range: '1 h', no_value: 'No stream.'})") \
             == "No stream."
+
+    def test_a_known_limit_leads_with_its_reason_and_the_query_on_hover(self):
+        p = ("{asked: ['cempMemPoolUsed{device=\"s3\"}'], range: '1 h', limit: true, "
+             "no_value: 'Memory isn\\'t available over SNMP on vIOS.'}")
+        assert _js(f"[window.NMAS_PANELS.emptyWords({p}), window.NMAS_PANELS.emptyHover({p})]") \
+            == ["Memory isn't available over SNMP on vIOS.",
+                'No series matched cempMemPoolUsed{device="s3"} in the last 1 h.']
+
+    def test_the_renderer_reads_the_cells_mark(self):
+        src = open(os.path.join(ROOT, "static", "js", "nmas_panels.js"), encoding="utf-8").read()
+        assert "p.limit = section.getAttribute('data-panel-limit') === '1';" in src
 
     def test_the_renderer_puts_the_hover_on_the_empty_line(self):
         src = open(os.path.join(ROOT, "static", "js", "nmas_panels.js"), encoding="utf-8").read()

@@ -150,22 +150,29 @@
   }
 
   /* PURE: what an empty answer says. */
+  function askedWords(p) {
+    return 'No series matched ' + p.asked.join(' or ') + ' in the last ' + p.range + '.';
+  }
+
   function emptyHover(p) {
+    if (p.no_value_kind === 'danger' || !(p.asked && p.asked.length)) return '';
+    // A known platform limit leads with its reason; what was asked goes one level down (C429).
+    if (p.limit && p.no_value) return askedWords(p);
     // The panel's own sentence, one level down, when the line says what was measured (C412).
-    if (p.no_value_kind !== 'danger' && p.asked && p.asked.length && p.no_value) {
-      return 'The dashboard says: ' + p.no_value;
-    }
+    if (p.no_value) return 'The dashboard says: ' + p.no_value;
     return '';
   }
 
   function emptyWords(p) {
     // A stopped stream is the failure itself, in the server's words.
     if (p.no_value_kind === 'danger') return p.no_value;
+    // A declared platform limit (the page marks its cell, panels.known_limit): its reason.
+    if (p.limit && p.no_value) return p.no_value;
     // What was measured, never a cause guessed from an empty answer (C412: "No interface
     // counters from telemetry or SNMP" claimed an absence nobody measured): the selectors
     // asked and the range. The panel's own sentence goes on hover (emptyHover).
     if (p.asked && p.asked.length) {
-      return 'No series matched ' + p.asked.join(' or ') + ' in the last ' + p.range + '.';
+      return askedWords(p);
     }
     // The panel's own words for no value (Grafana's noValue), when it has
     // them: it knows why its query can be empty for a device (the operator:
@@ -299,6 +306,8 @@
     var unit = section.getAttribute('data-panel-unit') || p.unit || '';
     if (section.__nmasChart) { section.__nmasChart.destroy(); section.__nmasChart = null; }
     section.__nmasLast = p;
+    // The page marks a panel a declared platform limit explains (C429).
+    p.limit = section.getAttribute('data-panel-limit') === '1';
     clear(body);
     var empty = p.series ? p.series.length === 0 : (p.rows ? p.rows.length === 0 : p.value === null);
     if (p.errors && p.errors.length) body.appendChild(el('p', 'panel-error', p.errors.join('; ')));

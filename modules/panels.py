@@ -175,7 +175,24 @@ PLATFORM_FOLDS = (
         "measured on s3 by the operator, 2026-09-30: vIOS answers No Such Object for the "
         "memory tables (docs/PROMETHEUS_TARGETS.md); staged run 6 asks the older family, and "
         "this rule goes if it answers"),
+    PlatformFold(
+        frozenset({"cpmCPUTotal1minRev"}), re.compile(r"^vios", re.I),
+        "not reported by vIOS",
+        "measured on the host, read-only, 2026-10-04 (C429): s1 to s4 answer SNMP and none "
+        "reports cpmCPUTotal1minRev, while all five C8000V routers do"),
 )
+
+
+def known_limit(panel: dict, model: str):
+    """The declared platform rule that explains *panel* being empty on a device of *model*, or
+    None: the rule covers every metric the panel reads, and the model matches it or is unknown
+    (C429: a known platform limit leads with its reason, never the query). A model KNOWN not
+    to match has no such excuse: its empty panel says what matched nothing."""
+    names = set(metrics_of(panel))
+    if not names:
+        return None
+    return next((r for r in PLATFORM_FOLDS
+                 if names <= r.metrics and (not model or r.models.search(model))), None)
 
 
 def platform_fold(panel: dict, model: str):

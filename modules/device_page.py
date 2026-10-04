@@ -464,6 +464,10 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
                layout=panels.drawn_elsewhere(panels.layout(drawn, [f["id"] for f in folds]), uid,
                                              _grafana_url()),
                seconds=seconds, step=panels.step_for(seconds), range_words=panels.describe(seconds))
+    # A panel a declared platform rule explains leads, when empty, with its reason (C429).
+    for cell in out["layout"]:
+        if cell.get("kind") == "panel" and panels.known_limit(cell["panel"], (model or ("",))[0]):
+            cell["limit"] = True
     return out
 
 
@@ -491,9 +495,13 @@ def fold_panels(drawn: list, dev: dict, dash: dict, fill: dict, datasources: lis
     model_name, model_from = (model or ("", ""))[:2]
     out = []
 
-    def fold(p, short, kind, basis):
+    def fold(p, short, kind, basis, words=None, hover=None):
+        # ONE visible sentence per item, its provenance on hover (C425, the operator,
+        # 2026-10-04: "Up for" showed its raw PromQL; a telemetry entry gave two reasons).
+        detail = p.get("no_value") or short
         out.append({"id": p.get("id"), "title": p.get("title") or "", "short": short,
-                    "kind": kind, "detail": p.get("no_value") or short, "basis": basis})
+                    "kind": kind, "detail": detail, "basis": basis,
+                    "words": words or detail, "hover": hover or basis})
 
     default_ds = panels.default_datasource(datasources, "prometheus")
 
@@ -506,7 +514,12 @@ def fold_panels(drawn: list, dev: dict, dash: dict, fill: dict, datasources: lis
 
     for p in drawn:
         if streams[0] is False and panels.telemetry_only(p):
-            fold(p, "not streamed", "no_source", streams[1])
+            # The configuration's reason is the one sentence; the dashboard's, about a stream
+            # that stopped, is not this device's case and goes on hover.
+            reason = str(streams[1] or "it does not stream").strip()
+            fold(p, "not streamed", "no_source", streams[1],
+                 words=reason + ("" if reason.endswith(".") else "."),
+                 hover=("The dashboard says: " + p["no_value"]) if p.get("no_value") else "")
             continue
         rule = panels.platform_fold(p, model_name)
         if rule is not None:
@@ -544,9 +557,11 @@ def fold_panels(drawn: list, dev: dict, dash: dict, fill: dict, datasources: lis
                 continue
             if got.get("ok") and panels.withheld(got.get("body") or {}):
                 g = panels.guard_of(p)
+                # The condition with this device's values filled (C425: `$device` showed).
                 fold(p, g["short"], "withheld",
-                     f"its own condition ({g['cond']}) does not hold for {host} now, while its "
-                     "value does: the dashboard withholds it by design")
+                     f"its own condition ({panels.interpolate(g['cond'], fill)}) does not hold "
+                     f"for {host} now, while its value does: the dashboard withholds it by "
+                     "design")
     where = {p.get("id"): ((p.get("gridPos") or {}).get("y") or 0, (p.get("gridPos") or {}).get("x") or 0)
              for p in drawn}
     return sorted(out, key=lambda f: where.get(f["id"], (0, 0)))

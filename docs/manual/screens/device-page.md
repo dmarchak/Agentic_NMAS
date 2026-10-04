@@ -82,9 +82,12 @@ What the device is monitored by, and its dashboard: the panels of the device das
 select this device, drawn here. A panel that does not apply (telemetry on a switch that
 streams none) is folded, with why. A panel folded by a rule about the device's model is
 folded only once Grafana, asked as the page is drawn, finds no series for its queries for this
-device in the last hour; if one is found, the panel is drawn. An empty panel says what it
-asked and that nothing matched ("No series matched ifHCInOctets{device="s1"} in the last
-1 h."), with the dashboard's own explanation on hover.
+device in the last hour; if one is found, the panel is drawn. Each hidden panel's line says
+one reason, its provenance (the rule's measurement, a condition with this device's values) on
+hover. An empty panel says what it asked and that nothing matched ("No series matched
+ifHCInOctets{device="s1"} in the last 1 h."), with the dashboard's own explanation on hover;
+one a known platform limit explains (vIOS reports no memory pool or platform CPU) leads with
+that reason instead, the query on hover.
 
 ## Logs {#logs-tab}
 

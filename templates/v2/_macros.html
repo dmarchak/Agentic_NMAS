@@ -139,7 +139,7 @@
       {%- if item.elsewhere.href %} <a href="{{ item.elsewhere.href }}" rel="noopener" target="_blank">Open it in Grafana</a> <span class="muted">(reachable from the LAN only)</span>{% endif %}</p></div>
   </section>
   {%- else %}{% set p = item.panel %}
-  <section class="panel gx-{{ item.x }} gw-{{ item.w }}" data-panel-h="{{ item.h }}" data-panel-src="{{ url_for(endpoint, panel_id=p.id, **args) }}" data-panel-type="{{ p.type }}" data-panel-unit="{{ p.unit }}">
+  <section class="panel gx-{{ item.x }} gw-{{ item.w }}" data-panel-h="{{ item.h }}" data-panel-src="{{ url_for(endpoint, panel_id=p.id, **args) }}" data-panel-type="{{ p.type }}" data-panel-unit="{{ p.unit }}"{% if item.limit %} data-panel-limit="1"{% endif %}>
     <div class="panel-head"><h3>{{ p.title|replace('$' ~ var, value) if var else p.title }}</h3><span class="panel-type mono">{{ p.type }}</span></div>
     <div class="panel-body"><p class="panel-wait">Reading from Grafana…</p></div>
   </section>

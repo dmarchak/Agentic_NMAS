@@ -81,7 +81,7 @@
     <summary>{{ m.folded.line }} <span class="muted">· details</span></summary>
     <ul class="plain-list">
       {%- for f in m.folded.panels %}
-      <li data-folded="{{ f.id }}"><strong>{{ f.title }}</strong> ({{ f.short }}): {{ f.detail }} <span class="muted">{{ f.basis }}</span></li>
+      <li data-folded="{{ f.id }}"><strong>{{ f.title }}</strong> ({{ f.short }}): <span{% if f.hover %} title="{{ f.hover }}"{% endif %}>{{ f.words }}</span></li>
       {%- endfor %}
     </ul>
   </details>

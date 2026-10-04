@@ -180,7 +180,8 @@ class TestOneRuleForNothingToShow:
     def test_s3_folds_telemetry_memory_and_uptime_under_one_line(self, stored):
         m = _s3(stored)
         # In the dashboard's order, each reason with its panels.
-        assert m["folded"]["line"] == ("4 panels hidden for s3: Memory used (not reported by vIOS), "
+        assert m["folded"]["line"] == ("5 panels hidden for s3: Memory used and Platform CPU (the whole route "
+                                       "processor) (not reported by vIOS), "
                                        "Up for (slow clock), Telemetry stream and Interface flaps "
                                        "(not streamed)")
         by = {f["title"]: f for f in m["folded"]["panels"]}
@@ -196,7 +197,7 @@ class TestOneRuleForNothingToShow:
         import app as A
         with A.app.test_request_context("/"):
             html = render_template("v2/_monitoring.html", device={"hostname": "s3"}, m=_s3(stored))
-        assert html.count('id="folded-panels"') == 1 and "4 panels hidden for s3" in html
+        assert html.count('id="folded-panels"') == 1 and "5 panels hidden for s3" in html
         assert "Memory isn&#39;t available over SNMP on vIOS." in html
         assert "Telemetry panels hidden" not in html
 
