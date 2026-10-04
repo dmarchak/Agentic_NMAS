@@ -2166,6 +2166,90 @@ the remaining medium rows, and 9.S's multi-worker install itself.
 
 *Not recoverable:* when each fix's build began; the commit times bound only its end.
 
+### P.15 — Several people at once (open): the third batch, the remaining medium rows
+
+*Written 2026-10-04, when the batch's last row (R26's code half, 4aa81be) was pushed. CI was
+still running then: each push cancelled the run before it (#393 to #399), so the batch is
+verified by its last run (#400), recorded in the next entry. P.15 stays open.*
+
+**1. What it was**
+
+The operator's order of 2026-10-04: "continue P.15's remaining medium rows", and take the
+recommendations for R12's and R14's client halves unless either changes a screen. The rows
+were R12 and R14 (client halves), R17, R18, R21, R22, R23, R26, R27, R38, R39, R40 and R41,
+plus R30 (low), which the batch's first gate found live.
+
+**2. How it was implemented**
+
+One commit per row, each gated, each with a test that runs the collision for real where it can
+(two processes, a held device, a held lock), and every check shown able to fail:
+- **The template editor** sends what it opened and what it showed (R14, R12) [git e423eda].
+- **Keys are created once** across processes (R30) [git e423eda].
+- **Settings forms send only changed fields**, refused when moved (R17) [git effb66d].
+- **The publication record** is locked; an unreadable one says so; one publisher pushes the
+  HEAD it reads (R18) [git 72be597].
+- **The Kea ZTP fragment** is locked from read to read-back (R22) [git 07da602].
+- **A list is never deleted** under a running operation (R38) [git 23c2e8b].
+- **Onboarding's Create and Abandon** hold the device (R23) [git b6f10bf].
+- **The publication acknowledgement** covers only the values it showed (R41) [git d3d31b5].
+- **One NetBox writer per list** (R21) [git b1f6914].
+- **router.db and the lab sync** are written by one process at a time, with a host step
+  (R40) [git b8f872c].
+- **One hold key per list**, and a probe never refuses an acquire (R26) [git 4aa81be].
+
+**3. Issues it found**
+
+- **R30, found by the gate itself.** R3's three-process test, on a fresh store, had one child
+  read a half-written `key.key`. Two processes that both find no key each write their own,
+  and whatever the first encrypted is lost.
+- **R17's change exposed two defects.** The NetBox write switch, sent alone, was dropped by a
+  branch waiting for the URL. The modal never read the general block's answer, so a refusal
+  there would have been silent.
+- **R40's measurement found the sync already serialised on the host**, by a wrapper outside
+  the repository. Its "skipping" exits 0, and the persist then fails closed at its next
+  stage.
+- **R26's control reproduced the audit's words exactly:** 15 of 300 acquires refused as "?
+  by unknown, held for 497538 h".
+- **Two gates refused on tests:** a session-key test matched a code comment as a substring,
+  and the wizard tests stubbed the plan with no hostname.
+
+**4. How each was resolved**
+
+- R30 is fixed in its own commit's batch: one helper links a whole key into place.
+- R17's two defects are fixed in R17's commit.
+- The substring test was rewritten to parse.
+- R27 (the holder strip, a new element) waits for a mockup; its broadcast half is next.
+- R39 is a decision, with removing the terminal now recommended.
+- R26's lease and release is a decision, with a lease on v2's refusal card recommended.
+- R23's binding to its dry run waits for v2's onboarding screen.
+
+**5. Numbers**
+
+- **Commits:** 10, from e423eda (2026-10-04 11:56 UTC-6) to 4aa81be (12:56 UTC-6).
+- **Size:** 73 files, +2,461 −303 [git show --stat].
+- **Rows:** 12 fixed or half-fixed, with R30 among them.
+- **Gate refusals:** 3 (R30's race, the substring test, the stubbed tests), each fixed
+  forward before the commit.
+- **Estimate against actual.** The second batch's forecast (from the first: "ten rows in
+  about one working day") said these rows would take about a day. They took about an hour
+  and a half from the operator's decisions to the last push, beside host-step updates and the
+  operator's 14.11 to 14.14 reports. The forecast held, faster again. The kind is the same (a
+  cross-process guard on one store), so its multiplier now overstates by about five times.
+  The low rows (R31 to R37) are the same kind, and a forecast for them should start from this
+  batch's pace, not the first.
+
+**6. Where it left the product**
+
+Every medium-risk write path in the audit now holds across processes, refuses by name, and
+never reads an unreadable store as empty. The exceptions:
+- the holder strip (R27), waiting for a mockup;
+- the terminal (R39), a decision;
+- a lease (R26), a decision;
+- the multi-worker half (9.S).
+
+*Not recoverable:* when each fix's build began. Several were drafted while the previous gate
+ran, so the commit times bound only their ends.
+
 ### Side campaign note — the history store (C406), built; its host steps the operator's
 
 *Written 2026-10-04 at the build (87a2343, CI #384). Not closed: the history datasource is set

@@ -130,10 +130,10 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
 | R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | KEY AND PROBE FIXED 2026-10-04 (tests/test_device_hold_key_and_probe.py); lease and recorded release a decision | yes | Lease, recorded release, canonical key, no flock probe |
-| R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE | yes | Broadcast mutations; live holder strip; previews subscribe |
+| R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE; the holder strip waits for a mockup, the broadcast half is next (recorded 2026-10-04) | yes | Broadcast mutations; live holder strip; previews subscribe |
 | R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
-| R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | UNSAFE | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
+| R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | UNSAFE; a decision, recommended: remove the terminal now (7.8 brought forward) | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
 | R40 | m | stores (added on review) | Persistence-chain host files: Oxidized `router.db` and the lab sync | `router.db`, lab startup files and their repositories | `router.db`: atomic replace, no lock; sync script: no lock | no | FIXED IN CODE 2026-10-04 (tests/test_router_db_lock.py); the helper's host install is the operator's | yes | `flock` in the root helper and in the sync script |
 | R41 | m | confirms (added on review) | Remote publication acknowledge | `remote.json` acknowledgement | typed kinds checked; values recorded at click time; list derived | no | VALUES FIXED 2026-10-04 (tests/test_ack_binds_values.py); the list waits for P.8 (R3) | yes | Bind the confirm to the values fingerprint the card showed; carry the list |
 | R29 | m under workers | live | Reader on-request registry ("Check again") | in-memory request record | per process | no | UNSAFE-MULTI-PROCESS | no | Request record in a shared file |
@@ -756,6 +756,17 @@ filled at routes/deploy.py:496-497), and redraws only on the person's own change
 (:21-22). The approvals list does learn within 30 s, because it polls. Template approvals
 and freshness authorisations have no announcement and no poll.
 
+*WAITING FOR A SCREEN, recorded 2026-10-04 (not built).* The fix has two halves:
+- **Every mutating route broadcasts its invalidation keys.** This one changes no screen: the
+  invalidation map already declares each route's keys (`modules/invalidation.py`), and pages
+  already subscribe to the broadcast keys.
+- **The v2 device page and the apply preview draw who holds the device, live.** This half
+  draws something new: a holder strip, refreshed by the announcement.
+CLAUDE.md requires a mockup and the operator's sign-off for a new element. Recommended: build
+the broadcast half first (it alone makes the open intent editor and the approvals list learn
+of another person's change), and draw the holder strip on the canvas for sign-off, beside the
+7.4 Fleet boards.
+
 *FIXED 2026-10-02 (tests/test_reader_runs_one_at_a_time.py):* `run_once` holds a per-reader
 run lock across processes (`<store>.run`, a `PathLock`), so a run that starts while another
 reads waits and reads after it stored; inside the store, a value whose read began after this
@@ -829,6 +840,21 @@ C101's write guard covers only sessions opened through `connection.open_ssh`
 typing configuration can interleave with another person's deploy or rotation of the same
 device, and the shell takes a vty line nothing counts. Stage 7.8 removes the terminal. Until
 it does, hold the device for the life of the shell and count it in the budget.
+
+*A DECISION for the operator, recorded 2026-10-04 (not built).* A device hold is per thread,
+and the terminal's connect, keystrokes and disconnect arrive on different Socket.IO handler
+threads. So a hold for the shell's life needs a session-owned hold that `device_ops` does not
+have (a holder that is not a thread), built into code 7.8 removes. Options:
+- (A) **A session-owned hold.** `device_ops` gains a hold owned by the terminal session,
+  released on disconnect and on the socket's timeout, and the shell is counted in the session
+  budget. Real work for a removed feature.
+- (B) **Remove the terminal now** (7.8's removal, brought forward). The break-glass path is
+  the console and the browser export (`/breakglass`), which already exist.
+- (C) **Leave it until 7.8**, with the refusal on every device operation naming nothing, and
+  the terminal's own warning saying it bypasses device holds.
+Recommendation: (B). The terminal is gated `break_glass`, and C101's write guard and R11's
+budget do not see it, so every week it stays is a week of a write path the safety model
+cannot see. Its replacement exists.
 
 **R40. The persistence chain's host files have no lock** (stores-31, stores-32, added on
 review). A rotation's persist stage `oxidized_row` (modules/nsot/credential_rotation.py,
