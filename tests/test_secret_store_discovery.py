@@ -97,10 +97,26 @@ def test_the_credential_store_is_written_owner_only(tmp_path, monkeypatch):
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
-def test_the_session_key_is_created_owner_only():
-    src = open("app.py", encoding="utf-8").read()
-    block = src[src.index("# Generate new secret key and persist it"):][:600]
-    assert "open_secure(SECRET_KEY_FILE" in block
+def test_the_session_key_is_created_owner_only(tmp_path):
+    """Parsed, never matched as a substring: app.py's session key is assigned from
+    `read_or_create_key` (R30), which creates the file owner-only under a loose umask."""
+    import ast
+
+    from modules.config import read_or_create_key
+
+    tree = ast.parse(open("app.py", encoding="utf-8").read())
+    assigned = [n.value for n in tree.body if isinstance(n, ast.Assign)
+                and any(getattr(t, "attr", "") == "secret_key" for t in n.targets)]
+    assert [getattr(v.func, "id", "") for v in assigned if isinstance(v, ast.Call)] == \
+        ["read_or_create_key"]
+    assert ast.unparse(assigned[0].args[0]) == "SECRET_KEY_FILE"
+    path = tmp_path / "secret.key"
+    old = os.umask(0o002)
+    try:
+        read_or_create_key(str(path), lambda: os.urandom(24))
+    finally:
+        os.umask(old)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 def test_the_device_csv_is_written_owner_only(tmp_path):

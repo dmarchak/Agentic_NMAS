@@ -106,6 +106,41 @@ def open_secure(path: str, mode: str = "w", **kwargs):
     return handle
 
 
+def read_or_create_key(path: str, generate) -> bytes:
+    """The key file's bytes, creating it ONCE across processes (CONCURRENCY_AUDIT R30).
+
+    Check-then-create raced on a fresh store: two processes that both found no key each
+    wrote their own, and the last writer won, so whatever the first had already encrypted
+    could never be opened again; a third reading mid-write saw a truncated key (the gate's
+    three-process registry test, 2026-10-04: "Fernet key must be 32 url-safe base64-encoded
+    bytes"). The key is written whole to an owner-only temporary file beside it and LINKED
+    into place, which fails when the key exists: exactly one process's key is ever the key,
+    and no reader sees part of one. A process that loses discards its own and reads the
+    winner's. The one producer for `device.load_key()` and `secrets_store._get_fernet()`."""
+    import tempfile
+
+    if os.path.exists(path):
+        secure_file(path)                    # created before this existed, quite possibly 0644
+    else:
+        directory = os.path.dirname(path) or "."
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".key-")   # owner-only (0600)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(generate())
+                fh.flush()
+                os.fsync(fh.fileno())
+            try:
+                os.link(tmp, path)
+                log.info("config: generated a new key at %s", path)
+            except FileExistsError:
+                pass                         # another process's key won; it is the key
+        finally:
+            os.unlink(tmp)
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
 def _chmod(path: str, mode: int) -> None:
     try:
         os.chmod(path, mode)

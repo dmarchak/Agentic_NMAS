@@ -1,4 +1,7 @@
 let _tplModal = null, _previewModal = null, _cmInstance = null, _currentTemplate = null;
+// What the person was shown (CONCURRENCY_AUDIT R12, R14): the editor's base blob and each
+// row's approval fingerprint, sent back so a change made since is refused, never overwritten.
+let _tplBase = null, _tplShown = {};
 
 function _tplList() {
   const el = document.getElementById('templateLibrary');
@@ -122,6 +125,7 @@ async function _loadApproval(path) {
   if (!cell) return;
   try {
     const d = await (await fetch(`/templates/approval/${encodeURIComponent(path)}`)).json();
+    _tplShown[path] = d.fingerprint;
     cell.innerHTML = approvalCellHtml(d);
   } catch (e) { cell.textContent = 'unknown'; }
 }
@@ -135,6 +139,7 @@ async function openTemplate(path) {
   try {
     const d = await (await fetch(`/templates/file/${encodeURIComponent(path)}`)).json();
     if (!d.ok) { showToast(d.error, 'danger'); return; }
+    _tplBase = d.base;
 
     document.getElementById('templateEditorMeta').innerHTML =
       `Bound devices: <strong>${d.bound_devices.map(_tEsc).join(', ') || 'none'}</strong>`;
@@ -175,7 +180,7 @@ async function saveTemplate() {
   try {
     const r = await fetch(`/templates/file/${encodeURIComponent(_currentTemplate)}`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({content}),
+      body: JSON.stringify({content, base: _tplBase}),
     });
     const d = await r.json();
     if (!d.ok) {
@@ -212,7 +217,7 @@ async function approveTemplate(path) {
   try {
     const d = await (await fetch(`/templates/approve/${encodeURIComponent(path)}`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({}),
+      body: JSON.stringify({fingerprint: _tplShown[path] || ''}),
     })).json();
     if (d.ok) {
       showToast(`Approved: ${approvalEvidenceText(d.evidence)}`, 'success');

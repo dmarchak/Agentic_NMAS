@@ -115,9 +115,9 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R9 | h under workers | live | Reachability `STATUS` | in-memory dict every consumer reads | per process | no | UNSAFE-MULTI-PROCESS | no | Read the stored reader value; absent means unknown |
 | R10 | h under workers | live, locks, confirms | Job registries (capture preview, rotate, deploy job, `op_progress`) | in-memory job state and results | `threading.Lock` | no | UNSAFE-MULTI-PROCESS | no | Shared job store; "interrupted" from the recorded pid |
 | R11 | m today; h under workers | locks, live | SSH session budget per device | vty lines | per-process count | no | FIXED 2026-10-04 (was UNSAFE; tests/test_ssh_slots_across_processes.py) | yes (host CLIs) | Cross-process session slots |
-| R12 | m | approvals, intent, confirms | Template approve | `.approvals.json`, a commit | client sends `{}`; validates, then fingerprints the working tree | no | SERVER HALF FIXED 2026-10-04 (tests/test_approve_one_snapshot.py); the client half (the v1 editor sends what it reviewed) UNSAFE | yes | Approve carries the reviewed fingerprint; fingerprint one snapshot first |
+| R12 | m | approvals, intent, confirms | Template approve | `.approvals.json`, a commit | client sends `{}`; validates, then fingerprints the working tree | no | FIXED 2026-10-04 (server: tests/test_approve_one_snapshot.py; client: tests/test_template_editor_binds.py) | yes | Approve carries the reviewed fingerprint; fingerprint one snapshot first |
 | R13 | m | approvals, stores | `.approvals.json` record | approvals and tombstones | unlocked read-modify-write, shared `.tmp`, `{}` on unreadable; edits' revocations not committed; gate reads the working tree | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approvals_record.py) | yes | PathLock and atomic write; commit tombstones with the template; read at HEAD |
-| R14 | m | intent, approvals | Template and bindings editors | templates, `bindings.yml` | no base; truncate in place; bindings fall back to defaults silently | no | SERVER HALF FIXED 2026-10-04 (tests/test_template_store_writes.py); the client half (the v1 editor sends what it reviewed) UNSAFE | yes | Base blob; `write_atomic`; refuse an unreadable bindings file |
+| R14 | m | intent, approvals | Template and bindings editors | templates, `bindings.yml` | no base; truncate in place; bindings fall back to defaults silently | no | FIXED 2026-10-04 (server: tests/test_template_store_writes.py; client: tests/test_template_editor_binds.py; the three-way diff waits for v2's template screen) | yes | Base blob; `write_atomic`; refuse an unreadable bindings file |
 | R15 | m | intent, confirms | Hash-confirmed intent writers (bulk, profile propose, IP SLA) | `host_vars`, `profiles/monitoring.yml` | hash checked, then write, then commit, nothing spanning; no device holds | no | FIXED 2026-10-04 (was UNSAFE; tests/test_hash_writers_hold_the_lock.py) | yes | Repo lock across recompute, write and commit; hold devices |
 | R16 | m | confirms | Deploy and restore confirm gaps | devices, commit | command hash optional; compared before the hold; list derived | partly | THE HASH GAP FIXED 2026-10-04 (tests/test_confirm_carries_its_hash.py); the compare before the hold is bounded by the pipeline's fresh capture, recorded; the derived list is R3's | yes | Require the hash; hold first; list in the hash |
 | R17 | m | intent | Settings forms | `user_settings.json`, `.env` | file safe; forms resend every field; `.env` unlocked | yes (file) | UNSAFE | yes | Send changed fields only, with the value as loaded |
@@ -137,7 +137,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R40 | m | stores (added on review) | Persistence-chain host files: Oxidized `router.db` and the lab sync | `router.db`, lab startup files and their repositories | `router.db`: atomic replace, no lock; sync script: no lock | no | UNSAFE | yes | `flock` in the root helper and in the sync script |
 | R41 | m | confirms (added on review) | Remote publication acknowledge | `remote.json` acknowledgement | typed kinds checked; values recorded at click time; list derived | no | UNSAFE | yes | Bind the confirm to the values fingerprint the card showed; carry the list |
 | R29 | m under workers | live | Reader on-request registry ("Check again") | in-memory request record | per process | no | UNSAFE-MULTI-PROCESS | no | Request record in a shared file |
-| R30 | m (fresh install, several processes) | stores | Key file creation | `key.key`, session key | check, then create with truncate | no | UNSAFE-MULTI-PROCESS | no (fresh install) | Exclusive create, or an install step |
+| R30 | m (fresh install, several processes) | stores | Key file creation | `key.key`, session key | check, then create with truncate | no | FIXED 2026-10-04 (was UNSAFE-MULTI-PROCESS; tests/test_key_created_once.py) | no (fresh install) | Exclusive create, or an install step |
 | R31 | m (roles stage) | approvals | Four-eyes and the requester | n/a (missing control) | none | n/a | UNSAFE | no (roles stage) | Record the requester; host-side policy |
 | R32 | l | stores | Deploy receipts written by two batches | `deploy_receipts.jsonl` | `O_APPEND`, but rows go through one buffered handle | partly | UNSAFE | yes | One unbuffered write per row; keep the strict read |
 | R33 | l | stores, intent | Small stores with unlocked read-modify-write | variables, collector config, freshness authorisations, topology layout, agent and AI stores, `source.json`, retire's declaration, integration cards | none or in-process only | no | UNSAFE | yes | PathLock, `write_atomic`, `read_json_for_write` |
@@ -411,7 +411,13 @@ changes what a screen shows"):* the approval state the row already loads
 (`/templates/approval/<path>`) carries the closure's fingerprint, the row keeps it, and
 Approve sends it. A closure that moved since the row was drawn is refused, naming both
 fingerprints, in the "Cannot approve" alert that already draws approve refusals. No new
-control, function or element, so no mockup.
+control, function or element, so no mockup. **BUILT 2026-10-04
+(tests/test_template_editor_binds.py):**
+- The route refuses an approve that names no fingerprint.
+- `approve(shown=…)` refuses one that moved before validation began. The command-line
+  re-approval passes none and keeps the snapshot check.
+- Controls, each failing its aimed test: the shown check removed, the missing-fingerprint
+  refusal removed, the row's fingerprint not kept.
 
 *FIXED 2026-10-02 (tests/test_approvals_record.py):* every approve and revoke is a locked
 read-modify-write (`<repo>.approvals.lock`, beside the repository) with a temp file per write;
@@ -461,6 +467,13 @@ changes what a screen shows"):*
   screen draws it after its mockup.
 - Bindings: no control in the interface posts `/templates/bindings`, so there is no client
   half to build. The server half stands.
+
+**BUILT 2026-10-04 (tests/test_template_editor_binds.py):**
+- The open hands out the blob at HEAD and reads its text from that blob.
+- The save is compared, written, revoked and committed under one hold of the repository lock.
+- A save naming no base is refused (400). A base that moved is refused (409), naming both blobs
+  and who moved it, with nothing written.
+- Controls, each failing its aimed test: the comparison removed, the editor's base not kept.
 
 **R15. Intent writers that check a hash do not hold it to the commit** (git-10, intent-5,
 intent-11, intent-12, intent-13, confirms-9, confirms-10). Bulk intent recomputes its plan
@@ -660,6 +673,17 @@ another worker reads idle (routes/v2.py:104).
 `O_EXCL` (modules/device.py:49-57; modules/secrets_store.py:72-85), and cache it. One process
 can encrypt with a key no longer on disk: unrecoverable. The session key has the same shape
 (app.py:120-131). Fresh install only.
+
+*FIXED 2026-10-04 (tests/test_key_created_once.py), found live:* the gate for R12 and R14
+refused when R3's three-process test, on a fresh store, had one child die on "Fernet key must
+be 32 url-safe base64-encoded bytes". It had read the key mid-write.
+- `config.read_or_create_key` writes the key whole to an owner-only temporary file and links
+  it into place (`os.link`, which fails when a key exists). Exactly one process's key is ever
+  the key, and no reader sees part of one.
+- `device.load_key`, `secrets_store._get_fernet` and the session key all go through it.
+- Measured with eight child processes released together, six rounds: one key, mode 0600, no
+  temporary file left. Control: the link made a replace (last writer wins), and round 0 gave
+  three different keys among eight processes.
 
 **R31. No four-eyes rule exists, and nothing records a requester** (approvals-9). Template
 edit and template approve are both gate kind A (modules/route_gates.py:103-106). The

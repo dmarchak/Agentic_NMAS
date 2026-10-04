@@ -779,7 +779,9 @@ class TestTheApproveRouteRecordsWhatItCouldNotValidate:
                             lambda name, *_a, **_k: (_config(name), None) if name == "s1" else (None, None))
         monkeypatch.setattr("modules.nsot.repo.save_templates",
                             lambda *a, **k: (_commit_approvals(repo), {"ok": True})[1])
-        r = nmas.app.test_client().post("/templates/approve/cisco_ios/base.j2", json={})
+        client = nmas.app.test_client()
+        shown = client.get("/templates/approval/cisco_ios/base.j2").get_json()["fingerprint"]
+        r = client.post("/templates/approve/cisco_ios/base.j2", json={"fingerprint": shown})
         body = r.get_json()
         assert r.status_code == 200, body
         assert body["evidence"]["validated"] == ["s1"]

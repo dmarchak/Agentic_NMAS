@@ -279,24 +279,65 @@ def list_templates():
 def read_template(rel_path):
     from modules.nsot import templates_repo
 
+    from modules.nsot import hostvars
+
     repo = _repo_for(_active_list())
-    content = templates_repo.read_template(repo, rel_path)
+    # The text is read FROM the blob handed out as the BASE, the version the save sends back
+    # (CONCURRENCY_AUDIT R14, as R2 for intent); a template not yet committed opens from its
+    # file with an empty base.
+    base = templates_repo.committed_blob(repo, rel_path)
+    content = hostvars.blob_text(repo, base) if base else \
+        templates_repo.read_template(repo, rel_path)
     if content is None:
         return jsonify({"ok": False, "error": "Template not found"}), 404
     bound = templates_repo.devices_for_template(repo, rel_path)
-    return jsonify({"ok": True, "path": rel_path, "content": content,
+    return jsonify({"ok": True, "path": rel_path, "content": content, "base": base,
                     "bound_devices": [b["device"] for b in bound]})
+
+
+def _template_moved(repo: str, rel_path: str, base: str, current: str):
+    """The refusal when the template's committed version moved after the editor opened it:
+    both blobs named, and who moved it. 409."""
+    from modules.nsot import templates_repo
+
+    last = templates_repo.last_commit(repo, rel_path)
+    by = (f"{last.get('by') or 'someone'} in {last.get('commit')} "
+          f"(\"{last.get('subject')}\", {last.get('at')})") if last else "a commit"
+    return jsonify({
+        "ok": False, "stage": "moved", "path": rel_path, "base": base, "current": current,
+        "last_commit": last,
+        "error": (f"Not saved: {rel_path} changed after you opened it. You opened "
+                  f"{base[:8] or 'a version not yet committed'}; committed now is "
+                  f"{current[:8] or 'nothing'}, by {by}. Nothing was written. Open the "
+                  "template again to make your edit on their version.")}), 409
 
 
 @bp.route("/file/<path:rel_path>", methods=["POST"])
 def write_template(rel_path):
-    """Save a template and commit it. Saving revokes any approval."""
-    from modules.nsot import approval, repo as repo_service, templates_repo
+    """Save a template and commit it, bound to the version the editor opened (R14). Saving
+    revokes any approval."""
+    from modules.nsot import repo as repo_service, templates_repo
 
     data = request.get_json(silent=True) or {}
     content = data.get("content", "")
     list_name = _active_list(data)
     repo = _repo_for(list_name)
+    if not isinstance(data.get("base"), str):
+        return jsonify({"ok": False, "stage": "base", "error": (
+            f"Not saved: this editor did not say which version of {rel_path} it opened, so "
+            "the save could replace a commit made since. Nothing was written. Reload the "
+            "page, open the template again and make the edit there.")}), 400
+    # Compared, written, revoked and committed under ONE hold of the repository (R14).
+    with repo_service.repo_lock(repo):
+        current = templates_repo.committed_blob(repo, rel_path)
+        if current != data["base"].strip():
+            return _template_moved(repo, rel_path, data["base"].strip(), current)
+        return _write_template_locked(repo, list_name, rel_path, content, data)
+
+
+def _write_template_locked(repo: str, list_name: str, rel_path: str, content: str,
+                           data: dict):
+    from modules.nsot import approval, repo as repo_service, templates_repo
 
     result = templates_repo.write_template(repo, rel_path, content)
     if not result["ok"]:
@@ -521,6 +562,15 @@ def approve(rel_path):
     data = request.get_json(silent=True) or {}
     list_name = _active_list(data)
     repo = _repo_for(list_name)
+    # What the person was SHOWN (CONCURRENCY_AUDIT R12): the row's approval state carries the
+    # closure's fingerprint and Approve sends it back; one that moved since is refused.
+    shown = data.get("fingerprint")
+    shown = shown.strip() if isinstance(shown, str) else ""
+    if not shown:
+        return jsonify({"ok": False, "error": (
+            f"Not approved: this page did not say which version of {rel_path} it showed, so "
+            "the approval could cover a change made since. Reload the template library and "
+            "approve again.")}), 400
 
     devices = []
     not_validated = []
@@ -533,8 +583,8 @@ def approve(rel_path):
         devices.append({"device": entry["device"], "platform": entry["platform"],
                         "running_config": golden})
 
-    result = approval.approve(repo, rel_path, devices,
-                              actor=request_actor(), not_validated=not_validated)
+    result = approval.approve(repo, rel_path, devices, actor=request_actor(),
+                              not_validated=not_validated, shown=shown)
     if result["ok"]:
         commit = repo_service.save_templates(list_name, [".approvals.json"],
                                              actor=request_actor(),

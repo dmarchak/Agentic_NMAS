@@ -170,9 +170,10 @@ class TestTheRoutesCommitAndSayWhenTheyCannot:
     def test_a_template_edit_commits_its_revocation_with_the_template(self, lab):
         approval.approve(lab, REL, _devices(["s1"]), actor="p@example.invalid")
         _commit_approvals(lab)
-        text = open(os.path.join(lab, "templates", REL), encoding="utf-8").read()
+        opened = self._client().get(f"/templates/file/{REL}").get_json()
         body = self._client().post(f"/templates/file/{REL}",
-                                   json={"content": text + "{# an edit #}\n",
+                                   json={"content": opened["content"] + "{# an edit #}\n",
+                                         "base": opened["base"],
                                          "message": "template: an edit"}).get_json()
         assert body["ok"] is True and body["revoked"] == [REL]
         names = subprocess.run(["git", "-C", lab, "show", "--name-only", "--format=", "HEAD"],
@@ -192,7 +193,8 @@ class TestTheRoutesCommitAndSayWhenTheyCannot:
                                                      None))
         monkeypatch.setattr("modules.nsot.repo.save_templates",
                             lambda *a, **k: {"ok": False, "error": "disk full"})
-        r = self._client().post(f"/templates/approve/{REL}", json={})
+        shown = self._client().get(f"/templates/approval/{REL}").get_json()["fingerprint"]
+        r = self._client().post(f"/templates/approve/{REL}", json={"fingerprint": shown})
         body = r.get_json()
         assert r.status_code == 500 and body["ok"] is False
         assert "Not approved yet" in body["error"] and "disk full" in body["error"]

@@ -216,11 +216,14 @@ def _setup(v, mp, client):
     pv = client.post("/templatize/seed/preview", json={"list_name": LIST, "devices": ["r1"]})
     assert pv.status_code == 200, pv.get_data(as_text=True)[:300]
     seed_hash = pv.get_json()["preview"]["what"]["targets"][0]["select_data"]["hash"]
-    for url, body in (("/templatize/seed/apply", {"list_name": LIST,
-                                                  "confirmations": {"r1": seed_hash}}),
-                      ("/templates/approve/cisco_ios/base.j2", {"list_name": LIST})):
-        r = client.post(url, json=body)
-        assert r.status_code == 200, (url, r.get_data(as_text=True)[:300])
+    r = client.post("/templatize/seed/apply",
+                    json={"list_name": LIST, "confirmations": {"r1": seed_hash}})
+    assert r.status_code == 200, r.get_data(as_text=True)[:300]
+    # Approve sends the fingerprint the library row showed (R12's client half).
+    shown = client.get(f"/templates/approval/cisco_ios/base.j2?list_name={LIST}").get_json()
+    r = client.post("/templates/approve/cisco_ios/base.j2",
+                    json={"list_name": LIST, "fingerprint": shown["fingerprint"]})
+    assert r.status_code == 200, r.get_data(as_text=True)[:300]
     v["_intent_text"] = open(os.path.join(repo, "host_vars", "r1.yml"), encoding="utf-8").read()
     key = credentials.template_secret_key(LIST, "r1", "snmp_community_ro")
     assert credentials.get_template_secret(key), "the commit stored r1's community"

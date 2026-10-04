@@ -117,19 +117,11 @@ else:
     # Running as normal Python script
     app = Flask(__name__)
 
-# Load or generate persistent secret key
-if os.path.exists(SECRET_KEY_FILE):
-    with open(SECRET_KEY_FILE, "rb") as f:
-        app.secret_key = f.read()
-else:
-    # Generate new secret key and persist it
-    app.secret_key = os.urandom(24)
-    # Owner-only AT CREATION: this signs every session. Measured 2026-09-25:
-    # the live file was 0664, created by a plain open() before open_secure
-    # existed, and no secret-storage check knew the file was there.
-    from modules.config import open_secure
-    with open_secure(SECRET_KEY_FILE, "wb") as f:
-        f.write(app.secret_key)
+# Load or generate the persistent session key: owner-only AT CREATION (it signs every
+# session; measured 2026-09-25, the live file was 0664) and created ONCE across processes
+# (CONCURRENCY_AUDIT R30: two workers starting on a fresh install each wrote their own).
+from modules.config import read_or_create_key
+app.secret_key = read_or_create_key(SECRET_KEY_FILE, lambda: os.urandom(24))
 
 
 # manage_session=False: none of this app's SocketIO handlers use flask.session

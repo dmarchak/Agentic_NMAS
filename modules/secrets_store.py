@@ -69,18 +69,14 @@ def _get_fernet() -> Fernet:
     """
     global _fernet
     if _fernet is None:
-        if not os.path.exists(KEY_FILE):
-            from modules.config import open_secure, secure_dir
+        from modules.config import read_or_create_key, secure_dir
 
+        if not os.path.exists(KEY_FILE):
             secure_dir(os.path.dirname(KEY_FILE))
-            # Owner-only from the moment it exists. Everything else in `data/`
-            # is encrypted WITH this key, so a world-readable key.key makes
-            # the encryption beside it decorative.
-            with open_secure(KEY_FILE, "wb") as fh:
-                fh.write(Fernet.generate_key())
-            log.info("secrets_store: generated new Fernet key at %s", KEY_FILE)
-        with open(KEY_FILE, "rb") as fh:
-            _fernet = Fernet(fh.read())
+        # Owner-only from the moment it exists, and created ONCE across processes (R30).
+        # Everything else in `data/` is encrypted WITH this key, so a world-readable
+        # key.key makes the encryption beside it decorative.
+        _fernet = Fernet(read_or_create_key(KEY_FILE, Fernet.generate_key))
     return _fernet
 
 

@@ -41,21 +41,12 @@ DEVICE_CSV_FIELDS = ["hostname", "device_type", "ip", "username", "password",
 def load_key() -> bytes:
     #Load or generate Fernet key stored at `KEY_FILE`.
 
-    # The SECOND producer of key.key -- `secrets_store._get_fernet()` is the
-    # other, deliberately, to avoid importing this module's device-list side
-    # effects. Two producers means both must create it owner-only; a fix in
-    # one is not a fix.
-    from modules.config import open_secure, secure_file
+    # Two callers, one producer: `secrets_store._get_fernet()` is the other caller,
+    # deliberately, to avoid importing this module's device-list side effects. Both go
+    # through `config.read_or_create_key`, owner-only and created once across processes (R30).
+    from modules.config import read_or_create_key
 
-    if not os.path.exists(KEY_FILE):
-        key = Fernet.generate_key()
-        with open_secure(KEY_FILE, "wb") as f:
-            f.write(key)
-    else:
-        # Created before this existed, quite possibly 0644.
-        secure_file(KEY_FILE)
-    with open(KEY_FILE, "rb") as f:
-        return f.read()
+    return read_or_create_key(KEY_FILE, Fernet.generate_key)
 
 
 fernet = Fernet(load_key())

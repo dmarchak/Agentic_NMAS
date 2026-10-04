@@ -370,7 +370,7 @@ def validate_template(repo: str, rel_path: str, devices: list) -> dict:
 
 
 def approve(repo: str, rel_path: str, devices: list, actor: str = "user",
-            not_validated: list = None) -> dict:
+            not_validated: list = None, shown: str = None) -> dict:
     """Approve *rel_path* when it validates against AT LEAST ONE bound device.
 
     Every device's result is recorded as evidence: the ones that validated,
@@ -379,6 +379,8 @@ def approve(repo: str, rel_path: str, devices: list, actor: str = "user",
     because that device is blocked at its own deploy regardless (scheme 3).
     *not_validated*: bound devices the caller could not validate at all
     (``{"device", "reason"}``, e.g. no captured config yet), recorded as such.
+    *shown*: the closure fingerprint the person's page showed (R12's client half); a
+    template that moved since is refused naming both. None for a caller with no page.
     """
     if not devices:
         return {"ok": False,
@@ -390,6 +392,12 @@ def approve(repo: str, rel_path: str, devices: list, actor: str = "user",
     # again under the record's lock just before the save. An edit saved in between made an
     # approval of content no validation ran against, and overwrote the edit's revocation.
     before = template_fingerprint(repo, rel_path)
+    if shown is not None and shown != before.get("fingerprint"):
+        return {"ok": False, "not_validated": list(not_validated or []),
+                "error": (f"Not approved: {rel_path} (or a template it imports) changed after "
+                          f"your page showed it: it showed fingerprint {str(shown)[:12]} and "
+                          f"is {str(before.get('fingerprint'))[:12]} now. Reload the template "
+                          "library, review the change, then approve again.")}
     validation = validate_template(repo, rel_path, devices)
     passed = [r["device"] for r in validation["results"] if r["ok"]]
     failed = [{"device": r["device"],

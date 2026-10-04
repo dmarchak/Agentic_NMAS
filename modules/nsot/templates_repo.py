@@ -153,6 +153,33 @@ def read_template(repo: str, rel_path: str):
         return fh.read()
 
 
+def committed_blob(repo: str, rel_path: str) -> str:
+    """The git blob of *rel_path* at HEAD, or "" when it is not committed.
+
+    The editor's BASE (CONCURRENCY_AUDIT R14), as `hostvars.committed_blob` is intent's (R2):
+    the editor's open hands it out with the text, the save sends it back, and a save whose
+    base is no longer HEAD's is refused instead of writing over another person's commit."""
+    from modules.nsot.repo import git
+
+    if _safe_join(repo, rel_path) is None:
+        return ""
+    rc, out, _ = git(repo, "rev-parse", "--verify", "-q", f"HEAD:{TEMPLATES_REL}/{rel_path}")
+    return out if rc == 0 and out else ""
+
+
+def last_commit(repo: str, rel_path: str) -> dict:
+    """The newest commit that changed *rel_path*: short sha, time, actor and subject, or {}."""
+    from modules.nsot.repo import git
+
+    rc, out, _ = git(repo, "log", "-1",
+                     "--format=%h%x1f%cI%x1f%(trailers:key=Actor,valueonly)%x1f%s",
+                     "--", f"{TEMPLATES_REL}/{rel_path}")
+    parts = out.split("\x1f") if rc == 0 and out else []
+    if len(parts) < 4:
+        return {}
+    return {"commit": parts[0], "at": parts[1], "by": parts[2].strip(), "subject": parts[3]}
+
+
 def write_template(repo: str, rel_path: str, content: str) -> dict:
     """Write a template after a Jinja syntax check. Does not commit."""
     full = _safe_join(repo, rel_path)
