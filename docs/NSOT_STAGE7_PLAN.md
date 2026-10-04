@@ -3721,22 +3721,17 @@ and C447 (an order set, previewed and hashed). Its running view carries C446's p
 - **C.** Results drill down. From "s3 sent 96 syslog lines", open the lines, filter them
   (severity, mnemonic, time, text), and see trends by mnemonic.
 
-## 16. ZTP: two modes, one plan (the operator, 2026-10-04)
+## 16. ZTP: three ways in, one pipeline (the operator, 2026-10-04)
 
-It replaces "type the MAC" in 7.4e. Enterprise ZTP sends the FULL device-specific
-configuration, so the device's identity must be known when it is sent; when it is not, a
-bootstrap goes first.
+It replaces "type the MAC" in 7.4e. The way in is chosen per device at planning:
 
-1. **Pre-provisioned (identity known at planning).**
-   - The operator gives a SERIAL (preferred: it is on the box and the shipping list) or a MAC.
-   - The device's full configuration is rendered from its committed intent through approved
-     templates. It is PREVIEWED AND CONFIRMED AT PLANNING, bound to its hash: a day-0 deploy,
-     never a way around the pipeline.
-   - Serial-keyed: one boot script for every device (the IOS-XE ZTP pattern) reads its own
-     serial and asks the server for its configuration.
-   - MAC-keyed: today's per-device reservation, as the fallback.
-2. **Discovered (no identity given).** A bare bootstrap goes first, just enough to reach the
-   tool. Then:
+1. **A SERIAL given:** the full device-specific configuration. One boot script for every
+   device (the IOS-XE ZTP pattern) reads its own serial and asks the server for its
+   configuration.
+2. **A MAC given:** the full device-specific configuration, through a Kea reservation for that
+   MAC (today's mechanism). **If both a serial and a MAC are given, both must match.**
+3. **NOTHING given:** a bare management configuration, just enough to reach the tool. The
+   device then appears in a DISCOVERY LIST:
    - **A discovery range on the ZTP segment:** short leases (minutes), and NO boot file,
      router or DNS option. That is the existing rule: a configless device never reaches out
      and phones Cisco.
@@ -3744,20 +3739,27 @@ bootstrap goes first.
      (`lease4-get-all`). It lists "Devices asking for an address that the tool doesn't know":
      MAC, vendor class (option 60), client-id (option 61), hostname if sent, first and last
      seen. MACs already reserved or in inventory are excluded.
-   - **The operator PICKS one, never automatically,** names it, and it is onboarded and
-     deployed through the normal pipeline.
-3. **Both modes.**
-   - The day-0 configuration carries a ONE-TIME bootstrap credential, never the real one. The
-     file is served to whoever presents the identity, and MACs and serials can be spoofed.
-   - On arrival the tool verifies the device against intent, records its golden, rotates the
-     credential automatically (as 7.4g), and prompts the break-glass export.
+   - **A person PICKS one, never automatically,** and names it. It is onboarded, and its
+     intent is deployed through the pipeline.
+
+**Rules for all three:**
+- **A full first-boot configuration is a planned deploy.** It is rendered from committed intent
+  through approved templates, PREVIEWED AND CONFIRMED AT PLANNING and bound to its hash: never
+  a way around the pipeline.
+- **The first-boot file carries a ONE-TIME bootstrap credential only.** It is served to whoever
+  presents the identity, and MACs and serials can be spoofed.
+- **Every path ends the same:** verified against intent on arrival, golden recorded, credential
+  rotated automatically (as 7.4g), break-glass export prompted.
+- **Never assume a serial is unique** (below).
 
 **A serial is never assumed unique (the operator's measurement, 2026-10-04).**
 - Every C8000v in this lab reports one serial: r1 to r4 and r6's goldens carry the same
   `license udi pid C8000V sn <one value>`, baked into the virtual image and unchanged across
-  redeploys since 2026-09-20. So ZTP here is MAC-keyed; serial-keyed is for real hardware.
-- **Serial matching REFUSES** when more than one device reports a serial, naming them, rather
-  than serve one device's configuration to another.
+  redeploys since 2026-09-20. So this lab uses a MAC or discovery; serial-keyed is for real
+  hardware.
+- **Matching by serial REFUSES** when more than one device reports a serial, naming them. It
+  falls back to the MAC, or to discovery, with the reason shown, rather than serve one
+  device's configuration to another.
 - **Nothing else keys a device on its serial:** five routers sharing one stay five devices.
   C449 measured this and fixed the one place that did, the NetBox sync's match.
 - A shared serial is job health's information, never a Needs attention row: expected for a
@@ -3792,13 +3794,13 @@ how the vendor class reaches the list:
 - **If it sends none:** the list shows MAC, client-id and hostname.
 
 **And, the operator's (on a device, through the console or the tool):** whether the IOS-XE ZTP
-script can read the device's serial and send it here. That is the pre-provisioned mode's
-serial-keyed request: guestshell's Python and `show license udi` or `show version` from it.
+script can read the device's serial and send it here, as way 1 needs: guestshell's Python,
+and `show license udi` or `show version` run from it.
 In this lab the answer cannot tell devices apart, since every C8000v reports one serial, so
 the measurement is of the MECHANISM.
 
-The Kea host step (the discovery pool), and 7.4e redrawn with both modes, follow these
+The Kea host step (the discovery pool), and 7.4e redrawn with all three ways, follow these
 measurements.
 
-**Lab note (optional, lab tooling):** containerlab knows each node's MAC and could pre-match
-it.
+**Lab note (optional, lab tooling):** containerlab knows each node's MAC and could pre-fill it
+in way 2.
