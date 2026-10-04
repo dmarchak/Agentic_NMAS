@@ -3219,9 +3219,9 @@ tool states the retention in force beside each (14.6) and says when it differs f
 | Raw metrics | Prometheus's local blocks and Thanos's raw blocks | 90 days | 90 days |
 | Downsampled metrics, 5 min | Thanos | 2 years | 1 year |
 | Downsampled metrics, 1 h | Thanos | 5 years | 2 years |
-| Logs | Loki | 1 year | 90 days now; **2 years proposed** (14.15) |
-| Raw telemetry (14.4) | its bucket's `mdt/`, as Parquet | 30 days | 30 days (no rule applied yet: 14.15) |
-| Archived syslog files | its bucket's `syslog/` | 1 year | **2 years proposed** (14.15) |
+| Logs | Loki | 1 year | 2 years, decided 2026-10-04 (90 days until 14.15 runs) |
+| Raw telemetry (14.4) | its bucket's `mdt/`, as Parquet | 30 days | 30 days (no rule applied until 14.15 runs) |
+| Archived syslog files | its bucket's `syslog/` | 1 year | 2 years, decided 2026-10-04 (14.15) |
 | Configuration history | git | kept for ever (already) | the same |
 
 A store applies its own retention (Thanos's compactor, Loki's compactor, a bucket lifecycle
@@ -3643,11 +3643,16 @@ a compactor fault cannot reach them first. **DECIDED 2026-10-04 (the operator): 
 recommended.** Live reads stay on Prometheus until the compactor has run a week without
 halting.
 
-### 14.15 Host step, PROPOSED: logs 2 years; raw telemetry expires per prefix (the operator's)
+### 14.15 Host step: logs 2 years; raw telemetry expires per prefix (the operator's)
 
-**Proposed, not decided:** the operator's review (15.4) asked for the lab's log retention ("1
-year+; logs are ~11 MiB") with its host step, and for the archived syslog files to have their
-own class. Measured read-only on the NMAS host, 2026-10-04:
+**DECIDED 2026-10-04 (the operator): as recommended below.** Logs are kept 2 years; in
+`raw-telemetry`, `mdt/` expires at 30 days and `syslog/` at 2 years. The operator asked for the
+host step in full: read the real values first, and refuse unless the change is exactly the
+expected one.
+
+The review (15.4) asked for the lab's log retention ("1 year+; logs are ~11 MiB") with its host
+step, and for the archived syslog files to have their own class. Measured read-only on the NMAS
+host, 2026-10-04:
 - **Loki:** 12 MiB in 21,910 objects in MinIO's `loki` bucket since 2026-09-07, about 0.45 MiB
   a day. One year is about 165 MiB, and two years about 330 MiB.
 - **`raw-telemetry`:**
@@ -3662,44 +3667,105 @@ own class. Measured read-only on the NMAS host, 2026-10-04:
 `mdt/` 30 days, as 14.1 decided; `syslog/` its own class at 2 years, matching Loki, so the raw
 files outlive nothing they back.
 
-**When the operator agrees, on the NMAS host:**
+**The real values the step rests on**, read by the agent through `scripts/nmas-host`, via LAN,
+2026-10-04 23:37 UTC (17:37 the operator's time):
+- **Loki's running configuration** (`127.0.0.1:3100/config`):
+  - `limits_config` `retention_period: 90d`, which is 14.12's `2160h`;
+  - `table_manager` `retention_period: 0s`, unused, and the edit leaves it alone;
+  - the compactor's `retention_enabled: true`, `retention_delete_delay: 2h0m0s`.
+- **`/etc/loki/local-config.yaml`:** root:10001, 0640, 902 bytes, changed 17:42 UTC (14.12's
+  install). It can be read only as root, so step 1 reads its line itself.
+- **`raw-telemetry`:**
+  - **Rules:** exactly one, `NoncurrentVersionExpiration` at 7 days, Enabled, no prefix,
+    unchanged since 2026-09-07 23:11 UTC.
+  - **Versioning is enabled.**
+  - **Top-level prefixes:** exactly `mdt/` and `syslog/`.
+  - **Objects:** the oldest under `mdt/` is from 2026-09-08.
+- **The client:** `mc` RELEASE.2025-08-13T08-35-41Z, whose `ilm rule add` takes `--prefix` and
+  `--expire-days`.
 
-1. Loki: 14.12's step, with `2160h` replaced by `17520h`. Read the line first, refuse unless the
-   diff is exactly one line, install by name, then restart.
+**What it does, and when the space comes back.** The bucket is versioned, so an expiry does not
+delete at once:
+- At 30 days, it turns an `mdt/` object's current version into a non-current one (a delete
+  marker).
+- The existing non-current rule removes that version 7 days later.
+- So `mdt/` keeps about 37 days on disk. Its first objects pass 30 days on 2026-10-08, and their
+  space returns from about 2026-10-15.
+- `syslog/` behaves the same at 730 days.
+- Loki's longer period keeps what it holds now, from 2026-09-07; it brings back nothing already
+  deleted.
+
+**On the NMAS host, as the operator. Run 0 first; it changes nothing. Go on only if it prints
+`ALL READS AS EXPECTED`.**
+
+0. Read everything the step rests on. Any difference refuses, naming what it found.
 
    ```
-   sudo grep -n 'retention_period' /etc/loki/local-config.yaml   # read: 2160h since 14.12
+   ok=1
+   live=$(curl -s 127.0.0.1:3100/config | awk '/^limits_config:/{s=1;next} /^[a-z_]+:/{s=0} s && /^  retention_period:/{print $2}')
+   [ "$live" = 90d ] || { echo "REFUSED: Loki's running limits_config retention_period is '$live', not 90d"; ok=0; }
+   file=$(sudo awk '/^limits_config:/{s=1;next} /^[a-z_]+:/{s=0} s && /^ *retention_period:/{print $2}' /etc/loki/local-config.yaml | tr '\n' ' ')
+   [ "$file" = '2160h ' ] || { echo "REFUSED: the file's limits_config retention_period line(s): '$file' (expected one, 2160h)"; ok=0; }
+   rules=$(mc ilm rule ls lab/raw-telemetry --json | python3 -c 'import json,sys; r=json.load(sys.stdin)["config"]["Rules"]; print(json.dumps([{k: v for k, v in x.items() if k != "ID"} for x in r], sort_keys=True))')
+   [ "$rules" = '[{"NoncurrentVersionExpiration": {"NoncurrentDays": 7}, "Status": "Enabled"}]' ] ||
+     { echo "REFUSED: raw-telemetry's rules are $rules (expected only the 7-day non-current one)"; ok=0; }
+   tops=$(mc ls lab/raw-telemetry/ | awk '{print $NF}' | sort | tr '\n' ' ')
+   [ "$tops" = 'mdt/ syslog/ ' ] || { echo "REFUSED: raw-telemetry's top-level prefixes are '$tops' (expected mdt/ syslog/)"; ok=0; }
+   [ "$ok" = 1 ] && echo "ALL READS AS EXPECTED"
+   ```
+
+   A third prefix refuses because it would get no expiry at all. Add it to 14.1's table first.
+
+1. **Loki to 2 years.**
+   - Copy the file into a fresh owner-only folder; it holds the bucket's credential.
+   - Change the one line inside `limits_config`.
+   - Refuse unless the diff is exactly that line, from `2160h` to `17520h`.
+   - Install by name with the owner and mode kept, and restart.
+
+   ```
    d=$(mktemp -d)
    sudo cat /etc/loki/local-config.yaml > "$d/local-config.yaml"
-   sed -i '/^limits_config:/,/^[^ #]/ s/^\( *retention_period:\) .*$/\1 17520h/' "$d/local-config.yaml"
-   n=$(sudo diff /etc/loki/local-config.yaml "$d/local-config.yaml" | grep -c '^>')
-   if [ "$n" = 1 ]; then
+   sed -i '/^limits_config:/,/^[^ #]/ s/^\( *retention_period:\) 2160h *$/\1 17520h/' "$d/local-config.yaml"
+   delta=$(sudo diff /etc/loki/local-config.yaml "$d/local-config.yaml" | grep -E '^[<>]')
+   if [ "$(printf '%s\n' "$delta" | grep -c '^<')" = 1 ] && [ "$(printf '%s\n' "$delta" | grep -c '^>')" = 1 ] &&
+      printf '%s\n' "$delta" | grep -qE '^< +retention_period: 2160h *$' &&
+      printf '%s\n' "$delta" | grep -qE '^> +retention_period: 17520h *$'; then
      sudo install -o root -g 10001 -m 0640 "$d/local-config.yaml" /etc/loki/local-config.yaml &&
      docker restart loki
    else
-     echo "REFUSED: the edit changed $n line(s), not 1; nothing installed"
+     echo "REFUSED: the edit is not exactly 2160h to 17520h on one line; nothing installed:"; printf '%s\n' "$delta"
    fi
    rm -r "$d"
    ```
 
-2. `raw-telemetry`'s two rules. Read first: the only rule must be the non-current one, or stop.
+2. **`raw-telemetry`'s two expiry rules**, one per prefix. Run this only after 0 printed
+   `ALL READS AS EXPECTED` in this same shell. If the first rule is added and the second fails,
+   step 3 shows it, and only the missing rule is run again.
 
    ```
-   mc ilm rule ls lab/raw-telemetry                       # read: one NoncurrentVersionExpiration rule
-   mc ilm rule add lab/raw-telemetry --prefix "mdt/"    --expire-days 30
+   mc ilm rule add lab/raw-telemetry --prefix "mdt/" --expire-days 30 &&
    mc ilm rule add lab/raw-telemetry --prefix "syslog/" --expire-days 730
    ```
 
-Verify, each a result:
+3. **Verify**, each a result:
 
-```
-curl -s 127.0.0.1:3100/config | grep -E '^  retention_period:'   # 730d
-mc ilm rule ls lab/raw-telemetry                                    # two expiry rules by prefix, 30 and 730 days, and the non-current one
-```
+   ```
+   curl -s 127.0.0.1:3100/ready                                                   # ready
+   curl -s 127.0.0.1:3100/config | awk '/^limits_config:/{s=1;next} /^[a-z_]+:/{s=0} s && /^  retention_period:/{print $2}'   # 730d
+   curl -s 127.0.0.1:3100/config | awk '/^table_manager:/{s=1;next} /^[a-z_]+:/{s=0} s && /^  retention_period:/{print $2}'   # 0s, unchanged
+   mc ilm rule ls lab/raw-telemetry --json | python3 -c 'import json,sys; r=json.load(sys.stdin)["config"]["Rules"]; print(sorted(((x.get("Filter") or {}).get("Prefix") or x.get("Prefix") or "-", (x.get("Expiration") or {}).get("Days") or None, (x.get("NoncurrentVersionExpiration") or {}).get("NoncurrentDays") or None) for x in r))'
+   #   [('-', None, 7), ('mdt/', 30, None), ('syslog/', 730, None)]
+   ```
 
-Longer retention keeps what is there from now on; it does not bring back what was deleted. The
-tool's screens state the retention in force from the setting (14.6), and a query past it says the
-range was deleted before it was asked (History, Query, board C).
+**What this step does not do:**
+- **The tool's own Logs retention setting does not exist yet.** History's Query banner (board C,
+  15.5) reads it. It is declared when Query is built: by the settings rule, with a default of 90
+  days, the value before this step, then set to 730 days, the value this step makes true.
+  Until then, nothing in the tool states the log retention.
+- **Zombie delete markers stay.** Expired objects leave delete markers once their versions are
+  gone. `mc ilm rule add --expire-delete-marker` removes them. They are a few hundred bytes
+  each, about 650 a month, so it is left for its own step if wanted, rather than a third change
+  in this one.
 
 ## 15. The operator's review of three canvas pages (2026-10-04): revise, then show again
 
@@ -3855,6 +3921,53 @@ Every point of 15.4 is drawn; the approved boards are marked APPROVED in their t
 - **History B:** the Y-axis label sits in its own column inside the chart. **History C:** the
   notice names the Logs retention setting. **History A:** says "Logs: kept 2 years" with a link to
   Settings, and lists archived syslog as its own class.
+
+### 15.6 The operator's verdicts on canvas v32 (2026-10-04), and v33
+
+**APPROVED:**
+- 7.4's B (batch deploy at scale), C (one Save does both), D (change a setting on the
+  selection), G (adopt finishes the job), and H with its states and Fields mode. With A, E, F
+  and K approved earlier, every 7.4 Fleet board up to K is signed off.
+- History's B (the chart's axes).
+
+**"Record only":** agreed, dropped from the Devices list. A single device's Capture keeps the
+exception, its result saying "not saved to startup" with Save beside it.
+
+**History C: approved once its banner shows the CONFIGURED retention.** Redrawn in v33: "this
+network keeps logs 2 years". 14.15 is agreed, so the store's first day (7 Sep) explains the empty
+part of a 120-day range, not a deletion.
+
+**Drawn in v33 for sign-off:**
+- **L, ZTP Discovered:** the list of devices asking for an address the tool doesn't know.
+  - Its columns: MAC, vendor class, client-id, hostname, serial, the lease, first and last
+    seen. A summary and filter come first; "asking now" and "gone quiet" are grouped.
+  - Pick opens the name, platform, role, interface, address and site, then which way in: by
+    MAC, by serial and MAC, or a bare management config.
+  - Its refusals: a shared serial, and a name already planned with another MAC.
+- **M, plan a pre-provisioned device's first boot:**
+  - Identity: by serial, by MAC, or both, where both must match.
+  - The full first-boot config, rendered from committed intent and an approved template, masked
+    and hashed, with the one-time credential explained.
+  - A confirm that names its work.
+  - The refusals: a shared serial at planning, and a serial that differs at boot when both
+    must match.
+  - The arrival steps: lease, fetch by hash, answer, verify, golden, rotate, save, then the
+    break-glass export once at the end.
+- **The identity fields that rest on the DHCP capture** (vendor class, and a serial sent at
+  boot) and on the guestshell measurement (the boot script reading the serial) are marked
+  pending on both boards. Until those land, by MAC is the way that works.
+- **Topology A–C, the declutter:**
+  - No state text on links. Colour AND line style carry status: green solid, amber dashed,
+    red thick, grey dotted, with a small legend.
+  - Hovering a link shows its detail: each end's port, each protocol's state, and what intent
+    expects.
+  - The right-hand panel is the attention list: a summary count, groups by status, a filter,
+    and a click highlighting the link.
+  - The phone gets the list, with a link's detail on tap. The wall shows the counts and the
+    colours, and the list because four entries fit.
+  - Ports are off by default and shown in the hover.
+- **E's discovery card** becomes a link to L. E is approved, so that change is L's to
+  sign off.
 
 ## 16. ZTP: three ways in, one pipeline (the operator, 2026-10-04)
 
