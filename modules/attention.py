@@ -148,8 +148,9 @@ CLEAR_WAYS = ("resolves", "acknowledge", "time")
 CLEARS = {
     ("*", "unreadable"): (("resolves",), "the source is read again successfully"),
     ("job_health", "job"): (("resolves",), "the job's next run or check reads ok (job health "
-                            "re-reads every 5 minutes; a root-installed helper's row is asked "
-                            "again at the next read of this page)"),
+                            "re-reads every 5 minutes, and as soon as a host job finishes; a "
+                            "root-installed helper's row is asked again at the next read of "
+                            "this page)"),
     ("drift", "disabled"): (("resolves",), "drift checking is switched back on"),
     ("drift", "never"): (("resolves",), "a drift check runs for this list"),
     ("drift", "failed"): (("resolves",), "a later drift check completes"),

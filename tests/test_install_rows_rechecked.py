@@ -141,12 +141,20 @@ def test_the_row_draws_its_reading_time():
 
 def test_the_clearing_words_state_the_readers_real_interval():
     """The row promised "every minute" against a 300 s reader: the words must match the
-    reader's interval, and say when an install row is asked again."""
+    reader's interval, keep the host job's finish (`POST /jobs/finished` reads job health at
+    once), and say when an install row is asked again."""
+    import ast
+
     from modules.readers import job_health_reader as JHR
 
     when = A.CLEARS[("job_health", "job")][1]
     assert f"every {JHR.INTERVAL_SECONDS // 60} minutes" in when, when
-    assert "every minute" not in when and "as soon as a job finishes" not in when, when
+    assert "every minute" not in when, when
+    src = open(os.path.join(ROOT, "routes", "jobs.py"), encoding="utf-8").read()
+    finished = next(n for n in ast.walk(ast.parse(src))
+                    if isinstance(n, ast.FunctionDef) and n.name == "job_finished")
+    assert "request_run(job_health_reader.READER" in ast.unparse(finished)
+    assert "as soon as a host job finishes" in when, when
     assert "at the next read of this page" in when, when
 
 
