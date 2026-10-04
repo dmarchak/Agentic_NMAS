@@ -522,17 +522,28 @@ def create():
         return jsonify({"ok": False, "error": str(exc)}), 400
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
 
-    # REBUILT HERE, not carried from the review. The stores can change
-    # between the screen and the confirm -- the same reason the deploy path
-    # recomputes its program at apply rather than trusting what was shown.
-    # secret="" -- the real one is minted by the credentials step.
-    plan = build_plan(**_plan_args(data, list_name, secret=""))
-    if not plan.onboardable:
-        return jsonify({"ok": False, "error": "; ".join(plan.blocking_reasons),
-                        "blocking_reasons": plan.blocking_reasons}), 409
+    from modules.nsot import device_ops
 
-    result = run_onboarding(plan, repo=repo,
-                            **real_steps(repo, actor=ident.actor))
+    args = _plan_args(data, list_name, secret="")
+    # The hostname HELD from the plan's rebuild to the last step (CONCURRENCY_AUDIT R23): with
+    # nothing between the name check and the mint, two Creates for one name could leave two
+    # identities, and a Create beside an Abandon could rebuild on what the Abandon removed.
+    try:
+        with device_ops.hold(list_name, args.get("hostname", ""), "onboard (create)",
+                             ident.actor):
+            # REBUILT HERE, not carried from the review. The stores can change
+            # between the screen and the confirm -- the same reason the deploy path
+            # recomputes its program at apply rather than trusting what was shown.
+            # secret="" -- the real one is minted by the credentials step.
+            plan = build_plan(**args)
+            if not plan.onboardable:
+                return jsonify({"ok": False, "error": "; ".join(plan.blocking_reasons),
+                                "blocking_reasons": plan.blocking_reasons}), 409
+
+            result = run_onboarding(plan, repo=repo,
+                                    **real_steps(repo, actor=ident.actor))
+    except device_ops.DeviceBusy as exc:
+        return jsonify({"ok": False, "error": f"Not created: {exc}. Nothing was changed."}), 409
     # What happened, drawn by the result component (7.1, C86): Create is
     # phase 1 and leaves the device PENDING, which the toast it replaces
     # called "Device onboarded.".

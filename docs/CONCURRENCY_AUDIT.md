@@ -126,7 +126,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | FIXED 2026-10-02 as C326 (was UNSAFE; tests/test_approved_revert_closes.py) | yes | Never reject the item named by `approval_id` |
 | R21 | m | locks, confirms, live | Every NetBox writer: the tab's import and Remove, onboarding phase two, adopt, retire's mask, the mask script (widened on review) | NetBox, sync status | nothing refuses a second writer; status truncate; tokens in memory | partly | UNSAFE | yes | Per-list NetBox lock with holder, taken by every writer; shared token store |
 | R22 | m | stores | Kea ZTP fragment | the fragment, Kea's running config | none | no | FIXED 2026-10-04 (was UNSAFE; tests/test_ztp_fragment_lock.py) | yes | PathLock from read to read-back |
-| R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | UNSAFE | yes | Hold the hostname; bind Abandon to its dry run |
+| R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | HOLD FIXED 2026-10-04 (tests/test_onboard_serialised.py); binding Abandon to its dry run not built | yes | Hold the hostname; bind Abandon to its dry run |
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
 | R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | UNSAFE | yes | Lease, recorded release, canonical key, no flock probe |
@@ -654,6 +654,18 @@ leave two identities. Abandon takes neither the repo lock nor a device hold
 two sets last. So an Abandon during phase two removes the manifest entry, the staged
 credential, NetBox objects and the reservation under a running onboarding. Double Create is
 plausible, not reproduced.
+
+*The hold, FIXED 2026-10-04 (tests/test_onboard_serialised.py):*
+- **Abandon** holds the device for its run (a dry run reads only and takes none). Another
+  operation's hold, which is what phase two takes, refuses it by name with nothing removed.
+- **Create** holds the hostname from its plan's rebuild to its last step, so a second Create
+  for the name is refused by name, before planning or minting anything.
+- **Controls**, each failing its aimed tests: Abandon without its hold (the identity released
+  under phase two); Create without its hold.
+- **Not built: binding Abandon to its dry run** (confirms-12). The route takes Abandon with
+  no hash of what its dry run showed. That needs the confirm to carry one, which v2's
+  onboarding screen will draw (canvas "7.4 Fleet", awaiting sign-off), so it waits for that
+  screen.
 
 **R24. git's own locks surface as raw failures** (git-2, git-5). `git()` runs once with no
 retry (repo.py:164-181). `_git_env` does not set `GIT_OPTIONAL_LOCKS=0` (repo.py:105-118), so

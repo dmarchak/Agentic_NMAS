@@ -1051,7 +1051,7 @@ class TestAbandonClearsEveryKeyThatCouldHoldTheCredential:
 
         from modules.nsot import onboard
 
-        source = inspect.getsource(onboard.abandon_onboarding)
+        source = inspect.getsource(onboard._abandon_onboarding)   # the steps (R23)
         tree = ast.parse(source.strip())
         literals = {n.value for n in ast.walk(tree)
                     if isinstance(n, ast.Constant) and isinstance(n.value, str)}
@@ -1065,7 +1065,7 @@ class TestAbandonClearsEveryKeyThatCouldHoldTheCredential:
 
         from modules.nsot import onboard
 
-        source = inspect.getsource(onboard.abandon_onboarding)
+        source = inspect.getsource(onboard._abandon_onboarding)   # the steps (R23)
         assert "if mgmt_ip and credentials.has_device_override" not in source
 
 

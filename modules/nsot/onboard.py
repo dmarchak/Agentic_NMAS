@@ -1671,6 +1671,31 @@ def read_runs(repo: str) -> dict:
 def abandon_onboarding(repo: str, hostname: str, list_name: str, *,
                        actor: str = "", dry_run: bool = False,
                        remove_netbox=None, remove_reservation=None) -> dict:
+    """Undo an onboarding, holding the device for the whole run (CONCURRENCY_AUDIT R23).
+
+    Abandon took no hold and refused only when `verified_at` was set, which phase two sets
+    LAST, so an Abandon during phase two removed the manifest entry, the staged credential,
+    NetBox objects and the reservation under a running onboarding. Now another operation's
+    hold (phase two holds the device) refuses it by name and nothing is removed. A dry run
+    reads only and takes no hold. The steps are :func:`_abandon_onboarding`'s."""
+    kwargs = dict(actor=actor, dry_run=dry_run, remove_netbox=remove_netbox,
+                  remove_reservation=remove_reservation)
+    if dry_run:
+        return _abandon_onboarding(repo, hostname, list_name, **kwargs)
+    from modules.nsot import device_ops
+
+    try:
+        with device_ops.hold(list_name, hostname, "abandon", actor or "unknown"):
+            return _abandon_onboarding(repo, hostname, list_name, **kwargs)
+    except device_ops.DeviceBusy as exc:
+        return {"ok": False, "device": hostname, "list": list_name, "dry_run": False,
+                "steps": [], "remaining": [], "released": "",
+                "error": f"Not abandoned: {exc}. Nothing was removed."}
+
+
+def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
+                        actor: str = "", dry_run: bool = False,
+                        remove_netbox=None, remove_reservation=None) -> dict:
     """Undo an onboarding, in the reverse of the order that created it.
 
     **Why this exists rather than `manifest.release()` alone.** Release
