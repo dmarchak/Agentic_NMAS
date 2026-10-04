@@ -1,0 +1,26 @@
+[
+ {
+  "uid": "efxk88ulvh3pcf",
+  "name": "loki",
+  "type": "loki",
+  "access": "proxy",
+  "url": "http://localhost:3100",
+  "isDefault": false
+ },
+ {
+  "uid": "efwpn8hr7sfeob",
+  "name": "prometheus",
+  "type": "prometheus",
+  "access": "proxy",
+  "url": "http://localhost:9090",
+  "isDefault": true
+ },
+ {
+  "uid": "afxkt521qhqtcc",
+  "name": "Thanos (lake)",
+  "type": "prometheus",
+  "access": "proxy",
+  "url": "http://localhost:19193",
+  "isDefault": false
+ }
+]

@@ -27,6 +27,7 @@ accounts that last edited each rule. Re-capture with
 | File | What it is |
 |---|---|
 | `search.json`, `datasources.json` | `api/search` and the data sources, 2026-09-29 |
+| `datasources_api.json` | `api/datasources`, read 2026-10-04 through `GrafanaIntegration._get()` on the NMAS host (read-only), reduced to the fields the reader reads (`uid`, `name`, `type`, `access`, `url`, `isDefault`); the secure-field booleans dropped. Its uids are `datasources.json`'s |
 | `rcn-lab1-snmp.json` | the ORIGINAL device dashboard, replaced by `nmas-device` on 2026-09-30. Kept as the panel-FILTERING fixture (8 panels, 4 selecting a device); never this lab's dashboard for either role |
 | `rcn-lab-overview.json` | this lab's FLEET dashboard, read 2026-10-01 through `GrafanaIntegration._get("api/dashboards/uid/rcn-lab-overview")` on the NMAS host (read-only). One edit: text panel 20's topology image named the operator's public hostname, replaced by `topology.example.invalid` |
 | `nmas-device.json` | this lab's DEVICE dashboard as Grafana returns it after import (data source UIDs filled), read the same way the same day; unedited |

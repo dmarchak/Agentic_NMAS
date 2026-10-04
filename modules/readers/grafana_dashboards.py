@@ -24,6 +24,7 @@ from modules import reader_job
 SEARCH = "api/search"
 DASHBOARD = "api/dashboards/uid/<uid>"
 FRONTEND = "api/frontend/settings"
+DATASOURCES = "api/datasources"
 SEARCH_LIMIT = 500
 INTERVAL_SECONDS = 300
 
@@ -132,7 +133,19 @@ def read(client=None) -> dict:
     fs = g._get(FRONTEND)
     if not fs.get("ok"):
         raise ConnectionError(f"{FRONTEND}: {fs.get('error') or 'no answer'}")
-    return {"dashboards": dashboards, "datasources": datasources(fs["response"].json() or {}),
+    # Where each datasource points (the operator, 2026-10-04, host step 14.14: the confirm
+    # showed "?"). Front-end settings carry only a proxy path; the list carries the address.
+    # A token that cannot read it leaves the addresses unknown and says why, never fails.
+    listed = g._get(DATASOURCES)
+    if listed.get("ok"):
+        urls, urls_why = {d.get("uid"): d.get("url") or ""
+                          for d in (listed["response"].json() or []) if isinstance(d, dict)}, ""
+    else:
+        urls, urls_why = {}, (f"{DATASOURCES} answered "
+                              f"{listed.get('status') or listed.get('error') or 'nothing'}: "
+                              "the token cannot read data source settings")
+    return {"dashboards": dashboards,
+            "datasources": datasources(fs["response"].json() or {}, urls, urls_why),
             "read_at": time.time()}
 
 
@@ -162,15 +175,23 @@ def read_one(uid: str, client=None) -> dict:
                           "refresh": model.get("refresh") or ""}}
 
 
-def datasources(frontend: dict) -> list:
+def datasources(frontend: dict, urls: dict = None, urls_why: str = "") -> list:
     """The data sources, from Grafana's front-end settings (which any signed-in
     role reads, so a Viewer token can): uid, type, name, and which is the
-    default, which a data-source variable with no current value resolves to."""
+    default, which a data-source variable with no current value resolves to.
+    *urls* (uid -> address, from `api/datasources`) adds where each points, as
+    `url`; an unknown address is "" with `url_why` saying why."""
     default = frontend.get("defaultDatasource")
-    return [{"uid": d.get("uid"), "type": d.get("type"), "name": name,
-             "is_default": name == default}
-            for name, d in sorted((frontend.get("datasources") or {}).items())
-            if d.get("uid") and d.get("type") not in ("grafana", "dashboard", "mixed")]
+    out = []
+    for name, d in sorted((frontend.get("datasources") or {}).items()):
+        if not d.get("uid") or d.get("type") in ("grafana", "dashboard", "mixed"):
+            continue
+        url = (urls or {}).get(d["uid"], "")
+        out.append({"uid": d.get("uid"), "type": d.get("type"), "name": name,
+                    "is_default": name == default, "url": url,
+                    **({} if url else {"url_why": urls_why or
+                                       f"{DATASOURCES} does not list it"})})
+    return out
 
 
 #: The Monitoring tab re-renders on this reader's announcement, so it
@@ -191,7 +212,7 @@ def changed(previous: dict, value: dict) -> bool:
 READER = reader_job.register(reader_job.Reader(
     name="grafana-dashboards",
     what="every dashboard Grafana holds and its model, for the pages that render its panels",
-    endpoints=(SEARCH, DASHBOARD, FRONTEND),
+    endpoints=(SEARCH, DASHBOARD, FRONTEND, DATASOURCES),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("a dashboard changes when a person edits it in Grafana, which is rare; five "
                     "minutes makes an edit appear soon without re-reading every model each minute"),

@@ -3438,17 +3438,51 @@ rm -r "$d"
 ```
 
 `mc mirror --overwrite` without `--remove` needs list, get and put only, so the policy grants no
-delete. Then swap the job's credential in `/etc/default/lake-archive` (root-only, as now) to
-`lake-archive` and its secret, run the job once by hand, and confirm the result:
+delete.
+
+**Then the job's credential, user AND password.** As first written, this step said to swap only
+the secret. It missed that `archive-to-lake.sh` HARD-CODED the root user in its alias
+(`MC_HOST_lab="http://<root user>:${MINIO_PW}@…"`), so swapping only the password would have
+broken the job (found by the operator, 2026-10-04). Read the line first:
+
+```
+sudo grep -n 'MC_HOST_' /usr/local/bin/archive-to-lake.sh     # the user is a literal: change it
+```
+
+- `/etc/default/lake-archive` (root, 0600) holds `MINIO_USER=lake-archive` and `MINIO_PW=<its
+  secret>`.
+- The script's alias reads `${MINIO_USER}` in place of the literal user. Change it in a copy,
+  check that the diff is exactly that one line, and install it by name with its owner and mode
+  kept.
+
+Then run the job once by hand and confirm the result:
 
 ```
 sudo /usr/local/bin/archive-to-lake.sh && tail -5 /var/log/lake-archive.log
 mc ls lab/raw-telemetry/mdt/ | tail -1          # this hour's file, new
 ```
 
-Finally confirm no job still uses the root account: no file under `/etc/default`, `/etc/cron.d`
-or `/usr/local/bin` names the root user, and MinIO's trace shows only `lake-archive` on the
-bucket at the next :15 (`mc admin trace --path 'raw-telemetry/*' lab` for one run).
+Finally, confirm no job still uses the root account. No file under `/etc/default`,
+`/etc/cron.d` or `/usr/local/bin` names the root user, apart from MinIO's own two (its server
+settings `/etc/default/minio`, and the binary `/usr/local/bin/minio`). Matched without those
+two, the check always failed. The name is read from MinIO's settings, never typed or printed:
+
+```
+root=$(sudo sed -n 's/^MINIO_ROOT_USER=//p' /etc/default/minio)
+[ -n "$root" ] || { echo "REFUSED: no MINIO_ROOT_USER in /etc/default/minio"; false; } &&
+sudo grep -rlF -- "$root" /etc/default /etc/cron.d /usr/local/bin \
+  | grep -vx -e /etc/default/minio -e /usr/local/bin/minio     # expect nothing
+```
+
+MinIO's trace shows only `lake-archive` on the bucket at the next :15
+(`mc admin trace --path 'raw-telemetry/*' lab` for one run).
+
+**DONE 2026-10-04 (the operator), with the fix above:**
+- `/etc/default/lake-archive` holds `MINIO_USER` and `MINIO_PW`, and the script reads
+  `${MINIO_USER}`.
+- `lake-archive` holds only `lake-archive-write`.
+- A manual run exited 0.
+- The administrator credential's backup is deleted.
 
 ### 14.12 Host step: Loki keeps logs 90 days (the operator's)
 
@@ -3459,25 +3493,43 @@ Docker container `loki` (restart policy `unless-stopped`) with `/etc/loki/local-
 mounted read-only from the host, root-owned, group 10001, mode 0640. A longer retention keeps
 what is still there from now on; it does not bring back what the 30-day retention has deleted.
 
-First read the line the step changes, so the change is the one expected:
+First read the line the step changes. **Read the real value; never assume it.** As first
+written, this step expected `30d` and its sed matched only `30d`. The file said `720h` (the
+running configuration prints the same period as `30d`), so the sed would have changed nothing
+and restarted Loki for nothing (found by the operator, 2026-10-04). The file also holds
+`table_manager`'s own `retention_period: 0s`, unused, which the edit must leave alone.
 
 ```
-sudo grep -n 'retention_period' /etc/loki/local-config.yaml   # expect one line, 30d
+sudo grep -n 'retention_period' /etc/loki/local-config.yaml   # read what is there, in any unit
 ```
 
-Then copy the file into a fresh folder (`mktemp -d` makes it owner-only; the file holds the
-bucket's credential), change that one line there, show the difference, and install it by name
-with its owner and mode kept:
+Then:
+- Copy the file into a fresh folder (`mktemp -d` makes it owner-only; the file holds the bucket's
+  credential).
+- Change the line inside `limits_config` whatever its value.
+- **Refuse unless the diff is exactly one changed line**, then install the file by name with its
+  owner and mode kept.
 
 ```
 d=$(mktemp -d)
 sudo cat /etc/loki/local-config.yaml > "$d/local-config.yaml"
-sed -i 's/^\( *retention_period:\) 30d$/\1 90d/' "$d/local-config.yaml"
-sudo diff /etc/loki/local-config.yaml "$d/local-config.yaml"   # one line: 30d -> 90d
-sudo install -o root -g 10001 -m 0640 "$d/local-config.yaml" /etc/loki/local-config.yaml
+sed -i '/^limits_config:/,/^[^ #]/ s/^\( *retention_period:\) .*$/\1 2160h/' "$d/local-config.yaml"
+sudo diff /etc/loki/local-config.yaml "$d/local-config.yaml"     # read it
+n=$(sudo diff /etc/loki/local-config.yaml "$d/local-config.yaml" | grep -c '^>')
+if [ "$n" = 1 ]; then
+  sudo install -o root -g 10001 -m 0640 "$d/local-config.yaml" /etc/loki/local-config.yaml &&
+  docker restart loki
+else
+  echo "REFUSED: the edit changed $n line(s), not 1; nothing installed"
+fi
 rm -r "$d"
-docker restart loki
 ```
+
+**DONE 2026-10-04 (the operator), with the fix above:**
+- `720h` became `2160h`, and the diff showed exactly that one line.
+- The file was installed root:10001 0640 and Loki restarted.
+- The running configuration shows `limits_config` `retention_period: 90d`; `table_manager`'s
+  `0s` is unchanged.
 
 Verify, each a result:
 
@@ -3495,7 +3547,25 @@ After the compactor (14.10) has written 5 min and 1 h blocks (the first 5 min bl
 older than 40 h). Thanos Query runs today without `--query.auto-downsampling` (read 2026-10-04:
 `/usr/local/bin/thanos query --http-address=0.0.0.0:19193 --grpc-address=0.0.0.0:19094
 --endpoint=127.0.0.1:19090 --endpoint=127.0.0.1:19091`, as `prometheus`), so every range reads
-raw blocks. Add the flag with a drop-in, its command line in full, installed by name:
+raw blocks.
+
+**First, the two things the step rests on, each read and never assumed** (C434):
+- The 5 min blocks exist. Measured 2026-10-04 17:42Z: 7 blocks covering 2026-09-07 to
+  2026-10-04 00:00Z, and one 1 h block. Thanos Query answered a 24-day range at both raw and
+  `max_source_resolution=5m` (576 points each).
+- The running command line is the one the drop-in replaces in full. Anything else is refused,
+  because a drop-in's `ExecStart=` overwrites every flag.
+
+```
+curl -s '127.0.0.1:19194/api/v1/blocks?view=global' | python3 -c 'import json,sys,collections; b=json.load(sys.stdin)["data"]["blocks"]; print(collections.Counter(x["thanos"]["downsample"]["resolution"] for x in b))'
+#   a key 300000 with a count above 0: the 5 min blocks exist
+want='/usr/local/bin/thanos query --http-address=0.0.0.0:19193 --grpc-address=0.0.0.0:19094 --endpoint=127.0.0.1:19090 --endpoint=127.0.0.1:19091'
+have=$(systemctl show -p ExecStart --value thanos-query | sed -n 's/.*argv\[\]=\([^;]*\);.*/\1/p' | sed 's/ *$//')
+[ "$have" = "$want" ] && echo "the command line is the expected one" || echo "REFUSED: thanos-query runs: $have"
+```
+
+Only on "the command line is the expected one", add the flag with a drop-in, its command line in
+full, installed by name:
 
 ```
 d=$(mktemp -d)
@@ -3532,9 +3602,22 @@ writes the setting through its one write path:
 
 ```
 cd ~/python/Agentic_NMAS
-uid=$(python3 -c 'import json; v=json.load(open("data/readers/grafana-dashboards.json"))["last_good"]["value"]; print(next(d["uid"] for d in v["datasources"] if d["name"] == "Thanos (lake)" and d["type"] == "prometheus"))')
-printf 'Set grafana_history_datasource_uid to %s (Grafana datasource "Thanos (lake)")? [y/N] ' "$uid" && read -r ok && [ "$ok" = y ] && python3 -c 'import sys; sys.path.insert(0, "."); from modules.settings_schema import write_settings; print(write_settings({"grafana_history_datasource_uid": sys.argv[1]}, actor="host step 14.14"))' "$uid"
+read -r uid url <<< "$(python3 -c 'import json; v=json.load(open("data/readers/grafana-dashboards.json"))["last_good"]["value"]; d=[d for d in v["datasources"] if d["name"] == "Thanos (lake)" and d["type"] == "prometheus"]; print(d[0]["uid"], d[0].get("url") or "?") if d else None')"
+[ -n "$uid" ] || { echo 'REFUSED: no prometheus datasource named "Thanos (lake)" in the stored list'; false; } &&
+printf 'Set grafana_history_datasource_uid to %s (Grafana datasource "Thanos (lake)", %s)? [y/N] ' "$uid" "$url" && read -r ok && [ "$ok" = y ] && python3 -c 'import sys; sys.path.insert(0, "."); from modules.settings_schema import write_settings; print(write_settings({"grafana_history_datasource_uid": sys.argv[1]}, actor="host step 14.14"))' "$uid"
 ```
+
+Both refinements are the operator's, after running it (2026-10-04):
+- It stops when the datasource is absent. Before, it would have prompted with an empty uid.
+- The confirm shows where the datasource points. The stored list held no URL, so the prompt
+  showed "?". The `grafana-dashboards` reader now keeps each datasource's URL from Grafana's
+  `api/datasources`, and says why when the token cannot read it.
+
+**DONE 2026-10-04 (the operator):**
+- `grafana_history_datasource_uid` is `afxkt521qhqtcc` ("Thanos (lake)").
+- The operator confirmed in Grafana that it points at `http://localhost:19193` (Thanos Query)
+  before answering y.
+- It was set through `write_settings`, actor "host step 14.14".
 
 Verify on a device page: Monitoring, a range of `120d`. The panels draw, and each foot line
 says "from the history store Thanos (lake): the live store keeps 90 days". Until about
@@ -3543,4 +3626,6 @@ says "from the history store Thanos (lake): the live store keeps 90 days". Until
 **Live reads (Coverage, adjacencies, restarts) stay on Prometheus** (`prometheus_url`). They are
 measured equal on Thanos Query (14.2), so moving them is the operator's choice. The
 recommendation is to move them after the compactor has run for a week without halting, so that
-a compactor fault cannot reach them first.
+a compactor fault cannot reach them first. **DECIDED 2026-10-04 (the operator): as
+recommended.** Live reads stay on Prometheus until the compactor has run a week without
+halting.
