@@ -87,7 +87,9 @@ one reason, its provenance (the rule's measurement, a condition with this device
 hover. An empty panel says what it asked and that nothing matched ("No series matched
 ifHCInOctets{device="s1"} in the last 1 h."), with the dashboard's own explanation on hover;
 one a known platform limit explains (vIOS reports no memory pool or platform CPU) leads with
-that reason instead, the query on hover.
+that reason instead, the query on hover. A range longer than the live store keeps (90 days by
+default) is read from the history store when one is set (Thanos, for example), and each panel's
+foot line says so; with none set, such a range is refused, naming the setting.
 
 ## Logs {#logs-tab}
 

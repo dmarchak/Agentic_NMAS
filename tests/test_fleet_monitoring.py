@@ -139,7 +139,7 @@ class TestTheTabsAndTheSidebar:
         _r, html = _get(lab, "/v2/monitoring")
         assert '<p class="limits">' not in html and "Prometheus serves up to" not in html
         assert re.search(r'<div class="seg" role="group" aria-label="Time range" '
-                         r'title="Prometheus keeps 90 days\. Step 15 s for 1 hour: the step '
+                         r'title="The live store keeps 90 days\. Step 15 s for 1 hour: the step '
                          r'widens with the range\.">', html)
         assert 'data-manual="monitoring#time-range"' in html
         assert re.search(r"class=\"btn btn-select\"[^>]*title=\"Grafana's dashboard list, read ", html)
@@ -149,7 +149,8 @@ class TestTheTabsAndTheSidebar:
         _r, html = _get(lab, "/v2/monitoring?range=last+120d")
         form = re.search(r'<form class="range-custom".*?</form>', html, re.S).group(0)
         assert 'value="last 120d" aria-invalid="true"' in form
-        assert "Refused: Prometheus keeps 90 days; this range is 120 days." in _text(form)
+        assert ("Refused: the live store keeps 90 days, and no history store is set "
+                "(grafana_history_datasource_uid); this range is 120 days.") in _text(form)
         assert _panels(html) == [] and "notice-warn" not in html
 
     def test_monitoring_has_exactly_the_signed_off_tabs(self, lab):

@@ -145,6 +145,8 @@
   /* PURE: the words under a panel: the range, the step and any cut. */
   function footWords(p) {
     var words = [p.range + ', step ' + p.step + ' s'];
+    // A range past the live store's retention is read from the history store (C406): said.
+    if (p.store) words.push(p.store);
     if (p.note) words.push(p.note);
     return words.join(' · ');
   }

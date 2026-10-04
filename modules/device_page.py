@@ -406,7 +406,7 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
     no such variable, the variable listing nothing, or the panels."""
     cfg = device_dashboard_settings()
     value, at, why = _cached("grafana-dashboards")
-    out = {"settings": cfg, "value_at": at, "range": range_text, "limit_words": panels.LIMITS["prometheus"][1], "offered": [], "state": "ok"}
+    out = {"settings": cfg, "value_at": at, "range": range_text, "limit_words": panels.limit_words((value or {}).get("datasources") or []), "offered": [], "state": "ok"}
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -443,7 +443,7 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
         return out
     try:
         seconds = panels.parse_range(range_text)
-        panels.check_range(seconds, "prometheus")
+        panels.check_range(seconds, "prometheus", *panels.history_store(datasources))
     except panels.RangeRefused as exc:
         out.update(state="range_refused", why=str(exc))
         return out
@@ -613,7 +613,8 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
         fill = panels.variable_values(dash, cfg["variable"], variable_value(dev, cfg["value_from"]),
                                       value.get("datasources") or [])
         default_ds = panels.default_datasource(value.get("datasources") or [], "prometheus")
-        body = panels.build_request(panel, dash, fill, seconds, default_ds)
+        history, history_why = panels.history_store(value.get("datasources") or [])
+        body = panels.build_request(panel, dash, fill, seconds, default_ds, history, history_why)
     except panels.RangeRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
     if client is None:
@@ -624,6 +625,7 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
         return {"ok": False, "error": f"Grafana: {got.get('error')}"}, 502
     errors = panels.answer_errors(got["body"])
     payload = panels.render_payload(panel, got["body"], seconds)
+    payload["store"] = panels.store_words(seconds, panel, dash, fill, default_ds, history)
     payload["errors"] = errors
     # What was asked, so an empty panel says what matched nothing, the panel's own sentence on
     # hover (C412).
@@ -632,7 +634,7 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
         # A reading outside its range from sysUpTime is a restart: say when.
         try:
             probe = panels.build_request(panels.restart_panel(panel, cfg["variable"]), dash, fill,
-                                         max(seconds, 7200), default_ds)
+                                         max(seconds, 7200), default_ds, history, history_why)
             back = client.query(probe)
             at = panels.last_restart(back["body"]) if back.get("ok") else None
         except Exception as exc:                      # noqa: BLE001
@@ -685,7 +687,7 @@ def fleet_monitoring(chosen_uid: str = "", range_text: str = "1h", client=None) 
     choosing one changes the view, never the setting."""
     default = fleet_dashboard_uid()
     value, at, why = _cached("grafana-dashboards")
-    out = {"default": default, "value_at": at, "range": range_text, "limit_words": panels.LIMITS["prometheus"][1], "offered": [], "state": "ok"}
+    out = {"default": default, "value_at": at, "range": range_text, "limit_words": panels.limit_words((value or {}).get("datasources") or []), "offered": [], "state": "ok"}
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -706,7 +708,7 @@ def fleet_monitoring(chosen_uid: str = "", range_text: str = "1h", client=None) 
     out.update(dashboard={"uid": uid, "title": dash["title"]}, is_default=(uid == default))
     try:
         seconds = panels.parse_range(range_text)
-        panels.check_range(seconds, "prometheus")
+        panels.check_range(seconds, "prometheus", *panels.history_store(datasources))
     except panels.RangeRefused as exc:
         out.update(state="range_refused", why=str(exc))
         return out
@@ -740,10 +742,12 @@ def fleet_panel_data(uid: str, panel_id: int, range_text: str, client=None) -> t
     datasources = value.get("datasources") or []
     try:
         seconds = panels.parse_range(range_text)
-        panels.check_range(seconds, "prometheus")
+        panels.check_range(seconds, "prometheus", *panels.history_store(datasources))
         fill = panels.variable_values(dash, "", "", datasources)
+        history, history_why = panels.history_store(datasources)
         body = panels.build_request(panel, dash, fill, seconds,
-                                    panels.default_datasource(datasources, "prometheus"))
+                                    panels.default_datasource(datasources, "prometheus"),
+                                    history, history_why)
     except panels.RangeRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
     if client is None:
@@ -753,6 +757,7 @@ def fleet_panel_data(uid: str, panel_id: int, range_text: str, client=None) -> t
     if not got.get("ok"):
         return {"ok": False, "error": f"Grafana: {got.get('error')}"}, 502
     payload = panels.render_payload(panel, got["body"], seconds)
+    payload["store"] = panels.store_words(seconds, panel, dash, fill, panels.default_datasource(datasources, "prometheus"), history)
     payload["errors"] = panels.answer_errors(got["body"])
     payload["read_at"] = _iso(time.time())
     return payload, 200

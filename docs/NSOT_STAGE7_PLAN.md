@@ -3230,6 +3230,27 @@ the first, Loki behind the second.
   setting, never a constant.
 - **When:** before about 2026-11-28 (C406).
 
+**Measured 2026-10-04, read-only via LAN (C406):** Thanos Query 0.37.2 (:19193) against
+Prometheus (:9090), the tool's own reads at one evaluation time. The active targets (38, the
+same job and device set, `__meta_filepath` and health on both); Coverage's two instant queries
+(35 and 5 series, every value equal); adjacencies (`up` for ospf, ospfv3 and bgp; 32
+`ospfNbrState`); restarts; `sysUpTime` over 1 h; `count(up)` over 30 and 60 days and 34 days
+back: all equal. One panel-shaped rate over 6 h differed at 86 of 361 points by at most
+2.13e-16 relative, floating-point summation order, the same with dedup off and at raw
+resolution. Thanos adds its external labels (`monitor`, `replica`) to raw selectors; no reader
+keys on the whole label set. **So live reads are measured equal**; they stay on Prometheus
+until the operator moves `prometheus_url` (14.14 says how), and history comes first.
+
+**Built 2026-10-04 (C406), on the existing panels, no new screen:** a panel range longer than
+`metrics_live_retention_days` (default 90, the measured value) reads the Grafana datasource
+`grafana_history_datasource_uid` names (empty by default: nothing changes until it is set), the
+same expression on the store that keeps it. The panel's foot line says "from the history store
+<name>: the live store keeps N days"; the range control says both stores; a setting naming a
+datasource Grafana does not hold, or a non-PromQL one, is refused naming it; a range past the
+live store with no history store is refused naming the setting, never trimmed. Long ranges ask
+a wide step already (at most 1,000 points), so with Thanos Query's auto-downsampling (14.13)
+they read 5 min or 1 h blocks once the compactor (14.10) has written them.
+
 ### 14.3 The Thanos compactor (C404)
 
 Exactly ONE compactor per bucket, ever: a single systemd service on one host. Retention per
@@ -3412,3 +3433,98 @@ mc ls lab/raw-telemetry/mdt/ | tail -1          # this hour's file, new
 Finally confirm no job still uses the root account: no file under `/etc/default`, `/etc/cron.d`
 or `/usr/local/bin` names the root user, and MinIO's trace shows only `lake-archive` on the
 bucket at the next :15 (`mc admin trace --path 'raw-telemetry/*' lab` for one run).
+
+### 14.12 Host step: Loki keeps logs 90 days (the operator's)
+
+On the NMAS host, once. 14.1 sets this lab's logs to 90 days; Loki keeps 30 today (read
+2026-10-04 from its running configuration: `limits_config.retention_period: 30d`, the
+compactor's `retention_enabled: true`, `retention_delete_delay: 2h`). Loki 3.3.2 runs in the
+Docker container `loki` (restart policy `unless-stopped`) with `/etc/loki/local-config.yaml`
+mounted read-only from the host, root-owned, group 10001, mode 0640. A longer retention keeps
+what is still there from now on; it does not bring back what the 30-day retention has deleted.
+
+First read the line the step changes, so the change is the one expected:
+
+```
+sudo grep -n 'retention_period' /etc/loki/local-config.yaml   # expect one line, 30d
+```
+
+Then copy the file into a fresh folder (`mktemp -d` makes it owner-only; the file holds the
+bucket's credential), change that one line there, show the difference, and install it by name
+with its owner and mode kept:
+
+```
+d=$(mktemp -d)
+sudo cat /etc/loki/local-config.yaml > "$d/local-config.yaml"
+sed -i 's/^\( *retention_period:\) 30d$/\1 90d/' "$d/local-config.yaml"
+sudo diff /etc/loki/local-config.yaml "$d/local-config.yaml"   # one line: 30d -> 90d
+sudo install -o root -g 10001 -m 0640 "$d/local-config.yaml" /etc/loki/local-config.yaml
+rm -r "$d"
+docker restart loki
+```
+
+Verify, each a result:
+
+```
+curl -s 127.0.0.1:3100/ready                                                  # ready
+curl -s 127.0.0.1:3100/config | grep -E '^  retention_period:'                # 90d
+```
+
+The tool's log ranges are unchanged by this: one query still serves at most `max_query_length`
+(30d1h); a longer range is the splitting 14.2 describes.
+
+### 14.13 Host step: Thanos Query downsamples long ranges (the operator's)
+
+After the compactor (14.10) has written 5 min and 1 h blocks (the first 5 min blocks for data
+older than 40 h). Thanos Query runs today without `--query.auto-downsampling` (read 2026-10-04:
+`/usr/local/bin/thanos query --http-address=0.0.0.0:19193 --grpc-address=0.0.0.0:19094
+--endpoint=127.0.0.1:19090 --endpoint=127.0.0.1:19091`, as `prometheus`), so every range reads
+raw blocks. Add the flag with a drop-in, its command line in full, installed by name:
+
+```
+d=$(mktemp -d)
+cat > "$d/auto-downsampling.conf" <<'DROPIN'
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/thanos query \
+  --http-address=0.0.0.0:19193 \
+  --grpc-address=0.0.0.0:19094 \
+  --endpoint=127.0.0.1:19090 \
+  --endpoint=127.0.0.1:19091 \
+  --query.auto-downsampling
+DROPIN
+sudo install -d -m 0755 /etc/systemd/system/thanos-query.service.d
+sudo install -m 0644 "$d/auto-downsampling.conf" /etc/systemd/system/thanos-query.service.d/auto-downsampling.conf
+rm -r "$d"
+sudo systemctl daemon-reload && sudo systemctl restart thanos-query
+```
+
+Verify:
+
+```
+systemctl is-active thanos-query                                         # active
+ps -C thanos -o args= | grep -c -- '--query.auto-downsampling'           # 1
+curl -s -G 127.0.0.1:19193/api/v1/query --data-urlencode 'query=count(up)'   # status success
+```
+
+### 14.14 Host step: the tool reads history from Thanos (the operator's)
+
+After the release carrying C406 is deployed. The history datasource is Grafana's PromQL
+datasource for Thanos Query ("Thanos (lake)" in this lab). Its UID is read from the app's own
+stored list of Grafana's datasources, so it is SHOWN and set only on the operator's "y"; the app
+writes the setting through its one write path:
+
+```
+cd ~/python/Agentic_NMAS
+uid=$(python3 -c 'import json; v=json.load(open("data/readers/grafana-dashboards.json"))["last_good"]["value"]; print(next(d["uid"] for d in v["datasources"] if d["name"] == "Thanos (lake)" and d["type"] == "prometheus"))')
+printf 'Set grafana_history_datasource_uid to %s (Grafana datasource "Thanos (lake)")? [y/N] ' "$uid" && read -r ok && [ "$ok" = y ] && python3 -c 'import sys; sys.path.insert(0, "."); from modules.settings_schema import write_settings; print(write_settings({"grafana_history_datasource_uid": sys.argv[1]}, actor="host step 14.14"))' "$uid"
+```
+
+Verify on a device page: Monitoring, a range of `120d`. The panels draw, and each foot line
+says "from the history store Thanos (lake): the live store keeps 90 days". Until about
+2026-11-28 both stores hold the same span, so the panel is the same either way.
+
+**Live reads (Coverage, adjacencies, restarts) stay on Prometheus** (`prometheus_url`). They are
+measured equal on Thanos Query (14.2), so moving them is the operator's choice. The
+recommendation is to move them after the compactor has run for a week without halting, so that
+a compactor fault cannot reach them first.

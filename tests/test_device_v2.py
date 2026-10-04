@@ -436,7 +436,7 @@ class TestMonitoringStates:
         _, html = _get(lab, "/v2/device/r3/monitoring")
         assert "Prometheus serves up to" not in html and "Dashboards read" not in html
         assert re.search(r'<div class="seg" role="group" aria-label="Time range" '
-                         r'title="Prometheus keeps 90 days\. Step \d+ s for ', html)
+                         r'title="The live store keeps 90 days\. Step \d+ s for ', html)
         assert 'data-manual="monitoring#time-range"' in html
 
     def test_a_range_past_the_limit_is_refused_naming_it_never_trimmed(self, lab):
@@ -445,7 +445,7 @@ class TestMonitoringStates:
         form = re.search(r'<form class="range-custom".*?</form>', html, re.S).group(0)
         assert 'aria-invalid="true" aria-describedby="range-in-err"' in form
         assert re.search(r'<p class="range-refused" id="range-in-err" role="alert">.*?'
-                         r"Refused: Prometheus keeps 90 days; this range is 120 days\.", form, re.S)
+                         r"Refused: the live store keeps 90 days, and no history store is set \(grafana_history_datasource_uid\); this range is 120 days\.", form, re.S)
         assert "data-panel-src" not in html and "notice-warn" not in html
 
     def test_a_custom_range_is_carried_into_every_panel_url(self, lab):
@@ -546,7 +546,7 @@ class TestRanges:
         from modules import panels
 
         panels.check_range(90 * 86400, "prometheus")
-        with pytest.raises(panels.RangeRefused, match="Prometheus keeps 90 days; this range is 91 days"):
+        with pytest.raises(panels.RangeRefused, match=r"the live store keeps 90 days, and no history store is set \(grafana_history_datasource_uid\); this range is 91 days"):
             panels.check_range(91 * 86400, "prometheus")
         with pytest.raises(panels.RangeRefused, match="30 days 1 hour"):
             panels.check_range(31 * 86400, "loki")

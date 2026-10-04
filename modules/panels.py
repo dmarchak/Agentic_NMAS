@@ -60,8 +60,75 @@ def step_for(seconds: int) -> int:
     return STEPS[-1]
 
 
-def check_range(seconds: int, backend: str) -> None:
-    """Refuse a range past the backend's measured limit, naming the limit."""
+def live_seconds() -> int:
+    """How long the LIVE PromQL store keeps metrics (`metrics_live_retention_days`)."""
+    try:
+        from modules.settings_schema import get_setting
+        days = int(get_setting("metrics_live_retention_days", LIMITS["prometheus"][0] // 86400))
+    except (TypeError, ValueError):
+        days = LIMITS["prometheus"][0] // 86400
+    return max(days, 1) * 86400
+
+
+def history_store(datasources: list) -> tuple:
+    """``(datasource or None, why)``: the HISTORY PromQL datasource a range past the live
+    store's retention reads (C406, `grafana_history_datasource_uid`). None with why "" when
+    none is set; None with the reason when the setting names one Grafana does not hold, or one
+    that is not a PromQL datasource."""
+    from modules.settings_schema import get_setting
+    uid = str(get_setting("grafana_history_datasource_uid", "") or "").strip()
+    if not uid:
+        return None, ""
+    ds = next((d for d in datasources or [] if d.get("uid") == uid), None)
+    if ds is None:
+        return None, (f"the history datasource {uid} (grafana_history_datasource_uid) is not "
+                      "one Grafana holds")
+    if ds.get("type") != "prometheus":
+        return None, (f"the history datasource {uid} is a {ds.get('type')} datasource, not "
+                      "PromQL")
+    return {"uid": uid, "type": "prometheus", "name": ds.get("name") or uid}, ""
+
+
+def uses_history(seconds: int, backend: str, history) -> bool:
+    """A PromQL range longer than the live store keeps, with a history store to read."""
+    return backend == "prometheus" and history is not None and seconds > live_seconds()
+
+
+def limit_words(datasources: list) -> str:
+    """The range control's limit, said at the control: the live store's retention, and the
+    history store that serves past it when one is set (C406)."""
+    days = live_seconds() // 86400
+    history, why = history_store(datasources)
+    if history:
+        return (f"The live store keeps {days} days; a longer range reads the history store "
+                f"{history['name']}")
+    return f"The live store keeps {days} days" + (f" ({why})" if why else "")
+
+
+def store_words(seconds: int, panel: dict, dashboard: dict, values: dict, default_ds: dict,
+                history) -> str:
+    """Which store answered, said when it is not the live one (C406): "from the history store
+    Thanos (lake): the live store keeps 90 days"; "" for the live store."""
+    for t in panel.get("targets") or []:
+        ds = datasource_for(t.get("datasource") or panel.get("datasource"), dashboard, values,
+                            default_ds)
+        if uses_history(seconds, ds.get("type", "prometheus"), history):
+            return (f"from the history store {history['name']}: the live store keeps "
+                    f"{live_seconds() // 86400} days")
+    return ""
+
+
+def check_range(seconds: int, backend: str, history=None, history_why: str = "") -> None:
+    """Refuse a range past the backend's limit, naming it. A PromQL range past the LIVE
+    store's retention is served by the history store when one is set (C406), never trimmed."""
+    if backend == "prometheus":
+        if seconds <= live_seconds() or history is not None:
+            return
+        days = live_seconds() // 86400
+        raise RangeRefused(f"the live store keeps {days} days, and "
+                           + (history_why or "no history store is set "
+                                             "(grafana_history_datasource_uid)")
+                           + f"; this range is {describe(seconds)}")
     limit = LIMITS.get(backend)
     if limit and seconds > limit[0]:
         raise RangeRefused(f"{limit[1]}; this range is {describe(seconds)}")
@@ -390,17 +457,21 @@ def datasource_for(ref, dashboard: dict, values: dict, default: dict) -> dict:
     return dict(default)
 
 
-def build_request(panel: dict, dashboard: dict, values: dict, seconds: int, default_ds: dict) -> dict:
+def build_request(panel: dict, dashboard: dict, values: dict, seconds: int, default_ds: dict,
+                  history=None, history_why: str = "") -> dict:
     """The body for Grafana's `api/ds/query`, bounded: the range, the step,
     the most points. Only the dashboard's own queries; the browser never
-    supplies an expression on this path."""
+    supplies an expression on this path. A PromQL range past the live store's retention reads
+    *history* (C406), the same expression on the store that keeps it."""
     step = step_for(seconds)
     queries = []
     for t in panel.get("targets") or []:
         if not (t.get("expr") or "").strip():
             continue
         ds = datasource_for(t.get("datasource") or panel.get("datasource"), dashboard, values, default_ds)
-        check_range(seconds, ds.get("type", "prometheus"))
+        check_range(seconds, ds.get("type", "prometheus"), history, history_why)
+        if uses_history(seconds, ds.get("type", "prometheus"), history):
+            ds = {"uid": history["uid"], "type": "prometheus"}
         instant = bool(t.get("instant")) or panel.get("type") == "table"
         queries.append({"refId": t.get("refId") or "A", "datasource": ds,
                         "expr": interpolate(t["expr"], values),

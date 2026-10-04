@@ -12,7 +12,9 @@ setting.
 ## The time range {#time-range}
 
 One click for the last hour, 6 hours, 24 hours or 7 days, or type a range ("last 90
-minutes", "3d"). Prometheus keeps 90 days: a longer range is refused at the control, naming
+minutes", "3d"). The live store keeps 90 days (`metrics_live_retention_days`): a longer range
+is read from the history store when one is set (`grafana_history_datasource_uid`, Thanos for
+example), each panel's foot line saying so, and is otherwise refused at the control, naming
 the limit, and never trimmed, because a trimmed answer would read as the whole range. Each
 panel asks for at most 1,000 points, so the step between them widens with the range (15 s
 for an hour); hover the range to see the step. The same controls are on a device page's

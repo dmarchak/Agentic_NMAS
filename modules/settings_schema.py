@@ -170,6 +170,15 @@ DEFAULTS: dict = {
     #: Empty means none is set, and the page says so and offers every
     #: dashboard Grafana holds. Per network after P.8.
     "grafana_fleet_dashboard_uid": "",
+    #: History past the live store's retention (C406; NSOT_STAGE7_PLAN 14.2): the Grafana
+    #: datasource, by UID, whose PromQL endpoint keeps metrics longer than the dashboard's own
+    #: (Thanos Query, Mimir, ...). Empty means none, and a panel range past the live store's
+    #: retention is refused naming it, as before. Per network after P.8.
+    "grafana_history_datasource_uid": "",
+    #: How long the LIVE PromQL store (the dashboards' own datasource) keeps metrics, in days:
+    #: a panel range longer than this reads the history datasource. 90 is the value measured
+    #: on the host 2026-09-30 (panels.LIMITS before C406).
+    "metrics_live_retention_days": 90,
     #: The template variable the app sets to the device.
     "grafana_device_variable": "device",
     #: What the variable's value is: the device's hostname, or its management
@@ -689,6 +698,8 @@ SCHEMA: dict = {
         "grafana_verify_tls": _BOOL,
         "grafana_device_dashboard_uid": _STR,
         "grafana_fleet_dashboard_uid": _STR,
+        "grafana_history_datasource_uid": _STR,
+        "metrics_live_retention_days": {"type": "integer", "minimum": 1},
         "grafana_device_variable": _STR,
         "grafana_device_variable_value": {"enum": ["hostname", "address"]},
 

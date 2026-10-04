@@ -58,7 +58,7 @@
     is said AT the control, naming the limit. *links* maps each preset to its {href, hx};
     *hidden* the fields the custom form carries. -#}
 {% macro range_controls(cur, links, action, hidden, input_id, m) -%}
-{%- set limit = m.limit_words or 'Prometheus keeps 90 days' -%}
+{%- set limit = m.limit_words or 'The live store keeps 90 days' -%}
 {%- set hint = limit ~ '. ' ~ (('Step ' ~ m.step ~ ' s for ' ~ m.range_words ~ ': the step widens with the range.') if m.step else 'The step widens with the range.') -%}
 {%- set refused = m.state == 'range_refused' -%}
 <div class="seg" role="group" aria-label="Time range" title="{{ hint }}">
