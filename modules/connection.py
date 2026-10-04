@@ -248,7 +248,9 @@ class LockedConnection:
 #     own "Connected" line names neither);
 #   * lets `reap_idle()` close a long-lived pool's idle session itself,
 #     rather than waiting on the device's timeout.
-# The budget counts THIS process only. Oxidized and a person's own sessions
+# The budget counts every process of this tool (CONCURRENCY_AUDIT R11, 2026-10-04): each
+# session takes a slot, a `flock` on `<store>/ssh_slots/<ip>/<n>.lock`, so the app and a host
+# CLI share it, and a process that dies frees its slots. Oxidized and a person's own sessions
 # take lines too, which is why one is kept rather than none.
 
 RESERVED_FOR_PEOPLE = 1
@@ -342,6 +344,63 @@ def _caller_label() -> str:
     return f"{frame.f_globals.get('__name__', '?')}:{frame.f_code.co_name}"
 
 
+#: A slot held by THIS process: (ip, n) -> (fd, sid).
+_slots: dict = {}
+
+
+def _slot_dir(ip: str) -> str:
+    import re
+    from modules import config
+    return os.path.join(config.DATA_DIR, "ssh_slots", re.sub(r"[^0-9A-Za-z_.-]", "_", ip))
+
+
+def _take_slot(ip: str, budget: int, owner: str):
+    """``(n, fd, [])`` for a session slot taken ACROSS PROCESSES, or ``(None, None, holders)``
+    naming each slot's holder (CONCURRENCY_AUDIT R11: the budget counted one process, while host
+    CLIs open their own sessions). A slot is a `flock` on ``ssh_slots/<ip>/<n>.lock`` in the
+    store: the kernel frees it when its holder dies, so a crash never keeps a vty line. Called
+    under ``_sessions_mu``; a slot this process holds for a session no longer counted (a test
+    clearing the count, a lost close) is released first."""
+    import fcntl
+
+    for (sip, n), (fd, sid) in list(_slots.items()):
+        if sip == ip and sid not in _sessions.get(ip, {}):
+            _slots.pop((sip, n), None)
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+    folder = _slot_dir(ip)
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    holders = []
+    for n in range(budget):
+        fd = os.open(os.path.join(folder, f"{n}.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            try:
+                said = os.pread(fd, 300, 0).decode("utf-8", "replace").strip()
+            finally:
+                os.close(fd)
+            holders.append(said or "a process that recorded nothing")
+            continue
+        os.ftruncate(fd, 0)
+        os.pwrite(fd, f"{owner} (pid {os.getpid()})".encode(), 0)
+        return n, fd, []
+    return None, None, holders
+
+
+def _free_slot(ip: str, sid: int) -> None:
+    for key, (fd, held_sid) in list(_slots.items()):
+        if key[0] == ip and held_sid == sid:
+            _slots.pop(key, None)
+            try:
+                os.ftruncate(fd, 0)
+                os.close(fd)
+            except OSError:
+                pass
+
+
 def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None):
     """Open ONE SSH session, counted, attributed, and within the budget.
 
@@ -361,8 +420,17 @@ def open_ssh(params: dict, *, owner: str = "", pool: dict = None, pool_lock=None
                 f"of the device's {budget['lines']} vty line(s) ({budget['source']}), "
                 f"keeping {RESERVED_FOR_PEOPLE} free for a person. Wait for one to "
                 "finish; if none is running, a session has leaked (register C97).")
+        # ACROSS PROCESSES (R11): a host CLI's sessions count against the same budget.
+        n, fd, holders = _take_slot(ip, budget["budget"], owner)
+        if n is None:
+            raise SessionBudgetExceeded(
+                f"refusing to open another SSH session to {ip}: every one of its "
+                f"{budget['budget']} session slot(s) is held ({'; '.join(holders)}), its budget "
+                f"of the device's {budget['lines']} vty line(s) ({budget['source']}), "
+                f"keeping {RESERVED_FOR_PEOPLE} free for a person. Wait for one to finish.")
         _sid_counter[0] += 1
         sid = _sid_counter[0]
+        _slots[(ip, n)] = (fd, sid)
         now = time.time()
         held[sid] = {"owner": owner, "opened": now, "last_used": now,
                      "pool": pool, "pool_lock": pool_lock, "conn": None}
@@ -498,6 +566,7 @@ def _drop(ip: str, sid: int, why: str) -> None:
     with _sessions_mu:
         info = _sessions.get(ip, {}).pop(sid, None)
         left = len(_sessions.get(ip, {}))
+        _free_slot(ip, sid)
     if info is not None:
         logger.info("ssh: %s %s for %s after %.0fs (%d still held)", why, ip,
                     info["owner"], time.time() - info["opened"], left)

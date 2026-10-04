@@ -114,7 +114,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R8 | h under workers | live | Socket.IO | announcements, heartbeat, terminal | no message queue; polling needs sticky sessions; terminal state per process | no | UNSAFE-MULTI-PROCESS | no | Sticky sessions plus a message queue, or one Socket.IO process |
 | R9 | h under workers | live | Reachability `STATUS` | in-memory dict every consumer reads | per process | no | UNSAFE-MULTI-PROCESS | no | Read the stored reader value; absent means unknown |
 | R10 | h under workers | live, locks, confirms | Job registries (capture preview, rotate, deploy job, `op_progress`) | in-memory job state and results | `threading.Lock` | no | UNSAFE-MULTI-PROCESS | no | Shared job store; "interrupted" from the recorded pid |
-| R11 | m today; h under workers | locks, live | SSH session budget per device | vty lines | per-process count | no | UNSAFE | yes (host CLIs) | Cross-process session slots |
+| R11 | m today; h under workers | locks, live | SSH session budget per device | vty lines | per-process count | no | FIXED 2026-10-04 (was UNSAFE; tests/test_ssh_slots_across_processes.py) | yes (host CLIs) | Cross-process session slots |
 | R12 | m | approvals, intent, confirms | Template approve | `.approvals.json`, a commit | client sends `{}`; validates, then fingerprints the working tree | no | UNSAFE | yes | Approve carries the reviewed fingerprint; fingerprint one snapshot first |
 | R13 | m | approvals, stores | `.approvals.json` record | approvals and tombstones | unlocked read-modify-write, shared `.tmp`, `{}` on unreadable; edits' revocations not committed; gate reads the working tree | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approvals_record.py) | yes | PathLock and atomic write; commit tombstones with the template; read at HEAD |
 | R14 | m | intent, approvals | Template and bindings editors | templates, `bindings.yml` | no base; truncate in place; bindings fall back to defaults silently | no | UNSAFE | yes | Base blob; `write_atomic`; refuse an unreadable bindings file |
@@ -372,6 +372,15 @@ Together with the app's drift, captures and pools, they can take every vty line,
 the one kept for a person. With N workers the overshoot is N times. Risk is medium today
 and high under workers. It is listed with the high findings for the second reason, and
 section 6 places its fix with today's work because host CLIs already exceed the budget.
+
+*FIXED 2026-10-04 (tests/test_ssh_slots_across_processes.py):* every session `open_ssh` opens
+takes a slot, a `flock` on `<store>/ssh_slots/<ip>/<n>.lock` (n below the budget), holding the
+owner and pid. A process holding the whole budget refuses another's session, naming each holder
+and its pid; a close frees its slot for another process; a holder that dies frees its slots
+(the kernel releases the lock); a slot this process holds for a session it no longer counts is
+released before the next is taken. Shown with a real child process: without the lock the
+parent opened past the child's budget; without the close freeing, the child could not take the
+slots the parent had closed.
 
 ### Medium findings
 
