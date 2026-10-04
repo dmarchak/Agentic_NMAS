@@ -594,6 +594,25 @@ def create_device_list(list_name: str) -> tuple[bool, str]:
 
 
 @_holding_lists_lock
+def _list_busy(list_name: str) -> str:
+    """Why *list_name* cannot be deleted now, naming what runs on it, or "" (R38)."""
+    from modules import drift_check
+    from modules.nsot import device_ops
+
+    running = [device_ops.describe(h) for h in device_ops.held(list_name)]
+    drift = drift_check.running_now(list_name)
+    if drift is not None:
+        running.append("its drift run is in progress"
+                       + (f" (started by {drift.get('by') or drift.get('triggered_by')})"
+                          if isinstance(drift, dict) and (drift.get("by") or
+                                                          drift.get("triggered_by")) else ""))
+    if not running:
+        return ""
+    return (f"List '{list_name}' was not deleted: {'; '.join(running)}. Deleting it would "
+            "remove the repository and stores those operations are writing. Nothing was "
+            "changed; delete it once they finish.")
+
+
 def delete_device_list(list_name: str) -> tuple[bool, str]:
     """Delete a device list and all its data. Returns (success, message)."""
     import shutil
@@ -613,8 +632,17 @@ def delete_device_list(list_name: str) -> tuple[bool, str]:
 
     slug     = lists[list_name]
     list_dir = os.path.join(LISTS_DIR, slug)
+    # Never under a running operation (CONCURRENCY_AUDIT R38): refused, naming each, while a
+    # device of the list is held or its drift run is in progress, by any process; checked
+    # again under the list's repository lock, which every commit on the list takes, and the
+    # folder removed inside it.
+    busy = _list_busy(list_name)
+    if busy:
+        return False, busy
     if os.path.exists(list_dir):
         import stat
+
+        from modules.nsot.repo import repo_lock
 
         def _force_remove(func, path, _exc):
             # Windows marks some files read-only (e.g. golden config .cfg files);
@@ -622,7 +650,11 @@ def delete_device_list(list_name: str) -> tuple[bool, str]:
             os.chmod(path, stat.S_IWRITE)
             func(path)
 
-        shutil.rmtree(list_dir, onerror=_force_remove)
+        with repo_lock(os.path.join(list_dir, "config_repo")):
+            busy = _list_busy(list_name)
+            if busy:
+                return False, busy
+            shutil.rmtree(list_dir, onerror=_force_remove)
         logger.info("Deleted list folder: %s", list_dir)
 
     del lists[list_name]

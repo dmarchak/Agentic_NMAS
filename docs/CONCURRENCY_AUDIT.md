@@ -132,7 +132,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | UNSAFE | yes | Lease, recorded release, canonical key, no flock probe |
 | R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE | yes | Broadcast mutations; live holder strip; previews subscribe |
 | R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
-| R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | UNSAFE | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
+| R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
 | R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | UNSAFE | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
 | R40 | m | stores (added on review) | Persistence-chain host files: Oxidized `router.db` and the lab sync | `router.db`, lab startup files and their repositories | `router.db`: atomic replace, no lock; sync script: no lock | no | UNSAFE | yes | `flock` in the root helper and in the sync script |
 | R41 | m | confirms (added on review) | Remote publication acknowledge | `remote.json` acknowledgement | typed kinds checked; values recorded at click time; list derived | no | UNSAFE | yes | Bind the confirm to the values fingerprint the card showed; carry the list |
@@ -750,6 +750,18 @@ or running jobs. A second person's deploy, restore, capture or commit on that li
 writes into a repository and stores that no longer exist, or half exist while the tree is
 being removed. The fix: refuse while any hold or job exists on the list, naming them, and
 take a list-level lock that every list writer also takes.
+
+*FIXED 2026-10-04 (tests/test_list_delete_waits.py):*
+- `delete_device_list` refuses, naming each, while a device of the list is held (every
+  device operation holds) or its drift run is in progress, by any process.
+- It checks again under the list's repository lock, which every commit on the list takes, and
+  removes the folder inside that lock, so a commit in progress finishes first.
+- Measured with child processes on a temporary data folder: a held device and a running drift
+  run each refused the delete, folder and entry intact; released, the delete went ahead.
+- Controls: no refusal (both tests failed); drift runs ignored (the drift test failed).
+- **Not closed:** a hold taken between the check and the removal is not refused, because
+  `device_ops.acquire` does not take the repository lock. The window is the length of
+  `rmtree`, and the operation then fails on a missing folder rather than writing into one.
 
 **R39. The break-glass terminal writes to devices with no hold** (locks-23, added on
 review). `socket_terminal_input` sends each keystroke with `sess["chan"].sendall(raw)`
