@@ -3647,6 +3647,16 @@ halting.
 Nothing on these pages is built until the revised boards are signed off. Each item is the
 operator's words, then what the revision draws.
 
+**REVISED BOARDS DRAWN 2026-10-04, for sign-off again** (the mockup canvas, version 31):
+- **7.4 page:** A, B, C, C2 (new: Save to startup), D, E, G, I, J and K (new: the one stepper
+  at phone width). H is unchanged and signed off.
+- **Device page:** board 6, the deploy card, now on the one horizontal stepper.
+- **Topology:** A, B and C.
+- **History, Query:** A, B and C.
+
+Batch deploy B also carries C445 (the confirm returns a job, and the result is drawn in place)
+and C447 (an order set, previewed and hashed). Its running view carries C446's per-device states.
+
 ### 15.1 7.4 Fleet
 
 - **a. One Actions dropdown** on the Devices list, as on the device pages, in place of the
