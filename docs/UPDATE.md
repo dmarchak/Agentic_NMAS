@@ -9,10 +9,18 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
 
 1. **The preview** is what the `app-pushed` reader stored, never a fetch made
    while the page loads. It shows:
-   - the running commit and the target (origin/main);
+   - the running commit and the target: the NEWEST commit since the running
+     one that CI passed, which may be older than origin/main's tip (C436;
+     while commits are pushed, the tip's CI is nearly always still running);
    - the commits between them;
    - CI's verdict for the target, by `nmas-deploy`'s own gate;
-   - each `Host-Step:` trailer, a box per step, saying "Done";
+   - the commits beyond the target, counted by CI state ("3 newer: 1 running
+     CI, 2 cancelled"), for information only. None of them is offered, and a
+     cancelled, failed or pending commit is never a target. With no commit
+     passed since the running one, nothing is offered (Update when CI passes
+     waits for the tip);
+   - each `Host-Step:` trailer of the commits up to the target, a box per
+     step, saying "Done";
    - whether the checkout is clean;
    - whether the updater is installed as it must be;
    - since when origin/main has been ahead of the running commit.
@@ -40,8 +48,14 @@ Updating needs no terminal. CI decides WHAT can run, and a person decides WHEN.
    - it refuses a malformed or stale request (older than 15 min) by name,
      never quoting its content;
    - it RE-ASKS CI through its own root-owned copy of `nmas-deploy`'s gate;
-   - it requires the target to still be origin/main after a fetch, and the
-     checkout to be clean and at the commit the preview named;
+   - it requires the target to still be ON origin/main after a fetch (an
+     ancestor of the fetched tip, or the tip itself), and the checkout to be
+     clean and at the commit the preview named. A push between the confirm
+     and the apply does not refuse it (C436: 7992a15 was confirmed, bb179f7
+     was pushed before the updater ran, and the updater refused). It moves the
+     checkout by fast-forward to EXACTLY the confirmed commit, never past it.
+     It refuses only when that commit left origin/main or its CI verdict
+     changed;
    - it requires every host step to have been said done.
 
    So the most anything that can write the request can achieve is running a
@@ -277,14 +291,21 @@ is in a person's words; `nmas-deploy`'s own sentence, which names the run, is
 on hover.
 - **The confirm is the person's, recorded** in `data/update/deferred.json` with
   the same hash and the same host steps as an update now. No request is written.
-- **The `app-pushed` reader releases it** after each read (it asks CI every
-  60 s while a verdict is pending). CI passed and every other gate still
-  passes: the app writes the person's request, in the updater's exact fields and
-  dated then, and the page that is open follows it on the usual stepper.
-- **Anything else ends the wait in words, and nothing is updated:** CI failed or
-  was cancelled; a newer release was pushed (never installed in its place: the
-  person chose this one); another gate failed; no verdict within 25 min (2.5x
-  CI's job bound). The ending is drawn on the page, and recorded in
+- **The `app-pushed` reader releases it** after each read (every 300 s, or
+  on Check again). When CI has passed THAT commit and every other gate still
+  passes, the app writes the person's request for exactly that commit, in
+  the updater's exact fields and dated then. The page that is open follows it
+  on the usual stepper.
+- **A newer push neither replaces nor ends it** (C436). The person chose one
+  commit; a newer one is never installed in its place, and the wait goes on
+  for the chosen one while it is still on origin/main.
+- **Anything else ends the wait in words, and nothing is updated:**
+  - CI failed or was cancelled for that commit;
+  - the commit left origin/main;
+  - another gate failed;
+  - no verdict within 25 min (2.5x CI's job bound).
+
+  The ending is drawn on the page, and recorded in
   `data/update/deferred_outcome.json` and the request audit.
 - **Stop waiting** ends it as the person who pressed it. Needs attention's
   "behind" row says an update is waiting, and by whom.

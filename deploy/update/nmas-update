@@ -17,8 +17,10 @@ instruction:
 - it RE-DERIVES the CI verdict for the target itself, through its OWN
   root-owned copy of `nmas-deploy`'s gate (/usr/local/lib/nmas-update/), and
   refuses anything the gate does not pass;
-- the target must still be origin/main after a fetch, and the checkout must
-  still be at the commit the preview named and clean;
+- the target must still be ON origin/main after a fetch (the tip or an
+  ancestor of it: a later push does not refuse a confirmed commit, C436), and
+  the checkout must still be at the commit the preview named and clean; the
+  checkout moves by fast-forward to exactly the target, never past it;
 - every `Host-Step:` trailer between the two must be one the person said is
   done.
 So the most anything that can write the request can achieve is running a
@@ -314,8 +316,14 @@ def update(req: dict, *, repo: str, gate, git, restart, unit, health, clock=time
     if head != head_req:
         raise Refused(f"the checkout is at {head[:10]}, not {head_req[:10]} as the preview "
                       "said: something else moved it. Nothing was moved; preview again")
-    if tip != target:
-        raise Refused(f"origin/main is now {tip[:10]}, not {target[:10]} as confirmed. Nothing "
+    # The confirmed commit is a valid target while it is still ON origin/main (C436, the
+    # operator, 2026-10-04: 7992a15 was confirmed, bb179f7 was pushed before this ran, and
+    # "origin/main is now bb179f7ddf" refused a commit CI had passed). The move below is a
+    # fast-forward to EXACTLY it, never past it.
+    try:
+        git(repo, "merge-base", "--is-ancestor", target, tip)
+    except RuntimeError:
+        raise Refused(f"{target[:10]} is no longer on origin/main (now {tip[:10]}). Nothing "
                       "was moved; preview again to update to what is pushed now")
     try:
         git(repo, "merge-base", "--is-ancestor", head, target)

@@ -74,10 +74,12 @@ LOCK = os.path.join(config.DATA_DIR, "update", "lock")
 #: UPDATE WHEN CI PASSES (the operator, 2026-09-30): a person confirms the
 #: update while CI is still checking the release, and the app requests it the
 #: moment CI passes. Recorded here, released by the `app-pushed` reader after
-#: each read (it asks CI every 60 s while a verdict is pending), never by a
-#: timer of its own. The request it writes is the person's, bound to the
-#: release they chose: a newer push, a failed or cancelled CI, or any other
-#: gate failing ends the wait in words, and nothing is updated.
+#: each read (every 300 s, `app_pushed.INTERVAL_SECONDS`, or on Check again),
+#: never by a timer of its own. The request it writes is the person's, bound
+#: to the ONE commit they chose (C436): a newer push neither replaces nor ends
+#: it; a failed or cancelled CI for that commit, the commit leaving
+#: origin/main, or any other gate failing ends the wait in words, and nothing
+#: is updated.
 DEFERRED = os.path.join(config.DATA_DIR, "update", "deferred.json")
 DEFERRED_OUTCOME = os.path.join(config.DATA_DIR, "update", "deferred_outcome.json")
 #: nmas-deploy's own audit (one row per run), read for "the last update" by
@@ -516,6 +518,9 @@ def wait_end_words(doc: dict) -> str:
                     "so nothing was updated: Check again, then update"),
         "superseded": (f"a newer release{' (' + detail + ')' if detail else ''} was pushed after "
                        f"you asked for {short}, so nothing was updated: the page shows the newer one"),
+        "not_on_main": (f"{short} is no longer between the running commit and origin/main"
+                        f"{' (' + detail + ')' if detail else ''}, so nothing was updated: "
+                        "the page shows what can be installed now"),
         "refused": f"CI passed {short}, but it was not updated" + (f": {detail}" if detail else ""),
         "unreadable": ("the wait record could not be read" + (f" ({detail})" if detail else "")
                        + "; nothing was updated"),
@@ -539,8 +544,11 @@ def operations_words(ops: list) -> str:
 
 
 def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=None,
-         holder=None, waiting=None, operations=None) -> dict:
+         holder=None, waiting=None, operations=None, pin=None) -> dict:
     """What the Update preview draws, with its gates and its hash.
+
+    The target is the newest commit since the running one that CI passed (the reader's
+    ``target``), or *pin*, the one commit a wait for CI was confirmed for (C436).
 
     *waiting* is the wait in force (``deferred()`` when None); the release
     passes ``{}`` so its own wait does not refuse it. *operations* is every device held
@@ -569,9 +577,25 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
     behind = fresh and v.get("state") == "behind"
     gate("origin/main is ahead of the running commit, and fetched", behind,
          app_pushed.words(v) if v else "nothing stored yet")
-    ci = v.get("ci") or {}
-    gate(CI_GATE, behind and ci.get("tip") == v.get("tip")
-         and ci.get("state") == "verified", person_ci(ci, v.get("tip") or ""))
+    # THE TARGET (C436, the operator, 2026-10-04): the newest commit since the running one
+    # that CI passed, not the tip, whose CI is nearly always running while commits are
+    # pushed; or, for a wait, the ONE commit it was confirmed for (*pin*). The commits, host
+    # steps and updater changes are those up to the target; the ones beyond it are said, for
+    # information, and never offered.
+    tip = v.get("tip") or ""
+    chain = [c["sha"] for c in v.get("commits") or []]
+    target = (pin if pin is not None else v.get("target")) or ""
+    on_chain = target in chain
+    upto = chain[chain.index(target):] if on_chain else ([] if target else chain)
+    tip_ci = v.get("ci") or {}
+    ci = ((v.get("verdicts") or {}).get(target) or {}) if target else tip_ci
+    gate(CI_GATE, behind and on_chain and ci.get("tip") == target
+         and ci.get("state") == "verified",
+         (person_ci(ci, target) if on_chain else
+          f"{target[:10]} is no longer between the running commit and origin/main"
+          if target else
+          person_ci(tip_ci, tip) + ("; no commit since the running one has passed CI"
+                                    if tip_ci.get("state") in ("failed", "cancelled") else "")))
     changes = v.get("checkout_changes")
     gate("the checkout has no local changes", changes == [],
          "clean" if changes == [] else ("could not be read" if changes is None
@@ -608,13 +632,23 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
     # 2026-09-30): a step the check finds done needs no box; one it finds not
     # done blocks, saying what it found; only a step no check can answer is
     # said done by the person.
+    # Exactly the steps of the commits up to the target (C436): a step in a commit beyond it
+    # is not this update's.
+    mine = set(upto)
     steps = [dict(s, **{("check_" + k): c for k, c in HS.check(s).items()})
-             for s in (v.get("host_steps") or [])]
+             for s in (v.get("host_steps") or []) if s.get("sha") in mine]
     after = [dict(s, **{("check_" + k): c for k, c in HS.check(s).items()})
-             for s in (v.get("after_steps") or [])]
-    facts = {"running": running, "target": v.get("tip") or "", "behind": v.get("behind"),
-             "commits": v.get("commits") or [], "commits_cut": bool(v.get("commits_cut")),
-             "ci": ci, "host_steps": steps, "after_steps": after, "updater_changes": v.get("updater_changes") or [],
+             for s in (v.get("after_steps") or []) if s.get("sha") in mine]
+    by_sha = v.get("updater_by_sha") or {}
+    commits = [c for c in v.get("commits") or [] if c["sha"] in mine]
+    later = app_pushed.beyond(v, target) if on_chain else []
+    facts = {"running": running, "target": target or tip,
+             "behind": len(upto) if chain else v.get("behind"),
+             "commits": commits[:app_pushed.COMMITS_SHOWN],
+             "commits_cut": bool(v.get("commits_cut")) or len(commits) > app_pushed.COMMITS_SHOWN,
+             "ci": ci, "host_steps": steps, "after_steps": after,
+             "updater_changes": sorted({p for s in upto for p in by_sha.get(s, [])}),
+             "beyond": later, "beyond_words": app_pushed.beyond_words(later), "tip": tip,
              "behind_since": v.get("behind_since") or "",
              "behind_since_basis": v.get("behind_since_basis") or "",
              "value_at": stored["value_at"], "state": v.get("state") or ""}
@@ -624,8 +658,9 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
     ok = all(g["state"] == "pass" for g in gates)
     # Waitable: every gate passes but CI's, and CI is still checking THIS
     # target. Then the button reads "Update when CI passes".
-    waitable = (not ok and behind and ci.get("tip") == v.get("tip")
-                and ci.get("state") == "pending"
+    # With no commit since the running one passed, the tip's CI still checking is the wait.
+    waitable = (not ok and behind and (pin is not None or not target)
+                and ci.get("tip") == facts["target"] and ci.get("state") == "pending"
                 and all(g["state"] == "pass" for g in gates if g["name"] != CI_GATE))
     ended = deferred_outcome()
     last_end = (last.get("value") or {}).get("ended_at") or ""
@@ -634,7 +669,9 @@ def plan(cached=None, install=None, running=None, pending_now=None, now_outcome=
     return {"facts": facts, "gates": gates, "selectable": ok, "hash": digest,
             "why_not": "; ".join(f"{g['name']}: {g['detail']}" for g in gates
                                  if g["state"] != "pass"),
-            "waitable": waitable, "waiting": wait, "ci_words": person_ci(ci, v.get("tip") or ""),
+            "waitable": waitable, "waiting": wait, "ci_words": person_ci(ci, facts["target"]),
+            # A pinned or offered target no longer between the running commit and origin/main.
+            "target_gone": bool(target) and not on_chain and fresh,
             # How the last wait ended, when it ended without an update and
             # after the updater's last record: otherwise "The last update" says it.
             # Above the button only while it concerns the release OFFERED (the
@@ -863,10 +900,13 @@ def release_deferred(clock=time.time, **plan_kw):
             log.info("update: the waiting update is held back while %s",
                      operations_words(ops))
             return None
-        p = plan(waiting={}, **dict(plan_kw, operations=ops))
+        # The wait is for the ONE commit confirmed (C436): a newer push, passed or not, never
+        # replaces it; it is released for exactly that commit while it is still between the
+        # running commit and origin/main, and ends when it is not.
+        p = plan(waiting={}, pin=target, **dict(plan_kw, operations=ops))
         f, ci = p["facts"], p["facts"]["ci"] or {}
-        if f["target"] and f["target"] != target:
-            return _end(d, "superseded", f["target"][:10])
+        if p["target_gone"]:
+            return _end(d, "not_on_main", f.get("tip", "")[:10])
         if ci.get("tip") != target or ci.get("state") in ("pending", "could_not_ask", None):
             return None
         if ci.get("state") != "verified":

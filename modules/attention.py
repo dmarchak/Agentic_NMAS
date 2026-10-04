@@ -1866,31 +1866,49 @@ def update_available(v: dict, last: dict = None, now: float = None):
     shows nothing: an update not yet installable is not news to act on."""
     if v.get("state") != "behind":
         return None
-    ci = v.get("ci") or {}
-    if not (ci.get("tip") == v.get("tip") and ci.get("state") == "verified"):
+    target = installable(v)
+    if not target:
         return None
     if release_level(v, last, now)[0] != "info":
         return None
-    n = v.get("behind")
-    behind = (f"{n} commit{'' if n == 1 else 's'} behind" if n is not None
-              else "behind by a number of commits not yet counted")
+    n = _upto(v, target)
+    behind = (f"{n} commit{'' if n == 1 else 's'} to install" if n is not None
+              else "a number of commits not yet counted to install")
     since = str(v.get("behind_since") or "")
     since = f"{since[:16].replace('T', ' ')} UTC" if len(since) >= 16 else since
-    return {"tip": str(v.get("tip") or "")[:7], "running": str(v.get("running") or "")[:7],
+    from modules.readers import app_pushed
+    later = app_pushed.beyond_words(app_pushed.beyond(v, target))
+    return {"tip": target[:7], "running": str(v.get("running") or "")[:7],
             "behind": n, "since": since,
-            "title": (f"{behind} origin/{v.get('branch') or 'main'} "
-                      f"({str(v.get('running') or '')[:7]} → {str(v.get('tip') or '')[:7]}), "
-                      f"CI passed; ahead since {since or 'unknown'}")}
+            "title": (f"{behind} from origin/{v.get('branch') or 'main'} "
+                      f"({str(v.get('running') or '')[:7]} → {target[:7]}), "
+                      f"CI passed; ahead since {since or 'unknown'}"
+                      + (f"; {later}, not offered" if later else ""))}
+
+
+def installable(v: dict) -> str:
+    """The commit the Update operation offers: the newest since the running one that CI
+    passed (the reader's ``target``, C436), or ""."""
+    target = str(v.get("target") or "")
+    verdict = (v.get("verdicts") or {}).get(target) or {}
+    return target if target and verdict.get("state") == "verified" else ""
+
+
+def _upto(v: dict, target: str):
+    """How many commits an update to *target* runs, or None when not counted."""
+    shas = [c.get("sha") for c in v.get("commits") or []]
+    return len(shas) - shas.index(target) if target in shas else v.get("behind")
 
 
 def update_words(v: dict) -> str:
     """The row's headline, in a person's words: "Update available — 1a587a6 →
-    2986b5c (2 new commits)"."""
-    run, tip = str(v.get("running") or "")[:7], str(v.get("tip") or "")[:7]
-    n = v.get("behind")
+    2986b5c (2 new commits)", to the commit the Update operation offers."""
+    target = installable(v) or str(v.get("tip") or "")
+    run = str(v.get("running") or "")[:7]
+    n = _upto(v, target)
     count = (f"{n} new commit{'' if n == 1 else 's'}" if n is not None else
              "how many new commits is not known until it is fetched")
-    return f"Update available — {run} → {tip} ({count})"
+    return f"Update available — {run} → {target[:7]} ({count})"
 
 
 def ci_refused(v: dict) -> bool:
@@ -1918,6 +1936,12 @@ def ci_refused_words(v: dict) -> tuple:
         where = CV.failed_words(ci)
         what = f"CI failed on the newest commit, {tip}{named}" + (f": {where}" if where else "")
         label = "The developer fixes forward; nothing to update until CI passes a newer commit"
+    older = installable(v)
+    if older:
+        # An older commit CI passed is still installable (C436): the row must not say there
+        # is nothing to update.
+        label = (label.split(";")[0] + f"; meanwhile {older[:7]}, which CI passed, can be "
+                 "installed from the Update page")
     action = {"label": label}
     if run["url"]:
         action.update(run_url=run["url"], run=run["number"] or "")
@@ -1960,8 +1984,8 @@ def pushed_source(cached=None) -> dict:
         sentence = app_pushed.words(v)
         # THE UPDATE BUTTON (the operator, 2026-09-30): the app knows it is out
         # of date, so its action is the Update operation, never a terminal.
-        tip = str(v.get("tip") or "")
-        action = ({"label": f"Preview the commits and CI's verdict for {tip[:7]}, then "
+        offer = installable(v) or str(v.get("tip") or "")
+        action = ({"label": f"Preview the commits and CI's verdict for {offer[:7]}, then "
                             "confirm", "open": "app_update"}
                   if v["state"] != "not_on_remote" else
                   {"label": "The host should run only pushed commits: find where this one came "
@@ -2005,7 +2029,8 @@ def pushed_source(cached=None) -> dict:
                       f"{ci.get('sentence') or 'no sentence recorded'}"
                       + (f". Where it failed could not be read: {ci['failed_at_error']}"
                          if ci.get("failed_at_error") else ""))
-            rows.append(row(source="pushed", kind="ci_failed", key=tip[:10], level=level,
+            rows.append(row(source="pushed", kind="ci_failed",
+                            key=str(v.get("tip") or "")[:10], level=level,
                             what=what, cause=cause, action=action,
                             since=_ts(ci.get("asked_at")) or _ts(v.get("behind_since"))))
         # A release being available is not wrong (the operator, 2026-10-02):

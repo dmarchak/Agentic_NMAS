@@ -137,7 +137,9 @@ class TestTheBeforeGate:
         import app as A
         from modules import host_steps, update_op
         monkeypatch.setitem(host_steps.CHECKS, "ok-check", lambda root: {"state": "done", "detail": "read fine"})
-        v = _value(host_steps=[{"sha": "c" * 40, "step": "checked one", "check": "ok-check", "when": "before"},
+        v = _value(commits=[{"sha": s * 40, "subject": s, "author": "t", "at": "2026-09-30T10:00:00Z"}
+                            for s in "bcde"],
+                   host_steps=[{"sha": "c" * 40, "step": "checked one", "check": "ok-check", "when": "before"},
                                {"sha": "d" * 40, "step": "ticked one", "check": "", "when": "before"}],
                    after_steps=[{"sha": "e" * 40, "step": "after one", "check": "", "when": "after"}])
         real = update_op.plan

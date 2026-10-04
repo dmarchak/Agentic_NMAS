@@ -120,10 +120,43 @@ class TestTheUpdaterMovesOnlyToWhatCIPassed:
                      unit=lambda: {"MainPID": 100}, health=lambda: (200, {}))
         assert restarts == [] and _g(repos["work"], "rev-parse", "HEAD") == repos["shas"][0]
 
-    def test_origin_moved_since_the_preview_refuses(self, repos):
+    def test_a_push_between_confirm_and_apply_lands_exactly_the_confirmed_commit(self, repos):
+        """C436, the operator, 2026-10-04: 7992a15 was confirmed (CI passed), bb179f7 was
+        pushed before the updater ran, and "origin/main is now bb179f7ddf" refused it. The
+        confirmed commit is still on origin/main: it is landed, and the checkout is never
+        moved past it."""
+        restarts = []
+        _U, rec = _run(repos, _request(repos, target=repos["shas"][1]), _gate(), restarts)
+        assert rec["outcome"] == "updated" and restarts == [1]
+        assert _g(repos["work"], "rev-parse", "HEAD") == repos["shas"][1]
+        assert _g(repos["work"], "rev-parse", "origin/main") == repos["shas"][2]
+        assert [s["sha"] for s in rec["host_steps"]] == [repos["shas"][1]]
+
+    def test_the_host_steps_are_exactly_those_up_to_the_target(self, repos):
+        """A step in a commit beyond the target is not this update's, and is not demanded."""
+        (repos["work"] / "g").write_text("3")
+        _g(repos["work"], "checkout", "-q", repos["shas"][2])
+        _g(repos["work"], "add", "g")
+        _g(repos["work"], "commit", "-q", "-m", "c3\n\nHost-Step: install python3-bar on the host")
+        _g(repos["work"], "push", "-q", "origin", "HEAD:main")
+        _g(repos["work"], "checkout", "-q", "main")
+        _g(repos["work"], "reset", "-q", "--hard", repos["shas"][0])
+        restarts = []
+        _U, rec = _run(repos, _request(repos), _gate(), restarts)     # target c2, c3 beyond
+        assert rec["outcome"] == "updated"
+        assert _g(repos["work"], "rev-parse", "HEAD") == repos["shas"][2]
+        assert [s["step"] for s in rec["host_steps"]] == ["install python3-foo on the host"]
+
+    def test_a_confirmed_commit_no_longer_on_main_refuses(self, repos):
+        """Refused only when the confirmed commit LEFT origin/main (here a rewritten remote),
+        or its CI verdict changed (`test_ci_not_passed_refuses_and_nothing_moves`)."""
+        (repos["work"] / "f").write_text("other")
+        _g(repos["work"], "commit", "-q", "-am", "a rewritten history")
+        _g(repos["work"], "push", "-q", "--force", "origin", "HEAD:main")
+        _g(repos["work"], "reset", "-q", "--hard", repos["shas"][0])
         U = _updater()
-        with pytest.raises(U.Refused, match="origin/main is now"):
-            U.update(_request(repos, target=repos["shas"][1]), repo=str(repos["work"]),
+        with pytest.raises(U.Refused, match="no longer on origin/main"):
+            U.update(_request(repos), repo=str(repos["work"]),
                      gate=_gate(), git=_local_git, restart=lambda: None,
                      unit=lambda: {"MainPID": 100}, health=lambda: (200, {}))
         assert _g(repos["work"], "rev-parse", "HEAD") == repos["shas"][0]
@@ -469,7 +502,8 @@ class TestTheReaderRecordsWhatThePreviewShows:
         assert [(s["sha"], s["step"], s["when"]) for s in out["host_steps"]] == [
             (repos["shas"][1], "install python3-foo on the host", "before")]
         assert out["after_steps"] == []
-        assert out["updater_changes"] == [] and out["checkout_changes"] == []
+        assert out["updater_by_sha"] == {} and out["checkout_changes"] == []
+        assert out["target"] == repos["shas"][2]
         assert out["ci"]["state"] == "verified" and asked == [repos["shas"][2]]
         assert out["behind_since"] and "first seen by this reader" in out["behind_since_basis"]
 
@@ -509,20 +543,32 @@ class TestTheReaderRecordsWhatThePreviewShows:
         _g(repos["work"], "reset", "-q", "--hard", repos["shas"][0])
         v = P.judge(str(repos["work"]), repos["shas"][0])
         out = P.enrich(str(repos["work"]), v, {}, verdict=lambda r, t: (0, "ok"))
-        assert out["updater_changes"] == ["deploy/update/nmas-update"]
+        assert {p for ps in out["updater_by_sha"].values() for p in ps} == \
+            {"deploy/update/nmas-update"}
+        assert len(out["updater_by_sha"]) == 1             # named by the commit that changed it
 
 
 # ------------------------------------------------------------------ the app side
 
 def _value(**over):
+    """The `app-pushed` reader's value, in its shape (C436): the commits newest first (the
+    tip first), each commit's verdict, and the target, the newest commit CI passed. Built
+    from a tip's ``ci``: the tip is the target exactly when ITS verdict is a pass, unless
+    the caller names ``verdicts`` or ``target`` itself."""
     v = {"running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 2, "branch": "main",
-         "commits": [{"sha": "b" * 40, "subject": "fix", "author": "t", "at": "2026-09-30T10:00:00Z"}],
-         "host_steps": [{"sha": "c" * 40, "step": "install python3-foo"}], "updater_changes": [],
+         "commits": [{"sha": "b" * 40, "subject": "fix", "author": "t", "at": "2026-09-30T10:00:00Z"},
+                     {"sha": "c" * 40, "subject": "needs a package", "author": "t",
+                      "at": "2026-09-30T09:30:00Z"}],
+         "host_steps": [{"sha": "c" * 40, "step": "install python3-foo"}], "updater_by_sha": {},
          "checkout_changes": [], "behind_since": "2026-09-30T09:00:00Z",
          "behind_since_basis": "first seen by this reader, which asks every 300 s",
          "ci": {"tip": "b" * 40, "state": "verified", "sentence": "CI passed for bbbbbbbbbb",
                 "asked_at": "2026-09-30T10:01:00Z"}}
     v.update(over)
+    ci = v.get("ci") or {}
+    v.setdefault("verdicts", {ci["tip"]: ci} if ci.get("tip") else {})
+    v.setdefault("target", v["tip"] if ci.get("tip") == v["tip"] and ci.get("state") == "verified"
+                 else "")
     return v
 
 
@@ -1373,6 +1419,61 @@ class TestCheckAgainInARealBrowser:
         assert late.startswith("No answer after 1 s, longer than this check has taken here "
                                "(2.5x the slowest of its last 1 run(s), 0.2 s)")
         assert b.js(f"return {BUTTON}.textContent") == "Check again"
+
+
+UPDATE_CHECK = "document.querySelector('#update-panel .check-again button')"
+UPDATE_LATE = "document.querySelector('#update-panel .check-late')"
+
+
+class TestCheckAgainAfterARefusalInARealBrowser:
+    """C436, the operator, 2026-10-04: after the updater's refusal, "No answer after 11 s …
+    this line changes when it answers" never changed, and Check again did nothing until a
+    reload. Measured in the app log: the check answered in 1.6 s, and the panel holding the
+    refusal threw the redraw carrying the answer away."""
+
+    def test_the_answer_lands_on_a_panel_holding_a_refusal(self, served_update, scripted_reader):
+        from modules import reader_job
+        s, b = scripted_reader, served_update["b"]
+        reader_job.run_once(s["reader"])
+        _record_runs(4000)                                  # a 10 s bound
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("return window.Alpine && document.querySelector('#update-confirm') "
+                   "&& !document.querySelector('#update-confirm').disabled")
+        b.click("#update-confirm")                          # refused: the panel holds it
+        b.wait_for("return document.querySelector('[data-update-hold=\"result\"]')")
+        b.js("document.querySelector('#update-panel').setAttribute('data-old', '1'); return 1")
+        b.click("#update-panel .check-again button")
+        assert _wait_until(lambda: s["announced"]), "the answer was not announced"
+        b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")   # the page's relay
+        b.wait_for("var p = document.querySelector('#update-panel'); "
+                   "return p && !p.hasAttribute('data-old')")
+        b.wait_for(f"return window.Alpine && {UPDATE_CHECK}.textContent === 'Check again' "
+                   f"&& !{UPDATE_CHECK}.disabled")
+
+    def test_a_check_that_hangs_gives_up_says_so_and_the_control_works_again(
+            self, served_update, scripted_reader):
+        from modules import reader_job
+        s, b = scripted_reader, served_update["b"]
+        reader_job.run_once(s["reader"])
+        _record_runs(200)                                   # 2.5x 0.2 s: a 1 s bound
+        s["hold"].clear()                                   # the check hangs
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for(f"return window.Alpine && {UPDATE_CHECK} "
+                   f"&& {UPDATE_CHECK}.textContent === 'Check again'")
+        b.click("#update-panel .check-again button")
+        late = b.wait_for(f"return {UPDATE_LATE}.textContent")
+        assert late.startswith("No answer after 1 s"), late
+        assert b.js(f"return {UPDATE_CHECK}.disabled") is False
+        b.click("#update-panel .check-again button")        # again, still hung: it says so
+        still = b.wait_for(f"var t = {UPDATE_LATE}.textContent; "
+                           "return t.indexOf('Still no answer') === 0 && t")
+        assert "the check asked" in still and "(the bound is 1 s)" in still, still
+        assert b.js(f"return {UPDATE_CHECK}.disabled") is False
+        s["hold"].set()                                     # it answers at last
+        assert _wait_until(lambda: s["announced"]), "the answer was not announced"
+        b.js("htmx.trigger(document.body, 'nmas:app_version'); return 1")
+        b.wait_for(f"return window.Alpine && {UPDATE_CHECK}.textContent === 'Check again' "
+                   f"&& !{UPDATE_CHECK}.disabled && {UPDATE_LATE}.textContent === ''")
 
 
 RUNNING = "a" * 40

@@ -89,7 +89,7 @@ def _fetch_from_real_origin(world):
 
 def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh",
          reachable=True, restart_fails=False, ready=(True, "test: sudo authorised"),
-         wait=False, host_check=None, operations=None):
+         wait=False, host_check=None, operations=None, to=None):
     mod = _script()
     calls = []
 
@@ -160,7 +160,7 @@ def _run(world, runs_by_sha, passed=(), offline=False, suite_rc=0, health="fresh
         return 200, {"commit": running, "started_at": early, "pid": unit()["MainPID"]}
 
     code = mod.main(["--repo", world.host] + (["--offline"] if offline else [])
-                    + (["--wait"] if wait else []),
+                    + (["--wait"] if wait else []) + (["--to", to] if to else []),
                     get=get, run=lambda *a, **k: Out(), restart=restart,
                     health=fake_health, clock=clock, sleep=sleep, unit=unit,
                     ready=lambda: ready, host_check=host_check or (lambda repo: None),
@@ -575,6 +575,31 @@ class TestLocalState:
         sha = world.advance({"app.py": "v = 2\n"})
         code, _, _ = _run(world, {sha: _run_entry(sha)})
         assert code == 4
+
+
+class TestDeployExactlyACommit:
+    """`--to SHA` (C436): an older commit CI passed, while the tip's CI still runs, lands
+    exactly, never past it; one not on origin/main is refused before anything moves."""
+
+    def test_an_older_passed_commit_lands_exactly_while_the_tip_runs(self, world):
+        older = world.advance({"app.py": "v = 2\n"})
+        tip = world.advance({"app.py": "v = 3\n"})
+        code, restarted, _ = _run(world, {older: _run_entry(older),
+                                          tip: _run_entry(tip, None, "in_progress")}, to=older)
+        assert code == 0 and restarted and _head(world) == older
+
+    def test_without_to_the_pending_tip_is_still_refused(self, world):
+        world.advance({"app.py": "v = 2\n"})
+        tip = world.advance({"app.py": "v = 3\n"})
+        code, _, _ = _run(world, {tip: _run_entry(tip, None, "in_progress")})
+        assert code == 7 and _head(world) == world.base
+
+    def test_a_commit_not_on_main_is_refused_and_nothing_moves(self, world):
+        stray = _commit(world.host, {"local.txt": "x\n"}, "never pushed")
+        _git(world.host, "reset", "-q", "--hard", world.base)
+        world.advance({"app.py": "v = 2\n"})
+        code, restarted, calls = _run(world, {}, to=stray)
+        assert code == 4 and not restarted and _head(world) == world.base and calls == []
 
 
 class TestAfterTheRestart:

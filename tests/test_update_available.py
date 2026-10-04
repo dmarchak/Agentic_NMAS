@@ -1,8 +1,9 @@
 """The top bar's quiet "Update available" (the operator, 2026-10-02): an update is news,
 not a problem, but it should be noticeable where a person looks, not only on Help > About.
 
-- It is drawn only when origin/main is ahead AND CI passed for its tip, neutral in colour,
-  and opens the Update page; its hover says how far behind and since when.
+- It is drawn only when origin/main is ahead AND CI passed a commit since the running one
+  (the Update operation's target, C436), neutral in colour, and opens the Update page; its
+  hover says how many commits it installs and since when.
 - It TURNS INTO the Needs attention row: when any of the row's conditions holds (CI failed
   or cancelled, behind past the measured 20 h, the fetch failed, an update asked from this
   commit that did not happen), the indicator is gone and the row is there. One decision,
@@ -24,9 +25,15 @@ def _iso(seconds_ago):
 
 
 def _value(**over):
+    """The reader's value (C436 shape): its target is the tip exactly when the tip's verdict
+    is a pass, unless the case names ``verdicts`` or ``target``."""
     v = {"running": RUN, "tip": TIP, "state": "behind", "behind": 3, "branch": "main",
          "behind_since": _iso(600), "ci": {"tip": TIP, "state": "verified"}}
     v.update(over)
+    ci = v.get("ci") or {}
+    v.setdefault("verdicts", {ci["tip"]: ci} if ci.get("tip") else {})
+    v.setdefault("target", v["tip"] if ci.get("tip") == v["tip"] and ci.get("state") == "verified"
+                 else "")
     return v
 
 
@@ -81,10 +88,10 @@ class TestTheDecision:
         now = calendar.timegm(time.strptime("2026-10-02T15:05:00Z", "%Y-%m-%dT%H:%M:%SZ"))
         got = attention.update_available(_value(behind_since="2026-10-02T14:05:00Z"),
                                          last=NO_UPDATE_ASKED, now=now)
-        assert got["title"].startswith("3 commits behind origin/main (aaaaaaa → bbbbbbb)")
+        assert got["title"].startswith("3 commits to install from origin/main (aaaaaaa → bbbbbbb)")
         assert "CI passed" in got["title"] and "since 2026-10-02 14:05 UTC" in got["title"]
         one = attention.update_available(_value(behind=1), last=NO_UPDATE_ASKED)
-        assert one["title"].startswith("1 commit behind")
+        assert one["title"].startswith("1 commit to install")
 
     @pytest.mark.parametrize("name,value,last,shows", CASES, ids=[c[0] for c in CASES])
     def test_it_turns_into_the_row_never_beside_it(self, monkeypatch, running, name, value, last,
@@ -115,7 +122,7 @@ class TestTheTopBar:
         body = r.get_data(as_text=True)
         assert r.status_code == 200 and 'class="update-pill"' in body
         assert 'href="/v2/update"' in body and "Update" in body and "available" in body
-        assert 'title="3 commits behind origin/main' in body
+        assert 'title="3 commits to install from origin/main' in body
         assert "warn" not in body and "danger" not in body         # neutral, not a problem
         assert "script-src" in (r.headers.get("Content-Security-Policy") or "")
 

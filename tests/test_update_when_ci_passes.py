@@ -164,12 +164,35 @@ class TestTheRelease:
         assert not (store / "requests").exists() or os.listdir(store / "requests") == []
 
     def test_a_newer_release_is_never_installed_in_its_place(self, store):
+        """C436: the wait is for the ONE commit confirmed. A newer push that CI passed is
+        neither installed nor a reason to end the wait; when the confirmed commit passes,
+        exactly it is requested, the tip having moved on."""
         from modules import update_op
         _defer()
         newer = dict(VERIFIED, tip="d" * 40)
-        ended = update_op.release_deferred(**_kw(ci=newer, tip="d" * 40))
-        assert ended["outcome"] == "superseded" and "dddddddddd" in ended["words"]
+        chain = [{"sha": s * 40, "subject": s, "author": "t", "at": "2026-09-30T10:00:00Z"}
+                 for s in "dbc"]
+        still = _kw(ci=newer, tip="d" * 40, commits=chain, target="d" * 40,
+                    verdicts={"d" * 40: newer, "b" * 40: dict(PENDING)})
+        assert update_op.release_deferred(**still) is None
+        assert update_op.deferred()["target"] == "b" * 40
         assert not (store / "requests").exists() or os.listdir(store / "requests") == []
+        passed = _kw(ci=newer, tip="d" * 40, commits=chain, target="d" * 40,
+                     verdicts={"d" * 40: newer, "b" * 40: dict(VERIFIED)})
+        ended = update_op.release_deferred(**passed)
+        assert ended["outcome"] == "requested", ended
+        (req,) = os.listdir(store / "requests")
+        doc = json.loads((store / "requests" / req).read_text())
+        assert doc["target"] == "b" * 40
+
+    def test_a_confirmed_commit_that_left_main_ends_the_wait(self, store):
+        from modules import update_op
+        _defer()
+        gone = _kw(ci=dict(PENDING, tip="e" * 40), tip="e" * 40,
+                   commits=[{"sha": "e" * 40, "subject": "e", "author": "t",
+                             "at": "2026-09-30T10:00:00Z"}])
+        ended = update_op.release_deferred(**gone)
+        assert ended["outcome"] == "not_on_main" and "bbbbbbbbbb is no longer" in ended["words"]
 
     def test_past_the_bound_it_gives_up(self, store):
         from modules import update_op

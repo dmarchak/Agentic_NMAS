@@ -10,9 +10,13 @@ SYMLINK to this file, so there is one copy (CLAUDE.md, C14):
     nmas-deploy              # gate on the GitHub Actions result for the target
     nmas-deploy --offline    # no GitHub: run the whole suite HERE, on this
                              # machine's packages, against the target first
+    nmas-deploy --to SHA     # EXACTLY that commit, while it is on origin/main
+                             # (C436: an older commit CI passed, while the
+                             # tip's CI still runs)
 
-The gate is decided on the TARGET commit (origin/main after a fetch), before
-HEAD moves. HEAD never reaches a commit that has not passed.
+The gate is decided on the TARGET commit (origin/main after a fetch, or the
+--to commit), before HEAD moves. HEAD never reaches a commit that has not
+passed, and moves to exactly the target, never past it.
 
 Exit codes. Each means one thing; none is "probably fine":
   0  deployed (or already at the target) AND confirmed running: /health
@@ -30,7 +34,7 @@ Exit codes. Each means one thing; none is "probably fine":
      deploys an unverified commit; --offline verifies it here instead.
   3  --offline: the suite failed on this machine against the target: refused
   4  refused by local state: edits in the checkout, root-owned files in .git,
-     or origin/main is not a fast-forward
+     the target is not a fast-forward, or the --to commit is not on origin/main
   5  moved (or already there), but NOT confirmed running: the restart failed,
      or /health never reported the target from a freshly started process. The
      verdict's FIRST line names a mixed version when the service still runs
@@ -568,6 +572,9 @@ def main(argv=None, get=github_get, run=subprocess.run, restart=None, health=Non
                     help=f"when CI is still running for the target, follow it (every "
                          f"{WAIT_POLL_S} s, at most {WAIT_BOUND_S} s) and deploy when it "
                          "passes; the gate is unchanged")
+    ap.add_argument("--to", metavar="SHA",
+                    help="deploy EXACTLY this commit (it must be on origin/main) instead of "
+                         "origin/main's tip; the CI gate is the same")
     args = ap.parse_args(argv)
     repo = args.repo
     # started_at is when the RUN began, ended_at when its row is written: two
@@ -710,10 +717,26 @@ def _deploy(args, repo, row, finish, get, run, restart, health, clock, sleep, un
                                      f"{getpass.getuser()}: {repo}/.git`. Refused.")
 
     git(repo, "fetch", "--quiet", "origin")
-    head, target = git(repo, "rev-parse", "HEAD"), git(repo, "rev-parse", "origin/main")
+    head, tip = git(repo, "rev-parse", "HEAD"), git(repo, "rev-parse", "origin/main")
+    target = tip
+    if args.to:
+        # EXACTLY the commit named (C436), while it is still on origin/main: a later push
+        # neither refuses it nor moves the checkout past it.
+        try:
+            target = git(repo, "rev-parse", "--verify", "-q", f"{args.to}^{{commit}}")
+        except RuntimeError:
+            target = ""
+        if not target:
+            return finish(LOCAL_REFUSED, f"--to {args.to} names no commit this checkout has "
+                                         "after a fetch. Refused.")
+        if subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", target,
+                           tip]).returncode != 0:
+            return finish(LOCAL_REFUSED, f"{target[:10]} is not on origin/main ({tip[:10]}). "
+                                         "Refused.")
     row.update({"from": head, "to": target})
     if subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", head, target]).returncode != 0:
-        return finish(LOCAL_REFUSED, f"origin/main ({target[:10]}) is not a fast-forward of "
+        return finish(LOCAL_REFUSED, f"{'the target' if args.to else 'origin/main'} "
+                                     f"({target[:10]}) is not a fast-forward of "
                                      f"HEAD ({head[:10]}). Refused.")
 
     code, message = (offline_verdict(repo, target, run) if args.offline

@@ -43,6 +43,10 @@
     {#- In a person's words; nmas-deploy's own sentence (it names the run, and
         tells a terminal user to run --wait) is the cause, on hover. -#}
     <div><dt>CI for the target</dt><dd>{{ badge(ci_badge.get(f.ci.state, f.ci.state) if f.ci.state else 'not asked', CI_KIND.get(f.ci.state, 'muted')) }} <span id="update-ci-words"{% if f.ci.sentence %} title="{{ f.ci.sentence }}"{% endif %}>{{ p.ci_words }}</span>{% if f.ci.asked_at %} <span class="muted">· asked {{ stamp(f.ci.asked_at) }}</span>{% endif %}</dd></div>
+    {#- The commits beyond the target (C436): information only, never offered. -#}
+    {%- if f.beyond_words %}
+    <div><dt>Beyond it</dt><dd id="update-beyond" title="{% for b in f.beyond %}{{ b.sha[:10] }}: {{ b.state or 'not asked yet' }}{{ '; ' if not loop.last }}{% endfor %}">{{ f.beyond_words }}, up to origin/main's <span class="mono">{{ f.tip[:10] }}</span>; not offered until CI passes one</dd></div>
+    {%- endif %}
   </dl>
   {%- if f.commits %}
   <h3 class="sub-head">The commits it would run</h3>

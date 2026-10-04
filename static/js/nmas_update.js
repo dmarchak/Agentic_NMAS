@@ -121,6 +121,13 @@
       + basis + '). It may still be running: this line changes when it answers, '
       + 'and if it does not, the app log names the run ("on request by").';
   }
+  /* A press while an earlier check is still owed its answer, past the bound: the press did
+     something, and says what (C436: "Check again did nothing until I reloaded"). */
+  function checkStillWords(runningFor, bound) {
+    return 'Still no answer from the check asked ' + Math.round(runningFor) + ' s ago (the '
+      + 'bound is ' + bound + ' s): a new one starts once it answers or fails. The app log '
+      + 'names the run ("on request by").';
+  }
 
   function getJson(url) {
     return root.fetch(url, {headers: {'Accept': 'application/json'}, cache: 'no-store'})
@@ -258,6 +265,7 @@
             if (got[0] !== 202) {
               self.phase = 'idle';
               self.refusal = 'Not requested: ' + ((got[1] && got[1].error) || ('the server answered HTTP ' + got[0]));
+              el.setAttribute('data-update-hold', 'result');
               return;
             }
             if (got[1] && got[1].waiting) {
@@ -272,6 +280,7 @@
           }, function (e) {
             self.phase = 'idle';
             self.refusal = 'Not requested: the request did not reach the app (' + e.message + ')';
+            el.setAttribute('data-update-hold', 'result');
           });
         },
         poll: function (id) {
@@ -287,7 +296,9 @@
                                (Date.now() - self.started) / 1000, timeout);
             drawSteps(list, r.steps);
             self.words = r.words;
-            if (r.done) self.phase = 'done';
+            // Finished: the result is held against background redraws, and released by the
+            // person's own Check again (its answer IS a redraw; C436).
+            if (r.done) { self.phase = 'done'; el.setAttribute('data-update-hold', 'result'); }
             if (r.reload) { root.setTimeout(function () { root.location.reload(); }, 1500); }
             else if (!r.done) { root.setTimeout(function () { self.poll(id); }, 2000); }
           });
@@ -353,31 +364,53 @@
           var self = this;
           self.busy = true;
           self.said = '';
+          // The answer arrives as a redraw of the panel. A panel held for an update's result
+          // swallowed it, so the line never changed and every press "did nothing" until a
+          // reload (C436, the operator, 2026-10-04: the run answered in 1.6 s). The person
+          // asked for the redraw: release the result's hold (the server still draws the
+          // last update's outcome). A hold for an update in flight stays.
+          var held = releaseResultHolds();
           root.fetch(this.$root.getAttribute('data-url'), {method: 'POST', headers: {'Accept': 'application/json'}})
             .then(function (r) {
               return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
             })
             .then(function (got) {
               var b = got[1] || {};
-              if (got[0] < 300 && b.ok) {
+              var bound = parseFloat(b.bound_seconds);
+              if (got[0] < 300 && b.ok && b.started === false && bound > 0
+                  && (b.running_for || 0) >= bound) {
+                self.busy = false;
+                self.said = checkStillWords(b.running_for, bound);
+              } else if (got[0] < 300 && b.ok) {
                 self.wait(b.running_for || 0, b.bound_seconds, b.bound_basis);
               } else {
+                restoreHolds(held);
                 self.busy = false;
                 self.said = 'Not asked: ' + (b.error || ('HTTP ' + got[0]));
               }
-            }, function (e) { self.busy = false; self.said = 'Not asked: ' + e.message; });
+            }, function (e) { restoreHolds(held); self.busy = false; self.said = 'Not asked: ' + e.message; });
         }
       };
     });
   }
 
-  /* A panel holding an update in flight, its stepper or its refusal is never
-     swapped out from under the person reading it. */
+  /* A panel holding an update in flight ("yes"), or its finished stepper or refusal
+     ("result"), is never swapped out from under the person reading it by a redraw nobody
+     asked for. Check again releases a "result" hold, since its answer is a redraw. */
   function holdSwap(e) {
     var target = e.detail && e.detail.target;
-    if (target && target.querySelector && target.querySelector('[data-update-hold="yes"]')) {
+    if (target && target.querySelector
+        && target.querySelector('[data-update-hold="yes"], [data-update-hold="result"]')) {
       e.detail.shouldSwap = false;
     }
+  }
+  function releaseResultHolds() {
+    var held = root.document.querySelectorAll('[data-update-hold="result"]');
+    for (var i = 0; i < held.length; i++) held[i].removeAttribute('data-update-hold');
+    return held;
+  }
+  function restoreHolds(held) {
+    for (var i = 0; i < held.length; i++) held[i].setAttribute('data-update-hold', 'result');
   }
 
   if (root.document && root.document.addEventListener) {
@@ -386,5 +419,5 @@
   }
   root.NMAS_UPDATE = {stepStates: stepStates, TERMINAL: TERMINAL, checkLabel: checkLabel,
                       waitOutcome: waitOutcome,
-                      checkLateWords: checkLateWords};
+                      checkLateWords: checkLateWords, checkStillWords: checkStillWords};
 })(typeof window !== 'undefined' ? window : this);

@@ -108,7 +108,10 @@ def served(lab, monkeypatch):  # noqa: F811
         "value_at": _iso(60), "value": {
             "running": "a" * 40, "tip": "b" * 40, "state": "behind", "behind": 3,
             "branch": "main", "behind_since": _iso(3600),
-            "ci": {"tip": "b" * 40, "state": "verified"}}}}}
+            "ci": {"tip": "b" * 40, "state": "verified"},
+            # The reader's shape since C436: the target is the newest commit CI passed.
+            "verdicts": {"b" * 40: {"tip": "b" * 40, "state": "verified"}},
+            "target": "b" * 40}}}}
     stored = {"baseline-usability": BASELINES, "app-pushed": pushed}
     monkeypatch.setattr(reader_job, "read_cached",
                         lambda name: stored[name] if name in stored else real(name))
