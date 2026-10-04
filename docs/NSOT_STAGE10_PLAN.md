@@ -645,6 +645,12 @@ with a platform DEFINITION (data) and the pipeline that proves it (12.4).
 
 ---
 
+### 7.3 From Stage 7, REQUIRED before release
+
+| Item | Why it cannot ship without it |
+|---|---|
+| **Bulk onboarding** (NSOT_STAGE7_PLAN 17, the operator, 2026-10-04) | An enterprise brings a whole fleet in at once, from a CSV, a spreadsheet or NetBox: one at a time is not a product for it |
+
 ## 8. The repository
 
 ### 8.1 A fresh curated export

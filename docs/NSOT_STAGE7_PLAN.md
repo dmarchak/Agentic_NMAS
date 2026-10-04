@@ -3219,8 +3219,9 @@ tool states the retention in force beside each (14.6) and says when it differs f
 | Raw metrics | Prometheus's local blocks and Thanos's raw blocks | 90 days | 90 days |
 | Downsampled metrics, 5 min | Thanos | 2 years | 1 year |
 | Downsampled metrics, 1 h | Thanos | 5 years | 2 years |
-| Logs | Loki | 1 year | 90 days |
-| Raw telemetry (14.4) | its bucket, as Parquet | 30 days | 30 days |
+| Logs | Loki | 1 year | 90 days now; **2 years proposed** (14.15) |
+| Raw telemetry (14.4) | its bucket's `mdt/`, as Parquet | 30 days | 30 days (no rule applied yet: 14.15) |
+| Archived syslog files | its bucket's `syslog/` | 1 year | **2 years proposed** (14.15) |
 | Configuration history | git | kept for ever (already) | the same |
 
 A store applies its own retention (Thanos's compactor, Loki's compactor, a bucket lifecycle
@@ -3642,6 +3643,64 @@ a compactor fault cannot reach them first. **DECIDED 2026-10-04 (the operator): 
 recommended.** Live reads stay on Prometheus until the compactor has run a week without
 halting.
 
+### 14.15 Host step, PROPOSED: logs 2 years; raw telemetry expires per prefix (the operator's)
+
+**Proposed, not decided:** the operator's review (15.4) asked for the lab's log retention ("1
+year+; logs are ~11 MiB") with its host step, and for the archived syslog files to have their
+own class. Measured read-only on the NMAS host, 2026-10-04:
+- **Loki:** 12 MiB in 21,910 objects in MinIO's `loki` bucket since 2026-09-07, about 0.45 MiB
+  a day. One year is about 165 MiB, and two years about 330 MiB.
+- **`raw-telemetry`:**
+  - `mdt/` holds 4.8 GiB in 645 objects, and `syslog/` 826 KiB in 105.
+  - **The bucket has no expiry for current objects at all**, only the 7-day non-current rule,
+    so 14.1's 30 days for raw telemetry was never applied, and `mdt/` grows about 216 MiB a
+    day (C405).
+  - A whole-bucket 30-day rule, the obvious way to apply 14.1, would also expire the archived
+    syslog files. So the rules are per prefix.
+
+**Recommended:** logs 2 years in the lab (about 330 MiB; the enterprise default stays 1 year);
+`mdt/` 30 days, as 14.1 decided; `syslog/` its own class at 2 years, matching Loki, so the raw
+files outlive nothing they back.
+
+**When the operator agrees, on the NMAS host:**
+
+1. Loki: 14.12's step, with `2160h` replaced by `17520h`. Read the line first, refuse unless the
+   diff is exactly one line, install by name, then restart.
+
+   ```
+   sudo grep -n 'retention_period' /etc/loki/local-config.yaml   # read: 2160h since 14.12
+   d=$(mktemp -d)
+   sudo cat /etc/loki/local-config.yaml > "$d/local-config.yaml"
+   sed -i '/^limits_config:/,/^[^ #]/ s/^\( *retention_period:\) .*$/\1 17520h/' "$d/local-config.yaml"
+   n=$(sudo diff /etc/loki/local-config.yaml "$d/local-config.yaml" | grep -c '^>')
+   if [ "$n" = 1 ]; then
+     sudo install -o root -g 10001 -m 0640 "$d/local-config.yaml" /etc/loki/local-config.yaml &&
+     docker restart loki
+   else
+     echo "REFUSED: the edit changed $n line(s), not 1; nothing installed"
+   fi
+   rm -r "$d"
+   ```
+
+2. `raw-telemetry`'s two rules. Read first: the only rule must be the non-current one, or stop.
+
+   ```
+   mc ilm rule ls lab/raw-telemetry                       # read: one NoncurrentVersionExpiration rule
+   mc ilm rule add lab/raw-telemetry --prefix "mdt/"    --expire-days 30
+   mc ilm rule add lab/raw-telemetry --prefix "syslog/" --expire-days 730
+   ```
+
+Verify, each a result:
+
+```
+curl -s 127.0.0.1:3100/config | grep -E '^  retention_period:'   # 730d
+mc ilm rule ls lab/raw-telemetry                                    # two expiry rules by prefix, 30 and 730 days, and the non-current one
+```
+
+Longer retention keeps what is there from now on; it does not bring back what was deleted. The
+tool's screens state the retention in force from the setting (14.6), and a query past it says the
+range was deleted before it was asked (History, Query, board C).
+
 ## 15. The operator's review of three canvas pages (2026-10-04): revise, then show again
 
 Nothing on these pages is built until the revised boards are signed off. Each item is the
@@ -3720,6 +3779,59 @@ and C447 (an order set, previewed and hashed). Its running view carries C446's p
   exact values at that time, as in Grafana.
 - **C.** Results drill down. From "s3 sent 96 syslog lines", open the lines, filter them
   (severity, mnemonic, time, text), and see trends by mnemonic.
+
+### 15.4 The operator's second review (2026-10-04)
+
+**Approved:** 7.4's A, C2 (pending C), E (with section 16's three ways), F and K (the vertical
+stepper at phone width); History's A.
+
+**7.4 B, scale.** A standing rule for every screen, in CLAUDE.md: built for large fleets (a
+summary first, counts by outcome; grouped and collapsible; filter and search; never one long
+expanded list; per-device detail on expand). Its check is `tests/test_large_fleets.py`, built
+the same day with the rule (5f9353e); it found the Devices list and Coverage drawing all 900
+devices (C450). Every batch board is redrawn to it.
+
+**7.4 C, Save.** Recording the running config as golden without saving the device is dangerous
+as a default: the record says one thing, a reboot brings another. **Recommended:** the one bulk
+Save does BOTH, write memory then record the golden, and "record only" is dropped from the
+Devices list. A single device's Capture stays on its own page, because it is the one job where
+recording without saving is the point: a hand change read before deciding. Its result says
+"not saved to startup: a reboot would lose these lines" whenever startup differs, and offers
+Save. Why drop rather than keep as an exception: a second name for the dangerous combination is
+how it gets used by default, and the single-device path already carries its reason.
+
+**7.4 D, I and J: one intent editor.**
+- **ONE editor, H:** the document AND fields, on the device's Intent tab.
+- **I is not a second editor.** It drew H's states (Edit, an error, committed, intent moved),
+  folded into H as H's own states.
+- **J is H's Fields mode**, with its three layers, folded into H.
+- **Bulk intent (D) is a different job, not an editor:** "change this setting on the selected
+  devices". It shows each device's resulting diff and deploy program, grouped and collapsible
+  under the large-fleets rule.
+
+**7.4 G, adopt and onboarding finish the job.** Once the device answers with its ROTATED
+credential, by default:
+1. it saves to startup (write memory);
+2. it captures its first golden;
+3. it runs seed and shows its fidelity and any unmodelled lines, with one "Commit as this
+   device's intent" (a person confirms intent; the work is done for them).
+
+The device ends fully integrated.
+
+**P.11 Topology A.**
+- Neighbourships detected and drawn for RIP and RIPng, EIGRP and IS-IS, as well as OSPF, OSPFv3
+  and BGP.
+- **Drag and drop:** a person arranges devices, and the layout is saved and shared (stable
+  positions); auto-layout only places new devices.
+- **ONE state per link, the real one.** A mismatch is flagged only where it differs from intent
+  ("intended FULL, now down"). "OSPF intent FULL" beside "OSPF FULL" confused: the map is the
+  overview, never a puzzle.
+
+**History.**
+- **B:** a layout bug. The Y-axis text overlaps the device field and runs outside the chart.
+- **C:** retention is configurable per class (14.1). The lab's log retention is proposed in
+  14.15 (2 years, with its host step), and the setting is shown on the screen. The archived
+  syslog files get their own class, since a 30-day raw-telemetry expiry would have taken them.
 
 ## 16. ZTP: three ways in, one pipeline (the operator, 2026-10-04)
 
@@ -3804,3 +3916,58 @@ measurements.
 
 **Lab note (optional, lab tooling):** containerlab knows each node's MAC and could pre-fill it
 in way 2.
+
+## 17. Bulk onboarding (the operator, 2026-10-04: design only; build before the public release, or sooner if asked)
+
+Enterprises keep device lists in a CSV, a spreadsheet or NetBox, and bring a whole fleet in at
+once, never one by one.
+
+1. **Sources.** Upload a CSV or XLSX, or select devices in NetBox by site, role or tag. A
+   column mapping, saved for reuse.
+2. **Validate before anything connects.** Duplicate names or addresses, devices already managed,
+   unknown platforms and missing credential profiles are each named with its row.
+3. **A read-only dry run per device:** is it reachable, does it log in with its profile, is its
+   platform as declared? The answer is a summary: ready, unreachable, wrong credentials.
+4. **Confirm, then run as a batch under the large-fleets rule.**
+   - A summary first, grouped and collapsible, with per-device detail on expand.
+   - Only the failures are retried.
+   - The circuit breaker and the ordering work as for deploys.
+5. **The same pipeline per device** as a single adopt or onboard: save, first golden, seed,
+   credential rotation.
+6. **End of batch, once, never per device** (the operator, the same day):
+   - **Seeding:** one review after the batch, "N seeded cleanly (100% fidelity, nothing
+     unmodelled) · M need a look". ONE confirm commits intent for all the clean ones; the
+     exceptions are listed with what is wrong, for individual review.
+   - **Break-glass:** ONE export after every device's credential is rotated. The record is per
+     network, so it is one file for the whole fleet, prompted once at the end.
+   - Neither has a per-device prompt. The single-device flow keeps its own end steps.
+7. **Credentials not in the file.** Rows name credential profiles the tool already holds. A file
+   carrying passwords is used once, and never stored or kept.
+8. **Ties to ZTP (section 16):** a shipping list of serials or MACs is the bulk input that
+   pre-provisions many devices.
+
+**Where it fits.** After 7.4, because it is built from 7.4's pieces:
+- the batch run view (a job, the one stepper, the large-fleets rule; boards B and K);
+- the onboarding list (E) and adopt (G);
+- section 16's three ways in.
+
+It is required before Stage 10's public release (NSOT_STAGE10_PLAN 7.3). It builds nothing new
+underneath, except the column mapping and the XLSX reader.
+
+**What already exists to build on:**
+- **CSV lists:** each list's `devices.csv` is the local inventory, read by
+  `device.load_saved_devices()`, with credentials resolved through profiles (device, list,
+  role, site, default).
+- **The NetBox inventory source:** `modules/inventory/netbox_source.py`. `fetch_netbox_devices`
+  filters by site, role, tag and status; `adapt_devices` maps platform and role and names the
+  credential list, already shaped like a CSV row.
+- **Adopt:** `modules/nsot/adopt.py` `plan` and `apply`. A running device is read with a login
+  never stored, the tool's account is added, then the profile, first golden, NetBox and
+  inventory. The backend is built; its screen is board G.
+- **Onboarding:** `onboard.build_plan` and `run_onboarding` (reserve, render, commit, then
+  Verify on boot).
+- **Batch:** `deploy.run_batch` (sequential, the circuit breaker, each device's own state
+  since C446) and `routes/deploy.apply_batch` (the order of its confirmations).
+- **Seed:** `seed.py` (preview, confirm, commit) and its fidelity (`roundtrip.validate_device`).
+- **Break-glass:** the per-network record and its export (`modules/breakglass.py`).
+- **The large-fleets check:** `tests/test_large_fleets.py`.
