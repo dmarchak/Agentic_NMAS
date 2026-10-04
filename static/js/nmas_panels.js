@@ -150,7 +150,23 @@
   }
 
   /* PURE: what an empty answer says. */
+  function emptyHover(p) {
+    // The panel's own sentence, one level down, when the line says what was measured (C412).
+    if (p.no_value_kind !== 'danger' && p.asked && p.asked.length && p.no_value) {
+      return 'The dashboard says: ' + p.no_value;
+    }
+    return '';
+  }
+
   function emptyWords(p) {
+    // A stopped stream is the failure itself, in the server's words.
+    if (p.no_value_kind === 'danger') return p.no_value;
+    // What was measured, never a cause guessed from an empty answer (C412: "No interface
+    // counters from telemetry or SNMP" claimed an absence nobody measured): the selectors
+    // asked and the range. The panel's own sentence goes on hover (emptyHover).
+    if (p.asked && p.asked.length) {
+      return 'No series matched ' + p.asked.join(' or ') + ' in the last ' + p.range + '.';
+    }
     // The panel's own words for no value (Grafana's noValue), when it has
     // them: it knows why its query can be empty for a device (the operator:
     // a panel says what it means, never a bare blank).
@@ -289,7 +305,10 @@
     if (empty) {
       // A stopped stream on a device that should stream is the failure,
       // drawn as one (the operator: visible and red), never neutral.
-      body.appendChild(el('p', p.no_value_kind === 'danger' ? 'panel-error' : 'panel-note', emptyWords(p)));
+      var note = el('p', p.no_value_kind === 'danger' ? 'panel-error' : 'panel-note', emptyWords(p));
+      var hover = emptyHover(p);
+      if (hover) note.title = hover;
+      body.appendChild(note);
     } else if (p.rows) {
       drawTable(body, p, unit);
     } else if (p.series) {
@@ -384,5 +403,5 @@
 
   root.NMAS_PANELS = {statText: statText, palette: palette, duration: duration, emptyWords: emptyWords, mapValue: mapValue, colourKind: colourKind, formatValue: formatValue, alignSeries: alignSeries, thresholdKind: thresholdKind,
                       chartHeight: chartHeight,
-                      footWords: footWords, emptyWords: emptyWords, scan: scan};
+                      footWords: footWords, emptyWords: emptyWords, emptyHover: emptyHover, scan: scan};
 })(typeof window !== 'undefined' ? window : this);

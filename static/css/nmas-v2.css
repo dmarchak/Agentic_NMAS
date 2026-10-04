@@ -284,8 +284,8 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .panel-type { font-size: 11px; color: var(--ink-3); }
 .panel-body { min-height: 60px; position: relative; }
 .panel-wait { margin: 0; font-size: 12px; color: var(--ink-2); padding: 20px 0; }
-.panel-note { margin: 0; font-size: 12px; color: var(--ink-2); }
-.panel-error { margin: 0; font-size: 12px; color: var(--danger); }
+.panel-note { margin: 0; font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+.panel-error { margin: 0; font-size: 12px; color: var(--danger); overflow-wrap: anywhere; }
 .panel-foot { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .swatch { width: 10px; height: 3px; border-radius: 2px; background: var(--accent); }

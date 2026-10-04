@@ -121,6 +121,34 @@ def metrics_of(panel: dict) -> list:
     return [n for t in panel.get("targets") or [] for n in _METRIC.findall(t.get("expr") or "")]
 
 
+_SELECTOR = re.compile(r"([A-Za-z_][A-Za-z0-9_:]*)\s*\{([^{}]*)\}")
+
+
+def selectors_of(panel: dict, values: dict) -> list:
+    """The metric selectors the panel's queries ask with, its variables filled from *values*
+    (``ifHCInOctets{device="r2"}``), each once, in the order written: what an empty panel says
+    matched nothing (C412: "No interface counters from telemetry or SNMP" claimed an absence the
+    page never measured)."""
+    out = []
+    for t in panel.get("targets") or []:
+        for name, labels in _SELECTOR.findall(interpolate(t.get("expr") or "", values)):
+            sel = f"{name}{{{labels.strip()}}}"
+            if sel not in out:
+                out.append(sel)
+    return out
+
+
+def series_request(panel: dict, dashboard: dict, values: dict, default_ds: dict,
+                   seconds: int = 3600) -> dict:
+    """ONE instant request: does anything match the panel's selectors for this device within
+    *seconds*? Asked before a declared fold hides the panel (C412)."""
+    sels = selectors_of(panel, values)
+    t = dict((panel.get("targets") or [{}])[0])
+    expr = "count(" + " or ".join(f"count_over_time({s}[{seconds}s])" for s in sels) + ")"
+    probe = {"type": "stat", "targets": [dict(t, refId="S", expr=expr, instant=True)]}
+    return build_request(probe, dashboard, values, seconds, default_ds)
+
+
 # ---------------------------------------------------------------------------
 # A panel that does not apply to THIS device folds (the operator, 2026-09-30).
 # One rule for "nothing to show here": no source, not collected on this

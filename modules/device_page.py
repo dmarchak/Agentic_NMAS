@@ -476,7 +476,9 @@ def fold_panels(drawn: list, dev: dict, dash: dict, fill: dict, datasources: lis
     - no source: a panel reading only telemetry, on a device whose COMMITTED
       configuration has no subscription (`streams_telemetry`);
     - not collected on this platform: a measured rule (`panels.PLATFORM_FOLDS`)
-      matching the model the device's own golden names;
+      matching the model the device's own golden names, CHECKED by asking whether the
+      panel's selectors match a series for the device in the last hour (C412): one that does
+      is drawn, the rule wrong for it;
     - withheld: the panel's own guard holds its value back, decided by asking
       Grafana for both halves now (`panels.withheld`).
 
@@ -493,21 +495,46 @@ def fold_panels(drawn: list, dev: dict, dash: dict, fill: dict, datasources: lis
         out.append({"id": p.get("id"), "title": p.get("title") or "", "short": short,
                     "kind": kind, "detail": p.get("no_value") or short, "basis": basis})
 
+    default_ds = panels.default_datasource(datasources, "prometheus")
+
+    def asker():
+        nonlocal client
+        if client is None:
+            from modules.integrations.grafana import GrafanaIntegration
+            client = GrafanaIntegration()
+        return client
+
     for p in drawn:
         if streams[0] is False and panels.telemetry_only(p):
             fold(p, "not streamed", "no_source", streams[1])
             continue
         rule = panels.platform_fold(p, model_name)
         if rule is not None:
+            # A declared fold is CHECKED, never trusted (C412): if the panel's own selectors
+            # match a series for this device in the last hour, the rule is wrong for it and the
+            # panel draws. Not asked is said in the fold's basis.
+            try:
+                got = asker().query(panels.series_request(p, dash, fill, default_ds))
+                found = (panels.has_data(got.get("body") or {}, "S") if got.get("ok")
+                         else None)
+            except Exception as exc:                    # noqa: BLE001
+                log.info("device page: %s's fold for %s could not be checked (%s)",
+                         p.get("title"), host, type(exc).__name__)
+                found = None
+            if found:
+                log.warning("device page: %s folds %s for %s (%s), and its selectors match a "
+                            "series: the panel is drawn", rule.short, p.get("title"), host,
+                            model_name)
+                continue
+            checked = (f"; no series matched {' or '.join(panels.selectors_of(p, fill))} in "
+                       "the last hour" if found is False else
+                       "; whether a series matches could not be asked now")
             fold(p, rule.short, "platform",
-                 f"{host}'s model is {model_name} ({model_from}); {rule.basis}")
+                 f"{host}'s model is {model_name} ({model_from}); {rule.basis}{checked}")
     guarded = [p for p in drawn if p.get("id") not in {f["id"] for f in out}
                and panels.guard_of(p)]
     if guarded:
-        if client is None:
-            from modules.integrations.grafana import GrafanaIntegration
-            client = GrafanaIntegration()
-        default_ds = panels.default_datasource(datasources, "prometheus")
+        client = asker()
         for p in guarded:
             try:
                 got = client.query(panels.guard_request(p, dash, fill, default_ds))
@@ -583,6 +610,9 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
     errors = panels.answer_errors(got["body"])
     payload = panels.render_payload(panel, got["body"], seconds)
     payload["errors"] = errors
+    # What was asked, so an empty panel says what matched nothing, the panel's own sentence on
+    # hover (C412).
+    payload["asked"] = panels.selectors_of(panel, fill)
     if payload.get("implausible") and panels.reads_uptime(panel):
         # A reading outside its range from sysUpTime is a restart: say when.
         try:
