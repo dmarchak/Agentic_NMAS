@@ -275,7 +275,14 @@ def _unrecorded_failures(func_src: str) -> list:
         return (isinstance(node, ast.Return) and isinstance(node.value, ast.Dict)
                 and any(isinstance(k, ast.Constant) and k.value == "ok"
                         and isinstance(v, ast.Constant) and v.value is False
-                        for k, v in zip(node.value.keys, node.value.values)))
+                        for k, v in zip(node.value.keys, node.value.values))
+                and not drawn_by_the_reader(node))
+
+    def drawn_by_the_reader(node):
+        # The one exit that cannot record: remote.json is UNREADABLE, so there is no record to
+        # write to. The publication reader draws that state itself (`record: unreadable`,
+        # danger; modules/readers/remote_publication.py), so it is not the log's alone (R18).
+        return any(isinstance(n, ast.Name) and n.id == "unreadable" for n in ast.walk(node))
 
     def recorded(stmt):
         return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
@@ -301,9 +308,11 @@ def test_every_push_the_hook_does_not_make_is_recorded_where_the_reader_reads():
 
     from modules.nsot import archive
 
-    src = inspect.getsource(archive.push_hook)
-    assert src.count('"ok": False') >= 2, "the scan finds the hook's failing exits"
-    assert _unrecorded_failures(src) == []
+    # The hook and the body it runs under the publish lock (R18).
+    for fn in (archive.push_hook, archive._push_locked):
+        src = inspect.getsource(fn)
+        assert src.count('"ok": False') >= 1, f"the scan finds {fn.__name__}'s failing exits"
+        assert _unrecorded_failures(src) == [], fn.__name__
 
 
 def test_the_scan_finds_an_unrecorded_failure():

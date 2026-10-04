@@ -9,8 +9,8 @@ back a commit. Git is the system of record; S3 is the archive. A failure shows
 on the integration badge and in the log.
 """
 
+import io
 import logging
-import os
 
 log = logging.getLogger(__name__)
 
@@ -91,9 +91,27 @@ def push_hook(context: dict) -> dict:
     list_name = context.get("list_name", "")
     config = R.load_remote(list_name) if list_name else None
     if config is None:
+        # Absent and unreadable are different states (R18): an unreadable record answered
+        # "no remote configured" with ok, and publication stopped behind a success message.
+        unreadable = R.unreadable_why(list_name) if list_name else ""
+        if unreadable:
+            log.error("archive: auto-push for '%s' stopped: %s", list_name, unreadable)
+            return {"ok": False, "error": (
+                f"{unreadable}, so this list's remote is unknown and nothing was pushed; "
+                f"repair {R.remote_path(list_name)}")}
         return {"ok": True, "message": (
             f"no remote configured for '{list_name or '(unknown list)'}' — "
             f"nothing pushed")}
+    # ONE publisher per repository at a time, across processes (R18): each commit's hook
+    # thread pushed on its own, and two pushes could land out of order.
+    with R.publish_lock(context.get("repo", "")):
+        return _push_locked(context, list_name, config)
+
+
+def _push_locked(context: dict, list_name: str, config: dict) -> dict:
+    from modules.nsot import remote as R
+    from modules.nsot.repo import git
+
 
     decision = R.auto_push_decision(list_name, context.get("repo", ""))
     if not decision["push"]:
@@ -131,7 +149,17 @@ def push_hook(context: dict) -> dict:
     #
     # `--tags` would be worse again, and is never used here: it publishes
     # every local tag in the repository.
-    rc, _, err = git(repo, "push", "origin", f"HEAD:refs/heads/{branch}")
+    #
+    # HEAD is read ONCE, under the publish lock, and that sha is pushed and recorded (R18): a
+    # hook for an older commit pushes the newest, never an older one after it.
+    rc_head, out_head, _ = git(repo, "rev-parse", "HEAD")
+    head = (out_head or "").strip() if rc_head == 0 else ""
+    if not head:
+        reason = "HEAD could not be read, so nothing was pushed"
+        R.record_push_failure(list_name, actor="auto-push", reason=reason,
+                              tags=context.get("tags") or [])
+        return {"ok": False, "error": reason}
+    rc, _, err = git(repo, "push", "origin", f"{head}:refs/heads/{branch}")
     if rc != 0:
         if "non-fast-forward" in err or "rejected" in err:
             # Never force-push: surface the conflict and stop.
@@ -150,8 +178,10 @@ def push_hook(context: dict) -> dict:
     # one, never computed from reachability: a tag nobody named (a withdrawn
     # baseline deleted on the remote, an older tag) never rides along. A
     # pending tag deleted here since is dropped.
-    pending = [t for t in (config.get("pending_tags") or [])
+    named = list(config.get("pending_tags") or [])
+    pending = [t for t in named
                if git(repo, "rev-parse", "-q", "--verify", f"refs/tags/{t}")[0] == 0]
+    gone = sorted(set(named) - set(pending))
     tags = sorted({t for t in (context.get("tags") or []) if t} | set(pending))
     pushed_tags = []
     for tag in tags:
@@ -170,23 +200,29 @@ def push_hook(context: dict) -> dict:
     # is a different claim entirely.
     #
     # `kind` says which this was: with no new commit the branch push is a
-    # no-op and the baseline tag is the entire publication.
-    head = ""
-    rc_head, out_head, _ = git(repo, "rev-parse", "HEAD")
-    if rc_head == 0:
-        head = (out_head or "").strip()
+    # no-op and the baseline tag is the entire publication. `head` is what was pushed.
+    #
     # Tag-only iff the caller published tags for no devices -- which is
     # exactly `save_golden()`'s no-commit baseline path. A golden commit names
     # its changed devices; a template commit names no tags.
     tag_only = bool(context.get("tags")) and not context.get("devices")
     R.record_push(list_name, actor="auto-push", branch=branch, commit=head,
                   tags=pushed_tags, kind="tags" if tag_only else "commit",
-                  pending=[t for t in tags if t not in pushed_tags])
+                  pending=[t for t in tags if t not in pushed_tags], gone=gone)
 
     message = f"pushed to {branch}"
     if tags:
         message += f", {len(pushed_tags)}/{len(tags)} tag(s)"
     return {"ok": True, "message": message, "tags_pushed": pushed_tags}
+
+
+def committed_bytes(repo: str, sha: str, rel: str):
+    """The bytes of *rel* at commit *sha*, or None when that commit has no such file."""
+    import subprocess
+
+    out = subprocess.run(["git", "-C", repo, "show", f"{sha}:{rel}"], capture_output=True,
+                         timeout=60, check=False)
+    return out.stdout if out.returncode == 0 else None
 
 
 def s3_archive_hook(context: dict) -> dict:
@@ -226,15 +262,19 @@ def s3_archive_hook(context: dict) -> dict:
                   if t.startswith("baseline/")), sha[:12])
     uploaded, failed = [], []
 
+    if not sha:
+        return {"ok": False, "error": "the hook named no commit, so nothing was archived"}
     for hostname in context.get("devices", []):
         rel = f"golden/{_safe_name(hostname)}.cfg"
-        path = os.path.join(repo, rel)
-        if not os.path.exists(path):
+        # The blob AT THE HOOK'S COMMIT (R18): the working file may already hold a later
+        # save, and it was uploaded under this commit's sha.
+        data = committed_bytes(repo, sha, rel)
+        if data is None:
             continue
         key = "/".join(filter(None, [prefix, "golden", _safe_name(hostname),
                                      f"{stamp}.cfg"]))
         try:
-            client.fput_object(bucket, key, path, metadata={
+            client.put_object(bucket, key, io.BytesIO(data), len(data), metadata={
                 "x-amz-meta-commit": sha,
                 "x-amz-meta-source": context.get("source", ""),
                 "x-amz-meta-actor":  context.get("actor", ""),

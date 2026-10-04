@@ -77,6 +77,11 @@ def world(tmp_path, monkeypatch):
     saved = {}
     monkeypatch.setattr("modules.nsot.remote.save_remote",
                         lambda name, config: saved.update(config))
+    # The record's lock (R18) sits beside remote.json in the list's folder: a temporary one.
+    lists = tmp_path / "lists"
+    monkeypatch.setattr("modules.config.get_list_data_dir",
+                        lambda name: str(lists / name))
+    os.makedirs(lists / "lab", exist_ok=True)
     return {"local": local, "bare": bare, "archive": archive, "saved": saved}
 
 
@@ -219,7 +224,8 @@ class TestTheBroadFormsAreNotUsed:
 
         from modules.nsot import archive
 
-        return inspect.getsource(archive.push_hook)
+        # The hook and the body it runs under the publish lock (R18).
+        return inspect.getsource(archive.push_hook) + inspect.getsource(archive._push_locked)
 
     def _code(self):
         """The code, not the comment explaining why they are absent."""
@@ -441,5 +447,6 @@ class TestThereIsOneProducer:
 
         from modules.nsot import archive, remote
 
-        assert "record_push(" in inspect.getsource(remote.push)
-        assert "record_push(" in inspect.getsource(archive.push_hook)
+        # Each path's body under the publish lock (R18).
+        assert "record_push(" in inspect.getsource(remote._push_locked)
+        assert "record_push(" in inspect.getsource(archive._push_locked)

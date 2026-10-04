@@ -73,15 +73,65 @@ def load_remote(list_name: str):
 
 
 def save_remote(list_name: str, config: dict) -> dict:
-    """Write this list's remote config. Never touches ``~/.ssh/config``."""
+    """Write this list's remote config, replaced whole (a temp file per write, 0600; R18:
+    one shared ``.tmp`` let two writers truncate each other's). Never touches
+    ``~/.ssh/config``."""
+    from modules.filestore import write_atomic
+
     path = remote_path(list_name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(config, fh, indent=2, sort_keys=True)
-        fh.write("\n")
-    os.replace(tmp, path)
+    write_atomic(path, json.dumps(config, indent=2, sort_keys=True) + "\n")
     return {"ok": True, "path": path}
+
+
+def unreadable_why(list_name: str) -> str:
+    """Why this list's remote.json, which EXISTS, could not be read, or "" (R18: an
+    unreadable file read as "no remote", and the push hook answered "nothing pushed" with ok).
+    Absent and unreadable are different states."""
+    path = remote_path(list_name)
+    if not os.path.exists(path):
+        return ""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            json.load(fh)
+        return ""
+    except Exception as exc:                   # noqa: BLE001
+        return f"{os.path.basename(path)} could not be read ({type(exc).__name__})"
+
+
+def update_remote(list_name: str, change) -> tuple:
+    """THE read-modify-write of this list's remote.json (CONCURRENCY_AUDIT R18): under its lock
+    across processes, the record as stored NOW (absent: no remote; unreadable: refused, the
+    file kept and a `.corrupt-` copy beside it) passed to *change*, then replaced whole.
+
+    *change(config)* edits the record in place, or returns a string to refuse without saving.
+    Returns ``(config, "")`` or ``(None, why)``. Before this, each commit's hook thread read,
+    edited and saved its own copy: a failure recording `pending_tags` beside a success popping
+    them lost a tag the C223 rule says is kept."""
+    from modules.filestore import PathLock, StoreUnreadable, read_json_for_write
+
+    with PathLock(lambda: remote_path(list_name)):
+        path = remote_path(list_name)
+        try:
+            config = read_json_for_write(path) if os.path.exists(path) else \
+                load_remote(list_name)
+        except StoreUnreadable as exc:
+            return None, str(exc)
+        if not config:
+            return None, f"'{list_name}' has no remote configured"
+        refused = change(config)
+        if isinstance(refused, str):
+            return None, refused
+        save_remote(list_name, config)
+    return config, ""
+
+
+def publish_lock(repo_dir: str):
+    """One publisher per repository at a time, across processes (R18): each commit's hook
+    thread pushed on its own, so two pushes could land out of order and the second be recorded
+    as a divergence. The lock file is BESIDE the repository, never inside it (C345)."""
+    from modules.filestore import PathLock
+
+    return PathLock(os.path.abspath(repo_dir).rstrip(os.sep) + ".publish")
 
 
 def adopt(list_name: str, *, ssh_alias: str, owner: str, repo: str,
@@ -94,6 +144,21 @@ def adopt(list_name: str, *, ssh_alias: str, owner: str, repo: str,
     """
     from datetime import datetime, timezone
 
+    from modules.filestore import PathLock
+
+    with PathLock(lambda: remote_path(list_name)):
+        return _adopt_locked(list_name, ssh_alias=ssh_alias, owner=owner, repo=repo,
+                             branch=branch, key_path=key_path, actor=actor,
+                             now=datetime.now(timezone.utc))
+
+
+def _adopt_locked(list_name, *, ssh_alias, owner, repo, branch, key_path, actor, now) -> dict:
+    """`adopt` under the record's lock (R18): checked and created in one hold, so two
+    adoptions cannot both find no remote; an unreadable record is refused, never replaced."""
+    unreadable = unreadable_why(list_name)
+    if unreadable:
+        return {"ok": False, "error": f"{unreadable}: refused, so it is not replaced. "
+                                      f"Repair or remove {remote_path(list_name)}."}
     existing = load_remote(list_name)
     if existing:
         return {"ok": False, "error": (
@@ -110,7 +175,7 @@ def adopt(list_name: str, *, ssh_alias: str, owner: str, repo: str,
         "key_path": key_path,
         "auto_push": False,
         "managed_by_nmas": False,
-        "adopted_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "adopted_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "adopted_by": actor,
         "verified_at": "",
         "acknowledged_secrets": None,
@@ -480,10 +545,13 @@ def verify(list_name: str, repo_dir: str = "",
     ok = all(c["ok"] for c in checks)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     if ok:
-        config["read_verified_at"] = stamp
-        if with_write_probe:
-            config["verified_at"] = stamp
-        save_remote(list_name, config)
+        def change(stored):
+            stored["read_verified_at"] = stamp
+            if with_write_probe:
+                stored["verified_at"] = stamp
+        # Onto the record as stored NOW (R18): the checks take seconds, and a push recorded
+        # meanwhile is kept.
+        config = update_remote(list_name, change)[0] or config
     return {"ok": ok, "checks": checks, "remote": remote_url(config),
             "write_probe_run": bool(with_write_probe),
             "ready_to_push": bool(ok and with_write_probe),
@@ -575,8 +643,12 @@ def ack_salt(list_name: str) -> str:
     if not config:
         return ""
     if not config.get("ack_salt"):
-        config["ack_salt"] = _secrets.token_hex(16)
-        save_remote(list_name, config)
+        # Created under the record's lock (R18): two first readers each minting one would
+        # leave the fingerprints of whichever lost unmatchable.
+        config, _why = update_remote(
+            list_name, lambda c: c.setdefault("ack_salt", _secrets.token_hex(16)) and None)
+        if config is None:
+            return ""
     return config["ack_salt"]
 
 
@@ -802,11 +874,10 @@ def acknowledge(list_name: str, *, actor: str, actor_kind: str,
     head = _run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
                 timeout=60).stdout.strip()
 
-    # Re-read AFTER the scan: the scan may have created the list's salt, and
-    # saving the copy read before it would drop the salt, changing every
+    # Written to the record as stored NOW, under its lock (R18): the scan may have created the
+    # list's salt, and saving the copy read before it would drop the salt, changing every
     # fingerprint and making the next push hold on secrets already accepted.
-    config = load_remote(list_name) or config
-    config["acknowledged_secrets"] = {
+    acknowledged = {
         "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "by": actor, "by_kind": actor_kind,
         "kinds": gated["kinds"], "counts": gated["counts"],
@@ -815,7 +886,10 @@ def acknowledge(list_name: str, *, actor: str, actor_kind: str,
         "values": gated["values"],
         "commit": head,
     }
-    save_remote(list_name, config)
+    config, why = update_remote(
+        list_name, lambda c: c.__setitem__("acknowledged_secrets", acknowledged))
+    if config is None:
+        return {"ok": False, "error": why}
     log.info("remote: '%s' publication acknowledged by %s (%s) — kinds=%s "
              "counts=%s at %s", list_name, actor, actor_kind, gated["kinds"],
              gated["counts"], head[:12])
@@ -891,7 +965,8 @@ def acknowledgement_covers(list_name: str, repo_dir: str = "") -> dict:
 
 
 def record_push(list_name: str, *, actor: str, branch: str = "",
-                commit: str = "", tags=None, kind: str = "commit", pending=None) -> dict:
+                commit: str = "", tags=None, kind: str = "commit", pending=None,
+                gone=None) -> dict:
     """Record a SUCCESSFUL push. The one producer of ``last_push``.
 
     Two code paths push: :func:`push` (the button) and
@@ -904,31 +979,38 @@ def record_push(list_name: str, *, actor: str, branch: str = "",
     ``kind`` distinguishes them, because "pushed" is not one event: a
     ``tags`` push publishes a baseline with no new commit, and a card that
     cannot tell the two apart cannot show what actually went out.
+
+    *pending*: tags named and not sent, kept; *gone*: pending tags deleted locally since,
+    dropped. Every other pending tag stays (another hook may have added it meanwhile).
     """
     from datetime import datetime, timezone
 
-    config = load_remote(list_name)
-    if not config:
-        return {"ok": False, "error": f"'{list_name}' has no remote configured"}
+    def change(config):
+        config["last_push"] = {
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "by": actor,
+            "kind": kind,
+            "branch": branch,
+            "commit": commit,
+            "tags": list(tags or []),
+        }
+        # A previous failure is cleared by a success: leaving it would have the
+        # card reporting a problem that has since been fixed. So is a hold.
+        config.pop("last_push_failure", None)
+        config.pop("auto_push_held", None)
+        # Tags this push sent leave the pending list; tags a hook call named and this push
+        # could not send stay. Read from the record as stored NOW (R18), so a tag another
+        # hook added meanwhile is kept, never dropped with this push's stale copy.
+        sent, dropped = set(tags or []), set(gone or [])
+        keep = (set(config.get("pending_tags") or []) - sent - dropped) | set(pending or [])
+        if keep:
+            config["pending_tags"] = sorted(keep)
+        else:
+            config.pop("pending_tags", None)
 
-    config["last_push"] = {
-        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "by": actor,
-        "kind": kind,
-        "branch": branch,
-        "commit": commit,
-        "tags": list(tags or []),
-    }
-    # A previous failure is cleared by a success: leaving it would have the
-    # card reporting a problem that has since been fixed. So is a hold.
-    config.pop("last_push_failure", None)
-    config.pop("auto_push_held", None)
-    # Tags a hook call named and this push could not send stay pending.
-    if pending:
-        config["pending_tags"] = sorted(set(pending))
-    else:
-        config.pop("pending_tags", None)
-    save_remote(list_name, config)
+    config, why = update_remote(list_name, change)
+    if config is None:
+        return {"ok": False, "error": why}
     return {"ok": True, "last_push": config["last_push"]}
 
 
@@ -949,17 +1031,17 @@ def record_push_failure(list_name: str, *, actor: str, reason: str, tags=None) -
     """
     from datetime import datetime, timezone
 
-    config = load_remote(list_name)
-    if not config:
-        return {"ok": False, "error": f"'{list_name}' has no remote configured"}
+    def change(config):
+        config["last_push_failure"] = {
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "by": actor,
+            "reason": (reason or "")[:400],
+        }
+        _keep_pending(config, tags)
 
-    config["last_push_failure"] = {
-        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "by": actor,
-        "reason": (reason or "")[:400],
-    }
-    _keep_pending(config, tags)
-    save_remote(list_name, config)
+    config, why = update_remote(list_name, change)
+    if config is None:
+        return {"ok": False, "error": why}
     return {"ok": True, "last_push_failure": config["last_push_failure"]}
 
 
@@ -974,19 +1056,20 @@ def record_push_held(list_name: str, *, reason: str, needs: str = "",
     them."""
     from datetime import datetime, timezone
 
-    config = load_remote(list_name)
-    if not config:
-        return {"ok": False, "error": f"'{list_name}' has no remote configured"}
-    was = config.get("auto_push_held") or {}
-    config["auto_push_held"] = {
-        # SINCE the first hold, not the latest: the row's age is how long a
-        # person has been needed.
-        "since": was.get("since") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "reason": (reason or "")[:400], "needs": needs or "",
-    }
-    _keep_pending(config, tags)
-    save_remote(list_name, config)
+    def change(config):
+        was = config.get("auto_push_held") or {}
+        config["auto_push_held"] = {
+            # SINCE the first hold, not the latest: the row's age is how long a
+            # person has been needed.
+            "since": was.get("since") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "reason": (reason or "")[:400], "needs": needs or "",
+        }
+        _keep_pending(config, tags)
+
+    config, why = update_remote(list_name, change)
+    if config is None:
+        return {"ok": False, "error": why}
     return {"ok": True, "auto_push_held": config["auto_push_held"]}
 
 
@@ -1020,13 +1103,26 @@ def push(list_name: str, *, actor: str, repo_dir: str = "") -> dict:
                                         "config_repo")
     url, branch = remote_url(config), config.get("branch", "main")
     started = time.time()
+    # One publisher per repository at a time (R18), with the auto-push hook.
+    with publish_lock(repo_dir):
+        return _push_locked(list_name, actor, repo_dir, url, branch, started)
+
+
+def _push_locked(list_name: str, actor: str, repo_dir: str, url: str, branch: str,
+                 started: float) -> dict:
+    import time
 
     before = {l.split()[1] for l in _run(["git", "ls-remote", url],
                                          timeout=90).stdout.splitlines()
               if len(l.split()) > 1}
 
+    # HEAD read ONCE under the lock; that sha is pushed and recorded (R18).
+    head = _run(["git", "-C", repo_dir, "rev-parse", "HEAD"], timeout=60).stdout.strip()
+    if not head:
+        return {"ok": False, "error": "HEAD could not be read, so nothing was pushed",
+                "stage": "push_main"}
     main_push = _run(["git", "-C", repo_dir, "push", "--follow-tags", url,
-                      f"HEAD:refs/heads/{branch}"], timeout=600)
+                      f"{head}:refs/heads/{branch}"], timeout=600)
     if main_push.returncode != 0:
         return {"ok": False, "error": (main_push.stderr or "")[:400],
                 "stage": "push_main"}
@@ -1045,9 +1141,7 @@ def push(list_name: str, *, actor: str, repo_dir: str = "") -> dict:
              if len(l.split()) > 1}
     gained = after - before
 
-    record_push(list_name, actor=actor, branch=branch, kind="commit",
-                commit=_run(["git", "-C", repo_dir, "rev-parse", "HEAD"],
-                            timeout=60).stdout.strip(),
+    record_push(list_name, actor=actor, branch=branch, kind="commit", commit=head,
                 tags=[r.split("refs/tags/", 1)[1] for r in gained
                       if r.startswith("refs/tags/") and not r.endswith("^{}")])
 
@@ -1068,14 +1162,14 @@ def push(list_name: str, *, actor: str, repo_dir: str = "") -> dict:
 
 def enable_auto_push(list_name: str, *, actor: str) -> dict:
     """Offered only after a successful push, never before."""
-    config = load_remote(list_name)
-    if not config:
-        return {"ok": False, "error": "no remote configured"}
-    if not config.get("last_push"):
-        return {"ok": False, "error": "auto-push is offered only after a "
-                                      "successful push"}
-    config["auto_push"] = True
-    save_remote(list_name, config)
+    def change(config):
+        if not config.get("last_push"):
+            return "auto-push is offered only after a successful push"
+        config["auto_push"] = True
+
+    config, why = update_remote(list_name, change)
+    if config is None:
+        return {"ok": False, "error": why}
     log.info("remote: '%s' auto-push enabled by %s", list_name, actor)
     return {"ok": True}
 

@@ -121,7 +121,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R15 | m | intent, confirms | Hash-confirmed intent writers (bulk, profile propose, IP SLA) | `host_vars`, `profiles/monitoring.yml` | hash checked, then write, then commit, nothing spanning; no device holds | no | FIXED 2026-10-04 (was UNSAFE; tests/test_hash_writers_hold_the_lock.py) | yes | Repo lock across recompute, write and commit; hold devices |
 | R16 | m | confirms | Deploy and restore confirm gaps | devices, commit | command hash optional; compared before the hold; list derived | partly | THE HASH GAP FIXED 2026-10-04 (tests/test_confirm_carries_its_hash.py); the compare before the hold is bounded by the pipeline's fresh capture, recorded; the derived list is R3's | yes | Require the hash; hold first; list in the hash |
 | R17 | m | intent | Settings forms | `user_settings.json`, `.env` | file safe; forms resend every field; `.env` unlocked | yes (file) | FIXED 2026-10-04 (was UNSAFE; tests/test_stale_settings_form.py) | yes | Send changed fields only, with the value as loaded |
-| R18 | m | git, stores, locks | `remote.json` and the post-commit push | the remote, `remote.json` | thread per commit; unlocked read-modify-write; unreadable reads as "no remote" | no | UNSAFE | yes | One publisher per repository; PathLock; push an explicit sha |
+| R18 | m | git, stores, locks | `remote.json` and the post-commit push | the remote, `remote.json` | thread per commit; unlocked read-modify-write; unreadable reads as "no remote" | no | FIXED 2026-10-04 (was UNSAFE; tests/test_remote_store.py) | yes | One publisher per repository; PathLock; push an explicit sha |
 | R19 | m | stores, live, approvals | Drift state and overlapping drift runs | `drift_state.json`, queue items | one RLock in one function; truncate; legacy re-adoption; Check now overlaps | no | FIXED 2026-10-02 (was UNSAFE; tests/test_drift_state_concurrency.py) | yes | PathLock; refuse unreadable; one drift run at a time across processes |
 | R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | FIXED 2026-10-02 as C326 (was UNSAFE; tests/test_approved_revert_closes.py) | yes | Never reject the item named by `approval_id` |
 | R21 | m | locks, confirms, live | Every NetBox writer: the tab's import and Remove, onboarding phase two, adopt, retire's mask, the mask script (widened on review) | NetBox, sync status | nothing refuses a second writer; status truncate; tokens in memory | partly | UNSAFE | yes | Per-list NetBox lock with holder, taken by every writer; shared token store |
@@ -556,6 +556,27 @@ then answers "no remote configured, nothing pushed" with `ok` (modules/nsot/arch
 publication stops with a success message. Two pushes of HEAD can arrive out of order and
 be recorded as a divergence (archive.py:134-140). The S3 hook uploads the working file under
 the hook's sha (archive.py:226-236).
+
+*FIXED 2026-10-04 (tests/test_remote_store.py):*
+- **The record.** Every writer of `remote.json` goes through `remote.update_remote`: under its
+  lock across processes, the record as stored now passed to the change, then replaced whole
+  (0600). The writers are the three push records, `enable_auto_push`, `ack_salt`,
+  `acknowledge`, `verify` and `adopt` (checked and created in one hold).
+- **An unreadable record.** It refuses every writer and is kept, a `.corrupt-` copy beside it.
+  The push hook says it is unreadable, never "no remote configured" with ok; the publication
+  reader already draws that state.
+- **One publisher per repository.** A lock beside the repository is shared by the hook and the
+  Push button. Each reads HEAD once under it and pushes and records that sha.
+- **Pending tags.** `record_push` merges onto the stored list: tags another hook added
+  meanwhile are kept, and those deleted locally are dropped by name (`gone`).
+- **The S3 hook** uploads the blob at the hook's commit.
+- **Measured.** Two processes recording 40 failures and 40 holds each lost no pending tag; the
+  hook waited for another process's 2 s hold.
+- **Controls**, each failing its aimed test: the record written without its lock (tags lost),
+  an unreadable record read as none, the hook saying "no remote" for one, no publish lock, the
+  working file uploaded.
+- **Not this row.** The Remote card's route still reads an unreadable record as "no remote":
+  that is C172, already registered.
 
 *FIXED 2026-10-02 (tests/test_drift_state_concurrency.py):* every read-modify-write of a
 list's state holds a cross-process `PathLock` and replaces the file atomically; only an
