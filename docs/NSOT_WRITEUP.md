@@ -96,8 +96,8 @@ close are marked *written at close*.
 |---|---|---|
 | Before the P-items | Phases 0, 1, 2, 3a, 3b, 3c; Stage 2; 3.3; 4C; r6 phase 1; the branch site; Phase 2 (DHCP) | Backfilled below (Part 0) |
 | P-items | P.1 to P.6 | Backfilled below |
-| | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built |
-| | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28); the audit's other rows and the multi-worker half (9.S) not built |
+| | P.7 (alert rules generated and tested), P.8 (per-list settings) | Decided, not built; P.8's design document written 2026-10-04 (NSOT_P8_DESIGN.md) |
+| | P.15 (several people at once) | Open. The decided fixes written below (R1, R2, R4, R5, R13, R19, R20, R24, R25, R28), then a second batch across processes (R6, R3's store half, R11, R12, R14, R15, R16); the audit's medium rows, three decisions and the multi-worker half (9.S) not built |
 | Stage 7 | 7.0, 7.1, 7.2 | Backfilled below |
 | | 7.3 | Open. Sub-tasks written below (seed intent, retire, Mode B, C188, persist, rotate, revert and retry, the break-glass export, capture on the v2 device page); persist and rotate accepted on the host; retire, revert/retry and the break-glass export await their real runs; the v2 capture's preview half ran on the host (2026-10-03), its record half awaits a real change; persist and rotate on v2 await their real runs |
 | | 7.4 to 7.10 | Not started |
@@ -2093,6 +2093,91 @@ than one worker (9.S).
 
 *Not recoverable:* when each fix's build began; the commit times bound only its end.
 
+### P.15 — Several people at once (open): the second batch, across processes
+
+*Written 2026-10-04, when the batch's last commit (ede1557) passed CI (#388). P.15 stays
+open.*
+
+**1. What it was**
+
+The away queue's item 3 (the operator, 2026-10-04): the audit's remaining rows that need no
+screen, highest risk first, each with its control. They were R6 (the manifest), R3 (the list
+registry), R11 (the SSH session budget), R12 (an approval covers what was validated), R14
+(templates and bindings written whole), R15 (hash-checked writers under the repository lock)
+and R16 (a confirm carries its hash) [CONCURRENCY_AUDIT.md section 1].
+
+**2. How it was implemented**
+
+- **R6, R3** [git c420bcd]: the manifest is written under the repository's cross-process lock
+  (`manifest.lock`, `load_for_write`), atomically, its temporary file beside the repository.
+  The list registry's four writers hold one `PathLock` and replace the file atomically. R3's
+  per-session half is a decision (below).
+- **R11** [git aceb188]: the per-device SSH session budget is held in `flock`ed slot files, so
+  it holds across processes. A refusal names each holder and its pid.
+- **R12, R14** [git d50085b]: an approval fingerprints the template before validation and
+  refuses, naming both fingerprints, if it moved before the record is written. Templates and
+  bindings are written atomically, and unreadable bindings refuse (409) instead of reading as
+  empty.
+- **R15, R16** [git ede1557]: bulk intent, the profile proposal and IP SLA policy each run
+  compare-then-write under the repository lock. `apply_batch` and the restore's `run_targets`
+  refuse a confirm with no command hash, rather than skipping the comparison.
+
+Each fix has a test that runs the collision for real where it can: a second process holding
+the lock or the slot, or a template moved between validation and record. Every check was shown
+able to fail.
+
+**3. Issues it found** (register IDs)
+
+- C431: `test_scale`'s 50 ms bound refused one gate under the three-shard load.
+- Not registered, recorded in the audit: R16's compare happens before the device hold. Measured
+  narrower than the audit stated, because the pipeline's fresh capture catches a device that
+  moved.
+
+**4. How each was resolved**
+
+- C431 is open (bucket C), with its measurement named.
+- R16's ordering is recorded and not restructured.
+- **Three halves are the operator's decisions, written with a recommendation each** in
+  CONCURRENCY_AUDIT.md:
+  - R3's per-session active list: option A, per session, is recommended. It is decided with P.8
+    (NSOT_P8_DESIGN, section 5).
+  - R12's client half.
+  - R14's client half.
+
+**5. Numbers**
+
+- **Commits:** 4, from c420bcd (2026-10-03 21:19 UTC-6) to ede1557 (2026-10-04 01:10 UTC-6),
+  interleaved with C406, the canvas boards and the topology brief.
+- **Diff:** 33 files, +1,187 −204 [git show --stat].
+- **Findings recorded:** 1 (C431).
+- **Estimate against actual.** The first batch's forecast, made from that finished batch, was
+  "ten rows in about one working day". This batch was seven rows (R3 half done) in four commits,
+  inside one evening's session, shared with other work. The forecast held, with time to spare.
+  This was the same kind of work (a cross-process guard on one store, each with its collision
+  test), so the forecast stands for the audit's remaining medium rows: R17, R18, R21 to R23,
+  R26, R27 and R38 to R41.
+
+**6. Where it left the product**
+
+Across worker processes, the manifest, the list registry, the SSH session budget, template
+approvals and the hash-checked writers no longer lose or interleave writes, and no apply runs
+without the hash its preview showed. Not built: R3's per-session half, the two client halves,
+the remaining medium rows, and 9.S's multi-worker install itself.
+
+*Not recoverable:* when each fix's build began; the commit times bound only its end.
+
+### Side campaign note — the history store (C406), built; its host steps the operator's
+
+*Written 2026-10-04 at the build (87a2343, CI #384). Not closed: the history datasource is set
+by the operator's host step 14.14, and its first real long range follows that.* Measured first:
+Thanos Query answered the same queries as Prometheus (one difference of 2.13e-16, summation
+order). Built: a panel range longer than `metrics_live_retention_days` reads the datasource
+`grafana_history_datasource_uid` names, with a wide step, and says "from the history store";
+unset, such a range is refused naming the setting, never trimmed. Host steps written in full:
+14.12 (Loki to 90 days), 14.13 (Thanos query auto-downsampling), 14.14 (the history datasource,
+its uid read from the app's store, shown and confirmed). Numbers: one commit, 14 files, +389 −22,
+one new test file (`tests/test_history_store.py`). No forecast was made; none is checked.
+
 ### P.7 and P.8
 
 Decided on 2026-09-28, not built: P.7 (alert rules generated and tested, its own item before 8.6) and P.8 (per-list settings: two lists are two networks) [NSOT_PLAN.md P.7, P.8]. Entries are written when they close.
@@ -2660,7 +2745,7 @@ The landing page drew every section 1a source from stored or cached values, each
 
 #### 7.3 — Retire from the Device page
 
-*Open: built 2026-09-28 and 2026-09-29, AWAITING a real retirement on the host. This entry is not closed, so its numbers are partial.*
+*Built 2026-09-28 and 2026-09-29. Its real retirement came on 2026-10-04 (r5), through the v2 device page that replaced this screen; the run is recorded in that entry ("Restore, revert and retry, seed and retire on the v2 device page"). Its numbers stay partial.*
 
 1. **What it was.** Retiring a device (C11) existed only as `nmas-retire` on the host. The Device page needed the same operation, previewed and confirmed, with one implementation behind both entry points.
 2. **How it was implemented.** `modules/nsot/retire.py` holds the whole exit. `routes/retire.py` serves `/retire/preview` (gated `not_device`) and `/retire/apply` (gated `approve`), and `static/js/nmas_retire.js` is the client. The browser cannot reach the break-glass record, which lives on a laptop. So the screen trusts the EXPORT LOG (`breakglass_logged`) and states that basis and its limit. The log records what was written and cannot show the file still exists, and the CLI's stronger check is to OPEN the record. Each refusal is keyed (`refused_by`), and every key the plan can produce is a gate by name. The apply refuses a rotation made after the preview, and a reason changed after it [`tests/test_retire_screen.py` row; the operator's decision, 2026-09-28].
@@ -2932,6 +3017,15 @@ The landing page drew every section 1a source from stored or cached values, each
    - C395 decided from the session's own configuration.
 5. **Numbers.** Four commits (4c336be, d354cc2, cd0ffc7, 35b838c), the first three green in CI (#364 to #366) and the fourth running when this was written. Tests: 13 for restore, 19 for revert and retry, 10 for seed, 16 for C397, 12 for retire, each action with a real-browser path from the menu to the result. Controls: about 30, each failing its aimed tests. Findings: C395 recurred and fixed, C396 half fixed (the legacy route waits for cutover, by decision), C397 and C185 fixed, C398 recorded. **Estimate versus actual:** deploy's entry set the basis, about capture's time per action; the four took about that each, restore more (its job and history fixture) and seed less, plus C397's fix.
 6. **Where it left the product.** Every device action runs on the v2 device page, each with its preview, its confirm carrying its list, and its result in place; a device that leaves has an address that says so. The combined deploy's arrival watch is next. It is a different kind of work (a watch after a batch), so this entry forecasts nothing for it.
+
+**Retire's real run (added 2026-10-04).**
+- The operator retired r5 from its v2 page, the first real run of the REMOVE mode and of the
+  Oxidized helper's first write since C415.
+- Finish read "<r5's address>'s row was removed … read back". Measured read-only afterwards, the
+  helper kept three backups of `router.db`.
+- Finish could not say that it had pruned the older ones. That was C430, fixed the same night
+  (0ccbcc3): Finish now names how many it removed, or that removing them failed.
+- Restore, revert and retry and seed still await their real runs.
 
 ### 7.D — The GUI redesign (open)
 

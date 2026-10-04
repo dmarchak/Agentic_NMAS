@@ -3778,6 +3778,11 @@ only. The rate is `deriv(sysUpTime[1h]) / 100`, which needs an hour of history b
 
 ### P.8 — Per-list settings: two lists are two networks (SCOPED and DECIDED 2026-09-28, not built; after 7.2, before P.7's generators and 7.3)
 
+**The design (2026-10-04, for the operator's decision):** [NSOT_P8_DESIGN](NSOT_P8_DESIGN.md)
+re-measures the keys (143 now), adds the migration (none: the global file is Default's layer),
+every reader it touches, how the OBSERVE screens and Grafana roles depend on it, a nine-step
+build and five decisions with a recommendation each. The counts below are 2026-09-28's.
+
 **DECIDED 2026-09-28 (the operator), closing every ambiguity below: 71 keys per
 network, 47 global, 11 read by nothing, none ambiguous; and one per-list key
 to add, the NetBox scope.**
