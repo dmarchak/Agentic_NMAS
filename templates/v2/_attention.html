@@ -36,7 +36,8 @@
       {%- for x in r.attached or [] %}<p class="att-also">Also: {{ x.what }} ({{ x.source }})</p>{% endfor %}
       <p class="att-meta">
         {%- if r.devices %}{{ r.devices|join(', ') }} · {% endif -%}
-        since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %} · {{ r.source }}
+        since {% if r.since %}{{ stamp(r.since) }}{% else %}not recorded{% endif %}
+        {%- if r.read_at %} · read at {{ stamp(r.read_at, r.read_at[11:16] ~ ' UTC') }}{% endif %} · {{ r.source }}
       </p>
       {%- if r.clears %}<p class="att-clears">Clears when {{ r.clears.when }}{% if r.clears_at %} (by <time datetime="{{ r.clears_at }}">{{ r.clears_at[:16]|replace("T", " ") }} UTC</time>){% endif %}.</p>{% endif %}
       <div class="att-action">

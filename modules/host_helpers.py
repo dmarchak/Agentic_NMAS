@@ -196,6 +196,23 @@ def _every_list() -> list:
     return out
 
 
+#: Job health's rows about a root-installed file, by unit: each is the same file the host-step
+#: check reads live, so a stored reading of one that says not-ok is asked again when Needs
+#: attention is read (`attention._install_rows_asked_again`, C439). Every registry unit
+#: (tests/test_install_rows_rechecked.py holds the two together).
+INSTALL_UNITS = ("updater", "helper:oxidized-cred", "helper:topology-renderer")
+
+
+def ask_now(unit: str) -> list:
+    """One install unit's job-health rows, read now."""
+    if unit == "updater":
+        from modules import job_health
+        return job_health.updater_rows()
+    check = {"helper:oxidized-cred": oxidized_row, "helper:topology-renderer": topology_row}
+    row = check[unit]()
+    return [row] if row else []
+
+
 def helper_rows() -> list:
     """Job health's rows for the root-installed helpers the updater's rows do not cover; a
     check that raises is said as such, never a missing row."""

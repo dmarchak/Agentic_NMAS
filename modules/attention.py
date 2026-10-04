@@ -148,7 +148,8 @@ CLEAR_WAYS = ("resolves", "acknowledge", "time")
 CLEARS = {
     ("*", "unreadable"): (("resolves",), "the source is read again successfully"),
     ("job_health", "job"): (("resolves",), "the job's next run or check reads ok (job health "
-                            "re-reads every minute, and as soon as a job finishes)"),
+                            "re-reads every 5 minutes; a root-installed helper's row is asked "
+                            "again at the next read of this page)"),
     ("drift", "disabled"): (("resolves",), "drift checking is switched back on"),
     ("drift", "never"): (("resolves",), "a drift check runs for this list"),
     ("drift", "failed"): (("resolves",), "a later drift check completes"),
@@ -249,7 +250,7 @@ def _iso(ts) -> str:
 
 def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict,
         level: str, devices=(), since=None, operands: dict = None,
-        attach_to: str = None, event: str = None, clears_at=None) -> dict:
+        attach_to: str = None, event: str = None, clears_at=None, read_at=None) -> dict:
     """The only constructor for a Needs attention row.
 
     *kind* names the row's declared kind (ROW_KINDS): what is wrong and the
@@ -296,6 +297,9 @@ def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict
             "clears_at": _iso(clears_at) if clears_at else None,
             "event": str(event) if event else None, "acknowledge": acknowledgeable,
             "devices": [d for d in devices if d], "since": _iso(since),
+            # When the reading behind the row was taken, for a row drawn from a stored value
+            # (C439: a job-health row stayed wrong for minutes, and nothing showed its age).
+            "read_at": _iso(read_at) if read_at else None,
             "cause": cause, "operands": dict(operands or {}),
             "action": {"known": True, **action}, "level": level,
             "attach_to": attach_to, "attached": [],
@@ -457,6 +461,35 @@ JOB_HEALTH_READER = "job-health"
 EXPECTED_JOB_STATES = ("unread",)
 
 
+def _install_rows_asked_again(jobs: list) -> list:
+    """*jobs* with every stored row about a root-installed file that reads not-ok replaced by
+    its check asked now (C439, the operator, 2026-10-04: minutes after a correct install of
+    the Oxidized helper, the stored reading still said it differed, while the host-step check
+    of the same file, asked live, said done). Only a not-ok row is asked again: the Oxidized
+    helper's check runs `sudo -n -l`, so asking an ok one on every page view would be a sudo
+    query per view, and the rotation's preflight asks the helper itself, live, so a stale ok
+    never lets a wrong install through. A check that raises keeps the stored row."""
+    from modules import host_helpers
+    from modules import job_health as J
+
+    again = {j.get("unit") for j in jobs
+             if j.get("unit") in host_helpers.INSTALL_UNITS and j.get("state") not in J.OK_STATES}
+    if not again:
+        return jobs
+    out = [j for j in jobs if j.get("unit") not in again]
+    for unit in sorted(again):
+        try:
+            fresh = host_helpers.ask_now(unit)
+        except Exception as exc:                            # noqa: BLE001
+            log.warning("attention: %s could not be asked again: %s", unit, exc)
+            fresh = [j for j in jobs if j.get("unit") == unit]
+        else:
+            at = time.time()
+            fresh = [dict(j, _read_at=at) for j in fresh]
+        out += fresh
+    return out
+
+
 def job_health_source(health=None, now=None, cached=None, readers_now=None) -> dict:
     """Every job-health row that is not ok, as a Needs attention row.
 
@@ -503,6 +536,7 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             return source_result("job_health", "Job health", read_at=started, took_ms=took,
                                  error=f"the stored value has no job rows ({type(exc).__name__})")
         value_at = reader_job._parse_iso(good.get("value_at"))
+        jobs = _install_rows_asked_again(jobs)
         promise = doc.get("stale_after_seconds")
         where = f"stored by the reader, read in {good.get('took_ms', '?')} ms"
         try:
@@ -535,7 +569,8 @@ def job_health_source(health=None, now=None, cached=None, readers_now=None) -> d
             since=job.get("since"),
             cause=job.get("detail") or f"state {state}, with no detail recorded",
             operands={"job": job.get("what", ""), "state": state},
-            action=_job_action(job), level=level))
+            action=_job_action(job), level=level,
+            read_at=job.get("_read_at") or value_at or started))
     n_ok = len(jobs) - len(rows) - len(expected)
     return source_result("job_health", "Job health", read_at=started, took_ms=took,
                          rows=rows, value_at=value_at, stale_after_seconds=promise,
