@@ -132,6 +132,11 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   handler or function count may fall and never rise.** [tests/test_no_new_v1_capability.py]
 - **An element carrying `hx-select` disinherits it; a v2 action that cannot draw its answer says
   "Couldn't load: <why>" in place.** [tests/test_v2_swaps_never_silent.py]
+- **Built for large fleets: a screen listing devices or results leads with a summary (counts by
+  outcome), groups and collapses, offers filter and search, and never draws one long expanded
+  list; per-device detail opens on expand.** [no long expanded list at test_scale's 900
+  devices, the gaps named and only shrinking: tests/test_large_fleets.py; the summary, grouping
+  and search: not mechanised]
 - **The manual covers every screen and operation:** a page per sidebar item and device tab, a How
   it works page per operation naming each step its code declares, a diagram on each in the flow
   of the text, "How does this work?" beside every action, all clicked in a real browser. A v2
