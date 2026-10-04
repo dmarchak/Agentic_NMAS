@@ -850,13 +850,18 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
             return fail("override", exc)
 
     if "declare" in pending:
-        current = dict(get_setting("clab_declared_unmapped") or {})
-        per_list = dict(current.get(list_name) or {})
-        per_list[hostname] = {"lab": p["lab"], "reason": reason, "by": actor,
-                              "at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                                  time.gmtime())}
-        current[list_name] = per_list
-        result = write_settings({"clab_declared_unmapped": current}, actor=actor)
+        from modules.config import settings_lock
+
+        # Read and written under ONE hold of the settings lock (R17): read outside it, a
+        # declaration made meanwhile for another list or device was put back without it.
+        with settings_lock():
+            current = dict(get_setting("clab_declared_unmapped") or {})
+            per_list = dict(current.get(list_name) or {})
+            per_list[hostname] = {"lab": p["lab"], "reason": reason, "by": actor,
+                                  "at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                      time.gmtime())}
+            current[list_name] = per_list
+            result = write_settings({"clab_declared_unmapped": current}, actor=actor)
         if not result.get("ok"):
             return fail("declare", result.get("error"))
         done.append("declare")

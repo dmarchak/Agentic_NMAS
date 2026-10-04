@@ -86,7 +86,8 @@ class TestTheSettingsFormAfterJenkins:
     def test_jenkins_fields_are_refused_by_name(self, planted):
         import app as A
         r = A.app.test_client().post("/settings", json={
-            "jenkins_url": "https://ci.example.invalid", "jenkins_token": "x"})
+            "jenkins_url": "https://ci.example.invalid", "jenkins_token": "x",
+            "loaded": A._settings_payload()})
         body = r.get_json()
         assert r.status_code == 207
         assert any("Jenkins was removed" in e for e in body["errors"]), body
@@ -94,7 +95,8 @@ class TestTheSettingsFormAfterJenkins:
     def test_a_form_without_them_is_not_refused(self, planted):
         """The floor: the refusal is about the Jenkins fields, not every save."""
         import app as A
-        r = A.app.test_client().post("/settings", json={"wf_read_first": True})
+        r = A.app.test_client().post("/settings", json={"wf_read_first": True,
+                                                        "loaded": A._settings_payload()})
         assert r.status_code == 200, r.get_json()
 
     def test_the_modal_sends_a_secret_only_if_typed(self):

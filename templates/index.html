@@ -2410,6 +2410,8 @@ window.openSettingsModal = function() {
   fetch('/settings')
     .then(r => r.json())
     .then(s => {
+      // What this form loaded: the save sends only what changed, with these (R17).
+      window._settingsLoaded = s;
       // AI master switch
       document.getElementById('settingsAiEnabled').checked = s.ai_enabled !== false;
       const bgEl = document.getElementById('settingsBackgroundAgentEnabled');
@@ -2540,32 +2542,43 @@ window.saveSettings = function() {
   const nbAllowEl = document.getElementById('settingsNetboxAllowWrites');
   if (nbAllowEl) payload.netbox_allow_writes = nbAllowEl.checked;
 
-  // Server / collector / monitoring settings have their own blueprint endpoint.
-  if (typeof saveGeneralIntegrationSettings === 'function') saveGeneralIntegrationSettings();
+  // Only what the person changed, with the values the form loaded (CONCURRENCY_AUDIT R17):
+  // a field nobody touched never reverts another person's decision, and one that moved
+  // since is refused by the server, naming both values.
+  const loaded = window._settingsLoaded || null;
+  for (const k of Object.keys(payload)) {
+    if (loaded && k in loaded && loaded[k] === payload[k]) delete payload[k];
+  }
+  payload.loaded = loaded;
 
-  fetch('/settings', {
+  // Server / collector / monitoring settings have their own blueprint endpoint; its answer
+  // is part of this save's result, never dropped.
+  const general = (typeof saveGeneralIntegrationSettings === 'function')
+    ? saveGeneralIntegrationSettings() : Promise.resolve({ok: true});
+
+  Promise.all([fetch('/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  })
-    .then(r => r.json())
-    .then(data => {
+  }).then(r => r.json()), general])
+    .then(([data, gen]) => {
       btnText.textContent = 'Save Settings';
       spinner.classList.add('d-none');
       btn.disabled = false;
+      const errors = (data.errors || []).concat(gen && gen.ok === false ? [gen.error] : []);
       if (data.status === 'ok' || data.status === 'partial') {
         _settingsModal.hide();
         // Propagate AI on/off state to panels immediately
         if (typeof window.applyAiEnabled === 'function') {
           window.applyAiEnabled(document.getElementById('settingsAiEnabled').checked);
         }
-        if (data.errors && data.errors.length) {
-          showToast('Settings saved with warnings: ' + data.errors.join('; '), 'warning');
+        if (errors.length) {
+          showToast('Settings saved with warnings: ' + errors.join('; '), 'warning');
         } else {
           showToast('Settings saved', 'success');
         }
       } else {
-        showToast('Failed to save settings', 'danger');
+        showToast('Settings not saved: ' + (errors.join('; ') || 'no answer'), 'danger');
       }
     })
     .catch(() => {

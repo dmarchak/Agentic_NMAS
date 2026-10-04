@@ -58,11 +58,13 @@ class TestTheCard:
 class TestSaving:
     def test_the_values_are_stored_and_read_back(self, settings_file, tmp_path):
         import app as A
+        from modules.integrations import get_integration
         c = A.app.test_client()
         r = c.post("/settings/integrations/monitoring_profile", json={
             "ntp_servers": ["192.0.2.10"], "telemetry_receiver": "192.0.2.10:57000",
             "snmp_trap_host": "192.0.2.10", "snmp_exporter_config": _exporter(tmp_path),
-            "syslog_heartbeat_seconds": 300})
+            "syslog_heartbeat_seconds": 300,
+            "loaded": get_integration("monitoring_profile").get_config()})
         body = r.get_json()
         assert r.status_code == 200 and body["ok"], body
         stored = json.loads(settings_file.read_text())
@@ -74,7 +76,10 @@ class TestSaving:
                                      {"ntp_servers": "192.0.2.10"}])
     def test_a_malformed_value_is_refused_and_nothing_written(self, settings_file, bad):
         import app as A
-        r = A.app.test_client().post("/settings/integrations/monitoring_profile", json=bad)
+        from modules.integrations import get_integration
+        loaded = get_integration("monitoring_profile").get_config()
+        r = A.app.test_client().post("/settings/integrations/monitoring_profile",
+                                     json={**bad, "loaded": loaded})
         assert r.status_code == 400 and "Invalid setting" in r.get_json()["error"]
         assert json.loads(settings_file.read_text()) == {}
 

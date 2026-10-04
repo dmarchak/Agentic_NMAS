@@ -1,3 +1,8 @@
+/* What each card (and the general block, as `general`) loaded: a save sends only the fields
+   the person changed, with these, so the server refuses a field another person moved since
+   (CONCURRENCY_AUDIT R17). */
+const _intLoaded = {};
+
 /* Field spec for the integration cards. Phase 0 ships connection tests only;
    Phase 5 adds the read clients behind the same settings. */
 const INTEGRATION_SPEC = {
@@ -139,6 +144,7 @@ async function loadIntegrationSettings() {
     const host = document.getElementById('integrationCards');
     host.innerHTML = Object.entries(INTEGRATION_SPEC).map(([name, spec]) => {
       const cfg = d.integrations[name] || {};
+      _intLoaded[name] = cfg;            // what this card loaded (R17)
       const fields = spec.fields.map(f => _intField(f, cfg)).join('');
       return `<div class="col-12"><div class="card border-light-subtle">
         <div class="card-body py-2 px-3">
@@ -196,10 +202,16 @@ function _collectIntegration(name) {
 
 async function saveIntegration(name) {
   const el = document.getElementById('intStatus_' + name);
+  // Only what the person changed, with what the card loaded (CONCURRENCY_AUDIT R17).
+  const loaded = _intLoaded[name] || null;
+  const changed = _collectIntegration(name);
+  for (const k of Object.keys(changed)) {
+    if (loaded && JSON.stringify(loaded[k]) === JSON.stringify(changed[k])) delete changed[k];
+  }
   try {
     const r = await fetch(`/settings/integrations/${name}`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(_collectIntegration(name)),
+      body: JSON.stringify({...changed, loaded}),
     });
     const d = await r.json();
     el.className = 'small me-2 ' + (d.ok ? 'text-success' : 'text-danger');
@@ -261,6 +273,7 @@ async function loadGeneralIntegrationSettings() {
     const r = await fetch('/settings/integrations/general');
     const d = await r.json();
     if (!d.ok) return;
+    _intLoaded.general = d.settings;   // what this block loaded (R17)
     for (const [key, id] of Object.entries(_GENERAL_MAP)) {
       const el = document.getElementById(id);
       if (!el) continue;
@@ -281,6 +294,12 @@ async function saveGeneralIntegrationSettings() {
     else if (el.type === 'number') payload[key] = parseInt(el.value, 10) || undefined;
     else payload[key] = el.value;
   }
+  // Only what the person changed, with what the block loaded (CONCURRENCY_AUDIT R17).
+  const loaded = _intLoaded.general || null;
+  for (const k of Object.keys(payload)) {
+    if (loaded && JSON.stringify(loaded[k]) === JSON.stringify(payload[k])) delete payload[k];
+  }
+  payload.loaded = loaded;
   try {
     const r = await fetch('/settings/integrations/general', {
       method: 'POST', headers: {'Content-Type': 'application/json'},

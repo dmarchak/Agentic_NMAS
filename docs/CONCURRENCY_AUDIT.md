@@ -120,7 +120,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R14 | m | intent, approvals | Template and bindings editors | templates, `bindings.yml` | no base; truncate in place; bindings fall back to defaults silently | no | FIXED 2026-10-04 (server: tests/test_template_store_writes.py; client: tests/test_template_editor_binds.py; the three-way diff waits for v2's template screen) | yes | Base blob; `write_atomic`; refuse an unreadable bindings file |
 | R15 | m | intent, confirms | Hash-confirmed intent writers (bulk, profile propose, IP SLA) | `host_vars`, `profiles/monitoring.yml` | hash checked, then write, then commit, nothing spanning; no device holds | no | FIXED 2026-10-04 (was UNSAFE; tests/test_hash_writers_hold_the_lock.py) | yes | Repo lock across recompute, write and commit; hold devices |
 | R16 | m | confirms | Deploy and restore confirm gaps | devices, commit | command hash optional; compared before the hold; list derived | partly | THE HASH GAP FIXED 2026-10-04 (tests/test_confirm_carries_its_hash.py); the compare before the hold is bounded by the pipeline's fresh capture, recorded; the derived list is R3's | yes | Require the hash; hold first; list in the hash |
-| R17 | m | intent | Settings forms | `user_settings.json`, `.env` | file safe; forms resend every field; `.env` unlocked | yes (file) | UNSAFE | yes | Send changed fields only, with the value as loaded |
+| R17 | m | intent | Settings forms | `user_settings.json`, `.env` | file safe; forms resend every field; `.env` unlocked | yes (file) | FIXED 2026-10-04 (was UNSAFE; tests/test_stale_settings_form.py) | yes | Send changed fields only, with the value as loaded |
 | R18 | m | git, stores, locks | `remote.json` and the post-commit push | the remote, `remote.json` | thread per commit; unlocked read-modify-write; unreadable reads as "no remote" | no | UNSAFE | yes | One publisher per repository; PathLock; push an explicit sha |
 | R19 | m | stores, live, approvals | Drift state and overlapping drift runs | `drift_state.json`, queue items | one RLock in one function; truncate; legacy re-adoption; Check now overlaps | no | FIXED 2026-10-02 (was UNSAFE; tests/test_drift_state_concurrency.py) | yes | PathLock; refuse unreadable; one drift run at a time across processes |
 | R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | FIXED 2026-10-02 as C326 (was UNSAFE; tests/test_approved_revert_closes.py) | yes | Never reject the item named by `approval_id` |
@@ -524,6 +524,27 @@ unrelated field. Integration cards write one key at a time, validated outside th
 (routes/settings_integrations.py:50-57; modules/integrations/base.py:84-89). Retire's
 `clab_declared_unmapped` is read outside the lock (retire.py:644-650). The `.env` write is
 an unlocked truncate (app.py:1333-1356).
+
+*FIXED 2026-10-04 (tests/test_stale_settings_form.py):*
+- **What every settings form sends.** The modal, each integration card and the general block
+  send only the fields the person changed, with the values the form loaded (`loaded`).
+- **What the server does with it.** Under the settings lock, a changed field whose stored value
+  moved since is refused, naming both values (`settings_schema.moved_since`), and the rest are
+  saved. A save naming no `loaded` is refused.
+- **Two defects the change exposed, both fixed.**
+  - The NetBox write switch sent alone was dropped by a branch that waited for the URL beside
+    it.
+  - The modal never read the general block's answer, so a refusal there would have been
+    silent. Both answers now make the one result.
+- **`.env`** is set through `config.set_env_line`, locked across processes and replaced whole
+  (0600).
+- **Retire's** declaration is read and written under one hold of the settings lock.
+- Each refusal lands in the toast or status line that already draws one, so the form gains no
+  control or function.
+- **Controls**, each failing its aimed test: nothing counts as moved; the modal sends unchanged
+  fields; the write switch alone dropped; `.env` written without the lock (two processes lost a
+  line).
+- **Not tested:** retire's hold; no test drives two declarations at once.
 
 **R18. Publication records and pushes race** (git-13, git-14, stores-5, locks-20). Each
 commit starts its own hook thread (modules/nsot/hooks.py:104-140). `record_push` and its

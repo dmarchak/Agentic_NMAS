@@ -931,6 +931,27 @@ def _migrate_unlocked() -> dict:
 # Writing — one path, and a key it has never heard of is refused
 # ---------------------------------------------------------------------------
 
+def moved_since(sent: dict, loaded, current: dict) -> dict:
+    """CONCURRENCY_AUDIT R17: ``{key: (as loaded, now)}`` for every SENT key whose stored value
+    moved after the form loaded it.
+
+    A settings form sends only the fields the person changed, with the values it loaded. A sent
+    key whose value moved since is another person's decision, refused rather than reverted:
+    before this, a tab opened before someone turned NetBox writes off turned them back on when
+    it saved an unrelated field. Only keys the form loaded and the server can state are
+    compared; a secret is never loaded, so never compared."""
+    loaded = loaded if isinstance(loaded, dict) else {}
+    return {k: (loaded[k], current[k]) for k in sent
+            if k in loaded and k in current and loaded[k] != current[k]}
+
+
+def moved_words(moved: dict) -> list:
+    """One refusal per moved key, naming both values (a refusal names both operands)."""
+    return [f"{key}: not saved, because it changed after you opened Settings: it was "
+            f"{was!r} when you opened it and is {now!r} now. Reopen Settings to see it"
+            for key, (was, now) in sorted(moved.items())]
+
+
 def write_settings(updates: dict, actor: str = "") -> dict:
     """Apply *updates* to ``user_settings.json``. **One write path.**
 

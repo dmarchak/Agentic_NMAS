@@ -13,11 +13,16 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from modules.integrations import REGISTRY, get_integration
-from modules.settings_schema import DEFAULTS, get_setting, migrate, validate
+from modules.settings_schema import (DEFAULTS, get_setting, migrate, moved_since, moved_words,
+                                     validate)
 from modules.config import load_user_settings, save_user_settings, settings_lock
 from modules.secrets_store import SECRET_KEYS
 
 log = logging.getLogger(__name__)
+
+#: A save that does not say what its form loaded (CONCURRENCY_AUDIT R17).
+_NOT_LOADED = ("Not saved: this form did not say what it loaded, so a field nobody changed "
+               "could revert another person's decision. Reopen Settings and save again.")
 
 bp = Blueprint("settings_integrations", __name__, url_prefix="/settings/integrations")
 
@@ -46,15 +51,23 @@ def save_integration(name):
         return jsonify({"ok": False, "error": f"Unknown integration '{name}'"}), 404
 
     values = request.get_json(silent=True) or {}
+    loaded = values.pop("loaded", None)
+    if not isinstance(loaded, dict):
+        return jsonify({"ok": False, "error": _NOT_LOADED}), 400
     try:
-        # Validate the non-secret values before writing anything.
-        candidate = load_user_settings()
-        candidate.update({k: v for k, v in values.items() if k not in SECRET_KEYS})
-        ok, err = validate(candidate)
-        if not ok:
-            return jsonify({"ok": False, "error": f"Invalid setting — {err}"}), 400
-
-        client.save_config(values)
+        # Compared, validated and written under ONE hold of the settings lock (R17): a changed
+        # field another person moved since this card loaded is refused, naming both values.
+        with settings_lock():
+            moved = moved_since(values, loaded, client.get_config())
+            if moved:
+                return jsonify({"ok": False, "moved": sorted(moved),
+                                "error": "; ".join(moved_words(moved))}), 409
+            candidate = load_user_settings()
+            candidate.update({k: v for k, v in values.items() if k not in SECRET_KEYS})
+            ok, err = validate(candidate)
+            if not ok:
+                return jsonify({"ok": False, "error": f"Invalid setting — {err}"}), 400
+            client.save_config(values)
         log.info("settings_integrations: saved '%s'", name)
         return jsonify({"ok": True, "integration": client.get_config()})
     except Exception as exc:                  # noqa: BLE001
@@ -120,10 +133,18 @@ def general_settings():
                         "settings": {k: get_setting(k, DEFAULTS.get(k)) for k in keys}})
 
     values = request.get_json(silent=True) or {}
+    loaded = values.pop("loaded", None)
+    if not isinstance(loaded, dict):
+        return jsonify({"ok": False, "error": _NOT_LOADED}), 400
     try:
         # A read-modify-write outside `write_settings()`, so it takes the
-        # lock itself (C20).
+        # lock itself (C20); a changed field moved since the form loaded it is refused (R17).
         with settings_lock():
+            moved = moved_since(values, loaded,
+                                {k: get_setting(k, DEFAULTS.get(k)) for k in keys})
+            if moved:
+                return jsonify({"ok": False, "moved": sorted(moved),
+                                "error": "; ".join(moved_words(moved))}), 409
             settings = load_user_settings()
             settings.update({k: v for k, v in values.items() if k in keys})
             ok, err = validate(settings)

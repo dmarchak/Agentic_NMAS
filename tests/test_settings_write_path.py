@@ -185,8 +185,10 @@ class TestTheOrphanKeysAreDeclared:
 
         import app as nmas
 
-        assert calls_in(nmas.save_settings, "write_settings") >= 1
+        # The route compares under the lock, then saves in `_save_settings` (R17).
+        assert calls_in(nmas._save_settings, "write_settings") >= 1
         assert calls_in(nmas.save_settings, "save_user_settings") == 0
+        assert calls_in(nmas._save_settings, "save_user_settings") == 0
 
 
 class TestRatifyNeverChanges:
@@ -421,10 +423,13 @@ class TestASaveThatDidNotPersistSaysSo:
         assert "did not persist" in page
 
     def test_secrets_are_excluded_from_the_comparison(self, page):
-        """They are never echoed, by design, so they would always 'differ'."""
-        i = page.index("did not persist")
-        window = page[max(0, i - 1200):i]
-        assert "f.type === 'secret'" in window
+        """They are never echoed, by design, so they would always 'differ'. Read from the
+        shipped save function itself, never a window of characters before a phrase."""
+        from tests.payload_render import lift, shipped
+
+        save = lift(shipped("partials__settings_integrations.1.js"), "saveIntegration")
+        assert "did not persist" in save
+        assert ".filter(f => f.type === 'secret')" in save and "!secret.has(k)" in save
 
     def test_a_non_secret_field_round_trips_through_the_route(self, tmp_path,
                                                               monkeypatch):
@@ -447,8 +452,9 @@ class TestASaveThatDidNotPersistSaysSo:
         monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(path))
 
         client = nmas.app.test_client()
+        loaded = client.get("/settings/integrations").get_json()["integrations"]["kea"]
         r = client.post("/settings/integrations/kea",
                         json={"kea_username": "keauser",
-                              "kea_url": "http://example:8000"})
+                              "kea_url": "http://example:8000", "loaded": loaded})
         assert r.get_json()["ok"] is True
         assert r.get_json()["integration"]["kea_username"] == "keauser"

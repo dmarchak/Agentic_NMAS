@@ -1292,6 +1292,11 @@ def _inject_ai_enabled():
 @app.route("/settings", methods=["GET"])
 def get_settings():
     """Return all configurable global settings in one payload."""
+    return jsonify(_settings_payload())
+
+
+def _settings_payload() -> dict:
+    """What the Settings form loads, and what its save is compared against (R17)."""
     from modules.netbox_client import get_netbox_config as _get_nb_cfg
     nbcfg = _get_nb_cfg()
     # SECRETS ARE WRITE-ONLY: a flag, never the value (register B11, P.3
@@ -1311,17 +1316,37 @@ def get_settings():
         "background_agent_enabled": bool(load_user_settings().get("background_agent_enabled", True)),
     }
     payload.update(_load_workflow_flags())
-    return jsonify(payload)
+    return payload
 
 
 @app.route("/settings", methods=["POST"])
 def save_settings():
-    """Save all global settings submitted from the Settings modal."""
+    """Save the settings the person CHANGED in the Settings modal (CONCURRENCY_AUDIT R17).
+
+    The form sends only its changed fields, with the values it loaded (`loaded`). Under the
+    settings lock, a changed field whose stored value moved since is refused, naming both
+    values, and the rest are saved: a stale tab can no longer revert another person's decision
+    (it turned NetBox writes back on by saving an unrelated field)."""
+    from modules.config import settings_lock
+    from modules.settings_schema import moved_since, moved_words
+
+    data = request.get_json(silent=True) or {}
+    loaded = data.pop("loaded", None)
+    if not isinstance(loaded, dict):
+        return jsonify({"status": "error", "errors": [
+            "Not saved: this form did not say what it loaded, so a field nobody changed could "
+            "revert another person's decision. Reopen Settings and save again."]}), 400
+    with settings_lock():
+        moved = moved_since(data, loaded, _settings_payload())
+        for key in moved:
+            data.pop(key)
+        return _save_settings(data, moved_words(moved))
+
+
+def _save_settings(data: dict, errors: list):
     global TFTP_SERVER_IP
     import modules.config as config_module
 
-    data = request.get_json(silent=True) or {}
-    errors = []
 
     # ── Anthropic API key ─────────────────────────────────────────────────
     api_key = data.get("anthropic_api_key", "").strip()
@@ -1330,25 +1355,9 @@ def save_settings():
         # Persist to .env so it survives restarts
         env_path = os.path.join(os.path.dirname(__file__), ".env")
         try:
-            lines = []
-            replaced = False
-            if os.path.exists(env_path):
-                with open(env_path, "r", encoding="utf-8") as fh:
-                    lines = fh.readlines()
-                for i, line in enumerate(lines):
-                    if line.startswith("ANTHROPIC_API_KEY="):
-                        lines[i] = f"ANTHROPIC_API_KEY={api_key}\n"
-                        replaced = True
-            if not replaced:
-                lines.append(f"ANTHROPIC_API_KEY={api_key}\n")
-            # Owner-only at creation. `.env` holds the key in PLAINTEXT by
-            # design (see docs/SECRETS.md), so its mode is the only thing
-            # protecting it -- and it was created at the process umask, which
-            # on the deployment host meant 0644 and world-readable.
-            from modules.config import open_secure
+            from modules.config import set_env_line
 
-            with open_secure(env_path, "w", encoding="utf-8") as fh:
-                fh.writelines(lines)
+            set_env_line(env_path, "ANTHROPIC_API_KEY", api_key)
             # Reset cached Anthropic client so it picks up the new key
             import modules.ai_assistant as _ai_mod
             _ai_mod._anthropic_client = None
@@ -1378,7 +1387,10 @@ def save_settings():
             errors.append(f"TFTP setting failed: {exc}")
 
     # ── NetBox ────────────────────────────────────────────────────────────
-    if any(k in data for k in ("netbox_url", "netbox_token", "netbox_verify_tls")):
+    # Any NetBox field, alone: the form sends only what changed (R17), so the write switch
+    # can arrive without the URL beside it.
+    if any(k in data for k in ("netbox_url", "netbox_token", "netbox_verify_tls",
+                               "netbox_allow_writes")):
         try:
             from modules.netbox_client import save_netbox_config, get_netbox_config
             existing = get_netbox_config()
