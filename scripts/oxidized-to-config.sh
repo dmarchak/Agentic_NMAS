@@ -165,6 +165,18 @@ SOURCE="${SOURCE:-$HERE/nmas-startup-source}"
 # The committer's identity, on EVERY commit this job makes (see the commit
 # step): used by the reconcile below as well as the per-lab commit.
 GIT_ID=(-c user.name=clab-sync -c user.email=clab-sync@nmas.invalid)
+# ONE sync at a time (CONCURRENCY_AUDIT R40): two persists, or a persist and this script's
+# timer, ran two fleet-wide syncs into the same staging folder and committed to the lab
+# repositories at once. Beside the staging folder; opened read-only, so whichever user made
+# it, the other can still lock it. A second run waits up to ten minutes, then refuses.
+# Descriptor 8: a wrapper that runs this script may hold its own lock on 9.
+SYNC_LOCK="$STAGE.lock"
+[ -e "$SYNC_LOCK" ] || : > "$SYNC_LOCK" 2>/dev/null
+exec 8<"$SYNC_LOCK" || { echo "REFUSED - cannot open the sync lock $SYNC_LOCK"; exit 2; }
+if ! flock -w 600 8; then
+  echo "REFUSED - another oxidized-to-config.sh run held $SYNC_LOCK for ten minutes"
+  exit 75
+fi
 for helper in "$TARGETS" "$SOURCE" "$HERE/nmas-host"; do
   if [ ! -x "$helper" ]; then
     echo "REFUSED - helper not found or not executable: $helper"

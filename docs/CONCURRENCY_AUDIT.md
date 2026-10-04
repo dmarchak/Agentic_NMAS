@@ -134,7 +134,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
 | R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | UNSAFE | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
-| R40 | m | stores (added on review) | Persistence-chain host files: Oxidized `router.db` and the lab sync | `router.db`, lab startup files and their repositories | `router.db`: atomic replace, no lock; sync script: no lock | no | UNSAFE | yes | `flock` in the root helper and in the sync script |
+| R40 | m | stores (added on review) | Persistence-chain host files: Oxidized `router.db` and the lab sync | `router.db`, lab startup files and their repositories | `router.db`: atomic replace, no lock; sync script: no lock | no | FIXED IN CODE 2026-10-04 (tests/test_router_db_lock.py); the helper's host install is the operator's | yes | `flock` in the root helper and in the sync script |
 | R41 | m | confirms (added on review) | Remote publication acknowledge | `remote.json` acknowledgement | typed kinds checked; values recorded at click time; list derived | no | VALUES FIXED 2026-10-04 (tests/test_ack_binds_values.py); the list waits for P.8 (R3) | yes | Bind the confirm to the values fingerprint the card showed; carry the list |
 | R29 | m under workers | live | Reader on-request registry ("Check again") | in-memory request record | per process | no | UNSAFE-MULTI-PROCESS | no | Request record in a shared file |
 | R30 | m (fresh install, several processes) | stores | Key file creation | `key.key`, session key | check, then create with truncate | no | FIXED 2026-10-04 (was UNSAFE-MULTI-PROCESS; tests/test_key_created_once.py) | no (fresh install) | Exclusive create, or an install step |
@@ -821,6 +821,26 @@ password: Oxidized then fails to log in to that device. Two rotation jobs in the
 no `flock` either, so two persists, or a persist and the clab-sync timer, run two fleet-wide
 syncs that copy into and commit to the lab repositories at once. The fix: an `flock` in the
 helper and in the sync script.
+
+*FIXED IN CODE 2026-10-04 (tests/test_router_db_lock.py); live once the operator re-installs
+the helper (the commit's Host-Step-After):*
+- **The helper** holds an exclusive `flock` on `.router.db.nmas-lock` beside `router.db`, from
+  its read to its replace. A second writer waits, because a write takes milliseconds. The
+  lock file never matches the backup pruning's pattern.
+- **The sync script** holds one on `$STAGE.lock` before any work, on descriptor 8, waiting up
+  to ten minutes and then refusing (exit 75).
+- **Measured.** Two concurrent loops of 25 real helper runs, each on its own row, both ended
+  on their last password.
+- **Controls**, each failing its aimed tests: the helper without its lock; the script without
+  its lock.
+- **Measured on the host, read-only, the same day: the sync was already serialised there.**
+  `clab_sync_script` names a wrapper outside the repository (in the operator's home) that
+  takes `flock -n` on descriptor 9, and both the clab-sync timer and the app run it. So the
+  script's own lock covers direct runs.
+- **The wrapper's skip** exits 0 ("already running; skipping"). A persist that met it would
+  pass its sync stage, then fail closed at the next: `startup_file` checks the new hash is in
+  the lab's startup file. The persist stops, but naming the hash rather than the skipped
+  sync.
 
 **R41. The remote publication acknowledgement records values nobody was shown** (confirms-30,
 added on review). `POST /remote/acknowledge` checks only that the typed text names the gated

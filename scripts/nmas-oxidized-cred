@@ -243,6 +243,24 @@ def write_checked(path, before, after, check, no_backup):
     return backup
 
 
+def hold_router_db(path):
+    """An exclusive `flock` beside *path*, held until this process ends (CONCURRENCY_AUDIT R40).
+
+    Two rotations of different devices each hold only their own device, so both ran this
+    helper at once: each read the whole of router.db, replaced its own row and wrote the file
+    back, and the later replace put the other device's row back to its old password, so
+    Oxidized could no longer log in to it. Every write here now reads and replaces under this
+    lock; a second writer waits (a write takes milliseconds). The lock file is
+    `.router.db.nmas-lock`, never a name the backup pruning counts."""
+    import fcntl
+
+    lock = os.path.join(os.path.dirname(path) or ".",
+                        f".{os.path.basename(path)}.nmas-lock")
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT, stat.S_IRUSR | stat.S_IWUSR)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
+
+
 def pruned(path, backup):
     """The result's pruning fields, after a successful write: the write is done whatever
     pruning finds, so a pruning failure is said, never a failed write."""
@@ -276,6 +294,8 @@ def main():
         path = pinned_path(args.file)
     except (ValueError, OSError) as exc:
         _fail(str(exc))
+    if not args.addresses and os.path.exists(path):
+        hold_router_db(path)           # from the read below to the replace (R40)
     if args.remove or args.addresses:
         if not os.path.exists(path):
             _fail(f"{path} does not exist")
