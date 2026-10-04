@@ -245,9 +245,12 @@ class TestTheConfirm:
         _r, page = _page(ready)                      # r6 first, then r2
         out = _confirm(ready, _body(page)).get_json()
         try:
+            # Wait for the state photographed below, r6 done AND r2 being applied (C422: "being
+            # applied" alone is also r6's state before its spy returns, and under the gate's
+            # load the fragment was read then).
             for _ in range(200):
                 _rr, frag = _get(ready, out["url"])
-                if "being applied" in frag:
+                if "step-done" in frag and "being applied" in frag:
                     break
                 threading.Event().wait(0.02)
             assert 'hx-trigger="nmas:deploy_job from:body"' in frag

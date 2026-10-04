@@ -88,6 +88,13 @@ def oxidized_row() -> dict:
                                            f"{cr.HELPER_INSTALLED}"})
         return dict(row, state="ok", detail=f"{cr.HELPER_INSTALLED} is this release's "
                                             f"{cr.HELPER_SOURCE_REL} ({st.get('source_sha')})")
+    if st["state"] == "unpinned":
+        # C414: the helper refuses every write as root until its pin names the router.db
+        # this tool is configured with; one host step (the pin) clears it.
+        return dict(row, state="differs", detail=st.get("reason", "") + ". A rotation refuses "
+                    "at its preflight until the pin names it.",
+                    action={"label": "Pin the helper to the router.db this tool uses, before "
+                                     "a rotation needs it", "command": st.get("reinstall", "")})
     state = {"drifted": "differs", "not_installed": "not_installed",
              "not_root_owned": "writable", "group_or_world_writable": "writable"}.get(
         st["state"], "unknown")

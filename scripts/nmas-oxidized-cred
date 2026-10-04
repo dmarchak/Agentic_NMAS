@@ -55,6 +55,12 @@ WHAT IT GUARANTEES
     original untouched. Nothing is printed except a JSON result that contains no
     credential.
 
+    ONE FILE (C414): as root it acts only on the router.db named in the root-owned
+    ``/etc/nmas/oxidized-cred.conf`` (PIN) and refuses any other ``--file``, naming both.
+
+    FEW BACKUPS (C415): after a successful write it keeps the newest KEEP_BACKUPS backups
+    and removes older ones, so credentials rotated away do not stay on disk.
+
     IDEMPOTENT: if the target row already holds the intended credential, it
     reports ``changed: 0, already_current: true`` and writes nothing. Any
     other row differing, or the target differing in any way other than to the
@@ -73,6 +79,65 @@ import time
 
 FIELDS = 4
 IPV4 = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+
+#: THE ONE router.db (C414, the operator's review, 2026-10-04: the root helper edited whatever
+#: file its caller named). As root, the helper acts only on the path this root-owned file
+#: names, and refuses any other --file, naming both. One absolute path; '#' lines are comments.
+PIN = "/etc/nmas/oxidized-cred.conf"
+#: Who must own the pin: root.
+TRUSTED_UID = 0
+
+#: Backups kept after a successful write (C415): each holds every device's password at that
+#: moment, so old ones keep credentials rotated away. Three: the state before the last write,
+#: before the one before (a rotation and its rollback are two writes), and one more for a
+#: person who finds a mistake a write late. Older ones are removed by the helper itself.
+KEEP_BACKUPS = 3
+BACKUP_STAMP = re.compile(r"\d{8}-\d{6}")
+
+
+def pinned_path(given, euid=None, pin=None, trusted_uid=None):
+    """The router.db to act on. As root: the path *pin* names, which must be a regular file
+    owned by *trusted_uid* and writable by no one else; *given* must be that path (compared
+    resolved). Not root: *given*, because the helper then holds no privilege its caller lacks.
+    Raises ValueError naming what was compared."""
+    euid = os.geteuid() if euid is None else euid
+    if euid != 0:
+        return given
+    pin = pin or PIN
+    trusted_uid = TRUSTED_UID if trusted_uid is None else trusted_uid
+    try:
+        st = os.lstat(pin)
+    except FileNotFoundError:
+        raise ValueError(f"no router.db is pinned: {pin} is absent. Install it root-owned, "
+                         "naming the one router.db this helper edits") from None
+    if not stat.S_ISREG(st.st_mode):
+        raise ValueError(f"{pin} is not a regular file")
+    if st.st_uid != trusted_uid or st.st_mode & 0o022:
+        raise ValueError(f"{pin} must be root-owned and writable by no one else "
+                         f"(owner uid {st.st_uid}, mode {oct(st.st_mode & 0o777)})")
+    with open(pin, encoding="utf-8") as fh:
+        named = [l.strip() for l in fh if l.strip() and not l.strip().startswith("#")]
+    if len(named) != 1 or not os.path.isabs(named[0]):
+        raise ValueError(f"{pin} must name exactly one absolute path; it names {len(named)}"
+                         + ("" if len(named) != 1 else f" ({named[0]!r} is not absolute)"))
+    pinned = os.path.realpath(named[0])
+    if os.path.realpath(given) != pinned:
+        raise ValueError(f"--file {given} is not the pinned router.db {named[0]} "
+                         f"(from {pin}): refused")
+    return pinned
+
+
+def prune_backups(path, keep=KEEP_BACKUPS):
+    """Remove all but the newest *keep* of *path*'s backups (``<path>.nmas-bak-<stamp>``,
+    the stamp sorting by time). Returns the names removed."""
+    folder, base = os.path.split(path)
+    prefix = f"{base}.nmas-bak-"
+    names = sorted(n for n in os.listdir(folder or ".")
+                   if n.startswith(prefix) and BACKUP_STAMP.fullmatch(n[len(prefix):]))
+    gone = names[:-keep] if keep else names
+    for name in gone:
+        os.unlink(os.path.join(folder or ".", name))
+    return gone
 
 
 def _fail(message, **extra):
@@ -178,6 +243,17 @@ def write_checked(path, before, after, check, no_backup):
     return backup
 
 
+def pruned(path, backup):
+    """The result's pruning fields, after a successful write: the write is done whatever
+    pruning finds, so a pruning failure is said, never a failed write."""
+    if not backup:
+        return {"backups_removed": 0}
+    try:
+        return {"backups_removed": len(prune_backups(path))}
+    except OSError as exc:
+        return {"backups_removed": 0, "prune_error": f"{type(exc).__name__}: {exc}"}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--file", required=True)
@@ -194,8 +270,13 @@ def main():
         _fail("--remove and --addresses are two different acts: give one")
     if not args.addresses and not args.ip:
         _fail("--ip is required")
+    if args.no_backup and os.geteuid() == 0:
+        _fail("--no-backup is for tests only, never as root: the real path always backs up")
+    try:
+        path = pinned_path(args.file)
+    except (ValueError, OSError) as exc:
+        _fail(str(exc))
     if args.remove or args.addresses:
-        path = args.file
         if not os.path.exists(path):
             _fail(f"{path} does not exist")
         try:
@@ -221,7 +302,7 @@ def main():
         backup = write_checked(path, before, after,
                                lambda b, w: validate_removal(b, w, args.ip), args.no_backup)
         print(json.dumps({"ok": True, "ip": args.ip, "rows": len(after), "backup": backup,
-                          "removed": 1}))
+                          "removed": 1, **pruned(path, backup)}))
         return
 
     try:
@@ -236,7 +317,6 @@ def main():
         _fail("username and password must not contain ':' or a newline — "
               "router.db is colon-delimited and one would split the row")
 
-    path = args.file
     if not os.path.exists(path):
         _fail(f"{path} does not exist")
 
@@ -279,7 +359,7 @@ def main():
                            lambda b, w: validate(b, w, args.ip), args.no_backup)
 
     print(json.dumps({"ok": True, "ip": args.ip, "rows": len(after),
-                      "backup": backup, "changed": 1}))
+                      "backup": backup, "changed": 1, **pruned(path, backup)}))
 
 
 if __name__ == "__main__":

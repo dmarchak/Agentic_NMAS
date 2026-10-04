@@ -214,7 +214,60 @@ def helper_status() -> dict:
                 "reason": (f"{HELPER_INSTALLED} is writable by group or other "
                            f"(mode {oct(st.st_mode & 0o777)})")}
 
+    pin = helper_pin_status()
+    if not pin["ok"]:
+        return {**out, "ok": False, "state": "unpinned", "reason": pin["reason"],
+                "reinstall": pin["command"]}
     return {**out, "ok": True, "state": "ok"}
+
+
+#: The root-owned file naming the ONE router.db the helper edits as root (C414); the helper's
+#: own constant `PIN` names the same path (tests/test_oxidized_router_db.py holds them equal).
+HELPER_PIN = "/etc/nmas/oxidized-cred.conf"
+
+
+def pin_command(router_db: str) -> str:
+    """Install the pin naming *router_db*: a fresh folder, then root-owned by name."""
+    import os
+    import shlex
+
+    return ('d=$(mktemp -d) && printf \'%s\\n\' ' + shlex.quote(router_db)
+            + ' > "$d/oxidized-cred.conf" && sudo install -d -o root -g root -m 0755 '
+            + os.path.dirname(HELPER_PIN) + ' && sudo install -o root -g root -m 0644 '
+            '"$d/oxidized-cred.conf" ' + HELPER_PIN + ' && rm -r "$d"')
+
+
+def helper_pin_status(path: str = None, router_db: str = None) -> dict:
+    """Does the helper's pin name the router.db this tool is configured with? Read as the
+    app's user (the pin is 0644): root-owned, writable by no one else, one absolute path,
+    the setting's `oxidized_router_db` (compared resolved). ``{"ok", "reason", "command"}``."""
+    import os
+
+    path = path or HELPER_PIN
+    from modules.settings_schema import get_setting
+
+    want = router_db or get_setting("oxidized_router_db", "/opt/oxidized/router.db")
+    out = {"command": pin_command(want)}
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return {**out, "ok": False, "reason": f"{path} is absent: the helper refuses every "
+                                              f"write as root until it names {want}"}
+    except OSError as exc:
+        return {**out, "ok": False, "reason": f"{path} could not be read: {exc}"}
+    if st.st_uid != 0 or st.st_mode & 0o022 or not os.path.isfile(path):
+        return {**out, "ok": False, "reason": (f"{path} must be a root-owned file writable by "
+                                               f"no one else (owner uid {st.st_uid}, mode "
+                                               f"{oct(st.st_mode & 0o777)})")}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            named = [l.strip() for l in fh if l.strip() and not l.strip().startswith("#")]
+    except OSError as exc:
+        return {**out, "ok": False, "reason": f"{path} could not be read: {exc}"}
+    if len(named) != 1 or os.path.realpath(named[0]) != os.path.realpath(want):
+        return {**out, "ok": False, "reason": (f"{path} names {', '.join(named) or 'nothing'}, "
+                                               f"and the setting oxidized_router_db is {want}")}
+    return {**out, "ok": True, "reason": f"{path} names {want}"}
 
 
 def helper_sudo_status(run=None) -> dict:
