@@ -164,8 +164,9 @@ def write_template(repo: str, rel_path: str, content: str) -> dict:
         return {"ok": False, "error": error}
 
     os.makedirs(os.path.dirname(full), exist_ok=True)
-    with open(full, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(content)
+    from modules.filestore import write_atomic
+    # Replaced atomically (R14): a render reading it mid-write saw a truncated template.
+    write_atomic(full, content, newline="\n", tmp_dir=_outside(repo))
     return {"ok": True, "path": rel_path}
 
 
@@ -197,7 +198,14 @@ def _safe_join(repo: str, rel_path: str):
 # Bindings
 # ---------------------------------------------------------------------------
 
+class BindingsUnreadable(ValueError):
+    """`bindings.yml` exists and cannot be read (CONCURRENCY_AUDIT R14)."""
+
+
 def load_bindings(repo: str) -> dict:
+    """The bindings: the defaults when the file is ABSENT; `BindingsUnreadable` when it exists
+    and cannot be read (R14: that read as the defaults, so a read during a write, or a damaged
+    file, rendered a device through the wrong template, silently)."""
     import yaml
 
     path = bindings_path(repo)
@@ -206,11 +214,21 @@ def load_bindings(repo: str) -> dict:
     try:
         with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh) or {}
+        if not isinstance(data, dict):
+            raise ValueError("not a mapping")
     except Exception as exc:                  # noqa: BLE001
-        log.error("templates: unreadable bindings (%s) — using defaults", exc)
-        return {k: dict(v) for k, v in DEFAULT_BINDINGS.items()}
+        log.error("templates: unreadable bindings (%s)", exc)
+        raise BindingsUnreadable(
+            f"templates/bindings.yml could not be read ({type(exc).__name__}: {exc}), so no "
+            "template is chosen for any device: the defaults would be a guess. Repair the file "
+            "(its last committed version is in history), then try again") from exc
     return {"platforms": dict(data.get("platforms") or {}),
             "overrides": dict(data.get("overrides") or {})}
+
+
+def _outside(repo: str) -> str:
+    """Beside the repository, on its filesystem: a write's temp file goes there (C345)."""
+    return os.path.dirname(os.path.abspath(repo))
 
 
 def save_bindings(repo: str, bindings: dict) -> dict:
@@ -220,8 +238,10 @@ def save_bindings(repo: str, bindings: dict) -> dict:
                "overrides": dict(bindings.get("overrides") or {})}
     path = bindings_path(repo)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        yaml.safe_dump(payload, fh, sort_keys=True, default_flow_style=False)
+    from modules.filestore import write_atomic
+    # Replaced atomically (R14): a render reading it mid-write saw a truncated file.
+    write_atomic(path, yaml.safe_dump(payload, sort_keys=True, default_flow_style=False),
+                 newline="\n", tmp_dir=_outside(repo))
     return {"ok": True}
 
 

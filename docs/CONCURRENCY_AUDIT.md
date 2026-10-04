@@ -115,9 +115,9 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R9 | h under workers | live | Reachability `STATUS` | in-memory dict every consumer reads | per process | no | UNSAFE-MULTI-PROCESS | no | Read the stored reader value; absent means unknown |
 | R10 | h under workers | live, locks, confirms | Job registries (capture preview, rotate, deploy job, `op_progress`) | in-memory job state and results | `threading.Lock` | no | UNSAFE-MULTI-PROCESS | no | Shared job store; "interrupted" from the recorded pid |
 | R11 | m today; h under workers | locks, live | SSH session budget per device | vty lines | per-process count | no | FIXED 2026-10-04 (was UNSAFE; tests/test_ssh_slots_across_processes.py) | yes (host CLIs) | Cross-process session slots |
-| R12 | m | approvals, intent, confirms | Template approve | `.approvals.json`, a commit | client sends `{}`; validates, then fingerprints the working tree | no | UNSAFE | yes | Approve carries the reviewed fingerprint; fingerprint one snapshot first |
+| R12 | m | approvals, intent, confirms | Template approve | `.approvals.json`, a commit | client sends `{}`; validates, then fingerprints the working tree | no | SERVER HALF FIXED 2026-10-04 (tests/test_approve_one_snapshot.py); the client half (the v1 editor sends what it reviewed) UNSAFE | yes | Approve carries the reviewed fingerprint; fingerprint one snapshot first |
 | R13 | m | approvals, stores | `.approvals.json` record | approvals and tombstones | unlocked read-modify-write, shared `.tmp`, `{}` on unreadable; edits' revocations not committed; gate reads the working tree | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approvals_record.py) | yes | PathLock and atomic write; commit tombstones with the template; read at HEAD |
-| R14 | m | intent, approvals | Template and bindings editors | templates, `bindings.yml` | no base; truncate in place; bindings fall back to defaults silently | no | UNSAFE | yes | Base blob; `write_atomic`; refuse an unreadable bindings file |
+| R14 | m | intent, approvals | Template and bindings editors | templates, `bindings.yml` | no base; truncate in place; bindings fall back to defaults silently | no | SERVER HALF FIXED 2026-10-04 (tests/test_template_store_writes.py); the client half (the v1 editor sends what it reviewed) UNSAFE | yes | Base blob; `write_atomic`; refuse an unreadable bindings file |
 | R15 | m | intent, confirms | Hash-confirmed intent writers (bulk, profile propose, IP SLA) | `host_vars`, `profiles/monitoring.yml` | hash checked, then write, then commit, nothing spanning; no device holds | no | UNSAFE | yes | Repo lock across recompute, write and commit; hold devices |
 | R16 | m | confirms | Deploy and restore confirm gaps | devices, commit | command hash optional; compared before the hold; list derived | partly | UNSAFE | yes | Require the hash; hold first; list in the hash |
 | R17 | m | intent | Settings forms | `user_settings.json`, `.env` | file safe; forms resend every field; `.env` unlocked | yes (file) | UNSAFE | yes | Send changed fields only, with the value as loaded |
@@ -394,6 +394,13 @@ applied: the edit-versus-approve race is not safe by design, and risk is medium,
 because the deploy plan still renders the actual template and a person confirms the program
 by hash.
 
+*The server half, FIXED 2026-10-04 (tests/test_approve_one_snapshot.py):* `approve()`
+fingerprints the closure BEFORE validating and again under the record's lock just before
+saving; if it moved, nothing is approved, the refusal names both fingerprints, and the edit's
+revocation stands. Shown with an edit landing during the real validation: without the check
+the edited closure was approved and the revocation erased. *The client half* (the editor sends
+the fingerprint it reviewed) is the v1 template editor's JavaScript, recorded, not built.
+
 *FIXED 2026-10-02 (tests/test_approvals_record.py):* every approve and revoke is a locked
 read-modify-write (`<repo>.approvals.lock`, beside the repository) with a temp file per write;
 an unreadable record refuses both, keeping the file and a `.corrupt-` copy; a template edit
@@ -424,6 +431,15 @@ place and no lock (templates_repo.py:144-157). A render mid-write reads a trunca
 `save_bindings` replaces the whole document (templates_repo.py:204-213), and `load_bindings`
 returns the defaults on any error (templates_repo.py:188-201), so a read during a write
 renders a device through the wrong template, silently.
+
+*The server half, FIXED 2026-10-04 (tests/test_template_store_writes.py):* a template save and
+a bindings save replace their file atomically (the temp file beside the repository), so a
+reader beside 60 saves saw only whole templates, where truncating in place showed it a part;
+an unreadable `bindings.yml` raises `BindingsUnreadable`, so no template is chosen by guess
+for any device, and the template listing answers 409 naming it. *The client half* (the
+editor's GET returns a base blob and its save is refused when the file moved since, with the
+three-way diff, as R2 built for intent) is the v1 template editor's JavaScript, recorded, not
+built: no new v1 capability while v2's template screen is drawn.
 
 **R15. Intent writers that check a hash do not hold it to the commit** (git-10, intent-5,
 intent-11, intent-12, intent-13, confirms-9, confirms-10). Bulk intent recomputes its plan

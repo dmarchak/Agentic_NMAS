@@ -249,6 +249,11 @@ def list_templates():
 
     entries = []
     listed = templates_repo.list_templates(repo)
+    try:
+        bindings = templates_repo.load_bindings(repo)
+    except templates_repo.BindingsUnreadable as exc:            # R14: said, never a guess
+        return jsonify({"ok": False, "error": str(exc),
+                        "templates": [dict(t, bound_devices=[]) for t in listed]}), 409
     platform_templates = [t["path"] for t in listed
                           if not t["path"].split("/")[-1].startswith("_")]
     for tpl in listed:
@@ -267,8 +272,7 @@ def list_templates():
     # NO approval state here, deliberately: `/templates/approval/<path>` is
     # the one answer. An `approved` key read from this listing is a missing
     # key, not a verdict.
-    return jsonify({"ok": True, "templates": entries,
-                    "bindings": templates_repo.load_bindings(repo)})
+    return jsonify({"ok": True, "templates": entries, "bindings": bindings})
 
 
 @bp.route("/file/<path:rel_path>", methods=["GET"])

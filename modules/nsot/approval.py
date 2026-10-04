@@ -386,6 +386,10 @@ def approve(repo: str, rel_path: str, devices: list, actor: str = "user",
                          "to validate this template against; at least one is required",
                 "not_validated": list(not_validated or [])}
 
+    # ONE snapshot (CONCURRENCY_AUDIT R12): the closure is fingerprinted BEFORE validation and
+    # again under the record's lock just before the save. An edit saved in between made an
+    # approval of content no validation ran against, and overwrote the edit's revocation.
+    before = template_fingerprint(repo, rel_path)
     validation = validate_template(repo, rel_path, devices)
     passed = [r["device"] for r in validation["results"] if r["ok"]]
     failed = [{"device": r["device"],
@@ -399,10 +403,17 @@ def approve(repo: str, rel_path: str, devices: list, actor: str = "user",
             "reproduces a real device"), "validation": validation,
             "not_validated": skipped}
 
-    fingerprint = template_fingerprint(repo, rel_path)
     evidence = {"validated": sorted(passed), "failed": failed, "not_validated": skipped,
                 "bound": len(passed) + len(failed) + len(skipped)}
     with _lock(repo):
+        fingerprint = template_fingerprint(repo, rel_path)
+        if fingerprint.get("fingerprint") != before.get("fingerprint"):
+            return {"ok": False, "validation": validation, "not_validated": skipped,
+                    "error": (f"Not approved: {rel_path} (or a template it imports) changed "
+                              f"while it was being validated: its fingerprint was "
+                              f"{str(before.get('fingerprint'))[:12]} when validation began "
+                              f"and is {str(fingerprint.get('fingerprint'))[:12]} now. Review "
+                              "the change, then approve again.")}
         try:
             data = _load_for_write(repo)
         except ApprovalsUnreadable as exc:
