@@ -651,6 +651,18 @@ with a platform DEFINITION (data) and the pipeline that proves it (12.4).
 |---|---|
 | **Bulk onboarding** (NSOT_STAGE7_PLAN 17, the operator, 2026-10-04) | An enterprise brings a whole fleet in at once, from a CSV, a spreadsheet or NetBox: one at a time is not a product for it |
 
+**PROPOSED for this table, the operator's decision (NSOT_STAGE7_PLAN 18.6):** support tiers per
+device (18.1 to 18.4).
+- **The pieces:**
+  - the tier as data, capped by the platform;
+  - every screen's tier-aware actions;
+  - MONITORED and MANAGED ELSEWHERE;
+  - CONFIG BACKED UP through Oxidized's models;
+  - the platform measured at onboarding.
+- **Why:** an enterprise's first import is a mixed fleet, and without tiers the release refuses
+  most of it or reads it as the wrong platform (C452).
+- **What moves a platform to FULLY MANAGED:** section 12's platform layer, as before.
+
 ## 8. The repository
 
 ### 8.1 A fresh curated export

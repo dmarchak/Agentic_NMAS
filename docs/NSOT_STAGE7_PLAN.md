@@ -4107,3 +4107,130 @@ underneath, except the column mapping and the XLSX reader.
 - **Seed:** `seed.py` (preview, confirm, commit) and its fidelity (`roundtrip.validate_device`).
 - **Break-glass:** the per-network record and its export (`modules/breakglass.py`).
 - **The large-fleets check:** `tests/test_large_fleets.py`.
+
+## 18. Mixed networks: a support tier per device (the operator, 2026-10-04: design only; feeds Stage 10's platform layer and 17)
+
+Real networks also hold servers, firewalls, load balancers, wireless controllers and access
+points, and appliances. Today a device that is not IOS or IOS-XE is refused, or read as the wrong
+platform. Both are measured below: a NetBox import skips an unmapped platform, and a local list
+reads an unknown driver as `cisco_ios` (C452).
+
+### 18.1 Four tiers, declared per device
+
+| Tier | What the tool does | What it needs |
+|---|---|---|
+| **MONITORED** | inventory, reachability, SNMP and syslog, its place on the map | any IP device |
+| **CONFIG BACKED UP** | its configuration captured on a schedule, and drift shown as a change since the last backup; no writes | a backup reader for its platform (Oxidized's model) |
+| **FULLY MANAGED** | intent, the deploy pipeline, verify, rollback, rotation | a platform with a driver: today IOS and IOS-XE; later Stage 10's platform layer |
+| **MANAGED ELSEWHERE** | shown and monitored, linking to the system that owns its configuration | the owner's name and link (Ansible or Puppet for servers, the WLC for access points, an SDN controller) |
+
+- **The tier is declared, and capped by the platform.** A device cannot be declared above what
+  its platform supports. FULLY MANAGED needs a driver, and CONFIG BACKED UP needs a backup model.
+  A refusal names the device's tier and the platform's highest tier.
+- **Every screen states the tier and offers only what the tier allows.**
+  - It is a column on the Devices list and a chip on the device page.
+  - An action the tier does not allow is drawn disabled with its reason: "Deploy is not
+    available: fw1 is Config backed up; FortiOS has no driver". This is 12.2's "degrade
+    visibly" in the Stage 10 plan, and the `may` pattern.
+  - A batch action over a mixed selection says how many it leaves out, and why.
+- **A backup is not a golden.** CONFIG BACKED UP keeps the device's configuration as text,
+  versioned and diffed. It is never parsed and never becomes intent, so it never gets a golden
+  tag. A golden stays what the tool understands: parsed, round-tripped and comparable with
+  intent.
+- **Needs attention:**
+  - **Changed since the last backup:** a row only with an action ("review the change",
+    acknowledged by a person). The time of the change is the syslog's or the backup's receive
+    time.
+  - **MANAGED ELSEWHERE:** a row only for what the tool itself monitors (unreachable, an
+    interface down), naming the owning system.
+
+### 18.2 The platform is measured, never assumed
+
+- **At onboarding and at import, what the device reports must match the declared platform.**
+  - **What it reports:** its `sysDescr` and `sysObjectID`, the same facts C426's
+    `platform-facts` reader keeps for every polled device.
+  - **A device not polled yet:** onboarding reads them itself, with one SNMP GET, or with
+    `show version` where SNMP is not set up.
+  - **A mismatch, or a report the tool cannot place,** refuses, naming both: "fw1: declared
+    cisco_ios; it reports 'FortiGate-60F v7.2.8'". The tool never records a golden from a device
+    it does not understand.
+- **The default goes (C452).** An unknown platform is an answer, "", that refuses, never
+  `cisco_ios`. NetBox's `platform_default_netmiko_type` is a guess with a warning, so it is
+  retired, or limited to the MONITORED tier, where a guess cannot reach a parser.
+- **After onboarding, the same comparison runs on every `platform-facts` read.** A device whose
+  report stops matching (a replaced chassis, a re-imaged box) is a Needs attention row: "r3
+  reports IOS-XE 17.12, declared cisco_ios". Its action is to re-declare, or to investigate.
+
+### 18.3 First steps by class
+
+| Class | First tier | Then | Notes |
+|---|---|---|---|
+| **Servers** | MONITORED, or MANAGED ELSEWHERE naming Ansible or Puppet | none in the tool | On the map through LLDP: a server running `lldpd` appears as a switch port's neighbour, read from the switch (the topology already parses `show lldp neighbors detail`), so the server needs no session from the tool |
+| **Firewalls** | CONFIG BACKED UP, with drift | base-configuration management through a driver (Stage 10's platform layer) | API-driven platforms and commit models are noted per platform: PAN-OS (XML API, candidate and commit), FortiOS (REST, changes immediate), ASA (CLI, `write memory`), OPNsense and pfSense (one XML configuration). **Security policy is out of scope until decided** |
+| **Wireless** | the controller CONFIG BACKED UP (AireOS has a model); access points MANAGED ELSEWHERE by the controller | none in the tool | an AP's row links to its controller |
+| **Load balancers, appliances** | MONITORED, or CONFIG BACKED UP where Oxidized has a model | a driver only if one is wanted | |
+
+### 18.4 Bulk onboarding takes the tier as a column
+
+17's rows gain a **Tier** column. A NetBox import SUGGESTS a tier from the platform and the
+role, and a person confirms it, never by default for FULLY MANAGED. A row's platform is measured
+as 18.2 says before its tier is accepted. The batch result counts by tier.
+
+### 18.5 What exists, measured read-only on the NMAS host (via LAN, 2026-10-04)
+
+- **Oxidized 0.37.0** (the `oxidized/oxidized:latest` container) ships 199 models, among them
+  `asa`, `fortios`, `panos`, `junos`, `eos`, `nxos`, `aireos`, `linuxgeneric`, `opnsense` and
+  `pfsense`.
+  - This lab uses one: 10 nodes, all `IOS`.
+  - So CONFIG BACKED UP for most classes is configuration of a reader that already exists,
+    not new code. The tool reads Oxidized's versions; it does not open sessions of its own to
+    those devices.
+- **SNMP:**
+  - `snmp_exporter` polls every target. The tool's own modules (`deploy/snmp_exporter/`) are
+    OSPF, OSPFv3 and Cisco's BGP peer MIB; interfaces and system come from the exporter's
+    standard modules, which any SNMP device answers.
+  - The `platform-facts` reader (C426) keeps `sysDescr` and `sysObjectID` for all 9 polled
+    devices, every 10 minutes.
+- **Syslog:** rsyslog takes UDP 514 from any source into one file per sending address
+  (`deploy/rsyslog/10-network-devices.conf`), and Loki holds it. Nothing there is Cisco-specific.
+- **Reachability:** the reachability reader needs only an address.
+- **Topology:** CDP and LLDP neighbours, read from the managed devices (`modules/topology.py`).
+  So an LLDP-speaking server or firewall appears as a neighbour without being managed.
+- **NetBox:**
+  - `role_map` maps 8 NetBox role slugs to 3 tool roles, `router`, `switch` and `firewall`.
+    So a firewall role exists, with no platform behind it.
+  - `platform_map` holds 2 platforms, `cisco-ios` and `cisco-ios-xe`.
+  - An unmapped platform is skipped on import, because `platform_default_netmiko_type` is unset.
+- **The inventory:** one list of 9 devices, each with an explicit `platform` (4 `cisco_ios`, 5
+  `cisco_iosxe`).
+- **What is missing:**
+  - the tier field and its cap;
+  - the platform comparison at onboarding;
+  - Oxidized as the backup reader for CONFIG BACKED UP, distinct from goldens;
+  - the MANAGED ELSEWHERE owner link;
+  - each screen's tier-aware actions.
+
+### 18.6 Where it fits
+
+- **Before 17, or with it:** 18.2, the platform measured at onboarding and the default removed
+  (C452). It protects what exists today, is small, and 17's import needs it, because a bulk
+  import is where an unknown platform arrives in numbers.
+- **With 17, before the public release:**
+  - the tier as data, its cap, the column, and every screen's tier-aware actions;
+  - MONITORED and MANAGED ELSEWHERE, which need no driver;
+  - CONFIG BACKED UP through Oxidized.
+
+  An enterprise's first import is a mixed fleet. Without these, the release refuses most of
+  it or misreads it. **Recommended:** add 18.1 to 18.4 to the Stage 10 plan's 7.3 (required
+  before release) beside 17. That is the operator's decision.
+- **Stage 10's platform layer (Stage 9's 9.P and Stage 10's 12) is what moves a platform to
+  FULLY MANAGED.** The tier is the coarse face of 12.2's capability declaration:
+  - FULLY MANAGED means the platform declares `push`, `parse`, `render`, `rollback` and the
+    rest;
+  - CONFIG BACKED UP means it declares a backup reader only;
+  - MONITORED means it declares nothing.
+
+  A firewall's base-configuration driver goes through 12.4's pipeline like any platform.
+- **New screens:** the tier column, the device page's tier chip and disabled actions, and the
+  MANAGED ELSEWHERE link are drawn on the canvas for sign-off before any build, with 17's
+  boards.
