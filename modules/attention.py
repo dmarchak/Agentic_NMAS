@@ -379,6 +379,8 @@ _JOB_STATES = {
     # above (the operator, 2026-10-01), and a warning only once it persists.
     "unread": ("could not read a device this hour", "unknown"),
     "unread_persisting": ("has not read a device for hours", "warning"),
+    # Devices reporting one serial: information, said under What was checked (EXPECTED).
+    "shared": ("is reported by more than one device", "unknown"),
     "not_recorded": ("was rotated and not recorded", "danger"),
     "revert_failed": ("failed a rotation and its revert", "danger"),
     "neither_accepted": ("accepts neither its staged nor its recorded credential", "danger"),
@@ -459,7 +461,7 @@ JOB_HEALTH_READER = "job-health"
 #: Job-health states that are expected and need nothing yet: the startup check
 #: missing a device for one run (it is booting, or slow; a warning once it
 #: persists, as `unread_persisting`). Said in the source's finding, not a row.
-EXPECTED_JOB_STATES = ("unread",)
+EXPECTED_JOB_STATES = ("unread", "shared")
 
 
 def _install_rows_asked_again(jobs: list) -> list:

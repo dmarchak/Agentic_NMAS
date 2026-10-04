@@ -1418,6 +1418,35 @@ def monitoring_rows() -> list:
                  "detail": f"the check raised {type(exc).__name__}: {exc} -- not the same as covered"}]
 
 
+def serial_rows(shared=None) -> list:
+    """Devices reporting one serial (the operator, 2026-10-04: every C8000v of a virtual image
+    states the same one), as INFORMATION: state ``shared``, an expected state, so Needs
+    attention says it under What was checked and never as a row. Expected for virtual images,
+    a fault on real hardware; serial matching refuses these devices either way
+    (`modules.device_serials`). No shared serial is no row."""
+    from modules import device_serials
+
+    try:
+        groups = device_serials.shared() if shared is None else shared
+    except Exception as exc:                            # noqa: BLE001
+        return [{"unit": "serials", "state": "unknown", "max_age_minutes": 0,
+                 "what": "each device's serial is its own",
+                 "detail": f"the goldens could not be read for serials: {type(exc).__name__}: {exc}"}]
+    rows = []
+    for sn, devs in sorted(groups.items()):
+        names = ", ".join(d for _l, d in devs)
+        rows.append({
+            "unit": f"serial:{sn}", "state": "shared", "max_age_minutes": 0,
+            "what": "each device's serial is its own",
+            "devices": [d for _l, d in devs],
+            "headline": (f"{len(devs)} devices report one serial ({sn}): {names}. Expected for a "
+                         "virtual image that carries one; a fault on real hardware. Serial "
+                         "matching refuses these devices"),
+            "detail": (f"from each device's committed golden (`license udi ... sn {sn}`); "
+                       "nothing in the tool keys a device on its serial alone")})
+    return rows
+
+
 def updater_rows() -> list:
     """The Update button's root-owned updater: installed, root-owned, not
     writable by the service user, the path unit watching (`modules.update_op`)."""
@@ -1455,7 +1484,7 @@ def health(now: float = None, run=None, images=None, settings=None,
            rotations=None, owner=None, ztp=None, responder=None,
            startup=None, sessions=None, version=None, readers=None,
            breakglass=None, prometheus=None, monitoring=None, updater=None,
-           helpers=None) -> dict:
+           helpers=None, serials=None) -> dict:
     """*images*: the image rows, for a caller that has them; by default they
     are read from Proxmox. *settings*, *rotations*, *owner*: likewise."""
     jobs = [job_status(j, now, run) for j in JOBS]
@@ -1476,6 +1505,7 @@ def health(now: float = None, run=None, images=None, settings=None,
     jobs += monitoring_rows() if monitoring is None else list(monitoring)
     jobs += updater_rows() if updater is None else list(updater)
     jobs += helper_rows() if helpers is None else list(helpers)
+    jobs += serial_rows() if serials is None else list(serials)
     bad = [j["unit"] for j in jobs if j["state"] not in OK_STATES]
     na = sum(1 for j in jobs if j["state"] == "not_applicable")
     gone = sum(1 for j in jobs if j["state"] == "departed")

@@ -1108,6 +1108,8 @@ class TestASecondSyncOfAnUnchangedDeviceIsSilent:
         captured = {}
 
         monkeypatch.setattr(nc, "_nb_first", lambda *a, **k: existing)
+        # The serial lookup (C449: used only when unique) finds the same one device.
+        monkeypatch.setattr(nc, "_nb_get", lambda *a, **k: [existing])
         monkeypatch.setattr(nc, "_ensure_device_type",
                             lambda *a, **k: {"id": 3})
         monkeypatch.setattr(nc, "_ensure_platform", lambda *a, **k: 5)

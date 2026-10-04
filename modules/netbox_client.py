@@ -1839,6 +1839,32 @@ def _ensure_config_template(session: requests.Session, base: str) -> Optional[in
 # NetBox device upsert
 # ---------------------------------------------------------------------------
 
+def _existing_device(session, base: str, hostname: str, site_id, serial: str,
+                     sharing=None) -> Optional[dict]:
+    """The NetBox device this sync updates: by serial only when the serial is UNIQUE, else by
+    name and site.
+
+    A serial is never assumed unique (the operator, 2026-10-04: every C8000v of one virtual
+    image reports the same serial). Matching r2 by a serial r1 also reports would rename r1's
+    record to r2 and overwrite its context, and five devices would collapse into one. So the
+    serial is used only when exactly one NetBox device holds it AND no other device the tool
+    manages reports it (*sharing*: ``[(list, device)]``, `device_serials.devices_with`);
+    otherwise the match is by name, and the refusal is logged naming the devices."""
+    if serial:
+        from modules import device_serials
+
+        sharing = device_serials.devices_with(serial) if sharing is None else sharing
+        others = sorted({d for _l, d in sharing if d and d != hostname})
+        held = _nb_get(session, base, "dcim/devices/", serial=serial) or []
+        if others or len(held) > 1:
+            log.warning("netbox: %s not matched by serial %s: also reported by %s%s; matched "
+                        "by name", hostname, serial, ", ".join(others) or "no other device",
+                        f", and {len(held)} NetBox devices hold it" if len(held) > 1 else "")
+        elif held:
+            return held[0]
+    return _nb_first(session, base, "dcim/devices/", name=hostname, site_id=site_id)
+
+
 def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                    interfaces: list[dict],
                    site_id: int, role_id: int,
@@ -1897,11 +1923,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
     # name+site so devices with no readable serial still upsert correctly
     # instead of silently creating a duplicate.
     serial = (facts.get("serial") or "")[:50]
-    existing = None
-    if serial:
-        existing = _nb_first(session, base, "dcim/devices/", serial=serial, site_id=site_id)
-    if not existing:
-        existing = _nb_first(session, base, "dcim/devices/", name=hostname, site_id=site_id)
+    existing = _existing_device(session, base, hostname, site_id, serial)
 
     # NO `Synced: <timestamp>`. Same reasoning as `ndm_sync` in
     # _build_config_context: it made `comments` differ on every sync by
