@@ -227,13 +227,17 @@ HELPER_PIN = "/etc/nmas/oxidized-cred.conf"
 
 
 def pin_command(router_db: str) -> str:
-    """Install the pin naming *router_db*: a fresh folder, then root-owned by name."""
+    """Install the pin naming *router_db*: shown, confirmed by the operator, then a fresh
+    folder, installed root-owned by name. The path comes from the app's own settings, which
+    the app can write, so a pin the operator did not see pins nothing (C424, the operator,
+    2026-10-04): the command prints it and installs only on "y"."""
     import os
     import shlex
 
-    return ('d=$(mktemp -d) && printf \'%s\\n\' ' + shlex.quote(router_db)
-            + ' > "$d/oxidized-cred.conf" && sudo install -d -o root -g root -m 0755 '
-            + os.path.dirname(HELPER_PIN) + ' && sudo install -o root -g root -m 0644 '
+    return ('p=' + shlex.quote(router_db) + ' && printf \'Pin the Oxidized helper to %s? '
+            '[y/N] \' "$p" && read -r ok && [ "$ok" = y ] && d=$(mktemp -d) && '
+            'printf \'%s\\n\' "$p" > "$d/oxidized-cred.conf" && sudo install -d -o root -g root '
+            '-m 0755 ' + os.path.dirname(HELPER_PIN) + ' && sudo install -o root -g root -m 0644 '
             '"$d/oxidized-cred.conf" ' + HELPER_PIN + ' && rm -r "$d"')
 
 

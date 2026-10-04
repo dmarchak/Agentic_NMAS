@@ -210,6 +210,11 @@ Host-Step-After: [<check>] <text>   AFTER: never blocks; a Needs attention row
   credential helper is this release's copy, root-owned, by the helper's own check;
   C416). A checked step is never ticked: done is measured, and a step the check
   finds NOT done blocks the update, naming what it found, whatever a box says.
+- **A value a step reads from the app's own settings is shown and confirmed before it is
+  installed** (C424): the app can write its settings, so a pin the app chose unseen pins
+  nothing. The step prints the value and installs only on the operator's `y`
+  (`printf '... %s? [y/N] ' "$p" && read -r ok && [ "$ok" = y ] && ...`); the step check
+  refuses one that reads `user_settings.json` without that gate.
 - **A commit changing a file a check answers for names that check in its step**
   (`STEP_CHECKS` in `scripts/nmas-host-step-check`, the same pairs as the
   registry in `modules/host_helpers.py`): `deploy/update/` and `scripts/nmas-deploy`

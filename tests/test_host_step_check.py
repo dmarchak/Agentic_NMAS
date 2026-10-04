@@ -136,6 +136,34 @@ class TestAStepNamesTheCheckThatMeasuresIt:
         assert hs.unnamed_check(["deploy/systemd/x.service"], "x\n\nHost-Step: install x") == ""
 
 
+class TestAValueFromTheAppsSettingsIsConfirmed:
+    """C424 (the operator, 2026-10-04, installing 487b1da's pin): the step read the router.db
+    path from the app's own settings and installed it unseen; the app can write its settings,
+    so the step shows the value and installs only on the operator's "y"."""
+
+    READ = ("p=$(python3 -c 'import json; print(json.load(open(\"data/user_settings.json\"))"
+            ".get(\"oxidized_router_db\"))')")
+
+    def test_487b1das_step_is_refused_naming_why(self, hs):
+        why = hs.unsafe_step(f"x\n\nHost-Step-After: [oxidized-cred] {self.READ} && "
+                             "d=$(mktemp -d) && sudo install -m 0644 \"$d/a\" /etc/nmas/a")
+        assert "installs a value read from the app's own settings without showing it" in why
+
+    def test_shown_and_confirmed_it_passes(self, hs):
+        assert hs.unsafe_step(f"x\n\nHost-Step-After: [oxidized-cred] {self.READ} && printf "
+                              "'Pin %s? [y/N] ' \"$p\" && read -r ok && [ \"$ok\" = y ] && "
+                              "d=$(mktemp -d) && sudo install -m 0644 \"$d/a\" /etc/nmas/a") == ""
+
+    def test_a_read_that_does_not_gate_on_y_is_not_a_confirmation(self, hs):
+        assert hs.unsafe_step(f"x\n\nHost-Step: {self.READ} && read -r ok; d=$(mktemp -d)") != ""
+
+    def test_the_apps_pin_command_is_itself_a_confirmed_step(self, hs):
+        from modules.nsot import credential_rotation as cr
+        step = (f"x\n\nHost-Step-After: [oxidized-cred] {self.READ} && "
+                + cr.pin_command("/srv/ox/router.db").replace("p=/srv/ox/router.db && ", ""))
+        assert hs.unsafe_step(step) == ""
+
+
 class TestTheCommitBeingMade:
     def test_the_staged_files_and_the_message_are_read(self, repo, tmp_path_factory):
         (repo / "deploy" / "update").mkdir(parents=True)

@@ -94,6 +94,10 @@ def says_host(message: str) -> bool:
 
 
 STEP_TEXT = re.compile(r"^(Host-Step|Host-Step-After):\s*(.*)$", re.M)
+#: The app's settings file (data/user_settings.json), read by a step, and the confirmation
+#: a step that reads it must ask for.
+APP_SETTINGS = re.compile(r"\buser_settings\.json\b")
+CONFIRM = re.compile(r"\bread\s+-r\s+\w+\s*&&\s*\[\s*\"\$\w+\"\s*=\s*y\s*\]")
 #: A `<name>` placeholder: a word in angle brackets, never a shell redirect
 #: (`< file`, `<<`, `2>&1`) or a comparison.
 PLACEHOLDER = re.compile(r"<[A-Za-z][\w.@-]*(?:[ -][\w.@-]+)*>")
@@ -114,6 +118,13 @@ def unsafe_step(message: str) -> str:
             return (f"{kind} carries a placeholder ({holder.group(0)}): a host step names every "
                     "value it needs, read from where it lives (the datasource UID from "
                     "Grafana's API, a path from the checkout), never a blank to fill in")
+        # A value the step reads from the app's own settings is shown and confirmed before it is
+        # installed (C424, the operator, 2026-10-04): the app can write its settings, so a pin
+        # the app chose unseen pins nothing.
+        if APP_SETTINGS.search(text) and not CONFIRM.search(text):
+            return (f"{kind} installs a value read from the app's own settings without showing "
+                    "it: print it and wait for the operator's answer (printf '... %s? [y/N] ' "
+                    "\"$p\" && read -r ok && [ \"$ok\" = y ] && ...)")
         fixed = re.search(r"--out\s+(?![\"']?\$)(\S+)", text)
         if fixed:
             return (f"{kind} renders into a fixed folder ({fixed.group(1)}), which can hold "

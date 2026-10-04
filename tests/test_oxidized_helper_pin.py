@@ -256,10 +256,35 @@ class TestTheAppReadsThePin:
         got = cr.helper_pin_status(path=str(tmp_path / "absent"), router_db="/srv/ox/router.db")
         assert got["ok"] is False and "refuses every write as root until it names " \
                                       "/srv/ox/router.db" in got["reason"]
-        assert "printf '%s\\n' /srv/ox/router.db" in got["command"]
+        assert got["command"].startswith("p=/srv/ox/router.db && ")
         assert "sudo install -o root -g root -m 0644 \"$d/oxidized-cred.conf\" " \
                "/etc/nmas/oxidized-cred.conf" in got["command"]
         assert "mktemp -d" in got["command"] and "*" not in got["command"]
+
+    def _run_pin(self, tmp_path, answer):
+        """The command itself, in a shell, `sudo` a stand-in recording its arguments."""
+        from modules.nsot import credential_rotation as cr
+        tmp_path = tmp_path / answer
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir(parents=True)
+        log = tmp_path / "sudo.log"
+        (bin_dir / "sudo").write_text(f'#!/bin/sh\necho "$*" >> {log}\n', encoding="utf-8")
+        os.chmod(bin_dir / "sudo", 0o755)
+        proc = subprocess.run(["bash", "-c", cr.pin_command("/srv/ox/router.db")],
+                              input=answer + "\n", capture_output=True, text=True, timeout=30,
+                              env=dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}",
+                                       TMPDIR=str(tmp_path)))
+        return proc, (log.read_text(encoding="utf-8") if log.exists() else "")
+
+    def test_the_pin_is_shown_and_installed_only_when_the_operator_says_y(self, tmp_path):
+        """C424 (the operator, 2026-10-04): the path comes from the app's own settings, so a pin
+        the operator did not see pins nothing."""
+        proc, sudo = self._run_pin(tmp_path, "n")
+        assert proc.stdout == "Pin the Oxidized helper to /srv/ox/router.db? [y/N] "
+        assert sudo == "", "nothing installed on anything but y"
+        proc, sudo = self._run_pin(tmp_path, "y")
+        assert proc.returncode == 0, proc.stderr
+        assert "install -o root -g root -m 0644" in sudo and "/etc/nmas/oxidized-cred.conf" in sudo
 
     def test_a_pin_naming_another_file_names_both(self, monkeypatch, tmp_path, db):
         from modules.nsot import credential_rotation as cr
