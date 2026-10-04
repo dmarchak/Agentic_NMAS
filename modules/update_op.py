@@ -24,7 +24,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import stat
 import time
 
@@ -424,8 +423,11 @@ def person_ci(ci: dict, target: str = "") -> str:
     if ci.get("state") == "failed":
         # The run, named (the operator, 2026-10-01): "CI failed for this
         # release (run #241): it won't be installed".
-        m = re.search(r"run #(\d+)", ci.get("sentence") or "")
-        return ("CI failed for this release" + (f" (run #{m.group(1)})" if m else "")
+        # The run, by the verdict's own parser (C421: "run #" missed a run of its own).
+        from modules.readers import ci_verdict as CV
+
+        n = CV.run_of(ci.get("sentence"))["number"]
+        return ("CI failed for this release" + (f" (run #{n})" if n else "")
                 + ": it will not be installed. A fix needs a new release")
     return CI_PERSON.get(ci.get("state"), f"CI answered {ci.get('state')!r}")
 
@@ -868,8 +870,10 @@ def release_deferred(clock=time.time, **plan_kw):
         if ci.get("tip") != target or ci.get("state") in ("pending", "could_not_ask", None):
             return None
         if ci.get("state") != "verified":
-            run = re.search(r"run #(\d+)", ci.get("sentence") or "")
-            return _end(d, f"ci_{ci.get('state')}", f"run #{run.group(1)}" if run else "")
+            from modules.readers import ci_verdict as CV
+
+            n = CV.run_of(ci.get("sentence"))["number"]
+            return _end(d, f"ci_{ci.get('state')}", f"run #{n}" if n else "")
         if not p["selectable"]:
             return _end(d, "refused", p["why_not"])
         bad, ack = step_gate(f["host_steps"], d.get("acknowledged_host_steps") or [])

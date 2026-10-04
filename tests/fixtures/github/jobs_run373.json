@@ -1,0 +1,425 @@
+{
+ "jobs": [
+  {
+   "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/111326110884",
+   "completed_at": "2026-10-04T00:28:47Z",
+   "conclusion": "failure",
+   "created_at": "2026-10-04T00:28:08Z",
+   "head_branch": "main",
+   "head_sha": "74a7013a4032eb92ef8315cd8a3c3bbc13338fbd",
+   "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/37165035014/job/111326110884",
+   "id": 111326110884,
+   "labels": [
+    "ubuntu-24.04"
+   ],
+   "name": "test (a)",
+   "node_id": "CR_kwDOSBBA5M8AAAAZ642kpA",
+   "run_attempt": 1,
+   "run_id": 37165035014,
+   "run_url": "https://api.github.com/repos/account/Agentic_NMAS/actions/runs/37165035014",
+   "runner_group_id": 0,
+   "runner_group_name": "GitHub Actions",
+   "runner_id": 1000000458,
+   "runner_name": "GitHub Actions 1000000458",
+   "started_at": "2026-10-04T00:28:09Z",
+   "status": "completed",
+   "steps": [
+    {
+     "completed_at": "2026-10-04T00:28:11Z",
+     "conclusion": "success",
+     "name": "Set up job",
+     "number": 1,
+     "started_at": "2026-10-04T00:28:10Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:13Z",
+     "conclusion": "success",
+     "name": "Run actions/checkout@v4",
+     "number": 2,
+     "started_at": "2026-10-04T00:28:11Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:23Z",
+     "conclusion": "success",
+     "name": "Run actions/setup-python@v5",
+     "number": 3,
+     "started_at": "2026-10-04T00:28:13Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:34Z",
+     "conclusion": "success",
+     "name": "Install the host's versions, exactly",
+     "number": 4,
+     "started_at": "2026-10-04T00:28:23Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:37Z",
+     "conclusion": "success",
+     "name": "The runner's environment (information, not a gate)",
+     "number": 5,
+     "started_at": "2026-10-04T00:28:34Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:38Z",
+     "conclusion": "success",
+     "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+     "number": 6,
+     "started_at": "2026-10-04T00:28:37Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "failure",
+     "name": "promtool for the PromQL tests (unpacked, not installed)",
+     "number": 7,
+     "started_at": "2026-10-04T00:28:38Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "skipped",
+     "name": "Allow a network namespace for the suite (this VM only)",
+     "number": 8,
+     "started_at": "2026-10-04T00:28:45Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "skipped",
+     "name": "Tests (R1, R4), confined to loopback, coverage reported",
+     "number": 9,
+     "started_at": "2026-10-04T00:28:45Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "skipped",
+     "name": "No removed definition is still called (R2)",
+     "number": 10,
+     "started_at": "2026-10-04T00:28:45Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "skipped",
+     "name": "Every host-installed change says what the host needs",
+     "number": 11,
+     "started_at": "2026-10-04T00:28:45Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "skipped",
+     "name": "Post Run actions/setup-python@v5",
+     "number": 21,
+     "started_at": "2026-10-04T00:28:45Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "success",
+     "name": "Post Run actions/checkout@v4",
+     "number": 22,
+     "started_at": "2026-10-04T00:28:45Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "success",
+     "name": "Complete job",
+     "number": 23,
+     "started_at": "2026-10-04T00:28:45Z",
+     "status": "completed"
+    }
+   ],
+   "url": "https://api.github.com/repos/account/Agentic_NMAS/actions/jobs/111326110884",
+   "workflow_name": "ci"
+  },
+  {
+   "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/111326111025",
+   "completed_at": "2026-10-04T00:28:56Z",
+   "conclusion": "failure",
+   "created_at": "2026-10-04T00:28:08Z",
+   "head_branch": "main",
+   "head_sha": "74a7013a4032eb92ef8315cd8a3c3bbc13338fbd",
+   "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/37165035014/job/111326111025",
+   "id": 111326111025,
+   "labels": [
+    "ubuntu-24.04"
+   ],
+   "name": "test (browser)",
+   "node_id": "CR_kwDOSBBA5M8AAAAZ642lMQ",
+   "run_attempt": 1,
+   "run_id": 37165035014,
+   "run_url": "https://api.github.com/repos/account/Agentic_NMAS/actions/runs/37165035014",
+   "runner_group_id": 0,
+   "runner_group_name": "GitHub Actions",
+   "runner_id": 1000000459,
+   "runner_name": "GitHub Actions 1000000459",
+   "started_at": "2026-10-04T00:28:10Z",
+   "status": "completed",
+   "steps": [
+    {
+     "completed_at": "2026-10-04T00:28:12Z",
+     "conclusion": "success",
+     "name": "Set up job",
+     "number": 1,
+     "started_at": "2026-10-04T00:28:11Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:15Z",
+     "conclusion": "success",
+     "name": "Run actions/checkout@v4",
+     "number": 2,
+     "started_at": "2026-10-04T00:28:12Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:27Z",
+     "conclusion": "success",
+     "name": "Run actions/setup-python@v5",
+     "number": 3,
+     "started_at": "2026-10-04T00:28:15Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:39Z",
+     "conclusion": "success",
+     "name": "Install the host's versions, exactly",
+     "number": 4,
+     "started_at": "2026-10-04T00:28:27Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:44Z",
+     "conclusion": "success",
+     "name": "The runner's environment (information, not a gate)",
+     "number": 5,
+     "started_at": "2026-10-04T00:28:39Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:44Z",
+     "conclusion": "success",
+     "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+     "number": 6,
+     "started_at": "2026-10-04T00:28:44Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:53Z",
+     "conclusion": "failure",
+     "name": "promtool for the PromQL tests (unpacked, not installed)",
+     "number": 7,
+     "started_at": "2026-10-04T00:28:44Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:53Z",
+     "conclusion": "skipped",
+     "name": "Allow a network namespace for the suite (this VM only)",
+     "number": 8,
+     "started_at": "2026-10-04T00:28:53Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:53Z",
+     "conclusion": "skipped",
+     "name": "Tests (R1, R4), confined to loopback, coverage reported",
+     "number": 9,
+     "started_at": "2026-10-04T00:28:53Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:53Z",
+     "conclusion": "skipped",
+     "name": "No removed definition is still called (R2)",
+     "number": 10,
+     "started_at": "2026-10-04T00:28:53Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:53Z",
+     "conclusion": "skipped",
+     "name": "Every host-installed change says what the host needs",
+     "number": 11,
+     "started_at": "2026-10-04T00:28:53Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:53Z",
+     "conclusion": "skipped",
+     "name": "Post Run actions/setup-python@v5",
+     "number": 21,
+     "started_at": "2026-10-04T00:28:53Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:53Z",
+     "conclusion": "success",
+     "name": "Post Run actions/checkout@v4",
+     "number": 22,
+     "started_at": "2026-10-04T00:28:53Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:53Z",
+     "conclusion": "success",
+     "name": "Complete job",
+     "number": 23,
+     "started_at": "2026-10-04T00:28:53Z",
+     "status": "completed"
+    }
+   ],
+   "url": "https://api.github.com/repos/account/Agentic_NMAS/actions/jobs/111326111025",
+   "workflow_name": "ci"
+  },
+  {
+   "check_run_url": "https://api.github.com/repos/account/Agentic_NMAS/check-runs/111326111061",
+   "completed_at": "2026-10-04T00:28:57Z",
+   "conclusion": "failure",
+   "created_at": "2026-10-04T00:28:08Z",
+   "head_branch": "main",
+   "head_sha": "74a7013a4032eb92ef8315cd8a3c3bbc13338fbd",
+   "html_url": "https://github.com/account/Agentic_NMAS/actions/runs/37165035014/job/111326111061",
+   "id": 111326111061,
+   "labels": [
+    "ubuntu-24.04"
+   ],
+   "name": "test (b)",
+   "node_id": "CR_kwDOSBBA5M8AAAAZ642lVQ",
+   "run_attempt": 1,
+   "run_id": 37165035014,
+   "run_url": "https://api.github.com/repos/account/Agentic_NMAS/actions/runs/37165035014",
+   "runner_group_id": 0,
+   "runner_group_name": "GitHub Actions",
+   "runner_id": 1000000460,
+   "runner_name": "GitHub Actions 1000000460",
+   "started_at": "2026-10-04T00:28:09Z",
+   "status": "completed",
+   "steps": [
+    {
+     "completed_at": "2026-10-04T00:28:11Z",
+     "conclusion": "success",
+     "name": "Set up job",
+     "number": 1,
+     "started_at": "2026-10-04T00:28:10Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:13Z",
+     "conclusion": "success",
+     "name": "Run actions/checkout@v4",
+     "number": 2,
+     "started_at": "2026-10-04T00:28:11Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:24Z",
+     "conclusion": "success",
+     "name": "Run actions/setup-python@v5",
+     "number": 3,
+     "started_at": "2026-10-04T00:28:13Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:37Z",
+     "conclusion": "success",
+     "name": "Install the host's versions, exactly",
+     "number": 4,
+     "started_at": "2026-10-04T00:28:24Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:44Z",
+     "conclusion": "success",
+     "name": "The runner's environment (information, not a gate)",
+     "number": 5,
+     "started_at": "2026-10-04T00:28:37Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:45Z",
+     "conclusion": "success",
+     "name": "Where PyPI's metadata disagrees with the host (information, not a gate)",
+     "number": 6,
+     "started_at": "2026-10-04T00:28:44Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:55Z",
+     "conclusion": "failure",
+     "name": "promtool for the PromQL tests (unpacked, not installed)",
+     "number": 7,
+     "started_at": "2026-10-04T00:28:45Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:55Z",
+     "conclusion": "skipped",
+     "name": "Allow a network namespace for the suite (this VM only)",
+     "number": 8,
+     "started_at": "2026-10-04T00:28:55Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:55Z",
+     "conclusion": "skipped",
+     "name": "Tests (R1, R4), confined to loopback, coverage reported",
+     "number": 9,
+     "started_at": "2026-10-04T00:28:55Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:55Z",
+     "conclusion": "skipped",
+     "name": "No removed definition is still called (R2)",
+     "number": 10,
+     "started_at": "2026-10-04T00:28:55Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:55Z",
+     "conclusion": "skipped",
+     "name": "Every host-installed change says what the host needs",
+     "number": 11,
+     "started_at": "2026-10-04T00:28:55Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:55Z",
+     "conclusion": "skipped",
+     "name": "Post Run actions/setup-python@v5",
+     "number": 21,
+     "started_at": "2026-10-04T00:28:55Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:55Z",
+     "conclusion": "success",
+     "name": "Post Run actions/checkout@v4",
+     "number": 22,
+     "started_at": "2026-10-04T00:28:55Z",
+     "status": "completed"
+    },
+    {
+     "completed_at": "2026-10-04T00:28:55Z",
+     "conclusion": "success",
+     "name": "Complete job",
+     "number": 23,
+     "started_at": "2026-10-04T00:28:55Z",
+     "status": "completed"
+    }
+   ],
+   "url": "https://api.github.com/repos/account/Agentic_NMAS/actions/jobs/111326111061",
+   "workflow_name": "ci"
+  }
+ ],
+ "total_count": 3
+}

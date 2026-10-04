@@ -15,7 +15,12 @@ commit AND CI passed for it; hovering says how many commits behind and since whe
 is news, not a problem, so it makes no Needs attention row. The pill turns into that row
 when something IS wrong: CI failed or was cancelled for the release, the host has run
 behind for more than 20 hours, the release could not be fetched, or an update asked from
-this version did not happen. The two are never shown together. What the page knows comes from the
+this version did not happen. The two are never shown together. A release CI failed or
+cancelled is never offered as an update: its row leads with the failure ("CI failed on the
+newest commit, 74a7013 — run #373: <the step that failed>, in <the jobs>"), its action is the
+developer's (fix forward with a newer commit; there is nothing to update until CI passes one),
+and **Open run #N on GitHub** opens the run. Where it failed is read once per failed release
+from the run's jobs on GitHub. What the page knows comes from the
 app-pushed reader, which asks the repository's origin (`git ls-remote`) every 5 minutes and
 when you press **Check again**, and asks GitHub's Actions API for the target's CI verdict
 through `nmas-deploy`'s own gate. No page load asks GitHub itself.

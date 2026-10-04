@@ -27,6 +27,7 @@ the previous commit's verdict as its own.
 import importlib.machinery
 import importlib.util
 import os
+import re
 import threading
 
 from modules import reader_job
@@ -57,6 +58,50 @@ def state_of(mod, code) -> str:
     """The script's exit code, in the words its constants name."""
     return {mod.OK: "verified", mod.CI_REFUSED: "failed", mod.COULD_NOT_ASK: "could_not_ask",
             mod.CI_PENDING: "pending", mod.CI_CANCELLED: "cancelled"}.get(code, f"code {code}")
+
+
+#: The run a verdict's sentence names, in each of `ci_verdict()`'s forms: ", #373, concluded"
+#: (a run of its own), "run #373" (still running; an ancestor's run), "(#373)" (an ancestor
+#: still running). The first match is the run judged: the other runs are listed after it.
+_RUN_NUMBER = re.compile(r"(?:\brun |, |\()#(\d+)\b")
+_RUN_URL = re.compile(r"https://github\.com/([\w.-]+/[\w.-]+)/actions/runs/(\d+)")
+
+
+def run_of(sentence: str) -> dict:
+    """``{"number", "url", "slug", "id"}`` of the run a verdict sentence names, each None when
+    the sentence does not carry it (an ancestor's run is named without its link)."""
+    sentence = sentence or ""
+    n, u = _RUN_NUMBER.search(sentence), _RUN_URL.search(sentence)
+    return {"number": n.group(1) if n else None, "url": u.group(0) if u else None,
+            "slug": u.group(1) if u else None, "id": u.group(2) if u else None}
+
+
+def failed_steps(run: dict, get=None) -> dict:
+    """Where a failed run failed: ``{"steps": [{"step", "jobs"}]}``, the first failed step of
+    each failed job, jobs that failed at the same step together; or ``{"error"}``. One request
+    (GitHub's jobs listing for the run), asked once per tip, since a failed verdict is final."""
+    if not run.get("id"):
+        return {"error": "the verdict names no run of this commit's own to ask about"}
+    get = get or deploy_script().github_get
+    _status, body, reason = get(f"/repos/{run['slug']}/actions/runs/{run['id']}/jobs?per_page=50")
+    if body is None:
+        return {"error": f"GitHub's jobs for run {run['id']} could not be read ({reason})"}
+    where = {}
+    for job in body.get("jobs") or []:
+        if job.get("conclusion") != "failure":
+            continue
+        step = next((s.get("name") for s in job.get("steps") or []
+                     if s.get("conclusion") == "failure"), None) or "no step marked failed"
+        where.setdefault(step, []).append(job.get("name") or "?")
+    if not where:
+        return {"error": f"run {run['id']} lists no failed job"}
+    return {"steps": [{"step": s, "jobs": sorted(j)} for s, j in where.items()]}
+
+
+def failed_words(ci: dict) -> str:
+    """Where it failed, in a person's words: "promtool for the PromQL tests, in test (a),
+    test (b)"; "" when not known."""
+    return "; ".join(f"{w['step']}, in {', '.join(w['jobs'])}" for w in ci.get("failed_at") or [])
 
 
 def read(commit=None, verdict=None) -> dict:

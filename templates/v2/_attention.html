@@ -55,6 +55,8 @@
         {%- elif r.action.open == 'breakglass_drill' %}<a class="btn btn-small btn-outline" data-op="breakglass-export" data-next-acts="breakglass_drill" href="{{ url_for('v2.credentials', list=r.action.list) }}#bg-drill">Record the drill on Credentials…</a>{{ how('breakglass-export', 'drill', compact=True, op='the drill') }}
         {%- elif r.action.open %}<span class="muted">its control ({{ r.action.open }}) is not on these pages yet</span>
         {%- elif r.action.href and r.action.href.startswith('/v2/') %}<a class="btn btn-small btn-outline" href="{{ r.action.href }}">Open…</a>{% endif %}
+        {#- A CI run the row is about (C418), on GitHub: only a run's own address is drawn. -#}
+        {%- if r.action.run_url and r.action.run_url.startswith('https://github.com/') %}<a class="btn btn-small btn-outline" href="{{ r.action.run_url }}" target="_blank" rel="noopener noreferrer">Open {{ ('run #' ~ r.action.run) if r.action.run else 'the run' }} on GitHub</a>{% endif %}
       </div>
       {%- if r.acknowledge %}
       {#- An event that cannot un-happen: a person acknowledges THIS event with a reason

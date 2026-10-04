@@ -59,6 +59,7 @@ NOT_AN_OPERATION = {
     ("_attention.html", "Copy"): "copies a row's command to the clipboard",
     ("_attention.html", "Open"): "navigates to the device page",
     ("_attention.html", "Open…"): "navigates to the screen the row names",
+    ("_attention.html", "Open on GitHub"): "opens the CI run a row names, on GitHub, a read (C418)",
     ("_attention.html", "Acknowledge…"): "opens the reason field; the Acknowledge beside it carries the link",
     ("_attention.html", "Cancel"): "closes the reason field, recording nothing",
     ("_macros.html", "btn btn-small"): "Check again: re-reads origin and CI now, a read",

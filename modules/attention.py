@@ -105,6 +105,8 @@ ROW_KINDS = {
                                  "mask it, remove it by hand, or repair the record first"),
     ("pushed", "release"): ("the host runs a release that is wrong to keep running",
                             "update, or find where the running commit came from"),
+    ("pushed", "ci_failed"): ("CI failed (or was cancelled) for the newest pushed commit, so the "
+                              "Update button refuses it", "the developer fixes forward"),
     ("remote", "publication"): ("a list's history is not on its remote",
                                 "push, acknowledge, repair the remote, or verify it"),
     ("host_steps", "owed"): ("a host step a release asked for is not done", "do it, then say so"),
@@ -192,6 +194,8 @@ CLEARS = {
     ("netbox-secrets", "held"): (("resolves",), "NetBox no longer holds the credential (masked "
                                  "or removed), at the next hourly read"),
     ("pushed", "release"): (("resolves",), "the host runs the commit the remote holds"),
+    ("pushed", "ci_failed"): (("resolves",), "a newer commit is pushed (its update is offered "
+                              "once CI passes it), or the host runs this one"),
     ("remote", "publication"): (("resolves",), "the remote holds the list's history: pushed, "
                                 "after a held push is acknowledged on the Remote card"),
     ("host_steps", "owed"): (("resolves", "acknowledge"), "its check finds it done, or a person "
@@ -1825,6 +1829,37 @@ def update_words(v: dict) -> str:
     return f"Update available — {run} → {tip} ({count})"
 
 
+def ci_refused(v: dict) -> bool:
+    """CI's final verdict for the pushed tip is not a pass, so the Update button refuses it
+    (C418): the row is about the commit, never an update offer."""
+    ci = v.get("ci") or {}
+    return (v.get("state") != "not_on_remote" and ci.get("tip") == v.get("tip")
+            and ci.get("state") in ("failed", "cancelled"))
+
+
+def ci_refused_words(v: dict) -> tuple:
+    """``(headline, action)`` for a tip CI refused: "CI failed on the newest commit, 74a7013 —
+    run #373: promtool for the PromQL tests, in test (a), test (b)", and the developer's
+    fix-forward, linking the run when the verdict names it."""
+    from modules.readers import ci_verdict as CV
+
+    ci, tip = v.get("ci") or {}, str(v.get("tip") or "")[:7]
+    run = CV.run_of(ci.get("sentence"))
+    named = f" — run #{run['number']}" if run["number"] else ""
+    if ci.get("state") == "cancelled":
+        what = f"CI was cancelled for the newest commit, {tip}{named}: no verdict"
+        label = (f"The developer re-runs CI for {tip} or fixes forward with a newer commit; "
+                 "nothing to update until CI passes one")
+    else:
+        where = CV.failed_words(ci)
+        what = f"CI failed on the newest commit, {tip}{named}" + (f": {where}" if where else "")
+        label = "The developer fixes forward; nothing to update until CI passes a newer commit"
+    action = {"label": label}
+    if run["url"]:
+        action.update(run_url=run["url"], run=run["number"] or "")
+    return what, action
+
+
 def pushed_source(cached=None) -> dict:
     """The host running something other than what is pushed (the operator,
     2026-09-30: the commit left the top bar, so when it is wrong it is here),
@@ -1896,10 +1931,23 @@ def pushed_source(cached=None) -> dict:
                                         "open the Update page to follow it or stop waiting")
         what = (update_words(v) if v["state"] in ("behind", "behind_unfetched")
                 else sentence[0].upper() + sentence[1:])
+        if ci_refused(v):
+            # A commit CI refused is not an update on offer (C418: the row said "Update
+            # available ... preview then confirm" for a commit the button refuses). The
+            # failure leads; the action is the developer's.
+            ci = v.get("ci") or {}
+            what, action = ci_refused_words(v)
+            cause += (f". CI's verdict, asked at {ci.get('asked_at') or '?'}: "
+                      f"{ci.get('sentence') or 'no sentence recorded'}"
+                      + (f". Where it failed could not be read: {ci['failed_at_error']}"
+                         if ci.get("failed_at_error") else ""))
+            rows.append(row(source="pushed", kind="ci_failed", key=tip[:10], level=level,
+                            what=what, cause=cause, action=action,
+                            since=_ts(ci.get("asked_at")) or _ts(v.get("behind_since"))))
         # A release being available is not wrong (the operator, 2026-10-02):
         # it is said on Help > About and the Update page, and here only once
         # something is (pushed_level names what).
-        if level != "info":
+        elif level != "info":
             rows.append(row(source="pushed", kind="release", key=running[:10], level=level,
                             what=what,
                             since=_ts(v.get("behind_since")),

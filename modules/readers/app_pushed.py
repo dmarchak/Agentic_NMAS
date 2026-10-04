@@ -94,7 +94,7 @@ def _iso(epoch: float) -> str:
 
 
 def enrich(root: str, v: dict, previous: dict = None, verdict=None, git=_git,
-           now: float = None) -> dict:
+           now: float = None, jobs=None) -> dict:
     """What the Update operation shows about a tip ahead of the running
     commit: the commits between, their `Host-Step:` trailers, which updater
     sources the release changes, whether the checkout is clean, the tip's CI
@@ -142,6 +142,11 @@ def enrich(root: str, v: dict, previous: dict = None, verdict=None, git=_git,
             code, sentence = (verdict or mod.ci_verdict)(root, tip)
             ci = {"tip": tip, "state": CV.state_of(mod, code), "sentence": sentence,
                   "asked_at": _iso(now)}
+            if ci["state"] == "failed":
+                # Where it failed (C418): the Needs attention row leads with it. Asked once,
+                # with the verdict, since a failed verdict is final.
+                where = CV.failed_steps(CV.run_of(sentence), get=jobs)
+                ci.update(failed_at=where.get("steps") or [], failed_at_error=where.get("error"))
         except Exception as exc:                          # noqa: BLE001
             ci = {"tip": tip, "state": "could_not_ask", "asked_at": _iso(now),
                   "sentence": f"the verdict raised {type(exc).__name__}: {exc}"}
