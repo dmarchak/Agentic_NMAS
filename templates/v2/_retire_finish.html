@@ -1,0 +1,19 @@
+{%- from "v2/_macros.html" import how -%}
+{#- A retired device's Oxidized row (C398; the operator, 2026-10-04): on its retired record,
+    "Finish this retirement" removes the row through the root helper's REMOVE mode, read back.
+    The address is the retire commit's (the manifest before it), never the form's. -#}
+<div class="retire-finish" id="retire-finish">
+{%- if f.state == 'offer' %}
+  <p><strong>Still to remove:</strong> Oxidized's router.db holds {{ f.ip }}, so Oxidized keeps polling {{ f.name }}.</p>
+  <p class="dev-actions"><button type="button" class="btn btn-primary op-confirm" data-op="retire" hx-post="{{ url_for('device_v2.retire_finish', name=f.name) }}" hx-target="#retire-finish" hx-swap="outerHTML" hx-disabled-elt="this" hx-vals='{{ {"list": f.list} | tojson }}'><span class="op-idle">Finish this retirement</span><span class="op-busy">Removing the row and reading it back…</span></button>{{ how('retire', 'afterwards', compact=True, op='retirement') }}</p>
+{%- elif f.state == 'done' %}
+  <p><strong>Finished:</strong> {{ f.ip }}'s row {{ 'was removed from' if f.removed else 'was already gone from' }} Oxidized's router.db, read back. Oxidized no longer polls {{ f.name }}.</p>
+{%- elif f.state == 'unknown' %}
+  <p>Whether Oxidized's router.db still holds {{ f.ip or f.name }} could not be read: {{ f.error }}.</p>
+{%- elif f.state == 'failed' %}
+  <p><strong>Not finished:</strong> {{ f.error }}. router.db is as it was, or the read-back says what holds.</p>
+  <p class="dev-actions"><button type="button" class="btn op-confirm" data-op="retire" hx-post="{{ url_for('device_v2.retire_finish', name=f.name) }}" hx-target="#retire-finish" hx-swap="outerHTML" hx-disabled-elt="this" hx-vals='{{ {"list": f.list} | tojson }}'><span class="op-idle">Try again</span><span class="op-busy">Removing the row and reading it back…</span></button>{{ how('retire', 'afterwards', compact=True, op='retirement') }}</p>
+{%- elif f.state == 'refused' %}
+  <p><strong>Refused:</strong> {{ f.error }}. Nothing was changed.</p>
+{%- endif %}
+</div>

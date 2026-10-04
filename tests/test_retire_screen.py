@@ -74,13 +74,13 @@ class TestThePreview:
         assert any(l.startswith("one commit: remove host_vars/r5.yml, golden/r5.cfg") for l in lines)
         assert lines[-1].startswith("delete the CSV row"), "the row goes last"
         said = " ".join(i["text"] for i in p["what_not"]["items"])
-        for claim in ("NetBox device 9 is KEPT", "Oxidized keeps polling",
+        for claim in ("NetBox device 9 is KEPT", "Oxidized is not configured here",
                       "freezes at its last sync", "running configuration is not changed",
                       "backups are kept", "is not withdrawn", "Advisory: its golden shows the "
                       "NMAS-HEARTBEAT applet"):
             assert claim in said, claim
         html = render_preview(p)
-        assert "Oxidized keeps polling" in html and "is not withdrawn" in html
+        assert "Oxidized is not configured here" in html and "is not withdrawn" in html
 
     def test_it_says_which_basis_it_trusts_and_what_that_cannot_show(self, screen):
         _export(screen)
@@ -191,7 +191,7 @@ class TestTheApply:
             screen["R"].git(screen["repo"], "rev-parse", "HEAD")[1]
         html = render_result(res)
         # The Not-Done list drawn again, after the fact.
-        assert "Oxidized keeps polling" in html and "NetBox device 9 is KEPT" in html
+        assert "Oxidized may still poll it" in html and "NetBox device 9 is KEPT" in html
 
     def test_the_record_reads_back_by_name_after_the_golden_is_gone(self, screen):
         _export(screen)

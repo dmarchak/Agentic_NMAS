@@ -237,6 +237,82 @@ class TestSafetyOfTheWriteItself:
         assert body["backup"] == ""
 
 
+def act(db_path, *flags):
+    """Run the helper with *flags* and NOTHING on stdin: removing and listing read no
+    credential."""
+    proc = subprocess.run([sys.executable, HELPER, "--file", str(db_path), *flags],
+                          input="", capture_output=True, text=True)
+    try:
+        body = json.loads(proc.stdout or "{}")
+    except ValueError:
+        body = {"ok": False, "error": "non-JSON output", "raw": proc.stdout}
+    return proc.returncode, body
+
+
+class TestRemovingOneRow:
+    """C398 (the operator, 2026-10-04): a retired device's row leaves router.db through this
+    helper, one row, nothing else touched, with no credential read or printed."""
+
+    def test_exactly_that_row_leaves_and_the_rest_keep_their_order(self, db):
+        code, body = act(db, "--ip", "10.255.1.12", "--remove", "--no-backup")
+        assert code == 0 and body["ok"] and body["removed"] == 1 and body["rows"] == 2, body
+        assert rows_of(db) == [ROWS[0], ROWS[2]]
+
+    def test_a_second_run_finds_it_already_absent(self, db):
+        act(db, "--ip", "10.255.1.12", "--remove", "--no-backup")
+        before = rows_of(db)
+        code, body = act(db, "--ip", "10.255.1.12", "--remove", "--no-backup")
+        assert code == 0 and body["ok"] and body["removed"] == 0 and body["already_absent"]
+        assert rows_of(db) == before, "nothing rewritten"
+
+    def test_the_last_row_can_leave(self, tmp_path):
+        one = tmp_path / "router.db"
+        one.write_text(ROWS[0] + "\n", encoding="utf-8")
+        code, body = act(one, "--ip", "10.255.1.11", "--remove", "--no-backup")
+        assert code == 0 and body["removed"] == 1 and rows_of(one) == []
+
+    def test_a_malformed_file_is_refused_and_untouched(self, db):
+        db.write_text(ROWS[0] + "\nnot-a-row\n", encoding="utf-8")
+        before = db.read_text(encoding="utf-8")
+        code, body = act(db, "--ip", "10.255.1.11", "--remove", "--no-backup")
+        assert code != 0 and not body["ok"] and "malformed" in body["error"]
+        assert db.read_text(encoding="utf-8") == before
+
+    def test_a_backup_is_taken_owner_only(self, db):
+        code, body = act(db, "--ip", "10.255.1.12", "--remove")
+        assert code == 0 and body["backup"]
+        assert oct(os.stat(body["backup"]).st_mode & 0o777) == "0o600"
+        assert len(rows_of(type(db)(body["backup"]))) == 3, "the backup is the file before"
+
+    def test_no_credential_appears_in_the_output(self, db):
+        _code, body = act(db, "--ip", "10.255.1.12", "--remove", "--no-backup")
+        assert "OldPassword1" not in json.dumps(body) and "admin" not in json.dumps(body)
+
+    def test_the_removal_is_validated_against_what_was_written(self):
+        source = open(HELPER, encoding="utf-8").read()
+        assert "lambda b, w: validate_removal(b, w, args.ip)" in source
+
+    def test_remove_and_list_together_are_refused(self, db):
+        code, body = act(db, "--ip", "10.255.1.12", "--remove", "--addresses")
+        assert code != 0 and "two different acts" in body["error"]
+        assert rows_of(db) == ROWS
+
+
+class TestListingAddresses:
+    """Job health compares router.db's addresses with the devices the tool manages (C398): the
+    helper says which addresses it holds, and never a username or password."""
+
+    def test_the_addresses_in_order_and_nothing_else(self, db):
+        code, body = act(db, "--addresses")
+        assert code == 0 and body == {"ok": True, "rows": 3,
+                                      "addresses": [r.split(":")[0] for r in ROWS]}
+
+    def test_it_writes_nothing(self, db):
+        before = (db.read_text(encoding="utf-8"), os.stat(db).st_mtime_ns)
+        act(db, "--addresses")
+        assert (db.read_text(encoding="utf-8"), os.stat(db).st_mtime_ns) == before
+
+
 class TestTheShebangIsPartOfTheSecurity:
     """A root-run script must not let its caller choose the interpreter."""
 

@@ -1,5 +1,12 @@
 #!/usr/bin/python3 -I
-"""Update exactly one row of Oxidized's router.db. Root-owned helper.
+"""Update or remove exactly one row of Oxidized's router.db, or list its addresses.
+Root-owned helper.
+
+THREE ACTS, each one row or none
+    (default)     replace one row's username and password (from STDIN);
+    --remove      remove one row, a retired device's (C398); reads no credential;
+    --addresses   print the addresses only, never a credential (job health compares them
+                  with the devices the tool manages).
 
 THE SHEBANG IS PART OF THE SECURITY OF THIS SCRIPT
     ``/usr/bin/python3`` absolutely, not ``/usr/bin/env python3``: ``env``
@@ -73,7 +80,7 @@ def _fail(message, **extra):
     raise SystemExit(1)
 
 
-def parse_rows(text):
+def parse_rows(text, allow_empty=False):
     """``[(ip, model, username, password)]``. Raises on a malformed file.
 
     A malformed row is refused rather than skipped: this file is the only thing
@@ -95,7 +102,7 @@ def parse_rows(text):
         if not parts[1] or not parts[2]:
             raise ValueError(f"line {lineno}: empty model or username")
         rows.append(tuple(parts))
-    if not rows:
+    if not rows and not allow_empty:
         raise ValueError("no rows found")
     return rows
 
@@ -129,13 +136,93 @@ def validate(before, after, target_ip):
             f"changed: {differing or 'none'}")
 
 
+def validate_removal(before, after, target_ip):
+    """Removing ONE row (C398, a retired device): exactly that address leaves, and every other
+    row is unchanged, in its order."""
+    if len(after) != len(before) - 1:
+        raise ValueError(f"row count changed: {len(before)} -> {len(after)}, expected one fewer")
+    if target_ip in [r[0] for r in after]:
+        raise ValueError(f"{target_ip} is still present")
+    if after != [r for r in before if r[0] != target_ip]:
+        raise ValueError("a row other than the removed one changed, or the order moved")
+
+
+def write_checked(path, before, after, check, no_backup):
+    """Back up, write a temp file, re-read and validate WHAT WAS WRITTEN with *check*, then
+    replace atomically. Returns the backup's path ("" with *no_backup*); fails leaving the
+    original untouched."""
+    backup = ""
+    if not no_backup:
+        backup = f"{path}.nmas-bak-{time.strftime('%Y%m%d-%H%M%S')}"
+        shutil.copy2(path, backup)
+        os.chmod(backup, stat.S_IRUSR | stat.S_IWUSR)
+
+    st = os.stat(path)
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".router.db.")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(render(after) if after else "")
+        # Re-read what was actually written, and validate THAT — not the list
+        # we intended to write. A short write or an encoding surprise is
+        # exactly the failure this ordering catches.
+        written = parse_rows(open(tmp, encoding="utf-8").read(), allow_empty=True)
+        check(before, written)
+        os.chmod(tmp, stat.S_IMODE(st.st_mode))
+        os.chown(tmp, st.st_uid, st.st_gid)
+        os.replace(tmp, path)
+    except Exception as exc:                  # noqa: BLE001
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        _fail(f"write failed, original untouched: {type(exc).__name__}: {exc}")
+    return backup
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--file", required=True)
-    ap.add_argument("--ip", required=True)
+    ap.add_argument("--ip")
+    ap.add_argument("--remove", action="store_true",
+                    help="remove the --ip row (a retired device); reads no credential")
+    ap.add_argument("--addresses", action="store_true",
+                    help="print the addresses only, never a credential")
     ap.add_argument("--no-backup", action="store_true",
                     help="tests only; the real path always backs up")
     args = ap.parse_args()
+
+    if args.remove and args.addresses:
+        _fail("--remove and --addresses are two different acts: give one")
+    if not args.addresses and not args.ip:
+        _fail("--ip is required")
+    if args.remove or args.addresses:
+        path = args.file
+        if not os.path.exists(path):
+            _fail(f"{path} does not exist")
+        try:
+            before = parse_rows(open(path, encoding="utf-8").read(), allow_empty=True)
+        except ValueError as exc:
+            _fail(f"refusing to read a malformed router.db: {exc}")
+        if args.addresses:
+            # ADDRESSES ONLY: the caller compares them with its managed devices (C398's job
+            # health); a username or password never leaves this process.
+            print(json.dumps({"ok": True, "rows": len(before),
+                              "addresses": [r[0] for r in before]}))
+            return
+        if args.ip not in [r[0] for r in before]:
+            # ALREADY ABSENT is success: a retirement run again finds its row gone.
+            print(json.dumps({"ok": True, "ip": args.ip, "rows": len(before), "backup": "",
+                              "removed": 0, "already_absent": True}))
+            return
+        after = [r for r in before if r[0] != args.ip]
+        try:
+            validate_removal(before, after, args.ip)
+        except ValueError as exc:
+            _fail(f"validation failed, nothing written: {exc}")
+        backup = write_checked(path, before, after,
+                               lambda b, w: validate_removal(b, w, args.ip), args.no_backup)
+        print(json.dumps({"ok": True, "ip": args.ip, "rows": len(after), "backup": backup,
+                          "removed": 1}))
+        return
 
     try:
         payload = json.load(sys.stdin)
@@ -188,30 +275,8 @@ def main():
     except ValueError as exc:
         _fail(f"validation failed, nothing written: {exc}")
 
-    backup = ""
-    if not args.no_backup:
-        backup = f"{path}.nmas-bak-{time.strftime('%Y%m%d-%H%M%S')}"
-        shutil.copy2(path, backup)
-        os.chmod(backup, stat.S_IRUSR | stat.S_IWUSR)
-
-    st = os.stat(path)
-    directory = os.path.dirname(path) or "."
-    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".router.db.")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(render(after))
-        # Re-read what was actually written, and validate THAT — not the list
-        # we intended to write. A short write or an encoding surprise is
-        # exactly the failure this ordering catches.
-        written = parse_rows(open(tmp, encoding="utf-8").read())
-        validate(before, written, args.ip)
-        os.chmod(tmp, stat.S_IMODE(st.st_mode))
-        os.chown(tmp, st.st_uid, st.st_gid)
-        os.replace(tmp, path)
-    except Exception as exc:                  # noqa: BLE001
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        _fail(f"write failed, original untouched: {type(exc).__name__}: {exc}")
+    backup = write_checked(path, before, after,
+                           lambda b, w: validate(b, w, args.ip), args.no_backup)
 
     print(json.dumps({"ok": True, "ip": args.ip, "rows": len(after),
                       "backup": backup, "changed": 1}))

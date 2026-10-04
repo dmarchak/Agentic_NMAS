@@ -108,7 +108,7 @@ class TestTheCard:
         assert "Its Grafana heartbeat rule" in gen
         survives = _part(card, "What survives")
         assert "The NetBox device 9" in survives and "delete it in NetBox" in survives
-        assert "remove the row on the host (C398)" in survives
+        assert "remove r5 where Oxidized is configured" in survives
         assert "removed in Grafana" in survives
         assert "Its credential survives ONLY in the break-glass record" in survives
         unchanged = _part(card, "Not changed")
@@ -140,7 +140,7 @@ class TestTheConfirm:
         dropped = _part(out, "Dropped")
         assert "Prometheus&#39;s targets were regenerated without r5 (read back at" in dropped
         assert "heartbeat rule" in dropped
-        assert "remove the row on the host (C398)" in _part(out, "Still to remove")
+        assert "where Oxidized is configured" in _part(out, "Still to remove")
         assert "this address shows its retired record" in out and "Back to Devices" in out
         assert json.loads((d / "nmas-snmp-all.json").read_text())[0]["labels"]["device"] == "r4"
         msg = exported["R"].git(exported["repo"], "log", "-1", "--format=%B")[1]
@@ -208,6 +208,119 @@ class TestTheReadBack:
 #: The card, and htmx at rest (a swapped-in control binds while it settles).
 CARD = "document.querySelector('#device-op')"
 SETTLED = "!document.querySelector('.htmx-swapping, .htmx-settling, .htmx-request')"
+
+
+HELPER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "scripts", "nmas-oxidized-cred")
+#: router.db before: r4's and r5's rows, and a device no list manages.
+ROUTER_DB = ["192.0.2.14:ios:admin:Pw1", "192.0.2.15:ios:admin:Pw2", "192.0.2.99:ios:admin:Pw3"]
+
+
+@pytest.fixture
+def oxidized(monkeypatch, tmp_path):
+    """Oxidized configured, its router.db a temp file, and THE helper script run on it: only
+    `sudo` and the install check are stood in for (C398)."""
+    import subprocess
+    import sys
+    from modules.nsot import credential_rotation as CR
+
+    db = tmp_path / "router.db"
+    db.write_text("\n".join(ROUTER_DB) + "\n", encoding="utf-8")
+    calls = []
+
+    def run(flags, stdin, router_db=""):
+        calls.append(list(flags))
+        p = subprocess.run([sys.executable, HELPER, "--file", str(db), *flags],
+                           input=stdin, capture_output=True, text=True)
+        return json.loads(p.stdout or "{}")
+    monkeypatch.setattr(CR, "oxidized_managed", lambda: True)
+    monkeypatch.setattr(CR, "_run_helper", run)
+    rows = lambda: [l for l in db.read_text(encoding="utf-8").splitlines() if l.strip()]  # noqa: E731
+    return {"db": db, "rows": rows, "calls": calls}
+
+
+class TestTheOxidizedRow:
+    """C398 (the operator, 2026-10-04): retire removes the device's router.db row through the
+    root helper's REMOVE mode, read back, before the CSV row; a retired record still holding one
+    offers "Finish this retirement"."""
+
+    def test_the_plan_has_the_step_before_the_row_and_says_nothing_survives(self, exported,
+                                                                          oxidized):
+        from modules.nsot import retire as RT
+        p = RT.plan("Lab", "r5", REASON)
+        keys = [s["key"] for s in p["steps"]]
+        assert keys.index("oxidized") == keys.index("row") - 1, keys
+        step = next(s for s in p["steps"] if s["key"] == "oxidized")
+        assert not step["done"] and "192.0.2.15" in step["what"]
+        assert not [w for w in p["survives"] if "Oxidized" in w["what"]]
+
+    def test_the_confirm_removes_exactly_that_row_and_reads_it_back(self, exported, oxidized):
+        _r, card = _card(exported)
+        out = exported["client"].post("/v2/device/r5/retire/confirm",
+                                      data=_vals(card)).get_data(as_text=True)
+        assert "r5 is retired" in out, out[:400]
+        assert oxidized["rows"]() == [ROUTER_DB[0], ROUTER_DB[2]], "only r5's row left"
+        assert "Removed its row from Oxidized's router.db, read back" in html_mod.unescape(out)
+        assert "Oxidized no longer polls it" in out
+        assert ["--ip", "192.0.2.15", "--remove"] in oxidized["calls"]
+        assert not any("--ip" in c and "--remove" not in c for c in oxidized["calls"]), \
+            "no credential act"
+
+    def test_a_refused_removal_stops_before_the_csv_row(self, exported, oxidized, monkeypatch):
+        from modules.nsot import credential_rotation as CR
+        real = CR._run_helper
+        monkeypatch.setattr(CR, "_run_helper", lambda flags, stdin, router_db="": (
+            {"ok": False, "error": "the helper refused"} if "--remove" in flags
+            else real(flags, stdin, router_db)))
+        _r, card = _card(exported)
+        out = exported["client"].post("/v2/device/r5/retire/confirm",
+                                      data=_vals(card)).get_data(as_text=True)
+        assert "Stopped at oxidized" in out and "the helper refused" in out
+        from modules.device import load_saved_devices
+        assert any(d["hostname"] == "r5" for d in load_saved_devices(exported["csv"])), \
+            "the CSV row stays: a retirement run again finishes it"
+
+    def test_a_removal_said_done_and_not_read_back_gone_stops(self, exported, oxidized,
+                                                              monkeypatch):
+        """The read-back decides, never the helper's word: a removal that answers done while
+        the row stays stops the retirement before the CSV row, saying what holds."""
+        from modules.nsot import credential_rotation as CR
+        real = CR._run_helper
+        monkeypatch.setattr(CR, "_run_helper", lambda flags, stdin, router_db="": (
+            {"ok": True, "removed": 1} if "--remove" in flags
+            else real(flags, stdin, router_db)))
+        _r, card = _card(exported)
+        out = html_mod.unescape(exported["client"].post(
+            "/v2/device/r5/retire/confirm", data=_vals(card)).get_data(as_text=True))
+        assert "router.db still holds 192.0.2.15" in out and "r5 is retired" not in out
+        assert len(oxidized["rows"]()) == 3
+
+    def test_a_retired_record_holding_its_row_offers_to_finish(self, exported, oxidized,
+                                                               monkeypatch):
+        from modules.nsot import credential_rotation as CR
+        # Retired where Oxidized was not the tool's (as the host's r5 was): its row stays.
+        monkeypatch.setattr(CR, "oxidized_managed", lambda: False)
+        _r, card = _card(exported)
+        assert "r5 is retired" in exported["client"].post(
+            "/v2/device/r5/retire/confirm", data=_vals(card)).get_data(as_text=True)
+        monkeypatch.setattr(CR, "oxidized_managed", lambda: True)
+        _r, page = _get(exported, "/v2/device/r5")
+        assert "Still to remove:" in page and "Finish this retirement" in page
+        assert "192.0.2.15" in page
+        r = exported["client"].post("/v2/device/r5/retire/finish", data={"list": "Lab"})
+        out = r.get_data(as_text=True)
+        assert r.status_code == 200 and "Finished:" in out and "read back" in out
+        assert oxidized["rows"]() == [ROUTER_DB[0], ROUTER_DB[2]]
+        _r, page = _get(exported, "/v2/device/r5")
+        assert "Finish this retirement" not in page, "nothing left to finish"
+
+    def test_finishing_needs_its_list_and_a_retire_commit(self, exported, oxidized):
+        before = oxidized["rows"]()
+        r = exported["client"].post("/v2/device/r5/retire/finish", data={})
+        assert r.status_code == 400 and "names no list" in r.get_data(as_text=True)
+        r = exported["client"].post("/v2/device/r5/retire/finish", data={"list": "Lab"})
+        assert r.status_code == 404 and "no retire commit" in r.get_data(as_text=True)
+        assert oxidized["rows"]() == before
 
 
 def test_a_real_browser_retires_from_the_menu_then_the_address_shows_the_record(exported):

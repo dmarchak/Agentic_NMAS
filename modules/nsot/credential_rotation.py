@@ -1846,6 +1846,39 @@ def update_oxidized_row(mgmt_ip: str, username: str, password: str,
                         router_db: str = "") -> dict:
     """One row, through the root-owned helper. The password goes on stdin."""
     import json
+
+    return _run_helper(["--ip", mgmt_ip],
+                       json.dumps({"username": username, "password": password}), router_db)
+
+
+def remove_oxidized_row(mgmt_ip: str, router_db: str = "") -> dict:
+    """Remove ONE row, a retired device's (C398), through the root-owned helper's REMOVE mode:
+    no credential is read or sent; an absent row is ``already_absent``. The app never reads
+    router.db itself."""
+    return _run_helper(["--ip", mgmt_ip, "--remove"], "", router_db)
+
+
+def oxidized_addresses(router_db: str = "") -> dict:
+    """``{"ok", "addresses"}``: router.db's addresses through the helper, never a credential
+    (C398: job health compares them with the devices the tool manages)."""
+    return _run_helper(["--addresses"], "", router_db)
+
+
+def oxidized_managed() -> bool:
+    """Whether this installation keeps Oxidized's router.db rows (its integration configured):
+    without it, retire has no row to remove and job health no list to compare."""
+    try:
+        from modules.integrations import get_integration
+        ox = get_integration("oxidized")
+        return bool(ox is not None and ox.is_configured())
+    except Exception:                          # noqa: BLE001
+        return False
+
+
+def _run_helper(flags: list, stdin: str, router_db: str = "") -> dict:
+    """Run the installed helper with *flags* (and *stdin*), refusing a drifted install; its
+    JSON answer, or why there is none."""
+    import json
     import subprocess
 
     from modules.settings_schema import get_setting
@@ -1858,10 +1891,8 @@ def update_oxidized_row(mgmt_ip: str, username: str, password: str,
                 "reinstall": status["reinstall"]}
     try:
         proc = subprocess.run(
-            ["sudo", "-n", HELPER_INSTALLED, "--file", router_db,
-             "--ip", mgmt_ip],
-            input=json.dumps({"username": username, "password": password}),
-            capture_output=True, text=True, timeout=30)
+            ["sudo", "-n", HELPER_INSTALLED, "--file", router_db, *flags],
+            input=stdin, capture_output=True, text=True, timeout=30)
     except Exception as exc:                   # noqa: BLE001
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:160]}
     if proc.returncode != 0 and not (proc.stdout or "").strip():

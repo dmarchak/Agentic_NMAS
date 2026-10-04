@@ -152,7 +152,8 @@ def device(name):
         if retired:
             ref, rec = retired
             return _strict(render_template("v2/retired.html", r=rec, name=name,
-                                           list_name=ref.name, who=_who()))
+                                           list_name=ref.name, who=_who(),
+                                           finish=_finish_state(name, ref.name, rec)))
         return refusal
     ref, dev = found
     tab = request.args.get("tab", "overview")
@@ -1199,6 +1200,47 @@ def retire_confirm(name):
         mask_payload(before), targets)
     c.update(back=_back(request.form), ip=dev.get("ip", ""))
     return _strict(render_template("v2/_retire.html", c=c))
+
+
+def _finish_state(name, list_name, rec):
+    """What a retired record says of the device's Oxidized row (C398): offered, unknown, or
+    nothing (no Oxidized here, or no row). One read of the helper's address list."""
+    from modules.nsot import retire as retire_op
+
+    ox = retire_op.oxidized_row(rec.get("ip", ""))
+    base = {"name": name, "ip": rec.get("ip", ""), "list": list_name, "error": ox["error"]}
+    if not ox["managed"] or ox["held"] is False:
+        return None
+    return dict(base, state="unknown" if ox["held"] is None else "offer")
+
+
+@bp.route("/device/<name>/retire/finish", methods=["POST"])
+def retire_finish(name):
+    """Finish a retirement (C398; the operator, 2026-10-04): remove the retired device's row
+    from Oxidized's router.db through the root helper's REMOVE mode, read back. The address is
+    the retire commit's (the manifest just before it), never the form's; the list is CARRIED.
+    Nothing is sent to any device."""
+    from modules import identity
+    from modules.nsot import listref
+    from modules.nsot import retire as retire_op
+
+    list_name = (request.form.get("list") or "").strip()
+    f = {"name": name, "ip": "", "list": list_name}
+    if not list_name or not listref.exists(list_name):
+        return _strict(render_template("v2/_retire_finish.html", f=dict(
+            f, state="refused", error=f"the card names no list this server knows "
+                                      f"({list_name or 'none given'})")), 400)
+    rec = retire_op.retired_record(listref.resolve(list_name).repo_dir, name)
+    if not rec:
+        return _strict(render_template("v2/_retire_finish.html", f=dict(
+            f, state="refused", error=f"no retire commit in {list_name} names {name}")), 404)
+    got = retire_op.remove_oxidized(rec["ip"])
+    log.info("retire finish (v2): %s/%s (%s) by %s: ok=%s removed=%s %s", list_name, name,
+             rec["ip"], identity.identify(request).actor or "", got["ok"], got["removed"],
+             got["error"])
+    return _strict(render_template("v2/_retire_finish.html", f=dict(
+        f, ip=rec["ip"], state="done" if got["ok"] else "failed", removed=got["removed"],
+        error=got["error"])))
 
 
 @bp.route("/device/<name>/deploy/job/<job>", methods=["GET"])

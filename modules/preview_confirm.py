@@ -2619,6 +2619,7 @@ RETIRE_STEP_WORDS = {"netbox_mask": "masked the credentials NetBox held in its s
                                "in one commit",
                      "legacy": "deleted its file from the deprecated golden_configs/ store, "
                                "whose content survives in the repository (C176)",
+                     "oxidized": "removed its row from Oxidized's router.db, read back (C398)",
                      "row": "deleted its CSV row, last"}
 
 
@@ -2668,7 +2669,10 @@ def retire_result(result: dict, plan: dict) -> dict:
                               "its intent and golden; history keeps both."
                               if commit else "No retire commit was made by this run.")},
         not_watched=(f"Nothing in NMAS watches {name} after this: no drift check, capture or "
-                     "deploy. Oxidized still polls it, and NetBox still records it."),
+                     "deploy. "
+                     + ("Oxidized no longer polls it (its row removed and read back); "
+                        if "oxidized" in done else "Oxidized may still poll it; ")
+                     + "NetBox still records it."),
         titles=RETIRE_RESULT_TITLES)
 
 

@@ -25,6 +25,9 @@ def world(tmp_path, monkeypatch):
         # A device NetBox holds with an EMPTY stored context: nothing to mask.
         "device": {"id": 9, "name": h, "local_context_data": {}}})
     monkeypatch.setattr("modules.credentials.has_device_override", lambda ip: False)
+    # An installation without Oxidized: its router.db is not the tool's (C398's managed path
+    # is driven by its own tests, with a stand-in helper).
+    monkeypatch.setattr("modules.nsot.credential_rotation.oxidized_managed", lambda: False)
     # One approved template, so the withdrawal branch RUNS: the bound set is
     # still computed for real from the manifest.
     monkeypatch.setattr("modules.nsot.approval.approved_templates",
@@ -87,7 +90,7 @@ def test_the_plan_names_every_step_and_everything_it_will_not_do(world):
     assert ("the approval of cisco_iosxe/base.j2 is not withdrawn" in joined
             and "names r5, as history" in joined), joined
     for claim in ("NetBox device 9 is KEPT", "Remove cannot touch it",
-                  "Oxidized keeps polling", "freezes at its last sync",
+                  "Oxidized is not configured here", "freezes at its last sync",
                   "running configuration is not changed"):
         assert claim in joined, claim
     assert any("NMAS-HEARTBEAT" in a for a in p["advisories"])
