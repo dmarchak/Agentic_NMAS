@@ -3833,6 +3833,29 @@ The device ends fully integrated.
   14.15 (2 years, with its host step), and the setting is shown on the screen. The archived
   syslog files get their own class, since a 30-day raw-telemetry expiry would have taken them.
 
+### 15.5 Drawn for sign-off again (2026-10-04, canvas version 32)
+
+Every point of 15.4 is drawn; the approved boards are marked APPROVED in their titles.
+- **C2 is merged into C and removed.** C (SaveAll) is the one Save: write memory, then record the
+  golden, shown at 480 devices with a summary and groups. The Devices list's Actions menu has one
+  "Save (N)…" item.
+- **B (BatchDeploy)** at 500 devices: order by rules (canaries, then sites, then roles), programs
+  grouped and collapsible, the running view grouped with a filter, the result with Retry.
+- **D (BulkIntent)** is "Change a setting on N devices", not an editor; each device's diff and
+  program are grouped, and a refused group is drawn.
+- **I and J are retitled as H's states and H's Fields mode**, with a banner on each saying so.
+- **G (Adopt)** finishes the job: rotate, save to startup, first golden, seed with its fidelity
+  and unmodelled lines and one "Commit as r10's intent", then the break-glass export. The
+  preview's save checkbox is gone, since saving is no longer optional.
+- **E (OnboardList)** has section 16's three ways in, a Serial column, and r9's shared-serial
+  refusal.
+- **Topology A, B, C:** RIP and RIPng, EIGRP and IS-IS toggles; an Arrange panel (drag, a saved
+  and shared layout); one state per link, worded "OSPF: intended FULL, now 2WAY" only where it
+  differs from intent.
+- **History B:** the Y-axis label sits in its own column inside the chart. **History C:** the
+  notice names the Logs retention setting. **History A:** says "Logs: kept 2 years" with a link to
+  Settings, and lists archived syslog as its own class.
+
 ## 16. ZTP: three ways in, one pipeline (the operator, 2026-10-04)
 
 It replaces "type the MAC" in 7.4e. The way in is chosen per device at planning:
