@@ -5,6 +5,7 @@
 
     python3 deploy/grafana/build_nmas_device.py            # rewrite the JSON
     python3 deploy/grafana/build_nmas_device.py --check    # exit 1 if it differs
+    python3 deploy/grafana/build_nmas_device.py --rate-floor 8m   # a site whose slowest job is 2 min
 
 The operator imports the JSON in Grafana (Dashboards > New > Import), maps the
 Prometheus and Loki data sources, and sets `nmas-device` as the device
@@ -52,10 +53,26 @@ def rename_if(expr: str) -> str:
     return f'label_replace({expr}, "name", "$1", "ifName", "(.*)")'
 
 
+#: The rate window's FLOOR (C411, measured 2026-10-04): `rate()` needs two samples in its
+#: window, and Grafana's `$__rate_interval` assumes the data source's scrape interval (15 s by
+#: default), so it gave a 1 min window over the switches' SNMP job, scraped every 60 s, and
+#: every interface panel was empty for every switch (0 series at 1 min, 10 at 2 min, for s1).
+#: The floor is four of the slowest scrape interval among the jobs these panels read (two
+#: samples, a missed scrape, and margin); a site whose slowest job is slower sets its own with
+#: `--rate-floor`.
+RATE_FLOOR = "4m"
+
+
+def rate(series: str) -> str:
+    """`rate()` over Grafana's interval where it holds two samples, else over the floor, per
+    series: full resolution where the samples allow, never empty while a source has data."""
+    return f"(rate({series}[$__rate_interval]) or rate({series}[{RATE_FLOOR}]))"
+
+
 def per_if(tele_metrics, snmp_metrics) -> str:
     """Bits or packets per second per interface, the two sources' counters."""
-    t = " + ".join(f"sum by (device, name) (rate({TI}{m}{{{D}}}[$__rate_interval]))" for m in tele_metrics)
-    s = " + ".join(f"sum by (device, ifName) (rate({m}{{{D}, {NOT_NULL}}}[$__rate_interval]))"
+    t = " + ".join(f"sum by (device, name) ({rate(f'{TI}{m}{{{D}}}')})" for m in tele_metrics)
+    s = " + ".join(f"sum by (device, ifName) ({rate(f'{m}{{{D}, {NOT_NULL}}}')})"
                    for m in snmp_metrics)
     return t, rename_if(f"({s})")
 
@@ -377,7 +394,10 @@ def render() -> str:
 
 
 def main(argv=None) -> int:
+    global RATE_FLOOR
     argv = sys.argv[1:] if argv is None else argv
+    if "--rate-floor" in argv:
+        RATE_FLOOR = argv[argv.index("--rate-floor") + 1]
     text = render()
     if "--check" in argv:
         current = open(OUT, encoding="utf-8").read() if os.path.exists(OUT) else ""

@@ -88,6 +88,17 @@ jobs:
       # changes nothing that outlives the job. nmas-test REQUIRES the
       # confinement (the conftest measures it), so a runner that cannot give
       # it fails the run rather than passing unconfined.
+      # C411: promtool, Prometheus's own PromQL engine, for the device dashboard's tests on real
+      # data (tests/promql.py). Unpacked from the distribution's package, never installed, so no
+      # service starts; 24.04 ships it inside `prometheus`, later releases as `promtool`.
+      - name: promtool for the PromQL tests (unpacked, not installed)
+        run: |
+          d=$(mktemp -d) && cd "$d"
+          sudo apt-get update -qq
+          apt-get download promtool 2>/dev/null || apt-get download prometheus
+          dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
+          "$HOME/.local/share/nmas-promtool/usr/bin/promtool" --version
+
       - name: Allow a network namespace for the suite (this VM only)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
