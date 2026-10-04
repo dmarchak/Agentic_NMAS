@@ -213,7 +213,18 @@ pages.
    its URL. The twelve form-only keys are `retiring` until decision 3's check outside the app
    is done.
 2. **The store and the resolver,** with Default as the global layer. Every reader is
-   unchanged and reads the same values.
+   unchanged and reads the same values. **BUILT 2026-10-04** as `modules/list_settings.py`:
+   - `resolve(list, key)` answers `(value, origin)`. A host-wide key is the global value.
+     For the Default network, the global file is its layer. For another list, its own value,
+     else Default's as inherited, except that a group set here is this list's own (its other
+     keys read their schema default, never Default's), and "not applicable here" stops the
+     lookup.
+   - `secret()` decrypts.
+   - `write()` refuses host-wide keys. Default's write goes through `write_settings`. Another
+     list's write goes to `data/lists/<slug>/settings.json`, validated, locked across
+     processes, replaced whole (0600), its secrets encrypted. An unreadable store refuses and
+     is kept.
+   - Nothing reads it yet; step 3 gives the integration clients a list.
 3. **Integration clients built for a list.** Reads may derive the active list; writes carry
    theirs.
 4. **Thread the list** through the "one level up" call sites, then make `get_setting` refuse
