@@ -240,7 +240,8 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.lab_startup",
                            "modules.readers.restarts",
                            "modules.readers.credential_health",
-                           "modules.readers.coverage_reporting")
+                           "modules.readers.coverage_reporting",
+                           "modules.readers.platform_facts")
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +343,10 @@ CHANGE_ONLY = {
                            "arrival ages are only on hover: a redraw of the whole grid every "
                            "minute would change nothing a person reads unless a verdict could "
                            "move (its 300 s keepalive proves it alive)"),
+    "platform-facts": ("its value is what each device is, which changes with its software; "
+                       "the device page draws the model and where it came from, never this "
+                       "read's time, so announcing device_state every 10 min would redraw an "
+                       "open page's history for nothing (its hourly keepalive proves it alive)"),
 }
 
 

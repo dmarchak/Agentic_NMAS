@@ -297,24 +297,26 @@ _IP_SLA_POLICY_WORDS = {"gateway": "probe the default gateway",
                         "peers": "probe the routing peers", "none": "probe nothing"}
 
 
-def _model_words(text: str, platform: str) -> str:
-    """What the device IS, in a person's words: its model from the golden
-    (`vios_l2` reads "vIOS"), else its platform."""
-    from modules.device_page import model_from_golden
+def _model_words(text: str, platform: str, host: str = "", known: tuple = None) -> str:
+    """What the device IS, in a person's words: its model from the golden or its
+    own sysDescr (`vios_l2` reads "vIOS"), else its platform."""
+    from modules.device_page import model_of
 
-    model, _basis = model_from_golden(text or "")
+    model, _basis, _golden = model_of(text or "", host, known)
     if model.lower().startswith("vios"):
         return "vIOS"
     return model or _PLATFORM_WORDS.get(platform, platform or "this platform")
 
 
-def _not_applicable_words(section: str, doc: dict, text: str, platform: str) -> str:
+def _not_applicable_words(section: str, doc: dict, text: str, platform: str,
+                          host: str = "", known: tuple = None) -> str:
     """Why a section the profile holds is not for this device, plainly."""
     # Said only where it is TRUE: classic IOS (vIOS here) has no model-driven
     # telemetry. A section scoped away from a platform that has it says the
     # profile's scope instead, never a claim about the platform.
     if section == "telemetry" and platform == "cisco_ios":
-        return f"not applicable — {_model_words(text, platform)} doesn't support model-driven telemetry"
+        return (f"not applicable — {_model_words(text, platform, host, known)} doesn't support "
+                "model-driven telemetry")
     sec = (doc or {}).get("sections", {}).get(section) or {}
     scope = [_PLATFORM_WORDS.get(p, p) for p in sec.get("platforms") or []] + \
         [f"the {r} role" for r in sec.get("roles") or []]
@@ -424,6 +426,7 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
     from modules.nsot import profile as _p
     from modules.nsot import repo as R
     from modules.nsot.platform import platform_for_device
+    from modules.readers import platform_facts
 
     if get is None:
         from modules.settings_schema import get_setting as get
@@ -456,6 +459,7 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
         if key in prof["sections"]:
             want.setdefault(key, "the monitoring profile")
     rows, covered = [], 0
+    known = platform_facts.facts()                 # ONE stored read for the grid (C426)
     for _ref, dev in devices:
         host = (dev.get("hostname") or "").strip()
         if not host:
@@ -517,7 +521,8 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
                 # platform or role): a decision, never a gap. Telemetry on a
                 # vIOS switch is the measured case: the platform cannot stream.
                 cell = {"state": "not_applicable",
-                        "words": _not_applicable_words(section, doc, text, platform)}
+                        "words": _not_applicable_words(section, doc, text, platform,
+                                                       host, known)}
             else:
                 cell = {"state": "gap_open", "words": (
                     "missing — no monitoring profile yet" if not doc else

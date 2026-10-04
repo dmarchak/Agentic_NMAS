@@ -162,7 +162,7 @@ def model_from_golden(text: str) -> tuple:
 def hardware(ref, dev: dict) -> dict:
     """Platform and model, each with where it came from: the platform from the
     inventory's `platform` column (else the manifest), the model from the
-    committed golden."""
+    committed golden or the device's own sysDescr (`model_of`)."""
     from modules.nsot import manifest
     from modules.nsot import repo as R
 
@@ -182,10 +182,29 @@ def hardware(ref, dev: dict) -> dict:
         except Exception as exc:                 # noqa: BLE001
             log.info("device page: golden unreadable for %s (%s)", dev.get("hostname"),
                      type(exc).__name__)
-    model, basis = model_from_golden(golden.get("text") or "")
+    model, basis, from_golden = model_of(golden.get("text") or "", dev.get("hostname") or "")
     return {"platform": platform, "platform_from": platform_from if platform else "",
             "model": model, "model_from": basis,
-            "model_commit": (golden.get("commit") or "")[:7] if model else ""}
+            "model_commit": (golden.get("commit") or "")[:7] if from_golden else ""}
+
+
+def model_of(text: str, hostname: str, known: tuple = None) -> tuple:
+    """``(model, basis, from the golden?)``. A chassis the golden names
+    (its capture header, else its udi line) is the most exact; else the
+    device's own sysDescr as the platform-facts reader stored it (C426: a
+    golden captured without its header names nothing, and an unknown model
+    folds no platform rule); else the golden's image line; else why not."""
+    from modules.readers import platform_facts
+
+    model, basis = model_from_golden(text)
+    if model and not basis.startswith("the golden's image line"):
+        return model, basis, True
+    seen, seen_why = platform_facts.measured(hostname, known)
+    if seen:
+        return seen, seen_why, False
+    if model:
+        return model, basis, True
+    return "", f"{basis}, and {seen_why}", False
 
 
 def checks(ref, dev: dict) -> list:
@@ -480,9 +499,9 @@ def fold_panels(drawn: list, dev: dict, dash: dict, fill: dict, datasources: lis
     - no source: a panel reading only telemetry, on a device whose COMMITTED
       configuration has no subscription (`streams_telemetry`);
     - not collected on this platform: a measured rule (`panels.PLATFORM_FOLDS`)
-      matching the model the device's own golden names, CHECKED by asking whether the
-      panel's selectors match a series for the device in the last hour (C412): one that does
-      is drawn, the rule wrong for it;
+      matching the device's model (`model_of`: its golden, else its sysDescr), CHECKED by
+      asking whether the panel's selectors match a series for the device in the last hour
+      (C412): one that does is drawn, the rule wrong for it;
     - withheld: the panel's own guard holds its value back, decided by asking
       Grafana for both halves now (`panels.withheld`).
 
