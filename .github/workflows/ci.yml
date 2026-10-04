@@ -96,6 +96,7 @@ jobs:
           d=$(mktemp -d) && cd "$d"
           sudo apt-get update -qq
           apt-get download promtool 2>/dev/null || apt-get download prometheus
+          mkdir -p "$HOME/.local/share/nmas-promtool"   # dpkg -x makes only the last folder
           dpkg -x ./*.deb "$HOME/.local/share/nmas-promtool"
           "$HOME/.local/share/nmas-promtool/usr/bin/promtool" --version
 
