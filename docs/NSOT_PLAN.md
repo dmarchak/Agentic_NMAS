@@ -4207,6 +4207,11 @@ second vendor's write tier and the assistant's pipeline (8.10) both wait on the 
 
 ### P.11 — Topology: a page of its own, NetworkX for analysis, the app for drawing (SCOPED 2026-09-30, the operator; NOT BUILT)
 
+**The brief (2026-10-04, for sign-off):** [NSOT_TOPOLOGY_BRIEF](NSOT_TOPOLOGY_BRIEF.md) answers
+the research's open questions ([NSOT_TOPOLOGY_RESEARCH](NSOT_TOPOLOGY_RESEARCH.md), section 7)
+with a recommendation each; its mockups are the canvas page "P.11 Topology" (desktop, phone,
+wall). Nothing is built until both are signed off.
+
 **The operator's requirement (2026-09-30).** NetworkX is used today to draw a static
 picture, and drawing is its weakest part. Its strength is analysis. So it computes on the
 server, and the app draws the map natively. **Topology is its OWN sidebar destination under

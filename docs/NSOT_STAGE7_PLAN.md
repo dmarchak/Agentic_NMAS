@@ -3187,6 +3187,20 @@ telemetry as Parquet, scale, the lake's own health, and the archive job's creden
 C404 (Thanos never compacted, downsampled or pruned), C405 (raw-telemetry has no reader and no
 retention), C406 (from about 2026-11-28 the tool cannot show a metric older than 90 days).
 
+### 13.5 Mockups (2026-10-04, FOR SIGN-OFF; nothing built)
+
+The canvas page "Section 13 Questions" draws 13.1's points 1 to 5 on three boards: A, the
+Questions page (a new OBSERVE sidebar item: ready-made questions, what the history holds, the
+team's saved views); B, a metric question over 180 days (one range control; the chart split
+where the live store ends, the part before the history begins shaded and said; provenance in one
+line, the series on hover; the PromQL editable beneath); C, a log question past Loki's retention
+(the deleted part said as unreadable, never as empty; the range split at `max_query_length`).
+**Decisions in them for the operator:** a separate Questions destination rather than a tab of
+Monitoring (recommended: separate, as Topology is, because a question is not a dashboard); saved
+views shared across the team with their author named (recommended), stored as a reader-free
+settings-like store per network once P.8 lands. Point 6 (raw-telemetry) is not drawn: it is
+14.4's decision.
+
 ## 14. The data lake (the operator's decisions, 2026-10-04)
 
 Every decision passes one test: **what makes this useful to an enterprise with large fleets and
