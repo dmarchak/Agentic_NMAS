@@ -141,7 +141,11 @@ class TestTheRead:
         f = self.Fake()
         v = G.read(f)
         assert f.asked == [G.RULER, G.RULES_VIEW, G.ALERTMANAGER, G.SILENCES]
-        assert set(G.READER.endpoints) == set(f.asked) and v["counts"]["rules"] == 16
+        # Grafana's four, and Prometheus for acknowledged-within-a-band series (C433), which
+        # this run has none of.
+        grafana = [e for e in G.READER.endpoints if not e.startswith("Prometheus:")]
+        assert set(grafana) == set(f.asked) and v["counts"]["rules"] == 16
+        assert v["bands"] == {}
 
     def test_a_refusal_names_the_endpoint_and_is_a_failed_attempt(self, tmp_path, monkeypatch):
         monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))

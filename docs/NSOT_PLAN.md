@@ -3609,6 +3609,13 @@ so.
 
 ### P.7 — Alert rules generated and tested (DECIDED 2026-09-28, its own item; placement before 8.6)
 
+**Generated rules carry a per-series baseline (C433, the operator's decision of 2026-10-04).**
+A rule fires on a series departing from its OWN history: above the larger of the rule's floor
+and a multiple of the series' 7-day p95, from a recording rule. It never fires on a level the
+port always runs at. The global threshold is not raised, because that would hide the same rate
+on a port that never discards. Until P.7 builds it, the in-band acknowledgement on Needs
+attention (built 2026-10-04) is how a chronic series is quieted without being hidden.
+
 **Why** (C168, the operator's decision): of the seven hand-built Grafana rules, three were wrong in ways that
 looked fine, and nothing would have caught any of them. `gRPC telemetry stream lost` resolves at exactly the
 moment it should fire (a lost source's series vanishes rather than reading 0); `Critical syslog received` works

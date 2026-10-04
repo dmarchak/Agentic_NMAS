@@ -60,9 +60,10 @@ def covering(row_id: str, event: str, rows: list):
 
 
 def record(row_id: str, event: str, *, why: str, by: str, verified: str,
-           kind: str, what: str) -> dict:
+           kind: str, what: str, band: float = None, value: float = None) -> dict:
     """Append one acknowledgement. The caller has checked the row exists now and the
-    reason's shape (`attention.acknowledge`, the one caller)."""
+    reason's shape (`attention.acknowledge`, the one caller). *band* and *value* are a chronic
+    alert's measured band and its value then (C433): it holds only within the band."""
     from modules.config import open_secure
     from modules.filestore import PathLock
     from modules.redact import redact_text
@@ -72,6 +73,8 @@ def record(row_id: str, event: str, *, why: str, by: str, verified: str,
     entry = {"row": row_id, "event": str(event), "kind": kind, "what": redact_text(what),
              "why": redact_text(why.strip()), "by": by, "verified": verified,
              "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if band is not None:
+        entry["band"], entry["value"] = float(band), (None if value is None else float(value))
     path = _path()
     with PathLock(path):
         with open_secure(path, "a", encoding="utf-8") as fh:

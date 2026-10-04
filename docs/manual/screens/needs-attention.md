@@ -79,3 +79,20 @@ name, how your identity was established and the time, and the row leaves the pag
   recorded after the tool saw the restart it covers is refused, unless it is marked as a
   correction with its own reason: a restart that really was planned and only recorded late.
   History then says the window was a correction, and why.
+
+### A chronic alert, within its band {#acknowledging-a-chronic-alert}
+
+An alert that fires on one series nearly all the time (a port that always discards a little,
+for a known reason) stops meaning anything, and a real change on that port would look the
+same. Its row offers **Acknowledge…** too, with a difference: the acknowledgement holds only
+within the series' measured band.
+
+- **When you acknowledge it**, the tool measures the series' 95th percentile over the last 7
+  days (at 5-minute steps, from the alert rule's own query without its threshold) and records
+  it with your reason. If it cannot measure the band, it refuses and says why.
+- **While the value stays at or under that band**, the row is not listed, and the
+  acknowledged list beside the table says "within its band", with the value and the band.
+- **When the value rises above the band**, the row comes back. It names who acknowledged it,
+  the band and the value now, so a change on a chronic port is still seen.
+- Only an alert on one series, whose rule is a Prometheus query ending in a threshold, can be
+  acknowledged this way. Any other alert clears when it stops firing.

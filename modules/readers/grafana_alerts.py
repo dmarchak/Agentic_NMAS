@@ -66,6 +66,7 @@ import re
 import time
 
 from modules import reader_job
+from modules.alert_bands import value_expr
 
 log = logging.getLogger(__name__)
 
@@ -190,11 +191,14 @@ def _silences_on(ids, by_id: dict) -> list:
     return [by_id.get(i) or {"id": i, "unresolved": True} for i in ids or []]
 
 
-def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None) -> dict:
+def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
+          prom_uids=None) -> dict:
     """The stored value, from the four answers. Pure, so a test drives it
     with the captured answers and a changed piece. ``silences`` is the
     silence list; ``None`` means it was not read, which leaves every silence
-    an instance names unresolved rather than absent."""
+    an instance names unresolved rather than absent. *prom_uids* are the
+    Prometheus datasources' uids: a rule whose query A reads one has a
+    `value_expr` (C433); None leaves every rule without one."""
     silence_by_id = {s.get("id"): _silence(s) for s in silences or [] if s.get("id")}
     config = {}
     for folder, groups in (ruler or {}).items():
@@ -202,7 +206,13 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None) 
             for rule in grp.get("rules") or []:
                 ga = rule.get("grafana_alert") or {}
                 exprs = [(d.get("model") or {}).get("expr", "") for d in ga.get("data") or []]
+                # The value a chronic alert is banded on (C433): query A's PromQL without its
+                # threshold, only where query A reads a Prometheus datasource.
+                query_a = next((d for d in ga.get("data") or [] if d.get("refId") == "A"), {})
+                vexpr = (value_expr((query_a.get("model") or {}).get("expr", ""))
+                         if prom_uids and query_a.get("datasourceUid") in prom_uids else "")
                 config[ga.get("uid")] = {
+                    "value_expr": vexpr,
                     "folder": folder, "group": grp.get("name"),
                     "for_seconds": duration_seconds(rule.get("for")),
                     "labels": rule.get("labels") or {},
@@ -248,6 +258,7 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None) 
                 "no_data_state": cfg.get("no_data_state"),
                 "exec_err_state": cfg.get("exec_err_state"),
                 "device_source": source, "configured": uid in config,
+                "value_expr": cfg.get("value_expr", ""),
                 "labels": cfg.get("labels") or r.get("labels") or {}})
             for a in listed_alerts:
                 kind = _kind(a.get("state"))
@@ -330,15 +341,59 @@ def read(client=None) -> dict:
             answers[path] = got["response"].json()
         except ValueError as exc:
             raise ValueError(f"{path}: the answer is not JSON ({exc})") from exc
-    return parse(answers[RULER], answers[RULES_VIEW], answers[ALERTMANAGER], time.time(),
-                 silences=answers[SILENCES])
+    value = parse(answers[RULER], answers[RULES_VIEW], answers[ALERTMANAGER], time.time(),
+                  silences=answers[SILENCES], prom_uids=_prometheus_uids())
+    value["bands"] = band_readings(value)
+    return value
+
+
+def _prometheus_uids() -> set:
+    """The Prometheus datasources' uids, from the dashboards reader's stored list (a READ),
+    or None when it holds none: then no rule is banded."""
+    got = reader_job.read_cached("grafana-dashboards")
+    sources = ((((got.get("doc") or {}).get("last_good") or {}).get("value") or {})
+               .get("datasources") or [])
+    uids = {d.get("uid") for d in sources if d.get("type") == "prometheus" and d.get("uid")}
+    return uids or None
+
+
+def band_readings(value: dict, acks=None, prom=None) -> dict:
+    """``{series: {"band", "value", "in_band", "why", "at"}}`` for every alerting series a
+    person acknowledged WITHIN A BAND (C433): its value now, against the band recorded with
+    the acknowledgement. Read here, in the job, so a page never asks Prometheus. An
+    acknowledgement record that cannot be read gives no readings, and every row then shows."""
+    from modules import acknowledgements as ACK
+    from modules.alert_bands import current, series_key
+
+    if acks is None:
+        got = ACK.read()
+        acks = got["rows"] if got["state"] == "ok" else []
+    banded = {}
+    for a in acks:
+        if a.get("band") is not None and str(a.get("kind")) == "grafana/series":
+            banded[str(a.get("event"))] = float(a["band"])
+    if not banded:
+        return {}
+    exprs = {r.get("uid"): r.get("value_expr") or "" for r in value.get("rules") or []}
+    out = {}
+    for inst in value.get("instances") or []:
+        key = series_key(inst.get("rule_uid"), inst.get("labels"))
+        if key not in banded or key in out:
+            continue
+        got, why = current(exprs.get(inst.get("rule_uid"), ""), inst.get("labels") or {}, prom)
+        out[key] = {"band": banded[key], "value": got, "why": why,
+                    "in_band": got is not None and got <= banded[key],
+                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    return out
 
 
 READER = reader_job.register(reader_job.Reader(
     name="grafana-alerts",
     what="Grafana's alert rules and instances, and the silences on them, read for Needs "
          "attention and 8.6's triage",
-    endpoints=(RULER, RULES_VIEW, ALERTMANAGER, SILENCES),
+    endpoints=(RULER, RULES_VIEW, ALERTMANAGER, SILENCES,
+               "Prometheus: GET /api/v1/query, the rule's own query for each alerting series a "
+               "person acknowledged within a band (C433)"),
     interval_seconds=60,
     interval_basis=("both rule groups evaluate every 60 s (measured 2026-09-28), so a "
                     "faster read sees nothing new"),

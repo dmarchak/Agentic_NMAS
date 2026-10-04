@@ -80,6 +80,8 @@ ROW_KINDS = {
                                      "read the reasons; move the line into intent, or its cause"),
     ("grafana", "stalled"): ("Grafana stopped evaluating a rule group", "check its scheduler"),
     ("grafana", "incident"): ("an alert is firing", "check its path, or read the rule"),
+    ("grafana", "series"): ("an alert is firing on one series",
+                            "read the rule, or acknowledge a chronic one within its band"),
     ("grafana", "rule"): ("a rule reads no data or cannot evaluate", "read its query in Grafana"),
     ("grafana", "heartbeat-floor"): ("a device has no heartbeat rule Grafana shows",
                                      "regenerate the rules, then check the reader's role"),
@@ -172,6 +174,9 @@ CLEARS = {
     ("grafana", "stalled"): (("resolves",), "Grafana evaluates the group again"),
     ("grafana", "incident"): (("resolves",), "the alert stops firing in Grafana (a silence "
                               "keeps it a row, saying who silenced it)"),
+    ("grafana", "series"): (("resolves", "acknowledge"), "the alert stops firing, or a person "
+                            "acknowledges it within its measured 7-day band; it comes back, "
+                            "naming the band and the value, when the value leaves the band"),
     ("grafana", "rule"): (("resolves",), "the rule reads data and evaluates again"),
     ("grafana", "heartbeat-floor"): (("resolves",), "Grafana shows a heartbeat rule for the "
                                      "device"),
@@ -223,7 +228,9 @@ CLEARS = {
 #: its *event*, so an acknowledgement covers that event and never a later one. Other kinds
 #: whose CLEARS names acknowledge do it through their own control, named in their words.
 ACKNOWLEDGED_HERE = frozenset({("restarts", "unplanned"), ("authorisations", "repeated"),
-                               ("operations", "interrupted")})
+                               ("operations", "interrupted"),
+                               # Within its measured band, never for good (C433).
+                               ("grafana", "series")})
 
 #: Words that say there is nothing to do: an action is a thing a person does.
 NOT_AN_ACTION = ("nothing to do", "it is information", "is what is known",
@@ -1240,9 +1247,12 @@ def grafana_source(cached=None) -> dict:
                + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
         return source_result("grafana", "Grafana alerts", read_at=started, took_ms=took,
                              error=f"not read yet: {why}")
+    from modules.alert_bands import series_key
+
     v = good.get("value") or {}
     inv, inv_why = _inventory()
     rows = []
+    rules_by_uid = {r.get("uid"): r for r in v.get("rules") or []}
 
     def add(key, what, cause, action, level, **kw):
         rows.append(row(source="grafana", kind=key.split(":", 1)[0], key=key, what=what,
@@ -1308,10 +1318,26 @@ def grafana_source(cached=None) -> dict:
                  if len(members) > 1 else "") + silence_words(m["silences"])
                 for m in silenced)
         level = "danger" if any(m["kind"] == "condition" for m in members) else "unknown"
+        operands = {"members": members, "grouped_within_seconds": INCIDENT_GAP_SECONDS,
+                    "onset_basis": first["onset_basis"]}
+        # ONE series of a rule whose query can be banded (C433): keyed on the SERIES, never
+        # its onset, so a chronic alert that re-fires is one row, and a person may
+        # acknowledge it within its measured band.
+        vexpr = ((rules_by_uid.get(first.get("rule_uid")) or {}).get("value_expr") or ""
+                 if len(members) == 1 and not whole_pipeline else "")
+        if vexpr and first.get("kind") == "condition":
+            series = series_key(first.get("rule_uid"), first.get("labels"))
+            action = {"label": f"Read the rule \"{members[0]['rule']}\" in Grafana; if it is "
+                               "chronic and its cause known, acknowledge it within its "
+                               "measured band", "known": False}
+            add(f"series:{series}", what, cause, action, level, devices=devices,
+                since=first["onset"], event=series,
+                operands={**operands, "value_expr": vexpr, "labels": first.get("labels") or {},
+                          "band_reading": (v.get("bands") or {}).get(series)})
+            continue
         add(f"incident:{first.get('rule_uid') or first.get('rule')}:{_iso(first['onset']) or 'untimed'}",
             what, cause, action, level, devices=devices, since=first["onset"],
-            operands={"members": members, "grouped_within_seconds": INCIDENT_GAP_SECONDS,
-                      "onset_basis": first["onset_basis"]})
+            operands=operands)
 
     # A rule that cannot see its data, or cannot evaluate, with no alerting
     # instance saying so (C166, C168: rules sat in no-data for days).
@@ -2574,7 +2600,31 @@ def _without_acknowledged(rows: list):
     kept, gone = [], []
     for r in rows:
         a = ACK.covering(r["id"], r.get("event"), got["rows"]) if r.get("acknowledge") else None
-        if a:
+        if a and a.get("band") is not None:
+            # WITHIN ITS BAND ONLY (C433): hidden while the reader's reading is inside the
+            # band recorded with the acknowledgement; outside it, or unread, the row stays and
+            # says why, naming the band and the value.
+            reading = (r.get("operands") or {}).get("band_reading") or {}
+            if not reading and a.get("value") is not None:
+                # Until the reader's first reading: the value measured with the acknowledgement.
+                reading = {"value": float(a["value"]),
+                           "in_band": float(a["value"]) <= float(a["band"])}
+            if reading.get("in_band"):
+                gone.append({"id": r["id"], "what": r["what"], "by": a.get("by"),
+                             "why": a.get("why"), "at": a.get("at"),
+                             "band": f"within its band: {reading.get('value'):.3g} at or under "
+                                     f"{float(a['band']):.3g}"})
+                continue
+            from modules.alert_bands import words
+            r = dict(r)
+            now = (f"its value is now {reading['value']:.3g}, above it"
+                   if reading.get("value") is not None else
+                   "its value now could not be read ("
+                   + (reading.get("why") or "the reader has not measured it yet") + ")")
+            r["cause"] = (f"{r['cause']}. Acknowledged by {a.get('by')} within a band of "
+                          f"{words(float(a['band']))}; {now}, so it is shown")
+            kept.append(r)
+        elif a:
             gone.append({"id": r["id"], "what": r["what"], "by": a.get("by"),
                          "why": a.get("why"), "at": a.get("at")})
         else:
@@ -2585,7 +2635,7 @@ def _without_acknowledged(rows: list):
 #: The source each acknowledgeable row comes from, so an acknowledgement checks the row
 #: exists NOW (computed again, never taken from the browser).
 _ACK_SOURCES = {"restarts": "restart_source", "authorisations": "authorisation_source",
-                "operations": "interrupted_source"}
+                "operations": "interrupted_source", "grafana": "grafana_source"}
 
 
 def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) -> dict:
@@ -2603,6 +2653,9 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
     if found is None:
         return {"ok": False, "error": f"{row_id!r} is not on Needs attention now: nothing to "
                                       "acknowledge"}
+    if not found.get("acknowledge"):
+        return {"ok": False, "error": f"{row_id!r} clears when its condition resolves (its row "
+                                      "says how), not by a person's acknowledgement"}
     if str(found.get("event")) != str(event or ""):
         return {"ok": False, "error": (f"the row is now about {found.get('event')!r}, not "
                                        f"{event!r}: a later event is acknowledged on its own")}
@@ -2620,8 +2673,22 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
     if got["state"] == "unreadable":
         return {"ok": False, "error": "the acknowledgement record could not be read, so "
                                       f"nothing was added to it ({got.get('error')})"}
+    extra = {}
+    if (found["source"], found["kind"]) == ("grafana", "series"):
+        # WITHIN A BAND (C433): the series' 7-day p95, measured now, and its value now; the
+        # acknowledgement holds only while the value stays at or under the band.
+        from modules.alert_bands import band, current
+
+        ops = found.get("operands") or {}
+        b, why_not = band(ops.get("value_expr", ""), ops.get("labels") or {})
+        if b is None:
+            return {"ok": False, "error": f"Not acknowledged: its band could not be measured "
+                                          f"({why_not}), and an acknowledgement here holds only "
+                                          "within one"}
+        now, _why = current(ops.get("value_expr", ""), ops.get("labels") or {})
+        extra = {"band": b, "value": now}
     entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
-                       kind=f"{found['source']}/{found['kind']}", what=found["what"])
+                       kind=f"{found['source']}/{found['kind']}", what=found["what"], **extra)
     return {"ok": True, "acknowledged": entry}
 
 

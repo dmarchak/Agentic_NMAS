@@ -96,7 +96,7 @@
     {%- if a.acknowledged %}
     <p class="att-acked">Acknowledged, so not listed:</p>
     <ul class="att-members">
-      {%- for k in a.acknowledged %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}</li>{% endfor %}
+      {%- for k in a.acknowledged %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}</li>{% endfor %}
     </ul>
     {%- endif %}
   </details>
