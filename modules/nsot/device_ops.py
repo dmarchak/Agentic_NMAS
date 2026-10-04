@@ -527,16 +527,47 @@ def _announce_released() -> None:
 TRAIL_MAX = 64
 
 
-def note(step: str) -> None:
-    """Record progress on every device THIS thread holds: the step it has reached,
+_working = threading.local()
+
+#: A batch device's state before its turn and after it (C446).
+WAITING = "waiting its turn"
+
+
+@contextlib.contextmanager
+def working_on(device: str, owner: int = None):
+    """Within a batch, the ONE device this thread's progress is about (C446, the operator,
+    2026-10-04: s3 and s4 both read "now: reading the device after the change" while the
+    batch ran them one at a time, because a batch holds every device from the start and
+    `note` wrote each step to all of them). *owner* is the thread that holds the devices,
+    for a batch whose devices run on worker threads (which hold nothing themselves)."""
+    before = getattr(_working, "now", None)
+    _working.now = (device, owner or threading.get_ident())
+    try:
+        yield
+    finally:
+        _working.now = before
+
+
+def note(step: str, device: str = None) -> None:
+    """Record progress on the devices THIS thread holds: the step it has reached,
     and when, and the TRAIL of every step noted so far (``[[step, at], ...]``, the hold's
     start first), so a stepper can say how long each step took (C370). It is what lets a
     refusal say "last progress: verify, 20 s ago" rather than only when the hold began.
     Announces `device_progress` when this thread held a device, so a card drawing the
-    stepper redraws on each step, never by polling."""
+    stepper redraws on each step, never by polling.
+
+    Inside `working_on(device)`, or given *device*, only that device's progress moves; a
+    single-device operation, which holds one, needs neither."""
     me, now = threading.get_ident(), time.time()
+    current = getattr(_working, "now", None)
+    owner = me
+    if device is None and current:
+        device, owner = current
+    elif device is not None and current and current[0] == device:
+        owner = current[1]
     with _mu:
-        mine = [info for info in _held.values() if info["thread"] == me]
+        mine = [info for info in _held.values() if info["thread"] == owner
+                and (device is None or info["holder"].get("device") == device)]
         for info in mine:
             before = info["holder"].get("progress") or {}
             trail = list(before.get("trail") or [[before.get("step", "started"),

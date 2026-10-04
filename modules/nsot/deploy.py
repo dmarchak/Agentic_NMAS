@@ -21,6 +21,7 @@ documented future option, not built.
 """
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -1663,8 +1664,23 @@ def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None,
     # rest (with workers, every device is submitted before any result is back).
     workers = 1 if sequential else max_workers()
 
+    from modules.nsot import device_ops
+
+    # EACH device's own state on the in-flight panel and its stepper (C446): waiting its
+    # turn, its own steps while it runs (`working_on`), then done with its outcome. The
+    # holds belong to this thread, so a worker thread names it as the owner.
+    owner = threading.get_ident()
+    for entry in queue:
+        device_ops.note(device_ops.WAITING, device=entry["artifact"].device)
+
+    def _one(entry):
+        device = entry["artifact"].device
+        with device_ops.working_on(device, owner):
+            return deploy_one(entry)
+
     def _record(entry, outcome):
         results.append(outcome)
+        device_ops.note(f"done: {outcome.get('outcome', '?')}", device=outcome["device"])
         if breaker.counts(outcome):
             breaker.record_verify_failure(outcome["device"])
 
@@ -1674,8 +1690,9 @@ def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None,
             if breaker.is_tripped:
                 results.append({"device": device, "outcome": UNATTEMPTED,
                                 "reason": breaker.reason()})
+                device_ops.note(f"not attempted: {breaker.reason()}", device=device)
                 continue
-            _record(entry, deploy_one(entry))
+            _record(entry, _one(entry))
     else:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -1687,7 +1704,7 @@ def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None,
                                     "outcome": UNATTEMPTED,
                                     "reason": breaker.reason()})
                     continue
-                futures[pool.submit(deploy_one, entry)] = entry
+                futures[pool.submit(_one, entry)] = entry
             for future in as_completed(futures):
                 _record(futures[future], future.result())
 
