@@ -460,6 +460,22 @@ def _run_kea_test(config_path: str) -> tuple:
     return proc.returncode == 0, " | ".join(tail)
 
 
+def fragment_lock(fragment: str):
+    """The lock every write of *fragment* holds from its read to its read-back, across
+    processes (CONCURRENCY_AUDIT R22: two onboardings at once each replaced the fragment with
+    their own reservation alone, and the earlier device later got no address). Kept in the
+    app's data folder, keyed by the fragment's path, never beside the fragment under /etc/kea."""
+    import hashlib
+
+    from modules import config
+    from modules.filestore import PathLock
+
+    key = hashlib.sha256(os.path.abspath(fragment).encode()).hexdigest()[:16]
+    folder = os.path.join(config.DATA_DIR, "locks")
+    os.makedirs(folder, exist_ok=True)
+    return PathLock(os.path.join(folder, f"kea-fragment-{key}"))
+
+
 def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
                        main_config: str = None, run_test=None) -> dict:
     """Write and remove ZTP reservations. ``{"ok", "outcomes", "error",
@@ -469,6 +485,7 @@ def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
     *adds* are dicts from :func:`reservation_entry`. *removes* are MACs.
     A device refused alone does not stop the others. A failure after the
     live fragment is touched restores the previous fragment and reloads.
+    The whole write holds :func:`fragment_lock` (R22).
     """
     from modules.settings_schema import get_setting
 
@@ -479,8 +496,13 @@ def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
         out["error"] = ("kea_ztp_fragment is not configured: a reservation written "
                         "anywhere else lives in Kea's memory until its next restart (C49)")
         return out
-    kea = kea or _kea()
+    with fragment_lock(fragment):
+        return _write_reservations_locked(out, adds, removes, kea or _kea(), fragment,
+                                          main_config, run_test)
 
+
+def _write_reservations_locked(out, adds, removes, kea, fragment, main_config,
+                               run_test) -> dict:
     try:
         with open(main_config, encoding="utf-8") as fh:
             main_text = fh.read()

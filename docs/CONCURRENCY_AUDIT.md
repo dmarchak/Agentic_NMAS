@@ -125,7 +125,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R19 | m | stores, live, approvals | Drift state and overlapping drift runs | `drift_state.json`, queue items | one RLock in one function; truncate; legacy re-adoption; Check now overlaps | no | FIXED 2026-10-02 (was UNSAFE; tests/test_drift_state_concurrency.py) | yes | PathLock; refuse unreadable; one drift run at a time across processes |
 | R20 | m | approvals | Restore rejects its own handed-off approval item | queue | unconditional | n/a | FIXED 2026-10-02 as C326 (was UNSAFE; tests/test_approved_revert_closes.py) | yes | Never reject the item named by `approval_id` |
 | R21 | m | locks, confirms, live | Every NetBox writer: the tab's import and Remove, onboarding phase two, adopt, retire's mask, the mask script (widened on review) | NetBox, sync status | nothing refuses a second writer; status truncate; tokens in memory | partly | UNSAFE | yes | Per-list NetBox lock with holder, taken by every writer; shared token store |
-| R22 | m | stores | Kea ZTP fragment | the fragment, Kea's running config | none | no | UNSAFE | yes | PathLock from read to read-back |
+| R22 | m | stores | Kea ZTP fragment | the fragment, Kea's running config | none | no | FIXED 2026-10-04 (was UNSAFE; tests/test_ztp_fragment_lock.py) | yes | PathLock from read to read-back |
 | R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | UNSAFE | yes | Hold the hostname; bind Abandon to its dry run |
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
@@ -635,6 +635,16 @@ reads back, with no lock (modules/nsot/ztp.py:463-585). The later replace drops 
 device's reservation. If the earlier run's read-back came first, it reported success and its
 device later gets no address. A failed reload restores `previous_text` over another writer's
 fragment. Onboarding holds only its own hostname (onboard.py:2888-2894).
+
+*FIXED 2026-10-04 (tests/test_ztp_fragment_lock.py):*
+- `write_reservations` holds `ztp.fragment_lock` across processes from its read to its
+  read-back, so the restore on a failed reload is of this write's own previous text.
+- The lock is in the app's data folder, keyed by the fragment's path, never beside the
+  fragment under /etc/kea.
+- Measured: two processes each writing 15 reservations one at a time lost none, and every
+  read-back held.
+- Control: without the lock, a writer's read-back found the other's reservation where its own
+  should be.
 
 **R23. Onboarding Create and Abandon are not serialised** (git-12, confirms-11,
 confirms-12). Create rebuilds the plan and runs with no lock between the name check and the
