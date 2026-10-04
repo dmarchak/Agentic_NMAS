@@ -553,6 +553,30 @@ def retired_record(repo: str, hostname: str):
     return None
 
 
+def retired_addresses(repo: str) -> dict:
+    """``{management address: hostname}`` for every device retired in *repo*, each from its
+    newest retire commit (`retired_record`): what job health matches Oxidized's router.db
+    against (C398). A read of git only; an unreadable history is ``{}``."""
+    from modules.nsot import repo as R
+
+    rc, out, _err = R.git(repo, "log", "--format=%B%x1e", "--fixed-strings",
+                          "--grep=Retired-Device: ")
+    if rc != 0:
+        return {}
+    names = []
+    for body in out.split("\x1e"):
+        for line in body.splitlines():
+            key, sep, value = line.partition(": ")
+            if sep and key == "Retired-Device" and value.strip() not in names:
+                names.append(value.strip())
+    out = {}
+    for name in names:
+        rec = retired_record(repo, name)
+        if rec and rec.get("ip"):
+            out.setdefault(rec["ip"], name)
+    return out
+
+
 def _address_before(repo: str, sha: str, hostname: str) -> str:
     """The device's management address as the manifest held it just before its retire commit
     (the commit releases it), or "" when it cannot be read. A read of git only."""

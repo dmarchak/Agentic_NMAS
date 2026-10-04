@@ -138,6 +138,10 @@ drops at its next regeneration, and the card says when:
 - Oxidized's row in its device list (`router.db`), only where Oxidized is not configured in
   the tool: its device list is then not the tool's, and the device is removed where Oxidized
   is configured. Where it is configured, retiring removes the row itself (step 6 of the apply).
+  A row left behind (a device retired before Oxidized was configured, or a step that failed)
+  is a Needs attention row from job health, which compares router.db's addresses with the
+  managed devices each cycle and names the retired device; its record's **Finish this
+  retirement** removes the row. An address the tool never managed is counted, never raised.
 - A Grafana dashboard panel built by hand that names it: removed in Grafana by hand; the tool
   does not edit dashboards.
 - A template's approval: it stays, because an approval is of the template.

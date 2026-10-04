@@ -180,4 +180,14 @@ def test_only_what_was_deployed_is_watched(monkeypatch):
     assert started == [{"r6": ["snmp"]}]
 
 
+def test_in_the_suite_a_watch_starts_no_thread_and_ends_with_its_test():
+    """C420: a watch started by a test's deploy ran its 15-minute loop in the worker beside
+    every later test. In the suite (tests/conftest.py) the watch is kept, no loop starts."""
+    import threading
+
+    AW.start("c420", {"r2": ["snmp"]})
+    assert AW.state("c420") is not None
+    assert not [t for t in threading.enumerate() if t.name == "arrival-c420"]
+
+
 from tests.test_coverage_deploy import lab, r2_snmp_down, r6_probe_unsent  # noqa: E402,F401,F811

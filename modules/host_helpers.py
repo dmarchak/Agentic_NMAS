@@ -132,12 +132,77 @@ def topology_row(check=None) -> dict:
                                     f"{host_steps.TOPOLOGY_UNIT}")})
 
 
+def oxidized_orphans_row(addresses=None, lists=None) -> dict:
+    """Oxidized's router.db against the devices the tool manages (C398, the operator's
+    decision, 2026-10-04): a row the tool RETIRED that router.db still holds is ``orphaned``,
+    naming each device, whose retired record's "Finish this retirement" removes it through the
+    helper and reads it back. An address the tool never managed is not its to remove (Oxidized
+    may poll devices of its own): counted in the detail, never a row. No Oxidized configured is
+    no row; a helper that is not this release's is its own row, not this one.
+
+    *addresses* is the helper's answer (``{"ok", "addresses"}``) and *lists* ``[(name, csv,
+    repo)]``, each read here when not given."""
+    from modules.nsot import credential_rotation as cr
+    from modules.nsot import retire
+
+    if not cr.oxidized_managed():
+        return {}
+    row = {"unit": "oxidized:retired-rows", "max_age_minutes": 0,
+           "what": "Oxidized's router.db holds no row for a device the tool retired"}
+    if addresses is None:
+        if not cr.helper_status()["ok"]:
+            return {}
+        addresses = cr.oxidized_addresses()
+    if not addresses.get("ok"):
+        return dict(row, state="unknown",
+                    detail=f"the helper's address list could not be read: "
+                           f"{addresses.get('error') or 'no reason given'}")
+    managed, retired = set(), {}
+    for name, csv, repo in (_every_list() if lists is None else lists):
+        from modules.device import load_saved_devices
+        managed |= {d.get("ip", "") for d in load_saved_devices(csv)}
+        for ip, host in retire.retired_addresses(repo).items():
+            retired.setdefault(ip, (host, name))
+    held = list(addresses.get("addresses") or [])
+    left = [(ip, *retired[ip]) for ip in held if ip not in managed and ip in retired]
+    foreign = [ip for ip in held if ip not in managed and ip not in retired]
+    counts = (f"router.db holds {len(held)} address(es): {len(held) - len(left) - len(foreign)} "
+              f"managed by the tool, {len(left)} of devices it retired, {len(foreign)} it never "
+              "managed (not the tool's to remove)")
+    if not left:
+        return dict(row, state="ok", detail=counts)
+    names = ", ".join(f"{host} ({ip}, retired from {lst})" for ip, host, lst in left)
+    return dict(row, state="orphaned", devices=[host for _ip, host, _l in left],
+                headline=(f"Oxidized still polls {len(left)} device(s) the tool retired, and "
+                          f"router.db keeps their credentials: {names}"),
+                detail=counts,
+                action={"label": "Open each retired device and press Finish this retirement: "
+                                 "the helper removes its row and reads router.db back"})
+
+
+def _every_list() -> list:
+    """``[(name, devices.csv, config repo)]`` for every device list."""
+    from modules.device import get_device_lists
+    from modules.nsot import listref
+
+    out = []
+    for item in get_device_lists():
+        try:
+            ref = listref.resolve(item["name"])
+        except Exception as exc:                            # noqa: BLE001
+            log.warning("host_helpers: list %r could not be resolved: %s", item.get("name"), exc)
+            continue
+        out.append((ref.name, ref.csv_path, ref.repo_dir))
+    return out
+
+
 def helper_rows() -> list:
     """Job health's rows for the root-installed helpers the updater's rows do not cover; a
     check that raises is said as such, never a missing row."""
     rows = []
     for unit, fn in (("helper:oxidized-cred", oxidized_row),
-                     ("helper:topology-renderer", topology_row)):
+                     ("helper:topology-renderer", topology_row),
+                     ("oxidized:retired-rows", oxidized_orphans_row)):
         try:
             row = fn()
         except Exception as exc:                            # noqa: BLE001

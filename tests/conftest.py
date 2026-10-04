@@ -399,6 +399,23 @@ def _device_cards_are_singular(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_background_arrival_watch(monkeypatch):
+    """C420 (the operator, 2026-10-04): a test that runs a combined deploy started the arrival
+    watch's 15-minute loop, a daemon thread that outlived the test and ran in the worker beside
+    every later test, the browser tests' served app included. In the suite the watch is kept
+    and its loop never starts (every arrival-watch test drives `observe` itself, with
+    `thread=False`), and the watches end with the test."""
+    from modules import arrival_watch
+
+    real = arrival_watch.start
+    monkeypatch.setattr(arrival_watch, "start",
+                        lambda job_id, sent, **kw: real(job_id, sent, **dict(kw, thread=False)))
+    yield
+    with arrival_watch._lock:
+        arrival_watch._watches.clear()
+
+
+@pytest.fixture(autouse=True)
 def _deploy_receipts_go_to_a_temp_file(request, monkeypatch, tmp_path):
     """Every deploy and restore apply appends a receipt per device (C60), into
     the list's directory. In the suite that is the shared test store, so each

@@ -111,17 +111,32 @@ def test_a_device_monitoring_tabs_ranges_clicked_in_a_row_each_land(served):
     _ranges_in_a_row(srv, b, "/v2/device/r3?tab=monitoring")
 
 
+def _fresh(srv, b, page):
+    """The page loaded anew, the previous load's Socket.IO session closed first (C420: one
+    long poll per load, ~45 left open, each a server thread, slowed the run past its bound)."""
+    from tests import browser
+    b.go("about:blank")
+    browser.close_socketio_sessions()
+    b.go(srv.url(page))
+    b.wait_for(READY, 15)
+
+
 def test_every_swap_control_clicked_twice_lands_both_times(served):
+    """Every distinct swap SHAPE (its url, target and swap), clicked twice, on the first page
+    that draws it (C420: the device's seven tabs draw the same ~24 controls, and clicking each on
+    every tab made 181 loads and 353 clicks, 90 s, past the 45 s bound; measured 2026-10-04, no
+    single wait over 0.25 s)."""
     srv, b = served
-    failures, clicked, known_seen = [], 0, set()
+    failures, clicked, known_seen, tested = [], 0, set(), set()
     for page in PAGES:
-        b.go(srv.url(page))
-        b.wait_for(READY, 15)
+        _fresh(srv, b, page)
         for shape in b.js(SHAPES):
+            if shape["key"] in tested:
+                continue
+            tested.add(shape["key"])
             path = shape["url"].split("?")[0]
             if path in KNOWN:
-                b.go(srv.url(page))
-                b.wait_for(READY, 15)
+                _fresh(srv, b, page)
                 b.js(CLICK, shape["url"])
                 b.wait_for("return " + SETTLED, 20)
                 if b.js("return !!document.querySelector('[data-couldnt]')"):
@@ -129,8 +144,7 @@ def test_every_swap_control_clicked_twice_lands_both_times(served):
                 else:
                     failures.append(f"{path} answers now: remove its exemption ({KNOWN[path]})")
                 continue
-            b.go(srv.url(page))
-            b.wait_for(READY, 15)
+            _fresh(srv, b, page)
             for n in (1, 2):
                 if not b.js(CLICK, shape["url"]):
                     break       # the first answer replaced the control: nothing to click twice

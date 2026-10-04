@@ -385,6 +385,8 @@ _JOB_STATES = {
                                  "warning"),
     # The Update button's root-owned updater (docs/UPDATE.md).
     "writable": ("is run as root and writable by someone else", "danger"),
+    # Oxidized's router.db still holding a device the tool retired (C398).
+    "orphaned": ("still holds a device the tool retired", "warning"),
     "cannot_run": ("cannot run: a program it needs is missing or not root's", "danger"),
     "path_inactive": ("is not watching for update requests", "danger"),
     "differs": ("differs from this release's copy", "warning"),

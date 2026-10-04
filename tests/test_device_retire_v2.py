@@ -314,6 +314,62 @@ class TestTheOxidizedRow:
         _r, page = _get(exported, "/v2/device/r5")
         assert "Finish this retirement" not in page, "nothing left to finish"
 
+    def _orphans(self, monkeypatch):
+        from modules import host_helpers
+        from modules.nsot import credential_rotation as CR
+        monkeypatch.setattr(CR, "helper_status", lambda: {"ok": True, "state": "ok"})
+        return host_helpers.oxidized_orphans_row()
+
+    def test_job_health_names_a_retired_device_router_db_still_holds(self, exported, oxidized,
+                                                                     monkeypatch):
+        """C398's last part: the helper's address list against the managed devices, through
+        the real helper and the real retire commit; then Finish clears it."""
+        from modules import attention
+        from modules.nsot import credential_rotation as CR
+        monkeypatch.setattr(CR, "oxidized_managed", lambda: False)
+        _r, card = _card(exported)
+        exported["client"].post("/v2/device/r5/retire/confirm", data=_vals(card))
+        monkeypatch.setattr(CR, "oxidized_managed", lambda: True)
+
+        got = self._orphans(monkeypatch)
+        assert got["state"] == "orphaned" and got["devices"] == ["r5"]
+        assert "r5 (192.0.2.15, retired from Lab)" in got["headline"]
+        assert "1 of devices it retired, 1 it never managed (not the tool's to remove)" \
+            in got["detail"]
+        assert ["--addresses"] in oxidized["calls"]
+        from modules import host_helpers
+        assert got in host_helpers.helper_rows(), "job health's helper rows carry it"
+        (row,) = attention.job_health_source(health=lambda: {"jobs": [got]})["rows"]
+        assert row["level"] == "warning" and row["devices"] == ["r5"]
+        assert row["action"]["label"].startswith("Open each retired device and press Finish")
+
+        exported["client"].post("/v2/device/r5/retire/finish", data={"list": "Lab"})
+        after = self._orphans(monkeypatch)
+        assert after["state"] == "ok" and "0 of devices it retired" in after["detail"]
+
+    def test_an_address_the_tool_never_managed_is_no_row(self, exported, oxidized, monkeypatch):
+        got = self._orphans(monkeypatch)
+        assert got["state"] == "ok"
+        assert "1 it never managed (not the tool's to remove)" in got["detail"]
+
+    def test_no_oxidized_is_no_row_and_an_unreadable_list_is_said(self, exported, oxidized,
+                                                                  monkeypatch):
+        from modules import host_helpers
+        from modules.nsot import credential_rotation as CR
+        monkeypatch.setattr(CR, "oxidized_managed", lambda: False)
+        assert host_helpers.oxidized_orphans_row() == {}
+        monkeypatch.setattr(CR, "oxidized_managed", lambda: True)
+        got = host_helpers.oxidized_orphans_row(addresses={"ok": False, "error": "sudo refused"})
+        assert got["state"] == "unknown" and "sudo refused" in got["detail"]
+
+    def test_a_helper_that_is_not_this_releases_is_its_own_row_not_this_one(self, exported,
+                                                                           oxidized,
+                                                                           monkeypatch):
+        from modules import host_helpers
+        from modules.nsot import credential_rotation as CR
+        monkeypatch.setattr(CR, "helper_status", lambda: {"ok": False, "state": "drifted"})
+        assert host_helpers.oxidized_orphans_row() == {}
+
     def test_finishing_needs_its_list_and_a_retire_commit(self, exported, oxidized):
         before = oxidized["rows"]()
         r = exported["client"].post("/v2/device/r5/retire/finish", data={})
