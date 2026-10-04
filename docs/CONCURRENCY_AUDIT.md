@@ -106,10 +106,10 @@ condition (several workers, a fresh install, the roles stage) arrives.
 |---|---|---|---|---|---|---|---|---|---|
 | R1 | h | git | Every commit to a list's repository (`save_golden`, `_commit_paths`, renames, migrate); abandon and retire stage outside | index, commits, tags | `threading.Lock` per repo; `stage_exactly` checks once; `commit()` takes the whole index | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Cross-process lock held from first write to last tag, holder recorded; commit explicit paths; every stager inside |
 | R2 | h | intent | Intent editor save | `host_vars/<dev>.yml`, one commit | none: no base, write before the lock, save not bound to preview | no | FIXED 2026-10-02 (was UNSAFE; tests/test_intent_editor_concurrency.py) | yes | Base blob from the open; compare at HEAD under the lock; 409 with three-way diff |
-| R3 | h | stores, live | The server-wide active list (`device_lists.json` `current_list`) | the registry, and which list every derived write lands in | none; truncate in place; a torn read answers "Default" | no | UNSAFE | yes | Active list per session; every write carries its list; locked atomic registry |
+| R3 | h | stores, live | The server-wide active list (`device_lists.json` `current_list`) | the registry, and which list every derived write lands in | none; truncate in place; a torn read answers "Default" | no | STORE HALF FIXED 2026-10-04 (tests/test_list_registry_store.py); the per-session half UNSAFE, a decision (below) | yes | Active list per session; every write carries its list; locked atomic registry |
 | R4 | h | approvals | Approval queue store | `approval_queue.json` | none; GETs write it; unreadable reads as `[]`; `resolve` saves a stale list twice | no | FIXED 2026-10-02 (was UNSAFE; tests/test_approval_queue_store.py) | yes | PathLock, atomic write, refuse unreadable, pure reads, compare-and-set; SQLite WAL candidate |
 | R5 | h | locks, live | An operation interrupted by a process exit, including the two restart routes (added on review) | devices already pushed; no receipt, no golden, no rollback | none: Update gates and the restart routes ignore held devices; crash staging unread; leftover lock file unread | n/a | FIXED 2026-10-02 (was UNSAFE; tests/test_interrupted_operations.py, tests/test_pending_receipts.py): Update and `nmas-deploy` refuse while a device is held, both restart routes removed, an interrupted operation kept and drawn on Needs attention, each device's receipt written as it finishes, commit pending; not built: the per-device step under `deploy_max_workers > 1`, and the gunicorn half (9.S) | yes | Refuse Update, restarts and `nmas-deploy` while any device is held (or retire the restart routes); per-device receipts; draw the interrupted state |
-| R6 | h (m today) | git, stores, locks | Manifest store | `.nsot/manifest.json` | `threading.Lock`, shared `.tmp`, unreadable becomes empty; rename rollback writes blind | no | UNSAFE | yes (CLI; rename rollback) | PathLock, `write_atomic`, `read_json_for_write`, inside the repo lock |
+| R6 | h (m today) | git, stores, locks | Manifest store | `.nsot/manifest.json` | `threading.Lock`, shared `.tmp`, unreadable becomes empty; rename rollback writes blind | no | FIXED 2026-10-04 (was UNSAFE; tests/test_manifest_store.py) | yes (CLI; rename rollback) | PathLock, `write_atomic`, `read_json_for_write`, inside the repo lock |
 | R7 | h under workers | live | Background services start only under `__main__` | readers, drift, keeper, heartbeat, UDP listeners | started once by `__main__` | no | UNSAFE-MULTI-PROCESS | no | One designated service runner with a leader lock; web workers start nothing |
 | R8 | h under workers | live | Socket.IO | announcements, heartbeat, terminal | no message queue; polling needs sticky sessions; terminal state per process | no | UNSAFE-MULTI-PROCESS | no | Sticky sessions plus a message queue, or one Socket.IO process |
 | R9 | h under workers | live | Reachability `STATUS` | in-memory dict every consumer reads | per process | no | UNSAFE-MULTI-PROCESS | no | Read the stored reader value; absent means unknown |
@@ -208,6 +208,27 @@ save while another person switches lists always lands in the other list. An inte
 lands there when that list holds the same hostname. Content hashes stop most wrong-list
 deploys, but intent, templates and approvals carry no hash.
 
+*The store half, FIXED 2026-10-04 (tests/test_list_registry_store.py):* every registry
+mutation (switch, create, delete, rename) holds a cross-process `PathLock` on
+`device_lists.json` from its read to its write, and the file is replaced atomically, so a read
+never sees a torn file and no mutation erases another. Shown with real processes: a reader
+beside a switching process saw only the two real lists, where truncating in place made it see
+"Default" three runs of three; three processes creating lists lost none, where no lock lost
+some three runs of three.
+
+*The per-session half is a DECISION (the operator's), recorded 2026-10-04.* One person's switch
+still retargets every other session's derived writes. Options:
+(A) **the active list per session**: the server-wide `current_list` becomes the default a new
+session starts from; a switch changes the session's own; `get_current_list_name()` answers
+the session's in a request and the default outside one. No v1 control changes and no v1
+JavaScript; the derived writes follow the person who made them.
+(B) **every write carries its list** (CLAUDE.md's rule, already true on v2 and in four modules):
+the remaining v1 routes refuse a write without its list, and their JavaScript sends it. Churn on
+pages that retire at cutover.
+(C) **leave it until cutover**: v2 carries its list; v1 retires.
+**Recommendation: (A)**, now. It removes the cross-person retargeting on today's pages without
+touching v1 controls, and (B) then follows naturally as v2 replaces them.
+
 **R4. The approval queue store loses and erases decisions** (approvals-1, approvals-2,
 stores-1, live-12, confirms-22). `_save_queue` truncates in place with no lock
 (modules/approval_queue.py:47-51). `_load_queue` returns `[]` when the file is unreadable
@@ -289,6 +310,17 @@ rename commit writes the pre-rename bytes back under `repo_lock` but not the man
 today: `nsot_dedupe_manifest.py:114` and `nmas-retire` (retire.py:662). Onboarding's commit
 does not stage the manifest (onboard.py:1440, repo.py:1402-1406), so a pending device's
 identity lives only in the working tree until the next golden save.
+
+*FIXED 2026-10-04 (tests/test_manifest_store.py):* every manifest writer holds the
+repository's own lock (`repo.RepoLock`, cross-process, re-entrant per thread, so a writer inside
+a commit path does not wait on itself, and a rename's rollback can no longer interleave with
+`sync_platforms`); `save()` replaces the file atomically with its temp file beside the
+repository; a writer refuses an unreadable manifest (`filestore.StoreUnreadable`), its bytes
+preserved beside the repository, never inside it; `scripts/nsot_dedupe_manifest.py --apply`
+re-reads under the lock and removes only its planned entries. Shown with real processes: three
+writing at once lost nothing, where a per-process lock lost entries three runs of three.
+Readers keep `load()` (absent and unreadable both read as empty, logged); onboarding's
+uncommitted identity is unchanged by this.
 
 **R7. Under gunicorn, the background services do not start at all, or start once per
 worker** (live-2, locks-18). `_start_background_daemons()` runs only under

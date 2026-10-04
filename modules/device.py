@@ -494,10 +494,31 @@ def _ensure_devices_csv(list_dir: str) -> None:
             _write_csv_atomic(csv_path, [], DEVICE_CSV_FIELDS)
 
 
+def _lists_lock():
+    """The list registry's lock, across processes (CONCURRENCY_AUDIT R3, its store half): held
+    from a mutation's read to its write, so two people creating, renaming or switching lists
+    at once do not erase each other's change."""
+    from modules.filestore import PathLock
+    return PathLock(lambda: DEVICE_LISTS_CONFIG)
+
+
+def _holding_lists_lock(func):
+    import functools
+
+    @functools.wraps(func)
+    def held(*args, **kwargs):
+        with _lists_lock():
+            return func(*args, **kwargs)
+    return held
+
+
 def _save_device_lists_config(config: dict) -> None:
-    """Save the device lists configuration file."""
-    with open(DEVICE_LISTS_CONFIG, "w") as f:
-        json.dump(config, f, indent=2)
+    """Replace the device lists configuration file ATOMICALLY (R3: it was truncated in place,
+    so a read during the write saw a torn file, which `get_current_list_name()` maps to
+    "Default", and the next derived write landed in another list)."""
+    from modules.filestore import write_atomic
+    with _lists_lock():
+        write_atomic(DEVICE_LISTS_CONFIG, json.dumps(config, indent=2))
 
 
 def get_device_lists() -> list[dict]:
@@ -529,6 +550,7 @@ def get_current_device_list() -> tuple[str, str]:
     return current, csv_path
 
 
+@_holding_lists_lock
 def set_current_device_list(list_name: str) -> bool:
     """Set the current device list by name. Returns True on success."""
     config = _load_device_lists_config()
@@ -539,6 +561,7 @@ def set_current_device_list(list_name: str) -> bool:
     return True
 
 
+@_holding_lists_lock
 def create_device_list(list_name: str) -> tuple[bool, str]:
     """Create a new device list. Returns (success, message)."""
     if not list_name or not list_name.strip():
@@ -579,6 +602,7 @@ def create_device_list(list_name: str) -> tuple[bool, str]:
     return True, f"Device list '{list_name}' created successfully"
 
 
+@_holding_lists_lock
 def delete_device_list(list_name: str) -> tuple[bool, str]:
     """Delete a device list and all its data. Returns (success, message)."""
     import shutil
@@ -621,6 +645,7 @@ def delete_device_list(list_name: str) -> tuple[bool, str]:
     return True, f"Device list '{list_name}' deleted successfully"
 
 
+@_holding_lists_lock
 def rename_device_list(old_name: str, new_name: str) -> tuple[bool, str]:
     """Rename a device list.
 

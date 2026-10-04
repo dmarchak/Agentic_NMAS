@@ -35,7 +35,6 @@ import calendar
 import json
 import logging
 import os
-import threading
 import time
 import uuid
 
@@ -43,15 +42,21 @@ log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 _MANIFEST_REL = os.path.join(".nsot", "manifest.json")
-_locks: dict = {}
-_locks_guard = threading.Lock()
+def _lock_for(repo: str):
+    """The manifest's lock: the repository's own, held ACROSS PROCESSES (CONCURRENCY_AUDIT R6).
+
+    It was a `threading.Lock` per repository, so a host CLI (`nmas-retire`, the dedupe script)
+    and the app could interleave their read-modify-writes and one erase the other's entries,
+    and a rename's rollback (which holds the repository lock) could erase a concurrent
+    `sync_platforms`. The repository lock is re-entrant per thread, so a writer called inside
+    a commit path that already holds it does not wait on itself."""
+    from modules.nsot.repo import repo_lock
+    return repo_lock(repo)
 
 
-def _lock_for(repo: str) -> threading.Lock:
-    with _locks_guard:
-        if repo not in _locks:
-            _locks[repo] = threading.Lock()
-        return _locks[repo]
+def lock(repo: str):
+    """``with manifest.lock(repo):`` around a read-modify-write outside this module."""
+    return _lock_for(repo)
 
 
 def manifest_path(repo: str) -> str:
@@ -87,13 +92,34 @@ def load(repo: str) -> dict:
     return data
 
 
+def _outside(repo: str) -> str:
+    """A folder beside the repository, on its filesystem: where a write's temp file and an
+    unreadable manifest's preserved copy go, never inside it (a stager would see them: C345)."""
+    return os.path.dirname(os.path.abspath(repo))
+
+
+def load_for_write(repo: str) -> dict:
+    """The manifest for a read-modify-write: empty when ABSENT; `filestore.StoreUnreadable`
+    when it exists and cannot be read (R6: `load()` read that as empty, and the next save
+    wrote a one-device identity map), its bytes preserved beside the repository."""
+    from modules.filestore import read_json_for_write
+
+    path = manifest_path(repo)
+    data = read_json_for_write(path, empty={"schema_version": SCHEMA_VERSION, "devices": {}},
+                               aside=os.path.join(_outside(repo), "manifest.json"))
+    data.setdefault("schema_version", SCHEMA_VERSION)
+    data.setdefault("devices", {})
+    return data
+
+
 def save(repo: str, data: dict) -> None:
+    """Replace the manifest atomically: a temp file per write, beside the repository (R6: a
+    shared `.tmp` inside it let two processes install a mixed file)."""
+    from modules.filestore import write_atomic
+
     path = manifest_path(repo)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2, sort_keys=True)
-    os.replace(tmp, path)
+    write_atomic(path, json.dumps(data, indent=2, sort_keys=True), tmp_dir=_outside(repo))
 
 
 #: A device onboarded but not yet reached. Past this it is **flagged**, not
@@ -137,7 +163,7 @@ def upsert_device(repo: str, identity: str, name: str, mgmt_ip: str = "",
     if not identity:
         raise ValueError("a manifest entry needs a stable identity")
     with _lock_for(repo):
-        data = load(repo)
+        data = load_for_write(repo)
         entry = data["devices"].get(identity, {})
         entry.update({
             "name":      name or entry.get("name", ""),
@@ -253,7 +279,7 @@ def sync_platforms(repo: str, list_name: str) -> dict:
 
     updated, unchanged = [], 0
     with _lock_for(repo):
-        data = load(repo)
+        data = load_for_write(repo)
         for identity, entry in data["devices"].items():
             record = (index.get((entry.get("mgmt_ip") or "").strip())
                       or index.get((entry.get("name") or "").strip().lower()))
@@ -284,7 +310,7 @@ def record_pending_rename(repo: str, identity: str, new_name: str) -> dict:
     must never take the repo lock or create a commit.
     """
     with _lock_for(repo):
-        data = load(repo)
+        data = load_for_write(repo)
         entry = data["devices"].get(identity)
         if entry is None:
             return {"ok": False, "error": f"unknown device identity '{identity}'"}
@@ -315,7 +341,7 @@ def clear_pending_rename(repo: str, identity: str, new_name: str,
                          new_golden: str) -> None:
     """Mark a rename as applied to the repo."""
     with _lock_for(repo):
-        data = load(repo)
+        data = load_for_write(repo)
         entry = data["devices"].get(identity)
         if entry is None:
             return
@@ -505,7 +531,7 @@ def release(repo: str, identity: str, list_name: str = "",
                                        for r in blocking)))}
 
     with _lock_for(repo):
-        data = load(repo)
+        data = load_for_write(repo)
         removed = data["devices"].pop(identity, None)
         if removed is None:
             return {"ok": False, "error": "released by another caller",
@@ -532,7 +558,7 @@ def mark_verified(repo: str, identity: str, actor: str = "") -> dict:
     every poll.
     """
     with _lock_for(repo):
-        data = load(repo)
+        data = load_for_write(repo)
         entry = data["devices"].get(identity)
         if entry is None:
             return {"ok": False, "error": f"no device with identity '{identity}'"}

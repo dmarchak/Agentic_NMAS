@@ -109,9 +109,13 @@ def main() -> int:
         print("Dry run — nothing written. Re-run with --apply to commit.")
         return 0
 
-    for identity in removals:
-        data["devices"].pop(identity, None)
-    M.save(repo, data)
+    # Read again UNDER the repository's lock and remove only the planned entries (R6): the map
+    # read for the report may be minutes old, and saving it would erase what the app wrote since.
+    with M.lock(repo):
+        fresh = M.load_for_write(repo)
+        for identity in removals:
+            fresh["devices"].pop(identity, None)
+        M.save(repo, fresh)
 
     from modules.config import get_current_list_name
     list_name = args.list_name or get_current_list_name()
