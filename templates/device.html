@@ -147,19 +147,6 @@
       File Management
     </button>
   </li>
-  <!-- Terminal tab -->
-  <li class="nav-item" role="presentation">
-    <button class="nav-link {% if tab == 'terminal' %}active{% endif %}"
-            id="terminal-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#terminal"
-            type="button"
-            role="tab"
-            aria-controls="terminal"
-            aria-selected="{{ 'true' if tab == 'terminal' else 'false' }}">
-      Terminal
-    </button>
-  </li>
   <!-- Backups tab -->
   <li class="nav-item" role="presentation">
     <button class="nav-link {% if tab == 'backups' %}active{% endif %}"
@@ -508,31 +495,6 @@
   }
   </script>
 
-  <!-- Terminal Tab -->
-  <div class="tab-pane fade {% if tab == 'terminal' %}show active{% endif %}"
-       id="terminal"
-       role="tabpanel"
-       aria-labelledby="terminal-tab">
-    <hr>
-    <h4>🖥️ Live terminal</h4>
-    <p class="text-muted">Interactive SSH session with {{ device["hostname"] }}.</p>
-    <div class="alert alert-warning small" data-break-glass-note>
-      <strong>This is the break-glass path.</strong> What you type goes straight to the
-      device: no plan, no confirm hash, no rollback. A change made here is drift until
-      it is captured into intent.
-      <br><strong>Output is shown unmasked, by design:</strong> this is the device's own
-      terminal, and you need to see what it says. Every other screen masks secrets; this
-      one cannot, so anything the device prints, including a secret you type, appears here.
-      <br>On connect the tool sends <code>enable</code> only if the device is not already
-      privileged, and the enable secret only if the device asks for it.
-      <br><strong>Its use is recorded.</strong> Opening it requires a verified person, and
-      each session writes who opened it, for which device, from where, and when it
-      opened and closed (<code>data/terminal_audit.jsonl</code>). Refused attempts are
-      recorded too. What you type is never recorded.
-    </div>
-    <div id="terminal-container" class="terminal-box"></div>
-  </div>
-
   {% include 'partials/device_changes.html' %}
   <!-- Backups Tab -->
   <div class="tab-pane fade {% if tab == 'backups' %}show active{% endif %}"
@@ -638,7 +600,7 @@
   </div>
 </div>
 
-<!-- Styles for hover-delete on quick actions and terminal sizing -->
+<!-- Styles for hover-delete on quick actions -->
 <style>
 .quick-action .delete-action {
   position: absolute;
@@ -657,23 +619,11 @@
   padding-right: 2rem;
 }
 
-/* Terminal box: match tab pane visible area */
-.terminal-box {
-  height: 400px;
-  width: 100%;
-  background: black;
-  overflow: hidden;
-}
 </style>
 
 {# Bootstrap's CSS and bundle come from base.html, ONCE: a second bundle here
    registered every data-API handler twice. #}
 
-<!-- xterm.js for the Terminal tab -->
-{# Vendored, pinned, from registry-verified tarballs (C123; static/js/vendor/MANIFEST.json).
-   These loaded UNPINNED from a CDN: whatever was newest that day. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='js/vendor/xterm/xterm.css') }}" />
-<script src="{{ url_for('static', filename='js/vendor/xterm/xterm.js') }}"></script>
 {# socket.io's client loads once, in base.html (C58). #}
 
 <script>
@@ -861,91 +811,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Terminal tab: auto-reconnect and reliable cleanup to avoid duplicate outputs ---
-  const terminalTabEl = document.getElementById('terminal-tab');
-  const terminalPaneEl = document.getElementById('terminal');
-  const terminalContainer = document.getElementById('terminal-container');
-  let socket = null;
-  let term = null;
-
-  function cleanupTerminal() {
-    try { socket?.emit('disconnect_terminal', { ip: '{{ device["ip"] }}' }); } catch (e) {}
-    try { socket?.off('terminal_output'); } catch (e) {}
-    try { socket?.disconnect(); } catch (e) {}
-    socket = null;
-
-    try { term?.dispose(); } catch (e) {}
-    term = null;
-
-    // Clear container contents to avoid lingering DOM nodes
-    if (terminalContainer) {
-      terminalContainer.innerHTML = '';
-    }
-  }
-
-  function initTerminal() {
-    // Ensure previous instances are fully cleaned up
-    cleanupTerminal();
-
-    term = new Terminal({
-      cols: 80,
-      rows: 24,
-      cursorBlink: true,
-      fontFamily: 'monospace',
-      fontSize: 14
-    });
-    term.open(terminalContainer);
-
-    socket = io();
-    socket.emit('connect_terminal', { ip: '{{ device["ip"] }}' });
-
-    // Keystroke batching to preserve order
-    let keyBuffer = '';
-    let flushTimer = null;
-    const flushDelay = 15; // ms
-    function flushKeys() {
-      if (!keyBuffer) return;
-      socket.emit('terminal_input', { ip: '{{ device["ip"] }}', input: keyBuffer });
-      keyBuffer = '';
-      flushTimer = null;
-    }
-    term.onData(data => {
-      keyBuffer += data;
-      if (!flushTimer) flushTimer = setTimeout(flushKeys, flushDelay);
-    });
-
-    // Render incoming output
-    socket.on('terminal_output', msg => {
-      term.write(msg.output);
-    });
-  }
-
-  // Initialize terminal if terminal tab is active on load
-  if ("{{ tab }}" === "terminal") {
-    initTerminal();
-  }
-
-  // Auto-reconnect when Terminal tab is shown (use event on the tab button)
-  if (terminalTabEl) {
-    terminalTabEl.addEventListener('shown.bs.tab', () => {
-      initTerminal();
-    });
-    // Disconnect when Terminal tab is hidden
-    terminalTabEl.addEventListener('hidden.bs.tab', () => {
-      cleanupTerminal();
-    });
-  }
-
-  // Fallback: also listen on the pane in case of markup variations
-  if (terminalPaneEl) {
-    terminalPaneEl.addEventListener('hidden.bs.tab', () => {
-      cleanupTerminal();
-    });
-  }
-
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
-    cleanupTerminal();
     clearInterval(statusInterval);
   });
 

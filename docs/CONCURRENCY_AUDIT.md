@@ -133,7 +133,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE; the holder strip waits for a mockup, the broadcast half for C435 (recorded 2026-10-04) | yes | Broadcast mutations; live holder strip; previews subscribe |
 | R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
-| R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | UNSAFE; a decision, recommended: remove the terminal now (7.8 brought forward) | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
+| R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | FIXED 2026-10-05: the terminal REMOVED (the operator's decision (B), after the console drill passed: docs/CONSOLE_DRILL.md) | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
 | R40 | m | stores (added on review) | Persistence-chain host files: Oxidized `router.db` and the lab sync | `router.db`, lab startup files and their repositories | `router.db`: atomic replace, no lock; sync script: no lock | no | FIXED IN CODE 2026-10-04 (tests/test_router_db_lock.py); the helper's host install is the operator's | yes | `flock` in the root helper and in the sync script |
 | R41 | m | confirms (added on review) | Remote publication acknowledge | `remote.json` acknowledgement | typed kinds checked; values recorded at click time; list derived | no | VALUES FIXED 2026-10-04 (tests/test_ack_binds_values.py); the list waits for P.8 (R3) | yes | Bind the confirm to the values fingerprint the card showed; carry the list |
 | R29 | m under workers | live | Reader on-request registry ("Check again") | in-memory request record | per process | no | UNSAFE-MULTI-PROCESS | no | Request record in a shared file |
@@ -885,6 +885,15 @@ proves the emergency path.** The drill:
 
 The runbook is docs/CONSOLE_DRILL.md. The operator runs it, then the terminal is
 removed, with docs/CUTOVER.md updated.
+
+**FIXED 2026-10-05.** The drill passed (the operator, about 02:07 UTC): the console was
+reached through containerlab, and the record's credential accepted over SSH. It also found
+that the console's `enable` asks nothing (C457). The terminal was then removed:
+- its three socket events and their gates, and `socket_gated`'s terminal branch;
+- `modules/terminal.py`, and `modules/terminal_audit.py` (its data file stays on the host);
+- the v1 device page's Terminal tab, and the vendored xterm.
+
+The write path the safety model could not see is gone.
 
 **R40. The persistence chain's host files have no lock** (stores-31, stores-32, added on
 review). A rotation's persist stage `oxidized_row` (modules/nsot/credential_rotation.py,

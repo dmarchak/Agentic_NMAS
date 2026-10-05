@@ -79,7 +79,7 @@ and built.
 | Bulk file actions | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download` | REMOVE, 7.8 | As device files |
 | Reload | `/bulk_reload` | REMOVE, 7.8; replaced by P.14 | Reload becomes a gated device-page operation (NSOT_PLAN P.14: unsaved changes, drift, the boot credential and image, no holder, the blast radius) |
 | Ask the device | `/run_command/<ip>` | PLANNED, 7.3 | The device page's "Ask the device" tab (allowlisted) |
-| Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal is removed (NSOT_FEATURE_AUDIT 3b) |
+| Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
 | Configure | `/configure/*` (6) | PLANNED, 7.9 | The Configure forms, a parallel track |
 | Legacy collectors | `/monitoring/config`, `/interfaces`, `/netflow` (2), `/snmp/poll`, `/snmp/traps` (2) | REMOVE, 7.8 | The in-app collector and SNMP Quick Poll are removed (the mockup review, 2026-09-29) |
 | Monitoring stack panel | `/monitoring/stack/`, `/monitoring/stack/<name>` | REMOVE, 7.8 | The status bar and integration health replace it |
@@ -92,7 +92,7 @@ and built.
 
 | Action | Status | Home or reason |
 |---|---|---|
-| The terminal (socket events) | REMOVE, 7.8 | NSOT_FEATURE_AUDIT 3b: the Device page's allowlisted command box is the one way to ask a device |
+| The terminal (socket events) | **REMOVED 2026-10-05** (R39, brought forward from 7.8 on the operator's decision, after the console drill proved the emergency path: docs/CONSOLE_DRILL.md) | NSOT_FEATURE_AUDIT 3b: the Device page's allowlisted command box is the one way to ask a device. Gone: the three socket events and their gates, `modules/terminal.py`, `modules/terminal_audit.py` (its data file stays on the host, readable by hand), the v1 device page's Terminal tab, and the vendored xterm. Kept: the `break_glass` gate kind and its two settings, until they retire |
 | Today's Git tab, Remote card, Baselines panel | PLANNED, History | History (signed off) |
 | The AI chat panel (every page) | PLANNED, Stage 8 | |
 | Settings modal | PLANNED, 7.7 | Settings |

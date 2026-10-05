@@ -83,13 +83,6 @@
    "source": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
    "licence_file": "static/js/vendor/vis-network/LICENSE-MIT"
   },
-  "static/js/vendor/xterm/*": {
-   "component": "xterm",
-   "version": "5.3.0",
-   "licence": "MIT",
-   "source": "https://registry.npmjs.org/xterm/-/xterm-5.3.0.tgz",
-   "licence_file": "static/js/vendor/xterm/LICENSE"
-  },
   "static/css/bootstrap*": {
    "component": "Bootstrap (CSS)",
    "version": "5.3.3",

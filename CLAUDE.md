@@ -231,7 +231,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   command on an allowlist; a removal shape is allowed only once measured.
   [tests/test_readonly_commands.py; tests/test_removal.py] [why](docs/LESSONS.md#refusing-and-allowing-by-resemblance)
 - **Send, read, decide: a secret goes only in answer to the prompt asking for it; anything reaching
-  a CLI is printable ASCII.** [tests/test_terminal_privilege.py; tests/test_bootstrap_config.py] [why](docs/LESSONS.md#send-read-decide)
+  a CLI is printable ASCII.** [tests/test_bootstrap_config.py] [why](docs/LESSONS.md#send-read-decide)
 - **Stop a process by identity, never by pattern; no IPv4 literals in `modules/nsot/`,
   `modules/integrations/`, `routes/`.** [tests/test_no_pattern_kill.py; tests/test_no_ip_literals.py] [why](docs/LESSONS.md#identity-not-pattern)
 - **A ZTP reservation carries no route or resolver, and nothing on the segment answers broadcast
@@ -303,8 +303,8 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   `device_netbox.py`, `history_sources.py`).
 - **Interface:** `routes/` blueprints (`routes.register_blueprints(app)`), v2 in `routes/v2.py` and
   `routes/device_v2.py`, `templates/v2/`, `static/js/nmas_*.js`, `static/css/nmas-v2.css`. Legacy
-  pages retire at cutover; the terminal (`modules/terminal.py`) is gated `break_glass` and removed
-  in 7.8. `telnetlib.py` in the root is a Python 3.13+ shim.
+  pages retire at cutover; the break-glass terminal was removed (R39, 2026-10-05). `telnetlib.py`
+  in the root is a Python 3.13+ shim.
 
 ## Key architecture (narratives in docs/ARCHITECTURE.md)
 

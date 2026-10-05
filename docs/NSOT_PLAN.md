@@ -6085,6 +6085,11 @@ the environment does.
     whole metrics history is readable from the LAN. Grafana and the tool reach it on
     localhost. The step: first read what else connects to both ports (read-only, on the
     host), then propose binding both to `127.0.0.1` as its own host step;
+  - **No enable secret anywhere, so a console's `enable` needs no password** (C457; the
+    operator's console drill on r2, 2026-10-05). With C455's console login in place, the
+    next boundary is an enable secret per device, held in the break-glass record and
+    rotated with the device credential. It is its own decision and its own step, never
+    mixed into the console-login rollout;
 
   - SNMPv3 (C249, the operator, 2026-09-30): nothing the tool runs speaks it, so every
     device must run a community. REQUIRED before Stage 10's release. **Designed the same

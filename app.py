@@ -69,7 +69,6 @@ from modules.config import (
     save_user_settings,
 )
 from modules.connection import session_reaper, get_persistent_connection, close_persistent_connection, with_temp_connection, get_device_send_lock
-from modules.terminal import ensure_terminal_session, start_terminal_reader
 from modules import route_gates
 from modules.identity import request_actor
 from modules.quick_actions import load_quick_actions, save_quick_actions
@@ -125,7 +124,7 @@ app.secret_key = read_or_create_key(SECRET_KEY_FILE, lambda: os.urandom(24))
 
 
 # manage_session=False: none of this app's SocketIO handlers use flask.session
-# (the terminal feature keeps its own state in terminal_sessions), and on some
+# (the break-glass terminal, removed in R39, kept its own state), and on some
 # Flask/Flask-SocketIO version combos manage_session=True's internal session
 # copy hits `AttributeError: property 'session' of 'RequestContext' object
 # has no setter`, crashing every socket event before the handler even runs.
@@ -461,139 +460,13 @@ def handle_exception(error):
 # QUICK_ACTIONS_FILE provided by modules.config
 
 connections = {}  # ip -> Netmiko connection (status-only)
-terminal_sessions = {}
 lock = threading.Lock()
 _device_lock = get_device_send_lock  # serialises SSH commands per device
 
 
-# ---------------------------------------------------------------------------
-# Socket.IO event handlers (live terminal sessions)
-#
-# These handlers manage client requests to open/close live terminal
-# sessions and to send typed input. They rely on the `terminal_sessions`
-# container (a mapping of IP -> session objects) and the `modules.terminal`
-# helpers which encapsulate Paramiko usage and background readers.
-# ---------------------------------------------------------------------------
-
-
-#: Which devices each browser connection has a terminal open to, so a closed
-#: tab (a socket disconnect with no `disconnect_terminal`) still records its
-#: close (P.3 step 7).
-_terminal_open_by_sid = {}
-
-
-def _terminal_audit(event, ip, reason=""):
-    """One break-glass audit row for THIS connection. Never keystrokes."""
-    from flask import g
-    from modules import identity as _ident
-    from modules import terminal_audit
-
-    ident = getattr(g, "nmas_identity", None)
-    hostname = ""
-    try:
-        _, _csv = get_current_device_list()
-        hostname = next((d.get("hostname", "") for d in load_saved_devices(_csv)
-                         if d.get("ip") == ip), "")
-    except Exception:                                   # noqa: BLE001
-        pass
-    terminal_audit.record(event, device_ip=ip, hostname=hostname,
-                          actor=getattr(ident, "actor", ""),
-                          kind=getattr(ident, "kind", ""),
-                          sid=getattr(request, "sid", ""),
-                          peer=_ident.peer_address(request), reason=reason)
-
-
-def _term_key(ip: str) -> str:
-    """A shell per CONNECTION, never per device (register D12, 2026-09-26).
-
-    Sessions were keyed by device address and output went to a room named by
-    it, so everyone with a device's terminal open shared ONE shell: each saw
-    the other's typing and output, a credential included (B13's exposure by
-    another route), and one person closing it ended it for the other.
-    """
-    return f"{request.sid}|{ip}"
-
-
-def _close_shell(key: str) -> None:
-    sess = terminal_sessions.pop(key, None)
-    if sess:
-        try:
-            if sess.get("chan"):
-                sess["chan"].close()
-            if sess.get("ssh"):
-                sess["ssh"].close()
-        except Exception:
-            pass
-
-
-@socketio.on("connect_terminal")
-@route_gates.socket_gated("connect_terminal")
-def socket_connect_terminal(data):
-    ip = data.get("ip")
-    if not ip:
-        return
-    key, me = _term_key(ip), request.sid
-    try:
-        # This connection's own shell, and output to this connection only:
-        # each Socket.IO connection is a room of its own.
-        ensure_terminal_session(ip, terminal_sessions, key=key)
-        _terminal_open_by_sid.setdefault(me, set()).add(ip)
-        _terminal_audit("opened", ip)
-        start_terminal_reader(ip, terminal_sessions, socketio, key=key, room=me)
-
-        socketio.emit(
-            "terminal_output", {"output": f"\r\n[connected to {ip}]\r\n"}, room=me
-        )
-    except Exception as e:
-        if ip not in _terminal_open_by_sid.get(me, set()):
-            _terminal_audit("open_failed", ip, reason=type(e).__name__)
-        socketio.emit(
-            "terminal_output", {"output": f"\r\n[terminal error: {e}]\r\n"}, room=me
-        )
-
-
-@socketio.on("terminal_input")
-@route_gates.socket_gated("terminal_input")
-def socket_terminal_input(data):
-    ip = data.get("ip")
-    raw = data.get("input", "")
-    if not ip:
-        return
-    key = _term_key(ip)
-    try:
-        sess = terminal_sessions.get(key)
-        if not sess:
-            ensure_terminal_session(ip, terminal_sessions, key=key)
-            sess = terminal_sessions.get(key)
-        if raw and sess and sess.get("chan"):
-            sess["chan"].sendall(raw)
-    except Exception as e:
-        socketio.emit(
-            "terminal_output", {"output": f"\r\n[input error: {e}]\r\n"},
-            room=request.sid
-        )
-
-
-@socketio.on("disconnect")
-def socket_disconnected(*_args):
-    """A closed tab or a dropped connection: close THIS connection's shells
-    and record each close. Nobody else's shell is touched (D12)."""
-    for ip in sorted(_terminal_open_by_sid.pop(request.sid, set())):
-        _close_shell(_term_key(ip))
-        _terminal_audit("closed", ip, reason="browser disconnected")
-
-
-@socketio.on("disconnect_terminal")
-def socket_disconnect_terminal(data):
-    ip = data.get("ip")
-    if ip in _terminal_open_by_sid.get(request.sid, set()):
-        _terminal_open_by_sid[request.sid].discard(ip)
-        _terminal_audit("closed", ip, reason="closed from the page")
-    _close_shell(_term_key(ip))
-    socketio.emit(
-        "terminal_output", {"output": f"\r\n[disconnected from {ip}]\r\n"},
-        room=request.sid
-    )
+# The break-glass terminal's socket handlers were removed (R39, the operator,
+# 2026-10-05), after the console drill proved the emergency path without it
+# (docs/CONSOLE_DRILL.md). Its past sessions stay readable in its audit log.
 
 
 # ---------------------------------------------------------------------------

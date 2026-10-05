@@ -178,32 +178,5 @@
   "sha256": "576bb887733eb01bb52ee75b90ef46d818454de5fddb5b616fb8a298d307ca12",
   "tarball": "https://registry.npmjs.org/vis-network/-/vis-network-9.1.6.tgz",
   "version": "9.1.6"
- },
- "xterm/LICENSE": {
-  "bytes": 1261,
-  "from": "LICENSE",
-  "integrity": "sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg==",
-  "package": "xterm",
-  "sha256": "b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd",
-  "tarball": "https://registry.npmjs.org/xterm/-/xterm-5.3.0.tgz",
-  "version": "5.3.0"
- },
- "xterm/xterm.css": {
-  "bytes": 5383,
-  "from": "css/xterm.css",
-  "integrity": "sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg==",
-  "package": "xterm",
-  "sha256": "832f3f2c603b43ad4351ff04970150cc7a873014276db126a6065c6dd81e4872",
-  "tarball": "https://registry.npmjs.org/xterm/-/xterm-5.3.0.tgz",
-  "version": "5.3.0"
- },
- "xterm/xterm.js": {
-  "bytes": 283404,
-  "from": "lib/xterm.js",
-  "integrity": "sha512-8QqjlekLUFTrU6x7xck1MsPzPA571K5zNqWm0M0oroYEWVOptZ0+ubQSkQ3uxIEhcIHRujJy6emDWX4A7qyFzg==",
-  "package": "xterm",
-  "sha256": "f0aea0f75f48559013ae6643c2479dd737d26da42d5524e6d2b70915ae6523c7",
-  "tarball": "https://registry.npmjs.org/xterm/-/xterm-5.3.0.tgz",
-  "version": "5.3.0"
  }
 }

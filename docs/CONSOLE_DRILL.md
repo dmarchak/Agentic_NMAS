@@ -81,7 +81,7 @@ exit
 Then the telnet escape, `Ctrl-]`, and `quit` at the `telnet>` prompt. That ends the
 `docker exec`, and you are back on the lab host.
 
-**4. Sign in with the record's credential, from the lab host.**
+**4. Sign in with the record's credential, from the lab host or the NMAS host** (the drill of 2026-10-05 used the NMAS host).
 
 ```
 ssh <username from step 1>@<r2's address from step 1>
@@ -103,17 +103,20 @@ exit
 
 ## The result (the operator fills it in)
 
+**PASSED, 2026-10-05, about 02:07 UTC (20:07 the operator's time), run by the operator.**
+
 | | |
 |---|---|
-| When (UTC, and the operator's time) | |
-| The path to the lab host (LAN or tunnel) | |
-| Step 1: the record opened, r2 listed | |
-| Step 2: what the console showed; asked for a login? | |
-| Step 3: the uptime line's first words | |
-| Step 4: the record's credential accepted over SSH? | |
-| Anything unexpected | |
+| When (UTC, and the operator's time) | 2026-10-05 about 02:07 UTC (20:07) |
+| The path to the lab host (LAN or tunnel) | LAN |
+| Step 1: the record opened, r2 listed | Yes: `nmas-breakglass-Default-20261003T195437Z.bg` opened offline with its passphrase; r2 listed; `reveal` gave its address and username |
+| Step 2: what the console showed; asked for a login? | `docker exec … telnet localhost 5000` reached r2's console with NO login. **`enable` gave `r2#` with NO password either**: the console gives full privilege to anyone who reaches it (C455, and C457: no enable secret anywhere) |
+| Step 3: the uptime line's first words | "r2 uptime is 3 days, 9 hours, 1 minute" |
+| Step 4: the record's credential accepted over SSH? | Yes: `ssh <username>@<r2's address>` accepted the record's password; `show clock` 02:07:13 UTC. **Run from the NMAS host, not the lab host** (step 4 above now says either) |
+| Anything unexpected | The console's missing enable password, above |
 
-**Then:** the terminal is removed (R39), with docs/CUTOVER.md updated.
+**Then:** the break-glass terminal was removed (R39), with docs/CUTOVER.md updated.
+
 
 ---
 
@@ -206,5 +209,12 @@ no)".
 
 ## Step 4: the fleet (written when step 3 passes)
 
-One change file for the remaining devices, s3 last in the batch order. The vIOS boot question
-above is settled first.
+**The operator's correction (2026-10-05): ROUTERS first.**
+- **The routers:** one change file for r1, r3, r4 and r6 (the C8000Vs, configured at boot by
+  CVAC), as one batch.
+- **The vIOS switches come only after vrnetlab's vIOS launch script has been read.** It types
+  their startup configuration through the console at deploy, so a console that asks for a
+  login may stop that replay. They may need a recorded LAB EXCEPTION: consoles left open on
+  the vIOS switches, with the reason, as a lab-specific decision in local configuration,
+  never the product's default. s3 goes last whichever way that falls.
+- **The enable secret** (C457) is its own decision and its own step, never in this one.

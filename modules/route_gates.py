@@ -28,8 +28,9 @@ was written for:
 ``publish_remote``
     Publishes a network's history to a remote.
 ``break_glass``
-    The terminal: typed commands with no plan, no hash and no rollback. Its
-    own kind so its use is distinguishable from an ordinary deploy.
+    Was the terminal: typed commands with no plan, no hash and no rollback. The
+    terminal was removed (R39, 2026-10-05), so no route or event uses this kind;
+    it stays declared until its two settings retire.
 ``not_device``
     A read, a preview, a test, UI layout, or something the schedule does
     anyway. **Not gated**, and each one says why.
@@ -239,12 +240,10 @@ GATES = {
     "topology_save_proto_hidden": _g(N, "layout"),
 }
 
-#: SocketIO events, which never reach ``before_request``.
-SOCKET_GATES = {
-    "connect_terminal": _g("break_glass", "opens a live device shell"),
-    "terminal_input": _g("break_glass", "types into a live device shell"),
-    "disconnect_terminal": _g(N, "closes a shell; refusing a close is the unsafe direction"),
-}
+#: SocketIO events, which never reach ``before_request``. Empty since the break-glass
+#: terminal's three events left with it (R39, 2026-10-05); a new socket event that mutates
+#: is declared here and wrapped in `socket_gated`.
+SOCKET_GATES = {}
 
 
 def gate_for(endpoint: str):
@@ -309,20 +308,7 @@ def socket_gated(event: str):
                 if refusal is not None:
                     log.info("route_gates: refused socket %s (%s): %s", event,
                              gate.kind, refusal.get("outcome"))
-                    if gate.kind == "break_glass":
-                        # An attempt on the break-glass path is a fact too.
-                        from modules import terminal_audit
-                        payload = args[0] if args and isinstance(args[0], dict) else {}
-                        terminal_audit.record(
-                            terminal_audit.REFUSED,
-                            device_ip=str(payload.get("ip", "")),
-                            actor=getattr(ident, "actor", ""),
-                            kind=getattr(ident, "kind", ""),
-                            sid=getattr(request, "sid", ""),
-                            peer=identity.peer_address(request),
-                            reason=str(refusal.get("outcome", "")))
-                    emit("terminal_output",
-                         {"output": f"\r\n[refused: {refusal.get('error')}]\r\n"})
+                    emit("gate_refused", {"event": event, "error": refusal.get("error")})
                     return None
                 g.nmas_identity = ident
             return fn(*args, **kwargs)

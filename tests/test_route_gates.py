@@ -117,12 +117,22 @@ class TestEveryMutatingEndpointIsDeclared:
         assert GATES[endpoint].kind == kind
 
     def test_every_socket_event_is_declared(self):
+        """Every event the app's Socket.IO server handles is in SOCKET_GATES. Since the
+        break-glass terminal left (R39, 2026-10-05) there are none, so the population's
+        floor is a planted event the scan must see."""
         from modules.route_gates import SOCKET_GATES
         events = _socket_events()
-        assert len(events) >= 3
         assert events == set(SOCKET_GATES), (events, set(SOCKET_GATES))
-        assert SOCKET_GATES["connect_terminal"].kind == "break_glass"
-        assert SOCKET_GATES["terminal_input"].kind == "break_glass"
+        assert not {"connect_terminal", "terminal_input", "disconnect_terminal"} & events
+
+    def test_the_socket_scan_sees_a_planted_event(self):
+        import app as A
+        handlers = A.socketio.server.handlers.setdefault("/", {})
+        handlers["planted_event"] = lambda *a: None
+        try:
+            assert "planted_event" in _socket_events()
+        finally:
+            handlers.pop("planted_event", None)
 
     def test_the_hook_is_installed_on_the_real_app(self):
         from modules import route_gates
@@ -299,31 +309,6 @@ class TestAServiceIsNotAPerson:
         body = resp.get_json(silent=True) or {}
         assert resp.status_code == 403, (path, body)
         assert body.get("requires_person") is True, body
-
-
-class TestTheTerminal:
-    def _client(self, monkeypatch):
-        import app as A
-        opened = []
-        monkeypatch.setattr(A, "ensure_terminal_session",
-                            lambda ip, sessions, key="": opened.append(ip))
-        monkeypatch.setattr(A, "start_terminal_reader", lambda *a, **k: None)
-        return A.socketio.test_client(A.app), opened
-
-    @pytest.mark.real_identity
-    def test_no_identity_opens_no_shell(self, monkeypatch):
-        client, opened = self._client(monkeypatch)
-        client.emit("connect_terminal", {"ip": "192.0.2.1"})
-        got = client.get_received()
-        assert opened == []
-        assert any("refused" in (m["args"][0].get("output", "") if m["args"] else "")
-                   for m in got if m["name"] == "terminal_output"), got
-
-    def test_a_person_opens_one(self, monkeypatch):
-        """Control: the refusal above is the gate, not a broken handler."""
-        client, opened = self._client(monkeypatch)
-        client.emit("connect_terminal", {"ip": "192.0.2.1"})
-        assert opened == ["192.0.2.1"]
 
 
 # ---------------------------------------------------------------------------
