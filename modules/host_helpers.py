@@ -67,8 +67,8 @@ def sources() -> list:
 
 
 def _setting(key: str) -> str:
-    from modules.settings_schema import get_setting
-    return str(get_setting(key, "") or "").strip()
+    from modules.list_settings import default_layer   # one helper and one renderer on the host
+    return str(default_layer(key, "") or "").strip()
 
 
 def oxidized_row() -> dict:

@@ -100,8 +100,8 @@ def configured(golden_text: str) -> dict:
 def expected(get=None) -> dict:
     """``{integration: connector}`` for the integrations this network USES:
     each one's connector is configured in the NMAS."""
-    if get is None:
-        from modules.settings_schema import get_setting as get
+    if get is None:      # rows() serves every list from one answer until step 5
+        from modules.list_settings import default_layer as get
     out = {}
     if str(get("prometheus_url", "") or "").strip():
         out["snmp"] = "Prometheus"
@@ -429,7 +429,10 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
     from modules.readers import platform_facts
 
     if get is None:
-        from modules.settings_schema import get_setting as get
+        from modules import list_settings
+
+        def get(key, default=None):        # the list this grid is for (P.8 step 4b)
+            return list_settings.value(ref.name, key, default)
     golden = golden or P.read_golden
     want = _expected_columns(get)
     if report is None:

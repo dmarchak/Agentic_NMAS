@@ -56,6 +56,8 @@ class IntegrationClient:
         """A setting FOR this client's network: the one way a client reads its settings
         (tests/test_integrations_read_for_a_list.py refuses a direct read)."""
         if not self.list_name:
+            # Built for no list: the global file, which is the Default network's layer (P.8
+            # decision 1). Steps 5 and 8 build each client for its list.
             return get_setting(key, default)
         from modules import list_settings
 

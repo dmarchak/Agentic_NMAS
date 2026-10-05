@@ -385,7 +385,10 @@ def propose(list_name: str, get=None, choose: dict = None) -> dict:
     from modules.nsot import profile as _p
 
     if get is None:
-        from modules.settings_schema import get_setting as get
+        from modules import list_settings
+
+        def get(key, default=None):        # the list proposed for (P.8 step 4b)
+            return list_settings.value(list_name, key, default)
     repo = _repo(list_name)
     current = _p.read_committed(repo)             # raises for a broken profile
     fleet, skipped = _fleet(list_name)

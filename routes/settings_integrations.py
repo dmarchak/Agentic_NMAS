@@ -13,7 +13,8 @@ import logging
 from flask import Blueprint, jsonify, request
 
 from modules.integrations import REGISTRY, get_integration
-from modules.settings_schema import (DEFAULTS, get_setting, migrate, moved_since, moved_words,
+from modules.list_settings import default_layer   # the general form is the Default network's
+from modules.settings_schema import (DEFAULTS, migrate, moved_since, moved_words,
                                      validate)
 from modules.config import load_user_settings, save_user_settings, settings_lock
 from modules.secrets_store import SECRET_KEYS
@@ -130,7 +131,7 @@ def general_settings():
     if request.method == "GET":
         migrate()
         return jsonify({"ok": True,
-                        "settings": {k: get_setting(k, DEFAULTS.get(k)) for k in keys}})
+                        "settings": {k: default_layer(k, DEFAULTS.get(k)) for k in keys}})
 
     values = request.get_json(silent=True) or {}
     loaded = values.pop("loaded", None)
@@ -141,7 +142,7 @@ def general_settings():
         # lock itself (C20); a changed field moved since the form loaded it is refused (R17).
         with settings_lock():
             moved = moved_since(values, loaded,
-                                {k: get_setting(k, DEFAULTS.get(k)) for k in keys})
+                                {k: default_layer(k, DEFAULTS.get(k)) for k in keys})
             if moved:
                 return jsonify({"ok": False, "moved": sorted(moved),
                                 "error": "; ".join(moved_words(moved))}), 409
@@ -154,7 +155,7 @@ def general_settings():
         log.info("settings_integrations: saved general settings (%d key(s))",
                  len([k for k in values if k in keys]))
         return jsonify({"ok": True,
-                        "settings": {k: get_setting(k, DEFAULTS.get(k)) for k in keys},
+                        "settings": {k: default_layer(k, DEFAULTS.get(k)) for k in keys},
                         "restart_required": any(k in values
                                                 for k in ("flask_host", "flask_port"))})
     except Exception as exc:                  # noqa: BLE001

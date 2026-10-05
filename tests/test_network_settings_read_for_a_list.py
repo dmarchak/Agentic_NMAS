@@ -40,30 +40,77 @@ INVENTORY = {
     "modules/prometheus_targets.py": (1, "one targets directory serves every list (P.7)"),
     "modules/nsot/ztp.py": (4, "one Kea fragment and responder serve every list (P.7)"),
     "modules/nsot/ztp_responder.py": (1, "one Kea fragment and responder serve every list (P.7)"),
+    "modules/attention.py": (1, "a declared expiry beside the Default network's clients (step 5)"),
+    "modules/host_helpers.py": (1, "one Oxidized helper and one topology renderer on the host"),
+    "modules/monitoring_coverage.py": (2, "rows() answers every list from one read (step 5)"),
+    "routes/settings_integrations.py": (3, "the general Settings form writes the global file, "
+                                           "the Default network's layer (step 7)"),
+}
+
+#: file -> (calls, why): a global reader called with a COMPUTED key, which a parse cannot judge.
+#: Each is read by hand and holds only host-wide (or dead) keys, or is the Default layer by
+#: construction. Measured 2026-10-05 (step 4b); only shrinks.
+COMPUTED = {
+    "modules/identity.py": (1, "its `_setting` wrapper: cf_access_* and identity keys, host-wide"),
+    "modules/integrations/base.py": (2, "a client built for no list reads the global file, the "
+                                        "Default network's layer; tests inject through these names"),
+    "modules/nsot/credential_rotation.py": (1, "the deprecated oxidized_rest_url, a dead key"),
+    "modules/readers/credential_health.py": (1, "a loop over (`proxmox_url`,): host-wide"),
 }
 
 
+_FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def _in_scope(node):
+    """The nodes of *node*'s own scope, never descending into a nested function."""
+    stack = list(ast.iter_child_nodes(node))
+    while stack:
+        n = stack.pop()
+        yield n
+        if not isinstance(n, _FUNCTIONS):
+            stack.extend(ast.iter_child_nodes(n))
+
+
+def reader_calls(tree, readers: dict) -> list:
+    """Every call to one of *readers* (``{name: its module}``) in *tree*: by its own name, as an
+    attribute, or by an alias an import binds. An alias holds in the scope that imports it
+    (the module, or one function and what it nests), never module-wide: `get` imported as a
+    reader in one function is another function's own `get` elsewhere. A bare name may be an
+    alias; an attribute counts only by its real name (a dict's `.get` is no reader)."""
+    found = []
+
+    def scope(node, inherited):
+        names = set(inherited)
+        for n in _in_scope(node):
+            if isinstance(n, ast.ImportFrom):
+                names.update(a.asname or a.name for a in n.names
+                             if readers.get(a.name) == n.module)
+        for n in _in_scope(node):
+            if isinstance(n, _FUNCTIONS):
+                scope(n, names)
+            elif isinstance(n, ast.Call):
+                f = n.func
+                if (isinstance(f, ast.Name) and f.id in names) or \
+                        (isinstance(f, ast.Attribute) and f.attr in readers):
+                    found.append(n)
+
+    scope(tree, set(readers))
+    return found
+
+
+def _parse(path):
+    with open(path, encoding="utf-8") as fh:
+        return ast.parse(fh.read(), filename=path)
+
+
 def default_layer_calls(paths) -> dict:
-    """``{relative path: calls}`` to the Default-layer readers, by PARSING: a call by name, by
-    an alias bound in an import (`default_layer as get`), or as an attribute
-    (`list_settings.default_layer`). A file that only mentions the name in prose counts 0."""
+    """``{relative path: calls}`` to the Default-layer readers, by PARSING (`reader_calls`). A
+    file that only mentions the name in prose counts 0."""
+    readers = {name: "modules.list_settings" for name in DEFAULT_READERS}
     out = {}
     for path in paths:
-        with open(path, encoding="utf-8") as fh:
-            tree = ast.parse(fh.read(), filename=path)
-        aliases = set(DEFAULT_READERS)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "modules.list_settings":
-                aliases.update(a.asname or a.name for a in node.names if a.name in DEFAULT_READERS)
-        n = 0
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                f = node.func
-                # A bare name may be an alias; an attribute only by its real name (a dict's
-                # `.get` is not `default_layer as get`).
-                if (isinstance(f, ast.Name) and f.id in aliases) or \
-                        (isinstance(f, ast.Attribute) and f.attr in DEFAULT_READERS):
-                    n += 1
+        n = len(reader_calls(_parse(path), readers))
         if n:
             out[os.path.relpath(path, ROOT)] = n
     return out
@@ -75,6 +122,41 @@ def _program_files():
             for f in files:
                 if f.endswith(".py") and not f == "list_settings.py":
                     yield os.path.join(d, f)
+
+
+#: The global readers. Called with a NETWORK key, they answer the global file, which is only
+#: the Default network's layer: for another list it is the wrong network's value.
+GLOBAL_READERS = {"get_setting": "modules.settings_schema", "get_secret": "modules.secrets_store"}
+#: The settings machinery itself: the resolver, the schema and the secrets store, whose reads
+#: ARE the layers.
+MACHINERY = {"modules/list_settings.py", "modules/settings_schema.py",
+             "modules/secrets_store.py", "modules/settings_scope.py"}
+
+
+def settings_reads(paths) -> tuple:
+    """``(literal, computed)`` over *paths*, by PARSING: ``literal`` lists each
+    ``file:line key`` where a global reader is called with a NETWORK key written as a string;
+    ``computed`` is ``{file: calls}`` whose key is not a string literal (a variable, a loop, a
+    wrapper's parameter), which a parse cannot judge and so each is listed by hand. A global
+    reader is matched by name, by an import alias, or as an attribute."""
+    from modules.settings_scope import NETWORK, SCOPES
+
+    network = {k for k, (scope, _g) in SCOPES.items() if scope == NETWORK}
+    literal, computed = [], {}
+    for path in paths:
+        rel = os.path.relpath(path, ROOT)
+        if rel in MACHINERY:
+            continue
+        for node in reader_calls(_parse(path), GLOBAL_READERS):
+            if not node.args:
+                continue
+            key = node.args[0]
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                if key.value in network:
+                    literal.append(f"{rel}:{node.lineno} {key.value}")
+            else:
+                computed[rel] = computed.get(rel, 0) + 1
+    return literal, computed
 
 
 class TestTheDefaultLayerReadsAreAnExactInventory:
@@ -108,6 +190,49 @@ class TestTheDefaultLayerReadsAreAnExactInventory:
             '    from modules import list_settings\n'
             '    return list_settings.default_layer_secret("z")\n', encoding="utf-8")
         assert list(default_layer_calls([str(p)]).values()) == [3]
+
+
+class TestNoNetworkKeyIsReadPastItsList:
+    """Step 4b: the global readers never answer a network key outside the settings machinery.
+    Refused by PARSING rather than at run time: 84 test seams inject settings by patching
+    `get_setting`, and a run-time refusal would cut every one of them while seeing nothing a
+    parse cannot (2026-10-05)."""
+
+    def test_no_global_reader_is_given_a_network_key(self):
+        literal, _computed = settings_reads(_program_files())
+        assert literal == [], (
+            "a network key read through the global file answers Default's value for every "
+            "list: read it with list_settings.value(list, key), or default_layer(key) listed "
+            "with its reason")
+
+    def test_every_computed_key_read_is_listed(self):
+        _literal, computed = settings_reads(_program_files())
+        assert computed == {k: n for k, (n, _why) in COMPUTED.items()}, (
+            "a global reader with a computed key was added or removed: read it by hand, and "
+            "list it with the keys it can be given, or lower its count")
+
+    def test_the_scan_sees_each_shape(self, tmp_path):
+        """The planted case: a literal network key by name, by alias and as an attribute; a
+        host key (allowed); a computed key; and an alias imported in another function, which
+        is that function's alone."""
+        p = tmp_path / "planted.py"
+        p.write_text(
+            'def a():\n'
+            '    from modules.settings_schema import get_setting\n'
+            '    get_setting("grafana_url")\n'
+            '    get_setting("flask_port")\n'
+            'def b():\n'
+            '    from modules.settings_schema import get_setting as get\n'
+            '    get("loki_url")\n'
+            'def c(get):\n'
+            '    get("prometheus_url")\n'
+            'def d(key):\n'
+            '    from modules import secrets_store\n'
+            '    secrets_store.get_secret("grafana_token")\n'
+            '    secrets_store.get_secret(key)\n', encoding="utf-8")
+        literal, computed = settings_reads([str(p)])
+        assert sorted(x.split(" ")[1] for x in literal) == ["grafana_token", "grafana_url", "loki_url"]
+        assert list(computed.values()) == [1]
 
 
 class TestAMissingListIsRefused:

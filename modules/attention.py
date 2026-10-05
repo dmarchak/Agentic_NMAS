@@ -1513,8 +1513,8 @@ DECLARED_EXPIRY = {"grafana": "grafana_token_expires", "proxmox": "proxmox_token
 
 
 def _setting(key: str) -> str:
-    from modules.settings_schema import get_setting
-    return str(get_setting(key, "") or "").strip()
+    from modules.list_settings import default_layer   # the Default network's integrations (step 5)
+    return str(default_layer(key, "") or "").strip()
 
 
 def integrations_source(cached=None) -> dict:

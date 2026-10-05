@@ -254,9 +254,22 @@ pages.
 
    `clab_declared_unmapped` is reclassified as host-wide. It is one table keyed by list,
    written by retire; step 9 folds it. `run_sync` no longer falls back to the global script.
-   **Left for 4b:** `get_setting` refusing a network key, the 16 computed-key reads (the
-   Settings form, attention, identity), and the integration clients still built for no
-   list.
+   **4b BUILT 2026-10-05, refused by PARSING rather than at run time.** A run-time refusal
+   in `get_setting` would cut the 84 places across 48 test files that inject settings by
+   patching it, and it sees nothing a parse cannot. `tests/test_network_settings_read_for_a_list.py`
+   checks two things:
+   - no global reader (`get_setting`, `get_secret`, by name, by an alias scoped to the
+     function that imports it, or as an attribute) is given a literal network key outside
+     the settings machinery;
+   - every call with a computed key is in an exact inventory, read by hand.
+
+   The parse found what the first survey missed. Two wrappers hid literal keys
+   (`attention._setting`, `host_helpers._setting`); they are now Default-layer reads.
+   `monitoring_coverage` and `profile_propose` passed `get_setting` as an injectable
+   default. `fleet(ref)` and `propose(list_name)` now default to their own list, and
+   `expected()` to the Default layer (step 5). The general Settings form reads the Default
+   layer by name, as it writes the global file (step 7). The integration clients built for
+   no list keep reading the global file, which is the Default network's layer.
 5. **Readers loop lists;** caches are keyed by group identity.
 6. **Grafana alerts resolved across lists** (the latent false claim).
 7. **The v2 Settings page per network.** It draws each value with its origin (set here,
