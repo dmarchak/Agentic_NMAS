@@ -4417,3 +4417,114 @@ simplifications, and the square icon at full, 32 and 16 px.
 
 Nothing is built until it is signed off. The mark's files then enter `static/img/brand/`,
 claimed as the project's own in `docs/THIRD_PARTY.json`.
+
+**APPROVED 2026-10-05 (the operator): the Mercury boards.** Built next, under this section's
+rules.
+
+## 20. Recover from a break-glass record IN THE APP (the operator, 2026-10-05; mockup first)
+
+**Why:** a working tool should never force a person to a terminal. Tonight's drill proved
+the offline path (docs/CONSOLE_DRILL.md); this brings the record's use into the app for the
+cases where the app still runs.
+
+**Four situations:**
+1. **The tool works; its credential store is lost or damaged** (a corrupted file, a lost key,
+   a reinstall on a rebuilt host).
+   - Credentials › "Restore from a break-glass record": upload the file and type the
+     passphrase. The record is opened IN MEMORY only, never stored, and no value is shown.
+   - A PREVIEW first, then confirm by hash. Then the store is restored and recorded; every
+     restored credential is queued for rotation, and a fresh export is prompted.
+2. **The tool works; a device refuses its stored credential** (a hand change, a half-failed
+   rotation).
+   - The device's refusal row offers "Try the break-glass record's credential": the same
+     upload.
+   - The tool tries the record's credential READ-ONLY. If it opens the device, the person
+     adopts it, and it is then rotated properly.
+3. **The tool is gone:** the offline command stays the last resort (`nmas-breakglass`, proven
+   2026-10-05). After a reinstall, situation 1 takes over.
+4. **A record that is not current:** the restore says where the record belongs, and never
+   applies it blindly.
+   - The goldens and baselines hold each device's credential HASHED (`username … secret 9 …`).
+     The record's credentials are verified against those hashes OFFLINE, with no device
+     contacted.
+   - **(a) Which baseline the record matches,** and its age: "matches baseline/<ts> for all
+     9 devices".
+   - **(b) Per device:**
+     - matches the CURRENT golden: restore;
+     - matches only an OLDER golden (rotated since): do NOT restore. Keep the tool's
+       credential if the device accepts it; otherwise try the record's read-only, and say
+       which one opens the device;
+     - matches NO stored golden: flagged.
+   - **Recovery moves forward, never back.** The matching baseline is information in the
+     preview, never an automatic revert of a device's configuration. Only what actually
+     opens a device is restored; then it is rotated to fresh credentials, and a new export is
+     prompted. A person may still choose a restore of a baseline through the normal
+     pipeline, under its rule that an account is never changed without an explicit, recorded
+     authorisation.
+
+**Measured first, 2026-10-05 (the operator's question: can the tool verify a plaintext
+against an IOS type-9 secret offline, and against vIOS's types?):**
+- **Every device's golden holds type 9 (scrypt):** all 9, the vIOS switches included, one
+  `username … secret 9` each, and no `enable` lines (C457). The host's repository holds 20
+  baselines and 68 golden tags.
+- **Yes, offline, with the standard library:** `hashlib.scrypt` (N=16384, r=1, p=1, 32 bytes;
+  the salt's 14 characters as bytes; Cisco's base64 alphabet).
+  - It is checked against the public test vectors (hashcat's examples, password "hashcat"):
+    type 9 verifies, a wrong password is refused, about 4 ms a check.
+  - Type 8 (PBKDF2-SHA256, 20000 rounds) and type 5 (md5-crypt, implemented, since `crypt`
+    left Python in 3.13) verify the same way, should a real network carry them.
+  - Present in CI's interpreter and on the host's (3.12.3, `hashlib.scrypt` answers).
+  - 9 devices against 88 tags is about 800 checks, about 3 s, so the preview is one job.
+  - Type 7 is reversible, and type 0 is plain, so both compare directly.
+
+**How it fits what exists:**
+- **The record:** `modules/breakglass.py`. `unseal` opens it in memory; `escrowed_key` and
+  `check_key_opens` handle the key.
+- **The check:** "Check a break-glass file" (`breakglass_export.check_file`, board 7 C) already
+  opens an uploaded file in memory, refuses a file over the size cap or sealed for another
+  list, compares by DIGEST against the credentials in use, records who, when and the file's
+  sha256, and drops the payload. The restore's preview extends the same path, adding the
+  offline hash comparison against the goldens (4).
+- **Currency (C182) and P.21:** job health's `breakglass:<list>` rows and the
+  credential-health reader already say whether the last export holds the credentials in use.
+  After a restore, every restored credential is RECORDED as restored-from-a-record and queued
+  for rotation. P.21 shows it as "restored, not yet rotated" (an age that starts at the
+  restore), and the record is marked superseded until a fresh export.
+- **The rotation:** `rotate_op`, through the pipeline, one operation per device.
+- **The export:** `breakglass_export.export_in_memory`, prompted once at the end, never per
+  device.
+
+**Safeguards:**
+- **A verified person** (an administrator once roles exist, 9.I), through `route_gates`, kind
+  `configure`. A restore changes the credential store.
+- **Every step recorded:** opened, previewed, confirmed, restored, rotation queued, exported.
+  Never a value revealed.
+- **The file never kept:** read into memory under the size cap, never spooled. The passphrase
+  is scrubbed from every error, as `check_file` does.
+- **The restore is confirm-by-hash on the preview,** like every other operation (its stages
+  declared in `operation_stages`).
+
+**Mockup first, on the Credentials page:**
+- the upload and passphrase;
+- the preview, with the baseline match, the per-device verdicts, the key, and the record's age;
+- the confirm and its result;
+- a device's refusal row with "Try the break-glass record's credential", and its result.
+
+**Drawn for sign-off, canvas version 37 (2026-10-05):** the device page's canvas,
+`BreakglassRestore`, beside the export board.
+- **A:** the record's card gains "Restore from a break-glass record…" when the store cannot
+  be read.
+- **B:** the file and its passphrase.
+- **C:** the preview:
+  - the record's age and its escrowed key, which opens 31 of 31 values where the host's
+    opens 0;
+  - "matches baseline/<ts> for 8 of 9", checked offline;
+  - per device: 7 on their current golden (restore), r3 rotated since (not restored; tried
+    read-only after), s2 matching no golden (flagged);
+  - afterwards: rotation queued and a fresh export prompted;
+  - a confirm bound to the preview's hash, naming its work: "Restore the key and 7
+    credentials".
+- **D:** the result, with what is still to do per device.
+- **E:** situation 2. r4 refuses its stored credential; the record's opens it read-only (and
+  matches its current golden), so "Adopt it, then rotate r4…". The case where neither
+  opens is written beside it.
