@@ -61,7 +61,7 @@ JOBS = (
                          "scripts/nmas-telemetry-rules, then the install in C304's host step",
                 "reference": "docs/OPEN_FINDINGS.md C304"}},
     {"unit": "nmas-startup-check", "max_age_minutes": 180,
-     "what": "every device's startup config carries the credential NMAS holds, hourly (C53)"},
+     "what": "every device's startup config carries the credential Mercury holds, hourly (C53)"},
 )
 
 JOURNAL_DAYS = 14
@@ -1055,7 +1055,7 @@ def startup_rows(read=None, now: float = None) -> list:
     from modules.nsot import startup_check
 
     now = time.time() if now is None else now
-    what = "the device's startup config carries the credential NMAS holds (C53)"
+    what = "the device's startup config carries the credential Mercury holds (C53)"
     try:
         res = (read or startup_check.read_results)()
     except Exception as exc:                          # noqa: BLE001
@@ -1129,14 +1129,14 @@ def startup_rows(read=None, now: float = None) -> list:
                                                f"--list {d.get('list')}"}}
                         if state == "not_safe_to_reboot" else {}), "max_age_minutes": 0,
                      "detail": f"{d.get('detail', '')} (checked {when})"
-                               + ("; a reload would boot a credential NMAS does not hold: "
+                               + ("; a reload would boot a credential Mercury does not hold: "
                                   f"run nmas-persist-native {d.get('device')} --list {d.get('list')}"
                                   if state == "not_safe_to_reboot" else "")})
     if not rows:
         rows.append({"unit": "startup-check", "what": what, "state": "ok",
                      "max_age_minutes": 0,
                      "detail": f"{len(devices)} of {len(devices)} device(s) boot the "
-                               f"credential NMAS holds (checked {when})"})
+                               f"credential Mercury holds (checked {when})"})
     return rows
 
 

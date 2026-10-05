@@ -81,7 +81,7 @@ def plan(devices: list, modified: dict, scan) -> tuple:
         lcd = d.get("local_context_data") or {}
         wrote = nmas_wrote_context(modified, d["id"])
         if not wrote:
-            refused.append((d, f, "NMAS has no record of writing this context, so it "
+            refused.append((d, f, "Mercury has no record of writing this context, so it "
                                "is somebody's data: named here, not changed"))
             continue
         if "<redacted" in (lcd.get("running_config") or ""):
@@ -157,7 +157,7 @@ def assess_device(device: dict, modified: dict = None, scan=None) -> dict:
     if todo:
         t = todo[0]
         return {"holds": True, "may": True, "item": t,
-                "why": (f"NetBox holds {describe(t['finding'])}; NMAS wrote this context "
+                "why": (f"NetBox holds {describe(t['finding'])}; Mercury wrote this context "
                         f"at {t['wrote']} (modification record), so it may mask it")}
     if refused:
         _d, f, why = refused[0]

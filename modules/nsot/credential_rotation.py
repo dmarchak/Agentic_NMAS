@@ -1338,7 +1338,7 @@ def consumer_report(hostname: str, mgmt_ip: str) -> list:
     from modules.settings_schema import not_applicable
 
     rows = [
-        {"name": "NMAS", "where": "devices.csv (this device's row)",
+        {"name": "Mercury", "where": "devices.csv (this device's row)",
          "action": "updated automatically"},
         {"name": "Oxidized", "where": f"router.db row for {mgmt_ip}",
          "action": "updated automatically, then a fetch is confirmed"},
@@ -2632,7 +2632,7 @@ def verify_startup_carries_current(hostname: str, *, username: str = "admin",
             if same else
             f"the startup file holds a `{kind or 'username'}` form that is "
             f"NOT what the device is running. A reboot would bring "
-            f"{hostname} back on a credential NMAS does not hold."),
+            f"{hostname} back on a credential Mercury does not hold."),
     }
 
 
@@ -2941,7 +2941,7 @@ def verify_startup_applies(hostname: str, *, platform: str, username: str,
                 f"privilege 15 password ...` before this file, and IOS-XE "
                 f"refuses a secret for a user that already has a password "
                 f"(%CVAC-4-CLI_FAILURE, measured stage B). The node would boot "
-                f"healthy on the injected credential and NMAS would be locked "
+                f"healthy on the injected credential and Mercury would be locked "
                 f"out. Fix: adopt the user-skip into {launch_patch} (see "
                 f"docs/bootstrap-probe/ stage C), or write the password form "
                 f"and rotate after boot. Read: {where}")}

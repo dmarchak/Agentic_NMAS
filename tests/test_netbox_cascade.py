@@ -373,8 +373,8 @@ class TestTheOperatorCanSEEIt:
 
         assert "10.0.0.15/24" in html, "the object is not named"
         assert "ALSO DELETED BY NETBOX" in html
-        assert "NMAS did NOT create" in html
-        assert "NetBox will ALSO delete 1 object(s) NMAS did not create" in html, \
+        assert "Mercury did NOT create" in html
+        assert "NetBox will ALSO delete 1 object(s) Mercury did not create" in html, \
             "the summary, which is read first, does not say it"
 
     def test_unproven_is_its_own_statement_and_says_it_is_not_nothing(self):
@@ -400,7 +400,7 @@ class TestTheOperatorCanSEEIt:
         html = self._render({"taken": [own], "foreign": [], "unproven": [], "proven": True})
 
         assert "ALSO DELETED" not in html
-        assert ("1 further object(s) NOT in the list above, all of them NMAS&#39;s own"
+        assert ("1 further object(s) NOT in the list above, all of them Mercury&#39;s own"
                 in html)
 
     def test_a_missing_cascade_is_not_asked_rather_than_nothing(self):

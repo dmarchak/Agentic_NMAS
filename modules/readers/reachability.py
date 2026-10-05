@@ -48,7 +48,7 @@ KEEPALIVE_SECONDS = 60
 #: address -> answering (bool): the dict every consumer already reads.
 STATUS: dict = {}
 
-CLAIM_ICMP = "answered ICMP from the NMAS within 2 s"
+CLAIM_ICMP = "answered ICMP from Mercury within 2 s"
 CLAIM_TCP = "accepted a TCP connection on port 22 within 2 s"
 CLAIM_NONE = "answered neither ICMP nor TCP 22 within 2 s each"
 
@@ -206,12 +206,12 @@ def outage_words(hostname: str, at: float, value: dict = None, now: float = None
         since = _epoch(d.get("since"))
         if since is None:
             return ""
-        return (f"not answering SSH yet: {hostname} has not answered the NMAS since "
+        return (f"not answering SSH yet: {hostname} has not answered Mercury since "
                 f"{hm(since)} UTC ({int((now - since) // 60)} min)")
     down, back = _epoch(d.get("down_from")), _epoch(d.get("back_at"))
     if down is None or back is None or not down - 300 <= at <= back + BOOT_TAIL_SECONDS:
         return ""
-    return (f"not answering SSH yet: {hostname} did not answer the NMAS from {hm(down)} to "
+    return (f"not answering SSH yet: {hostname} did not answer Mercury from {hm(down)} to "
             f"{hm(back)} UTC and this ran at {hm(at)}, while it was still coming up "
             "(SSH answers last in a boot)")
 
@@ -225,7 +225,7 @@ def changed(previous: dict, value: dict) -> bool:
 
 READER = reader_job.register(reader_job.Reader(
     name="reachability",
-    what="whether each device answers the NMAS, judged over consecutive probes (C92)",
+    what="whether each device answers Mercury, judged over consecutive probes (C92)",
     endpoints=("ICMP, then TCP 22, to each device's management address",),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("the dot's own 5 s cycle, kept; a state change is judged over "

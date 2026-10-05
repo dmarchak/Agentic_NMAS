@@ -248,11 +248,11 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     elif nb.get("exists"):
         out["not_doing"].append(
             f"NetBox device {nb['id']} is KEPT: NetBox records what exists, not "
-            f"what NMAS manages (tags: {', '.join(nb['tags']) or 'none'}). "
-            + ("NMAS created it, so its provenance record stays and Remove "
+            f"what Mercury manages (tags: {', '.join(nb['tags']) or 'none'}). "
+            + ("Mercury created it, so its provenance record stays and Remove "
                "could still delete it -- a separate decision."
                if nb["created_by_nmas"] else
-               "NMAS did not create it, so Remove cannot touch it.")
+               "Mercury did not create it, so Remove cannot touch it.")
             + (" " + mask["kept"] if mask.get("kept") else ""))
     else:
         out["not_doing"].append("NetBox: no device of this name, nothing kept")
@@ -271,9 +271,9 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
         out["survives"].insert(0, {
             "kind": "survives", "what": f"the NetBox device {nb['id']}",
             "how": ("KEPT, its credential masked: delete it in NetBox if it is gone for good"
-                    + (" (NMAS created it, so Remove could also delete it, a separate "
+                    + (" (Mercury created it, so Remove could also delete it, a separate "
                        "decision)" if nb["created_by_nmas"] else
-                       " (NMAS did not create it, so NMAS never deletes it)"))})
+                       " (Mercury did not create it, so Mercury never deletes it)"))})
     out["survives"] += [{"kind": "survives", "what": f"the approval of {tpl}",
                          "how": "stays: an approval is of the template, never of its devices"}
                         for tpl in still_approved]
@@ -293,7 +293,7 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
             if "event manager applet NMAS-HEARTBEAT" in fh.read():
                 out["advisories"].append(
                     "its golden shows the NMAS-HEARTBEAT applet: the device "
-                    "still carries NMAS configuration after it leaves "
+                    "still carries Mercury's configuration after it leaves "
                     "management. The deploy path cannot remove it (C12); take "
                     "it off by hand and save the golden first")
 
@@ -485,7 +485,7 @@ def _watchers(hostname: str, ip: str) -> list:
              f"Oxidized is not configured here, so its device list is not the tool's: remove "
              f"{hostname} where Oxidized is configured")
     item("survives", "a hand-built Grafana dashboard panel naming it",
-         "stays until removed in Grafana: NMAS does not edit dashboards")
+         "stays until removed in Grafana: Mercury does not edit dashboards")
     return out
 
 

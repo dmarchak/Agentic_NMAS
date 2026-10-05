@@ -2167,7 +2167,7 @@ def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
                         + f"Check that a credential resolves for {mgmt_ip}"),
                 "command": "python scripts/nmas-check-credential "
                            f"--ip {mgmt_ip}",
-                "where": "On the NMAS host:",
+                "where": "On the Mercury host:",
             })
         return causes + [{
             "cause": "the credential was rotated or never applied",
@@ -2202,7 +2202,7 @@ def _causes(state: str, mgmt_ip: str, interface: str, repo: str,
             "cause": f"the address {mgmt_ip} is not the one it booted with",
             "why": "nothing has confirmed the address since it was typed",
             "command": f"ping {mgmt_ip}",
-            "where": "From the NMAS host:",
+            "where": "From the Mercury host:",
         },
     ]
 
@@ -2837,7 +2837,7 @@ def startup_carries(startup: str, running: str, *, after_save: bool = False) -> 
         return {"ok": False, "state": "not_persisted",
                 "detail": ("after write memory the device still has NO startup config"
                            if after_save else "the device has NO startup config: a reload "
-                           "boots it with no credential NMAS holds")}
+                           "boots it with no credential Mercury holds")}
     stored = {l.rstrip() for l in startup.splitlines()}
     missing = [l for l in held if l not in stored]
     if missing:

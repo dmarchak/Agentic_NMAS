@@ -62,7 +62,7 @@ def read(registry=None) -> dict:
 
 READER = reader_job.register(reader_job.Reader(
     name="integrations",
-    what="whether each integration NMAS depends on answers, for the status bar and Needs attention",
+    what="whether each integration Mercury depends on answers, for the status bar and Needs attention",
     endpoints=("each integration's own health endpoint (its test_connection)",),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("all ten probed in 266 ms on the host when up (measured 2026-09-28); one "

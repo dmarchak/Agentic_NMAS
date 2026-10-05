@@ -154,7 +154,7 @@ class TestTheSource:
             "c": dev("s1", "c", True)}))
         (row,) = res["rows"]
         assert row["what"] == "2 devices are not answering" and row["devices"] == ["r1", "r2"]
-        assert "4 consecutive misses" in row["cause"] and "path from the NMAS" in row["cause"]
+        assert "4 consecutive misses" in row["cause"] and "path from Mercury" in row["cause"]
 
     def test_nothing_stored_is_unreadable(self):
         res = A.reachability_source(cached={"state": "absent", "doc": None, "why": "never"})

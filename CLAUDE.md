@@ -400,9 +400,10 @@ NSoT config repository), `<account>` (the GitHub account).
 
 ## Standing facts about this lab
 
-- **No lab run, staged run or probe inside the nightly backup window, 08:30 to 09:00 UTC**
-  (the hypervisor logs it as 02:30 local): the backup loads the lab host, and a measurement taken
-  then measures the backup. [not mechanised]
+- **No lab run, staged run or probe inside the nightly backup window, 08:30 to 09:10 UTC**
+  (the hypervisor logs it as 02:30 local; with fleecing and the 400 MiB/s bwlimit the job
+  runs about 30 minutes, measured 2026-10-04 and 05): the backup loads the lab host, and a
+  measurement taken then measures the backup. [not mechanised]
 - **Staged runs and probes never run on s3:** it is CPU-starved and carries the management path
   for the fleet (C93). Use s1 for IOS and r2 for IOS-XE. [not mechanised]
 

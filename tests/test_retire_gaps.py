@@ -136,7 +136,7 @@ class TestNetBoxStoredCredentials:
         assert "netbox_mask" not in _pending(p)
         joined = " ".join(p["not_doing"])
         assert "context is NOT masked" in joined
-        assert "NMAS has no record of writing this context" in joined
+        assert "Mercury has no record of writing this context" in joined
 
     def test_an_unreadable_record_REFUSES_never_clean(self, nb):
         """The operator's decision, 2026-09-29: could not check is not nothing

@@ -1029,7 +1029,7 @@ def delete_device_list_route(list_name):
         return jsonify({"status": "error", "held": [
             {"endpoint": ep, "id": oid, "name": name} for ep, oid, name in held],
             "message": (
-                f"'{list_name}' was not deleted: NMAS's record says it created "
+                f"'{list_name}' was not deleted: Mercury's record says it created "
                 f"{len(held)} NetBox object(s) for this list ({named}{more}). Deleting a "
                 "list never deletes NetBox objects, and forgetting them would leave them "
                 "out of Remove's reach. Remove them first from the NetBox tab (previewed "

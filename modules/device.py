@@ -210,7 +210,7 @@ def _refuse_if_netbox_sourced(filename: str | None, operation: str) -> None:
         return
     if is_netbox_sourced(list_name):
         raise PermissionError(
-            f"'{list_name}' takes its inventory from NetBox, so NMAS cannot {operation} "
+            f"'{list_name}' takes its inventory from NetBox, so Mercury cannot {operation} "
             "a device here. Edit the device in NetBox and refresh the list."
         )
 

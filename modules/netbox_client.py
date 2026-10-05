@@ -508,7 +508,7 @@ def _ensure_site(session, base: str, name: str, region_id: int,
             else:
                 note = (
                     f"site '{existing.get('name') or slug}' is in a different "
-                    f"region and NMAS did not create it, so it was left where "
+                    f"region and Mercury did not create it, so it was left where "
                     f"it is. Devices for this list will be added to it. Move "
                     f"it in NetBox if that is wrong."
                 )
@@ -3561,8 +3561,8 @@ def remove_device_from_netbox(list_name: str, hostname: str,
     dev_id = device.get("id")
     if not _guard.was_created_by_nmas(list_name, "dcim/devices", dev_id):
         return {"ok": False, "error": (
-            f"'{hostname}' (id {dev_id}) is not in NMAS's created-object "
-            f"record for list '{list_name}', so NMAS will not delete it. "
+            f"'{hostname}' (id {dev_id}) is not in Mercury's created-object "
+            f"record for list '{list_name}', so Mercury will not delete it. "
             f"Remove it in NetBox if that is what you want.")}
     if not _guard.has_managed_tag(device):
         return {"ok": False, "error": (
@@ -3576,7 +3576,7 @@ def remove_device_from_netbox(list_name: str, hostname: str,
         label = obj.get("display") or obj.get("name") or obj.get("address") or ""
         if not _guard.was_created_by_nmas(list_name, endpoint, obj_id):
             skipped.append({"endpoint": endpoint, "id": obj_id, "name": label,
-                            "reason": "not in NMAS's created-object record"})
+                            "reason": "not in Mercury's created-object record"})
             return
         if not _guard.has_managed_tag(obj):
             skipped.append({"endpoint": endpoint, "id": obj_id, "name": label,
@@ -3671,7 +3671,7 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
         log.info("netbox: forgot created-object record for list '%s' (nothing deleted)", list_name)
         return {"ok": True, "list": list_name, "forget_only": True,
                 "devices": 0, "deleted_devices": 0,
-                "message": "NMAS no longer tracks these objects. Nothing was deleted from NetBox."}
+                "message": "Mercury no longer tracks these objects. Nothing was deleted from NetBox."}
 
     cfg = get_netbox_config()
     if not cfg["url"] or not cfg["token"]:
@@ -3689,7 +3689,7 @@ def remove_list_from_netbox(list_name: str, dry_run: bool = False,
     if not created:
         return {"ok": True, "list": list_name, "devices": 0, "deleted_devices": 0,
                 "deleted": [], "skipped": [], "failed": [], "complete": True, "counts": {},
-                "message": "NMAS has no record of creating anything in NetBox for this "
+                "message": "Mercury has no record of creating anything in NetBox for this "
                            "list, so there is nothing safe to remove. Objects created "
                            "before this safeguard existed must be removed in NetBox."}
 

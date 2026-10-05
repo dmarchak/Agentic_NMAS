@@ -46,7 +46,7 @@ log = logging.getLogger(__name__)
 CONFIGURED = "configured"
 WORKING = "configured and working"
 
-NOT_READ = ["heartbeats: NMAS reads no alert state until 7.2's reader, so the "
+NOT_READ = ["heartbeats: Mercury reads no alert state until 7.2's reader, so the "
             "syslog path is not part of this snapshot"]
 
 #: What any snapshot of this kind cannot see, carried in every tag (the

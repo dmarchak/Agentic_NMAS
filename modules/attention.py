@@ -1705,10 +1705,10 @@ def reachability_source(cached=None) -> dict:
             cause="; ".join(f"{d.get('hostname') or d.get('address')} ({d.get('address')}): "
                             f"{d.get('consecutive_misses')} consecutive misses, the threshold is "
                             f"{d.get('threshold')}; {d.get('claim')}" for d in down)
-                  + (". Several at once is more often the path from the NMAS than each device"
+                  + (". Several at once is more often the path from Mercury than each device"
                      if len(down) > 1 else ""),
             operands={"probe": "ICMP, then TCP 22"},
-            action={"label": "Check the path from the NMAS first when several stop together; "
+            action={"label": "Check the path from Mercury first when several stop together; "
                              "one alone, its own management interface",
                     "known": False}))
     c = v.get("counts") or {}
@@ -1912,17 +1912,17 @@ def netbox_secrets_source(cached=None) -> dict:
                                       if comm else "")
                  + ": readable by everyone who can read NetBox")
         if d.get("record_unreadable"):
-            cause += (f". Whether NMAS wrote it cannot be told: the modification record is "
+            cause += (f". Whether Mercury wrote it cannot be told: the modification record is "
                       f"unreadable ({d['record_unreadable']})")
             action = {"label": "Repair data/netbox_modified.json from its preserved "
-                               ".corrupt- copy: until it reads, NMAS will not mask NetBox's "
+                               ".corrupt- copy: until it reads, Mercury will not mask NetBox's "
                                "context", "known": False}
         elif d.get("wrote"):
-            cause += f". NMAS wrote this context ({d['wrote']}), so it may mask it"
+            cause += f". Mercury wrote this context ({d['wrote']}), so it may mask it"
             action = {"label": "Mask it with the import's own masking, read back",
                       "command": f"nmas-netbox-mask-context --device {name} --apply"}
         else:
-            cause += ". NMAS has no record of writing it, so it is somebody's data and NMAS "
+            cause += ". Mercury has no record of writing it, so it is somebody's data and Mercury "
             cause += "will not change it"
             action = {"label": f"Remove the credential lines from {name}'s config context in "
                                "NetBox by hand"}
@@ -2245,7 +2245,7 @@ def remote_source(cached=None) -> dict:
         elif said["state"] in ("remote_ahead", "diverged"):
             what = f"{name}'s history and {remote} do not match"
             since = None
-            action = {"label": "Resolve it by hand on the host: NMAS never force-pushes, so "
+            action = {"label": "Resolve it by hand on the host: Mercury never force-pushes, so "
                                "compare the two histories and decide which is the record"}
         else:
             what = f"Whether {name}'s history is on {remote} is not known"
@@ -2632,7 +2632,7 @@ def lab_startup_source(cached=None) -> dict:
             what=f"{len(unknown)} device(s) whose lab startup file could not be compared",
             devices=sorted({d["device"] for d in unknown}),
             cause="; ".join(sorted({f"{d['device']}: {d.get('why') or '?'}" for d in unknown})),
-            action={"label": "Check the lab host answers SSH from the NMAS (its address in "
+            action={"label": "Check the lab host answers SSH from Mercury (its address in "
                              "Settings); the check reads it again every 10 minutes",
                     "known": False}))
     # A file no managed device owns (r5's, after its retirement) is a FACT, not

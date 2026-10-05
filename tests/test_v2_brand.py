@@ -15,6 +15,7 @@ drawer); the menu button is hidden on desktop and opens the drawer at phone widt
 import re
 
 import pytest
+from markupsafe import escape as html_escape
 
 from modules import brand
 from tests.test_device_v2 import lab  # noqa: F401 (the fixture)
@@ -160,13 +161,21 @@ class TestTheNameLeavesTheScreens:
     def test_no_rendered_v2_page_names_nmas(self, lab):  # noqa: F811
         import app as A
         from tests.test_large_fleets import _pages
+        from routes.v2 import installation
         pages = [p for p in _pages(A.app) if not p.startswith("/v2/device/")] + ["/v2/device/r3"]
         found, titled = {}, 0
+        # About shows the running commit's subject, a record of history: it may name the old
+        # product (the commit that removed it does), and is not the screen naming it.
+        with A.app.test_request_context("/"):
+            subject = installation().get("subject") or ""
+        assert subject, "the subject this exclusion is for is read"
         for path in pages:
             r = lab["client"].get(path)
             if not (r.content_type or "").startswith("text/html"):
                 continue
             html = r.get_data(as_text=True)
+            if subject:
+                html = html.replace(str(html_escape(subject)), "").replace(subject, "")
             if nmas_shown(html):
                 found[path] = nmas_shown(html)
             title = re.search(r"<title>(.*?)</title>", html, re.S)
@@ -184,6 +193,71 @@ class TestTheNameLeavesTheScreens:
             assert not nmas_shown(html), slug
             assert manual.PRODUCT not in html and manual.THIRD_PARTY_LIST not in html, slug
         assert brand.PRODUCT_SHORT in manual.load("getting-started")["html"]
+
+
+#: The Python strings that still say "NMAS", each with why it is not screen text (section 19:
+#: internal names stay until Stage 10 renames them, with their host steps). Exact; only shrinks.
+KEPT_STRINGS = {
+    ("app.py", "NMAS listening on "): "the console's start-up line, not a screen",
+    ("modules/ai_assistant.py", "[SOURCE OF TRUTH"): "the AI agent's prompt (Stage 8)",
+    ("modules/config_git.py", "NMAS"): "the git author of the tool's commits, in every history",
+    ("modules/settings_schema.py", "NMAS"): "the git author setting's default (the same)",
+    ("modules/nsot/repo.py", "NMAS"): "the git author's fallback (the same; two literals)",
+    ("modules/nsot/onboard.py", "user.name=NMAS"): "the git author for onboarding's commits",
+    ("modules/nsot/bootstrap_config.py", " description NMAS management"):
+        "a line written into a device's configuration: renaming it would change every device",
+    ("modules/nsot/migrate.py", "the same device held in both stores"):
+        "names the legacy golden files' own header text",
+}
+
+
+def screen_strings_naming_nmas(paths=None) -> list:
+    """``[(file, text)]``: every non-docstring string literal in app.py, modules/ and routes/
+    naming the product "NMAS" as a word, outside KEPT_STRINGS. Parsed, never grepped."""
+    import ast
+    import pathlib
+
+    root = pathlib.Path(".")
+    paths = paths or ([root / "app.py"] + sorted((root / "modules").rglob("*.py"))
+                      + sorted((root / "routes").rglob("*.py")))
+    out = []
+    for p in paths:
+        if "__pycache__" in p.parts:
+            continue
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+        bare = {id(n.value) for n in ast.walk(tree)
+                if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)}
+        for n in ast.walk(tree):
+            if (isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in bare
+                    and PRODUCT_WORD.search(n.value)):
+                rel = p.as_posix()
+                if not any(rel == f and n.value.startswith(s) for f, s in KEPT_STRINGS):
+                    out.append((rel, n.value[:80]))
+    return out
+
+
+class TestTheNameLeavesTheMessages:
+    """A string built in Python reaches a page only in some states (a Needs attention row, a
+    refusal, a preview's note), so rendering pages with fixtures cannot find them all: the
+    gate's run for this commit found four pages naming "NMAS" that the commit before's run did
+    not. So the population is every string literal, parsed."""
+
+    def test_no_screen_string_names_nmas(self):
+        assert screen_strings_naming_nmas() == []
+
+    def test_a_planted_string_is_found_and_a_docstring_is_not(self, tmp_path):
+        planted = tmp_path / "planted.py"
+        planted.write_text('"""NMAS, a docstring."""\nX = "NMAS refused it"\nY = "NMAS_HOST"\n',
+                           encoding="utf-8")
+        assert [t for _f, t in screen_strings_naming_nmas([planted])] == ["NMAS refused it"]
+
+    def test_every_kept_string_still_exists(self):
+        import ast
+        import pathlib
+        for (f, start), why in KEPT_STRINGS.items():
+            tree = ast.parse(pathlib.Path(f).read_text(encoding="utf-8"))
+            assert any(isinstance(n, ast.Constant) and isinstance(n.value, str)
+                       and n.value.startswith(start) for n in ast.walk(tree)), (f, start, why)
 
 
 def test_the_third_party_page_lists_every_component_from_its_inventory():

@@ -129,7 +129,7 @@ DEFAULT_RECOVERY = (
     "`docker exec -it <container> telnet localhost 5000` -- and log in with "
     "the credential vrnetlab injects (see the lab's launch script). Then set "
     "the credential below by hand. Do NOT redeploy to fix a redeploy.\n\n"
-    "If the NMAS host lost its application key, this record carries it: "
+    "If the Mercury host lost its application key, this record carries it: "
     "`nmas-breakglass restore-key <record> --out <data dir>/key.key` writes it "
     "back owner-only and refuses to replace an existing file. Then run "
     "`nmas-breakglass verify <record> --live` on the host: the key is the "
@@ -221,7 +221,7 @@ def escrowed_key(payload: dict) -> bytes:
     if not key:
         raise BreakglassError(
             "this record carries no application key. It predates key escrow "
-            "(2026-09-25); export a new one on the NMAS host.")
+            "(2026-09-25); export a new one on the Mercury host.")
     return key.encode("ascii")
 
 

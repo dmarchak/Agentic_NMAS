@@ -1018,7 +1018,7 @@ def onboard_preview(plan: dict, bootstrap_config: str, confirm: dict) -> dict:
             {"name": "List", "value": f"{plan.get('list') or ''} ({plan.get('source_kind') or ''})"},
             {"name": "Management IP", "value": address},
             {"name": "Gateway", "value": plan.get("manager_gateway") or
-             "none: the NMAS is on this subnet"},
+             "none: Mercury is on this subnet"},
             {"name": "Template", "value": plan.get("template") or "(none bound)"},
             {"name": "Credential source", "value": plan.get("cred_source") or "(not resolved)"},
             {"name": "NetBox", "value": plan.get("netbox_note") or
@@ -1123,7 +1123,7 @@ def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
                                 row.get("failed") or [])
     name = row.get("list") or "the list"
     if row.get("forget_only"):
-        level, summary = "nothing", (f"Nothing was deleted from NetBox. NMAS no longer "
+        level, summary = "nothing", (f"Nothing was deleted from NetBox. Mercury no longer "
                                      f"records the objects it created for {name}.")
     elif not row.get("ok"):
         level, summary = "failed", f"The removal for {name} did not run: {row.get('error') or 'no reason'}"
@@ -1135,13 +1135,13 @@ def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
         level, summary = "success", f"{len(deleted)} object(s) deleted from NetBox for {name}."
     else:
         level, summary = "nothing", (row.get("message") or
-                                     f"Nothing NMAS created for {name} was left to delete.")
+                                     f"Nothing Mercury created for {name} was left to delete.")
     did_not = []
     if failed:
         did_not.append({"target": name, "kind": "refused",
                         "text": "Not deleted: NetBox refused the delete, or the object could "
                                 "not be read (each reason says which). They may still be in "
-                                "NetBox, and NMAS still records them:",
+                                "NetBox, and Mercury still records them:",
                         "lines": [f"{_line(o)}: {o.get('reason') or 'no reason'}" for o in failed]})
     if skipped:
         did_not.append({"target": name, "kind": "skipped",
@@ -1166,7 +1166,7 @@ def netbox_removal_result(row: dict, record_status: dict = None) -> dict:
                  "The removal happened; only NetBox's changelog holds it.")
     return build_result(
         action="netbox_remove", level=level, summary=summary, targets=[target],
-        did_not=did_not, nothing_left_out="Nothing: every object NMAS created was removed.",
+        did_not=did_not, nothing_left_out="Nothing: every object Mercury created was removed.",
         record={"commit": "", "tags": [], "baseline": "", "statement": statement},
         not_watched=("NetBox cascades a delete through relationships: the preview named "
                      "what else would go, and nothing re-reads NetBox after the removal."),
@@ -1247,7 +1247,7 @@ def netbox_import_preview(d: dict, confirm: dict, *, all_lists: bool = False) ->
                  "config, not the device."},
         {"target": name, "kind": "provenance", "lines": [],
          "text": "An object it UPDATES is not tagged nmas-managed and is never made removable: "
-                 "the tag marks only what NMAS creates. Each update's before and after goes to "
+                 "the tag marks only what Mercury creates. Each update's before and after goes to "
                  "the modification record. A device's `tags` update carries only its routing-"
                  "protocol tags (bgp, ospf, rip, cdp), merged with what it holds."},
     ]
@@ -1303,26 +1303,26 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
 
     if deleted:
         summary = (f"{len(deleted)} object(s) will be PERMANENTLY deleted from NetBox for "
-                   f"{name}. Only objects NMAS created AND tagged nmas-managed are eligible."
-                   + (f" NetBox will ALSO delete {len(foreign)} object(s) NMAS did not create, "
+                   f"{name}. Only objects Mercury created AND tagged nmas-managed are eligible."
+                   + (f" NetBox will ALSO delete {len(foreign)} object(s) Mercury did not create, "
                       "because they hang off one of these: read them below." if foreign else ""))
     else:
-        summary = d.get("message") or f"Nothing NMAS created for {name} is left to delete."
+        summary = d.get("message") or f"Nothing Mercury created for {name} is left to delete."
     if unreadable:
         # The headline leads with what blocks it: "nothing left to delete"
         # over objects that could not be read is the wrong thing looking right.
-        summary = (f"This removal cannot be confirmed: {len(unreadable)} object(s) NMAS recorded "
+        summary = (f"This removal cannot be confirmed: {len(unreadable)} object(s) Mercury recorded "
                    f"for {name} could not be read from NetBox (not gone). " + summary)
     notes = []
     if foreign:
-        notes.append({"title": f"ALSO DELETED BY NETBOX: {len(foreign)} object(s) NMAS did NOT "
+        notes.append({"title": f"ALSO DELETED BY NETBOX: {len(foreign)} object(s) Mercury did NOT "
                                "create. They carry no nmas-managed tag, so the provenance check "
                                "would leave them alone; it protects an object, and this travels "
                                "a relationship.",
                       "lines": [_via(o) for o in foreign]})
     if own_new:
         notes.append({"title": f"Also removed by NetBox with these: {len(own_new)} further "
-                               "object(s) NOT in the list above, all of them NMAS's own.",
+                               "object(s) NOT in the list above, all of them Mercury's own.",
                       "lines": [_via(o) for o in own_new]})
     what_not = []
     if not deleted:
@@ -1332,7 +1332,7 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
         what_not.append({"target": name, "kind": "skipped",
                          # Removal needs BOTH the record and the tag. These
                          # lack one, and the reason on each line says which.
-                         "text": f"Left alone ({len(skipped)}): removal needs an object NMAS "
+                         "text": f"Left alone ({len(skipped)}): removal needs an object Mercury "
                                  "recorded creating AND NetBox shows tagged nmas-managed; these "
                                  "are not both, so they are treated as a person's:",
                          "lines": [f"{_nb_line('keep', o)} ({o.get('reason') or ''})"
@@ -1348,7 +1348,7 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
     if gone:
         what_not.append({"target": name, "kind": "gone",
                          "text": f"Already gone from NetBox ({len(gone)}, it answered 404). A real "
-                                 "removal drops them from NMAS's record; this preview wrote "
+                                 "removal drops them from Mercury's record; this preview wrote "
                                  "nothing:",
                          "lines": [_nb_line("gone", o) for o in gone]})
     if unproven:
@@ -1358,11 +1358,11 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
                          "lines": list(unproven)})
     what_not += [
         {"target": name, "kind": "updated", "lines": [],
-         "text": "Nothing NMAS only UPDATED is deleted: removal needs an object NMAS created."},
+         "text": "Nothing Mercury only UPDATED is deleted: removal needs an object Mercury created."},
         {"target": name, "kind": "no_device", "lines": [],
          "text": "No device is reached and nothing in git changes."},
         {"target": name, "kind": "forget", "lines": [],
-         "text": "'Just stop tracking' is the other choice: it deletes nothing, and NMAS "
+         "text": "'Just stop tracking' is the other choice: it deletes nothing, and Mercury "
                  "forgets what it created for this list, so NetBox keeps every object."},
     ]
     gates = _nb_gates(d, "removal")
@@ -1402,7 +1402,7 @@ def netbox_removal_preview(d: dict, confirm: dict) -> dict:
             {"name": "Deletes", "value": str(len(deleted))},
             {"name": "Left alone", "value": str(len(skipped))},
             {"name": "Taken with them by NetBox", "value":
-             f"{len(taken)} ({len(foreign)} NMAS did not create)"},
+             f"{len(taken)} ({len(foreign)} Mercury did not create)"},
             {"name": "Plan hash", "value": (d.get("plan_hash") or "")[:16]},
         ],
         "gates": gates,
@@ -2668,7 +2668,7 @@ def retire_result(result: dict, plan: dict) -> dict:
                               f"{name}`, one `Not-Done:` trailer per thing it did not do) removed "
                               "its intent and golden; history keeps both."
                               if commit else "No retire commit was made by this run.")},
-        not_watched=(f"Nothing in NMAS watches {name} after this: no drift check, capture or "
+        not_watched=(f"Nothing in Mercury watches {name} after this: no drift check, capture or "
                      "deploy. "
                      + ("Oxidized no longer polls it (its row removed and read back); "
                         if "oxidized" in done else "Oxidized may still poll it; ")

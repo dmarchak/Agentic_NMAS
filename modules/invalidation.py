@@ -73,7 +73,7 @@ VOCABULARY = {
     "pending": "pending onboardings",
     "rolled_back": "blocked changes (what a rollback undid) and retry authorisations",
     "credentials": "credential profiles and device overrides",
-    "netbox": "the NetBox objects NMAS shows or counts",
+    "netbox": "the NetBox objects Mercury shows or counts",
     "settings": "settings and integrations",
     "posture": "the identity gates' recorded posture",
     "freshness": "Oxidized freshness: the stored comparison and its authorisations",

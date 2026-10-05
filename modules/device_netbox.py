@@ -44,20 +44,20 @@ def provenance(list_name: str, obj_id: int, tags) -> dict:
                 "words": f"Who owns this record cannot be said: {error}."}
     if tagged and recorded:
         return {"state": "created", "kind": "info", "error": "",
-                "words": "NMAS created this record (tagged nmas-managed and in its record), "
+                "words": "Mercury created this record (tagged nmas-managed and in its record), "
                          "so the NetBox tab's Remove can delete it."}
     if is_adopted:
         return {"state": "adopted", "kind": "muted", "error": "",
-                "words": "Adopted: the record existed before NMAS managed the device. "
-                         "NMAS updates the fields it imports and never deletes it."}
+                "words": "Adopted: the record existed before Mercury managed the device. "
+                         "Mercury updates the fields it imports and never deletes it."}
     if tagged != recorded:
-        which = "tagged nmas-managed but missing from NMAS's record" if tagged else \
-            "in NMAS's record but not tagged nmas-managed"
+        which = "tagged nmas-managed but missing from Mercury's record" if tagged else \
+            "in Mercury's record but not tagged nmas-managed"
         return {"state": "disagrees", "kind": "warn", "error": "",
                 "words": f"The record is {which}, so Remove cannot act on it "
                          "(it needs both); nmas-netbox-untagged names every such object."}
     return {"state": "person", "kind": "muted", "error": "",
-            "words": "A person's record: NMAS did not create it. NMAS updates the fields "
+            "words": "A person's record: Mercury did not create it. Mercury updates the fields "
                      "it imports and never deletes it."}
 
 

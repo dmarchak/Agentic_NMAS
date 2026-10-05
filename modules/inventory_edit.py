@@ -157,7 +157,7 @@ def plan(list_name: str, hostname: str, role: str, reason: str = "") -> dict:
     follows = [
         f"Prometheus: {hostname}'s SNMP targets carry role={after!r}"
         + (f" (was {before!r})" if before else " (they carried no role)")
-        + ", once the NMAS regenerates the targets (at once in the app; within 300 s "
+        + ", once Mercury regenerates the targets (at once in the app; within 300 s "
           "after a command on the host)",
         f"Topology: {hostname} is drawn as a {after}",
         f"NetBox: the next import records {hostname}'s role as {after}"]

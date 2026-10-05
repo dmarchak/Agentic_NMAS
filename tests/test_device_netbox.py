@@ -125,7 +125,7 @@ class TestWhoOwnsIt:
 
     def test_tagged_but_not_recorded_disagrees_and_is_never_called_nmass(self, nb):
         p = _view("r6")["provenance"]
-        assert p["state"] == "disagrees" and "missing from NMAS's record" in p["words"]
+        assert p["state"] == "disagrees" and "missing from Mercury's record" in p["words"]
 
     def test_adopted_is_said(self, nb):
         from modules import netbox_guard

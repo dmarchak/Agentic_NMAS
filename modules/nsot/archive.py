@@ -164,7 +164,7 @@ def _push_locked(context: dict, list_name: str, config: dict) -> dict:
         if "non-fast-forward" in err or "rejected" in err:
             # Never force-push: surface the conflict and stop.
             reason = ("remote has commits this repo does not — resolve the "
-                      "divergence manually; NMAS will not force-push")
+                      "divergence manually; Mercury will not force-push")
         else:
             reason = err[:300]
         R.record_push_failure(list_name, actor="auto-push", reason=reason,

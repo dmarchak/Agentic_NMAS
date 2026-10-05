@@ -151,7 +151,7 @@ def _judge_heads(repo: str, list_dir: str) -> dict:
         return out
     if _git(repo, "cat-file", "-e", f"{remote_sha}^{{commit}}")[0] != 0:
         out.update(state="remote_ahead", reason="the remote holds a commit this repository "
-                                                "does not have; NMAS never force-pushes")
+                                                "does not have; Mercury never force-pushes")
         return out
     if _git(repo, "merge-base", "--is-ancestor", remote_sha, head)[0] == 0:
         n = int(_git(repo, "rev-list", "--count", f"{remote_sha}..{head}")[1] or 0)
@@ -165,7 +165,7 @@ def _judge_heads(repo: str, list_dir: str) -> dict:
         out.update(state="remote_ahead", reason="the remote is ahead of this repository")
         return out
     out.update(state="diverged", reason="this repository and the remote have each moved; "
-                                        "NMAS never force-pushes, so a person resolves it")
+                                        "Mercury never force-pushes, so a person resolves it")
     return out
 
 

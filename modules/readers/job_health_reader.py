@@ -30,7 +30,7 @@ def read() -> dict:
 READER = reader_job.register(reader_job.Reader(
     name="job-health",
     what="job health: the timers, services and stores the host checks, read for Needs attention",
-    endpoints=("systemctl show", "journalctl", "the Proxmox API", "the NMAS data stores"),
+    endpoints=("systemctl show", "journalctl", "the Proxmox API", "Mercury's data stores"),
     interval_seconds=INTERVAL_SECONDS,
     interval_basis=("one read costs 9.8 s on the host (measured 2026-09-28); its timers move "
                     "hourly or daily, and the two rows that move in minutes are drawn live "

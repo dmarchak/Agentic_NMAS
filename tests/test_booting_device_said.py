@@ -72,12 +72,12 @@ class TestTheWords:
         for k in range(RE.miss_threshold("Lab", "s3")):
             v = cycle({"192.0.2.13": True, "192.0.2.23": False}, v["devices"], T0 + 480 + 5 * k)
         w = RE.outage_words("s3", T0 + 600, value=v, now=T0 + 900)
-        assert w.startswith("not answering SSH yet: s3 has not answered the NMAS since 16:48 UTC")
+        assert w.startswith("not answering SSH yet: s3 has not answered Mercury since 16:48 UTC")
 
     def test_a_check_that_ran_during_the_boot_is_said(self):
         v = _boot(T0 + 480, T0 + 1920)
         w = RE.outage_words("s3", T0 + 2100, value=v, now=T0 + 2400)
-        assert w == ("not answering SSH yet: s3 did not answer the NMAS from 16:48 to 17:12 UTC "
+        assert w == ("not answering SSH yet: s3 did not answer Mercury from 16:48 to 17:12 UTC "
                      "and this ran at 17:15, while it was still coming up (SSH answers last in "
                      "a boot)")
 
@@ -108,7 +108,7 @@ class TestTheRowsSayIt:
         _plant(monkeypatch, _boot(T0 + 480, T0 + 1920))
         res = A.drift_source(status=self._drift(T0 + 2100), now=T0 + 2400)
         r = next(r for r in res["rows"] if r["what"] == "s3 could not be checked for drift")
-        assert r["cause"].startswith("Not answering SSH yet: s3 did not answer the NMAS from "
+        assert r["cause"].startswith("Not answering SSH yet: s3 did not answer Mercury from "
                                      "16:48 to 17:12 UTC")
         assert r["cause"].endswith("The check said: SSH error: TCP connection to device failed")
 
@@ -126,6 +126,6 @@ class TestTheRowsSayIt:
              "detail": "could not read the device: TCP connection to device failed"}]}
         rows = J.startup_rows(read=lambda: res, now=T0 + 2400)
         unread = next(r for r in rows if r["unit"] == "startup-check:unread")
-        assert ("s3: not answering SSH yet: s3 did not answer the NMAS from 16:48 to 17:12 UTC"
+        assert ("s3: not answering SSH yet: s3 did not answer Mercury from 16:48 to 17:12 UTC"
                 in unread["detail"])
         assert "; the check said: " in unread["detail"]

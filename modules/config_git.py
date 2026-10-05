@@ -233,7 +233,7 @@ _UNCOMMITTED_MEANS = {
     ".nsot": ("identity changes recorded by an inventory refresh or a save; "
               "committed with the next golden save, by design."),
 }
-_UNCOMMITTED_ELSE = ("nothing in NMAS writes here, so it was changed on the "
+_UNCOMMITTED_ELSE = ("nothing in Mercury writes here, so it was changed on the "
                      "host. Commit or discard it there.")
 
 

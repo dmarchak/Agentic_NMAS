@@ -84,7 +84,7 @@ class TestPresenceOutranksApplicability:
 
         assert out["ok"] is False, "a bootstrap file read as carrying current"
         assert out["kind"] == "password"
-        assert "credential NMAS does not hold" in out["reason"]
+        assert "credential Mercury does not hold" in out["reason"]
 
     def test_and_goes_green_once_the_file_carries_secret_9(self, monkeypatch):
         """**The floor, and the acceptance for the sync half** — the same

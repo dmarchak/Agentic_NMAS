@@ -458,7 +458,7 @@ def stale_message(device_ip: str, list_name: str = "") -> str:
         list_name = get_current_list_name()
     entry = get_stale_devices(list_name).get(device_ip, {})
     hostname = entry.get("hostname", device_ip)
-    return (f"{hostname} ({device_ip}) is no longer in NetBox for this list, so NMAS "
+    return (f"{hostname} ({device_ip}) is no longer in NetBox for this list, so Mercury "
             "will not act on it. Its golden configs and backups are still available. "
             "Re-add it in NetBox, or adjust the list's filters, to make it active again.")
 
