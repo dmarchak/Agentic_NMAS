@@ -718,6 +718,26 @@ generated from. Each entry records the component's source, its version and its l
 A new one without an entry fails. It catches, for example, the topology icon set the day it
 is added.
 
+**BUILT 2026-10-04:** `docs/THIRD_PARTY.json` (the inventory; the release export places it at its root) and
+`tests/test_third_party_inventory.py` (the check; CI runs it with the suite).
+- **Python packages:** 71, from the lock and the requirements files, each licence an SPDX
+  expression read by a person from the package's declared metadata.
+- **Vendored files:** 13 entries, claimed by glob: the front-end packages, CodeMirror,
+  Bootstrap, and the MIB-derived snmp_exporter modules.
+- **Approved:** 0BSD, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, OFL-1.1, PSF-2.0, and
+  public domain.
+- **Reviewed, each with its reason:**
+  - LGPL-2.1-or-later: paramiko and scp, unmodified installed libraries;
+  - MPL-2.0: bidict and certifi;
+  - the MIB-derived help text.
+- **The audit list it carries:**
+  - `ccie_kb/`'s provenance;
+  - the Grafana dashboard fixtures';
+  - the captured device configurations;
+  - the MIB help text;
+  - three missing licence files (alpinejs-csp, CodeMirror, Bootstrap);
+  - the history.
+
 **3. At release:**
 - **The project's own licence**, the operator's decision. 8.2 recommends Apache-2.0. Its
   compatibility is re-read against the inventory: a copyleft dependency (GPL, LGPL, AGPL)
