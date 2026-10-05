@@ -274,8 +274,21 @@ pages.
 6. **Grafana alerts resolved across lists** (the latent false claim). **BUILT 2026-10-05:** `attention._inventory()` reads every registered list; a labelled device of any network is found, and an address two networks reuse names both devices and decides neither (`tests/test_alerts_across_networks.py`). The list label on the rules waits for P.7.
 7. **The v2 Settings page per network.** It draws each value with its origin (set here,
    inherited, not applicable, unset). This is a new screen, so it needs a mockup and the
-   operator's sign-off before it is built. **Drawn 2026-10-05, FOR SIGN-OFF** (the canvas,
-   v38, page "P.8 Settings per network"):
+   operator's sign-off before it is built. **A to E APPROVED 2026-10-05 (the operator).** The
+   GLOBAL settings were then drawn for sign-off, F to H (canvas v41), before anything is built:
+   - F: installation-wide settings, labelled as applying to every network;
+   - G: Default as the base layer, each group naming who inherits it (a count, expanded for
+     the names, at 20 networks). Changing a value others inherit warns first, naming them,
+     and the result says which networks changed;
+   - H: one navigation, a scope bar (Installation, Default, a network) with a network picker
+     that leads with the networks that differ from Default.
+
+   Point 4 (decided in F to H): the 12 retiring form-only settings are gone from v2, and
+   today's page keeps them until cutover. The two recorded v1 exceptions (the Grafana and
+   Proxmox tokens' declared expiries) are shown: Grafana's on each network's Grafana card,
+   Proxmox's on Installation's Proxmox card. Their v1 fields leave at cutover.
+
+   Boards A to D, drawn 2026-10-05 (the canvas, v38, page "P.8 Settings per network"):
    - A: a network's Integrations tab, one card per group with its origin;
    - B: making a group the network's own, as a preview, a confirm and a result;
    - C: declaring a group not applicable, and going back to inheriting, which says what is
