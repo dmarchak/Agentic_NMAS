@@ -5,7 +5,8 @@ address and the account the tool signs in as; Actions lists the operations on th
 
 ## Actions {#actions}
 
-Plan a deploy, and under Actions: Capture, Seed intent, Restore from, Remove lines (Mode B),
+Everything is under **Actions**, one menu, Plan a deploy first: Plan a deploy, Capture, Seed
+intent, Restore from, Remove lines (Mode B),
 Revert intent, Retry rolled-back change, Rotate credential, Persist and Retire. **Capture runs here**: its card takes the place of the
 tab you were on, reads the device, and shows what its golden would become, against the golden
 now and against committed intent, with the checks and the confirm bound to that read; once you

@@ -75,7 +75,7 @@ class TestTheMenu:
         assert 'hx-get="/v2/device/r2/seed?back=overview"' in menu
         assert "manage_device" not in menu.split("Seed intent")[0][-400:]
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
-        assert labels[:3] == ["Capture", "Seed intent…", "Restore from…"], labels
+        assert labels[:4] == ["Plan a deploy…", "Capture", "Seed intent…", "Restore from…"], labels
         assert "Every action runs here." in menu
         _r, page = _get(lab, "/v2/device/r2?op=seed")
         body = page[page.index('id="tab-body"'):]

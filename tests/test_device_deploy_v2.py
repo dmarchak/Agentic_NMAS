@@ -242,6 +242,10 @@ class TestInARealBrowser:
             b.wait_for("return !!window.Alpine && window.NMAS && "
                        "NMAS.live().state === 'connected' && " + SETTLED, 15)
             b.js("window.__notReloaded = 1; return 1")
+            # "Plan a deploy…" is the Actions menu's first row (2026-10-05), no separate button.
+            b.click('.page-actions button[aria-haspopup="menu"]')
+            b.wait_for("var m = document.querySelector('.page-actions [role=menu]');"
+                       "return m && m.offsetParent !== null", 10)
             b.click('.page-actions a[data-op="deploy"]')
             b.wait_for(f"return {CARD} && {CARD}.querySelector('input[name=\"dz::0\"]') "
                        f"&& {SETTLED}", 15)

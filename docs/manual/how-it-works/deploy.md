@@ -10,7 +10,7 @@ its golden in the list's repository, and the deploy record.
 ## Before the deploy: the plan
 
 You change intent and commit it (editing is on today's Device page; the v2 Intent tab is
-read-only). Then you open the plan from one of four places: **Plan a deploy…** on a device's
+read-only). Then you open the plan from one of four places: **Actions › Plan a deploy…** on a device's
 v2 page, whose card plans that one device (the same plan, drawn in place of the tab, the
 stages shown as they run); the **Deploy plan** button on a device's row in today's device
 list; the v2 Devices list's selection bar, **Plan a deploy…**, which opens today's page with

@@ -81,7 +81,8 @@ class TestTheMenu:
         assert 'aria-label="How does capture work?"' in row
         assert "Every action runs here." in menu and "today's device page" not in menu
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
-        assert labels == ["Capture", "Seed intent…", "Restore from…", "Remove lines (Mode B)…",
+        assert labels == ["Plan a deploy…", "Capture", "Seed intent…", "Restore from…",
+                          "Remove lines (Mode B)…",
                           "Rotate credential…", "Persist", "Retire…"], labels
 
     def test_without_script_the_row_opens_the_page_with_the_card(self, lab):
