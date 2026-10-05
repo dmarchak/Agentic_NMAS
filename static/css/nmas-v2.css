@@ -23,6 +23,7 @@
   --danger: #B42318; --danger-soft: #FDECEA;
   --muted-soft: #E9EBE7;
   --side: #14202B; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #22384A; --side-rule: #2A3B4B;
+  --brand: #1D9E75; --brand-hi: #9FE1CB;
   --sans: 'IBM Plex Sans', system-ui, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
   --r: 6px; --r-card: 8px;
@@ -53,6 +54,7 @@
     --danger: #F2766B; --danger-soft: #3A1815;
     --muted-soft: #252D36;
     --side: #0A0F14; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #1B2B39; --side-rule: #22303D;
+    --brand: #1D9E75; --brand-hi: #9FE1CB;
     --shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
     --on-accent: #0A0F14; --on-danger: #0A0F14;
     --warn-line: #6B4715; --danger-line: #6E2B25;
@@ -73,6 +75,7 @@
   --danger: #F2766B; --danger-soft: #3A1815;
   --muted-soft: #252D36;
   --side: #0A0F14; --side-ink: #C9D2DB; --side-ink-2: #8FA1B2; --side-on: #1B2B39; --side-rule: #22303D;
+  --brand: #1D9E75; --brand-hi: #9FE1CB;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
   --on-accent: #0A0F14; --on-danger: #0A0F14;
   --warn-line: #6B4715; --danger-line: #6E2B25;
@@ -102,12 +105,18 @@ a { color: var(--accent); }
 /* ---- the sidebar ---- */
 .sidebar { width: 248px; flex-shrink: 0; background: var(--side); color: var(--side-ink); display: flex; flex-direction: column;
   padding: 20px 12px; gap: 2px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px 10px; }
-.brand-mark { width: 30px; height: 30px; border-radius: 7px; background: var(--accent); color: var(--on-accent); display: flex;
-  align-items: center; justify-content: center; font-weight: 600; }
-.brand-words { display: flex; flex-direction: column; flex-grow: 1; }
-.brand-name { color: #FFF; font-weight: 600; font-size: 15px; }
-.brand-sub { font-size: 11px; color: var(--side-ink-2); }
+.brand { display: flex; align-items: center; gap: 8px; padding: 4px 4px 22px 10px; }
+/* The Mercury mark (NSOT_STAGE7_PLAN 19): teal and its highlight fixed in both themes; the
+   gap behind the orbit's front half is the colour the mark sits on, so it crosses in front. */
+.mercury-mark { width: 52px; height: 27px; flex-shrink: 0; }
+.mk-planet { fill: var(--brand); }
+.mk-orbit { fill: none; stroke: var(--brand); stroke-width: 5; }
+.mk-hi { fill: none; stroke: var(--brand-hi); stroke-width: 4; stroke-linecap: round; }
+.mk-gap { fill: none; stroke: var(--side); stroke-width: 12; }
+.mk-node { fill: var(--brand); stroke: var(--side); stroke-width: 3; }
+.brand-words { display: flex; flex-direction: column; flex-grow: 1; line-height: 1.2; }
+.brand-name { color: #FFF; font-weight: 600; font-size: 16px; }
+.brand-sub { font-size: 11px; color: var(--side-ink-2); white-space: nowrap; }
 .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--r); text-decoration: none;
   color: var(--side-ink); }
 .nav-item:hover { background: var(--side-on); color: #FFF; }
@@ -126,7 +135,7 @@ a { color: var(--accent); }
 /* May be out of date (live updates stopped, or a source past its promise): a quiet mark on
    the number, never a confident wrong one. The title says why. */
 .count-maybe { opacity: 0.55; outline: 1px dashed currentColor; outline-offset: 1px; }
-.drawer-close, .menu-btn { display: none; }
+.icon-btn.menu-btn { display: none; }   /* after .icon-btn's display, or it never hides */
 .scrim { display: none; }
 
 /* ---- the frame and top bar ---- */
@@ -319,7 +328,8 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
     transition: transform 180ms ease; width: 280px; }
   .sidebar.open { transform: translateX(0); }
   .scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 30; }
-  .drawer-close, .menu-btn { display: inline-flex; }
+  .icon-btn.menu-btn { display: inline-flex; }
+  .brand-sub { display: none; }   /* at phone width, the mark plus the short name */
   .topbar { padding: 0 12px; gap: 10px; height: 52px; background: var(--side); color: #FFF; border-bottom: none; }
   .net-label, .who-name, .live-word, .jump kbd { display: none; }
   .net { color: #FFF; }

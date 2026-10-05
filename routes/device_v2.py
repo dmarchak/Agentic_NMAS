@@ -282,6 +282,13 @@ def _attention_trigger():
                                            for k in ATTENTION_KEYS + (DUE_EVENT,))}
 
 
+@bp.app_context_processor
+def _brand():
+    """The product's name for every page (`modules.brand`, the one place it is kept)."""
+    from modules import brand
+    return brand.context()
+
+
 @bp.route("/attention-count", methods=["GET"])
 def attention_count():
     """The sidebar's Needs attention count: `needs_attention()`'s own badge, the same rows

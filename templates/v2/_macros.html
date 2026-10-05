@@ -2,6 +2,20 @@
     icons drawn inline as stroke SVG, a status badge, an age stamp. No style
     attributes anywhere: the page's policy refuses inline styles. -#}
 
+{#- The Mercury mark (NSOT_STAGE7_PLAN section 19, the board approved 2026-10-05): the master
+    geometry, centred at 0,0. A teal planet with its highlight, an orbit tilted -20 degrees
+    with three nodes, and the orbit's front half crossing over the planet behind a gap drawn
+    in the colour the mark sits on (`.mk-gap`, the sidebar's `--side`), so it reads in both
+    themes. Colours are classes, never attributes: the strict pages refuse inline styles. -#}
+{% macro mercury_mark(label='Mercury') -%}
+<svg class="mercury-mark" viewBox="-82 -42 164 84" role="img" aria-label="{{ label }}"><title>{{ label }}</title>
+<g transform="rotate(-20)"><ellipse class="mk-orbit" rx="72" ry="26"></ellipse></g>
+<circle class="mk-planet" r="26"></circle>
+<path class="mk-hi" d="M-15.6,-9 A18 18 0 0 1 -4.7,-17.4"></path>
+<g transform="rotate(-20)"><path class="mk-gap" d="M-72,0 A72 26 0 0 0 72,0"></path><path class="mk-orbit" d="M-72,0 A72 26 0 0 0 72,0"></path>
+<circle class="mk-node" cx="-72" r="9"></circle><circle class="mk-node" cx="72" r="9"></circle><circle class="mk-node" cy="26" r="9"></circle></g></svg>
+{%- endmacro %}
+
 {% macro icon(name, size=18, cls='') -%}
 <svg class="ico{{ ' ' ~ cls if cls }}" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {%- if name == 'attention' %}<circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path>

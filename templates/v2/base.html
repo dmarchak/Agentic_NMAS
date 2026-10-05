@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon -%}
+{%- from "v2/_macros.html" import icon, mercury_mark -%}
 <!doctype html>
 <html lang="en">
 <head>
@@ -37,9 +37,8 @@
 <div class="scrim" x-show="drawer" x-on:click="close" x-cloak></div>
 <nav class="sidebar" aria-label="Main" x-bind:class="drawerClass">
   <div class="brand">
-    <div class="brand-mark">N</div>
-    <div class="brand-words"><span class="brand-name">NMAS</span><span class="brand-sub">Network source of truth</span></div>
-    <button type="button" class="icon-btn drawer-close" aria-label="Close the menu" x-on:click="close">{{ icon('x', 20) }}</button>
+    {{ mercury_mark(brand.short) }}
+    <div class="brand-words"><span class="brand-name">{{ brand.short }}</span><span class="brand-sub">{{ brand.tagline }}</span></div>
   </div>
   <a class="nav-item{% if active_nav == 'attention' %} active{% endif %}" href="{{ url_for('v2.landing') }}"{% if active_nav == 'attention' %} aria-current="page"{% endif %}>{{ icon('attention') }}<span class="grow">Needs attention</span>{% with initial=True, ok=True, badge=None %}{% include "v2/_count.html" %}{% endwith %}</a>
   <a class="nav-item{% if active_nav == 'devices' %} active{% endif %}" href="{{ url_for('v2.devices') }}"{% if active_nav == 'devices' %} aria-current="page"{% endif %}>{{ icon('devices') }}<span>Devices</span></a>

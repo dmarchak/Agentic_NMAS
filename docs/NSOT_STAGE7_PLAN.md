@@ -4431,6 +4431,17 @@ claimed as the project's own in `docs/THIRD_PARTY.json`.
 **APPROVED 2026-10-05 (the operator): the Mercury boards.** Built next, under this section's
 rules.
 
+**The sidebar lockup BUILT 2026-10-05** (the operator asked for it): `modules/brand.py` holds
+`PRODUCT_NAME`, `PRODUCT_SHORT` and `PRODUCT_TAGLINE`, every v2 page reads them, and the
+sidebar draws the mark (`mercury_mark` in `templates/v2/_macros.html`, the board's geometry
+inline, coloured by `--brand`, `--brand-hi` and the sidebar's `--side` for the gap) beside
+"Mercury" over "Network Automation Platform"; at phone width the mark and "Mercury". Drawn at
+52 × 27 px, a little under the board's 58 × 30, so the tagline fits the 248 px sidebar on one
+line (measured in a browser: it ends 18 px inside). With it, the drawer's dead close button
+went (C475). **Left:** page titles, the favicon and square icon (`static/img/brand/`, claimed in
+`docs/THIRD_PARTY.json`), the phone top bar's mark, the About page's product card, and "NMAS"
+out of user-facing text with its test.
+
 ## 20. Recover from a break-glass record IN THE APP (the operator, 2026-10-05; mockup first)
 
 **Why:** a working tool should never force a person to a terminal. Tonight's drill proved
