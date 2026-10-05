@@ -336,7 +336,7 @@ def posture_rows(kea=None, dns=dns_posture, addrs=None, get=None) -> list:
     configured: an empty `kea_ztp_fragment` is already its own row
     (`unset_guard`), and a second row saying the same thing is noise."""
     if get is None:
-        from modules.settings_schema import get_setting as get
+        from modules.list_settings import default_layer as get   # one fragment, every list
     if not (get("kea_ztp_fragment", "") or "").strip():
         return []
     what = ("D4: a ZTP reservation gets no route or resolver option, and "
@@ -487,11 +487,12 @@ def write_reservations(adds=(), removes=(), *, kea=None, fragment: str = None,
     live fragment is touched restores the previous fragment and reloads.
     The whole write holds :func:`fragment_lock` (R22).
     """
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer   # one fragment serves every list (P.7)
 
     out = {"ok": False, "outcomes": {}, "error": "", "reloaded": False}
-    fragment = fragment if fragment is not None else get_setting("kea_ztp_fragment", "")
-    main_config = main_config or get_setting("kea_dhcp4_config", "/etc/kea/kea-dhcp4.conf")
+    fragment = fragment if fragment is not None else default_layer("kea_ztp_fragment", "")
+    main_config = main_config or default_layer("kea_dhcp4_config",
+                                              "/etc/kea/kea-dhcp4.conf")
     if not fragment:
         out["error"] = ("kea_ztp_fragment is not configured: a reservation written "
                         "anywhere else lives in Kea's memory until its next restart (C49)")
@@ -644,7 +645,7 @@ def plan_check(mac: str, address: str, *, kea=None, dns=dns_posture, addrs=None,
     screen, which promises that nothing has been created yet, is where a
     refusal lands. A check that could not run is a reason, never a pass."""
     if get is None:
-        from modules.settings_schema import get_setting as get
+        from modules.list_settings import default_layer as get   # one fragment, every list
     out = {"ok": False, "reasons": [], "server": "", "subnet_id": None, "dns": {}}
     if not (get("kea_ztp_fragment", "") or "").strip():
         out["reasons"].append(

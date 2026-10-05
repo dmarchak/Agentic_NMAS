@@ -86,7 +86,7 @@ class TestTheStageBCase:
         reads["served"]["labs/lab/configs/r1.cfg"] = SECRET_FILE
         reads["served"]["c8000v-launch.py"] = STOCK_LAUNCH
 
-        out = cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        out = cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                         username="admin")
         assert out["ok"] is False
         assert out["applies"] is False
@@ -96,7 +96,7 @@ class TestTheStageBCase:
         reads["served"]["labs/lab/configs/r1.cfg"] = SECRET_FILE
         reads["served"]["c8000v-launch.py"] = STOCK_LAUNCH
 
-        error = cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        error = cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                           username="admin")["error"]
         assert "WILL NOT APPLY" in error
         assert "locked out" in error
@@ -106,7 +106,7 @@ class TestTheStageBCase:
         reads["served"]["labs/lab/configs/r1.cfg"] = SECRET_FILE
         reads["served"]["c8000v-launch.py"] = STOCK_LAUNCH
 
-        error = cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        error = cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                           username="admin")["error"]
         assert "user-skip" in error            # fix (a)
         assert "password form" in error        # fix (b)
@@ -123,7 +123,7 @@ class TestAdoptingThePatchSatisfiesIt:
         reads["served"]["labs/lab/configs/r1.cfg"] = SECRET_FILE
         reads["served"]["c8000v-launch.py"] = PATCHED_LAUNCH
 
-        out = cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        out = cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                         username="admin")
         assert out["ok"] is True
         assert out["applies"] is True
@@ -137,11 +137,11 @@ class TestAdoptingThePatchSatisfiesIt:
         """
         reads["served"]["labs/lab/configs/r1.cfg"] = SECRET_FILE
         reads["served"]["c8000v-launch.py"] = PATCHED_LAUNCH
-        assert cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        assert cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                          username="admin")["ok"] is True
 
         reads["served"]["c8000v-launch.py"] = STOCK_LAUNCH
-        assert cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        assert cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                          username="admin")["ok"] is False
 
     def test_the_marker_is_the_one_the_patcher_writes(self):
@@ -163,7 +163,7 @@ class TestThePasswordFormApplies:
         reads["served"]["labs/lab/configs/r1.cfg"] = PASSWORD_FILE
         reads["served"]["c8000v-launch.py"] = STOCK_LAUNCH
 
-        out = cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        out = cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                         username="admin")
         assert out["ok"] is True
         assert out["kind"] == "password"
@@ -172,7 +172,7 @@ class TestThePasswordFormApplies:
         """It applies either way, so asking would be a dependency on
         something that cannot change the answer."""
         reads["served"]["labs/lab/configs/r1.cfg"] = PASSWORD_FILE
-        cr.verify_startup_applies("r1", platform="cisco_iosxe", username="admin")
+        cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe", username="admin")
         assert not any("launch" in command for command in reads["asked"])
 
 
@@ -180,12 +180,12 @@ class TestPlatformsWhereNothingIsInjected:
     """The switches. Their `secret 9` line is the only one and applies."""
 
     def test_ios_short_circuits(self, reads):
-        out = cr.verify_startup_applies("s1", platform="cisco_ios",
+        out = cr.verify_startup_applies("s1", list_name="Default", platform="cisco_ios",
                                         username="admin")
         assert out["ok"] is True
 
     def test_it_reads_nothing_at_all(self, reads):
-        cr.verify_startup_applies("s1", platform="cisco_ios", username="admin")
+        cr.verify_startup_applies("s1", list_name="Default", platform="cisco_ios", username="admin")
         assert reads["asked"] == []
 
     def test_it_does_not_need_a_lab_host(self, monkeypatch):
@@ -193,7 +193,7 @@ class TestPlatformsWhereNothingIsInjected:
         and a check that fails spuriously gets worked around."""
         monkeypatch.setattr("modules.settings_schema.get_setting",
                             lambda key, default=None: default)
-        out = cr.verify_startup_applies("s1", platform="cisco_ios",
+        out = cr.verify_startup_applies("s1", list_name="Default", platform="cisco_ios",
                                         username="admin")
         assert out["ok"] is True
 
@@ -203,14 +203,14 @@ class TestUnknownIsNotFine:
     verified. It must not do that itself."""
 
     def test_an_unreadable_startup_file_is_refused(self, reads):
-        out = cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        out = cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                         username="admin")
         assert out["ok"] is False
         assert "could not read" in out["error"]
 
     def test_an_unreadable_launch_script_is_refused(self, reads):
         reads["served"]["labs/lab/configs/r1.cfg"] = SECRET_FILE
-        out = cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        out = cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                         username="admin")
         assert out["ok"] is False
         assert "unknown, not fine" in out["error"]
@@ -218,7 +218,7 @@ class TestUnknownIsNotFine:
     def test_a_missing_username_line_is_refused(self, reads):
         reads["served"]["labs/lab/configs/r1.cfg"] = "hostname r1\n!\nend\n"
         reads["served"]["c8000v-launch.py"] = STOCK_LAUNCH
-        out = cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        out = cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                         username="admin")
         assert out["ok"] is False
         assert "no `username admin` line" in out["error"]
@@ -229,7 +229,7 @@ class TestUnknownIsNotFine:
         reads["served"]["labs/lab/configs/r1.cfg"] = (
             "username admin privilege 15 somethingelse xyz\n")
         reads["served"]["c8000v-launch.py"] = STOCK_LAUNCH
-        assert cr.verify_startup_applies("r1", platform="cisco_iosxe",
+        assert cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                          username="admin")["ok"] is False
 
 
@@ -380,7 +380,7 @@ def launch_file(tmp_path, monkeypatch):
 
 
 def _verdict(launch_file):
-    return cr.verify_startup_applies("r1", platform="cisco_iosxe",
+    return cr.verify_startup_applies("r1", list_name="Default", platform="cisco_iosxe",
                                      username="admin")
 
 

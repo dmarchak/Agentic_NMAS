@@ -44,10 +44,11 @@ def _record_path(list_name: str) -> str:
 
 def node_for(hostname: str, mgmt_ip: str) -> str:
     """The name Oxidized keeps *hostname* under: ``oxidized_node_identity``
-    decides (the clab sync's map reads the same setting)."""
-    from modules.settings_schema import get_setting
+    decides (the clab sync's map reads the same setting). The Default network's: one
+    router.db names every list's devices until P.7."""
+    from modules.list_settings import default_layer
 
-    by_name = get_setting("oxidized_node_identity", "hostname") == "hostname"
+    by_name = default_layer("oxidized_node_identity", "hostname") == "hostname"
     return hostname if by_name else (mgmt_ip or "")
 
 

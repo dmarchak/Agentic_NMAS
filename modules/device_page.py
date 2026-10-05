@@ -358,11 +358,13 @@ def intent_check(ref, dev: dict) -> dict:
 # ---------------------------------------------------------------- Monitoring
 
 def device_dashboard_settings() -> dict:
-    from modules.settings_schema import get_setting
+    # The Default network's, as the Grafana client these feed is (P.8 step 8 moves the pair).
+    from modules.list_settings import default_layer
 
-    return {"uid": (get_setting("grafana_device_dashboard_uid", "") or "").strip(),
-            "variable": (get_setting("grafana_device_variable", "device") or "device").strip(),
-            "value_from": get_setting("grafana_device_variable_value", "hostname") or "hostname"}
+    return {"uid": (default_layer("grafana_device_dashboard_uid", "") or "").strip(),
+            "variable": (default_layer("grafana_device_variable", "device") or "device").strip(),
+            "value_from": default_layer("grafana_device_variable_value", "hostname")
+            or "hostname"}
 
 
 def variable_value(dev: dict, value_from: str) -> str:
@@ -714,13 +716,13 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
 
 def _grafana_url() -> str:
     """Grafana's address, for a link a person opens (reachable from the LAN only)."""
-    from modules.settings_schema import get_setting
-    return (get_setting("grafana_url", "") or "").strip()
+    from modules.list_settings import default_layer
+    return (default_layer("grafana_url", "") or "").strip()
 
 
 def fleet_dashboard_uid() -> str:
-    from modules.settings_schema import get_setting
-    return (get_setting("grafana_fleet_dashboard_uid", "") or "").strip()
+    from modules.list_settings import default_layer
+    return (default_layer("grafana_fleet_dashboard_uid", "") or "").strip()
 
 
 def _fleet_panels(dash: dict) -> list:

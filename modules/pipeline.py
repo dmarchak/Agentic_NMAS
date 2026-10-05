@@ -1105,7 +1105,7 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
     from modules.connection import get_persistent_connection
 
     dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
-    window = _window_for(protocol)
+    window = _window_for(protocol, _list_of(ctx))
     if dev is None:
         return {"state": _FAILED, "count": -1, "elapsed": 0.0, "window": window}
 
@@ -1133,7 +1133,8 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
         def _met(snap):
             return (_protocol_counts(snap).get(protocol, -1) - pre_count) \
                 >= -_NEIGHBOR_DROP_TOLERANCE
-    result = _wait_for(protocol, _probe, _met, sleep=ctx.settle_sleep or time.sleep)
+    result = _wait_for(protocol, _probe, _met, sleep=ctx.settle_sleep or time.sleep,
+                       list_name=_list_of(ctx))
 
     count = latest["count"]
     rose = len(seen) > 1 and max(seen[1:]) > seen[0]
@@ -1229,7 +1230,7 @@ def _await_route_retention(ctx, ip: str, pre_count: int) -> dict:
     from modules.connection import get_persistent_connection
 
     dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
-    window = _window_for("routes")
+    window = _window_for("routes", _list_of(ctx))
     if dev is None:
         return {"state": _FAILED, "count": -1, "elapsed": 0.0, "window": window}
     seen: list = []
@@ -1241,7 +1242,7 @@ def _await_route_retention(ctx, ip: str, pre_count: int) -> dict:
 
     result = _wait_for("routes", _probe,
                        lambda n: n >= 0 and n >= pre_count * _ROUTE_RETENTION_MIN,
-                       sleep=ctx.settle_sleep or time.sleep)
+                       sleep=ctx.settle_sleep or time.sleep, list_name=_list_of(ctx))
     count = seen[-1] if seen else -1
     if result["state"] == _CONVERGED:
         state = _CONVERGED
@@ -1632,6 +1633,11 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
     A fresh SSH handshake costs nothing on a path that only runs on failure.
     """
     from modules.connection import close_persistent_connection, with_temp_connection
+    from modules.list_settings import value as list_value
+
+    # Read once, outside the per-device try: a missing list is a defect to raise, never a
+    # lost capture.
+    timeout = list_value(_list_of(ctx), "nsot_config_read_timeout", 120)
 
     for ip, result in ctx.push_results.items():
         if result.get("skipped"):
@@ -1646,9 +1652,7 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
             # after `write memory`, and on an emulated device that leaves the
             # box slow for tens of seconds — measured at 5.5s idle and >16s
             # straight after a save. A timeout here loses the evidence, which
-            # is the one thing this function exists to preserve.
-            from modules.settings_schema import get_setting
-            timeout = get_setting("nsot_config_read_timeout", 120)
+            # is the one thing this function exists to preserve (the bound is read above).
             post = with_temp_connection(
                 dev, lambda c: c.send_command("show running-config",
                                               read_timeout=timeout))
@@ -1702,10 +1706,11 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg, units=(), recreated=()) -> dic
     empty program means the push is gone."""
     from modules.connection import with_temp_connection
     from modules.nsot.deploy import rollback_commands
-    from modules.settings_schema import get_setting
+    from modules.list_settings import value as list_value
 
+    # Outside the try: a missing list is a defect to raise, never an "unverified" undo.
+    timeout = list_value(_list_of(ctx), "nsot_config_read_timeout", 120)
     try:
-        timeout = get_setting("nsot_config_read_timeout", 120)
         post = with_temp_connection(
             dev, lambda c: c.send_command("show running-config", read_timeout=timeout))
     except Exception as exc:                    # noqa: BLE001

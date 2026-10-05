@@ -63,8 +63,8 @@ def step_for(seconds: int) -> int:
 def live_seconds() -> int:
     """How long the LIVE PromQL store keeps metrics (`metrics_live_retention_days`)."""
     try:
-        from modules.settings_schema import get_setting
-        days = int(get_setting("metrics_live_retention_days", LIMITS["prometheus"][0] // 86400))
+        from modules.list_settings import default_layer     # paired with Default's Grafana
+        days = int(default_layer("metrics_live_retention_days", LIMITS["prometheus"][0] // 86400))
     except (TypeError, ValueError):
         days = LIMITS["prometheus"][0] // 86400
     return max(days, 1) * 86400
@@ -75,8 +75,8 @@ def history_store(datasources: list) -> tuple:
     store's retention reads (C406, `grafana_history_datasource_uid`). None with why "" when
     none is set; None with the reason when the setting names one Grafana does not hold, or one
     that is not a PromQL datasource."""
-    from modules.settings_schema import get_setting
-    uid = str(get_setting("grafana_history_datasource_uid", "") or "").strip()
+    from modules.list_settings import default_layer         # paired with Default's Grafana
+    uid = str(default_layer("grafana_history_datasource_uid", "") or "").strip()
     if not uid:
         return None, ""
     ds = next((d for d in datasources or [] if d.get("uid") == uid), None)

@@ -205,6 +205,9 @@ class TestTheArchiveUploadsWhatWasCommitted:
         class _S3:
             url = "http://192.0.2.5:9000"
 
+            def __init__(self, list_name=""):
+                assert list_name == "Default", "the archive is the commit's own network's"
+
             def is_configured(self):
                 return True
 
@@ -215,7 +218,8 @@ class TestTheArchiveUploadsWhatWasCommitted:
         monkeypatch.setattr("modules.settings_schema.get_setting",
                             lambda key, default=None: {"s3_bucket": "b"}.get(key, default))
         out = archive.s3_archive_hook({"repo": repo, "sha": sha, "devices": ["s1"],
-                                       "tags": [], "source": "t", "actor": "t"})
+                                       "tags": [], "source": "t", "actor": "t",
+                                       "list_name": "Default"})
         assert out["ok"] is True, out
         (key, (data, length, meta)), = _Minio.uploads.items()
         assert data == b"hostname s1\n" and length == len(data)

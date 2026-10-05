@@ -1501,13 +1501,13 @@ class CircuitBreaker:
     mistake into nine.
     """
 
-    def __init__(self, limit: int = None, any_failure: bool = False):
+    def __init__(self, limit: int = None, any_failure: bool = False, list_name: str = ""):
         """*any_failure* (Coverage's combined deploy, artboard A2): every device that was
         not deployed, or whose verify did not pass, counts, not only a verify that raised
         (C10); with *limit* 1 the batch stops at its first failure of any kind."""
         if limit is None:
-            from modules.settings_schema import get_setting
-            limit = get_setting("deploy_verify_failure_limit", 2)
+            from modules.list_settings import value as list_value   # the batch's network
+            limit = list_value(list_name, "deploy_verify_failure_limit", 2)
         self.limit = max(1, int(limit))
         self.any_failure = any_failure
         self.verify_failures = 0
@@ -1542,15 +1542,15 @@ class CircuitBreaker:
                 f"{self.tripped_after}")
 
 
-def max_workers() -> int:
+def max_workers(list_name: str) -> int:
     """Deploy concurrency. Sequential by default.
 
     vIOS-L2 has limited vty lines, and Oxidized, the drift checker, the ping
     worker and a nine-device batch can all want the same device at once.
     """
-    from modules.settings_schema import get_setting
+    from modules.list_settings import value as list_value   # the batch's network
     try:
-        return max(1, min(16, int(get_setting("deploy_max_workers", 1))))
+        return max(1, min(16, int(list_value(list_name, "deploy_max_workers", 1))))
     except (TypeError, ValueError):
         return 1
 
@@ -1646,7 +1646,7 @@ def plan_batch(artifacts: list, confirmed: dict, fresh_captures: dict) -> dict:
 
 
 def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None,
-              sequential: bool = False) -> dict:
+              sequential: bool = False, *, list_name: str = "") -> dict:
     """Deploy each planned device, honouring the circuit breaker.
 
     *deploy_one(entry)* performs one device and returns
@@ -1657,12 +1657,12 @@ def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None,
     vty lines and Oxidized, the drift checker, the ping worker and a nine-device
     batch can all want the same device at once.
     """
-    breaker = breaker or CircuitBreaker()
+    breaker = breaker or CircuitBreaker(list_name=list_name)
     results = list(plan.get("skipped", []))
     queue = list(plan.get("to_deploy", []))
     # *sequential*: one device at a time whatever the setting, so the breaker can stop the
     # rest (with workers, every device is submitted before any result is back).
-    workers = 1 if sequential else max_workers()
+    workers = 1 if sequential else max_workers(list_name)
 
     from modules.nsot import device_ops
 

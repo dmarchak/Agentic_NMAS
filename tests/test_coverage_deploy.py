@@ -132,20 +132,21 @@ class TestOneChangeRolledBackAsOne:
         import routes.deploy as rd
         seen = []
 
-        def run_batch(plan, one, breaker=None, sequential=False):
-            seen.append((breaker.limit, breaker.any_failure, sequential))
+        def run_batch(plan, one, breaker=None, sequential=False, list_name=""):
+            seen.append((breaker.limit, breaker.any_failure, sequential, list_name))
             return {"results": [], "by_outcome": {}, "deployed": [], "breaker_tripped": False,
                     "breaker_reason": "", "total": 0, "workers": 1}
         monkeypatch.setattr("modules.nsot.deploy.run_batch", run_batch)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
         lab["client"].post("/deploy/apply", json=dict(self._conf(lab), scope="templates"))
-        assert seen == [(1, True, True)]
+        assert seen == [(1, True, True, "Lab")], "the batch carries its list (P.8)"
         (p,) = _plan(lab, "profile")["devices"]
         lab["client"].post("/deploy/apply", json={
             "confirmations": {"r6": p["capture_hash"]}, "command_hashes": {"r6": p["command_hash"]},
             "list_name": "Lab", "scope": "profile"})
         assert seen[-1][1] is False and seen[-1][2] is False, "every other scope as before"
+        assert seen[-1][3] == "Lab"
 
     def test_the_device_path_reads_every_line_back(self, lab, monkeypatch, r6_probe_unsent):
         import routes.deploy as rd

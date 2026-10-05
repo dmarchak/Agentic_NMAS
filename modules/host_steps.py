@@ -122,13 +122,13 @@ def check_oxidized_helper(root: str = ROOT) -> dict:
     C375), so a person never vouches for what it measures (C416). No helper installed and no
     Oxidized configured: nothing to re-install."""
     from modules.nsot import credential_rotation as cr
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer      # one Oxidized helper on the host
 
     st = cr.helper_status()
     if st["state"] == "ok":
         return {"state": "done", "detail": f"{cr.HELPER_INSTALLED} is this release's "
                                            f"{cr.HELPER_SOURCE_REL} ({st.get('source_sha')})"}
-    if st["state"] == "not_installed" and not str(get_setting("oxidized_url", "") or "").strip():
+    if st["state"] == "not_installed" and not str(default_layer("oxidized_url", "") or "").strip():
         return {"state": "done", "detail": "no helper is installed and no Oxidized is "
                                            "configured: nothing to re-install"}
     return {"state": "not_done", "detail": (st.get("reason") or st["state"]) + (
@@ -142,12 +142,12 @@ def check_oxidized_pin(root: str = ROOT) -> dict:
     step DID (C443), never the helper's hash, which every helper release changes. No Oxidized
     configured: nothing to pin."""
     from modules.nsot import credential_rotation as cr
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer      # one Oxidized helper on the host
 
     pin = cr.helper_pin_status()
     if pin["ok"]:
         return {"state": "done", "detail": pin["reason"]}
-    if not str(get_setting("oxidized_url", "") or "").strip():
+    if not str(default_layer("oxidized_url", "") or "").strip():
         return {"state": "done", "detail": "no Oxidized is configured: nothing to pin"}
     return {"state": "not_done", "detail": pin["reason"]}
 

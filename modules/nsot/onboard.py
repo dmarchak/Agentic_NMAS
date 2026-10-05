@@ -663,7 +663,7 @@ def build_plan(hostname: str, platform: str, list_name: str, *,
     # supplied one has decided, and the commit's whole-or-absent rule still
     # judges it.
     host_vars = dict(host_vars or {})
-    syslog_block, syslog_error = syslog_baseline()
+    syslog_block, syslog_error = syslog_baseline(list_name)
     logging_ = dict(host_vars.get("logging") or {})
     if not logging_.get("syslog") and syslog_block:
         logging_.setdefault("settings", [])
@@ -705,28 +705,31 @@ def _role_problem(role: str, list_name: str, platform: str) -> str:
     return role_problem(role, list_name, platform)
 
 
-def syslog_baseline() -> tuple:
+def syslog_baseline(list_name: str) -> tuple:
     """``(block, error)``: the syslog block every onboarded device is given.
 
-    From settings, read through `settings_schema.get_setting` so an unset key
+    From the network *list_name*'s settings (P.8), through `list_settings.value` so an unset key
     is its default rather than nothing. The block is whole or not at all --
     `hostvars.syslog_block_problems()` is the arbiter, so this cannot build a
     block the commit would then refuse.
     """
     from modules.nsot import hostvars
-    from modules.settings_schema import get_setting
+    from modules.list_settings import value as list_value
 
-    host = (get_setting("syslog_host") or "").strip()
+    def get(key):
+        return list_value(list_name, key)
+
+    host = (get("syslog_host") or "").strip()
     if not host:
         return None, ("syslog_host is not configured -- every onboarded "
                       "device is given the syslog block, and a block with no "
                       "host is silence nobody receives")
     block = {
-        "trap": get_setting("syslog_trap_level"),
-        "origin_id": get_setting("syslog_origin_id"),
-        "source_interface": get_setting("syslog_source_interface"),
+        "trap": get("syslog_trap_level"),
+        "origin_id": get("syslog_origin_id"),
+        "source_interface": get("syslog_source_interface"),
         "hosts": [host],
-        "heartbeat": int(get_setting("syslog_heartbeat_seconds") or 0),
+        "heartbeat": int(get("syslog_heartbeat_seconds") or 0),
     }
     problems = hostvars.syslog_block_problems(
         {"logging": {"syslog": block}})
@@ -2860,9 +2863,10 @@ def _record_native_persist(hostname: str, pers: dict, actor: str, *, via: str) -
 
 
 def _read_timeout() -> int:
-    from modules.settings_schema import get_setting
+    # The Default network's: these device sessions hold no list (C462).
+    from modules.list_settings import default_layer
 
-    return int(get_setting("nsot_config_read_timeout", 120) or 120)
+    return int(default_layer("nsot_config_read_timeout", 120) or 120)
 
 
 def remove_rw_communities(mgmt_ip: str, username: str, password: str,

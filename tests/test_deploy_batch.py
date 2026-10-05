@@ -20,8 +20,15 @@ from modules.nsot import deploy
 from modules.nsot import manifest as M
 from modules.nsot.deploy import (
     DEPLOYED, FAILED, REFUSED, SKIPPED_DRIFTED, SKIPPED_NOT_SELECTED, UNATTEMPTED,
-    CircuitBreaker, plan_batch, run_batch,
+    CircuitBreaker, plan_batch,
 )
+from modules.nsot.deploy import run_batch as _run_batch
+
+
+def run_batch(plan, deploy_one, breaker=None, sequential=False):
+    """These tests are about the batch, not its network: every batch here is the list "Lab"'s
+    (P.8 step 4: a batch carries its list, and reads its worker count and breaker limit there)."""
+    return _run_batch(plan, deploy_one, breaker, sequential, list_name="Lab")
 
 
 class FakeArtifact:
@@ -43,7 +50,7 @@ def _hash(text):
 
 @pytest.fixture(autouse=True)
 def sequential(monkeypatch):
-    monkeypatch.setattr(deploy, "max_workers", lambda: 1)
+    monkeypatch.setattr(deploy, "max_workers", lambda list_name: 1)
 
 
 class TestPlanning:
@@ -204,7 +211,7 @@ class TestCircuitBreakerInBatch:
 
 class TestConcurrency:
     def test_sequential_by_default(self, monkeypatch):
-        monkeypatch.setattr(deploy, "max_workers", lambda: 1)
+        monkeypatch.setattr(deploy, "max_workers", lambda list_name: 1)
         order = []
         artifacts = [FakeArtifact(f"R{i}") for i in range(1, 4)]
         confirmed = {a.device: _hash(a.device) for a in artifacts}
@@ -215,7 +222,7 @@ class TestConcurrency:
         assert order == ["R1", "R2", "R3"]
 
     def test_parallel_still_accounts_for_everyone(self, monkeypatch):
-        monkeypatch.setattr(deploy, "max_workers", lambda: 4)
+        monkeypatch.setattr(deploy, "max_workers", lambda list_name: 4)
         artifacts = [FakeArtifact(f"R{i}") for i in range(1, 10)]
         confirmed = {a.device: _hash(a.device) for a in artifacts}
         fresh = {a.device: a.device for a in artifacts}

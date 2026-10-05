@@ -60,7 +60,7 @@ def svg():
     be told from a topology with nothing in it.
     """
     from modules.integrations import get_integration
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer   # paired with the Default network's client
 
     client = get_integration("topology_service")
     if client is None:
@@ -70,7 +70,7 @@ def svg():
             "Topology service is not configured — set its URL in "
             "Settings → Topology service.")}), 503
 
-    kind = (get_setting("topology_service_type", "json") or "").lower()
+    kind = (default_layer("topology_service_type", "json") or "").lower()
     if kind != "svg":
         # Not an error worth hiding: the panel renders an image, and a JSON
         # graph endpoint would arrive as bytes an <img> cannot show.
@@ -113,13 +113,13 @@ def svg():
 def status():
     """Whether the panel can expect an image, and where it comes from."""
     from modules.integrations import get_integration
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer   # paired with the Default network's client
 
     client = get_integration("topology_service")
     configured = bool(client and client.is_configured())
     return jsonify({
         "ok": True,
         "configured": configured,
-        "type": get_setting("topology_service_type", "json"),
+        "type": default_layer("topology_service_type", "json"),
         "url": svg_url(client.url) if configured else "",
     })

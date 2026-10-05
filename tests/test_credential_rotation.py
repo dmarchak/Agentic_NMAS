@@ -1897,7 +1897,7 @@ class TestTheGoldenIsTheWholeConfigNotTheVerifyRead:
         real = session.send_command
         session.send_command = lambda c="", *a, **k: (asked.append(c)
                                                       or real(c, *a, **k))
-        cr.capture_running_config(session)
+        cr.capture_running_config(session, "Default")
 
         assert asked, "it must actually read"
         assert all("include" not in c for c in asked), asked
@@ -1906,7 +1906,7 @@ class TestTheGoldenIsTheWholeConfigNotTheVerifyRead:
     def test_a_short_capture_leaves_the_golden_alone(self, wired, monkeypatch):
         """The guard: never overwrite a config with a fragment."""
         monkeypatch.setattr(cr, "capture_running_config",
-                            lambda _s: "username admin privilege 15 secret 9 $9$x")
+                            lambda _s, _list: "username admin privilege 15 secret 9 $9$x")
         _result, config = self._commits(wired)
 
         assert config == "", (
@@ -1919,7 +1919,7 @@ class TestTheGoldenIsTheWholeConfigNotTheVerifyRead:
         device and in the staging file and nowhere else — which is exactly the
         crash window the staging file exists to cover.
         """
-        monkeypatch.setattr(cr, "capture_running_config", lambda _s: "")
+        monkeypatch.setattr(cr, "capture_running_config", lambda _s, _list: "")
         committed = {}
         import modules.nsot.credential_rotation as mod
         real = mod._commit
@@ -1945,7 +1945,7 @@ class TestTheGoldenIsTheWholeConfigNotTheVerifyRead:
         assert cr.looks_like_a_full_config(wired["router"].full_config()) is True
 
     def test_a_failed_capture_is_reported_as_a_step(self, wired, monkeypatch):
-        monkeypatch.setattr(cr, "capture_running_config", lambda _s: "")
+        monkeypatch.setattr(cr, "capture_running_config", lambda _s, _list: "")
         result = cr.rotate("Lab", "r2", confirmed_fingerprint=_fingerprint(wired))
 
         names = [st["name"] for st in result["steps"]]
@@ -2765,7 +2765,7 @@ class TestThePersistenceChainFailsClosedOnAHalfDeploy:
         monkeypatch.setattr("modules.settings_schema.get_setting",
                             lambda k, d=None: "clabhost" if k == "clab_host" else (d or "x"))
 
-        out = cr.verify_startup_applies("r6", platform=platform,
+        out = cr.verify_startup_applies("r6", list_name="Default", platform=platform,
                                         username="admin")
         assert out["ok"] is True and out["applies"] is True
         assert out["kind"] == "password"
@@ -2784,7 +2784,7 @@ class TestThePersistenceChainFailsClosedOnAHalfDeploy:
         monkeypatch.setattr("modules.settings_schema.get_setting",
                             lambda k, d=None: "clabhost" if k == "clab_host" else (d or "x"))
 
-        out = cr.verify_startup_file("r6", "secret 9 $9$rotated")
+        out = cr.verify_startup_file("r6", "secret 9 $9$rotated", list_name="Default")
         assert out["ok"] is False
         assert out["matches"] == 0
 

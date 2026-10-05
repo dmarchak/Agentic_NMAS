@@ -379,7 +379,7 @@ class TestEveryVerifierGoesThroughTheResolver:
         from modules.nsot.bootstrap_config import VRNETLAB_INJECTS_USER
 
         seen = self._reads(r6, monkeypatch)
-        r6.verify_startup_applies("r6",
+        r6.verify_startup_applies("r6", list_name="Default",
                                   platform=sorted(VRNETLAB_INJECTS_USER)[0],
                                   username="admin")
 
@@ -395,7 +395,7 @@ class TestEveryVerifierGoesThroughTheResolver:
         from modules.nsot.bootstrap_config import VRNETLAB_INJECTS_USER
 
         seen = self._reads(r6, monkeypatch)
-        r6.verify_startup_applies("r1",
+        r6.verify_startup_applies("r1", list_name="Default",
                                   platform=sorted(VRNETLAB_INJECTS_USER)[0],
                                   username="admin")
 
@@ -414,7 +414,7 @@ class TestEveryVerifierGoesThroughTheResolver:
             return _P()
 
         monkeypatch.setattr("subprocess.run", _run)
-        out = r6.verify_startup_file("r6", "secret 9 $9$x")
+        out = r6.verify_startup_file("r6", "secret 9 $9$x", list_name="Default")
 
         assert "labs/r6/configs/r6.cfg" in calls[0]
         assert out["lab"] == "r6", "the result does not say which lab"

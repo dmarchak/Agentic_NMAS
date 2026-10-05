@@ -144,7 +144,7 @@ class TestCircuitBreaker:
     def test_limit_comes_from_settings(self, monkeypatch):
         monkeypatch.setattr("modules.settings_schema.get_setting",
                             lambda k, d=None: 5 if k == "deploy_verify_failure_limit" else d)
-        assert CircuitBreaker().limit == 5
+        assert CircuitBreaker(list_name="Lab").limit == 5
 
     def test_drift_is_not_a_verify_failure(self):
         """One drifted device is someone touching a box; it must not trip."""
@@ -195,35 +195,35 @@ class TestConcurrency:
     def test_sequential_by_default(self, monkeypatch):
         monkeypatch.setattr("modules.settings_schema.get_setting",
                             lambda k, d=None: d)
-        assert max_workers() == 1
+        assert max_workers("Lab") == 1
 
     def test_configurable_and_capped(self, monkeypatch):
         for configured, expected in ((4, 4), (99, 16), (0, 1), ("x", 1)):
             monkeypatch.setattr("modules.settings_schema.get_setting",
                                 lambda k, d=None, v=configured:
                                 v if k == "deploy_max_workers" else d)
-            assert max_workers() == expected
+            assert max_workers("Lab") == expected
 
 
 class TestSettleWindows:
     def test_rip_window_spans_more_than_two_update_cycles(self):
         """RIP updates every 30s; one missed cycle is normal, two is not."""
-        window = convergence.window_for("rip")
+        window = convergence.window_for("rip", "Lab")
         assert window["timeout"] >= 60
 
     def test_ospf_settles_faster_than_rip(self):
-        assert convergence.window_for("ospf")["timeout"] < \
-            convergence.window_for("rip")["timeout"]
+        assert convergence.window_for("ospf", "Lab")["timeout"] < \
+            convergence.window_for("rip", "Lab")["timeout"]
 
     def test_bgp_sits_between_them(self):
-        ospf = convergence.window_for("ospf")["timeout"]
-        bgp = convergence.window_for("bgp")["timeout"]
-        rip = convergence.window_for("rip")["timeout"]
+        ospf = convergence.window_for("ospf", "Lab")["timeout"]
+        bgp = convergence.window_for("bgp", "Lab")["timeout"]
+        rip = convergence.window_for("rip", "Lab")["timeout"]
         assert ospf <= bgp <= rip
 
     def test_first_poll_waits(self):
         """The poll immediately after a change is the most misleading one."""
-        assert convergence.window_for("rip")["initial_wait"] > 0
+        assert convergence.window_for("rip", "Lab")["initial_wait"] > 0
 
     def test_not_yet_converged_is_distinct_from_failed(self):
         assert convergence.classify(2, 1, settled=False) == convergence.NOT_YET
@@ -232,7 +232,7 @@ class TestSettleWindows:
     def test_recovery_within_the_window_converges(self):
         counts = iter([0, 1, 2])
         result = convergence.wait_for("ospf", lambda: next(counts),
-                                      lambda v: v >= 2, sleep=lambda s: None)
+                                      lambda v: v >= 2, sleep=lambda s: None, list_name="Lab")
         assert result["state"] == convergence.CONVERGED
         assert result["attempts"] == 3
 
@@ -251,8 +251,8 @@ class TestSettleWindows:
         monkeypatch.setattr(
             "modules.settings_schema.get_setting",
             lambda k, d=None: {"rip": {"timeout": 120}} if k == "verify_settle_windows" else d)
-        assert convergence.window_for("rip")["timeout"] == 120
-        assert convergence.window_for("rip")["interval"] == 15   # default kept
+        assert convergence.window_for("rip", "Lab")["timeout"] == 120
+        assert convergence.window_for("rip", "Lab")["interval"] == 15   # default kept
 
 
 class TestMergeDiffPushesOnlyCommands:

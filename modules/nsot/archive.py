@@ -227,11 +227,16 @@ def committed_bytes(repo: str, sha: str, rel: str):
 
 def s3_archive_hook(context: dict) -> dict:
     """Upload changed golden configs to the S3-compatible archive."""
+    from modules import list_settings
     from modules.integrations.s3_archive import S3ArchiveIntegration
     from modules.nsot.repo import _safe_name
-    from modules.settings_schema import get_setting
 
-    integration = S3ArchiveIntegration()
+    # The commit's own network (the hook's context carries it): its archive, its keys.
+    list_name = context.get("list_name") or ""
+    if not list_name:
+        return {"ok": False, "error": "the commit's context names no list, so no network's "
+                                      "archive can be chosen"}
+    integration = S3ArchiveIntegration(list_name=list_name)
     if not integration.is_configured():
         return {"ok": True, "message": "S3 not configured"}
 
@@ -240,21 +245,25 @@ def s3_archive_hook(context: dict) -> dict:
     except ImportError:
         return {"ok": False, "error": "minio SDK not installed"}
 
-    from modules.secrets_store import get_secret
+    def net(key, default=None):
+        return list_settings.value(list_name, key, default)
+
+    def net_secret(key):
+        return list_settings.secret(list_name, key)
 
     endpoint = integration.url
     host = endpoint.split("://", 1)[-1]
-    bucket = get_setting("s3_bucket", "")
-    prefix = (get_setting("s3_prefix", "") or "").strip("/")
+    bucket = net("s3_bucket", "")
+    prefix = (net("s3_prefix", "") or "").strip("/")
     repo = context["repo"]
     sha = context.get("sha", "")
 
     try:
         client = Minio(host,
-                       access_key=get_secret("s3_access_key"),
-                       secret_key=get_secret("s3_secret_key"),
+                       access_key=net_secret("s3_access_key"),
+                       secret_key=net_secret("s3_secret_key"),
                        secure=endpoint.startswith("https://"),
-                       region=get_setting("s3_region", "") or None)
+                       region=net("s3_region", "") or None)
     except Exception as exc:                  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 

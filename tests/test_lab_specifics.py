@@ -62,9 +62,10 @@ INVENTORY = {
     "modules/readers/lab_startup.py": (3, LAB_PLATFORM, OPTIONAL, "its reader"),
     "modules/attention.py": (6, LAB_PLATFORM, OPTIONAL, "the lab-startup Needs attention rows"),
     "modules/job_health.py": (21, LAB_PLATFORM, OPTIONAL, "clab-sync's job row and lab rows"),
-    "modules/settings_scope.py": (2, LAB_PLATFORM, OPTIONAL,
+    "modules/settings_scope.py": (3, LAB_PLATFORM, OPTIONAL,
                                   "names the clab_* settings as the per-network lab group "
-                                  "(P.8 step 1); they leave with the optional integration"),
+                                  "(P.8 step 1), and clab_declared_unmapped as host-wide "
+                                  "(step 4); they leave with the optional integration"),
     "modules/settings_schema.py": (29, LAB_PLATFORM, OPTIONAL,
                                    "clab_* settings (some default to the lab's paths); "
                                    "netbox_excluded_vrfs defaults to the lab's clab-mgmt"),

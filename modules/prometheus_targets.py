@@ -509,9 +509,10 @@ _keeper = {"thread": None, "event": threading.Event(), "reasons": [], "lock": th
 
 
 def target_dir() -> str:
-    from modules.settings_schema import get_setting
+    # The Default network's: one targets directory serves every list until P.7.
+    from modules.list_settings import default_layer
 
-    return str(get_setting("prometheus_targets_dir", "") or "").strip()
+    return str(default_layer("prometheus_targets_dir", "") or "").strip()
 
 
 def _record_path() -> str:

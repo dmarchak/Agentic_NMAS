@@ -248,9 +248,9 @@ def helper_pin_status(path: str = None, router_db: str = None) -> dict:
     import os
 
     path = path or HELPER_PIN
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer   # one router.db and one helper on the host
 
-    want = router_db or get_setting("oxidized_router_db", "/opt/oxidized/router.db")
+    want = router_db or default_layer("oxidized_router_db", "/opt/oxidized/router.db")
     out = {"command": pin_command(want)}
     try:
         st = os.lstat(path)
@@ -755,7 +755,7 @@ def open_original_session(device: dict):
 MIN_CONFIG_LINES = 20
 
 
-def capture_running_config(session) -> str:
+def capture_running_config(session, list_name: str) -> str:
     """The WHOLE running config, from the held session.
 
     Deliberately separate from the verify's read. The verify runs
@@ -764,9 +764,9 @@ def capture_running_config(session) -> str:
     Sharing one read between "prove the credential" and "record the device"
     is what silently replaced two devices' goldens with a two-line fragment.
     """
-    from modules.settings_schema import get_setting
+    from modules.list_settings import value as list_value
 
-    timeout = float(get_setting("nsot_config_read_timeout", 120))
+    timeout = float(list_value(list_name, "nsot_config_read_timeout", 120))
     try:
         return session.send_command("show running-config",
                                     read_timeout=timeout) or ""
@@ -1606,7 +1606,7 @@ def _rotate(list_name: str, hostname: str, *, confirmed_fingerprint: str,
         # It was stored as one. r1 and r2's goldens went from ~330 lines to
         # two — a header and a username line — and the NSoT then recorded
         # those devices as having no interfaces, no routing and no services.
-        post_config = capture_running_config(session)
+        post_config = capture_running_config(session, list_name)
         _step("post_capture", bool(post_config),
               f"{len(post_config.splitlines())} lines" if post_config
               else "read nothing back")
@@ -1938,10 +1938,10 @@ def _run_helper(flags: list, stdin: str, router_db: str = "") -> dict:
     import json
     import subprocess
 
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer   # one router.db and one helper on the host
 
-    router_db = router_db or get_setting("oxidized_router_db",
-                                         "/opt/oxidized/router.db")
+    router_db = router_db or default_layer("oxidized_router_db",
+                                           "/opt/oxidized/router.db")
     status = helper_status()
     if not status["ok"]:
         return {"ok": False, "error": status["reason"],
@@ -2278,16 +2278,16 @@ def clab_target_for(list_name: str, hostname: str) -> dict:
     `lab` **name**, because a verdict about a remote file that does not say
     which lab it came from is a verdict nobody can check.
     """
-    from modules.settings_schema import get_setting
+    from modules.list_settings import value as list_value
 
     defaults = {
-        "host":         get_setting("clab_host", ""),
-        "configs_dir":  get_setting("clab_configs_dir", "labs/lab/configs"),
-        "launch_patch": get_setting("clab_launch_patch",
-                                    "labs/lab/patches/c8000v-launch.py"),
-        "sync_script":  get_setting("clab_sync_script", ""),
+        "host":         list_value(list_name, "clab_host", ""),
+        "configs_dir":  list_value(list_name, "clab_configs_dir", "labs/lab/configs"),
+        "launch_patch": list_value(list_name, "clab_launch_patch",
+                                   "labs/lab/patches/c8000v-launch.py"),
+        "sync_script":  list_value(list_name, "clab_sync_script", ""),
     }
-    labs = get_setting("clab_labs", {}) or {}
+    labs = list_value(list_name, "clab_labs", {}) or {}
     name = _lab_of(list_name, hostname)
     if name == DEFAULT_LAB:
         return {**defaults, "lab": DEFAULT_LAB, "named": True}
@@ -2408,10 +2408,10 @@ def sync_targets(list_name: str) -> dict:
         # filenames and a wrong one is a silent "nothing stored".
         ox_identity = ""
         try:
-            from modules.settings_schema import get_setting
+            from modules.list_settings import default_layer   # one router.db names every list
 
-            ox_identity = (name if get_setting("oxidized_node_identity",
-                                               "hostname") == "hostname"
+            ox_identity = (name if default_layer("oxidized_node_identity",
+                                                 "hostname") == "hostname"
                            else (entry.get("mgmt_ip") or ""))
         except Exception as exc:               # noqa: BLE001
             log.debug("clab: no oxidized node key for %r: %s", name, exc)
@@ -2448,14 +2448,13 @@ def sync_targets(list_name: str) -> dict:
 
 
 def run_sync(script: str = "") -> dict:
-    """Run the startup-config sync. No privilege: same user, flock inside."""
+    """Run the startup-config sync. No privilege: same user, flock inside. *script* is the
+    device's network's (`clab_target_for` resolves it per list); none is "not configured",
+    never another network's script (P.8)."""
     import subprocess
 
-    from modules.settings_schema import get_setting
-
-    script = script or get_setting("clab_sync_script", "")
     if not script:
-        return {"ok": False, "error": "clab_sync_script is not configured"}
+        return {"ok": False, "error": "clab_sync_script is not configured for this network"}
     try:
         proc = subprocess.run([script], capture_output=True, text=True,
                               timeout=600)
@@ -2494,7 +2493,7 @@ def _resolve_target(list_name: str, hostname: str, clab: str,
 
 
 def verify_startup_file(hostname: str, new_hash: str, *, clab: str = "",
-                        remote_dir: str = "", list_name: str = "") -> dict:
+                        remote_dir: str = "", list_name: str) -> dict:
     """Does the file that BOOTS the node contain the new hash?
 
     Reads the clab VM, not the NMAS's local staging copy. Checking the local
@@ -2792,7 +2791,7 @@ def rotation_records_as_known() -> list:
 
 def verify_startup_applies(hostname: str, *, platform: str, username: str,
                            clab: str = "", remote_dir: str = "",
-                           launch_patch: str = "", list_name: str = "") -> dict:
+                           launch_patch: str = "", list_name: str) -> dict:
     """Will the startup file put the device in the state it describes?
 
     The check :func:`verify_startup_file` should always have been. That one
@@ -3081,7 +3080,7 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
                   run_sync(**{k: kw[k] for k in ("script",) if k in kw})):
         return result
     if not _stage("startup_file",
-                  verify_startup_file(hostname, new_hash,
+                  verify_startup_file(hostname, new_hash, list_name=kw["list_name"],
                                       **{k: kw[k] for k in ("clab", "remote_dir")
                                          if k in kw})):
         return result
@@ -3105,7 +3104,7 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
     # **Reordering these two for efficiency reopens that window.**
     # `TestThePersistenceChainFailsClosedOnAHalfDeploy` fails if you do.
     if not _stage("startup_applies",
-                  verify_startup_applies(hostname, platform=platform,
+                  verify_startup_applies(hostname, platform=platform, list_name=kw["list_name"],
                                          username=username,
                                          **{k: kw[k] for k in
                                             ("clab", "remote_dir", "launch_patch")

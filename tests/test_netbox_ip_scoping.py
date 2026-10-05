@@ -510,8 +510,10 @@ class TestAnExcludedVRFIsNotModelled:
                 imported.add(node.module)
                 called.update(a.name for a in node.names)
 
-        assert "get_setting" in called, "the parse found nothing"
-        assert "modules.settings_schema" in imported
+        # Through the network resolver since P.8 step 4, which falls back to the schema's
+        # default as `get_setting()` does.
+        assert "default_layer" in called, "the parse found nothing"
+        assert "modules.list_settings" in imported
         assert "get_user_setting" not in called, \
             "it reads the raw file, so a key no install has written "\
             "excludes nothing"

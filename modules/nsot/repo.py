@@ -1264,7 +1264,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
             else:
                 baseline_tag = ""
 
-        _prune_device_tags(repo, [c["hostname"] for c in changed])
+        _prune_device_tags(repo, [c["hostname"] for c in changed], list_name)
         git(repo, "gc", "--auto")
 
     log.info("repo: saved golden for %d device(s) in '%s' — %s (%d unchanged)",
@@ -1578,13 +1578,13 @@ def save_host_vars(list_name: str, devices: list, actor: str = "user",
                          subject, trailers, source)
 
 
-def _prune_device_tags(repo: str, hostnames: list) -> None:
+def _prune_device_tags(repo: str, hostnames: list, list_name: str) -> None:
     """Amendment 4: keep the last N per-device tags; baselines are never pruned.
 
     Commits keep full history regardless — only the tag refs are trimmed.
     """
-    from modules.settings_schema import get_setting
-    keep = get_setting("nsot_device_tag_retention", 50)
+    from modules.list_settings import value as list_value
+    keep = list_value(list_name, "nsot_device_tag_retention", 50)
     try:
         keep = int(keep)
     except (TypeError, ValueError):

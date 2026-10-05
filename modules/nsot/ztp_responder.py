@@ -81,9 +81,9 @@ def error_packet(code: int, text: str) -> bytes:
 
 def _fragment_entries() -> list:
     from modules.nsot import ztp
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer   # one fragment serves every list (P.7)
 
-    path = get_setting("kea_ztp_fragment", "")
+    path = default_layer("kea_ztp_fragment", "")
     if not path:
         raise LookupError("kea_ztp_fragment is not configured, so no address was "
                           "reserved by the tool and none can be served")

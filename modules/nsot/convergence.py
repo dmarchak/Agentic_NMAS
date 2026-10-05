@@ -48,11 +48,16 @@ DEFAULT_WINDOWS = {
 }
 
 
-def window_for(check: str) -> dict:
-    """Timing for *check*, from settings with the built-in default as fallback."""
+def window_for(check: str, list_name: str) -> dict:
+    """Timing for *check* on the network *list_name* (its `verify_settle_windows`, P.8), with
+    the built-in default as fallback. A missing list is refused, never read as Default's."""
+    from modules import list_settings
+
+    if not list_name:
+        raise list_settings.NoListCarried(f"window_for({check!r}): the settle window is a "
+                                          "network's setting, and no list was carried")
     try:
-        from modules.settings_schema import get_setting
-        configured = get_setting("verify_settle_windows", {}) or {}
+        configured = list_settings.value(list_name, "verify_settle_windows", {}) or {}
     except Exception:                          # noqa: BLE001
         configured = {}
     base = dict(DEFAULT_WINDOWS.get(check, DEFAULT_WINDOWS["default"]))
@@ -68,7 +73,7 @@ MAX_CONSECUTIVE_ERRORS = 3
 
 
 def wait_for(check: str, probe, is_converged, sleep=time.sleep,
-             max_consecutive_errors: int = MAX_CONSECUTIVE_ERRORS) -> dict:
+             max_consecutive_errors: int = MAX_CONSECUTIVE_ERRORS, *, list_name: str) -> dict:
     """Poll *probe* until *is_converged* or the window expires.
 
     ``probe()`` returns the current observation; ``is_converged(observation)``
@@ -81,7 +86,7 @@ def wait_for(check: str, probe, is_converged, sleep=time.sleep,
 
     Returns ``{"state", "attempts", "elapsed", "observation", "window"}``.
     """
-    timing = window_for(check)
+    timing = window_for(check, list_name)
     deadline = timing["timeout"]
     started = 0.0
     attempts = 0

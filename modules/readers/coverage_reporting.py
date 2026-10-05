@@ -191,13 +191,13 @@ def windows() -> dict:
 def read(now: float = None, prom=None, loki=None) -> dict:
     from modules.integrations.loki import LokiIntegration
     from modules.integrations.prometheus import PrometheusIntegration
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer   # paired with the Default network's clients
 
     now = time.time() if now is None else now
     prom = prom or PrometheusIntegration()
     loki = loki or LokiIntegration()
     value = {"read_at": now, "lookback_seconds": LOOKBACK_SECONDS,
-             "heartbeat_period": int(get_setting("syslog_heartbeat_seconds") or 0),
+             "heartbeat_period": int(default_layer("syslog_heartbeat_seconds") or 0),
              "sources": {}}
     plan = (("targets", prom, lambda: targets(prom)), ("up", prom, lambda: last_up(prom, now)),
             ("telemetry", prom, lambda: telemetry(prom, now)),

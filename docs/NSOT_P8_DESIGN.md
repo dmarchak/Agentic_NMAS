@@ -235,7 +235,28 @@ pages.
      read past its list.
    - No caller passes a list yet; that is step 4.
 4. **Thread the list** through the "one level up" call sites, then make `get_setting` refuse
-   a network key.
+   a network key. **4a BUILT 2026-10-05:** every direct read of a network key now has one of
+   two shapes.
+   - **For a list it carries:** `list_settings.value(list_name, key)`. An empty list raises
+     `NoListCarried`, its own type, so no `except ValueError` turns it into a fallback.
+     Converted: the deploy batch (its breaker limit and worker count, carried from the route
+     to `run_batch`), the pipeline's settle windows, failure capture and rollback read-back
+     (through `_list_of(ctx)`), a rotation's capture and its lab target, the startup
+     verifiers (whose list is now required), onboarding's syslog block, tag pruning, the S3
+     archive (the commit's own network's client and keys), and the deploy's unchanged-measure.
+   - **The Default network's, by name:** `list_settings.default_layer(key)`. Each call site
+     is in `tests/test_network_settings_read_for_a_list.py`'s exact inventory, which only
+     shrinks:
+     - the one-output-for-every-list consumers (the ZTP fragment and responder, Oxidized's
+       router.db and helper, the Prometheus targets directory: P.7);
+     - reads paired with a client still built for no list (steps 5 and 8);
+     - the SSH layer, which holds no list (C462).
+
+   `clab_declared_unmapped` is reclassified as host-wide. It is one table keyed by list,
+   written by retire; step 9 folds it. `run_sync` no longer falls back to the global script.
+   **Left for 4b:** `get_setting` refusing a network key, the 16 computed-key reads (the
+   Settings form, attention, identity), and the integration clients still built for no
+   list.
 5. **Readers loop lists;** caches are keyed by group identity.
 6. **Grafana alerts resolved across lists** (the latent false claim).
 7. **The v2 Settings page per network.** It draws each value with its origin (set here,

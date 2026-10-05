@@ -716,7 +716,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
         templates = scope == profile_apply.TEMPLATES
         report = run_batch(batch, _one,
                            CircuitBreaker(limit=1, any_failure=True) if templates
-                           else CircuitBreaker(), sequential=templates)
+                           else CircuitBreaker(list_name=list_name), sequential=templates,
+                           list_name=list_name)
         if refused:
             _merge_refusals(report, refused)
         if templates:
@@ -995,7 +996,7 @@ def run_targets(list_name: str, targets: list, data: dict,
         report = run_batch(batch,
                            lambda entry: record(_deploy_one(entry, list_name, device_rows,
                                                             authorise, source_ref)),
-                           CircuitBreaker())
+                           CircuitBreaker(list_name=list_name), list_name=list_name)
         if refused:
             # Same helper as the deploy path: the restore path merged refusals
             # the same way and had the same disagreement between its count
@@ -1033,11 +1034,11 @@ def _measure_unchanged(list_name: str, device: dict, hostname: str,
     from modules.connection import with_temp_connection
     from modules.nsot import manifest as _manifest
     from modules.nsot.repo import stage_post_deploy
-    from modules.settings_schema import get_setting
+    from modules.list_settings import value as list_value
 
     ip = device.get("ip", "")
     try:
-        timeout = get_setting("nsot_config_read_timeout", 120)
+        timeout = list_value(list_name, "nsot_config_read_timeout", 120)
         config = with_temp_connection(
             device, lambda c: c.send_command("show running-config",
                                              read_timeout=timeout))

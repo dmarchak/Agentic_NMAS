@@ -86,7 +86,6 @@ def plan(H=None, installed_path: str = "") -> dict:
     import yaml
 
     from modules.fanout import Failed, read_each
-    from modules.settings_schema import get_setting
 
     installed_path = installed_path or INSTALLED
     H = H or _script()
@@ -94,7 +93,9 @@ def plan(H=None, installed_path: str = "") -> dict:
     if not loki:
         raise Refused("no Loki to measure from: set the Loki integration in Settings "
                       "(a window without a measurement is a guess)")
-    heartbeat = int(get_setting("syslog_heartbeat_seconds") or 0)
+    from modules.list_settings import default_layer   # the Loki it reads is Default's
+
+    heartbeat = int(default_layer("syslog_heartbeat_seconds") or 0)
     if heartbeat <= 0:
         raise Refused("syslog_heartbeat_seconds is not set: there is no interval to measure against")
     installed_text = _read(installed_path)

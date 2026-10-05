@@ -59,11 +59,7 @@ class IntegrationClient:
             return get_setting(key, default)
         from modules import list_settings
 
-        value, origin = list_settings.resolve(self.list_name, key)
-        if origin in (list_settings.UNSET_EVERYWHERE, list_settings.NOT_APPLICABLE) \
-                and value in (None, ""):
-            return default if default is not None else value
-        return value
+        return list_settings.value(self.list_name, key, default)
 
     def _secret(self, key: str, default: str = "") -> str:
         """A secret FOR this client's network, decrypted."""

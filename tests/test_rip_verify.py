@@ -126,7 +126,7 @@ class TestNoVacuousPass:
 
 class TestRipUsesItsOwnSettleWindow:
     def test_rip_window_is_the_long_one(self):
-        assert convergence.window_for("rip")["timeout"] >= 60
+        assert convergence.window_for("rip", "Lab")["timeout"] >= 60
 
     def test_recent_update_counts_as_progress(self):
         """Updates still arriving means convergence in progress, not failure."""

@@ -48,7 +48,7 @@ def test_each_device_shows_its_own_state_in_turn(held):
         seen.append((device, _steps()))
         return {"device": device, "outcome": DEP.DEPLOYED, "verified": True}
 
-    DEP.run_batch(_plan("s4", "s3"), deploy_one, sequential=True)
+    DEP.run_batch(_plan("s4", "s3"), deploy_one, sequential=True, list_name="Lab")
     assert seen == [("s4", {"s4": "post_snapshot", "s3": D.WAITING}),
                     ("s3", {"s4": "done: deployed", "s3": "post_snapshot"})], seen
     assert _steps() == {"s4": "done: deployed", "s3": "done: deployed"}
@@ -59,16 +59,17 @@ def test_a_device_the_breaker_stopped_says_so(held, monkeypatch):
         return {"device": entry["artifact"].device, "outcome": DEP.FAILED,
                 "verified": False}
 
-    breaker = DEP.CircuitBreaker()
+    breaker = DEP.CircuitBreaker(list_name="Lab")
     monkeypatch.setattr(breaker, "counts", lambda outcome: True)
     monkeypatch.setattr(breaker, "record_verify_failure", lambda device: None)
     monkeypatch.setattr(type(breaker), "is_tripped", property(lambda self: True))
-    DEP.run_batch(_plan("s4", "s3"), deploy_one, breaker=breaker, sequential=True)
+    DEP.run_batch(_plan("s4", "s3"), deploy_one, breaker=breaker, sequential=True,
+                  list_name="Lab")
     assert all(s.startswith("not attempted") for s in _steps().values()), _steps()
 
 
 def test_on_worker_threads_each_step_reaches_its_own_device(held, monkeypatch):
-    monkeypatch.setattr(DEP, "max_workers", lambda: 2)
+    monkeypatch.setattr(DEP, "max_workers", lambda list_name: 2)
     seen = {}
 
     def deploy_one(entry):
@@ -77,7 +78,7 @@ def test_on_worker_threads_each_step_reaches_its_own_device(held, monkeypatch):
         seen[device] = _steps()[device]
         return {"device": device, "outcome": DEP.DEPLOYED, "verified": True}
 
-    DEP.run_batch(_plan("s4", "s3"), deploy_one)
+    DEP.run_batch(_plan("s4", "s3"), deploy_one, list_name="Lab")
     assert seen == {"s4": "deploy-s4", "s3": "deploy-s3"}, seen
 
 

@@ -1057,9 +1057,9 @@ def excluded_vrfs() -> set:
     `netbox_excluded_vrfs`, defaulting to `clab-mgmt`. Read at call time, so
     changing the setting takes effect without a restart.
     """
-    from modules.settings_schema import DEFAULTS, get_setting
+    from modules.settings_schema import DEFAULTS
 
-    # `settings_schema.get_setting()`, not `config.get_user_setting()`: the
+    # The resolver (through `settings_schema.get_setting()`), not `config.get_user_setting()`: the
     # first falls back to the declared DEFAULT, the second reads only the
     # file and returns None for a key no install has ever written -- which
     # for this setting means excluding nothing, silently, on every install
@@ -1067,7 +1067,9 @@ def excluded_vrfs() -> set:
     # settings file, where a read is survivable and must not silently turn
     # the exclusion off.
     try:
-        raw = get_setting("netbox_excluded_vrfs")
+        # The Default network's: the sync that asks carries no list down to here yet.
+        from modules.list_settings import default_layer
+        raw = default_layer("netbox_excluded_vrfs")
     except Exception:                           # noqa: BLE001
         raw = DEFAULTS.get("netbox_excluded_vrfs", [])
     if isinstance(raw, str):                    # a hand-edited file

@@ -120,9 +120,9 @@ def _declared(cid, label, setting, *, renew, put, now) -> list:
     (the operator's decisions, 2026-10-03: Grafana's Viewer token; Proxmox's token, not
     widened to read its own record). "never" is a declaration; blank is none yet; a refusal
     is still caught by the integrations probe within a minute."""
-    from modules.settings_schema import get_setting
+    from modules.list_settings import default_layer   # paired with the Default network's clients
 
-    declared = (get_setting(setting, "") or "").strip()
+    declared = (default_layer(setting, "") or "").strip()
     if not declared:
         return [_entry(cid, label, kind="expiry", state="listed",
                        why=("no expiry declared yet (" + put + "); a refusal is still caught by "
@@ -205,9 +205,9 @@ def tls(now: float) -> list:
 def grafana(now: float) -> list:
     """Grafana's token, by the expiry DECLARED when it was entered (the operator's decision:
     a Viewer token cannot read its own)."""
-    from modules.secrets_store import get_secret
+    from modules.list_settings import default_layer_secret   # the Default network's Grafana
 
-    if not get_secret("grafana_token"):
+    if not default_layer_secret("grafana_token"):
         return []
     return _declared("grafana_token", "Grafana API token", "grafana_token_expires",
                      renew="Grafana: Administration > Service accounts",

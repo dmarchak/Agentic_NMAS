@@ -175,8 +175,9 @@ def read_timeout() -> int:
     120 s by default: `write memory` leaves an emulated device slow for tens of
     seconds, measured), never the 60 s the stitched read ran out of."""
     try:
-        from modules.settings_schema import get_setting
-        return int(get_setting("nsot_config_read_timeout") or 120)
+        # The Default network's: the SSH layer holds no list (a device dict carries none, C462).
+        from modules.list_settings import default_layer
+        return int(default_layer("nsot_config_read_timeout") or 120)
     except Exception:                                   # noqa: BLE001
         return 120
 

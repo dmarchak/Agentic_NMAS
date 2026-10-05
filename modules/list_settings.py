@@ -43,6 +43,12 @@ class ListSettingsUnreadable(RuntimeError):
     """A list's settings file exists and cannot be read: never read as empty."""
 
 
+class NoListCarried(LookupError):
+    """A network setting was asked for with no list (P.8 step 4). Its own type, outside
+    ValueError and TypeError, so a reader's guard against a malformed VALUE never swallows
+    a missing list into a fallback."""
+
+
 def is_default(list_name: str) -> bool:
     """Whether *list_name* is the Default network, whose layer is the global file."""
     from modules.config import list_slug
@@ -102,10 +108,42 @@ def secret(list_name: str, key: str) -> str:
 
     if scope_of(key)[0] != NETWORK or is_default(list_name):
         return get_secret(key)
-    value, origin = resolve(list_name, key)
+    got, origin = resolve(list_name, key)
     if origin == INHERITED:
         return get_secret(key)
-    return decrypt_value(value) if value and origin == SET_HERE else ""
+    return decrypt_value(got) if got and origin == SET_HERE else ""
+
+
+def value(list_name: str, key: str, default=None):
+    """The value of *key* FOR the network *list_name* (P.8 step 4): the one read of a network
+    setting outside this module. *default* stands in only where nothing answers: unset
+    everywhere, or not applicable here, with an empty value. A write path carries its list,
+    so an empty *list_name* is refused rather than read as Default's: a read that means the
+    Default network says so by calling :func:`default_layer`."""
+    if not list_name:
+        raise NoListCarried(f"{key}: a network setting read needs its list (P.8); a read "
+                            "that means the Default network calls list_settings.default_layer")
+    got, origin = resolve(list_name, key)
+    if got is None or (origin in (UNSET_EVERYWHERE, NOT_APPLICABLE) and got == ""):
+        return default if default is not None else got
+    return got
+
+
+def default_layer(key: str, default=None):
+    """*key* for the DEFAULT network, said by name (P.8 step 4). It is right in two places
+    only, each call site listed in `tests/test_network_settings_read_for_a_list.py`, which
+    only shrinks:
+    - one output serves every list until P.7 makes it per network (the ZTP fragment and its
+      responder, Oxidized's one router.db and its helper, the Prometheus targets directory);
+    - the read is paired with an integration client still built for no list, which is the
+      Default network's (steps 5 and 8 move the pair together), or it sits below any list on
+      the path (the SSH layer's read bound: a device dict carries no list, C462)."""
+    return value(DEFAULT_LIST, key, default)
+
+
+def default_layer_secret(key: str) -> str:
+    """A secret of the DEFAULT network, by name: :func:`default_layer`'s rule for a secret."""
+    return secret(DEFAULT_LIST, key)
 
 
 def write(list_name: str, updates: dict, actor: str = "") -> dict:
