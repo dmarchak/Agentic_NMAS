@@ -84,6 +84,9 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   hook scripts/hooks/claude-no-host-writes, tests/test_claude_host_writes_hook.py]
 - **Prose goes through the Edit and Write tools, never a heredoc into an interpreter.**
   [hook: scripts/hooks/claude-no-heredoc-interpreter (.claude/settings.json); tests/test_claude_heredoc_hook.py] [why](docs/LESSONS.md#text-through-file-tools)
+- **CLAUDE.md is the operator's: a change it needs is given to the operator as the exact
+  lines to paste, and committed after they have pasted them.**
+  [hook: scripts/hooks/claude-no-claude-md-edits (.claude/settings.json); tests/test_claude_md_edit_hook.py]
 - **A diff must not remove a definition something still calls.**
   [scripts/check_removed_definitions.py in hooks/pre-commit and CI; tests/test_check_removed_definitions.py] [why](docs/LESSONS.md#removed-definitions-still-called)
 - **A commit touching a host-installed file** (`deploy/update/`, `scripts/nmas-deploy`, `scripts/nmas-oxidized-cred`,
