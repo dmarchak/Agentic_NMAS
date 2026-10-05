@@ -56,9 +56,15 @@ deliberately NOT in `RESERVED_MGMT_SUBNETS`: that list is for subnets taken OUTS
 repository, and that test fails any topology here whose subnet is on it.
 
 **One fact governs the whole session.** The configless launch script removes the node's overlay
-at every CONTAINER start. So `docker restart`, or a redeploy, returns `tw-ztp-a` to no
-configuration at all. An IOS `reload` inside the running container keeps what it saved. After
-Part 2, never restart the container.
+at every CONTAINER start. So a redeploy returns `tw-ztp-a` to no configuration at all. An IOS
+`reload` inside the running container keeps what it saved. After Part 2, never redeploy.
+
+**Never `docker restart` or `docker start` a containerlab node** (measured in this session,
+Part 2, 2026-10-05): the container's network namespace is torn down with its veth to `br-mgmt`,
+and nothing recreates containerlab's links, so vrnetlab waits for ever on "waiting for
+provisioned interfaces to appear…". It is the mechanism of s3's hung `docker start` on
+2026-10-01. A node is started again only by containerlab: `containerlab deploy --reconfigure`
+on its topology (below, Part 2).
 
 **What is whose.** Every command below is yours (root on the lab host, and the NMAS host). The
 tool does the rest:
@@ -125,8 +131,13 @@ these numbers. It does not exist yet, and this run does not create it.
 
 **1.1 The observers, before the boot (lab host, two terminals).**
 
-    sudo tcpdump -ni br-mgmt -e -w /tmp/tw-dhcp.pcap ether host aa:bb:cc:00:02:60
-    sudo tcpdump -ni br-mgmt -e -l -tttt -vvv -s0 'ether host aa:bb:cc:00:02:60 and (udp port 67 or udp port 68 or udp port 69)'
+    sudo tcpdump -ni br-mgmt -e -w /tmp/tw-dhcp.pcap 'ether host aa:bb:cc:00:02:60 or udp port 67 or udp port 68 or udp port 69'
+    sudo tcpdump -ni br-mgmt -e -l -tttt -vvv -s0 'udp port 67 or udp port 68 or udp port 69'
+
+Never filter the DHCP view on the device's MAC alone: the device sets the broadcast flag, so
+Kea's Offers and ACKs go to the broadcast address and a MAC filter drops every one of them
+(measured 2026-10-05: 984 DISCOVERs and no Offer in a MAC-filtered capture, while Kea offered
+to each).
 
 The second terminal is the live view: each DISCOVER with its absolute time and every option
 decoded.
@@ -168,7 +179,9 @@ regardless that time. The interactive telnet was attached from about 18:32 to 18
 to the read-only reader at 18:37:03 UTC (12:37:03), the reader process's start time on the
 lab host, and discovery continued throughout. Observing must
 never be able to end what is observed, so the reader is the way to watch a console during
-discovery.
+discovery, and **only the reader, only after the fetch** wherever this runbook can wait: the
+DHCP view and the responder's journal say everything up to the fetch, and the console adds
+nothing worth a risk to it (Part 2 below).
 
 **Type nothing for the whole of Part 1**: not RETURN, not `en`, not an answer to the dialog.
 Any input ends discovery (`PnP Discovery stopped (Config Wizard)`, measured in M4).
@@ -241,21 +254,52 @@ Also run `journalctl -u nmas-ztp-responder -f` on the NMAS host. Note:
 - the time of the first RRQ;
 - the console line that says the configuration applied.
 
+**MEASURED 2026-10-05 (STOP 2, the operator; C479): a LATE Pick is not taken.** The
+reservation (Create, about 19:42 UTC) came about 70 minutes into unanswered discovery, after
+about 5 minutes of interactive console (18:32 to 18:37). Kea offered correctly to every
+DISCOVER, and the Offer reached the VM's wire intact (`[udp sum ok]` on `tap1`), and the
+device never sent a Request. Then a redeploy (`containerlab deploy --reconfigure` at 20:05:13
+UTC) WITH the reservation already in place, M3 and M4's order:
+- first DISCOVER 20:11:23, then Offer, Request and ACK at 20:11:24;
+- `RRQ "tw-ztp-a.cfg"` 20:12:00; the responder: "served tw-ztp-a to 10.255.0.60, 436 bytes",
+  12 times;
+- IOS-XE first tried the file as a ZTP Python script (`SCRPT_TYPE_NOT_MATCHED`), then applied it
+  as configuration: "Configured from tftp://10.255.0.10/tw-ztp-a.cfg" 20:12:16;
+- Gi2 `10.255.0.60`, and SSH 2.0 enabled at 20:12:29;
+- D4 held: PnP said "Domain name not found".
+
+So a Pick reaches a device that has been asking for a long time, and it is NOT taken; a fresh
+boot takes it at once. Which part mattered, the duration or the console input, is not yet
+separated (2b).
+
+**2b. To separate them (optional, about 25 minutes, before Part 3).** Abandon the pending
+`tw-ztp-a` on today's page (its result says the Kea reservation was removed), declare the
+window and redeploy as below, and attach NOTHING to the console (the DHCP view and the
+responder's journal only). About 10 minutes after the first DISCOVER (past several cycles),
+Create again as in 2.1, noting the time. Taken: the console input was the cause, and duration
+alone is not. Not taken: duration alone is enough. Either way, abandon and redeploy once more
+with the reservation in place to finish Part 2.
+
 **If no DISCOVER arrives within 15 minutes of the Pick,** the device had stopped asking. That
-is a result: record it. Then re-trigger it with the lab's power cycle, which also restores
-the configless state:
+is a result: record it. Then re-trigger it with a redeploy, which also restores the
+configless state. Declare the window first: the redeploy restarts both nodes.
 
-    <home>/python/Agentic_NMAS/scripts/nmas-planned-restart throwaway tw-ztp-a --minutes 20 --why "throwaway ZTP re-trigger after discovery stopped" --by <operator>
-    docker restart clab-nmas-throwaway-tw-ztp-a
+    <home>/python/Agentic_NMAS/scripts/nmas-planned-restart throwaway tw-ztp-a tw-frr --minutes 20 --why "throwaway ZTP re-trigger: redeploy" --by <operator>
+    cd <home>/labs/throwaway && sudo containerlab deploy -t nmas-throwaway.clab.yml --reconfigure
 
-Then note the time of its first DISCOVER after the restart, and its OFFER and RRQ.
+Never `docker restart` here: it hangs (above, "Never `docker restart`"). A node-filtered
+redeploy (`--node-filter tw-ztp-a`) is not used: whether it recreates the node's link to the
+host bridge `br-mgmt` has not been measured. The full `--reconfigure` recreates every link, and
+`tw-frr` restarts with it, which this session does not mind. Then repeat 1.2's checks (the
+`/launch.py` hash and the three `CONFIGLESS` lines) and note the time of its first DISCOVER
+after the redeploy, and its OFFER and RRQ.
 
 **STOP 2. Paste:**
 - the Pick time;
 - the first OFFER, the first RRQ and the "applied" times;
 - `kea-m5.py show`;
 - the responder's journal lines;
-- if the device had stopped: that it had, and the restart's numbers.
+- if the device had stopped: that it had, and the redeploy's numbers.
 
 ## Part 3: onboarding finished, template, seed (30 min)
 

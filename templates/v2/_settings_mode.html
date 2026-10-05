@@ -1,0 +1,62 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- A network's mode (boards I and J1): the banner saying what the network chose, who made it
+    so and when; the switch's preview in place of the banner (what becomes unconfigured or is
+    picked up, what stops, what is kept), confirmed against its fingerprint; and the result.
+    `list_settings.plan_mode` / `apply_mode`. -#}
+{%- if p is defined and p %}
+<section class="op-card op-warn" id="settings-mode-op" aria-labelledby="mode-title">
+  <div class="op-hd"><h2 id="mode-title">{% if p.to == 'standalone' %}Make {{ list_name }} standalone{% else %}{{ list_name }}: inherit from Default{% endif %}</h2>
+    <div class="op-hd-actions"><button type="button" class="btn" hx-get="{{ url_for('settings_v2.mode_banner', list_name=list_name) }}" hx-target="#settings-mode-op" hx-swap="outerHTML">Cancel</button></div></div>
+  <div class="op-part"><h3>{% if p.to == 'standalone' %}What becomes unconfigured{% else %}What it picks up{% endif %}</h3><div>
+    {%- for w in p.what %}<p>{% if loop.index == 2 %}<strong>{{ w }}.</strong>{% else %}{{ w }}.{% endif %}</p>{% endfor %}
+    {#- The groups that change what is READ lead; those set nowhere change only their name
+        (unset everywhere to not configured, or back), said in one line. -#}
+    {%- set felt = p.moving | rejectattr('today_state', 'equalto', 'unset_everywhere') | rejectattr('after_state', 'equalto', 'unset_everywhere') | list %}
+    {%- set quiet = p.moving | reject('in', felt) | list %}
+    {%- if felt %}
+    <table class="table set-table"><thead><tr><th scope="col">Group</th><th scope="col">Today</th><th scope="col">After</th></tr></thead><tbody>
+      {%- for r in felt %}<tr><td>{{ r.label }}</td><td>{{ r.today }}{% if r.today_url %}: <span class="mono">{{ r.today_url }}</span>{% endif %}</td><td>{{ badge(r.after, 'warn' if r.after_state == 'not_configured' else 'info') }}{% if r.after_url %} <span class="mono">{{ r.after_url }}</span>{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+    {%- endif %}
+    {%- if quiet %}<p class="muted">Set nowhere, so nothing is read for them either way: {{ quiet | map(attribute='label') | join(', ') }} ({{ quiet[0].today }} today, {{ quiet[0].after }} after).</p>{% endif %}
+    {%- if not p.moving %}<p class="muted">No group moves: every group has a choice, values or a declaration of its own.</p>{% endif %}
+  </div></div>
+  {%- if p.to == 'standalone' and p.unconfigured %}
+  <div class="op-part"><h3>What stops</h3><div><p>{{ list_name }}'s pages and readers say "not configured for {{ list_name }}" for {{ p.unconfigured | join(', ') }}: nothing of them is read or drawn for it. Each returns when that group is configured here, or chosen to inherit again.</p></div></div>
+  {%- endif %}
+  <div class="op-part"><h3>What is kept</h3><div>{% for w in p.what_not %}<p>{{ w }}.</p>{% endfor %}</div></div>
+  <div class="op-part"><h3>Checks</h3><div><ul class="op-gates">{% for g in p.gates %}<li>{{ badge('pass' if g.state == 'pass' else 'fail', 'ok' if g.state == 'pass' else 'danger') }}<span>{{ g.gate }}: {{ g.why }}</span></li>{% endfor %}</ul></div></div>
+  <form class="op-ft" method="post" hx-post="{{ url_for('settings_v2.mode_switch', list_name=list_name) }}" hx-target="#settings-mode-op" hx-swap="outerHTML">
+    <input type="hidden" name="to" value="{{ p.to }}"><input type="hidden" name="fingerprint" value="{{ p.fingerprint }}"><input type="hidden" name="seen" value='{{ p.operands | tojson }}'>
+    <p class="op-note">{{ confirm.statement }} Bound to this preview ({{ p.fingerprint }}): if {{ list_name }}'s settings or Default's change before you confirm, nothing is saved and this says what moved. Recorded with who, when and what changed.</p>
+    {%- if p.confirmable and confirm.may %}
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="settings-switch" hx-disabled-elt="this"><span class="op-idle">{% if p.to == 'standalone' %}Make {{ list_name }} standalone{% if p.unconfigured %}: {{ p.unconfigured | length }} group{{ '' if p.unconfigured | length == 1 else 's' }} become{{ 's' if p.unconfigured | length == 1 }} not configured{% endif %}{% else %}Inherit from Default{% if p.picked %}: picks up {{ p.picked | length }} group{{ '' if p.picked | length == 1 else 's' }}{% endif %}{% endif %}</span><span class="op-busy">Checking {{ list_name }}'s settings again and switching…</span></button>{{ how('settings-switch', compact=True, op='the switch') }}</span>
+    {%- else %}
+    <p class="op-note">Not available: {% for g in p.gates if g.state != 'pass' %}{{ g.why }}{{ '; ' if not loop.last }}{% endfor %}{% if not confirm.may %} {{ confirm.statement }}{% endif %}. Nothing is saved.</p>
+    {%- endif %}
+  </form>
+</section>
+{%- elif result is defined and result %}
+<section class="op-card op-{{ 'ok' if result.recorded else 'warn' }}" id="settings-mode-op" aria-labelledby="mode-done">
+  <div class="op-hd"><h2 id="mode-done">{{ list_name }} {{ 'is standalone' if result.to == 'standalone' else 'inherits from Default' }} {{ badge('done', 'ok') }}</h2>
+    <div class="op-hd-actions"><a class="btn" href="{{ url_for('settings_v2.network', list_name=list_name) }}">See its settings</a></div></div>
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>Switched by {{ result.actor_label }} {{ stamp(result.at) }}.</p>
+    {%- for w in result.what %}<p>{{ w }}.</p>{% endfor %}
+    {%- if result.moved %}<ul class="op-list">{% for m in result.moved %}<li>{{ m[0] }}: {{ m[1] }} → {{ m[2] }}</li>{% endfor %}</ul>{% endif %}
+    {%- if not result.recorded %}<p><strong>The switch is made, and its record could not be written:</strong> {{ result.record_error }}.</p>{% endif %}
+  </div></div>
+</section>
+{%- else %}
+<div class="banner-mode notice {{ 'notice-warn' if s.mode == 'standalone' else 'notice-muted' }}" id="settings-mode-banner">
+  {{ icon('info', 16) }}
+  <div class="grow"><strong>{% if s.mode == 'standalone' %}{{ s.network }} is standalone: it takes nothing from Default.{% else %}{{ s.network }} inherits from Default.{% endif %}</strong>
+    {%- if s.since and s.since.at %} Since {{ stamp(s.since.at) }}, {{ s.since.by }}.{% elif s.since and s.since.state == 'unreadable' %} Its settings record could not be read: {{ s.since.error }}.{% endif %}
+    {%- set sm = s.summary %}
+    {%- if sm.not_configured %} {{ sm.not_configured | join(', ') }} {{ 'is' if sm.not_configured | length == 1 else 'are' }} not configured here.{% endif %}
+    {%- if sm.own %} Its own: {{ sm.own | join(', ') }}.{% endif %}
+    {%- if sm.not_applicable %} Not applicable: {{ sm.not_applicable | join(', ') }}.{% endif %}
+    {%- if s.mode == 'standalone' and sm.inherit %} Chosen to inherit: {{ sm.inherit | join(', ') }}.{% endif %}</div>
+  <span class="op-act"><a class="btn" data-op="settings-switch" href="{{ url_for('settings_v2.mode_preview', list_name=s.network, to='inherit' if s.mode == 'standalone' else 'standalone') }}" hx-get="{{ url_for('settings_v2.mode_preview', list_name=s.network, to='inherit' if s.mode == 'standalone' else 'standalone') }}" hx-target="#settings-mode-banner" hx-swap="outerHTML">{% if s.mode == 'standalone' %}Change to inheriting from Default…{% else %}Make {{ s.network }} standalone…{% endif %}</a>{{ how('settings-switch', compact=True, op='the switch') }}</span>
+</div>
+{%- endif %}

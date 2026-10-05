@@ -95,6 +95,10 @@ NOT_AN_OPERATION = {
     ("_retire.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_retire.html", "Back to Devices"): "opens the Devices list, a read",
     ("retired.html", "Its history (the same timeline, filtered to )"): "opens the History page filtered to the device, a read",
+    ("_settings_mode.html", "Cancel"): "puts back the network's mode banner, saving nothing",
+    ("_settings_mode.html", "See its settings"): "opens the network's Settings page again, a read",
+    ("_settings_switch.html", "Cancel"): "puts back the group's card, saving nothing",
+    ("_settings_refused.html", "Read 's settings again"): "opens the network's Settings page again, a read",
 }
 
 

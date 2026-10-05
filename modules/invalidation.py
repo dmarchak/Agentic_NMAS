@@ -213,6 +213,8 @@ DECLARED = {
     "save_tftp_server": ("settings",),
     "settings_integrations.general_settings": ("settings",),
     "settings_integrations.save_integration": ("settings",),
+    "settings_v2.group_switch": ("settings",),
+    "settings_v2.mode_switch": ("settings",),
     "identity.ratify_setting": ("posture", "settings"),
     "freshness.authorise": ("freshness",),
     "monitoring_config": ("monitoring",),

@@ -60,6 +60,8 @@ PAGES = (
     ("publish-remote", "Publish to the remote: push and verify", H, "how-it-works/publish-remote.md"),
     ("monitoring-templates", "Apply a monitoring template", H, "how-it-works/monitoring-templates.md"),
     ("update", "Update the app", H, "how-it-works/update.md"),
+    ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
+     "how-it-works/settings-switch.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
     ("baselines", "How a baseline is earned", "Concepts", "concepts/baselines.md"),
     ("merge-and-mode-b", "Merge-only, and Mode B", "Concepts", "concepts/merge-and-mode-b.md"),
@@ -90,7 +92,7 @@ ON_TODAYS_APP = frozenset((
     "deploy", "capture", "restore", "removal", "revert-retry", "rotate", "persist", "seed",
     "bulk-intent", "onboard", "adopt", "retire", "drift-check", "approvals", "netbox-import",
     "logs", "dhcp", "templates", "netbox",
-    "approvals-screen", "backups", "settings",
+    "approvals-screen", "backups",
 ))
 
 #: Every sidebar destination (its label in ``templates/v2/base.html``) and the
@@ -129,6 +131,7 @@ OPERATIONS = {
     "retire": None,
     "monitoring-templates": ("modules.pipeline", "STAGE_NAMES"),
     "update": ("modules.update_op", "STEPS"),
+    "settings-switch": ("modules.list_settings", "SWITCH_STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).

@@ -1,0 +1,36 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, info -%}
+{#- Settings per network (P.8 step 7; boards A to J, approved 2026-10-05): the scope bar (H),
+    a network's mode with its switch (I, J1), and one card per group, each saying where its
+    values come from, with its own three-way choice (A, I) whose preview opens in place of the
+    card (B, C, J2). Default's cards name who takes their values (D, G). All of it from
+    modules/settings_page.py over list_settings, so the screen and the resolver agree. -#}
+{% block title %}Settings · {{ v.network }} · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Settings · {{ v.network }} {{ info('settings') }}</h1>
+    <p class="sub">{% if v.is_default %}Default is the base layer: its values are set here, and every network that inherits takes them. Each card names who that is.{% else %}{{ v.network }}'s own settings: each card says where its values come from, and chooses for itself.{% endif %}
+      Settings that are the installation's (sign-in, the central NetBox connection, this host) are under Installation.</p>
+  </div>
+</div>
+{% include "v2/_settings_scope.html" %}
+{%- if not v.is_default and not v.error %}
+<div id="settings-mode">{% with s=v %}{% include "v2/_settings_mode.html" %}{% endwith %}</div>
+{%- endif %}
+<nav class="tabs" aria-label="{{ v.network }}'s settings">
+  {%- for key, label in v.tabs %}
+  <a class="tab{% if v.tab == key %} on{% endif %}" href="{{ url_for('settings_v2.network', list_name=v.network, tab=key) }}"{% if v.tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  {%- endfor %}
+</nav>
+<div class="tab-body" id="tab-body">
+{%- if v.error %}
+<div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>{{ v.network }}'s settings could not be read.</strong> {{ v.error }}. Nothing of {{ v.network }} is drawn as known, and every switch refuses until the file is readable again.</div></div>
+{%- else %}
+<div class="set-cards">
+  {%- for c in v.cards %}{% with list_name=v.network, is_default=v.is_default, result=None %}{% include "v2/_settings_card.html" %}{% endwith %}{% endfor %}
+</div>
+<p class="muted small">Values are edited here only by choosing a group's own values (Configure…). Saving one field of a group, and Default's change with its warning naming who inherits it (board G), are on today's Settings page until they reach this page.</p>
+{%- endif %}
+</div>
+{% endblock %}

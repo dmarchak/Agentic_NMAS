@@ -313,6 +313,19 @@ pages.
    - H: one navigation, a scope bar (Installation, Default, a network) with a network picker
      that leads with the networks that differ from Default.
 
+   **7a BUILT 2026-10-05** (`routes/settings_v2.py`, `modules/settings_page.py`,
+   `templates/v2/settings.html` and its fragments; `/v2/settings/network/<list>`, the sidebar's
+   Settings): a network's cards on two tabs (Integrations, Network), each with its state, every
+   field's origin and its three-way choice opening the switch's preview in place of the card
+   (A, B, C, I, J2); the mode's banner and its previewed switch (J1); Default's cards counting
+   who inherits, with own, not configured and not applicable apart (D, G); the scope bar and
+   its picker, standalone networks first (H). A switch is `configure`-gated, previewed,
+   confirmed against its fingerprint and recorded (section 8). The manual: Screens > Settings
+   and How it works > "Inherit or stand alone" with its diagram. **Left:** Installation (F,
+   still today's page, linked from the scope bar); saving one field of a group, and Default's
+   change with G's warning naming who inherits it (today's page); the picker's search; board
+   I's creation form (the accepted v1 gap); NetBox scope as a group (no `netbox_scope` key yet).
+
    **F to J APPROVED 2026-10-05 (the operator)**, as redrawn for optional inheritance
    (canvas v45; section 8): inherit or standalone per network and per group, the previewed
    switches J1 and J2, G's counts and H's mode bar. The v1 gap stands for now: a new network

@@ -336,6 +336,8 @@ HISTORY = {
     "select_device_list_route": NOT_A_DEVICE,
     "settings_integrations.general_settings": NOT_A_DEVICE,
     "settings_integrations.save_integration": NOT_A_DEVICE,
+    "settings_v2.group_switch": NOT_A_DEVICE,
+    "settings_v2.mode_switch": NOT_A_DEVICE,
 }
 
 #: Sources whose records no gated route above writes: a process that ended holding a device,

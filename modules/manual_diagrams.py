@@ -849,6 +849,36 @@ def update():
     ])
 
 
+def settings_switch():
+    return svg(470, (
+        "Switching a network's settings: making it standalone or inheriting again, or one "
+        "group inherit, its own or not applicable. The preview reads the network's settings "
+        "and Default's and shows each group or setting today and after, a secret only as set. "
+        "You confirm against the preview's fingerprint; the switch reads both again and "
+        "refuses, naming what moved, if either changed; then it writes the network's own "
+        "settings file and appends who, when and what changed to its settings record, which "
+        "keeps any value removed. No device is contacted."), [
+        lanes(20, 464, left="IN THE TOOL", right="THE DEVICES"),
+        band(20, 150, "Preview · nothing is written"),
+        store(14, 44, 186, 36, "The network's settings", "its mode, its groups"),
+        store(14, 90, 186, 36, "Default's settings", "the base it may inherit"),
+        doc("box", 14, 134, 186, 30, "Today and after", "a secret as set"), num(14, 134, 1),
+        band(176, 230, "The switch"),
+        person(14, 198, 186, 30, "You confirm its fingerprint"), num(14, 198, 2),
+        doc("box", 14, 240, 186, 34, "Both read again", "moved: refused, named"), num(14, 240, 3),
+        _down(107, 276, 296),
+        store(14, 298, 186, 36, "The network's own file", "owner-only, a secret encrypted"),
+        num(14, 298, 4),
+        _down(107, 336, 356),
+        repo(14, 358, 186, 40, "Its settings record", "who, when, what; removed kept"),
+        num(14, 358, 5),
+        device(240, 60, 140, 44, "Every device", "not contacted", off=True),
+        nosend(310, 240, ("nothing is sent", "settings only")),
+        band(412, 52, "After"),
+        t(14, 436, "Readers and pages use the new settings at their next read.", "sm"),
+    ])
+
+
 def publish_remote():
     return svg(500, (
         "Publishing the record to the remote. Every commit hands itself to the push hook, which "
@@ -1003,6 +1033,7 @@ DIAGRAMS = {
     "retire": retire,
     "monitoring-templates": monitoring_templates,
     "update": update,
+    "settings-switch": settings_switch,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

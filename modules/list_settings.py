@@ -55,6 +55,8 @@ DEFAULT_LIST = "Default"
 INHERIT, STANDALONE, OWN, NA = "inherit", "standalone", "own", "not_applicable"
 MODES = (INHERIT, STANDALONE)
 CHOICES = (INHERIT, OWN, NA)
+#: A switch's steps, in order: the manual's How it works page names each (tests/test_manual.py).
+SWITCH_STEPS = ("preview", "confirm", "check_again", "write", "record")
 #: What a person reads for each mode and choice.
 MODE_WORDS = {INHERIT: "inherits from Default", STANDALONE: "standalone"}
 CHOICE_WORDS = {INHERIT: "inherit from Default", OWN: "its own", NA: "not applicable"}
@@ -329,19 +331,11 @@ def group_state(list_name: str, group: str, store: dict = None,
             "words": STATE_WORDS[state], "url": url}
 
 
-def _fingerprint(operands: dict, sent: dict) -> str:
-    """Bound to what the preview SHOWED (its operands) and what the person SENT with it (the
-    values, a secret only by its digest, and the reason)."""
-    raw = json.dumps([operands, sent], sort_keys=True, default=str)
+def _fingerprint(operands: dict) -> str:
+    """Bound to what the preview SHOWED of today: its operands, a secret only as set or
+    unset."""
+    raw = json.dumps(operands, sort_keys=True, default=str)
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
-
-
-def _sent(values: dict, reason: str) -> dict:
-    from modules.secrets_store import SECRET_KEYS
-
-    return {"values": {k: (hashlib.sha256(str(v).encode()).hexdigest()[:16]
-                           if k in SECRET_KEYS else v) for k, v in sorted((values or {}).items())},
-            "reason": (reason or "").strip()}
 
 
 def _refuse_default(list_name: str) -> None:
@@ -368,6 +362,10 @@ def _transform_group(doc: dict, group: str, choice: str, values: dict, reason: s
     elif choice == OWN:
         doc["groups"][group] = OWN
         for k, v in (values or {}).items():
+            if v is None:                    # emptied in the form: not set here any more
+                if k in doc["values"]:
+                    removed[k] = doc["values"].pop(k)
+                continue
             if k in doc["values"]:
                 replaced[k] = doc["values"][k]
             doc["values"][k] = encrypt_value(v) if k in SECRET_KEYS and v else v
@@ -379,11 +377,14 @@ def _transform_group(doc: dict, group: str, choice: str, values: dict, reason: s
 
 
 def plan_group(list_name: str, group: str, choice: str, values: dict = None,
-               reason: str = "") -> dict:
+               reason: str = "", entering: bool = False) -> dict:
     """What switching *group* to *choice* for *list_name* changes, key by key, and its
     fingerprint. Writes nothing. *values* (for OWN) are the group's values the person
-    entered; *reason* is required for NA. Refusals are gates by name, except a network,
-    group or choice that does not exist (nothing to preview), which raises."""
+    entered, None for one emptied (it is then not set here); *reason* is required for NA.
+    *entering* is the card that takes the values (board B): a group already its own is then
+    a form whose change is judged at apply, by what is entered. Refusals are gates by name,
+    except a network, group or choice that does not exist (nothing to preview), which
+    raises."""
     from modules.nsot.authorisation import reason_problem
     from modules.secrets_store import SECRET_KEYS
     from modules.settings_schema import DEFAULTS, validate
@@ -401,8 +402,7 @@ def plan_group(list_name: str, group: str, choice: str, values: dict = None,
     after_doc = _shape(json.loads(json.dumps(store)))
     # A secret entered is simulated as "set" and never touches the cipher here.
     sim = {k: ("(entered)" if k in SECRET_KEYS and v else v) for k, v in values.items()}
-    removed, _replaced = _transform_group(after_doc, group, choice, {}, reason, "")
-    after_doc["values"].update(sim)
+    removed, _replaced = _transform_group(after_doc, group, choice, sim, reason, "")
     after = group_state(list_name, group, after_doc)
     rows = []
     for k in keys:
@@ -414,7 +414,7 @@ def plan_group(list_name: str, group: str, choice: str, values: dict = None,
     gates = []
     stray = sorted(set(values) - set(keys))
     candidate = dict(DEFAULTS)
-    candidate.update({k: v for k, v in values.items() if k in keys})
+    candidate.update({k: v for k, v in values.items() if k in keys and v is not None})
     ok, why = validate(candidate)
     if stray or not ok:
         gates.append({"gate": "valid values", "state": "fail", "why": (
@@ -424,23 +424,31 @@ def plan_group(list_name: str, group: str, choice: str, values: dict = None,
     moves = before["choice"] != choice or any(r["today"] != r["after"] or
                                               r["today_origin"] != r["after_origin"]
                                               for r in rows)
-    gates.append({"gate": "a change", "state": "pass" if moves else "fail",
-                  "why": (f"{CHOICE_WORDS[before['choice']]} to {CHOICE_WORDS[choice]}" if moves
-                          else f"{label} is already {CHOICE_WORDS[choice]} for {list_name}: "
-                               "nothing would change")})
+    if entering and choice == OWN and before["choice"] == OWN:
+        gates.append({"gate": "a change", "state": "pass",
+                      "why": "what you enter is compared with what is set when you save"})
+    else:
+        gates.append({"gate": "a change", "state": "pass" if moves else "fail",
+                      "why": (f"{CHOICE_WORDS[before['choice']]} to {CHOICE_WORDS[choice]}"
+                              if before["choice"] != choice else "the values entered"
+                              if moves else f"{label} is already {CHOICE_WORDS[choice]} for "
+                              f"{list_name}" + (" and nothing entered differs" if values else "")
+                              + ": nothing would change")})
     if choice == NA:
         problem = reason_problem({"line": f"{label} not applicable", "reason": reason or ""})
         gates.append({"gate": "a stated reason", "state": "fail" if problem else "pass",
                       "why": problem or "stated"})
     what, what_not = _group_words(list_name, label, choice, before, after, rows, removed)
+    # Bound to TODAY's values as the preview showed them (the network's and Default's): boards
+    # B and C take what the person types (a group's values, a reason) in the confirm card
+    # itself, so what is typed is validated at apply and written exactly as sent.
     operands = {"list": list_name, "group": group, "from": before["choice"], "to": choice,
-                "rows": [[r["key"], r["today"], r["today_origin"], r["after"],
-                          r["after_origin"]] for r in rows]}
+                "rows": [[r["key"], r["today"], r["today_origin"]] for r in rows]}
     return {"list": list_name, "group": group, "label": label, "from": before["choice"],
             "to": choice, "before": before, "after": after, "rows": rows,
             "removed": sorted(removed), "what": what, "what_not": what_not, "gates": gates,
             "confirmable": all(g["state"] == "pass" for g in gates),
-            "operands": operands, "fingerprint": _fingerprint(operands, _sent(values, reason))}
+            "operands": operands, "fingerprint": _fingerprint(operands)}
 
 
 def _group_words(list_name, label, choice, before, after, rows, removed) -> tuple:
@@ -528,7 +536,7 @@ def plan_mode(list_name: str, to_mode: str) -> dict:
             "moving": moving, "unconfigured": unconfigured, "picked": picked,
             "what": what, "what_not": what_not, "gates": gates,
             "confirmable": not same, "operands": operands,
-            "fingerprint": _fingerprint(operands, _sent({}, ""))}
+            "fingerprint": _fingerprint(operands)}
 
 
 def _and(items: list) -> str:
@@ -550,8 +558,8 @@ def _moved(seen: dict, now: dict) -> str:
         if o is not None and list(o) != list(r):
             out.append(f"{r[0]}: previewed as {' / '.join(map(str, o[1:]))}, now "
                        f"{' / '.join(map(str, r[1:]))}")
-    return "; ".join(out) or ("what was shown is unchanged, so the values or reason sent with "
-                              "the confirm are not the ones previewed")
+    return "; ".join(out) or ("what the page sent back as shown matches today's, so the "
+                              "fingerprint it sent is not that preview's")
 
 
 def _check(plan: dict, fingerprint: str, seen: dict) -> None:
@@ -611,7 +619,8 @@ def apply_group(list_name: str, group: str, choice: str, fingerprint: str, actor
     return _record(list_name, {
         "kind": "group", "group": group, "label": plan["label"], "from": plan["from"],
         "to": choice, "reason": (reason or "").strip(), "what": plan["what"],
-        "written": sorted((values or {}) if choice == OWN else {}), "removed": removed,
+        "written": sorted(k for k, v in ((values or {}) if choice == OWN else {}).items()
+                          if v is not None), "removed": removed,
         "replaced": replaced, "actor": actor, "actor_verified": actor_verified,
         "fingerprint": plan["fingerprint"]})
 

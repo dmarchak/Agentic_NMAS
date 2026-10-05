@@ -1,0 +1,43 @@
+{%- from "v2/_macros.html" import icon -%}
+{#- Board H: ONE navigation, three scopes of one page. Installation (every network), Default
+    (the base for the networks that inherit), and one network, with a picker that leads with
+    the networks that differ from Default: standalone first, then those inheriting with values
+    of their own, then the ones inheriting everything, collapsed. `settings_page.scope_bar`. -#}
+{%- set s = v.scope -%}
+{%- macro names(items) -%}{{ items | join(', ') if items | length <= 3 else (items | length) ~ ' groups' }}{%- endmacro -%}
+{%- macro parts_words(r) -%}
+{%- set bits = [] -%}
+{%- if r.parts.own %}{% set _ = bits.append('own: ' ~ names(r.parts.own)) %}{% endif -%}
+{%- if r.parts.not_configured %}{% set _ = bits.append('not configured: ' ~ names(r.parts.not_configured)) %}{% endif -%}
+{%- if r.parts.not_applicable %}{% set _ = bits.append('not applicable: ' ~ names(r.parts.not_applicable)) %}{% endif -%}
+{%- if r.parts.inherit %}{% set _ = bits.append('inherit: ' ~ names(r.parts.inherit)) %}{% endif -%}
+{{ bits | join(' · ') }}
+{%- endmacro -%}
+<nav class="scope" aria-label="Settings scope">
+  <a class="scope-item" href="{{ url_for('index') }}" title="Installation's settings are on today's Settings page until board F is built here"><b>Installation</b><small>every network ({{ s.networks }}) · on today's page</small></a>
+  <a class="scope-item{% if s.is_default %} on{% endif %}" href="{{ url_for('settings_v2.network', list_name='Default') }}"{% if s.is_default %} aria-current="page"{% endif %}><b>Default</b><small>the base for the {{ s.inheriting }} network{{ '' if s.inheriting == 1 else 's' }} that inherit</small></a>
+  <div class="scope-item scope-net{% if not s.is_default %} on{% endif %}">
+    {%- if not s.is_default %}<span><b>{{ s.current }}</b><small>{{ v.mode_words or '' }}</small></span>{% else %}<span><b>A network</b><small>{{ s.others }} more · {{ s.standalone | length }} standalone · {{ s.differs | length }} with their own values</small></span>{% endif %}
+    <details class="scope-pick">
+      <summary class="btn btn-small">Choose a network</summary>
+      <div class="scope-menu">
+        {%- if s.standalone %}
+        <p class="scope-h">Standalone · {{ s.standalone | length }} · take nothing from Default</p>
+        {%- for r in s.standalone %}<a class="scope-row" href="{{ url_for('settings_v2.network', list_name=r.name) }}"><span>{{ r.name }}</span><small>{{ parts_words(r) or 'nothing set yet' }}</small></a>{% endfor %}
+        {%- endif %}
+        {%- if s.differs %}
+        <p class="scope-h">Inherit, with their own values · {{ s.differs | length }}</p>
+        {%- for r in s.differs %}<a class="scope-row" href="{{ url_for('settings_v2.network', list_name=r.name) }}"><span>{{ r.name }}</span><small>{{ parts_words(r) }}</small></a>{% endfor %}
+        {%- endif %}
+        <details class="scope-all"{% if not s.standalone and not s.differs %} open{% endif %}>
+          <summary class="scope-h">Inherit everything from Default · {{ s.inherits | length }}</summary>
+          {%- for r in s.inherits %}<a class="scope-row" href="{{ url_for('settings_v2.network', list_name=r.name) }}"><span>{{ r.name }}</span></a>{% else %}<p class="muted small">None.</p>{% endfor %}
+        </details>
+        {%- if s.unreadable %}
+        <p class="scope-h">Settings unreadable · {{ s.unreadable | length }}</p>
+        {%- for n in s.unreadable %}<a class="scope-row" href="{{ url_for('settings_v2.network', list_name=n) }}"><span>{{ n }}</span><small>its settings file could not be read</small></a>{% endfor %}
+        {%- endif %}
+      </div>
+    </details>
+  </div>
+</nav>

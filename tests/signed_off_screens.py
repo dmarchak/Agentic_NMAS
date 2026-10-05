@@ -71,6 +71,16 @@ SIGNED_OFF = {
     "update.html": ("2026-10-02","reviewed IN USE: designed in docs/UPDATE.md, used on the host "
                                   "repeatedly and corrected through C243, C244, C246, C268, "
                                   "C274, C279 and C285. Its next change gets a mockup"),
+    "settings.html": ("2026-10-05", "P.8 Settings per network, the canvas's settings page: "
+                                    "boards A to E approved 2026-10-05, F to J (inheritance "
+                                    "optional) approved the same day as redrawn (NSOT_P8_DESIGN "
+                                    "section 6 step 7 and section 8). Built: a network's cards "
+                                    "with each group's three-way choice and its previewed "
+                                    "switch (A, B, C, I, J2), the mode and its switch (J1), "
+                                    "Default's cards counting who inherits (D, G), the scope "
+                                    "bar and picker (H). Not yet: Installation (F), G's warning "
+                                    "on a Default change, board I's creation form (the v1 gap "
+                                    "the operator accepted)"),
     "tab:overview": ("2026-09-29", "NSOT_GUI_BRIEF section 13 (the Device page's Overview)"),
     "tab:monitoring": ("2026-09-30", "NSOT_STAGE7_PLAN 1g, the Services mockups (the device "
                                      "page's service sections)"),

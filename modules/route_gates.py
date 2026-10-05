@@ -143,6 +143,8 @@ GATES = {
     "save_settings": _g(K, "writes settings, secrets included"),
     "settings_integrations.general_settings": _g(K, "writes settings"),
     "settings_integrations.save_integration": _g(K, "writes an integration's settings and secrets"),
+    "settings_v2.group_switch": _g(K, "switches a network's settings group (inherit, its own with its values and secrets, not applicable), bound to its preview and recorded"),
+    "settings_v2.mode_switch": _g(K, "switches a network between inheriting from Default and standalone, bound to its preview and recorded"),
     "identity.ratify_setting": _g(K, "records a decision about a gate", "ratify_setting"),
     "drift_settings_post": _g(K, "switches the drift checker and its interval"),
     "monitoring_config": _g(K, "writes collector settings"),

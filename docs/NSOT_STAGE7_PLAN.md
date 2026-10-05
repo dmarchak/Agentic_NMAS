@@ -4159,16 +4159,22 @@ segment):** one C8000v booting with no configuration.
 - Option 60 is `ciscopnp`, so the two-pool vendor-class design is open: a client class can
   match it.
 - It requests option 43.
-- **From the 2nd DISCOVER on, option 61 (client-id) carries a serial: the board serial**
-  (the boot log's Processor board ID), NOT the licence-UDI serial every C8000v in this lab
-  shares (both values in the operator's notes, not published). So a Kea lease, which records
+- **Option 61 (client-id) alternates by TRANSACTION:** one transaction carries
+  `cisco-<mac>-Gi2` (the MAC form), the next the BOARD serial (the boot log's Processor board
+  ID), NOT the licence-UDI serial every C8000v in this lab shares (both values in the
+  operator's notes, not published). Each transaction is one xid sent three times (decoded
+  read-only from the Part 1 capture, 984 DISCOVERs, 2026-10-05). So a Kea lease, which records
   option 61, could carry a per-device serial with no script on the device.
-- **Not yet known:** whether board serials differ between C8000v instances. One device
-  cannot show it. No committed golden records a Processor board ID (counted read-only on
-  the NMAS host the same day: 0 of 9; the licence-UDI serial is in 5, one value). The
-  measurement is a second C8000v's board ID, from `show version` through the tool or a
-  second throwaway boot. Until it is known, the serial rule above stands: matching by it
-  refuses on a duplicate.
+- **Option 124** (vendor-identifying vendor class) is enterprise 9 (Cisco) with the class
+  `C8000V`. The parameter request list is 1, 66, 6, 15, 44, 3, 67, 12, 33, 150, 43, 125, the
+  same as M3's (P6_ZTP_PROBE).
+- **MEASURED (STOP 2, the operator, 2026-10-05): in this lab the board serial is not
+  stable.** The virtual UDI is regenerated on every fresh boot ("A new vUDI has been
+  generated", a different serial from Part 1's; neither value published). So the licence
+  serial is shared by every C8000v here and the board serial changes at each boot: **a
+  serial cannot identify a lab router, and MAC-keyed is this lab's way.** Physical hardware
+  differs (its serial is the chassis's), so serial-keyed stays for real hardware, under the
+  rule above: matching refuses on a duplicate.
 
 **And, the operator's (on a device, through the console or the tool):** whether the IOS-XE ZTP
 script can read the device's serial and send it here, as way 1 needs: guestshell's Python,
@@ -4187,6 +4193,43 @@ is measured in the same throwaway session:
    - what it falls back to: its empty configuration, or the setup dialog on the console.
 4. **After a Pick** (the MAC reserved, the boot file offered), how long until its next request
    takes the boot file. And whether it takes it at all once it has fallen back.
+
+**MEASURED (the throwaway session, STOP 1, the operator, 2026-10-05):** C8000v 17.6.1a, no
+configuration, nothing answering.
+- **797 DISCOVERs in 66 minutes** (18:31:19 to 19:37:45 UTC; 12:31 to 13:37 the operator's
+  time). Intervals 3 s ×316, 4 s ×215, 6 s ×3, 7 s ×262: a steady 3-4-7 rhythm, which is the
+  two alternating transactions above, each sent three times.
+- **No back-off:** the last 15 intervals match the first. **It never gave up**, and it never
+  fell back to an empty configuration: the console repeats "Autoinstall trying DHCPv4 on
+  GigabitEthernet1,GigabitEthernet2", and the setup dialog sits on the console while
+  AutoInstall continues. This agrees with Cisco's documentation (AutoInstall retries until
+  configured or interrupted).
+- **The volume:** about 800 requests an hour for each device waiting on the segment.
+
+**For board L, from this:**
+- a waiting C8000v "keeps asking indefinitely (measured ≥66 min on C8000v 17.6, every
+  3–7 s)", so L's expected-next-request is within seconds, never a give-up warning for it;
+- L reads each device's cadence from its own requests (the reader's first and last seen, and
+  the intervals between), never these numbers written into the code;
+- L warns that ANY console input ends discovery (M3, M4, and this session's Part 1);
+- the volume belongs on the discovery range's design: a lease reader and a log at INFO see
+  about 800 packets an hour per waiting device.
+- **A Pick's next request:** within seconds, by the cadence.
+- **A LATE Pick is NOT taken (STOP 2, measured 2026-10-05; C479):** reserved about 70
+  minutes into unanswered discovery (after about 5 minutes of console input), the device was
+  offered correctly on every DISCOVER, intact on its wire, and never sent a Request. The same
+  reservation in place BEFORE a fresh boot was taken at once: DISCOVER to ACK in one second,
+  the file fetched 37 s later and applied 16 s after that, SSH up 13 s later. So **L says,
+  for a device picked after it has been asking a long time, that a device in this state may
+  not take the Pick, and offers the re-trigger, a reload (a power cycle), with its planned
+  restart declared first.** L judges "taken" by what it can see: a Request and an ACK for the
+  reserved MAC, then the responder's served line; no Request within a few cycles of the Pick
+  is "not taken". Whether the duration or the console input is what matters is not yet
+  separated (THROWAWAY_SESSION 2b); until it is, L treats both as the cause and warns of each.
+- **What a C8000v does with the file:** it first tries it as a ZTP Python script
+  (`SCRPT_TYPE_NOT_MATCHED`), then applies it as configuration. The responder served it 12
+  times (436 bytes each) for one boot: L shows one arrival per device, never one per fetch.
+- **D4 held:** PnP logged "Domain name not found" with no resolver offered.
 
 What L shows follows the answer (15.7): the expected next request; a give-up warning, or
 "keeps asking until configured"; and a stopped device with its re-trigger, a reload.

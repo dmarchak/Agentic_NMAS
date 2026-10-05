@@ -1,0 +1,61 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- One settings group's card (boards A, D, G and I). A network's card says the group's state
+    and its own three-way choice; choosing another opens that switch's preview in place of the
+    card (_settings_switch.html), and nothing is saved by the choice itself. Default's card
+    names who takes its values, counting only the networks that chose to inherit. Every field
+    is drawn with where its value came from; a secret only as set or unset. -#}
+{%- set g = c.group -%}
+<section class="card set-card{% if result %} set-card-done{% endif %}" id="card-{{ g }}" aria-labelledby="h-{{ g }}">
+  <div class="card-head"><h2 id="h-{{ g }}">{{ c.label }}</h2>{{ badge(c.words, c.kind) }}
+    {%- if is_default %}{{ badge('inherited by ' ~ c.inherited_by, 'info') }}{% endif %}</div>
+  {%- if result %}
+  <div class="notice notice-muted set-result">{{ icon('tick', 16) }}<div>
+    <strong>{{ result.label }}: {{ {'inherit': 'inherits from Default', 'own': list_name ~ "'s own", 'not_applicable': 'not applicable'}[result.to] }}</strong>, by {{ result.actor_label }} {{ stamp(result.at) }}.
+    {%- if result.written %} Saved: {{ result.written | length }} field{{ '' if result.written | length == 1 else 's' }} ({{ result.written | join(', ') }}), a secret encrypted in {{ list_name }}'s own store.{% endif %}
+    {%- if result.removed %} Removed {{ result.removed | length }} of its own value{{ '' if result.removed | length == 1 else 's' }}, kept in the settings record.{% endif %}
+    {%- if not result.recorded %} <strong>The switch is made, and its record could not be written:</strong> {{ result.record_error }}.{% endif %}
+    Default is unchanged.</div></div>
+  {%- endif %}
+  {%- if not is_default %}
+  <div class="set-choice">
+    <div class="seg" role="group" aria-label="Where {{ c.label }}'s values come from">
+      {%- for ch in c.choices %}
+      {%- if ch.on %}<span class="seg-btn on" aria-current="true">{{ ch.words[:1] | upper }}{{ ch.words[1:] }}</span>
+      {%- else %}<a class="seg-btn" href="{{ url_for('settings_v2.group_preview', list_name=list_name, group=g, to=ch.value) }}" hx-get="{{ url_for('settings_v2.group_preview', list_name=list_name, group=g, to=ch.value) }}" hx-target="#card-{{ g }}" hx-swap="outerHTML" title="Opens the preview: nothing is saved until you confirm">{{ ch.words[:1] | upper }}{{ ch.words[1:] }}</a>{% endif %}
+      {%- endfor %}
+    </div>{{ how('settings-switch', compact=True, op='the switch') }}
+  </div>
+  {%- endif %}
+  {%- if c.state == 'not_applicable' and not is_default %}
+  <p>{% if c.declaration %}Declared by <strong>{{ c.declaration.by }}</strong>{% if c.declaration.at %} {{ stamp(c.declaration.at) }}{% endif %}: "{{ c.declaration.why }}".{% else %}Declared not applicable.{% endif %}</p>
+  <p class="muted small">Not Default's either: nothing is read or sent for {{ list_name }}, and pages that use {{ c.label }} say it is not applicable for {{ list_name }}.</p>
+  {%- elif c.state == 'not_configured' %}
+  <p>Nothing is set here, and nothing comes from Default. <span class="muted">{{ list_name }}'s pages that use {{ c.label }} say "{{ c.label }} is not configured for {{ list_name }}", and nothing of it is read for {{ list_name }}.</span></p>
+  {%- else %}
+  <dl class="facts set-fields">
+    {%- for f in c.fields %}
+    {#- Where each value came from: a value nothing sets is the built-in default, said so,
+        never "unset" beside a value. -#}
+    {%- set ORIGIN = {'unset everywhere': 'built-in default, set nowhere' if not is_default else 'built-in default',
+                      'unset here': "built-in default: this group is " ~ list_name ~ "'s own, never Default's"} %}
+    <div><dt>{{ f.label }}</dt><dd><span class="{{ 'mono' if not f.secret }}">{{ f.value }}</span>
+      {%- if f.origin != 'set here' %} <span class="set-origin">{{ ORIGIN.get(f.origin, f.origin) }}</span>{% endif %}</dd></div>
+    {%- endfor %}
+  </dl>
+  {%- if c.state == 'inherited' %}<p class="muted small">Every value here is Default's. A change in Default changes {{ list_name }}'s too.</p>{% endif %}
+  {%- if c.state == 'unset_everywhere' and not is_default %}<p class="muted small">Neither {{ list_name }} nor Default sets {{ c.label }}.</p>{% endif %}
+  {%- endif %}
+  {%- if is_default %}
+  {%- set w = c.who %}
+  <p class="set-who">Inherited by {{ w.inherit | length }}{% if w.own %} · own {{ c.label }} in {{ w.own | length }}{% endif %}{% if w.not_configured %} · not configured in {{ w.not_configured | length }}{% endif %}{% if w.not_applicable %} · not applicable in {{ w.not_applicable | length }}{% endif %}{% if w.unreadable %} · <span class="warn-text">unreadable in {{ w.unreadable | length }}</span>{% endif %}</p>
+  {%- if w.inherit or w.own or w.not_configured or w.not_applicable or w.unreadable %}
+  <details class="set-names"><summary>Who</summary>
+    {%- for key, words in (('inherit', 'Inherit'), ('own', 'Their own'), ('not_configured', 'Not configured'), ('not_applicable', 'Not applicable'), ('unreadable', 'Settings unreadable')) %}
+    {%- if w[key] %}<p><span class="muted">{{ words }}:</span> {% for n in w[key] %}<a href="{{ url_for('settings_v2.network', list_name=n) }}">{{ n }}</a>{% if n in w.standalone %} <span class="muted small">(standalone)</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    {%- endfor %}
+  </details>
+  {%- endif %}
+  {%- elif c.state in ('own', 'not_configured') %}
+  <div class="set-foot"><span class="op-act"><a class="btn btn-small{{ ' btn-primary' if c.state == 'not_configured' }}" data-op="settings-switch" href="{{ url_for('settings_v2.group_preview', list_name=list_name, group=g, to='own') }}" hx-get="{{ url_for('settings_v2.group_preview', list_name=list_name, group=g, to='own') }}" hx-target="#card-{{ g }}" hx-swap="outerHTML">Configure {{ c.label }}…</a>{{ how('settings-switch', compact=True, op='configuring a group') }}</span></div>
+  {%- endif %}
+</section>

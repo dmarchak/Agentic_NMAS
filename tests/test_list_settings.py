@@ -278,12 +278,24 @@ class TestTheGroupSwitch:
         assert L.secret("Branch", "grafana_token") == "own-t"
         assert "own-t" not in (store / "lists" / "branch" / "settings.json").read_text()
 
-    def test_values_sent_with_the_confirm_must_be_the_previewed_ones(self, store):
-        plan = L.plan_group("Branch", "grafana", L.OWN, values={"grafana_token": "one"})
+    def test_values_typed_in_the_confirm_card_are_validated_and_written_as_sent(self, store):
+        """Boards B and C take the values in the confirm card itself: the fingerprint binds
+        TODAY's values as shown, and what is typed is validated at apply, never trusted."""
+        plan = L.plan_group("Branch", "grafana", L.OWN)
         with pytest.raises(L.SwitchRefused) as exc:
             L.apply_group("Branch", "grafana", L.OWN, plan["fingerprint"], "op@example.invalid",
-                          values={"grafana_token": "two"}, seen=plan["operands"])
-        assert "not the ones previewed" in str(exc.value)
+                          values={"grafana_verify_tls": "not a switch"}, seen=plan["operands"])
+        assert "grafana_verify_tls" in str(exc.value)
+        L.apply_group("Branch", "grafana", L.OWN, plan["fingerprint"], "op@example.invalid",
+                      values={"grafana_url": "http://192.0.2.61:3000"}, seen=plan["operands"])
+        assert L.resolve("Branch", "grafana_url") == ("http://192.0.2.61:3000", L.SET_HERE)
+
+    def test_a_forged_fingerprint_is_refused(self, store):
+        plan = L.plan_group("Branch", "grafana", L.NA, reason="no Grafana at this site")
+        with pytest.raises(L.SwitchRefused) as exc:
+            L.apply_group("Branch", "grafana", L.NA, "0" * 16, "op@example.invalid",
+                          reason="no Grafana at this site", seen=plan["operands"])
+        assert "not that preview's" in str(exc.value)
 
     def test_not_applicable_needs_a_reason_and_records_who(self, store):
         plan = L.plan_group("Branch", "kea", L.NA, reason="")

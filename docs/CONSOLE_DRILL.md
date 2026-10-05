@@ -257,9 +257,11 @@ no launch-script change. The order:
 2. s2 and s4;
 3. s3 last.
 
-A container RESTART (not a redeploy) of a configured vIOS is a separate, pre-existing limit
-that the login does not change: the bootstrap waits for `Switch>`, and a configured switch
-shows `s1>` (C464, UNKNOWN until measured on a throwaway).
+A container RESTART (not a redeploy) of any containerlab node is never done: `docker restart`
+or `docker start` hangs it on "waiting for provisioned interfaces to appear…", because the
+restart tears down its links and nothing recreates them (measured 2026-10-05, C478). That
+also puts C464's reading (a restarted vIOS's bootstrap waiting for `Switch>`) out of reach. A
+node is started again only by `containerlab deploy --reconfigure`.
 
 **The operator's correction (2026-10-05): ROUTERS first.**
 - **The routers:** one change file for r1, r3, r4 and r6 (the C8000Vs, configured at boot by
