@@ -504,7 +504,7 @@ def _shared_root(repo_dir: str, remote_refs: list) -> dict:
                    "this list. Pushing would interleave two histories."}
 
 
-def verify(list_name: str, repo_dir: str = "",
+def verify(list_name: str, repo_dir: str = "", actor: str = "",
            with_write_probe: bool = False) -> dict:
     """The pre-push checks. The write probe is OPT-IN, and gated above here.
 
@@ -544,14 +544,21 @@ def verify(list_name: str, repo_dir: str = "",
 
     ok = all(c["ok"] for c in checks)
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if ok:
-        def change(stored):
+
+    def change(stored):
+        if ok:
             stored["read_verified_at"] = stamp
             if with_write_probe:
                 stored["verified_at"] = stamp
-        # Onto the record as stored NOW (R18): the checks take seconds, and a push recorded
-        # meanwhile is kept.
-        config = update_remote(list_name, change)[0] or config
+        # EVERY verify's outcome, passed or not (the operator, 2026-10-05): the History card
+        # draws it from here, so any redraw keeps the answer a person asked for.
+        stored["last_verify"] = {
+            "at": stamp, "by": actor, "ok": ok, "write_probe": bool(with_write_probe),
+            "failed": [{"name": c.get("name", ""), "detail": str(c.get("detail") or "")[:200]}
+                       for c in checks if not c["ok"]]}
+    # Onto the record as stored NOW (R18): the checks take seconds, and a push recorded
+    # meanwhile is kept.
+    config = update_remote(list_name, change)[0] or config
     return {"ok": ok, "checks": checks, "remote": remote_url(config),
             "write_probe_run": bool(with_write_probe),
             "ready_to_push": bool(ok and with_write_probe),

@@ -22,8 +22,10 @@
    "version": "3.17.4",
    "licence": "MIT",
    "source": "https://registry.npmjs.org/@alpinejs/csp/-/csp-3.17.4.tgz",
-   "licence_file": null,
-   "audit": "no licence text beside it, and none in the minified file. Measured 2026-10-05: the published @alpinejs/csp and alpinejs 3.17.4 tarballs hold only package.json (declaring MIT) and the built files, no licence file, so nmas-vendor cannot take one; the text is in Alpine's own repository, a source outside the registry's integrity check, the operator's decision"
+   "licence_file": "static/js/vendor/alpinejs-csp/LICENSE.md",
+   "licence_source": "https://github.com/alpinejs/alpine/blob/v3.17.4/LICENSE.md (the tag v3.17.4, commit 20ee0e923b3f34e6d6467a31d1b97dd43c85a41d; fetched by tag and by commit 2026-10-05, identical)",
+   "licence_sha256": "08b7502da6e7aa1d0bbdc97d220fbf669b9366c61bd0f072238283c89bc4773a",
+   "notice": "the published @alpinejs/csp and alpinejs 3.17.4 tarballs hold no licence file (measured 2026-10-05), so its text comes from Alpine's own repository at the release's tag, the operator's decision the same day; not in MANIFEST.json, whose entries are registry-verified, and held to its sha256 here instead"
   },
   "static/js/vendor/codemirror/*": {
    "component": "CodeMirror",
@@ -146,7 +148,6 @@
   "tests/fixtures/grafana/dashboards/rcn-lab-overview.json and rcn-lab1-snmp.json: captured from the lab's Grafana. Confirm neither was imported from grafana.com under terms that forbid redistribution",
   "tests/fixtures/ and docs/bootstrap-probe/configs/: captured device configurations. Keep only what fixtures need, sanitised (the publication check covers addresses and names, not licences)",
   "deploy/snmp_exporter/routing-modules.yml: the MIB-derived help text (reviewed: LicenseRef-MIB-derived)",
-  "The licence file missing beside alpinejs-csp: Alpine publishes none in its packages (codemirror's and Bootstrap's vendored 2026-10-05)",
   "The history: no Cisco image, licence file, proprietary MIB or key was ever committed (NSOT_STAGE10_PLAN 8.2a); lab tooling names images the person supplies and ships none"
  ],
  "python": {

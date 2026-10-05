@@ -767,7 +767,7 @@ is added.
   - the Grafana dashboard fixtures';
   - the captured device configurations;
   - the MIB help text;
-  - the missing licence file beside alpinejs-csp: Alpine publishes none in its packages, so its text comes from its repository, the operator's decision (CodeMirror's and Bootstrap's vendored 2026-10-05 from their registry tarballs);
+  - the licence files: CodeMirror's and Bootstrap's vendored from their registry tarballs, Alpine's from its repository at the v3.17.4 tag (its packages carry none; the operator's decision, 2026-10-05), its sha256 recorded;
   - the history.
 
 **3. At release:**

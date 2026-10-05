@@ -547,6 +547,10 @@ button.who { border: none; background: transparent; font: inherit; cursor: point
 .remote-said { font-size: 13px; margin-left: 6px; }
 .remote-said.ok { color: var(--ok); }
 .remote-said.bad { color: var(--danger); }
+/* The last failed push and the last Verify, drawn from the list's record under the row. */
+.hist-remote-said { margin: 6px 0 0; font-size: 13px; }
+.hist-remote-said.ok { color: var(--ok); }
+.hist-remote-said.bad { color: var(--danger); }
 .hist-filter { display: flex; flex-direction: column; gap: 2px; }
 /* The commit list: one line per commit (a grid row in its summary), the detail under it at
    full width. Below 640 px the line stacks: when, what, then workflow, who and baseline. */

@@ -188,6 +188,20 @@ class TestVendoredEntriesAgreeWithTheManifest:
                    if v.get("licence_file") and not (ROOT / v["licence_file"]).is_file()]
         assert not missing, missing
 
+    def test_a_licence_taken_outside_the_registry_is_held_to_its_hash(self):
+        """Alpine's licence comes from its repository at the release's tag (its packages carry
+        none; the operator's decision, 2026-10-05), so no registry integrity covers it: its
+        entry records the source and the sha256, and the file must still be that file."""
+        import hashlib
+        held = {v["licence_file"]: v["licence_sha256"] for v in _inventory()["vendored"].values()
+                if v.get("licence_sha256")}
+        assert "static/js/vendor/alpinejs-csp/LICENSE.md" in held
+        for path, digest in held.items():
+            assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest, path
+            entry = next(v for v in _inventory()["vendored"].values()
+                         if v.get("licence_file") == path)
+            assert entry.get("licence_source"), path
+
     def test_an_entry_without_a_licence_file_is_on_the_audit(self):
         bare = [g for g, v in _inventory()["vendored"].items()
                 if not v.get("licence_file") and not v.get("audit")]

@@ -14,6 +14,7 @@ configuration:
 """
 
 import os
+import re
 import types
 
 import pytest
@@ -269,6 +270,34 @@ class TestThePage:
         html = client.get("/v2/history/remote").get_data(as_text=True)
         assert 'id="hist-remote"' in html and "Everything is committed" in html
         assert "not yet compared with the remote" in html
+        assert "remote-push-failed" not in html and "remote-last-verify" not in html
+
+    def test_the_card_draws_the_last_failed_push_and_verify_from_the_record(
+            self, client, monkeypatch):
+        """The operator, 2026-10-05: a push's own answer announces `remote`, which redraws this
+        card, so "Not pushed: <why>" held only in the browser vanished as it arrived. The card
+        draws the last failure and the last Verify from the list's record, so any redraw keeps
+        them; what reaches the page is masked."""
+        from modules import redact
+        from modules.nsot import remote as NR
+        # What reaches the page passes through the masking function (its own rules are tested
+        # in tests/test_provider_redaction.py and beside it): a planted secret it knows.
+        real = redact.redact_text
+        monkeypatch.setattr(redact, "redact_text",
+                            lambda text, values=None: real(text).replace("hunter2", "<redacted>"))
+        monkeypatch.setattr(NR, "load_remote", lambda name: {
+            "last_push_failure": {"at": "2026-10-05T18:00:00Z", "by": "a@b",
+                                  "reason": "auth failed: password hunter2 refused"},
+            "last_verify": {"at": "2026-10-05T18:01:00Z", "by": "c@d", "ok": False,
+                            "write_probe": False,
+                            "failed": [{"name": "read_works", "detail": "ls-remote failed"}]}})
+        html = client.get("/v2/history/remote").get_data(as_text=True)
+        failed = re.search(r'<p class="hist-remote-said bad" id="remote-push-failed">(.*?)</p>',
+                           html, re.S).group(1)
+        assert "Last push failed" in failed and "(a@b)" in failed and "auth failed" in failed
+        assert "hunter2" not in html, "masked on the way out"
+        verify = re.search(r'id="remote-last-verify">(.*?)</p>', html, re.S).group(1)
+        assert "failed: read_works (ls-remote failed)" in verify and "(c@d)" in verify
 
 
 class TestTheClientWords:

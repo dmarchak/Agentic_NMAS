@@ -29,4 +29,14 @@
     </div>
     {%- endif %}
   </div>
+  {#- The last failed push and the last Verify, from the list's record, so a redraw keeps the
+      answer (a push's own answer redraws this card). A successful push clears the failure. -#}
+  {%- if remote.push_failure %}
+  <p class="hist-remote-said bad" id="remote-push-failed">Last push failed {{ stamp(remote.push_failure.at) }}{% if remote.push_failure.by %} ({{ remote.push_failure.by }}){% endif %}: {{ remote.push_failure.reason or 'no reason recorded' }}</p>
+  {%- endif %}
+  {%- if remote.last_verify %}{% set v = remote.last_verify %}
+  <p class="hist-remote-said {{ 'ok' if v.ok else 'bad' }}" id="remote-last-verify">Last verified {{ stamp(v.at) }}{% if v.by %} ({{ v.by }}){% endif %}:
+    {%- if v.ok %} every check passed{% if not v.write_probe %} (the read-only checks; the write probe is a separate step){% endif %}.
+    {%- else %} failed: {% for f in v.failed %}{{ f.name }}{% if f.detail %} ({{ f.detail }}){% endif %}{% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}</p>
+  {%- endif %}
 </section>

@@ -3802,8 +3802,10 @@ It also carries C461 (2026-10-05): a batch ticked "Confirmed" and then left was 
 nothing said so. On v2:
 - A tick is "selected", and "confirmed" is said only once the server has accepted the confirm.
 - A selection not sent says so where it was left, and a re-plan names the selection it replaces.
-- Whether the server records a preview that was never confirmed is a detail board B did not
-  draw. It is drawn and put to the operator before it is built.
+- **DECIDED 2026-10-05 (the operator): History does not keep previews that were never
+  confirmed.** The screen must never make an unsent selection look confirmed, as the two
+  points above say. If a record of previews is ever needed, it belongs in the audit log, not
+  the timeline. Nothing is drawn or built for it.
 
 ### 15.1 7.4 Fleet
 

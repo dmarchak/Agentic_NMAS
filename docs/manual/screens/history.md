@@ -12,6 +12,10 @@ checks against it (the key's scope, a read, that it is private and the right rep
 **Push now** appears while something is not pushed; it needs a person, and the sentence
 redraws once the remote is read again.
 
+Under it, from the network's own record, so they stay whatever redraws the card:
+- the last failed push: when, who and why. A successful push clears it.
+- the last Verify: when, who, and whether every check passed or which failed.
+
 ## Timeline {#timeline}
 
 Every record the tool keeps, across every device, newest first, for the time you choose (7 days

@@ -221,9 +221,29 @@ def _history_remote(ref) -> dict:
     from modules.nsot import repo as R
     from modules.readers import remote_publication as RP
 
+    from modules.nsot import remote as NR
+    from modules.redact import redact_text
+
     pub = RP.status_for(ref.name)
     out = {"d": RP.describe(pub), "value_at": pub.get("value_at"), "dirty": None,
            "list": ref.name}
+    # The last failed push and the last Verify, from the list's own record (the operator,
+    # 2026-10-05): a push's answer announces `remote`, which redraws this card, so an answer
+    # held only in the browser vanished as it arrived. Drawn from the store, any redraw keeps
+    # it. A successful push clears the failure (`record_push`). Masked on the way out.
+    try:
+        rec = NR.load_remote(ref.name) or {}
+    except Exception as exc:                          # noqa: BLE001
+        log.warning("v2 history: the remote record could not be read: %s", exc)
+        rec = {}
+    failure = rec.get("last_push_failure") or None
+    if failure:
+        failure = dict(failure, reason=redact_text(str(failure.get("reason") or "")))
+    verify = rec.get("last_verify") or None
+    if verify:
+        verify = dict(verify, failed=[dict(f, detail=redact_text(str(f.get("detail") or "")))
+                                      for f in verify.get("failed") or []])
+    out.update(push_failure=failure, last_verify=verify)
     rc, text, _err = R.git(ref.repo_dir, "status", "--porcelain")
     out["dirty"] = len([l for l in (text or "").splitlines() if l.strip()]) if rc == 0 else None
     return out

@@ -89,7 +89,7 @@ def verify():
     An SSH greeting, a ls-remote, two anonymous HTTPS requests. The write
     probe is deliberately not among them — see /remote/verify-write.
     """
-    out = R.verify(_list_name(), with_write_probe=False)
+    out = R.verify(_list_name(), with_write_probe=False, actor=identity.request_actor())
     return jsonify(out)
 
 
@@ -104,7 +104,7 @@ def verify_write():
     ident, refusal = identity.require(request, "publish_remote")
     if refusal:
         return refusal
-    out = R.verify(_list_name(), with_write_probe=True)
+    out = R.verify(_list_name(), with_write_probe=True, actor=ident.actor)
     log.info("remote: write probe for '%s' by %s (%s) — ok=%s",
              _list_name(), ident.actor, ident.kind, out.get("ok"))
     return jsonify(out)
