@@ -67,7 +67,9 @@ reads.
    - Extras: config template, custom field, tag;
    - VPN: tunnel, tunnel termination;
    - Core: **object change** (the change log: the drift reader's source, and what
-     `nmas-netbox-untagged` and `nmas-netbox-deletions` read).
+     `nmas-netbox-untagged` and `nmas-netbox-deletions` read);
+   - Users: **token** (view only: the credential-health reader reads the token's own row,
+     `GET /api/users/tokens/`, for its expiry; added 2026-10-05 by the C100 survey).
 2. **`nmas-add`**. Actions: **add**. Object types:
    - DCIM: cable, device, device role, device type, interface, manufacturer, platform,
      region, site;
@@ -81,13 +83,16 @@ reads.
 4. **`nmas-delete`**. Actions: **delete**. Object types, Remove's order
    (`_REMOVAL_ORDER`): VPN tunnel; IPAM IP address, prefix, VLAN, VRF; DCIM interface,
    device, site, region.
-   - **Constraints:** `{"tags__slug": "nmas-managed"}`
-   - This makes NetBox itself refuse to delete an object the NMAS did not tag. Remove
-     already deletes only tagged AND recorded objects, so this is a second, independent
-     layer: it holds even if the NMAS's own check were wrong.
+   - **Constraints: NONE until C466 is fixed** (2026-10-05). The planned constraint is
+     `{"tags__slug": "nmas-managed"}`, so that NetBox itself would refuse to delete an object
+     the NMAS did not tag. But NetBox answers a delete refused by a constrained permission
+     with 404, and `_nb_delete` reads a 404 as "already gone" and forgets the record. So a
+     refusal would read as a success. Remove already deletes only tagged AND recorded objects;
+     the constraint is a second layer, added once C466 reads a 404 back by id.
+   - Never constrain a VIEW permission: a hidden object reads as gone (C466).
 
-**What it deliberately does NOT grant:** anything under Users or Authentication (tokens,
-permissions), and any delete of a tag. Remove must never delete its own tag; that rule was
+**What it deliberately does NOT grant:** anything under Authentication (permissions,
+users), anything under Users but token view, and any delete of a tag. Remove must never delete its own tag; that rule was
 enforced only by omission, and now NetBox enforces it too.
 
 ### 1.4 Create the token
@@ -95,18 +100,22 @@ enforced only by omission, and now NetBox enforces it too.
 NetBox > **Admin** > Authentication > **API Tokens** > **Add**:
 - **User:** `nmas`
 - **Write enabled:** yes
-- **Allowed IPs:** the NMAS host's address as NetBox sees it (`<nmas-host>`). A copy of the
-  token used from anywhere else is refused by NetBox.
-- **Expires:** none, or a date written in the operator's calendar. An expired token fails
-  every read, and job health names it.
+- **Version:** 2 (the `nbt_…` form: the credential-health reader finds its own row by the v2
+  key).
+- **Allowed IPs:** EMPTY for now (2026-10-05). NetBox runs in docker on the NMAS host, so the
+  source address it sees is not measured, and the tool's Test hides NetBox's refusal reason
+  (C468): a wrong address would read only as "Authentication failed".
+- **Expires:** a date to renew by. The tool reads it from NetBox (with the Users › token view
+  above), so P.21 tracks it. NetBox has no "Token expires" field in Settings; Grafana and
+  Proxmox do, because their tokens cannot read their own.
 - **Description:** `NMAS (C100)`
 
 The token is shown ONCE. Copy it straight into the next step.
 
 ### 1.5 Switch the stored token
 
-NMAS > **Settings** > Integrations > **NetBox**: paste the token into the token field,
-**Save**, then **Test**. The field is write-only, so the old value is replaced and never
+NMAS > today's page > **Settings** (the modal) > **NetBox** section: paste the token into the
+token field, **Save Settings**, then **Test Connection**. The field is write-only, so the old value is replaced and never
 shown.
 
 **Note the time (UTC).** Drift is measured from this moment. Every earlier change-log entry
@@ -149,7 +158,17 @@ Then **Add service account token**, with no expiry or a noted one. It is shown O
 
 ### 2.2 Switch the stored token
 
-NMAS > **Settings** > Integrations > **Grafana**: paste it, **Save**, **Test**.
+NMAS > **Settings** > Integrations > **Grafana**: paste it, fill **Token expires** (YYYY-MM-DD
+or `never`: the token cannot read its own expiry, so P.21 tracks the date declared here and
+warns 30 and 7 days ahead), **Save**, **Test**. Expect "Connected; the token is accepted".
+
+**Viewer is enough** (the C230 survey, 2026-10-05): every Grafana call the tool makes is a read.
+It reads dashboards, the datasource list, the alerts ruler and rules, alert instances and
+silences, and queries datasources through `POST api/ds/query`, which is a read. It never creates
+or expires a silence, writes an annotation, imports a dashboard or installs a rule: rules are
+provisioned files, installed by a root host step. The full list of calls is in
+`docs/FLEET_SESSION_1.md`, Part 2. Two ways a Viewer read silently returns less: a datasource
+whose Query permission excludes Viewer, or a folder that does not give Viewer View.
 
 ### 2.3 Check the switch, by measurement
 
