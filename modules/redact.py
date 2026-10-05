@@ -120,6 +120,14 @@ _POSITIONAL = (
         r"(?i)^(\s*password\s+(?:\d+\s+)?)" + _VALUE + r"()", re.M)),
     ("ppp_password", re.compile(
         r"(?i)\b(ppp\s+(?:chap|pap)\s+(?:password|sent-username\s+\S+\s+password)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
+    # A URL's user part (C476, 2026-10-05: `https://<user>:<secret>@<host>` in an error left
+    # this function unchanged). Any scheme with `user:secret@` loses the whole user part; an
+    # http(s) or ftp URL with a user and no password loses it too, because a token is often
+    # sent as the user alone. `ssh://git@host` keeps `git`, a name and no secret.
+    ("url_userinfo", re.compile(
+        r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://)([^/\s:@\"'<>]+:[^/\s@\"'<>]+)(@)")),
+    ("url_userinfo", re.compile(
+        r"(?i)(\b(?:https?|ftps?)://)([^/\s:@\"'<>]+)(@)")),
 )
 
 #: Already redacted, or a marker — replacing these again would nest markers.

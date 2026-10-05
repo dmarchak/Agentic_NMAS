@@ -211,12 +211,15 @@ def add_tool_account(list_name: str, hostname: str, *, mgmt_ip: str, device_type
 def _scrub(result: dict, values) -> dict:
     """No sentence the result carries holds a supplied value (any length: the
     result is read by a person, not matched against configs)."""
+    from modules.redact import redact_positional
+
     values = [v for v in values if v]
 
     def clean(text):
         for v in values:
             text = text.replace(v, "<supplied credential>")
-        return text
+        # And every secret position, a URL's user part among them (C476).
+        return redact_positional(text)
     result["reason"] = clean(result.get("reason", ""))
     for step in result.get("steps", []):
         step["detail"] = clean(step.get("detail", ""))
@@ -729,10 +732,14 @@ def plan(list_name: str, hostname: str, *, mgmt_ip: str, platform: str,
 
 
 def _scrub_plan(out: dict, values) -> None:
+    from modules.redact import redact_positional
+
     values = [v for v in values if v]
     for g in out.get("gates", []):
         for v in values:
             g["detail"] = g["detail"].replace(v, "<supplied credential>")
+        # And every secret position, a URL's user part among them (C476).
+        g["detail"] = redact_positional(g["detail"])
     out["blocking"] = [g["detail"] for g in out.get("gates", []) if g["state"] == "fail"]
 
 

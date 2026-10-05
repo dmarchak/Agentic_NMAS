@@ -117,9 +117,13 @@ def export_plan(list_name: str) -> dict:
 
 
 def _scrub(text: str, passphrase: str) -> str:
-    """An error string with the passphrase removed, whatever produced it."""
+    """An error string with the passphrase removed, whatever produced it, and every secret
+    position masked (a URL's user part among them, C476)."""
+    from modules.redact import redact_positional
+
     text = str(text)
-    return text.replace(passphrase, "<passphrase>") if passphrase else text
+    text = text.replace(passphrase, "<passphrase>") if passphrase else text
+    return redact_positional(text)
 
 
 def export_in_memory(list_name: str, passphrase: str, confirm: str, confirmed: str,
