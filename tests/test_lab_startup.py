@@ -133,6 +133,33 @@ class TestTheComparison:
         u = _check(self._with_topology(self.TOPOLOGY))["unowned"][0]
         assert u["declared_by"] == ["rcn-lab1.clab.yml"] and u["node"] == "r5"
 
+    FULL = ("name: rcn-lab1\ntopology:\n  nodes:\n" + "".join(
+        f"    {h}:\n      kind: x\n" for h in HOSTS))
+
+    def test_a_second_networks_device_the_topology_does_not_declare_is_in_no_lab(self):
+        """C482 (the operator, 2026-10-05): throwaway's tw-ztp-a, in its own topology and no
+        clab manifest, read as "has no lab startup file labs/lab/configs/tw-ztp-a.cfg"."""
+        files = L.LabFiles({f"{h}.cfg": _synced(h) for h in HOSTS})
+        files.topologies = {"rcn-lab1.clab.yml": self.FULL}
+        ref, other = SimpleNamespace(name="Default"), SimpleNamespace(name="throwaway")
+        population = ([(ref, {"hostname": h, "platform": DIALECT[h]}) for h in HOSTS]
+                      + [(other, {"hostname": "tw-ztp-a", "platform": "cisco_iosxe"})])
+        got = L.check(population=lambda: population, golden=lambda r, h: _golden(h),
+                      reader=lambda host, cdir: files,
+                      source=lambda r, h: {"text": _golden(h), "tag": TAG},
+                      target=lambda ln, h: {"host": "lab-host", "configs_dir": CDIR,
+                                            "lab": "default", "named": True})
+        tw = _by(got)["tw-ztp-a"]
+        assert tw["state"] == "not_in_lab" and "does not declare tw-ztp-a" in tw["why"]
+        assert all(_by(got)[h]["state"] == "matches" for h in HOSTS)
+
+    def test_a_topology_declaring_none_of_the_labs_devices_changes_nothing(self):
+        """The guard: a naming that matches no device is never a lab checked empty."""
+        files = L.LabFiles({f"{h}.cfg": _synced(h) for h in HOSTS if h != "s4"})
+        files.topologies = {"other.clab.yml": self.FULL.replace("    r", "    lab-r").replace(
+            "    s", "    lab-s")}
+        assert _by(_check(files))["s4"]["state"] == "missing"
+
     def test_a_file_no_node_names_is_said_as_that(self):
         u = _check(self._with_topology(self.TOPOLOGY.replace("    r5:\n", "    r9:\n")))["unowned"][0]
         assert u["declared_by"] == [] and u["topologies"] == ["rcn-lab1.clab.yml"]

@@ -842,6 +842,12 @@ repository private, THEN an Update is verified end to end.
   free on `local-lvm` and 416 GB on the ZFS pool. The lab VM (100) holds 80 GB.
 
 **1. A self-hosted runner, so CI costs no minutes.**
+- **And so a GitHub incident does not stop CI (measured 2026-10-05).** GitHub's status page
+  reported "delays assigning GitHub-hosted runners" from 19:11 UTC. Runs #453 and #454
+  (c010a3d, 631fbff) were cancelled after about 902 s queued with no runner assigned (no steps;
+  C480), and #455 and #456 queued behind them. Every commit passed the local gate in CI's
+  interpreter, and none could become a deploy target until GitHub recovered. A self-hosted
+  runner would have kept CI moving.
 - **Recommended: a small VM on the Proxmox host,** not the laptop. The laptop is off when
   the operator is away, and the Update button refuses a commit CI has not passed, so a
   sleeping runner would stop every update.

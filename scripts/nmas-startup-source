@@ -6,7 +6,11 @@ taken from the device's CURRENT golden (`modules/nsot/startup_source.py`).
 Runs on the NMAS host beside the checkout, reading the list's repository
 directly: the files hold credentials, so no HTTP route serves them (B11, C77).
 
-    nmas-startup-source --out DIR [--list NAME]
+    nmas-startup-source --out DIR --list NAME
+
+The list is REQUIRED (C482): it writes files a lab boots, a write path, and a write path
+carries its list. Falling back to the installation's active list made the sync build a
+second network's sources the moment someone switched the active list on today's page.
 
 Writes DIR/<host>.cfg for each device it can build (0600) and DIR/sources.tsv:
 a `# baseline<TAB><tag><TAB><commit>` line, then one `<host><TAB>ok|refused
@@ -34,12 +38,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--list", dest="list_name", default="")
+    ap.add_argument("--list", dest="list_name", required=True,
+                    help="the network whose lab startup files are built")
     args = ap.parse_args(argv)
     try:
-        from modules.config import get_current_list_name
         from modules.nsot.startup_source import build
-        list_name = args.list_name or get_current_list_name()
+        list_name = args.list_name
         got = build(list_name)
     except Exception as exc:                       # noqa: BLE001
         print(f"UNPROVEN: the startup sources could not be built: {type(exc).__name__}: {exc}",

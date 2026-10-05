@@ -146,6 +146,16 @@ CLAB_FROM_ENV="${CLAB+yes}"
 CLAB="${CLAB:-}"
 STAGE="${STAGE:-/tmp/oxidized-staged}"
 NMAS_URL="${NMAS_URL:-}"
+# THE NETWORK THIS LAB BOOTS, NAMED, NEVER THE INSTALLATION'S ACTIVE LIST (C482).
+#
+# Measured 2026-10-05: with a second network made active on today's page, both helpers
+# below asked for the ACTIVE list (`throwaway`), so the map held its one device and the
+# source refused ("throwaway has no earned baseline"), and every run failed from 18:24
+# UTC for every network: Default's lab files were not synced for 2.5 hours. The sync
+# serves the network whose devices this lab's topology boots; a network with its own
+# topology is outside it, and another lab's network runs its own sync with its own
+# CLAB_LIST.
+CLAB_LIST="${CLAB_LIST:-Default}"
 # HELPERS ARE RESOLVED BESIDE THIS SCRIPT, NEVER THROUGH PATH.
 #
 # Measured 2026-09-25: `~/bin/nmas-clab-targets` was on the operator's
@@ -249,7 +259,7 @@ done
 declare -A NODE=() CFGDIR=() PLATFORM=() LAB=()
 DEVICES=()
 
-map="$("$TARGETS" --url "$NMAS_URL")" || {
+map="$("$TARGETS" --url "$NMAS_URL" --list "$CLAB_LIST")" || {
   echo "REFUSED - the NMAS could not be asked where configs belong."
   echo "Not falling back to a default directory: a guess about where a"
   echo "config boots from writes one device's credentials into another lab."
@@ -280,7 +290,7 @@ fi
 
 [ ${#DEVICES[@]} -gt 0 ] || { echo "REFUSED - the map is empty. That is a fact about the answer, not about the fleet."; exit 2; }
 
-echo "Map: ${#DEVICES[@]} device(s) from $NMAS_URL"
+echo "Map: ${#DEVICES[@]} device(s) of $CLAB_LIST from $NMAS_URL"
 
 # The config DIALECT decides the sanitising rules, not the hostname. The
 # default branch REFUSES: picking a kind for a platform nobody described is
@@ -431,7 +441,7 @@ destinations() {
 # (C309). Oxidized's copy is read only for the cross-check. A device the
 # baseline does not hold is NOT BUILT, named with its reason, and every other
 # device is still written (C309: one device used to hold every file back).
-if ! "$SOURCE" --out "$SRCDIR"; then
+if ! "$SOURCE" --out "$SRCDIR" --list "$CLAB_LIST"; then
   echo "REFUSED - no startup source could be built (the reason is above): nothing"
   echo "is written. The files are built only from an earned baseline, never from"
   echo "Oxidized's copy, so a redeploy cannot boot a change nobody approved."
@@ -540,7 +550,7 @@ DEVICES=("${built[@]}")
 # worth knowing and is not a reason to stop a sync.
 # ---------------------------------------------------------------------------
 echo
-if ! "$TARGETS" --url "$NMAS_URL" --reconcile "$OUT" --not-built "$NOT_BUILT_LIST"; then
+if ! "$TARGETS" --url "$NMAS_URL" --list "$CLAB_LIST" --reconcile "$OUT" --not-built "$NOT_BUILT_LIST"; then
   echo
   echo "PROBLEMS ABOVE - nothing will be copied."
   exit 1

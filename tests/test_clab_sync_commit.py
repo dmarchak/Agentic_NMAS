@@ -548,7 +548,7 @@ class TestTheFilesAreBuiltFromTheBaseline:
                           for n in sources)
         script = f"""
 set -uo pipefail
-REF=HEAD; OUT={str(out)!r}; RAW={str(tmp_path / 'raw')!r}; SRCDIR={str(tmp_path / 'srcdir')!r}
+CLAB_LIST=Default; REF=HEAD; OUT={str(out)!r}; RAW={str(tmp_path / 'raw')!r}; SRCDIR={str(tmp_path / 'srcdir')!r}
 SOURCE={str(stub)!r}
 mkdir -p "$RAW" "$SRCDIR"
 declare -A NODE PLATFORM
@@ -599,7 +599,7 @@ echo "NOT_BUILT_LIST=$NOT_BUILT_LIST"
         stub.chmod(0o755)
         out = tmp_path / "out"
         out.mkdir()
-        script = (f"set -uo pipefail\nREF=HEAD; OUT={str(out)!r}; SRCDIR={str(tmp_path)!r}; "
+        script = (f"set -uo pipefail\nCLAB_LIST=Default; REF=HEAD; OUT={str(out)!r}; SRCDIR={str(tmp_path)!r}; "
                   f"SOURCE={str(stub)!r}; DEVICES=(r6); GIT=(git)\n" + self.BUILD)
         r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
                            env=_env(tmp_path), cwd=str(tmp_path))

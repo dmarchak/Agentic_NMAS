@@ -53,7 +53,7 @@ ACCESS = "the operator's access setup"
 
 #: ``path: (lines, category, disposition, what it is)``. Measured 2026-10-02.
 INVENTORY = {
-    "scripts/oxidized-to-config.sh": (67, LAB_PLATFORM, MOVE, "clab-sync: writes containerlab startup files"),
+    "scripts/oxidized-to-config.sh": (73, LAB_PLATFORM, MOVE, "clab-sync: writes containerlab startup files"),
     "scripts/nmas-clab-targets": (22, LAB_PLATFORM, MOVE, "clab-sync's map of devices to labs"),
     "routes/clab.py": (4, LAB_PLATFORM, OPTIONAL, "/clab/sync_targets, the map clab-sync asks for"),
     "routes/__init__.py": (2, LAB_PLATFORM, OPTIONAL, "registers the clab blueprint"),

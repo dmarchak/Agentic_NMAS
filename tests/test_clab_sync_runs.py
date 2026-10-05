@@ -192,6 +192,40 @@ def test_the_cross_check_reports_a_device_that_moved_and_never_blocks(world):
     assert f"Both labs already hold {TAG}; nothing to update." in out
 
 
+def _recording(world):
+    """Wrap the two helpers so each records the arguments the script gave it."""
+    tmp = world["tmp"]
+    for name in ("targets", "source"):
+        real = tmp / "bin" / name
+        real.rename(tmp / "bin" / f"{name}.real")
+        _exe(real, f'#!/bin/bash\necho "$*" >> {tmp / (name + ".args")}\n'
+                   f'exec {tmp / "bin" / (name + ".real")} "$@"\n')
+
+
+def test_the_sync_names_its_network_never_the_active_list(world):
+    """C482 (2026-10-05): both helpers asked for the installation's ACTIVE list, so making a
+    second network active on today's page failed every sync, for every network."""
+    _recording(world)
+    rc, out = run(world)
+    assert rc == 0, out
+    tmp = world["tmp"]
+    targets = (tmp / "targets.args").read_text().splitlines()
+    assert targets and all("--list Default" in a for a in targets), targets
+    assert (tmp / "source.args").read_text().split() [2:4] == ["--list", "Default"]
+    assert "device(s) of Default from" in out
+    # A lab that boots another network says so, through the unit's environment.
+    for f in ("targets.args", "source.args"):
+        (tmp / f).unlink()
+    env_run = subprocess.run(
+        ["bash", SCRIPT, "--yes"], cwd=str(tmp), capture_output=True, text=True, timeout=120,
+        env={**_env(tmp), "CLAB": "clab", "NMAS_URL": "http://127.0.0.1:9", "REF": "HEAD",
+             "REPO": str(world["ox"]), "OUT": str(tmp / "out"), "STAGE": str(tmp / "stage"),
+             "TARGETS": str(tmp / "bin" / "targets"), "SOURCE": str(tmp / "bin" / "source"),
+             "CLAB_LIST": "Branch"})
+    assert "--list Branch" in (tmp / "targets.args").read_text(), env_run.stdout
+    assert "--list Branch" in (tmp / "source.args").read_text()
+
+
 def test_a_source_naming_no_baseline_refuses_writing_nothing(world):
     src = world["tmp"] / "src" / "sources.tsv"
     src.write_text("\n".join(l for l in src.read_text().splitlines()

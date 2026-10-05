@@ -228,6 +228,25 @@ def check(population=None, golden=None, reader=None, target=None, source=None) -
             for _ref, _dev, row in lab["devices"]:
                 row.update(state="unknown", why=f"its lab's directory could not be read: {exc}")
             continue
+        # A device the lab's topology does not declare boots from no file here (C482: a
+        # second network with its own topology, `throwaway`, read as "tw-ztp-a has no lab
+        # startup file" in the default lab). From the topology, never guessed, and only when
+        # the topology declares some device of this lab: names that match none are a
+        # different naming, said by the checks below as before, never a lab checked empty.
+        declared = set()
+        for text in (getattr(files, "topologies", None) or {}).values():
+            declared |= topology_nodes(text)
+        if declared and any(r["device"] in declared for _f, _d, r in lab["devices"]):
+            inside = []
+            for item in lab["devices"]:
+                row = item[2]
+                if row["device"] in declared:
+                    inside.append(item)
+                else:
+                    row.update(state="not_in_lab", why=(
+                        f"{lab['lab']}'s topology ({', '.join(sorted(files.topologies))}) does "
+                        f"not declare {row['device']}: it boots from no file in {cdir}"))
+            lab["devices"] = inside
         owned = set()
         for ref, dev, row in lab["devices"]:
             name = f"{row['device']}.cfg"
