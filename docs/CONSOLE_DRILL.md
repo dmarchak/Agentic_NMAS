@@ -230,7 +230,36 @@ no)".
 - The first confirmed batch (r1, r2, r4 and r6, r2 by mistake) was re-planned before the one
   that landed; what became of it is C461.
 
-**Next:** the switches, once vrnetlab's vIOS launch script has been read.
+**The switches: the launch script READ (2026-10-05, read-only).** s1 to s4 run the image's own
+`/launch.py` (`vrnetlab/cisco_vios:L2-20180619`); no patch is bound.
+
+How it drives the console:
+1. Only while a FRESH container first boots, until it marks the VM running.
+2. It waits for one of three things: the setup dialog (answers `no`), `Press RETURN to get
+   started!` (sends RETURN three times), or the factory prompt `Switch>`.
+3. At `Switch>` it takes the console over with scrapli (`auth_bypass`: no login), sends the
+   startup config line by line, then `write memory`, and marks the VM running.
+4. After that it never touches the console: an IOS reload, the tool's or anyone's, passes it
+   by.
+
+What that means for `login local` on `line con 0`:
+- **A redeploy is unaffected.** A redeploy makes a fresh container and a fresh disk overlay,
+  so the switch boots factory-default with no console login, and `login local` arrives as one
+  of the lines sent in that same session.
+- IOS applies a line's login to the NEXT session, so the bootstrap still finishes. The startup
+  file carries the username lines the login needs.
+- **Measured:** each switch bootstrapped once, at the 2026-10-01 redeploy: one "Startup
+  complete", 121 to 194 config lines sent, healthy, 0 restarts.
+
+**Recommendation: a console login on the switches, as on the routers.** No lab exception and
+no launch-script change. The order:
+1. s1, with the drill (variant B);
+2. s2 and s4;
+3. s3 last.
+
+A container RESTART (not a redeploy) of a configured vIOS is a separate, pre-existing limit
+that the login does not change: the bootstrap waits for `Switch>`, and a configured switch
+shows `s1>` (C464, UNKNOWN until measured on a throwaway).
 
 **The operator's correction (2026-10-05): ROUTERS first.**
 - **The routers:** one change file for r1, r3, r4 and r6 (the C8000Vs, configured at boot by
