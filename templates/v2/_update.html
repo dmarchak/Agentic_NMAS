@@ -6,6 +6,7 @@
 {%- set OUT_KIND = {'updated': 'ok', 'refused': 'warn', 'rolled_back': 'warn', 'rollback_failed': 'danger', 'failed': 'danger', 'running': 'info'} -%}
 {%- set CI_KIND = {'verified': 'ok', 'failed': 'danger', 'cancelled': 'warn', 'pending': 'warn', 'could_not_ask': 'muted'} -%}
 <div id="update-panel" class="stack" hx-get="{{ url_for('v2.update_panel') }}" hx-swap="outerHTML"
+     hx-include="find #update-host-steps"
      hx-trigger="nmas:app_version from:body, nmas:job_health from:body">
 
 {#- 1. What the last update did: shown on the next page load after it. -#}
@@ -62,7 +63,7 @@
     {%- for s in f.host_steps %}
     {%- if s.check_state == 'done' %}<li data-host-step-state="done">{{ icon('check', 14) }} {{ s.step }} <span class="muted">· checked: {{ s.check_detail }} <span class="mono">({{ s.sha[:10] }})</span></span></li>
     {%- elif s.check_state == 'not_done' %}<li data-host-step-state="not_done">{{ icon('warn', 14) }} {{ s.step }} <span class="muted">· not done yet, checked: {{ s.check_detail }} <span class="mono">({{ s.sha[:10] }})</span></span></li>
-    {%- else %}<li><label><input type="checkbox" data-host-step="{{ s.sha }}"> Done: {{ s.step }} <span class="muted mono">({{ s.sha[:10] }})</span></label>{% if s.check_state == 'unknown' %} <span class="muted">· the check could not answer: {{ s.check_detail }}</span>{% endif %}</li>
+    {%- else %}<li><label><input type="checkbox" name="host_step" value="{{ s.sha }}" data-host-step="{{ s.sha }}"{% if s.sha in (host_steps_ticked or ()) %} checked{% endif %}> Done: {{ s.step }} <span class="muted mono">({{ s.sha[:10] }})</span></label>{% if s.check_state == 'unknown' %} <span class="muted">· the check could not answer: {{ s.check_detail }}</span>{% endif %}</li>
     {%- endif %}
     {%- endfor %}
   </ul>

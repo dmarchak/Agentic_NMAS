@@ -1215,6 +1215,29 @@ class TestClickingTheShippedButton:
                    "return n && getComputedStyle(n).display !== 'none' && n.textContent")
         assert calls["apply"] == [(served_update["hash"], ["c" * 40], "test-person@example.invalid")]
 
+    def test_a_ticked_host_step_survives_a_live_redraw(self, served_update):
+        """C472 (R27's survey, 2026-10-05): the panel redraws on `job_health` and
+        `app_version`, and the redraw cleared the person's ticks, so a step said done had to
+        be said again, or the confirm was refused naming it. The redraw now sends the boxes."""
+        b, calls = served_update["b"], served_update["calls"]
+        b.go(served_update["srv"].url("/v2/update"))
+        b.wait_for("return window.Alpine && document.querySelector('input[data-host-step]') "
+                   "&& !document.querySelector('#update-confirm').disabled")
+        b.click("input[data-host-step]")
+        for key in ("job_health", "app_version"):
+            b.js("document.getElementById('update-panel').dataset.old = '1';"
+                 "document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[0]));"
+                 "return 1", key)
+            b.wait_for("var p = document.getElementById('update-panel');"
+                       "return !!p && !p.dataset.old && !document.querySelector("
+                       "'.htmx-swapping, .htmx-settling, .htmx-request')", 15)
+            assert b.js("return document.querySelector('input[data-host-step]').checked"), key
+        b.wait_for("return !document.querySelector('#update-confirm').disabled")
+        b.click("#update-confirm")
+        b.wait_for("var n=document.querySelector('.confirm .notice-danger');"
+                   "return n && getComputedStyle(n).display !== 'none' && n.textContent")
+        assert calls["apply"] == [(served_update["hash"], ["c" * 40], "test-person@example.invalid")]
+
     def test_an_accepted_request_draws_the_stepper_from_the_updaters_record(self, served_update):
         b, calls = served_update["b"], served_update["calls"]
         calls["answer"] = {"ok": True, "id": "0123456789abcdef", "target": "b" * 40,
