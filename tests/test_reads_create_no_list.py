@@ -49,6 +49,27 @@ def _fill(rule):
     return url + f"?list_name={UNKNOWN}&list={UNKNOWN}"
 
 
+def _remove_store(store):
+    """Remove the worker's store before restoring it, and if something wrote into it
+    DURING the removal, fail naming what was left and every live thread (C163's
+    measurement). It removed with `ignore_errors=True`, so the race surfaced only later, as
+    `FileExistsError` on the restore, here and in every later fixture in the worker
+    (2026-10-05: twice in an hour, 47 and 3 errors), with the writer unnamed."""
+    import threading
+
+    shutil.rmtree(store, ignore_errors=True)
+    if not os.path.exists(store):
+        return
+    left = sorted(os.path.relpath(os.path.join(d, f), store)
+                  for d, _sub, files in os.walk(store) for f in files)
+    threads = sorted(f"{t.name} ({type(t).__name__}, target "
+                     f"{getattr(getattr(t, '_target', None), '__qualname__', '?')})"
+                     for t in threading.enumerate() if t is not threading.main_thread())
+    raise AssertionError(
+        f"C163: the store could not be removed; something wrote into it during the removal. "
+        f"Left ({len(left)}): {left[:40]}. Live threads ({len(threads)}): {threads}")
+
+
 @pytest.fixture(scope="module")
 def creators():
     """{rule: url} for every GET that left the unknown list's directory.
@@ -87,7 +108,7 @@ def creators():
                 found[rule.rule] = url
     finally:
         socket.socket.connect = original_connect
-        shutil.rmtree(store, ignore_errors=True)
+        _remove_store(store)
         shutil.copytree(original, store)
         shutil.rmtree(original, ignore_errors=True)
     found["_swept"] = swept

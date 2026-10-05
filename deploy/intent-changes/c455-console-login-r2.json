@@ -1,0 +1,55 @@
+{
+  "summary": "console: line con 0 asks for a login (login local), on r2 alone first (C455, the operator, 2026-10-04); no enable-secret change in the same step",
+  "steps": [
+    {
+      "path": [
+        "lines"
+      ],
+      "before": [
+        {
+          "settings": [
+            "logging synchronous",
+            "stopbits 1"
+          ],
+          "spec": "con 0"
+        },
+        {
+          "settings": [],
+          "spec": "aux 0"
+        },
+        {
+          "settings": [
+            "logging synchronous",
+            "login local",
+            "length 0",
+            "transport input all"
+          ],
+          "spec": "vty 0 4"
+        }
+      ],
+      "after": [
+        {
+          "settings": [
+            "logging synchronous",
+            "login local",
+            "stopbits 1"
+          ],
+          "spec": "con 0"
+        },
+        {
+          "settings": [],
+          "spec": "aux 0"
+        },
+        {
+          "settings": [
+            "logging synchronous",
+            "login local",
+            "length 0",
+            "transport input all"
+          ],
+          "spec": "vty 0 4"
+        }
+      ]
+    }
+  ]
+}

@@ -114,3 +114,97 @@ exit
 | Anything unexpected | |
 
 **Then:** the terminal is removed (R39), with docs/CUTOVER.md updated.
+
+---
+
+# C455: the console asks for a login, one device first (the operator, 2026-10-04)
+
+**The order, each step done before the next:**
+1. Confirm the break-glass record holds the current credential.
+2. Add `login local` on `line con 0` to r2's intent, and deploy it.
+3. The operator re-runs the console drill there (variant B below), signing in with the record's
+   credential.
+4. Only then, the rest of the fleet as one batch, with s3 last.
+
+No enable secret changes in the same step.
+
+## Step 1: the record is current
+
+**Measured by the agent, read-only, via LAN, 2026-10-05 01:20 UTC (19:20 the operator's
+time):**
+- the record's state is **current**: "Every device's credential in use is in the record
+  exported 2026-10-03T19:54:37Z";
+- 9 devices, exported through the browser; the download arrived intact;
+- job health judged it at 01:16:40 UTC;
+- the checkout was unchanged before and after the read.
+
+**The operator's half:** confirm the file you hold is that export.
+
+```
+python3 scripts/nmas-breakglass verify <record>
+```
+
+It prints the record's date, and must say 2026-10-03 19:54 UTC. An older file is not the
+current one: export again (Credentials › The break-glass record), then verify.
+
+## Step 2: r2's intent, then its deploy
+
+The change is `deploy/intent-changes/c455-console-login-r2.json`.
+- **Its `before`** is r2's committed `lines` exactly, read 2026-10-05: `con 0` (`logging
+  synchronous`, `stopbits 1`), `aux 0`, and `vty 0 4` (`logging synchronous`, `login local`,
+  `length 0`, `transport input all`).
+- **Its `after`** adds `login local` to `con 0`, in IOS's own order.
+- If r2's intent has moved since, the tool refuses and names both values: re-read it before
+  going on.
+
+```
+scripts/nmas-bulk-intent --list Default --devices r2 --change deploy/intent-changes/c455-console-login-r2.json
+```
+
+**Expect** "1 device(s), 1 group(s)", with one render delta that adds `login local` under
+`line con 0`. Anything else: stop.
+
+```
+scripts/nmas-bulk-intent --list Default --devices r2 --change deploy/intent-changes/c455-console-login-r2.json --apply <HASH> --actor <you>
+```
+
+**Then deploy r2 from its device page** (Deploy…). The preview's program must be exactly:
+
+```
+line con 0
+ login local
+```
+
+Any other line: stop. It is merge-only, so nothing is removed, and verify reads r2 after.
+
+**What this cannot lock you out of:**
+- SSH (vty) is unchanged and already `login local`, with the same credential the record holds.
+- If the console refused the record's credential, SSH still reaches r2, and the change can be
+  read and undone from there.
+
+**Not measured:** how vrnetlab's BOOT path meets a console login.
+- vrnetlab replays some platforms' startup configuration over the console (`CONSOLE_REPLAYED`
+  includes the vIOS switches), and the C8000V is configured at boot by CVAC.
+- So **nothing in this step reloads or redeploys r2.**
+- Before step 4 reaches the vIOS switches, the operator reads vrnetlab's vIOS launch script on
+  the lab host for a console login prompt during the replay. If it would stall there, the
+  switches' rollout waits for a decision.
+
+## Step 3: the drill, variant B (the console now asks)
+
+Steps 1, 3 and 5 as above. Steps 2 and 4 change:
+
+**2B.** `docker exec -it clab-rcn-lab1-r2 telnet localhost 5000`, then Enter. **Expect
+`Username:`.**
+- Sign in with the username and password from `reveal` (step 1). Expect `r2>` or `r2#`.
+- A refused login is the finding: STOP, leave the console, and report. SSH still reaches r2.
+
+**4B.** Still sign in over SSH as in step 4, so both paths are proven on the same day.
+
+**The result:** add a row for 2B: "asked for a login; the record's credential accepted (yes or
+no)".
+
+## Step 4: the fleet (written when step 3 passes)
+
+One change file for the remaining devices, s3 last in the batch order. The vIOS boot question
+above is settled first.

@@ -139,6 +139,7 @@
   "static/js/nmas_*.js": "this repository's",
   "static/js/gen/*": "generated from this repository's templates",
   "static/css/nmas-v2.css": "this repository's",
+  "static/img/topology/*": "the project's OWN router and switch symbols, drawn here 2026-10-04 in the conventional network-diagram style (the operator: no third-party artwork); the project's licence",
   "static/js/vendor/MANIFEST.json": "this repository's record of the vendored files"
  },
  "audit": [

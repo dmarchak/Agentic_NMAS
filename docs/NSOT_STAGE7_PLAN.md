@@ -4052,6 +4052,24 @@ part of a 120-day range, not a deletion.
      so a read comes first; nothing is sent. A reason is required, from a verified person.
   4. After: the record, now and later.
 
+### 15.9 The operator's verdicts on v34 (2026-10-04), drawn in v35
+
+- **Topology A to C: APPROVED, with three fixes, drawn in v35:**
+  - **The router and the switch are our OWN symbols.** Tabler's router read as a home Wi-Fi
+    router. The new ones are in the conventional network-diagram style: a short cylinder with
+    four arrows on its top face, two in and two out; and a box with crossing arrows. They are
+    drawn here and shipped under the project's licence: `static/img/topology/router.svg` and
+    `switch.svg`, claimed as the project's own in `docs/THIRD_PARTY.json`. Checked at 16 to
+    96 px, light and dark, and in status colours.
+  - **Weak-point labels say what they mean on hover.** s3's SPOF: "Single point of failure:
+    the only path between the NMAS and the network (VLAN 99 reaches the NMAS only through s3
+    Gi1/1)". s2's island: no path while r4 Gi5 is down. The attention list's Weak points
+    group carries the same words.
+  - **Ports: default ON on the desktop,** off on the phone and the wall; Labels auto still
+    hides them zoomed out.
+- **R26's held-device card: APPROVED.** Takeover by rank once roles exist is recorded in
+  NSOT_PLAN 9.I.
+
 ## 16. ZTP: three ways in, one pipeline (the operator, 2026-10-04)
 
 It replaces "type the MAC" in 7.4e. The way in is chosen per device at planning:

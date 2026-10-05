@@ -6265,6 +6265,24 @@ chooses).
    - no `auth.proxy`: the Stage 7 plan's embed design is superseded, measured absent from
      the code.
 
+**Taking over a held device, by rank (the operator, 2026-10-04; R26's takeover once roles
+exist; nothing to build before then):**
+- **Rank:** a person may take over a hold only if their role includes the takeover
+  permission AND ranks at least as high as the holder's.
+- **A lower role is refused,** naming why and who can: "Held by an administrator: only an
+  administrator can take it over. Ask <holder> or another administrator."
+- **Every takeover is recorded** (who, why, from whom), AND it notifies the original holder.
+- **Holds by the tool itself rank lowest:** scheduled jobs, and Stage 8's agent. Any person
+  with the takeover permission may clear a stuck automated hold.
+- **The test to write when roles land:**
+  - a viewer cannot take over;
+  - an operator cannot take over an administrator's hold (refused, naming the holder's role
+    and who can);
+  - an operator can take over another operator's;
+  - anyone with the permission can take over a scheduled job's or the agent's;
+  - each takeover writes the record with who, why and from whom, and notifies the holder;
+  - each case also refused while the holder is still moving (the 10-minute lease, R26).
+
 **Not in 9.I:**
 - LDAP/AD (Stage 10, on demand: OIDC covers AD through Entra ID, AD FS or an IdP in
   front);

@@ -129,7 +129,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R23 | m | git, confirms | Onboarding Create and Abandon | credential store, manifest, `host_vars`, NetBox, Kea | no hold; Abandon ignores phase two's hold | no | HOLD FIXED 2026-10-04 (tests/test_onboard_serialised.py); binding Abandon to its dry run not built | yes | Hold the hostname; bind Abandon to its dry run |
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
-| R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | KEY AND PROBE FIXED 2026-10-04 (tests/test_device_hold_key_and_probe.py); lease and recorded release a decision | yes | Lease, recorded release, canonical key, no flock probe |
+| R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | KEY AND PROBE FIXED 2026-10-04 (tests/test_device_hold_key_and_probe.py); the lease and a recorded takeover DECIDED and its card APPROVED 2026-10-04 (not built); takeover by rank recorded for 9.I | yes | Lease, recorded release, canonical key, no flock probe |
 | R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE; the holder strip waits for a mockup, the broadcast half for C435 (recorded 2026-10-04) | yes | Broadcast mutations; live holder strip; previews subscribe |
 | R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
@@ -747,6 +747,16 @@ fail and read the truncated file as operation "?" by "unknown", held for decades
   **DECIDED 2026-10-04 (the operator): (A), a lease with a recorded takeover.** The refusal
   card's mockup comes first, for sign-off. Until it is built, (C) applies: the process restart
   is the remedy.
+  **The card was APPROVED 2026-10-04** (the canvas's `HoldTakeover`: wait while the holder
+  moves; after 10 minutes still, a recorded takeover; the stalled operation's next write
+  refused; a read first). **Once roles exist, the takeover goes by rank** (NSOT_PLAN 9.I, the
+  operator, 2026-10-04):
+  - a person needs the takeover permission and a role at least the holder's;
+  - a lower role is refused, naming who can;
+  - every takeover is recorded and notifies the holder;
+  - the tool's own holds (scheduled jobs, the agent) rank lowest.
+
+  The test for it is written in 9.I.
 
 **R27. Nobody is told what another person is doing** (live-4, live-14, intent-20,
 approvals-18, locks-13). Invalidation keys go only in the mutating request's own response
