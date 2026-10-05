@@ -99,6 +99,11 @@ NOT_AN_OPERATION = {
     ("_settings_mode.html", "See its settings"): "opens the network's Settings page again, a read",
     ("_settings_switch.html", "Cancel"): "puts back the group's card, saving nothing",
     ("_settings_refused.html", "Read 's settings again"): "opens the network's Settings page again, a read",
+    ("_intent_edit.html", "Discard the edit"): "puts back the read-only Intent card, writing nothing",
+    ("_intent_edit.html", "Back to the intent"): "puts back the read-only Intent card, a read",
+    ("_intent_check.html", "Write the ticked lines into the document"): (
+        "rewrites the editor's document (its unmodeled_ack block); the commit beside it, which "
+        "carries the link, writes it"),
 }
 
 

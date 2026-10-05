@@ -60,6 +60,7 @@ PAGES = (
     ("publish-remote", "Publish to the remote: push and verify", H, "how-it-works/publish-remote.md"),
     ("monitoring-templates", "Apply a monitoring template", H, "how-it-works/monitoring-templates.md"),
     ("update", "Update the app", H, "how-it-works/update.md"),
+    ("edit-intent", "Edit a device's intent", H, "how-it-works/edit-intent.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
      "how-it-works/settings-switch.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
@@ -132,6 +133,7 @@ OPERATIONS = {
     "monitoring-templates": ("modules.pipeline", "STAGE_NAMES"),
     "update": ("modules.update_op", "STEPS"),
     "settings-switch": ("modules.list_settings", "SWITCH_STEPS"),
+    "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).

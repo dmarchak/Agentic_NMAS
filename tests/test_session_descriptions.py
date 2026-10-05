@@ -79,16 +79,12 @@ class TestEveryAuthoredPathRefuses:
         assert hostvars.write_committed(str(tmp_path), _doc(LEFTOVERS[2], "GigabitEthernet0/1"))
 
     def test_the_editor_refuses_with_the_line(self):
-        from routes.templatize import _validate_edit
-        import app as A
+        from modules.nsot.intent_edit import validate
         text = ("hostname: s3\ninterfaces:\n- name: Loopback0\n  description: mgmt identity\n"
                 "- name: GigabitEthernet0/1\n  description: NSoT-managed - run_targets check\n")
-        with A.app.test_request_context("/"):
-            parsed, refused = _validate_edit("s3", text)
-        assert parsed is None
-        body, status = refused
-        got = body.get_json()
-        assert status == 400 and got["stage"] == "schema" and got["line"] == 6
+        got = validate("s3", text)
+        assert got["ok"] is False
+        assert got["status"] == 400 and got["stage"] == "schema" and got["line"] == 6
         assert "the tool's own test-run prefix" in got["error"]
 
     def test_bulk_refuses_the_device_with_the_reason(self):

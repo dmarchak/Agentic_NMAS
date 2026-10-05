@@ -67,9 +67,17 @@ class TestTheIntentTab:
         assert "its committed intent could not be read: git show failed" in html
         assert "Not the same as having no intent." in html
 
-    def test_editing_is_pointed_at_todays_page_and_the_fragment_is_strict(self, page):
+    def test_edit_opens_the_editor_in_place_and_the_fragment_is_strict(self, page):
         from modules import csp
         r, html = page("r2")
         assert r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
         assert not re.search(r"\sstyle=|\son[a-z]+=", html)
-        assert "Editing intent is on" in html and "today's page</a>" in html
+        assert 'data-op="edit-intent"' in html and 'hx-get="/v2/device/r2/intent/edit"' in html
+        assert "today's page</a>" not in html, "editing intent is on v2 (board H)"
+
+    def test_the_deep_link_opens_the_editor_on_the_page(self, lab, page):
+        """`?tab=intent&edit=1` (seeding's and the Templates refusal's link) lands in it."""
+        html = lab["client"].get("/v2/device/r2?tab=intent&edit=1").get_data(as_text=True)
+        assert "Editing r2's intent" in html and 'id="ie-text"' in html
+        plain = lab["client"].get("/v2/device/r2?tab=intent").get_data(as_text=True)
+        assert 'id="ie-text"' not in plain

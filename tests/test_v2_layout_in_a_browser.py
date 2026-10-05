@@ -130,6 +130,7 @@ def served(lab, monkeypatch):  # noqa: F811
 
 
 PAGES = ["/v2/", "/v2/devices", "/v2/device/r2", "/v2/device/r2?tab=intent",
+         "/v2/device/r2?tab=intent&edit=1",
          "/v2/device/r2?tab=history", "/v2/device/r2?tab=monitoring", "/v2/device/r2?tab=logs",
          "/v2/device/r2?tab=netbox", "/v2/device/r2?tab=neighbours", "/v2/history",
          "/v2/history?tab=baselines", "/v2/history?tab=authorisations", "/v2/monitoring",

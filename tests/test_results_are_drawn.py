@@ -152,6 +152,10 @@ PAGE_RECORD = {
     # record read back by job health's rotation row.
     # The device page's Deploy (7.3): a job; its result drawn by the job's card from the
     # receipt, and the record read back on the device's History.
+    # H, the intent editor on v2 (board H): the commit drawn in place (the commit, who, what a
+    # deploy would send now), and the committed intent read back by the Intent tab.
+    "intent_v2.commit": ("templates/v2/_intent_edit.html",
+                         ("c.state == 'done'", "c.r.commit", "c.actor"), "device_v2.intent"),
     "device_v2.revert_confirm": ("templates/v2/_revert.html",
                                  ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     # Retire on v2 (board 12): the result in place; its record is what the device's address

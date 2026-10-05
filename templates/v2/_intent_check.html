@@ -1,0 +1,46 @@
+{%- from "v2/_macros.html" import icon, badge -%}
+{#- H's right column, drawn again as the document is typed (routes/intent_v2.check): an error
+    on its line and column (the commit waits), else what the edit changes, what a deploy would
+    send, the checks, and the lines the parser does not model with whether each is
+    acknowledged (C481): ticking lines writes the document's `unmodeled_ack` block, which is
+    committed with the edit, in git, with its reason. -#}
+{%- if not p.ok %}
+<div class="ie-err" role="alert">
+  <p><strong>{% if p.line %}Line {{ p.line }}{% if p.column %}, column {{ p.column }}{% endif %}:{% else %}Not valid:{% endif %}</strong> {{ p.error }}</p>
+  {%- if p.line %}{% set src = (text or '').split('\n') %}{% if p.line <= src | length %}<pre class="op-diff ie-errline">{{ p.line }}: {{ src[p.line - 1] }}{% if p.column %}
+{{ ' ' * ((p.line | string | length) + 1 + p.column) }}^{% endif %}</pre>{% endif %}{% endif %}
+  <p class="muted small">The commit waits until the document is valid.</p>
+</div>
+{%- else %}
+<div class="ie-col">
+  <div><h3 class="ie-k">What your edit changes in {{ host }}'s configuration</h3>
+    {%- if p.vs_intent %}<pre class="op-diff">{{ p.vs_intent }}</pre>
+    {%- elif p.intent_note %}<p class="muted">{{ p.intent_note }}</p>
+    {%- elif p.document_changed %}<p class="muted">The document changed and its render did not: the edit changes nothing {{ host }} would be sent.</p>
+    {%- elif p.message %}<p class="muted">{{ p.message }}</p>
+    {%- else %}<p class="muted">Nothing yet: the document is what is committed.</p>{% endif %}</div>
+  <div><h3 class="ie-k">What a deploy would send to {{ host }}, after this commit</h3>
+    {%- if p.vs_device %}<pre class="op-diff">{{ p.vs_device }}</pre>
+    <p class="muted small">Merge-only, against {{ host }}'s captured golden.{% if p.masked_not_compared %} {{ p.masked_not_compared }} secret-bearing line{{ "" if p.masked_not_compared == 1 else "s" }} could not be compared.{% endif %}</p>
+    {%- elif p.rendered is defined and p.rendered %}<p class="muted">Nothing: {{ host }} already holds what this document renders.</p>
+    {%- else %}<p class="muted">{{ p.message or 'Not rendered.' }}</p>{% endif %}</div>
+  <div><h3 class="ie-k">Checks</h3>
+    <ul class="op-gates">
+      <li>{{ badge('pass', 'ok') }}<span>The document parses, and names {{ host }}; every interface key is one intent reads; no secret value in the text; every character a device accepts</span></li>
+      {%- if p.template is defined %}<li>{{ badge('pass' if p.deployable else 'not yet', 'ok' if p.deployable else 'warn') }}<span>{{ host }}'s template renders it: <span class="mono">{{ p.template }}</span>{% if not p.deployable and p.blocking_reasons %}; a deploy is blocked: {{ p.blocking_reasons | join('; ') }}{% endif %}</span></li>{% endif %}
+      <li>{{ badge('at commit', 'info') }}<span>{{ host }}'s intent is still the version you opened: if it moved, nothing is written</span></li>
+    </ul></div>
+  {%- if p.unmodelled %}
+  {%- set pending = p.unmodelled | rejectattr('acknowledged') | list %}
+  <div class="ie-unmodelled"><h3 class="ie-k">Lines intent does not model {{ badge(pending | length ~ ' not acknowledged', 'warn') if pending else badge('all acknowledged', 'ok') }}</h3>
+    <p class="muted small">A template cannot render these, so a deploy and a template's approval wait until each is acknowledged: a person saying the device keeps it as it is. Ticked lines are written into this document's <span class="mono">unmodeled_ack</span> and committed with your reason.</p>
+    <div class="ie-acks">
+      {%- for u in p.unmodelled %}
+      <label class="ie-ack"><input type="checkbox" name="ack" value="{{ u.line }}" form="ie-ack-form"{% if u.acknowledged %} checked{% endif %}> <span class="mono">{{ u.line }}</span>{% if u.acknowledged %} {{ badge('acknowledged', 'ok') }}{% endif %}</label>
+      {%- endfor %}
+    </div>
+    <button type="submit" class="btn btn-small" form="ie-ack-form">Write the ticked lines into the document</button>
+  </div>
+  {%- endif %}
+</div>
+{%- endif %}

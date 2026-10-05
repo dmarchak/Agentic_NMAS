@@ -33,7 +33,7 @@
     {%- if c.reproduced %}
     <p>Every line of {{ c.host }}'s golden is modelled by its template ({{ c.coverage }}%), so nothing blocks its deploy.</p>
     {%- else %}
-    <p><strong>The template does not fully model {{ c.host }}</strong> ({{ c.fidelity }}% round-trip, {{ c.coverage }}% modelled). The seed still commits the intent, and a deploy to {{ c.host }} stays blocked until each line below is modelled or acknowledged on the Intent tab.</p>
+    <p><strong>The template does not fully model {{ c.host }}</strong> ({{ c.fidelity }}% round-trip, {{ c.coverage }}% modelled). The seed still commits the intent, and a deploy to {{ c.host }} stays blocked until each line below is modelled or acknowledged <a href="{{ url_for('device_v2.device', name=c.host, tab='intent', edit=1) }}">on the Intent tab, in its editor</a>.</p>
     <pre class="op-diff">{% for l in c.unmodeled %}unmodelled: {{ l }}
 {% endfor %}{% for l in c.missing %}not reproduced: {{ l }}
 {% endfor %}{% for l in c.extra %}rendered, not on the device: {{ l }}
@@ -89,7 +89,7 @@
     {%- if c.reproduced %}
     <p>{{ c.host }}'s intent reproduces its golden; its next deploy plan sends what intent and the device differ by.</p>
     {%- else %}
-    <p><strong>A deploy to {{ c.host }} stays blocked</strong> until each of these is modelled or acknowledged on the Intent tab:</p>
+    <p><strong>A deploy to {{ c.host }} stays blocked</strong> until each of these is modelled or acknowledged <a href="{{ url_for('device_v2.device', name=c.host, tab='intent', edit=1) }}">on the Intent tab, in its editor</a>:</p>
     <pre class="op-diff">{{ c.issues | join('\n') }}</pre>
     {%- endif %}
     {%- for s in c.checks %}{% if s %}<p class="muted small">{{ s[0] | upper }}{{ s[1:] }}.</p>{% endif %}{% endfor %}</div></div>

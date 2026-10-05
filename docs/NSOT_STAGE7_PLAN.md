@@ -3903,6 +3903,13 @@ how it gets used by default, and the single-device path already carries its reas
 - **Bulk intent (D) is a different job, not an editor:** "change this setting on the selected
   devices". It shows each device's resulting diff and deploy program, grouped and collapsible
   under the large-fleets rule.
+- **Built 2026-10-05: H's Document mode with I's states** (`routes/intent_v2.py`,
+  `modules/nsot/intent_edit.py`, the one code path today's `/templatize/committed/*` also
+  runs): Edit in place, checked as typed, unmodelled lines ticked and written into
+  `unmodeled_ack`, the commit as the person against the version opened, a moved intent
+  refused with the edit placed on theirs only when the lines are disjoint. Walked in a real
+  browser (`tests/test_intent_editor_v2.py`). **Not built: J, Fields mode.** Not yet run on the
+  host: its first real run is THROWAWAY Part 5.
 
 **7.4 G, adopt and onboarding finish the job.** Once the device answers with its ROTATED
 credential, by default:

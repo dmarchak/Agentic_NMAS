@@ -849,6 +849,31 @@ def update():
     ])
 
 
+def edit_intent():
+    return svg(440, (
+        "Editing a device's intent. The editor opens the document committed at HEAD and the "
+        "blob it was read from. As you type, the document is checked (its line and column on "
+        "an error) and rendered through the device's template beside what is committed and the "
+        "device's golden, naming each line the parser does not model and whether it is "
+        "acknowledged. You commit with a reason; the commit is refused, naming both versions, "
+        "if the intent moved since you opened it. Nothing is sent to the device: a deploy does "
+        "that."), [
+        lanes(20, 434),
+        repo(14, 40, 186, 40, "Intent at HEAD", "the blob you opened"), num(14, 40, 1),
+        _down(107, 82, 102),
+        doc("intent", 14, 104, 186, 40, "Your edit", "checked as you type"), num(14, 104, 2),
+        doc("box", 14, 156, 186, 40, "Both diffs", "the render, what a deploy sends"),
+        doc("box", 14, 208, 186, 34, "Unmodelled lines", "ticked: acknowledged"), num(14, 208, 3),
+        person(14, 256, 186, 30, "You commit, with a reason"), num(14, 256, 4),
+        _down(107, 288, 308),
+        repo(14, 310, 186, 40, "One commit", "host_vars/<device>, as you"),
+        t(14, 372, "Intent moved since you opened it: nothing", "sm"), num(14, 362, 5),
+        t(14, 385, "is written; both changes are shown.", "sm"),
+        device(240, 60, 140, 44, "The device", "not contacted", off=True),
+        nosend(310, 200, ("nothing is sent", "a deploy does that")),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -1034,6 +1059,7 @@ DIAGRAMS = {
     "monitoring-templates": monitoring_templates,
     "update": update,
     "settings-switch": settings_switch,
+    "edit-intent": edit_intent,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

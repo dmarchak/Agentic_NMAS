@@ -22,8 +22,8 @@ v1's own size is pinned by `tests/test_no_new_v1_capability.py` (202 controls, 1
 | State | Count |
 |---|---|
 | 1 Proven | **16** |
-| 2 Built, not yet run | **7** |
-| 3 Signed off, not built | **20** |
+| 2 Built, not yet run | **8** |
+| 3 Signed off, not built | **19** |
 | 4 Awaiting sign-off | **0** |
 | 5 No design | **14** (11 with a decided home, 3 without) |
 | 6 Retired | **27** (4 removed, the server restart among them; 22 REMOVE at 7.8; 1 CLI only) |
@@ -76,7 +76,7 @@ Counted from the rows below (the first survey had 86; three Installation rows, N
 | Retry a rolled-back change | device.html | 2 | Actions › Retry… | waits for THROWAWAY Part 6 |
 | Seed intent | device.html | 1 | Actions › Seed intent… | THROWAWAY 3.3 (bdaa5eb) |
 | Retire | device.html | 1 | Actions › Retire… | r5, 2026-10-04 |
-| Intent editor | partials/intent_editor.html | 3 | board H (2026-10-04), with acknowledging an unmodelled line | C444, C481 |
+| Intent editor | partials/intent_editor.html | 2 | the Intent tab's Edit, board H's Document mode with acknowledging an unmodelled line (built 2026-10-05; Fields mode, board J, not built) | C444, C481; first real run: THROWAWAY Part 5 |
 | Template render preview | template_editor.html | 5 | Templates, through the intent editor H (decided 2026-10-05) | |
 | Custom command | device.html, Utilities | 3 | the Ask the device tab (drawn disabled) | signed_off_screens `tab:ask` |
 | Quick actions | device.html | 6 REMOVE | | CUTOVER |

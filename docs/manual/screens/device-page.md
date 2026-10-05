@@ -26,8 +26,12 @@ its checks (reachability, Oxidized's copy, alerts).
 ## Intent {#intent}
 
 The device's intent as committed (a file edited on the host but never committed is never
-drawn), its last intent commit, and what the monitoring profile adds. Read-only; editing is on
-today's page until plan 7.3.
+drawn), its last intent commit, and what the monitoring profile adds. **Edit** opens the
+editor in place of the document: checked as you type, what your edit changes and what a deploy
+would send, the lines the template does not model with a tick to acknowledge each, and the
+commit with your reason. Nothing is sent to the device until you plan a deploy. A device whose
+intent is only onboarding's bootstrap has no Edit: seed it first. See
+[Edit a device's intent](edit-intent).
 
 ## History {#history-tab}
 

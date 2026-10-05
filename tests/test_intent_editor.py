@@ -320,9 +320,9 @@ class TestApprovalIsConsultedNotAssumed:
     def test_it_uses_the_helper_that_resolves_approval(self):
         from tests.astcheck import calls_in
 
-        from routes import templatize
+        from modules.nsot import intent_edit
 
-        assert calls_in(templatize.preview_committed_edit, "artifact_for") >= 1
+        assert calls_in(intent_edit.preview, "artifact_for") >= 1
 
     def test_an_approved_template_is_not_reported_unapproved(self, world,
                                                               monkeypatch):

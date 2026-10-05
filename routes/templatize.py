@@ -260,358 +260,45 @@ def committed():
 
 @bp.route("/committed/<path:hostname>", methods=["GET"])
 def read_committed(hostname):
-    """The committed host_vars document, verbatim, for editing."""
-    from modules.nsot import hostvars
+    """The committed host_vars document, verbatim, for editing, and the blob it was read
+    from (``base``, CONCURRENCY_AUDIT R2). `modules/nsot/intent_edit.py` is the one code
+    path today's editor and the v2 Intent tab (board H) share."""
+    from modules.nsot import intent_edit
 
-    repo = _repo_for(_active_list())
-    # What is COMMITTED, from git (C104): the editor opens what deploy reads. The text is
-    # read FROM the blob it names as its BASE, the version the save sends back
-    # (CONCURRENCY_AUDIT R2), so a commit landing between two reads of HEAD cannot pair one
-    # version's text with another's base.
-    base = hostvars.committed_blob(repo, hostname)
-    text = hostvars.blob_text(repo, base) if base else None
-    if text is None:
-        return jsonify({"ok": False, "committed": False, "error": (
-            f"'{hostname}' has no committed intent. Extract it, review the "
-            "diff, and commit before it can be deployed.")}), 404
-    return jsonify({"ok": True, "hostname": hostname, "committed": True,
-                    "yaml": text, "base": base})
-
-
-def _validate_edit(hostname: str, text: str):
-    """``(parsed, None)`` or ``(None, refusal)``: the editor's checks, run by the preview
-    AND the save (CONCURRENCY_AUDIT R2: the unknown-interface-key refusal ran only in the
-    preview, so a save never previewed, or edited after it, skipped it)."""
-    import yaml
-
-    from modules.nsot import hostvars
-
-    # 1. Parse. A mark gives line and column; without one the error is still
-    #    reported rather than swallowed, because "invalid somewhere" beats a
-    #    silent refusal.
-    try:
-        parsed = yaml.safe_load(text) or {}
-    except yaml.YAMLError as exc:
-        mark = getattr(exc, "problem_mark", None)
-        return None, (jsonify({
-            "ok": False, "stage": "yaml",
-            "line": (mark.line + 1) if mark else None,
-            "column": (mark.column + 1) if mark else None,
-            "error": getattr(exc, "problem", None) or str(exc)}), 400)
-
-    if not isinstance(parsed, dict):
-        return None, (jsonify({"ok": False, "stage": "schema", "line": 1, "column": 1,
-                        "error": "host_vars must be a YAML mapping"}), 400)
-
-    # 2. Schema, such as it is: the document names its own device. A mismatch
-    #    here is how one device's intent lands in another's file.
-    named = parsed.get("hostname")
-    if named and named != hostname:
-        line = next((n for n, l in enumerate(text.splitlines(), 1)
-                     if l.strip().startswith("hostname:")), 1)
-        return None, (jsonify({"ok": False, "stage": "schema", "line": line,
-                        "column": 1,
-                        "error": f"this document names {named!r}; a host_vars "
-                                 f"file names its own device, and editing "
-                                 f"{hostname}'s must say {hostname!r}"}), 400)
-
-    # 2b. UNKNOWN INTERFACE KEYS — the silent half.
-    #
-    # `StrictUndefined` catches a MISSING key and can never catch a MISSPELLED
-    # one: `descripton` is simply never read, the line does not render, and
-    # nothing says a word. That is the failure a human author actually has,
-    # and it is the one the render cannot report — so it is reported here,
-    # with the line, like a YAML error.
-    unknown = hostvars.unknown_interface_keys(parsed)
-    if unknown:
-        first_key = unknown[0][1]
-        line = next((n for n, l in enumerate(text.splitlines(), 1)
-                     if l.strip().startswith(f"{first_key}:")), 1)
-        names = ", ".join(sorted({f"{key!r} (interfaces[{i}])"
-                                  for i, key in unknown}))
-        return None, (jsonify({
-            "ok": False, "stage": "schema", "line": line, "column": 1,
-            "error": (f"nothing reads {names}. An interface key that is not "
-                      "one of the known thirty is silently ignored — the line "
-                      "simply does not render — so it is refused here rather "
-                      "than at the device. Omitting a key is fine and needs "
-                      "no action; misspelling one does.")}), 400)
-
-    # 2c. THE SYSLOG BLOCK IS WHOLE OR ABSENT (NSOT_PLAN P.1). Refused here,
-    #     with the line, rather than at the commit -- same reason as 2b.
-    problems = hostvars.syslog_block_problems(parsed)
-    if problems:
-        line = next((n for n, l in enumerate(text.splitlines(), 1)
-                     if l.strip().startswith("syslog:")), 1)
-        return None, (jsonify({"ok": False, "stage": "schema", "line": line,
-                        "column": 1, "error": "; ".join(problems)}), 400)
-
-    # 2d. NO RUN'S NOTES AS A DESCRIPTION (C428). Refused here with the line, as at the
-    #     commit (`write_committed_text`).
-    problems = hostvars.description_problems(parsed)
-    if problems:
-        bad = problems[0].split(" is ", 1)[1].split(":", 1)[0].strip("'\"")
-        line = next((n for n, l in enumerate(text.splitlines(), 1)
-                     if l.strip().startswith("description:") and bad in l), 1)
-        return None, (jsonify({"ok": False, "stage": "schema", "line": line,
-                        "column": 1, "error": "; ".join(problems)}), 400)
-
-    # 3. The secret guards, BEFORE anything is rendered or written. Same two
-    #    checks `write_committed_text()` applies, run here so the editor
-    #    refuses rather than the commit.
-    try:
-        hostvars.assert_printable(text, hostname)
-        hostvars.assert_no_secret_values(text, hostname)
-    except Exception as exc:                  # noqa: BLE001
-        return None, (jsonify({"ok": False, "stage": "secrets",
-                        "error": str(exc)}), 400)
-    return parsed, None
+    body, status = intent_edit.strip_status(
+        intent_edit.open_doc(_active_list(), hostname))
+    return jsonify(body), status
 
 
 @bp.route("/committed/<path:hostname>/preview", methods=["POST"])
 def preview_committed_edit(hostname):
     """Validate edited intent and show what it would DO. Writes nothing.
 
-    A text editor is honest — the bytes reviewed in the diff are the bytes
-    committed, with no translation layer, and nothing the field set does not
-    model can vanish on the way through. A **structured** editor round-trips
-    the document through the parser, so an ``unmodeled:`` block would
-    disappear without appearing in any diff: the exact failure that block was
-    built to prevent.
-
-    Honest is not the same as usable, and this is what makes it usable:
-
-    * a YAML or schema error is refused with a **line and column**, the way
-      the template editor refuses bad Jinja;
-    * the **render diff** is shown before committing, so somebody who does
-      not remember the schema can see the consequence rather than the
-      document.
-
-    Two diffs, and the first is the one that answers "what does my edit do":
-
-    ``vs_intent``   render of the edited text vs render of what is committed
-    ``vs_device``   render of the edited text vs the device's capture — what
-                    a deploy would push
-    """
-    from modules.nsot import hostvars, roundtrip
+    A text editor is honest: the bytes reviewed in the diff are the bytes committed, and an
+    ``unmodeled:`` block cannot vanish on the way through. A YAML or schema error is refused
+    with a line and column; ``vs_intent`` (the edit against what is committed) and
+    ``vs_device`` (against the device's capture: what a deploy would push) are shown before
+    committing. The checks and both diffs are `intent_edit.preview`'s."""
+    from modules.nsot import intent_edit
 
     data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    repo = _repo_for(list_name)
-    text = data.get("yaml")
-    if not isinstance(text, str) or not text.strip():
-        return jsonify({"ok": False, "error": "No host_vars document sent"}), 400
-
-    parsed, refused = _validate_edit(hostname, text)
-    if refused:
-        return refused
-
-    # The same capture the Template preview uses, from the same helpers --
-    # one composition, so the editor's diff and the preview's diff cannot
-    # disagree about what the device currently looks like.
-    from routes.templates import (_captured_golden, _captured_running,
-                                  _platform_for as _platform_of_host)
-    from modules.nsot import templates_repo
-
-    golden, _at = _captured_golden(hostname, list_name)
-    running, _at2 = _captured_running(list_name, hostname)
-    capture = golden or running
-    if not capture:
-        return jsonify({"ok": True, "valid": True, "rendered": "",
-                        "message": ("Valid. No captured config for this "
-                                    "device, so there is nothing to render "
-                                    "against yet.")})
-
-    platform = _platform_of_host(hostname)
-    from modules.nsot.platform import is_dialect, unknown_words
-    if not is_dialect(platform):
-        from routes.templates import _row_for
-        return jsonify({"ok": False, "stage": "render", "error": unknown_words(
-            _row_for(hostname) or {"hostname": hostname})}), 409
-    template = templates_repo.template_for_device(repo, hostname, platform)
-
-    # `artifact_for()`, not `build_artifact()` directly. The latter defaults
-    # `template_approved` to False and reports that as "template '<x>' is not
-    # approved for this device" -- a claim about the approval store made
-    # without consulting it. This route built artifacts directly and so
-    # reported every device as not deployable, which read as an approval that
-    # had revoked itself.
-    from routes.templates import artifact_for
-
-    # Both sides render what the device would INHERIT as well (P.9): an edit
-    # that leaves the profile's lines alone must not read as removing them.
-    from modules.nsot import profile as _profile
-
-    def _eff(doc_):
-        return _profile.effective_for(repo, list_name, hostname, doc_, platform)
-
-    try:
-        edited = artifact_for(hostname, capture, repo, platform, template,
-                              host_vars=hostvars.hydrate_secrets(
-                                  _eff(parsed), hostname, list_name))
-    except Exception as exc:                  # noqa: BLE001
-        return jsonify({"ok": False, "stage": "render",
-                        "error": f"{type(exc).__name__}: {exc}"}), 400
-
-    # BOTH READ GIT, NOT THE WORKING TREE.
-    #
-    # `read_committed()` opens the file on disk, which is correct for "what
-    # would deploy" and wrong for "what is committed". Editing the file
-    # directly — how a person actually works — made `vs_intent` compare the
-    # edit against itself: empty by construction, permanently. And
-    # `document_changed`, added precisely to disambiguate an empty diff, read
-    # the **same** working file, so the disambiguator was fooled by the cause
-    # it was there to expose. Two signals that look independent, sharing one
-    # source, so their agreement carried no information.
-    committed_raw, intent_state = hostvars.committed_at_head(repo, hostname)
-    committed = (hostvars.from_yaml(committed_raw)
-                 if committed_raw is not None else None)
-    document_changed = (committed_raw is not None and committed_raw != text)
-
-    vs_intent = ""
-    intent_note = None
-    if intent_state == hostvars.NEVER_COMMITTED:
-        # THE THIRD STATE, NAMED. "Never committed" and "committed and
-        # identical" both render as an empty diff, and the operator cannot
-        # tell them apart — the absent-versus-empty distinction that erased
-        # the settings file, arriving in the editor. The same absence also
-        # means opposite things depending on where the device is.
-        intent_note = hostvars.intent_gap_note(repo, hostname)
-    elif committed:
-        current = artifact_for(hostname, capture, repo, platform, template,
-                               host_vars=hostvars.hydrate_secrets(
-                                   _eff(committed), hostname, list_name))
-        vs_intent = roundtrip.canonical_diff(
-            current.rendered_masked, edited.rendered_masked,
-            fromfile=f"committed ({hostname})", tofile=f"edited ({hostname})")
-
-    vs_device, masked = roundtrip.canonical_diff(
-        capture, edited.rendered_masked, fromfile=f"device ({hostname})",
-        tofile=f"edited ({hostname})", report_masked=True)
-
-    return jsonify({
-        "ok": True, "valid": True, "hostname": hostname,
-        "deployable": edited.deployable,
-        "blocking_reasons": list(edited.blocking_reasons),
-        "vs_intent": vs_intent,
-        "vs_intent_changed": bool(vs_intent),
-        "intent_state": intent_state,
-        "intent_note": intent_note,
-        "document_changed": document_changed,
-        "vs_device": vs_device,
-        "masked_not_compared": masked,
-        "rendered": edited.rendered_masked,
-    })
+    body, status = intent_edit.strip_status(
+        intent_edit.preview(_active_list(data), hostname, data.get("yaml")))
+    return jsonify(body), status
 
 
 @bp.route("/committed/<path:hostname>", methods=["POST"])
 def edit_committed(hostname):
-    """Edit committed intent and commit the edit.
-
-    **This is how a change is expressed.** Not by configuring the device and
-    re-extracting — that makes intent a function of current state and can only
-    ever produce an empty diff. Edit what the network is supposed to be, commit
-    it, and the render diff *is* the change.
-
-    **Saved against the version the person opened** (CONCURRENCY_AUDIT R2). The GET hands
-    out ``base``, the blob at HEAD; the save sends it back, and under the repository lock a
-    HEAD that moved since is refused with both blobs, who moved it and both changes, with
-    nothing written. Before, the last writer won silently: a stale editor put its whole
-    document back over another person's commit, and the write happened before the lock, so
-    one person's commit could carry the other's text.
-    """
-    from modules.nsot import hostvars, repo as repo_service
+    """Edit committed intent and commit the edit, saved against the version the person
+    opened (R2): a HEAD that moved since is refused with both blobs, who moved it and both
+    changes, nothing written (`intent_edit.commit`)."""
+    from modules.nsot import intent_edit
 
     data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    repo = _repo_for(list_name)
-    text = data.get("yaml")
-    summary = (data.get("summary") or "").strip()
-    base = (data.get("base") or "").strip()
-
-    if not isinstance(text, str) or not text.strip():
-        return jsonify({"ok": False, "error": "No host_vars document sent"}), 400
-    if not summary:
-        return jsonify({"ok": False, "error": (
-            "A one-line summary is required — it becomes the commit subject, "
-            "and 'host_vars: s4' on its own says nothing in a log.")}), 400
-    if not base:
-        return jsonify({"ok": False, "stage": "base", "error": (
-            f"Not saved: this editor did not say which version of {hostname}'s intent it "
-            "opened, so the save could replace a commit made since. Nothing was written. "
-            "Reload the page, open the editor again and make the edit there.")}), 400
-    _parsed, refused = _validate_edit(hostname, text)
-    if refused:
-        return refused
-
-    with repo_service.repo_lock(repo):
-        current = hostvars.committed_blob(repo, hostname)
-        if current is None:
-            return jsonify({"ok": False, "error": (
-                f"'{hostname}' has no committed intent yet. Commit the extraction "
-                "first, so the edit has a reviewed baseline to diff against.")}), 404
-        if current != base:
-            return _intent_moved(repo, hostname, base, current, text)
-        committed_text = hostvars.blob_text(repo, current) or ""
-        if (text if text.endswith("\n") else text + "\n") == committed_text:
-            return jsonify({"ok": True, "hostname": hostname, "changed": False,
-                            "commit": "", "base": current,
-                            "message": "Nothing to commit: the document is what is "
-                                       "already committed."})
-        try:
-            hostvars.write_committed_text(repo, hostname, text)
-        except hostvars.SecretLeak as exc:
-            log.error("templatize: refused host_vars edit for %s: %s", hostname, exc)
-            return jsonify({"ok": False, "error": str(exc)}), 400
-        except ValueError as exc:
-            return jsonify({"ok": False, "error": str(exc)}), 400
-
-        result = repo_service.save_host_vars(
-            list_name, [hostname], actor=request_actor(),
-            message=f"host_vars: {hostname} {summary}")
-        after = hostvars.committed_blob(repo, hostname)
-    return jsonify({"ok": result.get("ok", False), "hostname": hostname,
-                    "changed": bool(result.get("commit")),
-                    "commit": result.get("commit", ""), "base": after or current,
-                    "message": result.get("message", ""),
-                    "error": result.get("error", "")})
-
-
-def _intent_moved(repo: str, hostname: str, base: str, current: str, text: str):
-    """The refusal when HEAD moved after the editor opened: both blobs named, who moved it,
-    what they changed and what this edit changes, each against what was opened. 409."""
-    import difflib
-
-    from modules.nsot import hostvars
-
-    opened = hostvars.blob_text(repo, base)
-    now = hostvars.blob_text(repo, current) or ""
-    last = hostvars.last_intent_commit(repo, hostname)
-    by = (f"{last.get('by') or 'someone'} in {last.get('commit')} "
-          f"(\"{last.get('subject')}\", {last.get('at')})") if last else "a commit"
-
-    def diff(a, b, left, right):
-        return "".join(difflib.unified_diff(a.splitlines(True), b.splitlines(True),
-                                            fromfile=left, tofile=right))
-
-    if opened is None:
-        their = your = ""
-        what = (f"the version this editor says it opened ({base[:12]}) is not in the "
-                "repository, so the two changes cannot be shown")
-    else:
-        their = diff(opened, now, f"what you opened ({base[:8]})",
-                     f"committed now ({current[:8]})")
-        your = diff(opened, text if text.endswith("\n") else text + "\n",
-                    f"what you opened ({base[:8]})", "your edit")
-        what = "their change and yours are below"
-    return jsonify({
-        "ok": False, "stage": "moved", "hostname": hostname,
-        "base": base, "current": current, "last_commit": last,
-        "their_change": their, "your_change": your,
-        "error": (f"Not saved: {hostname}'s intent changed after you opened it. You opened "
-                  f"{base[:8]}; committed now is {current[:8]}, by {by}. Nothing was "
-                  f"written; {what}. Reload the editor to make your edit on their "
-                  "version.")}), 409
+    body, status = intent_edit.strip_status(intent_edit.commit(
+        _active_list(data), hostname, data.get("yaml"), data.get("summary") or "",
+        data.get("base") or "", request_actor()))
+    return jsonify(body), status
 
 
 # ---------------------------------------------------------------------------

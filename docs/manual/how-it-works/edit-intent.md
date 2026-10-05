@@ -1,0 +1,19 @@
+# Edit a device's intent
+
+A device's intent is the committed document that says what it should be: `host_vars/<device>.yml` in its network's repository. A change to a device is made by editing that document and committing it, then deploying; never by configuring the device and reading it back. The editor is on the device page's **Intent** tab: **Edit** turns the read-only card into the editor, in place. Nothing is sent to the device by editing; a deploy does that.
+
+![Editing a device's intent: the editor opens the document committed at HEAD and the blob it was read from; as you type it is checked and rendered through the device's template beside what is committed and the device's golden, naming each line the parser does not model and whether it is acknowledged; you commit with a reason, refused naming both versions if the intent moved since you opened it. The device is not contacted.](diagrams/edit-intent.svg)
+
+## The steps
+
+1. `open`: the committed document is read from git at HEAD, with the blob it came from. Read: the device's intent as committed. Sent: nothing. Recorded: nothing. The editor shows exactly that text: what you see is what is committed, byte for byte. A device whose intent is only onboarding's bootstrap is not edited here; Actions › Seed intent… gives it its first full intent.
+2. `check`: the document is checked as you type, and rendered. Read: the device's template and its captured golden. Sent: nothing. Recorded: nothing. An error is named with its line and column (YAML, the device it names, an interface key nothing reads, a syslog block that is not whole, a run's notes as a description, a secret value or a character the device would not accept), and the commit waits until there is none. Beside the document: what your edit changes in the device's configuration (the render of your edit against the render of what is committed, the monitoring profile's lines on both sides), and what a deploy would send after this commit (against the device's golden, merge-only).
+3. `acknowledge`: the lines the parser does not model are listed with whether each is acknowledged. Read: nothing more. Sent: nothing. Recorded: nothing until you commit. A template cannot render such a line, so a deploy, and a template's approval, wait until each is acknowledged: a person saying the device keeps it as it is. Ticking lines and writing them into the document sets its `unmodeled_ack` block, which you see in the document and commit with your reason. Lines the device writes for itself (its certificates, licence UDI, self-signed trustpoint, and AutoInstall's DHCP client-id) are never listed: they are the device's own.
+4. `commit`: one commit of the document, as you, with your reason as its subject. Read: the intent at HEAD again, under the repository lock. Sent: nothing. Recorded: the commit (`host_vars: <device> <your reason>`), with who you are. Nothing is sent to the device: it now departs from its intent until a deploy sends the lines, and the result offers **Plan a deploy…** from the same place.
+5. `moved`: if the device's intent was committed by someone else after you opened it, nothing is written. Read: what you opened and what is committed now. Sent: nothing. Recorded: nothing. The card names both versions and who moved it, with their change and yours. When the two touch different lines, yours is placed on theirs and the editor opens on the result, so you see it and its diffs before you commit; when both change the same lines, the editor opens on theirs and your document stays beside it to copy from.
+
+## What editing does not do
+
+- It contacts no device and changes no configuration: a deploy does that.
+- It never commits for you: a moved intent is shown, and you commit again.
+- It never changes a secret's value: the document holds only references.

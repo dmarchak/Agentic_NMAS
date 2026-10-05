@@ -1,9 +1,9 @@
-{%- from "v2/_macros.html" import icon, badge, info -%}
-{#- The device page's Intent tab (NSOT_GUI_BRIEF 3.3), READ-ONLY: the intent
+{%- from "v2/_macros.html" import icon, badge, info, how -%}
+{#- The device page's Intent tab (NSOT_GUI_BRIEF 3.3): the intent
     COMMITTED at HEAD (device_page.intent_view), its last commit, and what the
-    network's monitoring profile adds on top or the device excludes. The
-    editor and its form mode stay on today's page until the redesign carries
-    them, and the page says so. -#}
+    network's monitoring profile adds on top or the device excludes.
+    Edit (a person who may commit) turns this card into H's editor in place
+    (_intent_edit.html, routes/intent_v2.py). -#}
 <section class="card intent" id="intent" hx-get="{{ url_for('device_v2.intent', name=device.hostname) }}"
          hx-trigger="nmas:goldens from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'intent', 'About this tab') }}</p>
@@ -13,7 +13,10 @@
   <div class="notice notice-warn">{{ icon('warn') }}<p>{{ iv.note }}</p></div>
   {%- else %}
   <div class="card-head"><h2>Committed intent</h2>
-    {%- if iv.bootstrap %} {{ badge('bootstrap only: not deployable', 'warn') }}{% endif %}</div>
+    {%- if iv.bootstrap %} {{ badge('bootstrap only: not deployable', 'warn') }}{% endif %}
+    {%- if may_edit and not iv.bootstrap %}
+    <span class="op-act"><a class="btn btn-primary" data-op="edit-intent" href="{{ url_for('device_v2.device', name=device.hostname, tab='intent', edit=1) }}" hx-get="{{ url_for('intent_v2.edit', name=device.hostname) }}" hx-target="#intent" hx-swap="outerHTML">Edit</a>{{ how('edit-intent', op='editing intent') }}</span>
+    {%- endif %}</div>
   <p class="muted">Last changed by <code>{{ (iv.commit.sha or '')[:10] }}</code> {{ iv.commit.subject }}. Read from the repository at HEAD, never from a file nobody committed.</p>
   {%- if iv.profile.error %}
   <div class="notice notice-warn">{{ icon('warn') }}<p>What the monitoring profile adds could not be read ({{ iv.profile.error }}).</p></div>
@@ -25,5 +28,5 @@
   {%- endif %}
   <pre class="apply-program intent-doc">{{ iv.text }}</pre>
   {%- endif %}
-  <p class="muted">Editing intent is on <a href="{{ url_for('index') }}">today's page</a> (the Intent tab's editor) until the redesign carries the editor.</p>
+  {%- if iv.bootstrap %}<p class="muted">Bootstrap intent is not edited: Actions › Seed intent… gives {{ device.hostname }} its first full intent.</p>{% elif not may_edit %}<p class="muted">Editing intent needs a verified person who may commit it.</p>{% endif %}
 </section>

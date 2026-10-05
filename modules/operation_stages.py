@@ -111,6 +111,10 @@ STAGES = {
         "templatize.preview_committed_edit",
         "MISSING: the save is not bound to the version the person opened (CONCURRENCY_AUDIT R2)",
         NO_DEVICE, FORWARD, "modules.nsot.repo.save_host_vars"),
+    "intent_v2.commit": Stages(
+        "intent_v2.check",
+        "base",   # the blob the editor opened; a moved intent is refused naming both
+        NO_DEVICE, FORWARD, "modules.nsot.repo.save_host_vars"),
     "templatize.revert_apply": Stages(
         "templatize.revert_preview", "hash", NO_DEVICE, FORWARD,
         "modules.nsot.intent_ops.revert_apply"),
@@ -269,6 +273,7 @@ HISTORY = {
     "refresh_hostnames": ("golden",),
     "templatize.seed_apply": ("intent",),
     "templatize.edit_committed": ("intent",),
+    "intent_v2.commit": ("intent",),
     "templatize.bulk_apply": ("intent",),
     "templatize.revert_apply": ("intent",),
     "templatize.retry_apply": ("retries",),

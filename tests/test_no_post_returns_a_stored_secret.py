@@ -157,6 +157,16 @@ def _bodies(v):
                                                              "yaml": v["_intent_text"]}),
                                               "committed intent, previewed against the device"),
         "templatize.report": (200, ("json", {"list_name": LIST}), "the fleet report"),
+        # H, the v2 intent editor (board H): its check, acknowledgement and reopen.
+        "intent_v2.check": (200, ("form", {"yaml": v["_intent_text"]}),
+                            "r1's committed intent checked as typed: its diffs against the "
+                            "golden, masked lines never compared, so never drawn"),
+        "intent_v2.acknowledge": (200, ("form", {"yaml": v["_intent_text"],
+                                                 "ack": "some line"}),
+                                  "the editor on the document with its unmodeled_ack block: "
+                                  "references only, no stored value"),
+        "intent_v2.reopen": (200, ("form", {"yaml": v["_intent_text"]}),
+                             "the editor on the document sent"),
         "topology_save_hidden": (200, ("json", {"hidden": []}), "layout"),
         "topology_save_positions": (200, ("json", {"positions": {}}), "layout"),
         "topology_save_proto_hidden": (200, ("json", {"view": "ospf", "hidden": []}), "layout"),
@@ -379,7 +389,7 @@ def _drive(v, person, writes=None):
                 url = _fill(rule, dict(v, **({"_integration": name} if name else {})))
                 if name:
                     url = url.replace("/planted-profile/", f"/{name}/")
-                if endpoint.startswith("device_v2."):
+                if endpoint.startswith(("device_v2.", "intent_v2.")):
                     # A device page route names its device `name`: the planted device.
                     url = url.replace("/planted-profile/", f"/{DEVICE['hostname']}/")
                 before = _store_state() if writes is not None else None

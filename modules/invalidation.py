@@ -162,6 +162,7 @@ DECLARED = {
     "v2.ip_sla_commit": ("intent", "remote"),
     "v2.heartbeat_apply": Nothing("writes the generated heartbeat rules file, which no panel reads; the page redraws itself, and nothing alerts differently until a person installs it on the host"),
     "templatize.edit_committed": ("intent", "remote"),
+    "intent_v2.commit": ("intent", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
     "templatize.retry_apply": ("rolled_back",),
@@ -288,6 +289,9 @@ DECLARED = {
     "templates.preview": Nothing("renders and diffs captured artifacts; opens no session"),
     "templates.validate": Nothing("validates a template against captures and reports"),
     "templatize.preview_committed_edit": Nothing("previews an intent edit against HEAD"),
+    "intent_v2.check": Nothing("checks and renders an intent edit as it is typed"),
+    "intent_v2.acknowledge": Nothing("rewrites the editor's document; the commit writes it"),
+    "intent_v2.reopen": Nothing("opens the editor again; writes nothing"),
     "breakglass.preview": Nothing("names the devices and the key's fingerprint an export "
                                   "would hold; writes nothing"),
     "rotate.preview": Nothing("computes the rotation plan and reads the device's account line; writes nothing"),
