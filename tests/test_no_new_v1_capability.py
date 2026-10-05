@@ -21,13 +21,13 @@ TEMPLATES = os.path.join(ROOT, "templates")
 JS = os.path.join(ROOT, "static", "js")
 
 #: Measured 2026-10-03.
-CONTROLS_CEILING = 283   # 2026-10-03: Settings' break-glass Export… became a link to Credentials
-HANDLERS_CEILING = 275
+CONTROLS_CEILING = 202   # 2026-10-04: the 81 CCIE-KB config types left with ccie_kb/ (NSOT_PLAN 8.12)
+HANDLERS_CEILING = 194
 FUNCTIONS_CEILING = 451
 #: Fields a person can fill on today's pages: form elements in its templates, and the
 #: settings fields its scripts draw from a spec (`{key: '<setting>', ...}`), less the
 #: recorded exceptions below. Measured 2026-10-03 (261 elements and 68 spec fields).
-FIELDS_CEILING = 329
+FIELDS_CEILING = 324   # 2026-10-04: the KB's dynamic form left with it
 
 #: RECORDED EXCEPTIONS to the rule, each a v1 settings field by its key, with its reason and
 #: where it goes at cutover. A field is excepted only by the operator's decision.

@@ -731,7 +731,7 @@ is added.
   - MPL-2.0: bidict and certifi;
   - the MIB-derived help text.
 - **The audit list it carries:**
-  - `ccie_kb/`'s provenance;
+  - `ccie_kb/`, REMOVED 2026-10-04 (the operator: v1 leftovers, believed summarised from Cisco sources); it stays in this repository's history, which the release export does not carry (8.1);
   - the Grafana dashboard fixtures';
   - the captured device configurations;
   - the MIB help text;

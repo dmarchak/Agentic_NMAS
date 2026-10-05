@@ -6008,6 +6008,20 @@ tool calls, tool results, token usage, the model version the provider RETURNED.
 - **It closes C252** (the unused `openai` and `groq` pins): used by the OpenAI-compatible
   adapter, or removed.
 
+**8.12 How the agent gets domain knowledge (RECORDED 2026-10-04, the operator; designed in
+Stage 8).**
+- **The CCIE knowledge base is REMOVED.** `ccie_kb/`, `modules/ccie_kb.py`, the v1 configure
+  page's 81 "topic/subtopic" config types filled from it, its schema route, and the
+  assistant's prompt lines and index. They were v1 leftovers, believed downloaded and
+  summarised from Cisco sources, so not ours to redistribute.
+- **Stage 8 designs the replacement as RUN-TIME lookups, never a bundled corpus:**
+  - the device's own output (read-only commands, through the allowlist);
+  - NetBox;
+  - the tool's own records: intent, goldens, receipts, history;
+  - documentation fetched when needed, with its source named in the answer.
+- **The agent still never writes IOS for a device** (8.3). What it proposes goes through
+  intent and the pipeline, so knowledge only informs a proposal; it never becomes a program.
+
 ---
 
 ### STAGE 9 — hardening and cleanup (ADDED 2026-09-28, the operator; reshaped the same night)

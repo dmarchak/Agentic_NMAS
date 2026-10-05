@@ -3833,19 +3833,6 @@ def ai_approval_approve_all():
 
 
 
-@app.route("/configure/kb_schema")
-def configure_kb_schema():
-    """Return form-field schema for a CCIE KB topic/subtopic."""
-    from modules.ccie_kb import get_fields, list_topics
-    topic    = request.args.get("topic", "").strip()
-    subtopic = request.args.get("subtopic", "").strip() or None
-    if not topic:
-        return jsonify({"ok": False, "error": "topic is required",
-                        "available": list_topics()}), 400
-    fields = get_fields(topic, subtopic)
-    return jsonify({"ok": True, "topic": topic, "subtopic": subtopic, "fields": fields})
-
-
 @app.route("/configure/audit_latest", methods=["GET"])
 def configure_audit_latest():
     """Return the most recent pipeline audit entry."""

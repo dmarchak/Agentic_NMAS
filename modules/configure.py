@@ -24,9 +24,7 @@ def generate_config_commands(config_type: str, params: dict) -> list[str]:
     """
     Return Cisco IOS config-mode lines for the given config_type.
 
-    Supports two formats:
-    • Legacy: config_type = "ospf"  → uses hand-crafted Python generator
-    • KB-backed: config_type = "ospf/authentication" → fills CCIE KB template
+    config_type names one of the hand-written generators below ("ospf").
     """
     generators = {
         "interface": _gen_interface_smart,
@@ -52,55 +50,9 @@ def generate_config_commands(config_type: str, params: dict) -> list[str]:
     if fn:
         return fn(params)
 
-    # KB-backed type: "topic/subtopic" format
-    if "/" in config_type:
-        topic, subtopic = config_type.split("/", 1)
-        return generate_from_kb(topic, subtopic, params)
-
+    # The "topic/subtopic" types filled from the CCIE knowledge base are gone with it
+    # (the operator, 2026-10-04: removed, its provenance not ours to redistribute).
     raise ValueError(f"Unknown config type: {config_type!r}")
-
-
-import re as _re
-_PARAM_PATTERN = _re.compile(r'\{([^}]+)\}')
-
-
-def generate_from_kb(topic: str, subtopic: str, params: dict) -> list[str]:
-    """
-    Fill CCIE KB command templates with user-supplied parameters.
-
-    Parameters map field IDs (from get_fields()) to string values.
-    Command lines with any unfilled placeholder are silently skipped so
-    optional commands are omitted when the user leaves a field blank.
-    """
-    from modules.ccie_kb import get_commands_for
-
-    cmds = get_commands_for(topic, subtopic)
-    if not cmds:
-        raise ValueError(f"No KB commands found for {topic}/{subtopic}")
-
-    # Build normalised lookup: both "a_b_c_d" and "a.b.c.d" map to the value
-    lookup: dict[str, str] = {}
-    for k, v in params.items():
-        if v is None or str(v).strip() == "":
-            continue
-        norm = k.lower().replace(".", "_").replace("-", "_")
-        lookup[norm] = str(v)
-        lookup[k.lower()] = str(v)
-
-    result: list[str] = []
-    for cmd in cmds:
-        filled = cmd
-        for m in _PARAM_PATTERN.finditer(cmd):
-            raw  = m.group(1).strip()
-            norm = raw.lower().replace(".", "_").replace("-", "_").replace("|", "_or_")
-            val  = lookup.get(norm) or lookup.get(raw.lower())
-            if val:
-                filled = filled.replace(m.group(0), val)
-        # Skip if any placeholder remains unfilled
-        if _PARAM_PATTERN.search(filled):
-            continue
-        result.append(filled)
-    return result
 
 
 def _gen_interface_smart(p: dict) -> list[str]:

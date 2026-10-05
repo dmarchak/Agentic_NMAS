@@ -937,7 +937,7 @@ tracked in git.
 
 #### Other
 `approval_queue.py`, `config_git.py`, `device.py`, `connection.py`, `bulk_ops.py`,
-`backups.py`, `variable_discovery.py`, `event_monitor.py`, `ccie_kb.py`,
+`backups.py`, `variable_discovery.py`, `event_monitor.py`,
 `terminal.py`, `commands.py`, `agent_timers.py`, `ai_usage_log.py`, `quick_actions.py`,
 `utils.py`, `config.py`
 

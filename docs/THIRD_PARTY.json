@@ -136,14 +136,12 @@
   "tests/*": "this repository's; fixtures are captures from the lab (see audit)",
   "docs/*": "this repository's; the probe configs are the lab's (see audit)",
   "deploy/*": "this repository's, except what vendored claims",
-  "ccie_kb/*": "this repository's, provenance to confirm (see audit)",
   "static/js/nmas_*.js": "this repository's",
   "static/js/gen/*": "generated from this repository's templates",
   "static/css/nmas-v2.css": "this repository's",
   "static/js/vendor/MANIFEST.json": "this repository's record of the vendored files"
  },
  "audit": [
-  "ccie_kb/: six JSON files of Cisco configuration knowledge, added 2026-04-25 with no source named. Confirm they were written for this project, not copied from a study guide or Cisco documentation",
   "tests/fixtures/grafana/dashboards/rcn-lab-overview.json and rcn-lab1-snmp.json: captured from the lab's Grafana. Confirm neither was imported from grafana.com under terms that forbid redistribution",
   "tests/fixtures/ and docs/bootstrap-probe/configs/: captured device configurations. Keep only what fixtures need, sanitised (the publication check covers addresses and names, not licences)",
   "deploy/snmp_exporter/routing-modules.yml: the MIB-derived help text (reviewed: LicenseRef-MIB-derived)",

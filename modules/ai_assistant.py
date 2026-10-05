@@ -1541,18 +1541,11 @@ action, check what already exists:
   • Pipeline already exists for this change type → use it, don't create a new one
   • Compliance rule already covers what you are about to check → skip, it's monitored
 
-  CCIE KB — use query_ccie_kb BEFORE writing any IOS commands:
-  • [CCIE KB] lists all available topics (ospf, bgp, dmvpn, qos, acl, …)
-  • call query_ccie_kb(topic) to get exact verified IOS command syntax
-  • call query_ccie_kb(topic, subtopic) for a specific section
-  • this eliminates hallucinated commands — always look it up, don't guess
-
   ONLY USE THE LLM (i.e. your own reasoning) FOR:
   • Interpreting new user intent
   • Composing KB-retrieved commands into a complete configuration
   • Adapting templates to specific device parameters from [NETWORK STATE]
   • Summarising diffs / troubleshooting novel failures
-  • Anything not covered by the CCIE KB
 
 ═══════════════════════════════════════════════════════════════════
 SCOPE DISCIPLINE — do the task, not an audit of the task
@@ -2708,10 +2701,6 @@ def _tool_label(name: str, args: dict) -> str:
     if name == "netbox_get_vpn_tunnels":
         dev = args.get("device", "")
         return f"NetBox: fetching VPN tunnels{' for ' + dev if dev else ''}..."
-    if name == "query_ccie_kb":
-        t = args.get("topic", "")
-        s = args.get("subtopic", "")
-        return f"CCIE KB: looking up {t}{('/' + s) if s else ''}..."
     return f"Executing {name}..."
 
 
@@ -3034,16 +3023,6 @@ def run_chat(
         _comp_summary = _get_compliance_summary()
         if _comp_summary:
             stable_parts.append(_comp_summary)
-    except Exception:
-        pass
-
-    # CCIE KB index — tells the AI what topics are available so it calls
-    # query_ccie_kb before generating any IOS config commands.
-    try:
-        from modules.ccie_kb import compact_index as _ccie_index
-        _kb_index = _ccie_index()
-        if _kb_index:
-            stable_parts.append(_kb_index)
     except Exception:
         pass
 
@@ -4150,7 +4129,6 @@ def run_chat(
         "netbox_get_interfaces":                  5000,
         "netbox_get_prefixes":                    5000,
         "netbox_get_vpn_tunnels":                 5000,
-        "query_ccie_kb":                         8000,
     }
     _DEFAULT_TOOL_CHARS = 80000
 

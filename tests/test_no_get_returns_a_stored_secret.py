@@ -339,8 +339,7 @@ class TestEveryFileTheCodeWritesIsClassified:
     #: Names the scan finds that are classified through a subdirectory, or
     #: live outside data/, each with where.
     EXPLAINED = {
-        "index.json": "lists/*/playbooks/index.json (covered by lists/*/playbooks/*); "
-                      "ccie_kb/index.json lives in the repository, not data/",
+        "index.json": "lists/*/playbooks/index.json (covered by lists/*/playbooks/*)",
         "deferred.json": "update/deferred.json, the Update page's wait for CI: target, "
                          "person, time, host-step hashes (covered by update/*)",
         "deferred_outcome.json": "update/deferred_outcome.json, how that wait ended "

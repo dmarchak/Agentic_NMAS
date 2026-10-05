@@ -66,9 +66,6 @@ EXEMPT = {
     ('modules/ai_assistant.py', '7a2ecb6a5b8e'): ('EXAMPLE', ('address',)),
     ('modules/ai_assistant.py', '283f8c3aca96'): ('EXAMPLE', ('address',)),
     ('modules/ai_assistant.py', '62a692c54974'): ('EXAMPLE', ('address',)),
-    # modules/ccie_kb.py
-    ('modules/ccie_kb.py', 'adc881f38e9d'): ('EXAMPLE', ('address',)),
-    ('modules/ccie_kb.py', 'c14c46b254c4'): ('EXAMPLE', ('address',)),
     # modules/netbox_client.py
     ('modules/netbox_client.py', 'd1303c000c65'): ('VRNETLAB', ('address',)),
     ('modules/netbox_client.py', '87f6e9899581'): ('VRNETLAB', ('address',)),
