@@ -163,8 +163,10 @@ attached and nothing typed, the setup dialog printed `% Please answer 'yes' or '
 and again, once with a stray `}`. So the device RECEIVED input nobody typed: the telnet
 client's negotiation bytes, or vrnetlab's launch script still connected, which one is not
 known. Autoinstall warns that any console input terminates it. DHCP discovery continued
-regardless that time. The operator then disconnected the telnet and switched to the read-only
-reader (the time is not recorded here), and discovery continued throughout. Observing must
+regardless that time. The interactive telnet was attached from about 18:32 to 18:37 UTC
+(12:32 to 12:37 the operator's time, UTC−6). The operator then disconnected it and switched
+to the read-only reader at 18:37:03 UTC (12:37:03), the reader process's start time on the
+lab host, and discovery continued throughout. Observing must
 never be able to end what is observed, so the reader is the way to watch a console during
 discovery.
 
