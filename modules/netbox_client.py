@@ -138,6 +138,7 @@ def test_connection(url: str, token: str, verify_tls: bool = True,
     base = url.rstrip("/")
     last_status = None
     last_err    = None
+    reasons = []
 
     for scheme in ("Bearer", "Token"):
         try:
@@ -148,11 +149,21 @@ def test_connection(url: str, token: str, verify_tls: bool = True,
                 version = data.get("netbox-version") or data.get("django-version") or "unknown"
                 if persist_scheme:
                     set_user_setting("netbox_auth_scheme", scheme)
-                return True, f"Connected to NetBox (version {version}) using {scheme} auth"
+                missing = missing_views(s, base)
+                if missing:
+                    # C468: `api/status/` needs no permission, so a token missing a VIEW the
+                    # tool reads passed the Test and failed later, in a sync, by type.
+                    return False, (f"Connected to NetBox (version {version}) using {scheme} "
+                                   f"auth, but the token cannot read: "
+                                   + "; ".join(f"{label} ({why})" for label, why in missing)
+                                   + ". Grant view on each (docs/SERVICE_ACCOUNTS.md 1.3)")
+                return True, (f"Connected to NetBox (version {version}) using {scheme} auth; "
+                              f"every type the tool reads answered ({len(READ_PROBES)})")
             last_status = r.status_code
+            reasons.append(refusal_reason(r))
             if r.status_code not in (401, 403):
                 # A non-auth failure — don't bother trying the other scheme.
-                return False, f"NetBox returned HTTP {r.status_code}"
+                return False, f"NetBox returned HTTP {r.status_code}: {reasons[-1]}"
         except requests.exceptions.SSLError as exc:
             return False, f"TLS verification failed: {exc}"
         except requests.exceptions.ConnectionError as exc:
@@ -163,8 +174,77 @@ def test_connection(url: str, token: str, verify_tls: bool = True,
     if last_err:
         return False, f"Connection test failed: {last_err}"
     if last_status in (401, 403):
-        return False, "Authentication failed — check the API token (tried both Bearer and Token)"
+        # C468: NetBox's own reason, never only "Authentication failed": an expired token, a
+        # token for another key, and a source address the token does not allow each need a
+        # different repair, and a person could not tell them apart.
+        said = next((x for x in reasons if x), "")
+        return False, (f"NetBox refused the token (HTTP {last_status}, tried Bearer and Token): "
+                       f"{said or 'no reason given'}. {refusal_advice(said)}").strip()
     return False, "NetBox connection failed"
+
+
+#: One row of each type the tool READS (the C100 survey, 2026-10-05; SERVICE_ACCOUNTS 1.3's
+#: `nmas-view`). A token missing one passes `api/status/` and fails later, in a sync.
+READ_PROBES = (
+    ("dcim/devices/", "DCIM › device"), ("dcim/interfaces/", "DCIM › interface"),
+    ("dcim/sites/", "DCIM › site"), ("dcim/regions/", "DCIM › region"),
+    ("dcim/platforms/", "DCIM › platform"), ("dcim/device-roles/", "DCIM › device role"),
+    ("dcim/device-types/", "DCIM › device type"), ("dcim/manufacturers/", "DCIM › manufacturer"),
+    ("dcim/cables/", "DCIM › cable"),
+    ("ipam/ip-addresses/", "IPAM › IP address"), ("ipam/prefixes/", "IPAM › prefix"),
+    ("ipam/vrfs/", "IPAM › VRF"), ("ipam/vlans/", "IPAM › VLAN"), ("ipam/roles/", "IPAM › role"),
+    ("extras/tags/", "Extras › tag"), ("extras/custom-fields/", "Extras › custom field"),
+    ("extras/config-templates/", "Extras › config template"),
+    ("vpn/tunnels/", "VPN › tunnel"), ("vpn/tunnel-terminations/", "VPN › tunnel termination"),
+    ("core/object-changes/", "Core › object change"), ("users/tokens/", "Users › token"),
+)
+
+
+def missing_views(session, base: str) -> list:
+    """``[(type label, why)]`` for each type in READ_PROBES the token may not read: 401 or
+    403 with NetBox's reason. Another failure (a 5xx, an unreachable path) is not a missing
+    permission and is not named here."""
+    out = []
+    for path, label in READ_PROBES:
+        try:
+            r = session.get(f"{base}/api/{path}", params={"limit": 1}, timeout=8)
+        except Exception:                                   # noqa: BLE001
+            continue
+        if r.status_code in (401, 403):
+            out.append((label, refusal_reason(r) or f"HTTP {r.status_code}"))
+    return out
+
+
+def refusal_reason(r) -> str:
+    """NetBox's own words for a refusal (its `detail`), masked; "" when it gave none."""
+    from modules.redact import redact_text
+
+    try:
+        doc = r.json() if getattr(r, "content", b"") else {}
+        detail = doc.get("detail") if isinstance(doc, dict) else ""
+    except Exception:                                       # noqa: BLE001
+        detail = ""
+    if not detail:
+        detail = (getattr(r, "text", "") or "")[:200]
+    return redact_text(str(detail or "").strip())[:300]
+
+
+def refusal_advice(reason: str) -> str:
+    """What to do about a refusal, by NetBox's words. "" when the words are not one of the
+    known shapes: the reason itself is then the advice."""
+    low = (reason or "").lower()
+    if "expired" in low:
+        return ("The token has expired: create a new one for the same user and paste it here "
+                "(Settings › NetBox).")
+    if "source ip" in low or "not permitted to authenticate" in low or "allowed ip" in low:
+        return ("The token's Allowed IPs do not include the address NetBox sees for this host "
+                "(named above): add it to the token, or clear the field.")
+    if "invalid" in low or "not found" in low or "credentials" in low:
+        return ("NetBox does not know this token: paste the whole token (`nbt_<key>.<secret>` "
+                "for a version 2 token), or create a new one.")
+    if "permission" in low:
+        return "The token's user lacks a permission NetBox requires for this read."
+    return ""
 
 
 # ---------------------------------------------------------------------------

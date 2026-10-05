@@ -310,6 +310,7 @@ from the repo root. (Before Phase 0 only the latter did.)
 |---|---|
 | `test_pipeline.py` | 9-stage pipeline, stage ordering, CI gate; C112: each rollback outcome named (restored only when the read-back finds the push gone; incomplete names what remains; unreadable, raising and no-snapshot each their own state), `final_status` never `rolled_back` over a device not back, and the receipt and shipped renderer never draw "rolled back" over a failure |
 | `test_netbox_write_gate.py` | write gate, dry run, provenance-based removal |
+| `test_netbox_test_says_why.py` | C468 (2026-10-05): Settings › NetBox › Test gives NetBox's own refusal reason and the repair (expired, unknown token, a source address the token does not allow), never only "Authentication failed"; a token missing a view the tool reads is named by type; a token reading every type passes (the control); the probes equal SERVICE_ACCOUNTS 1.3's `nmas-view` list. Controls: the reason dropped fails three, the probes removed fails one |
 | `test_netbox_authz.py` | one-shot tokens, plan hashing, stale-plan abort |
 | `test_netbox_preview_fidelity.py` | preview counts == executed counts; tag scope |
 | `test_netbox_update_provenance.py` | an update records its BEFORE, confers no ownership, and a zero cannot pose as an assurance |

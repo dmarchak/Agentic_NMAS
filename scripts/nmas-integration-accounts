@@ -60,7 +60,11 @@ def netbox_account(session=None, base=None) -> dict:
         except Exception as exc:              # noqa: BLE001
             return {"asked": False, "why": f"{path}: {type(exc).__name__}"}
         if r.status_code != 200:
-            return {"asked": False, "why": f"{path}: HTTP {r.status_code}"}
+            # C468: NetBox's own reason (an expired token, a source address it does not allow),
+            # never the status alone.
+            said = N.refusal_reason(r)
+            return {"asked": False, "why": f"{path}: HTTP {r.status_code}"
+                                           + (f": {said}" if said else "")}
         out[key] = r.json()
     return {"asked": True, "version": out["status"].get("netbox-version"),
             "username": out["account"].get("username"), "id": out["account"].get("id")}
