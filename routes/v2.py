@@ -1175,6 +1175,15 @@ def devices():
 
 @bp.route("/devices/table", methods=["GET"])
 def devices_table():
-    """The list alone: searched or filtered, or redrawn when a reader moves it."""
+    """The list alone: searched or filtered, or redrawn when a reader moves it.
+
+    THE PERSON'S TICKS SURVIVE THE REDRAW (C472, C435's shape): a reader or another person's
+    commit redraws the list, and the redraw sends its form, so a row is ticked exactly when
+    its person had it ticked. Rows start unticked, so nothing joins a selection unseen."""
     from flask import request
-    return _strict(render_template("v2/_devices.html", **_devices_ctx(request)))
+
+    ctx = _devices_ctx(request)
+    ticked = set(request.args.getlist("device"))
+    for row in ctx["d"].get("rows") or []:
+        row["checked"] = row.get("name") in ticked
+    return _strict(render_template("v2/_devices.html", **ctx))
