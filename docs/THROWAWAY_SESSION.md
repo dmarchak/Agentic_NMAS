@@ -149,9 +149,24 @@ Expect `972a0f72f1ee5847`, then three lines in order:
 
 Expect neighbour `10.255.99.1` in `Active` or `Connect` (it has no peer yet).
 
-**1.3 The console, read-only (lab host, a third terminal).**
+**1.3 The console, read-only (lab host, a third terminal).** Watch it through a reader that
+SENDS NOTHING, never an interactive telnet:
 
-    docker exec -it clab-nmas-throwaway-tw-ztp-a telnet 127.0.0.1 5000
+    docker exec clab-nmas-throwaway-tw-ztp-a python3 -c 'import socket, sys; s = socket.create_connection(("127.0.0.1", 5000)); [sys.stdout.buffer.write(d) or sys.stdout.flush() for d in iter(lambda: s.recv(4096), b"")]'
+
+No `-it`: the container gets no terminal, so no keystroke can reach the device, and the
+reader never answers the console's telnet negotiation. Stop it with Ctrl-C. The output may
+carry a few raw negotiation bytes; ignore them.
+
+**Why not telnet (measured in this session, Part 1, 2026-10-05):** with `telnet 127.0.0.1 5000`
+attached and nothing typed, the setup dialog printed `% Please answer 'yes' or 'no'` again
+and again, once with a stray `}`. So the device RECEIVED input nobody typed: the telnet
+client's negotiation bytes, or vrnetlab's launch script still connected, which one is not
+known. Autoinstall warns that any console input terminates it. DHCP discovery continued
+regardless that time. The operator then disconnected the telnet and switched to the read-only
+reader (the time is not recorded here), and discovery continued throughout. Observing must
+never be able to end what is observed, so the reader is the way to watch a console during
+discovery.
 
 **Type nothing for the whole of Part 1**: not RETURN, not `en`, not an answer to the dialog.
 Any input ends discovery (`PnP Discovery stopped (Config Wizard)`, measured in M4).

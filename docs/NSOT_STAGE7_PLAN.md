@@ -4154,6 +4154,22 @@ how the vendor class reaches the list:
   the rest. A lease's address then says its vendor class, read through `lease_cmds` alone.
 - **If it sends none:** the list shows MAC, client-id and hostname.
 
+**MEASURED in the throwaway session (Part 1, 2026-10-05, the operator's capture on the ZTP
+segment):** one C8000v booting with no configuration.
+- Option 60 is `ciscopnp`, so the two-pool vendor-class design is open: a client class can
+  match it.
+- It requests option 43.
+- **From the 2nd DISCOVER on, option 61 (client-id) carries a serial: the board serial**
+  (the boot log's Processor board ID), NOT the licence-UDI serial every C8000v in this lab
+  shares (both values in the operator's notes, not published). So a Kea lease, which records
+  option 61, could carry a per-device serial with no script on the device.
+- **Not yet known:** whether board serials differ between C8000v instances. One device
+  cannot show it. No committed golden records a Processor board ID (counted read-only on
+  the NMAS host the same day: 0 of 9; the licence-UDI serial is in 5, one value). The
+  measurement is a second C8000v's board ID, from `show version` through the tool or a
+  second throwaway boot. Until it is known, the serial rule above stands: matching by it
+  refuses on a duplicate.
+
 **And, the operator's (on a device, through the console or the tool):** whether the IOS-XE ZTP
 script can read the device's serial and send it here, as way 1 needs: guestshell's Python,
 and `show license udi` or `show version` run from it.
