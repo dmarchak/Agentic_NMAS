@@ -4400,3 +4400,20 @@ renamed near the release as Stage 10's house-cleaning item, with its own host st
 
 **Stage 10 carries** the trademark search before the public release and the name's origin
 in the README (NSOT_STAGE10_PLAN 7.3).
+
+**Drawn for sign-off, canvas version 36 (2026-10-05), the "Mercury" page.** Every mark on it
+is drawn by one generator from the master geometry: the master, the 32 px and 16 px
+simplifications, and the square icon at full, 32 and 16 px.
+- **A:**
+  - the sidebar lockup at desktop width in light (`--side` `#14202B`) and dark (`#0A0F14`),
+    the gap in each;
+  - the phone top bar (the 32 px mark and "Mercury");
+  - two browser tab strips with the 16 px favicon and titles ending "· Mercury";
+  - the size ladder on both sidebars;
+  - the square icon at 180, 64, 32 and 16, and cropped round as a GitHub avatar.
+- **B:** the About page, with a product card (the icon, the full name, the line, the running
+  commit, the licence to be chosen, a link to the third-party components, the name's origin)
+  above today's installation facts.
+
+Nothing is built until it is signed off. The mark's files then enter `static/img/brand/`,
+claimed as the project's own in `docs/THIRD_PARTY.json`.

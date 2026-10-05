@@ -55,19 +55,22 @@ def _remove_store(store):
     measurement). It removed with `ignore_errors=True`, so the race surfaced only later, as
     `FileExistsError` on the restore, here and in every later fixture in the worker
     (2026-10-05: twice in an hour, 47 and 3 errors), with the writer unnamed."""
-    import threading
-
     shutil.rmtree(store, ignore_errors=True)
     if not os.path.exists(store):
         return
     left = sorted(os.path.relpath(os.path.join(d, f), store)
                   for d, _sub, files in os.walk(store) for f in files)
-    threads = sorted(f"{t.name} ({type(t).__name__}, target "
-                     f"{getattr(getattr(t, '_target', None), '__qualname__', '?')})"
-                     for t in threading.enumerate() if t is not threading.main_thread())
     raise AssertionError(
         f"C163: the store could not be removed; something wrote into it during the removal. "
-        f"Left ({len(left)}): {left[:40]}. Live threads ({len(threads)}): {threads}")
+        f"Left ({len(left)}): {left[:40]}. Live threads: {_threads()}")
+
+
+def _threads():
+    """Every live thread but the main one: its name, class and target (C163)."""
+    import threading
+    return sorted(f"{t.name} ({type(t).__name__}, target "
+                  f"{getattr(getattr(t, '_target', None), '__qualname__', '?')})"
+                  for t in threading.enumerate() if t is not threading.main_thread())
 
 
 @pytest.fixture(scope="module")
@@ -109,7 +112,13 @@ def creators():
     finally:
         socket.socket.connect = original_connect
         _remove_store(store)
-        shutil.copytree(original, store)
+        try:
+            shutil.copytree(original, store)
+        except (shutil.Error, OSError) as exc:
+            # The race's other half (C163, 2026-10-05): the removal succeeded, and something
+            # created `lists/default` in the store DURING the restore. Name who was alive.
+            raise AssertionError(f"C163: the store's restore collided with a writer ({exc}). "
+                                 f"Live threads: {_threads()}") from exc
         shutil.rmtree(original, ignore_errors=True)
     found["_swept"] = swept
     return found
