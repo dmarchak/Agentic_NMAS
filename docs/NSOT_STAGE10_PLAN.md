@@ -1380,3 +1380,28 @@ to Stage 8 (outside the release's critical path).
   networks.
 - **The release ships the AI OFF by default** (7.1): a provider is the installer's choice,
   never assumed.
+
+## 14. Have we outgrown `devices.csv` and `data/key.key`? (RECORDED 2026-10-05, the operator; no work now)
+
+**Kept as they are through Phases 7 and 8.** Revisited in Stage 10 against the industry
+pattern: three systems for three jobs.
+- **Inventory:**
+  - NetBox primary; a local store for small installs; CSV for import and export only.
+  - **No secrets in any inventory:** per-device credentials move to the secrets store,
+    referenced by profile.
+- **Device logins:**
+  - central AAA (TACACS+ or RADIUS): personal accounts for people;
+  - a Mercury service account with command authorisation and accounting;
+  - the local administrator as break-glass only (local fallback), rotated and escrowed by
+    Mercury;
+  - a lab proof of concept with `tac_plus` then.
+- **Secrets, a pluggable backend:**
+  - **local:** the key kept apart from the data, systemd encrypted credentials, MultiFernet
+    rotation;
+  - **external:** HashiCorp Vault, optionally with its SSH CA; cloud secret managers; a PAM
+    where a site has one;
+  - envelope encryption, with the master key outside the app;
+  - what key rotation means for the break-glass record, which escrows today's key.
+- **Stores:** whether the JSON stores move to a database for multiple users.
+
+Each is designed then, with its own measurements, against what Phases 7 and 8 leave.

@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook: CLAUDE.md is the operator's to change, never the agent's.
+
+Wired in `.claude/settings.json` for the file tools (Edit, Write, MultiEdit, NotebookEdit)
+and for Bash. Claude Code passes the tool call as JSON on stdin; exit 2 refuses the call and
+the message on stderr goes back to the agent; exit 0 lets it run.
+
+**Why it exists** (the operator, 2026-10-05). The rule that CLAUDE.md is the operator's lived
+only in the agent's memory, and on 2026-10-05 the agent edited it (two lines naming the
+deleted terminal's files) with nothing to stop it. The operator kept the edit and asked how
+it got past the guard: there was no guard. When a change needs CLAUDE.md edited (a cited test
+deleted, a bracket to update), the agent stops, gives the operator the exact lines to paste,
+and commits after the operator has.
+
+**Refused:**
+- a file tool whose target's name is `CLAUDE.md` (any directory);
+- a Bash command that would change a `CLAUDE.md`: a `>`/`>>` redirect onto it, `sed -i`,
+  `perl -i` or `tee` naming it, `cp`/`install`/`rsync`/`ln` with it as the destination,
+  `mv`/`rm`/`truncate`/`shred` naming it, `dd of=` it, `git checkout`/`restore`/`rm`/`mv`/
+  `apply`/`reset`/`stash` naming it, and an interpreter given it as an argument or writing it
+  from inline code.
+
+**Allowed:** reading it (`cat`, `grep`, `sed -n`, `head`, `git diff`, `git show`, `git log`,
+`git add` and `git commit` of the operator's own edit).
+
+An input the hook cannot read exits 1, which Claude Code shows as a hook error, rather than
+passing silently.
+"""
+
+import json
+import os
+import re
+import shlex
+import sys
+
+NAME = "CLAUDE.md"
+FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+MESSAGE = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-claude-md-edits): "
+    "CLAUDE.md is the operator's to change ({why}). Stop, give the operator the exact lines "
+    "to paste, and commit after they have (the operator, 2026-10-05).")
+
+INTERPRETER = re.compile(r"^(python[0-9.]*|pypy[0-9.]*|node(js)?|perl[0-9.]*|ruby[0-9.]*|php[0-9.]*)$")
+WRITE_IN_CODE = re.compile(r"\.write|write_text|write_bytes|open\([^)]*['\"][wax+]|"
+                           r"\breplace\(|os\.(remove|rename|replace|unlink)|shutil\.")
+ALWAYS_WRITES = {"mv", "rm", "truncate", "shred", "unlink"}
+DESTINATION_LAST = {"cp", "install", "rsync", "ln", "scp"}
+GIT_WRITES = {"checkout", "restore", "rm", "mv", "apply", "reset", "stash", "am", "cherry-pick"}
+
+
+def _is_claude(word: str) -> bool:
+    return os.path.basename(word.strip("'\"")) == NAME
+
+
+def _segments(command: str) -> list:
+    """Each simple command as its tokens, split on ; && || | and newlines."""
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        tokens = re.findall(r">>|[;&|<>()]|[^\s;&|<>()]+", command)
+    segs, cur = [], []
+    for t in tokens:
+        if t in {";", "&&", "||", "|", "&", "(", ")", "\n"} or set(t) <= set(";&|"):
+            if cur:
+                segs.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    if cur:
+        segs.append(cur)
+    return segs
+
+
+def bash_writes(command: str) -> str:
+    """Why *command* would change a CLAUDE.md, or "" when it would not."""
+    if NAME not in command:
+        return ""
+    for seg in _segments(command):
+        words = [w for w in seg]
+        # A redirect onto it: `>` or `>>` followed by the path (shlex splits `>` off).
+        for i, w in enumerate(words):
+            if w in (">", ">>") and i + 1 < len(words) and _is_claude(words[i + 1]):
+                return "a redirect onto it"
+            if w == ">" and i + 2 < len(words) and words[i + 1] == ">" and _is_claude(words[i + 2]):
+                return "a redirect onto it"
+        if not words:
+            continue
+        prog = os.path.basename(words[0])
+        if prog in ("sudo", "env", "command", "nice", "timeout") and len(words) > 1:
+            words = words[1:]
+            prog = os.path.basename(words[0])
+        args = words[1:]
+        named = any(_is_claude(a) for a in args)
+        if prog == "sed" and named and any(a == "-i" or a.startswith("-i") or a.startswith("--in-place")
+                                            or (a.startswith("-") and not a.startswith("--") and "i" in a[1:])
+                                            for a in args):
+            return "sed -i on it"
+        if prog in ("perl",) and named and any(a.startswith("-") and "i" in a for a in args):
+            return "perl -i on it"
+        if prog == "tee" and named:
+            return "tee onto it"
+        if prog in ALWAYS_WRITES and named:
+            return f"{prog} on it"
+        if prog in DESTINATION_LAST and args and _is_claude(args[-1]):
+            return f"{prog} onto it"
+        if prog == "dd" and any(a.startswith("of=") and _is_claude(a[3:]) for a in args):
+            return "dd onto it"
+        if prog == "git" and named and any(a in GIT_WRITES for a in args):
+            return "git " + next(a for a in args if a in GIT_WRITES) + " on it"
+        if INTERPRETER.match(prog):
+            code = " ".join(args)
+            if named:
+                return f"{prog} given it as an argument"
+            if NAME in code and WRITE_IN_CODE.search(code):
+                return f"{prog} writing it from inline code"
+    return ""
+
+
+def verdict(payload: dict) -> str:
+    """Why the call is refused, or ""."""
+    tool = payload.get("tool_name", "")
+    inp = payload.get("tool_input") or {}
+    if tool in FILE_TOOLS:
+        target = inp.get("file_path") or inp.get("notebook_path") or ""
+        return f"{tool} on {target}" if os.path.basename(target) == NAME else ""
+    if tool == "Bash":
+        return bash_writes(inp.get("command") or "")
+    return ""
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError) as exc:
+        print(f"claude-no-claude-md-edits: could not read the tool call ({exc})", file=sys.stderr)
+        return 1
+    why = verdict(payload)
+    if why:
+        print(MESSAGE.format(why=why), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
