@@ -4015,6 +4015,43 @@ part of a 120-day range, not a deletion.
     - Stage 10's licence check (8.2a) holds the set to that.
 - **Section 18's tiers:** added to Stage 10's "required before release" (7.3).
 
+### 15.8 Drawn for sign-off (2026-10-04, canvas version 34)
+
+- **Topology A to C, the fourth pass:**
+  - **Icons:** each device is drawn as its class's icon.
+  - **Ports and short states:** each end's port name, and a short state on each link ("OSPF
+    FULL", "OSPFv3 FULL", "BGP Estab", "OSPF 2WAY", "BGP Idle", "down").
+  - **Colour and line style** still flag what needs review. The long explanation stays in
+    the hover and the attention list.
+  - **Labels Auto, On and Off,** beside the zoom: Auto shows labels as you zoom in. An inset
+    draws a zoomed-out large fleet, icons and colours only.
+  - **Ports:** default off on the phone and the wall. On the desktop it is drawn on, pending
+    the operator's choice.
+  - **The phone** puts both ends' icons on each entry. **The wall** has icons and short
+    states with ports off, and its list (4 entries fit).
+- **The icons' licence, measured 2026-10-04:**
+  - **Cisco's topology icons are out.** Their page's only terms are "You may use them
+    freely, but you may not alter them". That grants no explicit right to bundle them in
+    redistributed software, and a status colour or a dark-mode value alters them.
+  - **Recommended: Tabler Icons 3.48.0 (MIT, 5,166 outline icons).** It has every class:
+    `router`, `switch-horizontal` (an L3 switch adds an "L3" badge), `wall` (firewall),
+    `server`, `access-point`, `topology-star-3` (controller), `cloud` (external), and
+    `circle-dashed` for a class not known.
+  - **Lucide** (ISC, 2,130 icons) lacks an access point and a switch glyph.
+  - **When built,** the set is vendored with its LICENSE, with an entry in
+    `docs/THIRD_PARTY.json`, which the licence check requires.
+- **L shows the clock:** "asking since" and "last asked". "Next request" is marked pending
+  the timing, and no time is guessed. A gone-quiet device is drawn with its re-trigger, a
+  reload.
+- **R26's refusal card** (device page, `HoldTakeover`), in four states:
+  1. Still moving: wait. No takeover is offered.
+  2. No progress for 10 minutes or more (`STALL_AFTER_SECONDS`): "it may be stuck", with
+     Take over.
+  3. The takeover confirm. It says what happens: the hold passes to the person, recorded; the
+     stalled operation's next write is refused; the device may be part-way through a change,
+     so a read comes first; nothing is sent. A reason is required, from a verified person.
+  4. After: the record, now and later.
+
 ## 16. ZTP: three ways in, one pipeline (the operator, 2026-10-04)
 
 It replaces "type the MAC" in 7.4e. The way in is chosen per device at planning:
