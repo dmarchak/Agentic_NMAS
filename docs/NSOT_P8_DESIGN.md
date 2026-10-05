@@ -407,3 +407,124 @@ The questions as put:
 
 **Not decided here** (P.8's open question, unchanged): per-instance and tenant NetBox scope
 (C174).
+
+## 8. Inheritance is optional (the operator, 2026-10-05; boards F to J redrawn FOR SIGN-OFF)
+
+**The operator's notes on F to H:** the design is good, but inheritance must be OPTIONAL. A
+remote site may run its own monitoring and connections entirely apart from Default's, and must
+never silently pick up Default's values. Nothing below is built until the redraw is signed off.
+
+**The model:**
+- **A network chooses**, at creation and later:
+  - **Inherits from Default:** today's behaviour, and the state of every network that exists.
+  - **Standalone:** nothing is inherited. A value it does not set is UNSET, "not configured
+    for this network", never filled from Default.
+- **Each integration group chooses too:** inherit, its own, or not applicable. A remote site
+  may run its own Grafana and Prometheus and share the central NetBox. The network's choice is
+  only the starting default for its groups.
+- **Switching is previewed, confirmed by a person and recorded**, in both directions:
+  - inherit to standalone shows exactly what becomes unconfigured ("Grafana, Loki and Kea are
+    inherited from Default today; after this they are not configured here");
+  - standalone to inherit shows what it would pick up.
+- **G's "inherited by" lists only** the networks and groups that chose to inherit.
+
+**A gap the model leaves:** today a list is created only on today's page (v1), which may gain
+no capability. Until v2 can create one, a new list starts as Inherits from Default, as now,
+and its Settings page offers the choice at once. The redraw draws the v2 creation form, so the
+choice is there from the first moment once it is built.
+
+**What changes in the code already built (P.8 steps 1 to 8):**
+
+1. **Step 1, the scopes (`modules/settings_scope.py`): no change.** The groups are already
+   declared, and each network credential is already grouped with its URL. The per-group choice
+   uses exactly these group names.
+
+2. **Step 2, the store and the resolver (`modules/list_settings.py`).**
+   - **The store** gains two optional keys:
+     - `"mode": "inherit" | "standalone"` (absent means inherit, so every existing list keeps
+       today's behaviour, and nothing is migrated);
+     - `"groups": {"<group>": "inherit" | "own"}`, a group's explicit choice (absent means it
+       follows the mode).
+     `not_applicable` is unchanged; it stays the third choice for a group.
+   - **`resolve()` gains a state:** `NOT_CONFIGURED = "not configured for this network"`.
+     The order becomes:
+     1. host-wide;
+     2. Default;
+     3. not applicable;
+     4. set here;
+     5. a group of this list's own: a key of it is set here, OR its choice is `own`, OR the
+        network is standalone and the group did not choose `inherit`. Such a group's unset
+        key reads its SCHEMA default, never Default's. With nothing of the group set it says
+        `NOT_CONFIGURED`; with something set, today's `UNSET_HERE`. This is the same rule a
+        group set here follows today: the operator's point 5;
+     6. otherwise `INHERITED` (or `UNSET_EVERYWHERE`).
+
+     A standalone network's group that chose `inherit` reads Default's, exactly as today.
+   - **`secret()` needs no change of rule:** it returns Default's secret only when the origin
+     is `INHERITED`, and a standalone group never is. A test holds it.
+   - **New writes, each through the existing locked, atomic `write` path:**
+     - `set_mode(list, mode, actor, confirm)`;
+     - `set_group(list, group, choice, actor, confirm)`.
+     Each is previewed (`preview_mode`, `preview_group`), confirmed by the preview's hash
+     against the store as it stands at apply, and recorded: who, when, from what to what, and
+     what it changed.
+     Each gets its routes and their declarations (`route_gates.py`; `invalidation.py`,
+     `settings`).
+
+3. **Step 3, the integration clients:** no change. They read through `list_settings`, so a
+   standalone group's client is simply not configured: no URL, so `is_configured()` is
+   false.
+
+4. **Step 4, the network-key reads:** no change. Every read already carries its list, and
+   resolves as above.
+
+5. **Step 5, readers per configuration (`modules/integration_groups.py`, `reader_job.py`).**
+   - `group_id()` returns the list's own slug for a standalone or `own` group even when
+     nothing is set, never `default`. So a standalone network never shares Default's
+     configuration or its store.
+   - **A configuration with no URL is NOT CONFIGURED, never a failure.** Today a reader would
+     try it and fail every interval, raising a job-health row. Now `reader_job` skips it and
+     `read_cached_for()` answers `{"state": "not_configured"}` with the network named, as
+     `not_applicable` does.
+   - **New `who_inherits(group)`:** the networks whose group resolves to Default's. G's count
+     and its names read only this, and standalone or own groups are listed apart.
+
+6. **Step 6, alerts across networks:** no change. It reads every list's devices, not settings.
+
+7. **Step 7, the Settings page (A to E approved, not built):**
+   - each group card's origin chip gains "not configured for this network";
+   - the card's three-way control (inherit / its own / not applicable) replaces board C's
+     single "Go back to inheriting", and its preview is the new switch preview;
+   - the network header carries the network's choice (boards I and J).
+
+8. **Step 8, the OBSERVE pages (built):**
+   - `device_page.grafana_whose()` returns the network's own name for a standalone network;
+   - the Monitoring page and a device's tab gain a `not_configured` state, "Grafana is not
+     configured for Branch-B", with Settings as its action, beside `not_applicable`;
+   - `attention.dashboard_roles_source` skips a not-configured configuration.
+
+**The tests, each shown able to fail:**
+- **`tests/test_list_settings.py`:**
+  - a standalone network's unset key reads its schema default, never Default's (the value
+    and the secret);
+  - a standalone network's group that chose `inherit` reads Default's;
+  - a list with no `mode` behaves exactly as today (every existing case unchanged: the
+    regression);
+  - `own` with nothing set is `NOT_CONFIGURED`;
+  - `not applicable` still stops the lookup.
+- **The switch:**
+  - `preview_mode` names exactly the groups inherited today that become unconfigured, and the
+    reverse names what would be picked up, with Default's values masked;
+  - a confirm whose store moved is refused naming both;
+  - the record is written;
+  - a viewer who may not confirm is refused.
+- **`tests/test_readers_per_network.py`:**
+  - a standalone network gets its own configuration, never Default's store;
+  - a configuration with no URL is skipped and answers `not_configured`, with no
+    job-health failure;
+  - `who_inherits` excludes standalone and own groups.
+- **The pages:** a standalone network's Monitoring page and a device tab say "not configured
+  for this network" (`tests/test_fleet_monitoring.py`, `tests/test_readers_per_network.py`),
+  and the dashboard-settings row skips it.
+- **A planted control for the property itself:** a standalone network whose read is wired to
+  Default's (the old fallback) must fail the value test, the secret test and the reader test.
