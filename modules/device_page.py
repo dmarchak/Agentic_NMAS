@@ -66,11 +66,13 @@ def find_pending(name: str, ref=None):
     return None
 
 
-def _cached(reader: str):
-    """A reader's last good value and its time, or (None, why)."""
+def _cached(reader: str, list_name: str = ""):
+    """A reader's last good value and its time, or (None, why). *list_name* reads that
+    network's configuration of a reader that reads one per configuration (P.8 step 5)."""
     from modules import reader_job
 
-    got = reader_job.read_cached(reader)
+    got = (reader_job.read_cached_for(reader, list_name) if list_name
+           else reader_job.read_cached(reader))
     good = ((got.get("doc") or {}).get("last_good") or {})
     if got["state"] != "ok" or not good:
         return None, None, got.get("why") or "the reader has not stored a value yet"

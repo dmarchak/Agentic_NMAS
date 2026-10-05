@@ -33,13 +33,13 @@ def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
-def prometheus_series(window: int, now: float) -> tuple:
+def prometheus_series(window: int, now: float, list_name: str = "") -> tuple:
     """``(configured, {device: [[[ts, ticks], ...] per series]})`` for every device whose
     counter fell inside *window*. Raises when Prometheus is configured and cannot be read,
     so the failure is a job-health row, never "nothing restarted"."""
     from modules.integrations.prometheus import PrometheusIntegration
 
-    prom = PrometheusIntegration()
+    prom = PrometheusIntegration(list_name=list_name) if list_name else PrometheusIntegration()
     if not prom.is_configured():
         return False, {}
     r = prom._get("api/v1/query", query=f"resets(sysUpTime[{int(window)}s]) > 0")
@@ -85,7 +85,11 @@ def read(previous=None, clock=time.time, source=None, devices=None, reason=None)
     wanted = (now - last + 2 * INTERVAL_SECONDS) if last else FIRST_LOOKBACK_SECONDS
     window = int(min(max(wanted, 5 * INTERVAL_SECONDS), MAX_LOOKBACK_SECONDS))
     cut = wanted > MAX_LOOKBACK_SECONDS
-    configured, series = (source or prometheus_series)(window, now)
+    # P.8 step 5: every network's Prometheus, once per configuration, merged by device.
+    from modules import integration_groups as IG
+
+    configured, series = ((source or (lambda w, n: IG.merged(
+        "prometheus", lambda list_name: prometheus_series(w, n, list_name))))(window, now))
     if not configured:
         return {"configured": False, "last_read_at": _iso(now), "new": [], "window": window}
     managed = (devices or population)()

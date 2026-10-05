@@ -148,6 +148,44 @@ def test_needs_attention_shows_every_networks_grafana_alerts():
     assert "grafana@branch+default:stalled:Branch rules" in ids, ids
 
 
+@pytest.mark.usefixtures("networks")
+def test_a_per_device_read_asks_each_configuration_once_and_merges():
+    """Adjacencies, restarts and platform facts key their value by device across every list:
+    each Prometheus configuration is asked once (Default's exactly as before, ``""``), and the
+    answers merge. Here Prometheus is Default's for all four networks, so it is asked once."""
+    asked = []
+
+    def fetch(list_name):
+        asked.append(list_name)
+        return True, {f"dev-{list_name or 'default'}": 1}
+
+    assert IG.merged("prometheus", fetch) == (True, {"dev-default": 1})
+    assert asked == [""], asked
+
+    asked.clear()
+    assert IG.merged("grafana", fetch) == (True, {"dev-default": 1, "dev-Branch": 1})
+    assert asked == ["", "Branch"], "Branch's own configuration asked with Branch's client"
+
+
+@pytest.mark.usefixtures("networks")
+def test_another_networks_own_grafana_token_is_tracked():
+    from modules import list_settings as L
+    from modules.readers import credential_health as CH
+
+    assert L.write("Branch", {"grafana_token": "branch-token",
+                              "grafana_token_expires": "2026-12-31"})["ok"]
+    (entry,) = CH.grafana_other_networks(0)
+    assert entry["id"] == "grafana_token@branch"
+    assert entry["label"].startswith("Grafana API token (Branch)")
+    assert entry["expires_at"] and entry["expires_at"].startswith("2026-12-31"), entry
+
+
+def test_coverage_reporting_reads_per_network():
+    from modules.readers import coverage_reporting
+
+    assert coverage_reporting.READER.per_group == ("prometheus", "loki")
+
+
 def test_the_grafana_readers_read_per_network():
     """The two Grafana readers declare their configuration, so Default's stays as it was and
     another network's Grafana is read with that network's client."""

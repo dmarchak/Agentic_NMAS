@@ -115,14 +115,18 @@ def netbox(now: float) -> list:
                    renew_at=renew, put_at=put, now=now)]
 
 
-def _declared(cid, label, setting, *, renew, put, now) -> list:
+def _declared(cid, label, setting, *, renew, put, now, list_name: str = "") -> list:
     """A token whose expiry it cannot read itself, by the expiry DECLARED for it in Settings
     (the operator's decisions, 2026-10-03: Grafana's Viewer token; Proxmox's token, not
     widened to read its own record). "never" is a declaration; blank is none yet; a refusal
     is still caught by the integrations probe within a minute."""
     from modules.list_settings import default_layer   # paired with the Default network's clients
 
-    declared = (default_layer(setting, "") or "").strip()
+    if list_name:     # another network's own configuration (P.8 step 5)
+        from modules.list_settings import value as list_value
+        declared = (list_value(list_name, setting, "") or "").strip()
+    else:
+        declared = (default_layer(setting, "") or "").strip()
     if not declared:
         return [_entry(cid, label, kind="expiry", state="listed",
                        why=("no expiry declared yet (" + put + "); a refusal is still caught by "
@@ -257,7 +261,25 @@ def community_ages(now: float) -> list:
     return out
 
 
-SOURCES = (netbox, proxmox, tls, grafana, device_ages, community_ages)
+def grafana_other_networks(now: float) -> list:
+    """Each OTHER network's own Grafana token (P.8 step 5): one entry per configuration,
+    named for the networks that use it, by the expiry declared in that network's settings."""
+    from modules import integration_groups as IG
+    from modules import list_settings as L
+
+    out = []
+    for g in IG.groups(("grafana",)):
+        if g["id"] == IG.DEFAULT_GROUP or not L.secret(g["list"], "grafana_token"):
+            continue
+        out += _declared(f"grafana_token@{g['id']}",
+                         f"Grafana API token ({', '.join(g['lists'])})", "grafana_token_expires",
+                         renew="Grafana: Administration > Service accounts",
+                         put=f"Settings > {g['list']} > Integrations > Grafana, its expiry",
+                         now=now, list_name=g["list"])
+    return out
+
+
+SOURCES = (netbox, proxmox, tls, grafana, grafana_other_networks, device_ages, community_ages)
 
 
 def read(now: float = None) -> dict:

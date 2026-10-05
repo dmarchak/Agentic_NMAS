@@ -28,7 +28,7 @@ def _table(lab, monkeypatch, report=None):
     monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: [dict(R2), dict(R6)])
     if report is not None:
         monkeypatch.setattr("time.time", lambda: report["read_at"])
-        monkeypatch.setattr("modules.device_page._cached", lambda name: (report, "", ""))
+        monkeypatch.setattr("modules.device_page._cached", lambda name, *_l: (report, "", ""))
     r = lab["client"].get("/v2/monitoring/coverage/table")
     assert r.status_code == 200
     return r.get_data(as_text=True)

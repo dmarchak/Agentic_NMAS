@@ -48,13 +48,13 @@ def image_of(descr: str) -> str:
     return m.group(1) if m else ""
 
 
-def prometheus_all() -> tuple:
+def prometheus_all(list_name: str = "") -> tuple:
     """``(configured, {device: {"descr", "object_id"}})`` for the whole fleet.
     Raises when Prometheus is configured and cannot be asked, so a failure is
     a job-health row, never "no device reports a model"."""
     from modules.integrations.prometheus import PrometheusIntegration
 
-    prom = PrometheusIntegration()
+    prom = PrometheusIntegration(list_name=list_name) if list_name else PrometheusIntegration()
     if not prom.is_configured():
         return False, {}
     out = {}
@@ -71,7 +71,10 @@ def prometheus_all() -> tuple:
 
 
 def read(source=None) -> dict:
-    configured, raw = (source or prometheus_all)()
+    # P.8 step 5: every network's Prometheus, once per configuration, merged by device.
+    from modules import integration_groups as IG
+
+    configured, raw = (source or (lambda: IG.merged("prometheus", prometheus_all)))()
     if not configured:
         return {"configured": False, "devices": {}}
     devices = {}

@@ -189,7 +189,7 @@ def _page(lab, monkeypatch, report, devices=("r6", "r2")):
     monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
     monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: [dict(R2), dict(R6)])
     monkeypatch.setattr("time.time", lambda: report["read_at"])
-    monkeypatch.setattr("modules.device_page._cached", lambda name: (report, "", ""))
+    monkeypatch.setattr("modules.device_page._cached", lambda name, *_l: (report, "", ""))
     q = "&".join(f"device={d}" for d in devices)
     r = lab["client"].get(f"/v2/monitoring/apply?list=Lab&scope=templates&{q}")
     return r, r.get_data(as_text=True)
@@ -327,7 +327,7 @@ def test_a_real_browser_deploys_from_coverage_s_own_button(lab, monkeypatch, r6_
     monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
     monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
     monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: [dict(R2), dict(R6)])
-    monkeypatch.setattr("modules.device_page._cached", lambda name: (r2_snmp_down, "", ""))
+    monkeypatch.setattr("modules.device_page._cached", lambda name, *_l: (r2_snmp_down, "", ""))
     reached = []
 
     def spy(entry, list_name, rows, authorise, **kw):

@@ -188,16 +188,25 @@ def windows() -> dict:
     return {h: {"window": w, "basis": b} for h, (w, b, _uid) in got.items()}
 
 
-def read(now: float = None, prom=None, loki=None) -> dict:
+def read(now: float = None, prom=None, loki=None, list_name: str = "") -> dict:
+    """*list_name* reads that network's Prometheus and Loki, and its heartbeat interval (P.8
+    step 5); empty is Default's, exactly as before."""
     from modules.integrations.loki import LokiIntegration
     from modules.integrations.prometheus import PrometheusIntegration
     from modules.list_settings import default_layer   # paired with the Default network's clients
+    from modules.list_settings import value as list_value
 
     now = time.time() if now is None else now
-    prom = prom or PrometheusIntegration()
-    loki = loki or LokiIntegration()
+    if list_name:
+        prom = prom or PrometheusIntegration(list_name=list_name)
+        loki = loki or LokiIntegration(list_name=list_name)
+        beat = list_value(list_name, "syslog_heartbeat_seconds")
+    else:
+        prom = prom or PrometheusIntegration()
+        loki = loki or LokiIntegration()
+        beat = default_layer("syslog_heartbeat_seconds")
     value = {"read_at": now, "lookback_seconds": LOOKBACK_SECONDS,
-             "heartbeat_period": int(default_layer("syslog_heartbeat_seconds") or 0),
+             "heartbeat_period": int(beat or 0),
              "sources": {}}
     plan = (("targets", prom, lambda: targets(prom)), ("up", prom, lambda: last_up(prom, now)),
             ("telemetry", prom, lambda: telemetry(prom, now)),
@@ -392,6 +401,9 @@ READER = reader_job.register(reader_job.Reader(
     invalidates=("coverage_reporting",),
     remedy="Read the error above: it names which of Prometheus or Loki could not be asked",
     window="the last 3 h of arrivals",
+    # P.8 step 5: each network's Prometheus and Loki, once per configuration.
+    per_group=("prometheus", "loki"),
+    read_for=lambda list_name: read(list_name=list_name),
     announce_if=changed,
     announce_at_least_every=KEEPALIVE_SECONDS,
 ))

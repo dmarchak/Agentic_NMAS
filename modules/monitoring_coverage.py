@@ -439,7 +439,7 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
         # ONE stored read for the whole grid (enterprise scale), never a query per device.
         from modules.device_page import _cached
         from modules.readers.coverage_reporting import NAME
-        report = _cached(NAME)
+        report = _cached(NAME, ref.name)   # this network's Prometheus and Loki (P.8 step 5)
     if devices is None:
         from modules.device import load_saved_devices
         devices = [(ref, d) for d in load_saved_devices(ref.csv_path)]

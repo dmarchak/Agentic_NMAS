@@ -351,7 +351,7 @@ class TestTheGrid:
         from tests.test_coverage_page import _page
 
         monkeypatch.setattr("time.time", lambda: r2_down["read_at"])
-        monkeypatch.setattr("modules.device_page._cached", lambda name: (r2_down, "", ""))
+        monkeypatch.setattr("modules.device_page._cached", lambda name, *_l: (r2_down, "", ""))
         r, html = _page(lab, monkeypatch, "/v2/monitoring/coverage/table")
         assert r.status_code == 200
         cell = re.search(r'<td class="gc" data-state="not_reporting"><a class="nr-link" '

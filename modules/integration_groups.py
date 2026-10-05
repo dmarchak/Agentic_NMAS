@@ -78,6 +78,27 @@ def groups(groups_: tuple) -> list:
     return sorted(out.values(), key=lambda g: (g["id"] != DEFAULT_GROUP, g["id"]))
 
 
+def merged(group: str, fetch) -> tuple:
+    """A fleet-wide read over every configuration of *group*, for a reader whose value is keyed
+    by DEVICE across every list (adjacencies, restarts, platform facts). ``fetch(list_name)``
+    returns ``(configured, {device: …}, …)`` for one configuration, ``""`` meaning Default's
+    exactly as before P.8; it runs once per distinct configuration, and the answers merge:
+    configured if any is, each mapping the union, a device two configurations report keeping
+    the first (Default's). A configuration that raises fails the read, as one did before."""
+    answers = []
+    for g in groups((group,)):
+        answers.append(fetch("" if g["id"] == DEFAULT_GROUP else g["list"]))
+    if not answers:
+        return (False,)
+    width = len(answers[0])
+    out = [any(a[0] for a in answers)] + [{} for _ in range(width - 1)]
+    for a in answers:
+        for i in range(1, width):
+            for k, v in (a[i] or {}).items():
+                out[i].setdefault(k, v)
+    return tuple(out)
+
+
 def store_name(reader_name: str, gid: str) -> str:
     """The store a configuration's value lives in: the reader's own name for Default's (so a
     single-network installation's stores are what they always were), else ``name@id``."""

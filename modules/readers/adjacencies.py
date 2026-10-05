@@ -38,14 +38,14 @@ def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
-def prometheus_all() -> tuple:
+def prometheus_all(list_name: str = "") -> tuple:
     """``(configured, {device: {metric: rows}}, {device: {job: 0|1}})`` for
     the whole fleet. Raises when Prometheus is configured and cannot be read,
     so the failure is a job-health row, never "every adjacency up"."""
     from modules.integrations.prometheus import PrometheusIntegration
     from modules.neighbours import SERIES
 
-    prom = PrometheusIntegration()
+    prom = PrometheusIntegration(list_name=list_name) if list_name else PrometheusIntegration()
     if not prom.is_configured():
         return False, {}, {}
     results, up = {}, {}
@@ -96,7 +96,10 @@ def read(previous=None, clock=time.time, source=None, population=None) -> dict:
     if previous is None:
         got = reader_job.read_cached("adjacencies")
         previous = ((got.get("doc") or {}).get("last_good") or {}).get("value") or {}
-    configured, results, up = (source or prometheus_all)()
+    # P.8 step 5: every network's Prometheus, once per configuration, merged by device.
+    from modules import integration_groups as IG
+
+    configured, results, up = (source or (lambda: IG.merged("prometheus", prometheus_all)))()
     if not configured:
         return {"configured": False, "adjacencies": {}, "unmeasured": [], "errors": [],
                 "checked": 0, "devices": 0}

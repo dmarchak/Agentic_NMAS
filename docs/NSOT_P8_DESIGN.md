@@ -286,12 +286,21 @@ pages.
      alerts (Branch)"), its rows keyed apart, declared, cleared and acknowledged as the base
      source's.
 
-   **Left (5b):**
-   - coverage-reporting, platform-facts, integrations and credential-health still read
-     Default's;
-   - the readers that loop lists still use one client.
-   The pages keep reading Default's configuration until step 8 moves each page with its
-   settings.
+   **5b BUILT 2026-10-05:**
+   - The readers whose value is keyed by DEVICE across every list (adjacencies, restarts,
+     platform facts) ask each Prometheus configuration once, through
+     `integration_groups.merged`, and merge by device. Default's is asked exactly as before.
+   - coverage-reporting reads per configuration (Prometheus with Loki, and that network's
+     heartbeat interval). The coverage grid, which already reads its network's settings
+     since 4b, reads its network's report.
+   - credential-health tracks each other network's own Grafana token, by the expiry declared
+     in that network's settings.
+
+   **Left:**
+   - the integrations reader (the status bar) still probes Default's clients. A per-network
+     status belongs with step 7's Settings page and step 8's network-carrying pages.
+   - the pages that pair a cache with Default's settings (Monitoring, a device's Monitoring
+     tab and Checks) move with step 8.
 6. **Grafana alerts resolved across lists** (the latent false claim). **BUILT 2026-10-05:** `attention._inventory()` reads every registered list; a labelled device of any network is found, and an address two networks reuse names both devices and decides neither (`tests/test_alerts_across_networks.py`). The list label on the rules waits for P.7.
 7. **The v2 Settings page per network.** It draws each value with its origin (set here,
    inherited, not applicable, unset). This is a new screen, so it needs a mockup and the

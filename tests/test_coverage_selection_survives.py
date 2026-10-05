@@ -36,7 +36,7 @@ def coverage(lab, monkeypatch, r6_probe_unsent, r2_snmp_down):  # noqa: F811
     monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
     monkeypatch.setattr("modules.nsot.listref.exists", lambda name: name == "Lab")
     monkeypatch.setattr("modules.device.load_saved_devices", lambda *a, **k: [dict(R2), dict(R6)])
-    monkeypatch.setattr("modules.device_page._cached", lambda name: (r2_snmp_down, "", ""))
+    monkeypatch.setattr("modules.device_page._cached", lambda name, *_l: (r2_snmp_down, "", ""))
     with browser.Served(A.app) as srv, browser.Browser() as b:
         try:
             yield srv, b
@@ -85,7 +85,7 @@ class TestTheRouteKeepsTheSelection:
         monkeypatch.setattr(listref, "active", lambda: listref.resolve("Lab"))
         monkeypatch.setattr("modules.device.load_saved_devices",
                             lambda *a, **k: [dict(R2), dict(R6)])
-        monkeypatch.setattr("modules.device_page._cached", lambda name: (r2_snmp_down, "", ""))
+        monkeypatch.setattr("modules.device_page._cached", lambda name, *_l: (r2_snmp_down, "", ""))
         page = lab["client"].get("/v2/monitoring/coverage/table" + query).get_data(as_text=True)
         return {m.group(1): ' checked' in m.group(0) for m in re.finditer(
             r'<input type="checkbox" name="device" value="([^"]+)"[^>]*>', page)}
