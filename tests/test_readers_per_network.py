@@ -414,3 +414,76 @@ def test_the_grafana_readers_read_per_network():
     assert grafana_alerts.READER.per_group == ("grafana", "prometheus")
     assert callable(grafana_dashboards.READER.read_for)
     assert callable(grafana_alerts.READER.read_for)
+
+
+@pytest.fixture
+def standalone(networks):
+    """Networks plus Remote, standalone: its Grafana NOT configured, its Prometheus its own,
+    and its Loki chosen to inherit Default's."""
+    from modules import device
+    from modules import list_settings as L
+
+    registry = networks / "device_lists.json"
+    doc = json.loads(registry.read_text(encoding="utf-8"))
+    doc["lists"]["Remote"] = "remote"
+    registry.write_text(json.dumps(doc), encoding="utf-8")
+    p = networks / "lists" / "remote"
+    p.mkdir(parents=True)
+    (p / "settings.json").write_text(json.dumps({
+        "values": {"prometheus_url": "http://192.0.2.70:9090"}, "not_applicable": {},
+        "mode": "standalone", "groups": {"loki": "inherit"}}), encoding="utf-8")
+    assert L.mode("Remote") == L.STANDALONE and device.DEVICE_LISTS_CONFIG
+    return networks
+
+
+@pytest.mark.usefixtures("standalone")
+class TestAStandaloneNetworksReaders:
+    """NSOT_P8_DESIGN section 8, step 5: a standalone network gets its own configuration,
+    never Default's store; a configuration with no URL is NOT CONFIGURED, never a reader
+    failing every interval; Default's counts name only who chose to inherit."""
+
+    def test_a_standalone_group_is_its_own_configuration_even_with_nothing_set(self):
+        assert IG.group_id("grafana", "Remote") == "remote", "it shared Default's store"
+        assert IG.group_id("prometheus", "Remote") == "remote"
+        assert IG.group_id("loki", "Remote") == "default", "its group chose to inherit"
+
+    def test_a_configuration_with_no_url_is_not_read(self):
+        r, calls = _reader()
+        R.run_once(r)
+        assert "Remote" not in calls, "a Grafana with no URL was asked"
+        assert not __import__("os").path.exists(R.store_path(f"{r.name}@remote"))
+        units = {row["unit"] for row in R.health_rows(population=[r])}
+        assert f"reader:{r.name}@remote" not in units, "a not-configured Grafana is a job row"
+
+    def test_a_page_asking_for_it_hears_not_configured(self):
+        r, _calls = _reader()
+        R._REGISTRY[r.name] = r
+        try:
+            got = R.read_cached_for(r.name, "Remote")
+            assert got["state"] == "not_configured", got
+            assert "Grafana is not configured for Remote" in got["why"]
+        finally:
+            R.unregister(r.name)
+
+    def test_its_own_configured_group_is_read_with_its_client(self):
+        asked = []
+
+        def fetch(list_name):
+            asked.append(list_name)
+            return True, {f"dev-{list_name or 'default'}": 1}
+
+        assert IG.merged("prometheus", fetch) == (True, {"dev-default": 1, "dev-Remote": 1})
+        assert asked == ["", "Remote"]
+        asked.clear()
+        # Grafana: Remote's is not configured, so it is not asked; Branch's is.
+        IG.merged("grafana", fetch)
+        assert asked == ["", "Branch"], asked
+
+    def test_who_inherits_names_only_the_networks_that_chose_to(self):
+        who = IG.who("grafana")
+        assert who["inherit"] == ["Lab-3"]
+        assert who["own"] == ["Branch"]
+        assert who["not_configured"] == ["Remote"]
+        assert who["not_applicable"] == ["Shop"]
+        assert IG.who_inherits("loki") == ["Branch", "Lab-3", "Remote", "Shop"]
+        assert "Remote" in IG.who("loki")["standalone"]

@@ -489,7 +489,11 @@ choice is there from the first moment once it is built.
 4. **Step 4, the network-key reads:** no change. Every read already carries its list, and
    resolves as above.
 
-5. **Step 5, readers per configuration (`modules/integration_groups.py`, `reader_job.py`).**
+5. **Step 5, readers per configuration (`modules/integration_groups.py`, `reader_job.py`).
+   BUILT 2026-10-05**, as below. `integration_groups.groups()` leaves an unconfigured
+   configuration out, so every reader, liveness row and fleet-wide merge skips it at once;
+   `who(group)` gives board G every bucket (inherit, own, not configured, not applicable,
+   standalone, unreadable) and `who_inherits(group)` its count.
    - `group_id()` returns the list's own slug for a standalone or `own` group even when
      nothing is set, never `default`. So a standalone network never shares Default's
      configuration or its store.

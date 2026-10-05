@@ -22,21 +22,69 @@ DEFAULT_GROUP = "default"
 
 def group_id(group: str, list_name: str):
     """The configuration of settings group *group* that *list_name* uses: ``"default"``, the
-    list's slug when the list set the group itself, or None when the list declared it not
-    applicable. An unreadable list store raises (`ListSettingsUnreadable`): never guessed."""
+    list's slug when the group is the list's own (a key of it set here, chosen ``own``, or the
+    network standalone and the group not chosen to inherit: NSOT_P8_DESIGN section 8, so a
+    standalone network never shares Default's configuration or its store), or None when the
+    list declared it not applicable. An unreadable list store raises
+    (`ListSettingsUnreadable`): never guessed."""
     from modules import list_settings as L
     from modules.config import list_slug
-    from modules.settings_scope import group_keys
 
     if L.is_default(list_name):
         return DEFAULT_GROUP
-    store = L.load(list_name)
-    keys = group_keys(group)
-    if group in store["not_applicable"] or any(k in store["not_applicable"] for k in keys):
+    choice = L.group_choice(L.load(list_name), group)
+    if choice == L.NA:
         return None
-    if any(k in store["values"] for k in keys):
-        return list_slug(list_name)
-    return DEFAULT_GROUP
+    return list_slug(list_name) if choice == L.OWN else DEFAULT_GROUP
+
+
+def configured(group: str, list_name: str) -> bool:
+    """Whether *list_name*'s configuration of *group* names its service at all: its URL key
+    (`settings_scope.URL_KEYS`) is set. A group with no URL key counts as configured."""
+    from modules import list_settings as L
+    from modules.settings_scope import URL_KEYS
+
+    key = URL_KEYS.get(group)
+    return not key or bool(str(L.resolve(list_name, key)[0] or "").strip())
+
+
+def unconfigured(group_names: tuple, list_name: str) -> list:
+    """The groups of *group_names* that are *list_name*'s own and name no service: with any,
+    its configuration cannot be asked, so a reader skips it and a page says "not configured
+    for this network", never a read failing every interval (section 8, step 5). Default's
+    configuration is never skipped: it is read exactly as before P.8."""
+    return [g for g in group_names
+            if group_id(g, list_name) not in (None, DEFAULT_GROUP) and not configured(g, list_name)]
+
+
+def who(group: str) -> dict:
+    """Every network other than Default by what *group* is for it (board G): ``inherit`` (it
+    takes Default's, whether by its mode or its own choice), ``own``, ``not_configured``,
+    ``not_applicable``; and ``standalone``, the standalone networks among them all. A list
+    whose store cannot be read is ``unreadable``, never counted as inheriting."""
+    from modules import list_settings as L
+
+    out = {"inherit": [], "own": [], "not_configured": [], "not_applicable": [],
+           "standalone": [], "unreadable": []}
+    bucket = {"inherited": "inherit", "unset_everywhere": "inherit", "own": "own",
+              "not_configured": "not_configured", "not_applicable": "not_applicable"}
+    for name in network_names():
+        if L.is_default(name):
+            continue
+        try:
+            store = L.load(name)
+        except L.ListSettingsUnreadable:
+            out["unreadable"].append(name)
+            continue
+        out[bucket[L.group_state(name, group, store)["state"]]].append(name)
+        if store["mode"] == L.STANDALONE:
+            out["standalone"].append(name)
+    return out
+
+
+def who_inherits(group: str) -> list:
+    """The networks whose *group* resolves to Default's: what a change to Default's reaches."""
+    return who(group)["inherit"]
 
 
 def combined_id(group_names: tuple, list_name: str):
@@ -68,11 +116,14 @@ def network_names() -> list:
 def groups(groups_: tuple) -> list:
     """``[{"id", "lists", "list"}]``: each distinct configuration of *groups_* across every
     network, the lists that use it, and the one whose client reads it (the first). Lists that
-    declared a group not applicable use none, and are not listed. Default's is first."""
+    declared a group not applicable use none, and are not listed; nor is a configuration of
+    a network's own that names no service (`unconfigured`): there is nothing to read, so no
+    reader asks it, no store or liveness row is kept for it, and a fleet-wide merge leaves it
+    out. Default's is first."""
     out = {}
     for name in network_names():
         gid = combined_id(tuple(groups_), name)
-        if gid is None:
+        if gid is None or unconfigured(tuple(groups_), name):
             continue
         out.setdefault(gid, {"id": gid, "lists": [], "list": name})["lists"].append(name)
     return sorted(out.values(), key=lambda g: (g["id"] != DEFAULT_GROUP, g["id"]))

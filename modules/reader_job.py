@@ -426,6 +426,15 @@ def read_cached_for(name: str, list_name: str) -> dict:
     if gid is None:
         return {"state": "not_applicable", "doc": None,
                 "why": f"{list_name} declared {', '.join(reader.per_group)} not applicable"}
+    missing = IG.unconfigured(tuple(reader.per_group), list_name)
+    if missing:
+        from modules.settings_scope import group_label
+
+        labels = " and ".join(group_label(g) for g in missing)
+        return {"state": "not_configured", "doc": None, "groups": missing,
+                "why": (f"{labels} {'is' if len(missing) == 1 else 'are'} not configured for "
+                        f"{list_name}: nothing is set for it there, and it takes nothing from "
+                        "Default, so there is nothing to read")}
     return read_cached(IG.store_name(name, gid))
 
 
