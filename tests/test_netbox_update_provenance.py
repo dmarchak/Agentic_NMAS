@@ -483,6 +483,51 @@ class TestTheWriteSurfaceIsStillThree:
                     enclosing.append(node.name)
         assert sorted(enclosing) == ["_nb_delete", "_nb_patch", "_nb_post"], enclosing
 
+    #: NetBox's REST apps: a write to one of these paths is a NetBox write.
+    NETBOX_APPS = ("dcim", "ipam", "extras", "vpn", "tenancy", "users", "core",
+                   "virtualization", "circuits", "wireless")
+
+    def _netbox_writes(self, src: str, filename: str) -> list:
+        """Every `<x>.post/patch/put/delete(<url>)` whose URL text names a NetBox app path,
+        by parsing (an f-string's literal parts or a plain string), with its line."""
+        hits = []
+        for node in ast.walk(ast.parse(src, filename=filename)):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in ("post", "patch", "put", "delete") and node.args):
+                continue
+            arg = node.args[0]
+            parts = ([v.value for v in arg.values if isinstance(v, ast.Constant)]
+                     if isinstance(arg, ast.JoinedStr)
+                     else [arg.value] if isinstance(arg, ast.Constant) else [])
+            text = "".join(p for p in parts if isinstance(p, str))
+            if any(f"/api/{a}/" in text for a in self.NETBOX_APPS):
+                hits.append(f"{filename}:{node.lineno}")
+        return hits
+
+    def test_no_other_file_writes_to_netbox_directly(self):
+        """C465 (2026-10-05): Refresh Hostnames renamed a NetBox device by its own PATCH in
+        app.py, outside the gate, the authority and the record; the test above scanned
+        netbox_client.py alone and could not see it. Every program file is scanned now."""
+        import glob
+
+        files = ["app.py"] + glob.glob("routes/**/*.py", recursive=True) + \
+            glob.glob("modules/**/*.py", recursive=True)
+        files = [f for f in files if not f.endswith("modules/netbox_client.py")]
+        assert len(files) >= 100, f"the scan found only {len(files)} files"
+        hits = []
+        for f in files:
+            hits += self._netbox_writes(open(f, encoding="utf-8").read(), f)
+        assert hits == [], f"a NetBox write outside netbox_client's chokepoints: {hits}"
+
+    def test_the_scan_finds_the_write_it_exists_for(self):
+        """The planted case: the removed C465 block, as it was."""
+        planted = ('def f(sess, base, nb_dev, new_hn):\n'
+                   '    r = sess.patch(f"{base}/api/dcim/devices/{nb_dev[\'id\']}/",\n'
+                   '                   json={"name": new_hn}, timeout=15)\n')
+        assert self._netbox_writes(planted, "planted.py") == ["planted.py:2"]
+        grafana = 'def g(s, url):\n    s.post(f"{url}/api/ds/query", json={})\n'
+        assert self._netbox_writes(grafana, "g.py") == [], "a Grafana query is not NetBox"
+
     def test_patch_reads_the_before_state_itself(self):
         """Not from an argument. An optional `before=` is how a caller bypasses
         this by omission, and there are eleven call sites."""

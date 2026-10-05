@@ -61,7 +61,7 @@ and built.
 | Device lists | `/device_lists` (3), `/select_device_list` | PLANNED, 7.4 | Devices > Networks |
 | List data | `/list/golden_configs`, `/list/drift_status`, `/list/change_log` | REMOVE, 7.8 | Superseded by Devices, Needs attention and History |
 | List variables, compliance policy | `/list/variables` (4), `/list/compliance_policy` (2) | REMOVE, 7.8 | Superseded by intent, drift, group intent and the monitoring templates (the operator, 2026-10-02); Stage 8 re-establishes how the agent works |
-| Refresh hostnames | `/refresh_hostnames` | PLANNED, 7.4 | Devices |
+| Refresh hostnames | `/refresh_hostnames` | PLANNED, 7.4 | Devices. **It no longer renames the NetBox device** (C465, 2026-10-05): its direct PATCH bypassed the write switch, the authority and the record. The NetBox sync carries a rename (it matches by serial before name). v2's control must not bring the direct write back; a test now refuses any NetBox write outside `netbox_client`'s chokepoints |
 | Drift | `/drift/status`, `/drift/check`, `/drift/check/sync`, `/drift/settings` (2) | PLANNED, 7.7 | Results are Needs attention rows (built); the schedule and "check now" go to Settings > Checks |
 | Freshness authorisations | `/freshness/authorisations` | BUILT | History > Authorisations (2026-10-02) |
 | Authorise a divergence | `/freshness/authorise` | PLANNED, 7.6 | Source of truth, beside the divergence it authorises |

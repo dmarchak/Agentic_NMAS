@@ -1468,31 +1468,10 @@ def refresh_hostnames():
                 except Exception as exc:
                     app.logger.warning("Could not rename variables for %s: %s", ip, exc)
 
-                # ── NetBox device name ─────────────────────────────────────
-                try:
-                    from modules.netbox_client import (
-                        get_netbox_config, _session_from_config, _nb_first,
-                    )
-                    nbcfg = get_netbox_config()
-                    if nbcfg.get("url") and nbcfg.get("token"):
-                        sess = _session_from_config(nbcfg)
-                        base = nbcfg["url"]
-                        nb_dev = (_nb_first(sess, base, "dcim/devices/", name=old_hn)
-                                  or _nb_first(sess, base, "dcim/devices/", q=ip))
-                        if nb_dev and nb_dev.get("name") == old_hn:
-                            r = sess.patch(
-                                f"{base}/api/dcim/devices/{nb_dev['id']}/",
-                                json={"name": new_hn},
-                                timeout=15,
-                            )
-                            if r.ok:
-                                app.logger.info("NetBox device renamed %s→%s", old_hn, new_hn)
-                            else:
-                                app.logger.warning(
-                                    "NetBox rename failed for %s: %s", ip, r.status_code
-                                )
-                except Exception as exc:
-                    app.logger.warning("Could not update NetBox name for %s: %s", ip, exc)
+                # NetBox's device name is NOT changed here (C465, 2026-10-05): this renamed it
+                # by a direct PATCH, outside the write switch, the declared authority and the
+                # modification record. The sync matches a device by serial before name, so the
+                # next NetBox sync (gated and recorded) carries the new name.
 
         # What happened AND what is left to do (the standing rule): the golden
         # keeps its old name until the rename is committed on its own.
@@ -1504,6 +1483,8 @@ def refresh_hostnames():
         if rename_failures:
             message = (f"{len(rename_failures)} rename(s) could not be recorded "
                        f"({'; '.join(rename_failures)}). " + message)
+        if updated_count:
+            message += " NetBox keeps the old name until its next sync (gated and recorded)."
         return jsonify({
             "status": "warning" if (rename_failures or failed_count) else "success",
             "message": message,
