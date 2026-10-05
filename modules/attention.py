@@ -1213,14 +1213,28 @@ def _incidents(instances: list) -> list:
 
 
 def _inventory():
-    """(hostnames, address -> hostname), or (None, reason) when unreadable."""
+    """(hostnames, address -> {hostnames}), over EVERY list, or (None, reason) when a list
+    cannot be read. P.8 step 6: an alert names a device of any network, so resolving it
+    against the ACTIVE list alone read another network's device as "NOT in the inventory".
+    An address two networks both use maps to both names, and the member says so rather than
+    pick one."""
+    import os
+
+    from modules.config import LISTS_DIR
+    from modules.device import get_device_lists, load_saved_devices
+
+    names, by_ip = set(), {}
     try:
-        from modules.device import load_saved_devices
-        devices = load_saved_devices()
+        for entry in get_device_lists():
+            path = os.path.join(LISTS_DIR, entry.get("filename") or "", "devices.csv")
+            for d in load_saved_devices(path):
+                if d.get("hostname"):
+                    names.add(d["hostname"])
+                    if d.get("ip"):
+                        by_ip.setdefault(d["ip"], set()).add(d["hostname"])
     except Exception as exc:                       # noqa: BLE001
         return None, f"the inventory could not be read ({type(exc).__name__})"
-    return ({d.get("hostname") for d in devices if d.get("hostname")},
-            {d.get("ip"): d.get("hostname") for d in devices if d.get("ip")}), ""
+    return (names, by_ip), ""
 
 
 def _member(inst: dict, inv) -> dict:
@@ -1230,9 +1244,14 @@ def _member(inst: dict, inv) -> dict:
     device, note = inst.get("device"), ""
     if source == "address":
         addr = inst.get("address")
-        device = (by_ip or {}).get(addr)
-        note = (f"from the polled address {addr}" if device else
-                f"the polled address {addr} matches no device's address in the inventory")
+        found = sorted((by_ip or {}).get(addr) or ())
+        device = found[0] if len(found) == 1 else None
+        if len(found) > 1:
+            note = (f"the polled address {addr} is used by {len(found)} devices in different "
+                    f"networks ({', '.join(found)}), so which one is not decided")
+        else:
+            note = (f"from the polled address {addr}" if device else
+                    f"the polled address {addr} matches no device's address in any network")
     elif source in ("label", "line"):
         note = ("from the rule's device label" if source == "label" else
                 "from the syslog line's origin-id")

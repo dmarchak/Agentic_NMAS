@@ -271,7 +271,7 @@ pages.
    layer by name, as it writes the global file (step 7). The integration clients built for
    no list keep reading the global file, which is the Default network's layer.
 5. **Readers loop lists;** caches are keyed by group identity.
-6. **Grafana alerts resolved across lists** (the latent false claim).
+6. **Grafana alerts resolved across lists** (the latent false claim). **BUILT 2026-10-05:** `attention._inventory()` reads every registered list; a labelled device of any network is found, and an address two networks reuse names both devices and decides neither (`tests/test_alerts_across_networks.py`). The list label on the rules waits for P.7.
 7. **The v2 Settings page per network.** It draws each value with its origin (set here,
    inherited, not applicable, unset). This is a new screen, so it needs a mockup and the
    operator's sign-off before it is built. **Drawn 2026-10-05, FOR SIGN-OFF** (the canvas,
