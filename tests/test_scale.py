@@ -124,13 +124,21 @@ class TestTheReadIsNotTheCost:
 
         path = write_csv(str(tmp_path / "devices.csv"), build_fleet(900))
         load_saved_devices(path)                       # warm
-        start = time.perf_counter()
-        rows = load_saved_devices(path)
-        elapsed = time.perf_counter() - start
+        # The MEDIAN of seven reads (C463): one sample on a shared CI runner measured the
+        # runner. CI read 110 ms once (run #427, 2026-10-05) where CI's interpreter here reads
+        # a median 0.88 ms and a worst 5.7 ms over 200 reads. A stall hits one read; a slow
+        # read is slow every time, and the median still catches it.
+        times = []
+        for _ in range(7):
+            start = time.perf_counter()
+            rows = load_saved_devices(path)
+            times.append(time.perf_counter() - start)
+        elapsed = sorted(times)[len(times) // 2]
 
         assert len(rows) == 900
         assert elapsed < 0.05, (
-            f"the read took {elapsed*1000:.1f} ms — if this ever becomes the "
+            f"the read took {elapsed*1000:.1f} ms (median of 7; all: "
+            f"{', '.join(f'{t*1000:.1f}' for t in times)}) — if this ever becomes the "
             "cost, the conclusion in NSOT_STAGE7_GUI.md §0a changes")
 
     def test_a_lookup_after_the_read_is_free(self, tmp_path):
