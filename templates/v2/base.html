@@ -50,11 +50,11 @@
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('logs') }}<span>Logs</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('dhcp') }}<span>DHCP</span></a>
   <div class="nav-head">SOURCE OF TRUTH</div>
-  <a class="nav-item" href="{{ url_for('index') }}">{{ icon('templates') }}<span>Templates</span></a>
+  <a class="nav-item{% if active_nav == 'templates' %} active{% endif %}" href="{{ url_for('templates_v2.page') }}"{% if active_nav == 'templates' %} aria-current="page"{% endif %}>{{ icon('templates') }}<span>Templates</span></a>
   <a class="nav-item" href="{{ url_for('index') }}">{{ icon('netbox') }}<span>NetBox</span></a>
   <a class="nav-item{% if active_nav == 'credentials' %} active{% endif %}" href="{{ url_for('v2.credentials') }}"{% if active_nav == 'credentials' %} aria-current="page"{% endif %}>{{ icon('credentials') }}<span>Credentials</span></a>
   <div class="grow"></div>
-  <p class="spike-note">The redesign so far: Needs attention, Devices and the device page, History, Monitoring, Credentials (the break-glass record), Settings per network and Help. Other items open today's screens.</p>
+  <p class="spike-note">The redesign so far: Needs attention, Devices and the device page, History, Monitoring, Templates (approval), Credentials (the break-glass record), Settings per network and Help. Other items open today's screens.</p>
   <div class="nav-rule"></div>
   <a class="nav-item{% if active_nav == 'help' %} active{% endif %}" href="{{ url_for('v2.help_page', slug='getting-started') }}"{% if active_nav == 'help' %} aria-current="page"{% endif %}>{{ icon('help') }}<span>Help</span></a>
   <a class="nav-item{% if active_nav == 'settings' %} active{% endif %}" href="{{ url_for('settings_v2.index') }}"{% if active_nav == 'settings' %} aria-current="page"{% endif %}>{{ icon('settings') }}<span>Settings</span></a>

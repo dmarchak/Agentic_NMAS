@@ -159,6 +159,14 @@ STAGES = {
     "templates.revoke_approval": Stages(
         "n/a: a withdrawal, recorded with its reason", "n/a: nothing is previewed", NO_DEVICE,
         "n/a: approve it again", "modules.nsot.approval.revoke"),
+    # The v2 Templates page (7.6, boards A to C): the check is the preview, and the confirm is
+    # bound to the fingerprint it showed AND the check's outcome as read (`seen`).
+    "templates_v2.approve": Stages(
+        "templates_v2.check", "seen in modules.nsot.approve_op.approve", NO_DEVICE,
+        "modules.nsot.approval.revoke", "modules.nsot.approve_op.approve"),
+    "templates_v2.revoke": Stages(
+        "n/a: a withdrawal, recorded with its reason", "n/a: nothing is previewed", NO_DEVICE,
+        "n/a: approve it again", "modules.nsot.approve_op.revoke"),
     "templates.save_bindings": Stages(
         "MISSING: bindings are saved with no preview", "MISSING: no hash is bound", NO_DEVICE, FORWARD,
         "modules.nsot.repo.save_templates"),
@@ -295,6 +303,8 @@ HISTORY = {
     "v2.ip_sla_policy_set": PROFILE,
     "templates.approve": TEMPLATE,
     "templates.revoke_approval": TEMPLATE,
+    "templates_v2.approve": TEMPLATE,
+    "templates_v2.revoke": TEMPLATE,
     "templates.save_bindings": TEMPLATE,
     "templates.write_template": TEMPLATE,
     # ---- configure

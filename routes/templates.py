@@ -395,30 +395,16 @@ def revoke_approval(rel_path):
     stops being true — which can happen without the template changing at all,
     as when a defect is found in what validated it.
     """
-    from modules.nsot import approval, repo as repo_service
+    from modules.nsot import approve_op
 
     data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    repo = _repo_for(list_name)
-    reason = (data.get("reason") or "").strip()
-
-    result = approval.revoke(repo, rel_path, reason=reason,
-                             actor=request_actor())
-    if not result.get("ok"):
+    result = approve_op.revoke(_active_list(data), rel_path,
+                               (data.get("reason") or "").strip(), request_actor())
+    status = result.pop("status")
+    result.pop("actor", None)
+    if not result.get("ok") and status == 400:
         return jsonify(result), 400
-
-    commit = repo_service.save_templates(
-        list_name, [".approvals.json"], actor=request_actor(),
-        message=f"template: revoke approval for {rel_path}",
-        paths=[os.path.join("templates", ".approvals.json")])
-    if not commit.get("ok"):
-        # The working record holds the revocation, so the deploy gate already refuses; the
-        # commit that puts it in history did not happen, and that is said (R13).
-        return jsonify({**result, "ok": False, "error": (
-            f"Revoked in the working record, so deploys from it are already refused, but "
-            f"the commit failed ({commit.get('error')}): the revocation is not in the "
-            "repository's history yet. Revoke again to commit it.")}), 500
-    return jsonify({**result, "commit": commit.get("commit", "")})
+    return jsonify(result), status
 
 
 @bp.route("/bindings", methods=["POST"])
@@ -569,62 +555,25 @@ def approve(rel_path):
     scheme 3 it covers only the template, and the device is checked at its own
     deploy, so the refusal only kept a never-reached device's whole platform
     offline (D2)."""
-    from modules.nsot import approval, repo as repo_service, templates_repo
+    from modules.nsot import approve_op
 
     data = request.get_json(silent=True) or {}
-    list_name = _active_list(data)
-    repo = _repo_for(list_name)
     # What the person was SHOWN (CONCURRENCY_AUDIT R12): the row's approval state carries the
     # closure's fingerprint and Approve sends it back; one that moved since is refused.
-    shown = data.get("fingerprint")
-    shown = shown.strip() if isinstance(shown, str) else ""
-    if not shown:
-        return jsonify({"ok": False, "error": (
-            f"Not approved: this page did not say which version of {rel_path} it showed, so "
-            "the approval could cover a change made since. Reload the template library and "
-            "approve again.")}), 400
-
-    devices = []
-    not_validated = []
-    for entry in templates_repo.devices_for_template(repo, rel_path):
-        golden, _ = _captured_golden(entry["device"], list_name)
-        if not golden:
-            not_validated.append({"device": entry["device"],
-                                  "reason": "no captured config yet"})
-            continue
-        devices.append({"device": entry["device"], "platform": entry["platform"],
-                        "running_config": golden})
-
-    result = approval.approve(repo, rel_path, devices, actor=request_actor(),
-                              not_validated=not_validated, shown=shown)
-    if result["ok"]:
-        commit = repo_service.save_templates(list_name, [".approvals.json"],
-                                             actor=request_actor(),
-                                             message=f"template: approve {rel_path}")
-        if not commit.get("ok"):
-            # The gate counts an approval once it is COMMITTED (R13), so an approval whose
-            # commit failed is not one, and the route says so instead of "approved".
-            return jsonify({**result, "ok": False, "error": (
-                f"Not approved yet: the approval is in the working record but its commit "
-                f"failed ({commit.get('error')}), and the deploy gate counts an approval "
-                "once it is committed. Approve again.")}), 500
-        result["commit"] = commit.get("commit", "")
-    return jsonify(result), (200 if result["ok"] else 400)
+    result = approve_op.approve(_active_list(data), rel_path, data.get("fingerprint"),
+                                request_actor())
+    status = result.pop("status")
+    result.pop("actor", None)
+    return jsonify(result), status
 
 
 @bp.route("/validate/<path:rel_path>", methods=["POST"])
 def validate(rel_path):
     """Dry-run the approval gate without approving."""
-    from modules.nsot import approval, templates_repo
+    from modules.nsot import approval, approve_op
 
-    list_name = _active_list()
-    repo = _repo_for(list_name)
-    devices = []
-    for entry in templates_repo.devices_for_template(repo, rel_path):
-        golden, _ = _captured_golden(entry["device"], list_name)
-        if golden:
-            devices.append({"device": entry["device"], "platform": entry["platform"],
-                            "running_config": golden})
+    repo = _repo_for(_active_list())
+    devices, _not_validated = approve_op.bound_captures(repo, rel_path)
     result = approval.validate_template(repo, rel_path, devices)
     result.pop("host_vars_by_device", None)     # internal; large
     return jsonify(result)

@@ -298,6 +298,76 @@ class TestValidationUsesCapturedConfigs:
         assert result["results"][0]["unmodeled_acknowledged"] is False
 
 
+QUANTUM = "quantum-tunnel profile ALPHA\n peer 203.0.113.9\n"
+
+
+def _commit_intent(repo, host, text):
+    """Commit *host*'s intent as the intent editor does: the acknowledgement lives there."""
+    import subprocess
+
+    env = dict(os.environ, GIT_AUTHOR_NAME="T", GIT_AUTHOR_EMAIL="t@example.invalid",
+               GIT_COMMITTER_NAME="T", GIT_COMMITTER_EMAIL="t@example.invalid")
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        subprocess.run(["git", "init", "-q", repo], check=True, env=env)
+    os.makedirs(os.path.join(repo, "host_vars"), exist_ok=True)
+    with open(os.path.join(repo, "host_vars", f"{host}.yml"), "w", encoding="utf-8") as fh:
+        fh.write(text)
+    subprocess.run(["git", "-C", repo, "add", f"host_vars/{host}.yml"], check=True, env=env)
+    subprocess.run(["git", "-C", repo, "commit", "-q", "-m", f"host_vars: {host} ack"],
+                   check=True, env=env)
+
+
+def _ack_doc(host, lines):
+    import yaml
+    return yaml.safe_dump({"hostname": host, "unmodeled_ack": {"lines": sorted(lines)}})
+
+
+class TestApprovalReadsTheCommittedAcknowledgement:
+    """C481 (the operator, 2026-10-05): the fresh parse of the capture never carries
+    `unmodeled_ack`, so approval refused every device with an unmodelled line whether or not a
+    person acknowledged it, and named no line. It reads the device's COMMITTED intent now, the
+    deploy gate's source, and names every line."""
+
+    def _validate(self, repo):
+        devices = _devices(["s1"])
+        devices[0]["running_config"] += QUANTUM
+        return approval.validate_template(repo, "cisco_ios/base.j2", devices)["results"][0]
+
+    def test_the_refusal_names_every_unacknowledged_line(self, repo):
+        r = self._validate(repo)
+        assert r["ok"] is False and "quantum-tunnel profile ALPHA" in r["unacknowledged"]
+        assert "quantum-tunnel profile ALPHA" in approval._summary(r)
+        assert r["intent"]["state"] == "none"
+
+    def test_a_committed_acknowledgement_is_honoured(self, repo):
+        lines = self._validate(repo)["unacknowledged"]
+        _commit_intent(repo, "s1", _ack_doc("s1", lines))
+        r = self._validate(repo)
+        assert r["unmodeled_acknowledged"] is True and r["unacknowledged"] == []
+        assert "quantum-tunnel profile ALPHA" in r["acknowledged"]
+        assert r["intent"]["state"] == "committed" and r["intent"]["commit"]["commit"]
+
+    def test_an_acknowledgement_nobody_committed_is_not(self, repo):
+        lines = self._validate(repo)["unacknowledged"]
+        _commit_intent(repo, "s1", _ack_doc("s1", []))
+        with open(os.path.join(repo, "host_vars", "s1.yml"), "w", encoding="utf-8") as fh:
+            fh.write(_ack_doc("s1", lines))           # the working file only
+        assert self._validate(repo)["unmodeled_acknowledged"] is False
+
+    def test_an_acknowledged_line_the_capture_lost_is_named(self, repo):
+        lines = self._validate(repo)["unacknowledged"]
+        _commit_intent(repo, "s1", _ack_doc("s1", lines + ["no-such line"]))
+        r = self._validate(repo)
+        assert r["ok"] is False and r["stale_acknowledgements"] == ["no-such line"]
+        assert "no longer has: no-such line" in approval._summary(r)
+
+    def test_an_unreadable_committed_intent_is_said(self, repo):
+        _commit_intent(repo, "s1", "hostname: [s1\n")
+        r = self._validate(repo)
+        assert r["unmodeled_acknowledged"] is False and r["intent"]["state"] == "unreadable"
+        assert "not valid YAML" in r["intent"]["error"]
+
+
 class TestSeedingCommitsItself:
     """Seeding copied files in and committed nothing.
 
@@ -754,12 +824,13 @@ class TestOnboardingNoLongerRevokesItsPlatformsApproval:
         assert approval.is_approved(repo, "cisco_ios/base.j2")
 
     def test_a_bound_device_with_no_capture_is_evidence_not_a_refusal(self):
-        """The route records it as not validated; it never answers 400 for it."""
+        """The route records it as not validated; it never answers 400 for it (the one code
+        path today's route and v2 share, `approve_op.bound_captures`)."""
         import inspect
 
-        from routes import templates
+        from modules.nsot import approve_op
 
-        src = inspect.getsource(templates.approve)
+        src = inspect.getsource(approve_op.bound_captures)
         assert "not_validated.append" in src
         assert "no captured config yet" in src
         assert "if missing:" not in src
@@ -775,8 +846,9 @@ class TestTheApproveRouteRecordsWhatItCouldNotValidate:
 
         monkeypatch.setattr(troutes, "_active_list", lambda *a: "Lab")
         monkeypatch.setattr(troutes, "_repo_for", lambda *_a: repo)
-        monkeypatch.setattr(troutes, "_captured_golden",
-                            lambda name, *_a, **_k: (_config(name), None) if name == "s1" else (None, None))
+        monkeypatch.setattr("modules.nsot.approve_op.repo_for", lambda *_a: repo)
+        monkeypatch.setattr("modules.nsot.approve_op._capture",
+                            lambda _repo, name: _config(name) if name == "s1" else None)
         monkeypatch.setattr("modules.nsot.repo.save_templates",
                             lambda *a, **k: (_commit_approvals(repo), {"ok": True})[1])
         client = nmas.app.test_client()

@@ -983,3 +983,17 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   .ie-split { grid-template-columns: minmax(0, 1fr); }
   .ie-split > div + div { border-left: none; border-top: 1px solid var(--line-2); }
 }
+
+/* Source of truth > Templates (7.6, boards A to C): the table, then the op card in place. */
+.tpl-lib { display: flex; flex-direction: column; gap: 12px; }
+.tpl-counts { margin: 0; font-size: 13px; color: var(--ink-2); }
+.tpl-card { padding: 0; overflow-x: auto; }
+.tpl-table td { vertical-align: top; }
+.tpl-table .tpl-act { white-space: nowrap; text-align: right; }
+.tpl-bound summary { cursor: pointer; color: var(--accent); }
+.tpl-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.tpl-k { margin: 8px 0 4px; font-size: 12.5px; color: var(--ink-2); font-weight: 500; }
+.tpl-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tpl-why { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--ink-2); max-width: 640px; }
+.tpl-why input { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r);
+  color: var(--ink); background: var(--surface); }

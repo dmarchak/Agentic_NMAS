@@ -1,0 +1,142 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Boards B and C (signed off 2026-10-05): Approve…'s check, device by device, with every line
+    that failed and where to clear it; the approval's result; Revoke…'s reason and its result.
+    In #tpl-op, below the table; a confirm redraws the whole region so the row says the new
+    state. approve_op.check / approve / revoke. -#}
+{%- set close_url = url_for('templates_v2.table', list=op.list) -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ close_url }}" hx-target="#templates" hx-swap="outerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- if op.state == 'check' %}
+{%- set c = op.c %}
+<section class="op-card{{ ' op-danger' if not c.can_approve }}" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">Approve {{ c.template }} for {{ c.list }}</h2>
+    <div class="op-hd-actions">{{ how('approve-template') }}{{ close_button('Cancel') }}</div></div>
+  {%- if op.refused %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ op.refused }}</p></div>
+  {%- endif %}
+  <div class="op-part"><h3>The comparison</h3><div>
+    <p>For each bound device: its captured configuration (its golden at HEAD), parsed into intent and rendered back through this template, compared line by line with the capture. Approval needs AT LEAST ONE device that reproduces exactly, with every line the parser does not model acknowledged in that device's committed intent. Lines the device generates for itself (certificates, the licence UDI, its self-signed trustpoint, AutoInstall's DHCP client-id) are the device's own and never count.</p></div></div>
+  {%- for r in c.results %}
+  <div class="op-part tpl-dev"><h3>{{ r.device }}</h3><div>
+    {%- if r.error %}
+    <p>{{ badge('fail', 'danger') }} {{ r.error }}</p>
+    {%- else %}
+    <p class="tpl-chips">{{ badge(r.missing ~ ' missing', 'danger' if r.missing else 'ok') }} {{ badge(r.extra ~ ' extra', 'danger' if r.extra else 'ok') }} {{ badge(r.reordered ~ ' reordered', 'danger' if r.reordered else 'ok') }}
+      {%- if r.unacknowledged %} {{ badge(r.unacknowledged | length ~ ' unmodelled, not acknowledged', 'danger') }}{% endif %}
+      {%- if r.acknowledged %} {{ badge(r.acknowledged | length ~ ' unmodelled, acknowledged', 'ok') }}{% endif %}
+      {%- if r.stale_acknowledgements %} {{ badge(r.stale_acknowledgements | length ~ ' acknowledged, no longer in the capture', 'danger') }}{% endif %}</p>
+    {%- if r.missing_lines %}
+    <p class="tpl-k">Not reproduced by the render:</p>
+    <pre class="op-diff tpl-lines">{% for m in r.missing_lines %}{% if m.section and m.section != m.line %}{{ m.section }}
+ {% endif %}{{ m.line }}
+{% endfor %}</pre>
+    {%- endif %}
+    {%- if r.extra_lines %}
+    <p class="tpl-k">Invented by the render, not in the capture:</p>
+    <pre class="op-diff tpl-lines">{% for m in r.extra_lines %}{% if m.section and m.section != m.line %}{{ m.section }}
+ {% endif %}{{ m.line }}
+{% endfor %}</pre>
+    {%- endif %}
+    {%- if r.reordered_lines %}
+    <p class="tpl-k">Sections rendered in another order (a behaviour change where order matters):</p>
+    <pre class="op-diff tpl-lines">{% for s in r.reordered_lines %}{{ s }}
+{% endfor %}</pre>
+    {%- endif %}
+    {%- if r.unacknowledged %}
+    <p class="tpl-k">Not modelled, and not acknowledged in {{ r.device }}'s intent{% if r.intent.commit.commit %} (committed {{ r.intent.commit.commit }}){% elif r.intent.state == 'none' %} ({{ r.device }} has no committed intent){% endif %}:</p>
+    <pre class="op-diff tpl-lines">{% for l in r.unacknowledged %}{{ l }}
+{% endfor %}</pre>
+    <p class="muted"><a href="{{ url_for('device_v2.device', name=r.device, tab='intent', edit=1) }}">Acknowledge it on {{ r.device }}'s Intent tab</a> (its editor lists each unmodelled line to tick), or model it in the parser.</p>
+    {%- endif %}
+    {%- if r.stale_acknowledgements %}
+    <p class="tpl-k">Acknowledged in {{ r.device }}'s intent, and no longer in its capture (the set must match exactly, as at deploy):</p>
+    <pre class="op-diff tpl-lines">{% for l in r.stale_acknowledgements %}{{ l }}
+{% endfor %}</pre>
+    <p class="muted"><a href="{{ url_for('device_v2.device', name=r.device, tab='intent', edit=1) }}">Untick it on {{ r.device }}'s Intent tab</a>.</p>
+    {%- endif %}
+    {%- if r.intent.error %}<p class="notice notice-warn">{{ icon('warn', 16) }} {{ r.intent.error }}: its acknowledgements could not be read, so none is counted.</p>{% endif %}
+    {%- if r.acknowledged and not r.unacknowledged %}
+    <p class="faint">Acknowledged in {{ r.device }}'s intent{% if r.intent.commit.commit %}, commit {{ r.intent.commit.commit }}{% if r.intent.commit.by %} by {{ r.intent.commit.by }}{% endif %}: "{{ r.intent.commit.subject }}"{% endif %}: <span class="mono">{{ r.acknowledged | join('; ') }}</span></p>
+    {%- endif %}
+    {%- if r.device_owned %}
+    <p class="faint">Device-owned, not counted: {% for h in r.device_owned %}<span class="mono">{{ h }}</span>{{ ', ' if not loop.last }}{% endfor %}</p>
+    {%- endif %}
+    {%- endif %}</div></div>
+  {%- endfor %}
+  {%- if c.not_validated %}
+  <div class="op-part"><h3>Not validated</h3><div>
+    {%- for n in c.not_validated %}<p><a href="{{ url_for('device_v2.device', name=n.device) }}">{{ n.device }}</a>: {{ n.reason }}. Recorded as not validated; it is checked at its own deploy.</p>{% endfor %}</div></div>
+  {%- endif %}
+  {%- if c.can_approve %}
+  <div class="op-part"><h3>What it covers</h3><div>
+    <p>The template's text and its {{ c.imports }} import{{ '' if c.imports == 1 else 's' }}, as they are now (fingerprint <span class="mono">{{ c.fingerprint[:12] }}</span>). An edit to any of them revokes the approval at once, saying why.</p>
+    <p class="muted">{{ c.does_not_cover }}</p></div></div>
+  {%- endif %}
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates"><li>{{ badge('pass' if c.can_approve else 'fail', 'ok' if c.can_approve else 'danger') }}<span>at least one bound device reproduces exactly: {{ c.passed | length }} of {{ c.results | length + c.not_validated | length }}{% if c.failed %} ({% for d in c.failed %}{{ d }}{{ ', ' if not loop.last }}{% endfor %} {{ 'does' if c.failed | length == 1 else 'do' }} not){% endif %}</span></li></ul></div></div>
+  <div class="op-ft">
+    {%- if c.can_approve and op.may.may %}
+    <p class="op-note">{{ op.may.statement }} Bound to the fingerprint shown and to this check: if the template, an import, a capture or an acknowledgement changes before you confirm, nothing is approved and this says what moved. Recorded with the evidence per device.</p>
+    <form class="op-act" method="post" action="{{ url_for('templates_v2.approve') }}" hx-post="{{ url_for('templates_v2.approve') }}" hx-target="#templates" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="path" value="{{ c.template }}">
+      <input type="hidden" name="fingerprint" value="{{ c.fingerprint }}"><input type="hidden" name="seen" value="{{ c.seen }}">
+      <button type="submit" class="btn btn-primary op-confirm" data-op="approve-template" hx-disabled-elt="this"><span class="op-idle">Approve {{ c.template }}</span><span class="op-busy">Approving…</span></button>{{ how('approve-template', compact=True, op='approving a template') }}</form>
+    {%- elif c.can_approve %}
+    <p class="op-note">{{ op.may.statement }} Nothing can be approved from here.</p>
+    {%- else %}
+    <p class="op-note">Not available: no bound device reproduces this template with its unmodelled lines acknowledged. Nothing is approved. The template's fingerprint shown: <span class="mono">{{ c.fingerprint[:12] }}</span>.</p>
+    <span class="op-act"><button type="button" class="btn" data-op="approve-template" hx-get="{{ url_for('templates_v2.check', list=c.list, path=c.template) }}" hx-target="#tpl-op" hx-swap="innerHTML" hx-disabled-elt="this"><span class="op-idle">Check again</span><span class="op-busy">Checking…</span></button>{{ how('approve-template', compact=True, op='approving a template') }}</span>
+    {%- endif %}
+  </div>
+</section>
+{%- elif op.state == 'approved' %}
+{%- set r = op.r %}
+<section class="op-card op-ok" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">{{ op.path }} {{ badge('approved', 'ok') }}</h2>
+    <div class="op-hd-actions">{{ how('approve-template') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>Done</h3><div>
+    <p>Approved by {{ r.actor }}, fingerprint <span class="mono">{{ (r.fingerprint or '')[:12] }}</span>, commit <span class="mono">{{ (r.commit or '')[:10] }}</span>. Validated: {{ r.evidence.validated | join(', ') or 'none' }}. Failed: {% for f in r.evidence.failed %}{{ f.device }} ({{ f.reason }}){{ '; ' if not loop.last }}{% else %}none{% endfor %}. Not validated: {% for n in r.evidence.not_validated %}{{ n.device }} ({{ n.reason }}){{ ', ' if not loop.last }}{% else %}none{% endfor %}.</p>
+    {%- if r.evidence.validated %}
+    <p class="muted">{% for d in r.evidence.validated %}<a href="{{ url_for('device_v2.device', name=d) }}">{{ d }}</a>{{ ', ' if not loop.last }}{% endfor %} can now be deployed to (Plan a deploy… on {{ 'its' if r.evidence.validated | length == 1 else 'each' }} page). Nothing was sent to any device.</p>
+    {%- endif %}</div></div>
+  <div class="op-part"><h3>Still true</h3><div><p>{{ r.does_not_cover }}</p></div></div>
+</section>
+{%- elif op.state == 'revoke' %}
+<section class="op-card op-danger" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">Revoke {{ op.path }}</h2>
+    <div class="op-hd-actions">{{ how('approve-template', 'revoke') }}{{ close_button('Cancel') }}</div></div>
+  {%- if op.refused %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ op.refused }}</p></div>
+  {%- endif %}
+  <form method="post" action="{{ url_for('templates_v2.revoke') }}" hx-post="{{ url_for('templates_v2.revoke') }}" hx-target="#templates" hx-swap="outerHTML">
+  <input type="hidden" name="list" value="{{ op.list }}"><input type="hidden" name="path" value="{{ op.path }}">
+  <div class="op-part"><h3>Why</h3><div>
+    <label class="tpl-why">The reason, recorded with the revocation and shown on its row
+      <input type="text" name="reason" value="{{ op.reason or '' }}" autocomplete="off" required></label>
+    <p class="faint">Every deploy through this template is refused until it is approved again{% if op.status.actor %} (approved by {{ op.status.actor }}{% if op.status.approved_at %}, {{ stamp(op.status.approved_at) }}{% endif %}){% endif %}. A revocation is the only record of why the template stopped deploying.</p></div></div>
+  <div class="op-ft">
+    {%- if op.may.may %}
+    <p class="op-note">{{ op.may.statement }} Nothing is sent to any device.</p>
+    <span class="op-act"><button type="submit" class="btn btn-primary op-confirm" data-op="approve-template" hx-disabled-elt="this"><span class="op-idle">Revoke the approval</span><span class="op-busy">Revoking…</span></button>{{ how('approve-template', 'revoke', compact=True, op='revoking an approval') }}</span>
+    {%- else %}
+    <p class="op-note">{{ op.may.statement }} Nothing can be revoked from here.</p>
+    {%- endif %}
+  </div>
+  </form>
+</section>
+{%- elif op.state == 'revoked' %}
+{%- set r = op.r %}
+<section class="op-card op-warn" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">{{ op.path }} {{ badge('revoked', 'danger') }}</h2>
+    <div class="op-hd-actions">{{ how('approve-template', 'revoke') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>Done</h3><div>
+    <p>Revoked by {{ r.actor }}: "{{ r.reason }}", commit <span class="mono">{{ (r.commit or '')[:10] }}</span>{% if not r.was_approved %} (it was not approved: the revocation is recorded all the same){% endif %}.</p>
+    <p class="muted">Every deploy through {{ op.path }} is refused until it is approved again: Approve… on its row. Nothing was sent to any device.</p></div></div>
+</section>
+{%- else %}
+<section class="op-card op-danger" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">Not done</h2><div class="op-hd-actions">{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>Why</h3><div><p>{{ op.why }}</p></div></div>
+</section>
+{%- endif %}

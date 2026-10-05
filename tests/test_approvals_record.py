@@ -186,11 +186,8 @@ class TestTheRoutesCommitAndSayWhenTheyCannot:
 
     def test_the_approve_route_reports_a_failed_commit_as_not_approved(self, lab,
                                                                       monkeypatch):
-        from routes import templates as troutes
-
-        monkeypatch.setattr(troutes, "_captured_golden",
-                            lambda name, *_a, **_k: (_devices([name])[0]["running_config"],
-                                                     None))
+        monkeypatch.setattr("modules.nsot.approve_op._capture",
+                            lambda _repo, name: _devices([name])[0]["running_config"])
         monkeypatch.setattr("modules.nsot.repo.save_templates",
                             lambda *a, **k: {"ok": False, "error": "disk full"})
         shown = self._client().get(f"/templates/approval/{REL}").get_json()["fingerprint"]

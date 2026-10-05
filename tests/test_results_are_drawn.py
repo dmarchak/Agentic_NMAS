@@ -156,6 +156,15 @@ PAGE_RECORD = {
     # deploy would send now), and the committed intent read back by the Intent tab.
     "intent_v2.commit": ("templates/v2/_intent_edit.html",
                          ("c.state == 'done'", "c.r.commit", "c.actor"), "device_v2.intent"),
+    # Templates on v2 (7.6, boards B and C): the approval and the revocation drawn in place
+    # (who, the commit, the evidence or the reason), and the row's approval read back from the
+    # committed record by the page.
+    "templates_v2.approve": ("templates/v2/_template_op.html",
+                             ("op.state == 'approved'", "r.commit", "r.evidence.validated"),
+                             "templates_v2.page"),
+    "templates_v2.revoke": ("templates/v2/_template_op.html",
+                            ("op.state == 'revoked'", "r.commit", "r.reason"),
+                            "templates_v2.page"),
     "device_v2.revert_confirm": ("templates/v2/_revert.html",
                                  ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     # Retire on v2 (board 12): the result in place; its record is what the device's address

@@ -51,7 +51,7 @@ and built.
 | Bulk intent | `/templatize/bulk/preview`, `/apply` | PLANNED, 7.4 | Devices selection |
 | Monitoring profile | `/templatize/profile`, `/templatize/profile/propose/*` | PLANNED, the monitoring templates (board B, signed off) | Monitoring templates |
 | Template coverage | `/templatize/report` | PLANNED, 7.6 | Templates |
-| Templates | `/templates/*` (11: list, file, approve, revoke, approval, bindings, preview, refresh-capture, seed_status, validate) | PLANNED, 7.6 (approve and revoke: boards A to C, signed off 2026-10-05) | Source of truth > Templates; the template EDITOR reuses the intent editor H (decided 2026-10-05), bindings and coverage on their own boards |
+| Templates | `/templates/*` (11: list, file, approve, revoke, approval, bindings, preview, refresh-capture, seed_status, validate) | PARTLY BUILT, 7.6 (approve and revoke: boards A to C, signed off and built 2026-10-05, `/v2/templates`, not yet run on the host; the rest PLANNED) | Source of truth > Templates; the template EDITOR reuses the intent editor H (decided 2026-10-05), bindings and coverage on their own boards |
 | Onboard | `/onboard/*` (9) | PLANNED, 7.4 | Devices > Onboard; the v2 pending page shows a pending device today, its actions on today's page |
 | Adopt | (no route; `modules/nsot/adopt.py`) | PLANNED, 7.4 | Devices > Adopt |
 | NetBox import and remove | `/netbox/safety/*` (7), `/netbox/status`, `/netbox/test_connection` | PLANNED, 7.6 (a board to draw, decided 2026-10-05) | Source of truth > NetBox: import and remove as preview, confirm and result; bulk onboarding builds on it |

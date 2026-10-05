@@ -61,6 +61,7 @@ PAGES = (
     ("monitoring-templates", "Apply a monitoring template", H, "how-it-works/monitoring-templates.md"),
     ("update", "Update the app", H, "how-it-works/update.md"),
     ("edit-intent", "Edit a device's intent", H, "how-it-works/edit-intent.md"),
+    ("approve-template", "Approve a template", H, "how-it-works/approve-template.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
      "how-it-works/settings-switch.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
@@ -92,7 +93,7 @@ GROUPS = ("Getting started", "How it works", "Concepts", "Screens")
 ON_TODAYS_APP = frozenset((
     "deploy", "capture", "restore", "removal", "revert-retry", "rotate", "persist", "seed",
     "bulk-intent", "onboard", "adopt", "retire", "drift-check", "approvals", "netbox-import",
-    "logs", "dhcp", "templates", "netbox",
+    "logs", "dhcp", "netbox",
     "approvals-screen", "backups",
 ))
 
@@ -134,6 +135,7 @@ OPERATIONS = {
     "update": ("modules.update_op", "STEPS"),
     "settings-switch": ("modules.list_settings", "SWITCH_STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
+    "approve-template": ("modules.nsot.approve_op", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).

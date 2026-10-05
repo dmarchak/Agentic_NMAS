@@ -45,6 +45,13 @@ SIGNED_OFF = {
                                        "(A), checked intact by the browser (B), Check a break-glass "
                                        "file (C) and the offline drill (D), every section built"),
     "help.html": ("2026-10-02", "NSOT_GUI_BRIEF 10b, the manual's mockup"),
+    "templates.html": ("2026-10-05", "7.6's Templates, boards A to C (canvas v47, page '7.6 "
+                                     "Source of truth, Templates'), signed off 2026-10-05: the "
+                                     "network's configuration templates with their approvals "
+                                     "(A); Approve…, the check device by device naming every "
+                                     "failing line and where to acknowledge it (B); the result "
+                                     "in place and Revoke… with its reason (C). Editing and "
+                                     "bindings stay on today's page until their own boards"),
     "apply.html": ("2026-10-02", "the stepper mockup (\"Applying to 3 devices... in the order you "
                                  "set\"), signed off 2026-10-02, with the rollout order decided "
                                  "at the 2026-09-29 review. 7.4's selection may change it; then "

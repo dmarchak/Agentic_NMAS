@@ -34,10 +34,10 @@ yet, and those parts wait for it rather than run there.
 | 0, 1 | DONE 2026-10-05; Part 1's hour of discovery is measured and NOT repeated | none needed (the lab host and the captures) |
 | 2 (the Pick) | DONE on today's page; **redone on v2** once 7.4's onboarding is built | Devices › Add device (board E, ZTP's MAC way), the discovery list (L) |
 | 3.1 Verify | DONE on today's page; **redone on v2** with 2 | the pending device's onboarding card (F) |
-| 3.2 template approval | BLOCKED (C481) | Source of truth › Templates (boards A to C, approved 2026-10-05; build item 2) |
+| 3.2 template approval | READY on v2 once deployed (built 2026-10-05; C481 closed) | Source of truth › Templates, `/v2/templates?list=throwaway`, Approve… |
 | 3.3 seed | DONE on v2 | the device page, Actions › Seed intent… |
 | 4 the break-glass export | DONE on v2 | Source of truth › Credentials |
-| 5, 6, 8 | WAIT for template approval on v2 and the intent editor's acknowledgement (C481) | the device page (deploy, revert and retry, retire), the Intent tab (H) |
+| 5, 6, 8 | READY once deployed: first tw-ztp-a's intent corrected on the Intent tab's Edit (C485: the expanded client-id line removed from its `unmodeled` list), then 3.2 | the device page (deploy, revert and retry, retire), the Intent tab (H) |
 | 7 the restore | DONE on v2 (rewritten, below) | the device page, Actions › Restore from… |
 | 9 the serial probe | after 8 | the device page |
 | 10 cleanup | last | the lab host; Settings › the network (v2) |

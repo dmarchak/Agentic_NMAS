@@ -89,11 +89,10 @@ class TestTheSaveIsBoundToWhatWasOpened:
 
 class TestTheApproveIsBoundToWhatWasShown:
     def _golden(self, monkeypatch):
-        from routes import templates as troutes
-
-        monkeypatch.setattr(troutes, "_captured_golden",
-                            lambda name, *_a, **_k: (_devices([name])[0]["running_config"],
-                                                     None))
+        # The approval's one capture read (`approve_op._capture`, which today's route and v2
+        # share).
+        monkeypatch.setattr("modules.nsot.approve_op._capture",
+                            lambda _repo, name: _devices([name])[0]["running_config"])
 
     def test_the_rows_state_carries_the_fingerprint_and_approve_takes_it(self, lab,
                                                                          monkeypatch):

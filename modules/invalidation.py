@@ -163,6 +163,8 @@ DECLARED = {
     "v2.heartbeat_apply": Nothing("writes the generated heartbeat rules file, which no panel reads; the page redraws itself, and nothing alerts differently until a person installs it on the host"),
     "templatize.edit_committed": ("intent", "remote"),
     "intent_v2.commit": ("intent", "remote"),
+    "templates_v2.approve": ("templates", "remote"),
+    "templates_v2.revoke": ("templates", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
     "templatize.retry_apply": ("rolled_back",),

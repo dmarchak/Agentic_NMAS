@@ -874,6 +874,30 @@ def edit_intent():
     ])
 
 
+def approve_template():
+    return svg(440, (
+        "Approving a template. Every bound device's captured configuration is parsed, rendered "
+        "back through the template and compared line by line, and the lines the parser does "
+        "not model are judged against the acknowledgement in the device's committed intent. "
+        "At least one device must reproduce exactly. You confirm, bound to the template's "
+        "fingerprint and the check you read; the approval is recorded as you with each device's "
+        "result, and committed. A revocation records its reason the same way. No device is "
+        "contacted."), [
+        lanes(20, 434),
+        repo(14, 40, 186, 40, "Each bound device", "its golden, its intent"), num(14, 40, 1),
+        _down(107, 82, 102),
+        doc("box", 14, 104, 186, 40, "Parsed, rendered back", "compared line by line"),
+        doc("box", 14, 156, 186, 34, "Every failing line", "and each acknowledgement"),
+        person(14, 204, 186, 30, "You approve, as you"), num(14, 204, 2),
+        _down(107, 236, 256),
+        repo(14, 258, 186, 40, "One commit", "the approvals record"), num(14, 258, 3),
+        t(14, 322, "Revoke…: your reason, recorded", "sm"), num(14, 312, 4),
+        t(14, 335, "and committed the same way.", "sm"),
+        device(240, 60, 140, 44, "The devices", "not contacted", off=True),
+        nosend(310, 200, ("nothing is sent", "a deploy does that")),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -1060,6 +1084,7 @@ DIAGRAMS = {
     "update": update,
     "settings-switch": settings_switch,
     "edit-intent": edit_intent,
+    "approve-template": approve_template,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

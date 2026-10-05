@@ -1,0 +1,25 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, info -%}
+{#- Source of truth > Templates (7.6, boards A to C, signed off 2026-10-05, canvas v47): the
+    network's configuration templates with their approvals, Approve… and Revoke… in place.
+    routes/templates_v2.py over modules/nsot/approve_op.py, the code today's Templates panel
+    runs too. Editing and bindings stay on today's page until their own boards. -#}
+{% block title %}Templates · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Templates · {{ list_name }} {{ info('templates', label='What does an approval cover?') }}</h1>
+    <p class="sub">A deploy renders intent through an APPROVED template. An approval covers the template itself: its text and every macro file it imports, as they are now. It does not say every device renders faithfully: each device is validated at its own deploy.</p>
+  </div>
+</div>
+<nav class="tabs" aria-label="Templates">
+  <a class="tab on" href="{{ url_for('templates_v2.page', list=list_name) }}" aria-current="page">Configuration templates</a>
+</nav>
+<div class="tab-body">
+{%- if not known %}
+<div class="notice notice-warn">{{ icon('warn') }}<p>No network is named {{ list_name }}: there are no templates to show. Nothing was read and nothing was created.</p></div>
+{%- else %}
+{% include "v2/_templates_lib.html" %}
+{%- endif %}
+</div>
+{% endblock %}

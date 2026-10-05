@@ -319,14 +319,49 @@ def approval_status(repo: str, rel_path: str, host_vars_by_device: dict = None) 
 # The gate
 # ---------------------------------------------------------------------------
 
+def committed_acknowledgement(repo: str, hostname: str) -> dict:
+    """*hostname*'s ``unmodeled_ack`` as COMMITTED in its intent, and where it was read: the
+    one place a person acknowledges an unmodelled line (the intent editor writes it), so the
+    one place approval reads it (C481). ``{"ack", "state", "commit", "error"}``; ``state`` is
+    ``committed``, ``none`` (no intent committed) or ``unreadable`` (said, never read as no
+    acknowledgement silently)."""
+    from modules.nsot import hostvars
+
+    try:
+        text, state = hostvars.committed_at_head(repo, hostname)
+    except Exception as exc:                  # noqa: BLE001
+        return {"ack": {}, "state": "unreadable", "commit": {},
+                "error": f"{hostname}'s committed intent could not be read: {exc}"}
+    if text is None:
+        return {"ack": {}, "state": "none", "commit": {}, "error": ""}
+    try:
+        doc = hostvars.from_yaml(text) or {}
+    except Exception as exc:                  # noqa: BLE001
+        return {"ack": {}, "state": "unreadable", "commit": {},
+                "error": f"{hostname}'s committed intent is not valid YAML: {exc}"}
+    ack = doc.get("unmodeled_ack") if isinstance(doc, dict) else None
+    return {"ack": ack if isinstance(ack, dict) else {}, "state": "committed",
+            "commit": hostvars.last_intent_commit(repo, hostname), "error": ""}
+
+
 def validate_template(repo: str, rel_path: str, devices: list) -> dict:
     """Round-trip *rel_path* against every bound device. No device contact.
 
     *devices* is a list of ``{"device", "running_config", "platform"}`` built
     from **captured** artifacts (a golden file or a stored backup).
+
+    The capture is parsed afresh, and the lines that parse does not model are judged against
+    the acknowledgement in the device's COMMITTED intent (C481): the fresh parse never carries
+    one, so this gate used to refuse every device with an unmodelled line whether or not a
+    person had acknowledged it, while the deploy gate (which reads committed intent) honoured
+    it. Each result names every failing line: what the render misses, what it invents, the
+    sections it reorders, the unmodelled lines not acknowledged and the acknowledged ones the
+    capture no longer has (the set must match exactly, as at deploy), and the device's own
+    lines, which never count.
     """
-    from modules.nsot import roundtrip, templates_repo
+    from modules.nsot import normalize, roundtrip, templates_repo
     from modules.nsot.parsers import get_parser
+    from modules.nsot.render_artifact import acknowledgement_gap, unmodeled_lines
 
     results, host_vars_by_device = [], {}
     root = templates_repo.templates_dir(repo)
@@ -347,8 +382,10 @@ def validate_template(repo: str, rel_path: str, devices: list) -> dict:
             continue
 
         report = roundtrip.compare(entry["running_config"], rendered, parsed)
-        from modules.nsot.render_artifact import acknowledgement_is_complete
-        acknowledged = acknowledgement_is_complete(parsed)
+        intent = committed_acknowledgement(repo, name)
+        gap = acknowledgement_gap({**parsed, "unmodeled_ack": intent["ack"]})
+        acknowledged = gap["complete"]
+        details = report["details"]
         results.append({
             "device": name,
             "ok": report["ok"] and acknowledged,
@@ -357,10 +394,21 @@ def validate_template(repo: str, rel_path: str, devices: list) -> dict:
             "reordered": report["reordered_sections"],
             "unmodeled": report["unmodeled"],
             "unmodeled_acknowledged": acknowledged,
+            "unacknowledged": gap["unacknowledged"],
+            "acknowledged": sorted(set(unmodeled_lines(parsed)) - set(gap["unacknowledged"])),
+            "stale_acknowledgements": gap["stale"],
+            "intent": {k: intent[k] for k in ("state", "commit", "error")},
+            "missing_lines": [{"section": m["section"], "line": m["line"]}
+                              for m in details["missing"]],
+            "extra_lines": [{"section": e["section"], "line": e["line"]}
+                            for e in details["extra"]],
+            "reordered_lines": [r.get("section", "") if isinstance(r, dict) else str(r)
+                                for r in details["reordered"]],
+            "device_owned": normalize.device_owned(entry["running_config"]),
             "modeled_coverage": report["modeled_coverage"],
             "excluded_unrenderable": report.get("excluded_unrenderable", []),
-            "missing_sample": [m["line"] for m in report["details"]["missing"][:5]],
-            "extra_sample": [e["line"] for e in report["details"]["extra"][:5]],
+            "missing_sample": [m["line"] for m in details["missing"][:5]],
+            "extra_sample": [e["line"] for e in details["extra"][:5]],
         })
 
     return {"ok": bool(results) and all(r["ok"] for r in results),
@@ -444,8 +492,17 @@ def _summary(result: dict) -> str:
                        ("reordered", "section(s) reordered")):
         if result.get(key):
             parts.append(f"{result[key]} {words}")
-    if result.get("unmodeled") and not result.get("unmodeled_acknowledged"):
-        parts.append(f"{result['unmodeled']} unmodelled line(s) not acknowledged")
+    if not result.get("unmodeled_acknowledged", True):
+        un = result.get("unacknowledged") or []
+        stale = result.get("stale_acknowledgements") or []
+        if un:
+            parts.append(f"{len(un)} unmodelled line(s) not acknowledged in its committed "
+                         "intent: " + "; ".join(un))
+        if stale:
+            parts.append(f"{len(stale)} acknowledged line(s) the capture no longer has: "
+                         + "; ".join(stale))
+        if not un and not stale:
+            parts.append(f"{result.get('unmodeled', 0)} unmodelled line(s) not acknowledged")
     return "; ".join(parts) or "does not round-trip"
 
 

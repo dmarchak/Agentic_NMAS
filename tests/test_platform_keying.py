@@ -59,6 +59,9 @@ KEYING = {
     # Coverage words per platform, compared with the manifest's platform
     # (platform_for_device()): the dialect.
     "modules/monitoring_coverage.py":       "dialect",
+    # The Templates page's platform in words, keyed on the template's directory, which is
+    # its dialect (`templates_repo`).
+    "modules/nsot/approve_op.py":           "dialect",
     "scripts/netmiko_timing_probe.py":      "driver",
     "scripts/nsot_metric_diff.py":          "dialect",
 }

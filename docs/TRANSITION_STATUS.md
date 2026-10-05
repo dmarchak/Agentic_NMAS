@@ -22,8 +22,8 @@ v1's own size is pinned by `tests/test_no_new_v1_capability.py` (202 controls, 1
 | State | Count |
 |---|---|
 | 1 Proven | **16** |
-| 2 Built, not yet run | **8** |
-| 3 Signed off, not built | **19** |
+| 2 Built, not yet run | **10** |
+| 3 Signed off, not built | **17** |
 | 4 Awaiting sign-off | **0** |
 | 5 No design | **14** (11 with a decided home, 3 without) |
 | 6 Retired | **27** (4 removed, the server restart among them; 22 REMOVE at 7.8; 1 CLI only) |
@@ -98,8 +98,8 @@ Counted from the rows below (the first survey had 86; three Installation rows, N
 | Legacy store migration | golden_repo | 6 REMOVE | | CUTOVER |
 | **Source of truth** | | | | |
 | Template library and editor | partials/template_editor.html | 5 | Templates, reusing the intent editor H (decided 2026-10-05) | |
-| Template approve | template_editor | 3 | Templates boards A to C (2026-10-05) | C481 |
-| Template revoke (CLI today) | | 3 | Templates boards A to C (2026-10-05) | |
+| Template approve | template_editor | 2 | `/v2/templates`, Approve… (boards A and B, built 2026-10-05) | C481 closed; first real run: THROWAWAY Part 5 |
+| Template revoke (CLI today) | | 2 | `/v2/templates`, Revoke… (board C, built 2026-10-05) | |
 | Bindings, coverage, seed status | (CLI today) | 5 | Templates, boards to draw (no home decided beyond the page) | |
 | Monitoring profile propose | static/js/nmas_profile.js | 3 | monitoring templates, board B | |
 | NetBox import, write safety | index.html, netbox_safety_modal.html | 5 | Source of truth › NetBox (decided 2026-10-05, to draw) | |
@@ -141,6 +141,7 @@ divergence.
 
 ## Known facts that are not rows
 
-- Four v2 sidebar items open today's page: Logs, DHCP, Templates and NetBox
-  (`templates/v2/base.html`). Templates and NetBox move with 7.6's boards; Logs and DHCP follow
-  P.8 as OBSERVE pages.
+- Three v2 sidebar items open today's page: Logs, DHCP and NetBox (`templates/v2/base.html`).
+  NetBox moves with 7.6's boards; Logs and DHCP follow P.8 as OBSERVE pages. Templates opens
+  `/v2/templates` since 2026-10-05 (approval and revocation; editing and bindings stay on
+  today's page until their boards).
