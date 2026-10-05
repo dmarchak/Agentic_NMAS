@@ -93,6 +93,62 @@ def test_a_regenerated_trustpoint_is_never_sent(name):
     assert not [r for r in merge_diff(rendered, device)["residue"] if "self-signed" in str(r)]
 
 
+#: AutoInstall's client-id as tw-ztp-a holds it (2026-10-05): the SHORT name of its interface.
+AUTOINSTALL = " ip dhcp client client-id ascii cisco-aabb.cc00.0260-Gi2"
+
+
+def _with_autoinstall(line=AUTOINSTALL, interface="interface GigabitEthernet2\n"):
+    """r2's real capture, one line added inside the interface AutoInstall leased on."""
+    return _text("r2").replace(interface, interface + line.rstrip("\n") + "\n", 1)
+
+
+class TestAutoInstallsClientId:
+    """C485 (the operator, 2026-10-05): AutoInstall writes `ip dhcp client client-id ascii
+    cisco-<dotted MAC>-<the interface's SHORT name>` inside the interface it took its lease
+    on. It is the device's own, like the licence UDI: never intent, never sent, never
+    residue, never blocking. Only that exact form, matched against the interface as IOS
+    writes it; a client-id a person chose stays configuration."""
+
+    def test_it_is_in_no_parse_and_the_round_trip_is_whole(self):
+        from modules.nsot.parsers import get_parser
+        from modules.nsot.roundtrip import validate_device
+        text = _with_autoinstall()
+        hv = get_parser("cisco_iosxe").parse(text)
+        held = [l for i in hv.get("interfaces") or [] for l in i.get("unmodeled") or []]
+        assert not [l for l in held if "client-id" in l], held
+        r = validate_device(text, "cisco_iosxe")
+        assert r.get("ok") and r.get("round_trip_fidelity") == 100.0, r.get("details")
+
+    def test_device_owned_names_it_with_its_interface(self):
+        from modules.nsot import normalize
+        assert ("interface GigabitEthernet2: ip dhcp client client-id ascii "
+                "cisco-aabb.cc00.0260-Gi2") in normalize.device_owned(_with_autoinstall())
+
+    def test_it_is_never_sent_and_never_residue(self):
+        from modules.nsot.deploy import merge_commands, merge_diff
+        from modules.nsot.parsers import get_parser
+        device = _with_autoinstall()
+        rendered = _render(get_parser("cisco_iosxe").parse(_text("r2")), "cisco_iosxe")
+        assert not [l for l in merge_commands(rendered, device) if "client-id" in l]
+        assert not [r for r in merge_diff(rendered, device)["residue"] if "client-id" in str(r)]
+
+    @pytest.mark.parametrize("line,interface", [
+        # The long name, as the seed wrongly wrote it: not what the device writes.
+        (" ip dhcp client client-id ascii cisco-aabb.cc00.0260-GigabitEthernet2",
+         "interface GigabitEthernet2\n"),
+        # Another interface's name inside this one: not AutoInstall's.
+        (" ip dhcp client client-id ascii cisco-aabb.cc00.0260-Gi3", "interface GigabitEthernet2\n"),
+        # A client-id a person chose.
+        (" ip dhcp client client-id ascii site-12-uplink", "interface GigabitEthernet2\n"),
+        (" ip dhcp client client-id GigabitEthernet2", "interface GigabitEthernet2\n"),
+    ])
+    def test_any_other_client_id_stays_configuration(self, line, interface):
+        from modules.nsot import normalize
+        text = _with_autoinstall(line, interface)
+        assert not [h for h in normalize.device_owned(text) if "client-id" in h]
+        assert line.rstrip() in normalize.strip_for_roundtrip(text)
+
+
 def test_device_owned_names_the_devices_own_blocks_and_nothing_else():
     from modules.nsot import normalize
     text = _text("r2").replace("\nend", "\nbanner motd ^C\nAuthorised use only\n^C\nend", 1)

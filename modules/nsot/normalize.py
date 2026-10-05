@@ -377,10 +377,30 @@ def _opens_device_owned(stripped: str, line: str) -> bool:
             or bool(_SELF_SIGNED.match(stripped)))
 
 
+#: AutoInstall's DHCP client-id (C485, the operator, 2026-10-05): a ZTP-onboarded IOS-XE device
+#: writes, inside the interface it took its lease on, `ip dhcp client client-id ascii
+#: cisco-<dotted MAC>-<that interface's SHORT name>`, the identity it sent as option 61. The
+#: device generates it from its MAC and the interface, as it generates its licence UDI, and every
+#: ZTP onboarding carries it. Only that exact form, the name matched against the interface it
+#: sits in AS IOS WRITES IT (`Gi2` inside `GigabitEthernet2`): a client-id a person chose keeps
+#: its normal path, so nothing a person configured is dropped.
+_AUTOINSTALL_CLIENT_ID = re.compile(
+    r"^\s+ip dhcp client client-id ascii cisco-[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}-(\S+)\s*$")
+
+
+def _autoinstall_client_id(line: str, interface: str) -> bool:
+    """Whether *line*, a child of ``interface <interface>``, is AutoInstall's own client-id."""
+    from modules.nsot import ifnames
+
+    m = _AUTOINSTALL_CLIENT_ID.match(line)
+    return bool(m and interface and m.group(1) == ifnames.abbreviate(interface))
+
+
 def device_owned(text: str) -> list:
     """The header of every block in *text* the device generates for itself, in order: what a
     screen lists as the device's own, never as unmodelled and never as blocking."""
-    return [h for h in excluded_unrenderable(text) if _opens_device_owned(h, h)]
+    return [h for h in excluded_unrenderable(text)
+            if _opens_device_owned(h, h) or h.startswith("interface ")]
 
 #: Single lines that cannot come from intent.
 #:
@@ -434,7 +454,7 @@ def excluded_unrenderable(text: str) -> list:
     Information, never a gate. ``template_report`` decides deployability;
     this says what the figure beside it did not examine.
     """
-    found, in_block, in_banner = [], False, False
+    found, in_block, in_banner, interface = [], False, False, ""
 
     for line in (text or "").splitlines():
         stripped = line.strip()
@@ -459,6 +479,11 @@ def excluded_unrenderable(text: str) -> list:
             in_block = True
             continue
 
+        if not line[:1].isspace():
+            interface = stripped[len("interface "):] if stripped.startswith("interface ") else ""
+        elif _autoinstall_client_id(line, interface):
+            found.append(f"interface {interface}: {stripped}")
+
     return found
 
 
@@ -474,6 +499,7 @@ def strip_for_roundtrip(text: str) -> list:
     out = []
     in_block = False
     in_banner = False
+    interface = ""
 
     for line in (text or "").splitlines():
         stripped = line.strip()
@@ -498,6 +524,11 @@ def strip_for_roundtrip(text: str) -> list:
         if _opens_device_owned(stripped, line):
             in_block = True
             continue
+
+        if not line[:1].isspace():
+            interface = stripped[len("interface "):] if stripped.startswith("interface ") else ""
+        elif _autoinstall_client_id(line, interface):
+            continue                        # AutoInstall's own (C485): never intent, never sent
 
         if _matches(stripped, line, UNRENDERABLE_LINE_PREFIXES):
             continue

@@ -90,11 +90,20 @@ def same_interface(a: str, b: str) -> bool:
     return canonical(a).lower() == canonical(b).lower()
 
 
+#: An interface reference is a WHOLE TOKEN (C485, 2026-10-05): preceded by the line's start, a
+#: space or a comma, and followed by its end, a space, a comma or a range's `-`. A name inside
+#: a token is part of a literal: AutoInstall writes `ip dhcp client client-id ascii
+#: cisco-aabb.cc00.0260-Gi2`, and `\b` found `Gi2` after the `-`, so the seed committed
+#: `…-GigabitEthernet2`, a client-id the device does not hold, which a deploy would send.
 _LINE_RE = re.compile(
-    r"\b("
+    r"(?<![^\s,])("
     + "|".join(sorted((abbrev for abbrev, _ in _LOOKUP), key=len, reverse=True))
-    + r")(\d[\d/.:]*)",
+    + r")(\d[\d/.:]*)(?![^\s,\-])",
 )
+
+#: After one of these words the rest of a line is a LITERAL VALUE (a string, a secret, a
+#: community), never configuration this tool may rewrite, whatever it happens to contain.
+_LITERAL_TAIL_RE = re.compile(r"\b(?:ascii|secret|password|key-string|community)\s")
 
 
 #: Commands whose argument is free text, not configuration this tool may
@@ -134,4 +143,8 @@ def canonicalise_line(line: str) -> str:
         # The command word itself contains no interface reference, so there
         # is nothing to expand on the left; the right is the operator's text.
         return free_form.group(1) + free_form.group(2)
-    return _LINE_RE.sub(lambda m: canonical(f"{m.group(1)}{m.group(2)}"), line)
+    head, tail = line, ""
+    literal = _LITERAL_TAIL_RE.search(line)
+    if literal:
+        head, tail = line[:literal.end()], line[literal.end():]
+    return _LINE_RE.sub(lambda m: canonical(f"{m.group(1)}{m.group(2)}"), head) + tail

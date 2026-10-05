@@ -33,6 +33,43 @@ class TestFreeFormArgumentsAreLeftAlone:
     def test_it_is_returned_verbatim(self, line):
         assert canonicalise_line(line) == line
 
+    @pytest.mark.parametrize("line", [
+        # C485 (2026-10-05): AutoInstall's own line on a ZTP-onboarded C8000v.
+        " ip dhcp client client-id ascii cisco-aabb.cc00.0260-Gi2",
+        " ip dhcp client client-id ascii Gi2",
+        "username nmas secret 9 Gi0/1abc",
+        " snmp-server community Gi2 RO",
+        " key-string Gi0/0",
+        "hostname edge-Gi2",
+    ])
+    def test_a_name_inside_a_literal_value_is_returned_verbatim(self, line):
+        assert canonicalise_line(line) == line
+
+    @pytest.mark.parametrize("line,expected", [
+        ("interface range Gi0/1-2", "interface range GigabitEthernet0/1-2"),
+        ("ip route 0.0.0.0 0.0.0.0 Gi1 192.0.2.1", "ip route 0.0.0.0 0.0.0.0 GigabitEthernet1 192.0.2.1"),
+        (" passive-interface Gi0/2,Gi0/3", " passive-interface GigabitEthernet0/2,GigabitEthernet0/3"),
+        (" ip dhcp client client-id Gi2", " ip dhcp client client-id GigabitEthernet2"),
+    ])
+    def test_a_whole_token_reference_still_expands(self, line, expected):
+        """The control: the whole-token rule still expands every real reference."""
+        assert canonicalise_line(line) == expected
+
+    def test_the_parse_keeps_the_literal_the_device_holds(self):
+        """Through the real parser: an interface's unmodelled line keeps the device's text.
+        (AutoInstall's own `cisco-<mac>-Gi2` is the device's own and in no parse at all:
+        tests/test_device_owned.py; here a client-id a person chose, naming an interface.)"""
+        from modules.nsot.parsers import get_parser
+
+        config = ("hostname edge\n!\ninterface GigabitEthernet2\n"
+                  " ip dhcp client client-id ascii site-12-Gi2\n"
+                  " ip address 192.0.2.60 255.255.255.0\n!\nend\n")
+        parsed = get_parser("cisco_iosxe").parse(config)
+        lines = [l for i in parsed.get("interfaces") or [] for l in i.get("unmodeled") or []]
+        lines += [e["line"] for e in parsed.get("unmodeled") or []]
+        assert any("site-12-Gi2" in l for l in lines), lines
+        assert not any("GigabitEthernet2" in l and "client-id" in l for l in lines), lines
+
     def test_a_negated_free_form_line_too(self):
         assert canonicalise_line(" no description Gi3") == " no description Gi3"
 
