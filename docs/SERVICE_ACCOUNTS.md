@@ -83,13 +83,31 @@ reads.
 4. **`nmas-delete`**. Actions: **delete**. Object types, Remove's order
    (`_REMOVAL_ORDER`): VPN tunnel; IPAM IP address, prefix, VLAN, VRF; DCIM interface,
    device, site, region.
-   - **Constraints: NONE until C466 is fixed** (2026-10-05). The planned constraint is
-     `{"tags__slug": "nmas-managed"}`, so that NetBox itself would refuse to delete an object
-     the NMAS did not tag. But NetBox answers a delete refused by a constrained permission
-     with 404, and `_nb_delete` reads a 404 as "already gone" and forgets the record. So a
-     refusal would read as a success. Remove already deletes only tagged AND recorded objects;
-     the constraint is a second layer, added once C466 reads a 404 back by id.
-   - Never constrain a VIEW permission: a hidden object reads as gone (C466).
+   - **Constraints:** `{"tags__slug": "nmas-managed"}`, added ONLY once the host runs a
+     commit with C466's fix (2026-10-05). NetBox answers a delete its constraint refuses with
+     404. Before the fix, `_nb_delete` read every 404 as "already gone" and forgot the record,
+     so a refusal read as a success. Since the fix, a 404 is read back by id: an object still
+     there is a REFUSED delete, kept, recorded and named.
+   - This makes NetBox itself refuse to delete an object the NMAS did not tag. Remove already
+     deletes only tagged AND recorded objects, so this is a second, independent layer.
+   - Never constrain a VIEW permission: a hidden object reads as gone.
+
+   **The step (after deploying the C466 fix):** NetBox > Admin > Authentication >
+   Permissions > `nmas-delete` > Constraints: `{"tags__slug": "nmas-managed"}` > Save.
+   **The check that it holds** (on the NMAS host). It creates one untagged scratch region as
+   `nmas`, asks to delete it, and reads it back:
+
+       cd <home>/python/Agentic_NMAS && PYTHONDONTWRITEBYTECODE=1 python3 - <<'EOF'
+       from modules.netbox_client import get_netbox_config, _session_from_config
+       c = get_netbox_config(); s = _session_from_config(c); u = c["url"] + "/api/dcim/regions/"
+       r = s.post(u, json={"name": "c466-probe", "slug": "c466-probe"}); print("create", r.status_code)
+       i = r.json()["id"]
+       print("delete", s.delete(f"{u}{i}/").status_code, "| read back", s.get(f"{u}{i}/").status_code)
+       EOF
+
+   Expect `create 201`, then `delete 404 | read back 200`: the constraint refused it, and the
+   region is still there. Then delete `c466-probe` by hand in NetBox's interface (Organization
+   > Regions). `delete 204` would mean the constraint is not applied.
 
 **What it deliberately does NOT grant:** anything under Authentication (permissions,
 users), anything under Users but token view, and any delete of a tag. Remove must never delete its own tag; that rule was

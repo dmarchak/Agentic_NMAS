@@ -187,6 +187,35 @@ class TestAFailedDeleteIsNotASkip:
             assert nc._nb_delete(nb, "http://nb.invalid", "ipam/vlans/", obj["id"]) is False
         assert "HTTP 409" in nc.last_delete_failure()
 
+    def test_a_404_for_an_object_still_there_is_a_refusal_not_gone(self, monkeypatch):
+        """**C466.** NetBox answers 404 to a delete its CONSTRAINED permission refuses, and
+        keeps the object. Read as "already gone", Remove said deleted and forgot it had created
+        the object. The 404 is read back: still there means refused, and the record is kept."""
+        from tests.fake_netbox import FakeNetBox
+
+        nb = FakeNetBox()
+        nb.seed("ipam/vlans", {"id": 7, "vid": 10})
+        nb.refuse_delete.add(("ipam/vlans", 7))
+        forgot = []
+        monkeypatch.setattr(netbox_guard, "forget_created", lambda *a, **k: forgot.append(a))
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
+            assert nc._nb_delete(nb, "http://nb.invalid", "ipam/vlans/", 7) is False
+        assert [o["id"] for o in nb.objects("ipam/vlans")] == [7]
+        assert forgot == [], "the record of having created it was forgotten"
+        assert "still holds the object" in nc.last_delete_failure()
+
+    def test_a_404_for_an_object_really_gone_is_still_gone(self, monkeypatch):
+        """The control: an object already deleted (by a person, say) is gone, and its record
+        goes, as before."""
+        from tests.fake_netbox import FakeNetBox
+
+        nb = FakeNetBox()
+        forgot = []
+        monkeypatch.setattr(netbox_guard, "forget_created", lambda *a, **k: forgot.append(a))
+        with netbox_guard.for_list("Lab", authority="test: declared by the test (C155)"):
+            assert nc._nb_delete(nb, "http://nb.invalid", "ipam/vlans/", 8) is True
+        assert len(forgot) == 1
+
     def test_removal_reports_failures_apart_from_skips(self):
         src = inspect.getsource(nc)
         assert '"reason": "delete failed"' not in src, \

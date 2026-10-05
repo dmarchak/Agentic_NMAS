@@ -42,6 +42,9 @@ class FakeNetBox:
         self.posts: list = []      # (endpoint, payload) in order
         self.patches: list = []    # (endpoint, obj_id, payload)
         self.deletes: list = []    # (endpoint, obj_id)
+        #: (endpoint, obj_id) a constrained delete permission refuses: NetBox answers 404 and
+        #: keeps the object (C466).
+        self.refuse_delete: set = set()
         self.verify = True
         self.headers = {}
 
@@ -158,6 +161,8 @@ class FakeNetBox:
     def delete(self, url, timeout=None):
         endpoint, obj_id = self._parse(url)
         self.deletes.append((endpoint, obj_id))
+        if (endpoint, obj_id) in self.refuse_delete:
+            return FakeResponse({"detail": "Not found."}, 404)
         items = self.store.get(endpoint, [])
         for i, obj in enumerate(items):
             if obj["id"] == obj_id:

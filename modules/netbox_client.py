@@ -3268,8 +3268,25 @@ def last_delete_failure() -> str:
     return getattr(_last_delete_failure, "reason", "") or "unknown"
 
 
+def _gone_after_404(session, url: str) -> tuple:
+    """``(gone, why)`` after a DELETE answered 404 (C466): read the object back."""
+    try:
+        back = session.get(url, timeout=15)
+    except Exception as exc:                    # noqa: BLE001
+        return False, (f"the delete answered 404 and the read-back failed ({type(exc).__name__}), "
+                       "so whether it is gone is unknown; the record is kept")
+    if back.status_code == 404:
+        return True, ""
+    if back.ok:
+        return False, ("NetBox answered 404 to the delete but still holds the object: its "
+                       "delete permission's constraint refused it (C466); kept and recorded")
+    return False, (f"the delete answered 404 and the read-back HTTP {back.status_code}, so "
+                   "whether it is gone is unknown; the record is kept")
+
+
 def _nb_delete(session, base: str, path: str, obj_id: int) -> bool:
-    """DELETE one NetBox object; return True on success or already-gone (404).
+    """DELETE one NetBox object; True when it is gone (deleted, or a 404 read back as absent:
+    a 404 for an object still present is a refusal, C466).
 
     One of three write chokepoints — see :func:`_nb_post`. Callers are also
     responsible for checking provenance before asking for a delete; this only
@@ -3289,8 +3306,18 @@ def _nb_delete(session, base: str, path: str, obj_id: int) -> bool:
         return False
 
     try:
-        r = session.delete(f"{base}/api/{path.lstrip('/')}{obj_id}/", timeout=15)
-        ok = r.ok or r.status_code == 404
+        url = f"{base}/api/{path.lstrip('/')}{obj_id}/"
+        r = session.delete(url, timeout=15)
+        ok = r.ok
+        if r.status_code == 404:
+            # C466: NetBox answers 404 both for an object that is gone AND for a delete its
+            # constrained permission refused (the object is hidden from the delete, not from a
+            # read: view is never constrained). So a 404 is read back: present means REFUSED,
+            # kept and recorded; absent means gone; an unreadable answer is not "gone".
+            ok, why = _gone_after_404(session, url)
+            if not ok:
+                _note_delete_failure(endpoint, obj_id, why)
+                return False
         if ok:
             _guard.forget_created(_guard.get_current_list(), endpoint, obj_id)
         else:
