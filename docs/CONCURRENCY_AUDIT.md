@@ -130,7 +130,7 @@ condition (several workers, a fresh install, the roles stage) arrives.
 | R24 | m | git | git's `index.lock` and tags | index, tags | readers take the optional lock; no retry; tag failures dropped; HEAD read apart from the commit | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | `GIT_OPTIONAL_LOCKS=0`; sha and tags under the lock; failures reported |
 | R25 | m | git | `save_golden`'s compare and retire's undo | golden, `host_vars`, manifest working files | compares the working file; blind undo; retire resets whole trees | no | FIXED 2026-10-02 (was UNSAFE; tests/test_repo_lock_across_processes.py) | yes | Compare HEAD; undo only own writes and exact paths |
 | R26 | m | locks, live | Device holds | lock files | exclusion SAFE; no lease, no admin release, key not canonical, probe race | yes | KEY AND PROBE FIXED 2026-10-04 (tests/test_device_hold_key_and_probe.py); the lease and a recorded takeover DECIDED and its card APPROVED 2026-10-04 (not built); takeover by rank recorded for 9.I | yes | Lease, recorded release, canonical key, no flock probe |
-| R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE; the holder strip waits for a mockup, the broadcast half for C435 (recorded 2026-10-04) | yes | Broadcast mutations; live holder strip; previews subscribe |
+| R27 | m | live, intent, approvals | Visibility of others' work | n/a | keys only in the caller's response; v2 pages show no live holder | partly | UNSAFE; the holder strip waits for a mockup, the broadcast half for C472 (C435 fixed 2026-10-04; surveyed 2026-10-05) | yes | Broadcast mutations; live holder strip; previews subscribe |
 | R28 | m | live | Reader runs overlap | reader stores, `git fetch` | store locked; runs not excluded; last store wins | partly | FIXED 2026-10-02 (was UNSAFE; tests/test_reader_runs_one_at_a_time.py) | yes | One run per reader at a time; never store an older value |
 | R38 | m | stores (added on review) | Deleting a device list | the list's whole folder, the registry | NetBox records and credential dependents checked; running holds and jobs not | no | FIXED 2026-10-04 (was UNSAFE; tests/test_list_delete_waits.py) | yes | Refuse while any hold or job exists on the list; a list-level lock that list writers also take |
 | R39 | m | locks (added on review) | Break-glass terminal input | devices | none: no device hold, outside the session budget and C101's guard | no | FIXED 2026-10-05: the terminal REMOVED (the operator's decision (B), after the console drill passed: docs/CONSOLE_DRILL.md) | yes | Hold the device for the shell's life and count it in the budget, or remove the terminal (7.8) |
@@ -785,7 +785,11 @@ first, or the broadcast turns every write into a reset. **DECIDED 2026-10-04 (th
 as recommended, after C435.** C435 is decided the same day: confirm it in a browser, then carry
 the person's selection through each redraw. **C435 FIXED 2026-10-04**
 (tests/test_coverage_selection_survives.py), so the broadcast half is unblocked. Its first step
-is the same survey for every other subscriber that holds a person's input.
+is the same survey for every other subscriber that holds a person's input. **SURVEYED
+2026-10-05:** 47 subscribers redraw a region, 23 hold a person's state, and eleven lose it to
+a route's keys once broadcast (C472, bucket B, which the broadcast now waits on). The survey
+also found held operation cards forgetting their fields today, with no broadcast involved
+(C473), and htmx writes relaying no keys to their own page (C474).
 
 *FIXED 2026-10-02 (tests/test_reader_runs_one_at_a_time.py):* `run_once` holds a per-reader
 run lock across processes (`<store>.run`, a `PathLock`), so a run that starts while another
