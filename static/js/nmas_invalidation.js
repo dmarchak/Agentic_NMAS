@@ -341,6 +341,20 @@
     }
   }
 
+  /* C474: an htmx write's answer carries the same header, but htmx asks by XHR, which the
+     fetch wrapper never sees, so a v2 confirm's keys never reached its own page (measured
+     2026-10-05: the sidebar's count stayed stale after Retry, Persist and Finish retirement).
+     The same registry hears them now, the one way keys travel. */
+  function onHtmxResponse(e) {
+    var xhr = e && e.detail && e.detail.xhr;
+    if (!xhr || !xhr.getResponseHeader) return;
+    onResponse({url: xhr.responseURL || '',
+                headers: {get: function (h) { return xhr.getResponseHeader(h); }}});
+  }
+  if (root.document && root.document.addEventListener) {
+    root.document.addEventListener('htmx:afterRequest', onHtmxResponse);
+  }
+
   if (root.fetch && !root.fetch.__nmas) {
     var original = root.fetch;
     var wrapped = function () {
@@ -352,6 +366,7 @@
 
   root.NMAS = {
     subscribe: subscribe, invalidate: invalidate, onResponse: onResponse,
+    onHtmxResponse: onHtmxResponse,
     onAnnounce: onAnnounce, liveNoteHtml: liveNoteHtml, onHeartbeat: onHeartbeat,
     stamp: stamp, ageHtml: ageHtml, tick: tick,
     live: function () { return {state: live.state, since: live.since}; },

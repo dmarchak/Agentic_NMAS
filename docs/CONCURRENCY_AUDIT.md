@@ -789,7 +789,7 @@ is the same survey for every other subscriber that holds a person's input. **SUR
 2026-10-05:** 47 subscribers redraw a region, 23 hold a person's state, and eleven lose it to
 a route's keys once broadcast (C472, bucket B, which the broadcast now waits on). The survey
 also found held operation cards forgetting their fields today, with no broadcast involved
-(C473), and htmx writes relaying no keys to their own page (C474).
+(C473), and htmx writes relaying no keys to their own page (C474, fixed 2026-10-05).
 
 *FIXED 2026-10-02 (tests/test_reader_runs_one_at_a_time.py):* `run_once` holds a per-reader
 run lock across processes (`<store>.run`, a `PathLock`), so a run that starts while another

@@ -122,6 +122,25 @@ def test_a_history_row_a_person_opened_stays_open(served):  # noqa: F811
                 " + '\"]'); return !!d && d.open", key)
 
 
+def test_an_htmx_write_relays_its_keys_to_its_own_page(served, monkeypatch):  # noqa: F811
+    """C474 (2026-10-05): htmx asks by XHR, so a v2 confirm's `X-NMAS-Invalidates` reached
+    nothing on its own page, and the sidebar's count stayed stale after Retry, Persist and
+    Finish retirement. In a real browser: an htmx POST to a route declaring `topology` reaches
+    a subscriber of that key; the control, a GET, reaches none."""
+    import app as A
+    monkeypatch.setattr(A, "_save_topo_layout", lambda layout: None)
+    srv, b = served
+    b.go(srv.url("/v2/"))
+    b.wait_for(READY, 15)
+    b.js("window.__heard = 0; NMAS.subscribe('topology', 'probe', function () {"
+         " window.__heard++; return true; }); return 1")
+    b.js("htmx.ajax('GET', '/v2/who', {target: '#nmas-strip', swap: 'none'}); return 1")
+    b.wait_for(f"return {SETTLED}", 10)
+    assert b.js("return window.__heard") == 0
+    b.js("htmx.ajax('POST', '/topology/positions', {swap: 'none', values: {}}); return 1")
+    assert b.wait_for("return window.__heard", 10) == 1
+
+
 # ── The flash: the first paint already reads as age words ──────────────────
 
 @pytest.mark.parametrize("ago, words", [(10, "just now"), (60, "1 min ago"), (600, "10 min ago"),

@@ -301,6 +301,30 @@ class TestTheClientExecutes:
         # through unchanged (the fetch wrapper hands it to the caller).
         assert out == [1, "the response"]
 
+    def test_an_htmx_answer_runs_the_subscriber_too(self, client, monkeypatch):
+        """C474 (2026-10-05): htmx asks by XHR, which the fetch wrapper never sees, so a v2
+        confirm's keys never reached its own page. Its answer's header now reaches the same
+        registry, against a REAL response's header."""
+        import app as A
+
+        monkeypatch.setattr(A, "_save_topo_layout", lambda layout: None)
+        header = client.post("/topology/positions", json={}).headers[I.HEADER]
+        out = _run("""
+          var calls = 0;
+          NMAS.subscribe('topology', 'layout', function () { calls++; return true; });
+          NMAS.subscribe('drift', 'badge', function () { calls += 100; return true; });
+          NMAS.onHtmxResponse({detail: {xhr: {responseURL: '/topology/positions',
+            getResponseHeader: function (h) {
+              return h === 'X-NMAS-Invalidates' ? dukpy['header'] : null; }}}});
+          NMAS.onHtmxResponse({detail: {}});
+          calls;
+        """, header=header)
+        assert out == 1
+
+    def test_the_htmx_answer_is_heard_where_htmx_announces_it(self):
+        src = open(CLIENT, encoding="utf-8").read()
+        assert "addEventListener('htmx:afterRequest', onHtmxResponse)" in src
+
     def test_a_response_with_no_header_runs_nothing(self):
         out = _run("""
           var calls = 0;
