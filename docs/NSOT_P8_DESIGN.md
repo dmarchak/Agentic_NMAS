@@ -274,9 +274,19 @@ pages.
 6. **Grafana alerts resolved across lists** (the latent false claim).
 7. **The v2 Settings page per network.** It draws each value with its origin (set here,
    inherited, not applicable, unset). This is a new screen, so it needs a mockup and the
-   operator's sign-off before it is built.
+   operator's sign-off before it is built. **Drawn 2026-10-05, FOR SIGN-OFF** (the canvas,
+   v38, page "P.8 Settings per network"):
+   - A: a network's Integrations tab, one card per group with its origin;
+   - B: making a group the network's own, as a preview, a confirm and a result;
+   - C: declaring a group not applicable, and going back to inheriting, which says what is
+     deleted;
+   - D: Default's view, naming who inherits each group.
 8. **OBSERVE carries its network in the URL;** the Grafana roles are per network; the UID-gone
-   row is built.
+   row is built. **Its screen details drawn 2026-10-05, FOR SIGN-OFF** (the canvas, v39,
+   board E):
+   - Monitoring names its network in the header, with a selector;
+   - a device page reads its device's network;
+   - a gone dashboard is a Needs attention row with its action and how it clears.
 9. **Fold the five per-list files into the store,** one per commit.
 
 **Forecast:** P.8's own estimate was 10 to 15 commits, from C104's readers and C158's write
