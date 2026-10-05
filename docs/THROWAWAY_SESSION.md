@@ -23,6 +23,30 @@ session cannot start later than 6 h 30 min before the nightly backup (08:30 UTC,
 time). A start between 10:00 and 01:30 UTC (04:00 to 19:30 your time) clears it. The natural
 pause is after Part 4: the device is onboarded and nothing is in flight.
 
+## Where each part runs, and where the session stands (2026-10-05)
+
+**Every part from here runs on v2 only** (the operator, 2026-10-05: no test of a screen that is
+going away). Today's page is used for nothing below except where a v2 screen does not exist
+yet, and those parts wait for it rather than run there.
+
+| Part | State | Its screen on v2 |
+|---|---|---|
+| 0, 1 | DONE 2026-10-05; Part 1's hour of discovery is measured and NOT repeated | none needed (the lab host and the captures) |
+| 2 (the Pick) | DONE on today's page; **redone on v2** once 7.4's onboarding is built | Devices › Add device (board E, ZTP's MAC way), the discovery list (L) |
+| 3.1 Verify | DONE on today's page; **redone on v2** with 2 | the pending device's onboarding card (F) |
+| 3.2 template approval | BLOCKED (C481) | Source of truth › Templates (boards A to C, approved 2026-10-05; build item 2) |
+| 3.3 seed | DONE on v2 | the device page, Actions › Seed intent… |
+| 4 the break-glass export | DONE on v2 | Source of truth › Credentials |
+| 5, 6, 8 | WAIT for template approval on v2 and the intent editor's acknowledgement (C481) | the device page (deploy, revert and retry, retire), the Intent tab (H) |
+| 7 the restore | DONE on v2 (rewritten, below) | the device page, Actions › Restore from… |
+| 9 the serial probe | after 8 | the device page |
+| 10 cleanup | last | the lab host; Settings › the network (v2) |
+
+**The session is PAUSED** after Parts 0 to 4 and 7. `tw-ztp-a` stays onboarded and running.
+It resumes at Parts 5, 6 and 8 when the intent editor (H, with acknowledging an unmodelled
+line) and template approval are on v2 on a commit CI has passed. Parts 2 and 3.1 are redone on
+v2 when 7.4's onboarding exists (after the network picker, N).
+
 **Times:** write every time as UTC (`date -u +%FT%TZ`). A device's own timestamps are not used
 for anything (its clock is not trusted); an event's time is when you saw it, or its syslog
 receive time on the device's History tab.
@@ -163,11 +187,22 @@ Expect neighbour `10.255.99.1` in `Active` or `Connect` (it has no peer yet).
 **1.3 The console, read-only (lab host, a third terminal).** Watch it through a reader that
 SENDS NOTHING, never an interactive telnet:
 
-    docker exec clab-nmas-throwaway-tw-ztp-a python3 -c 'import socket, sys; s = socket.create_connection(("127.0.0.1", 5000)); [sys.stdout.buffer.write(d) or sys.stdout.flush() for d in iter(lambda: s.recv(4096), b"")]'
+    docker exec clab-nmas-throwaway-tw-ztp-a python3 -c 'import os, signal, socket, sys; open("/tmp/console-watcher.pid", "w").write(str(os.getpid())); signal.alarm(1800); s = socket.create_connection(("127.0.0.1", 5000)); [sys.stdout.buffer.write(d) or sys.stdout.flush() for d in iter(lambda: s.recv(4096), b"")]'
 
 No `-it`: the container gets no terminal, so no keystroke can reach the device, and the
-reader never answers the console's telnet negotiation. Stop it with Ctrl-C. The output may
-carry a few raw negotiation bytes; ignore them.
+reader never answers the console's telnet negotiation. The output may carry a few raw
+negotiation bytes; ignore them.
+
+**It stops itself after 30 minutes** (`signal.alarm(1800)`). **Ctrl-C does NOT stop it**
+(measured 2026-10-05): without `-it` the interrupt never reaches the process inside the
+container, which keeps holding the console, and vrnetlab's console serves ONE client, so the
+next telnet gets no prompt. To stop it before its 30 minutes, by its own PID:
+
+    docker exec clab-nmas-throwaway-tw-ztp-a sh -c 'kill "$(cat /tmp/console-watcher.pid)"'
+
+**Never `pkill python`** (or `pkill -f` on any pattern) in the container: its main process,
+`/launch.py`, is python too, and killing it stops the node. A process is stopped by its
+identity, never by a pattern.
 
 **Why not telnet (measured in this session, Part 1, 2026-10-05):** with `telnet 127.0.0.1 5000`
 attached and nothing typed, the setup dialog printed `% Please answer 'yes' or 'no'` again
@@ -220,7 +255,7 @@ The "Pick" (board L, 15.7) is not built yet. Today it is the onboarding wizard's
 the source ZTP: it writes exactly the reservation a Pick will write (address, option 12, the
 TFTP server and `tw-ztp-a.cfg`). So Part 2 is also the first half of onboarding.
 
-**2.1 Create (today's page, list `throwaway` selected).** Add device:
+**2.1 Create (v2 Devices, `?list=throwaway`, Add device…, when 7.4's onboarding is built: board E's ZTP, the MAC way).** The fields:
 
 | Field | Value |
 |---|---|
@@ -273,7 +308,7 @@ boot takes it at once. Which part mattered, the duration or the console input, i
 separated (2b).
 
 **2b. To separate them (optional, about 25 minutes, before Part 3).** Abandon the pending
-`tw-ztp-a` on today's page (its result says the Kea reservation was removed), declare the
+`tw-ztp-a` on its v2 onboarding card (its result says the Kea reservation was removed), declare the
 window and redeploy as below, and attach NOTHING to the console (the DHCP view and the
 responder's journal only). About 10 minutes after the first DISCOVER (past several cycles),
 Create again as in 2.1, noting the time. Taken: the console input was the cause, and duration
@@ -303,7 +338,7 @@ after the redeploy, and its OFFER and RRQ.
 
 ## Part 3: onboarding finished, template, seed (30 min)
 
-**3.1 Verify (today's page, the pending row of `tw-ztp-a`).** Before pressing it, open v2
+**3.1 Verify (v2, `tw-ztp-a`'s onboarding card, board F, when 7.4's onboarding is built).** Before pressing it, open v2
 **Devices** in a second tab and leave it open. Then press **Verify** (preview, then confirm).
 Phase 2:
 - rotates the credential;
@@ -313,9 +348,11 @@ Phase 2:
 The row moves to "Finished recently". **The v2 Devices tab shows `tw-ztp-a` without a reload**
 (7.0's acceptance 5); if it does not, say so.
 
-**3.2 The template (today's page, Templates, list `throwaway`).** Approve
+**3.2 The template (v2 Source of truth › Templates, `?list=throwaway`, boards A to C).** Approve
 `cisco_iosxe/base.j2` with the fingerprint shown. It needs the golden 3.1 recorded; approval
-does not carry between lists.
+does not carry between lists. Approval reads each device's COMMITTED acknowledgement (C481):
+an unmodelled line the preview names is acknowledged first on the device's Intent tab (H), or
+is the device's own (AutoInstall's DHCP client-id, in the exact form the device holds).
 
 **3.3 Seed (v2, `tw-ztp-a`'s page).** Actions › **Seed intent…**:
 - the document lists what becomes intent;
@@ -339,6 +376,24 @@ in the repository.
 
 **STOP 4. Paste:** the export's result line (it names the devices and the digest count, never a
 value). This is the natural pause.
+
+**MEASURED 2026-10-05 (STOP 3 and STOP 4, the operator):**
+- **Verify:** the first attempt said "no response from 10.255.0.60 on ICMP or TCP/22" though the
+  router had held its lease and SSH since 20:12; after a page refresh the preview read it fresh
+  and Verify succeeded at about 20:18 UTC: credential rotated, saved, first golden, the NetBox
+  record created as `nmas` (no 403: the add permissions proven), inventory. C483: a Verify
+  preview reads reachability fresh, and a first no-answer just after a lease is retried. Before
+  Verify, v2 Devices showed "awaiting DHCP (10.255.0.60)" though the lease was held (C483).
+- **7.0's acceptance 5 PASSED:** v2 Devices (`?list=throwaway`) changed `tw-ztp-a` from "Pending
+  onboarding" to Answering, 10.255.0.60, `cisco_iosxe`, without a reload.
+- **Seed:** committed bdaa5eb; 100.0% round-trip, 98.0% modelled, one unmodelled line
+  (AutoInstall's DHCP client-id), written as `…-GigabitEthernet2` while the device and its
+  golden hold `…-Gi2` (C485, the seed rewrote inside a literal value). Device-owned: the
+  licence UDI and the self-signed trustpoint's chain.
+- **Template approval (3.2): blocked** (C481: approval cannot honour an acknowledgement, and no
+  screen could make one).
+- **STOP 4:** throwaway's break-glass record exported at 20:27:17 UTC, 1 device, downloaded
+  intact.
 
 ## Part 5: C178's hold question, then C117's loop (75 min)
 
@@ -434,27 +489,38 @@ after 6.3.
 
 A restore re-applies what an earlier golden had and today's golden lacks. It is additive, and
 it never compares the device itself. So, first a hand change, and the golden records it.
+Rewritten 2026-10-05 so it needs nothing from Part 5: a harmless line every onboarded
+`tw-ztp-a` holds, its Gi2 description.
 
-**7.1 The hand change (console).**
+**A restore moment must come AFTER the seed** (3.3). A moment before it holds onboarding's
+bootstrap intent, which renders through no template, and the restore refuses it (measured
+2026-10-05, C484; nothing was sent). If the device has no post-seed capture yet, 7.1 makes one.
 
-    conf t
-     no ip route 10.255.98.1 255.255.255.255 10.255.0.35
-     end
+**7.1 A post-seed moment (console, then v2).** Read the console only with the 1.3 reader, and
+make the hand changes on an interactive console only after stopping it.
+1. If the description is absent, put it back by hand (`interface GigabitEthernet2`,
+   `description …` as its golden has it), then **Capture** (v2, Actions): that capture is the
+   moment to restore from. Note its tag (`golden/tw-ztp-a/<ts>`).
+2. Remove it by hand: `interface GigabitEthernet2`, `no description`.
+3. **Capture** again. The new golden lacks the description.
 
-The BGP session will drop within the hold time. Note the time.
-
-**7.2 Capture (v2).** Actions › **Capture**. The new golden lacks the static route.
-
-**7.3 Restore (v2).** Actions › **Restore from…**:
-- choose the moment BEFORE 7.2's capture;
-- the preview's program is exactly `ip route 10.255.98.1 255.255.255.255 10.255.0.35`;
-- the button reads `Re-apply 1 line(s) to tw-ztp-a`;
+**7.2 Restore (v2).** Actions › **Restore from…**:
+- choose 7.1's post-seed moment;
+- the preview's program is exactly `interface GigabitEthernet2` / `description …` / `exit`;
+- every check passes, including "this ref's intent usable today", "credential unchanged" and
+  "no secret re-added"; the certificate chain and the licence UDI are excluded;
 - confirm.
 
-Verify waits for BGP's hold time. Expect it to pass, with BGP 0 → 1, and a receipt saying
-`restore`.
+**MEASURED 2026-10-05 (the operator, adapted as above):** the hand change at 20:35:53 UTC; the
+capture (774ffeb) showed exactly that one line removed; a restore from Verify's moment (20:18,
+before the seed) was refused safely (C484); then the description was put back and captured
+(`golden/tw-ztp-a/20261005T204107Z`), removed and captured again (20:42), and the restore from
+`…T204107Z` sent exactly the three lines above, every check passing, with no dependence on
+template approval or the unmodelled line. The device confirmed "received 3 line(s); matches
+the program you confirmed"; golden de39fa1; baseline `baseline/20261005T204311Z` tagged for
+throwaway; the receipt recorded.
 
-**STOP 7. Paste:** the preview's program, the result, and the peer's `show bgp summary`.
+**STOP 7. Paste:** the preview's program, the checks, and the result.
 
 ## Part 8: retire, A3 (20 min)
 

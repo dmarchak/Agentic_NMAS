@@ -326,6 +326,15 @@ pages.
    change with G's warning naming who inherits it (today's page); the picker's search; board
    I's creation form (the accepted v1 gap); NetBox scope as a group (no `netbox_scope` key yet).
 
+   **N APPROVED 2026-10-05 (the operator, canvas v47): the network picker in every page's top
+   bar,** an addition to H's scope bar. "Network <name>" opens a searchable list, recent
+   networks first (yours), each with its mode (inherits, standalone, Default the base);
+   choosing one opens the same kind of page for that network, its address carrying `?list=`
+   (a device page goes to that network's Devices list; Help, About and Update stay); the
+   choice is remembered per verified person, never for anyone else; at phone width the same
+   list full width. Built after the intent editor and template approval, ahead of 7.4's
+   onboarding, which needs it.
+
    **F to J APPROVED 2026-10-05 (the operator)**, as redrawn for optional inheritance
    (canvas v45; section 8): inherit or standalone per network and per group, the previewed
    switches J1 and J2, G's counts and H's mode bar. The v1 gap stands for now: a new network
