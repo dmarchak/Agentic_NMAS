@@ -651,7 +651,7 @@ def reap_idle(max_idle: float = IDLE_REAP_SECONDS) -> int:
 
 
 def verify_device_connection(
-    ip: str, username: str, password: str, secret: str, device_type: str = "cisco_ios"
+    ip: str, username: str, password: str, secret: str, device_type: str
 ) -> str:
     """
     Attempts to connect to a device using Netmiko and returns the hostname prompt.

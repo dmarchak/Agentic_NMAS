@@ -21,6 +21,7 @@ import pytest
 
 dukpy = pytest.importorskip("dukpy")
 
+from modules.settings_schema import DEFAULTS as _DEFAULTS  # noqa: E402
 from modules.nsot.onboard import (ANSWERED, DID_NOT_ANSWER,  # noqa: E402
                                   REFUSED_CREDENTIAL)
 
@@ -41,6 +42,8 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(list_dir))
     monkeypatch.setattr("modules.settings_schema.get_setting",
                         lambda k, d=None: {"nsot_git_author_name": "NMAS",
+                                           # the schema's own map, as the host has (C453)
+                                           "platform_map": _DEFAULTS["platform_map"],
                                            "nsot_git_author_email": "n@l"}.get(k, d))
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda c: None)
     monkeypatch.setattr("modules.secrets_store.KEY_FILE", str(tmp_path / "key.key"))

@@ -28,6 +28,8 @@ import pathlib
 
 import pytest
 
+from tests.test_onboard_pending import repo  # noqa: F401  (the fixture)
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 #: What the FortiGate says it is, as the platform-facts store keeps it (C426's
@@ -150,15 +152,10 @@ class TestTheSessionDriverHasNoDefault:
 DIALECT_LITERALS = {"cisco_ios", "cisco_iosxe", "cisco_xe", "cisco-ios", "cisco-ios-xe"}
 
 #: Sites that default a SESSION DRIVER (not a dialect) to a Cisco one: C453, found
-#: by this scan the day C452 was fixed and registered under the sweep rule. This
-#: set only shrinks.
-EXCUSED = {
-    ("modules/ai_assistant.py", ".get default"),
-    ("app.py", ".get default"),
-    ("modules/connection.py", "param default"),
-    ("modules/nsot/onboard.py", "or-default"),
-    ("modules/nsot/onboard.py", "param default"),
-}
+#: by this scan the day C452 was fixed and registered under the sweep rule. All five
+#: fixed 2026-10-05 (a driver from the row or the plan's dialect, else refused or
+#: "unknown"); empty, and it stays so.
+EXCUSED = set()
 
 
 def _fallbacks(path: pathlib.Path, source: str):
@@ -216,3 +213,36 @@ class TestNoDialectLiteralIsAFallback:
                            "as that platform (C452). Refuse with platform.unknown_words():\n"
                            + "\n".join(found))
         assert seen == EXCUSED, f"an excused site is gone: remove it from EXCUSED: {EXCUSED - seen}"
+
+
+class TestOnboardingTakesItsDriverFromThePlan:
+    """C453: onboarding reached and recorded every device with the C8000v's driver when none
+    was given. Now the plan's dialect gives it, through the one mapping, or it is refused."""
+
+    @staticmethod
+    def _plan(repo, platform):
+        from modules.nsot import manifest as _m
+        from modules.nsot.repo import GoldenItem, adopt_identity
+
+        identity = adopt_identity(repo, GoldenItem("bp7", "", "192.0.2.37"))
+        _m.upsert_device(repo, identity, "bp7", mgmt_ip="192.0.2.37", platform=platform,
+                         pending=True)
+
+    def test_a_plan_reaches_with_its_own_driver(self, repo):  # noqa: F811
+        from modules.nsot.onboard import verify_device
+
+        self._plan(repo, "cisco_ios")
+        used = []
+        out = verify_device(repo, "bp7", "probe", online=lambda ip: True,
+                            reach=lambda *a: used.append(a[4]) or "bp7#")
+        assert out["answered"] and used == ["cisco_ios"], (out, used)
+
+    def test_a_plan_with_no_platform_is_refused_never_guessed(self, repo):  # noqa: F811
+        from modules.nsot.onboard import promote_device, verify_device
+
+        self._plan(repo, "")
+        out = verify_device(repo, "bp7", "probe", online=lambda ip: True,
+                            reach=lambda *a: pytest.fail("reached with a guessed driver"))
+        assert not out["answered"] and "names no platform" in out["error"], out
+        res = promote_device(repo, "bp7", "probe", username="admin", password="Rotated-7")
+        assert not res["ok"] and "no row is written" in res["error"], res

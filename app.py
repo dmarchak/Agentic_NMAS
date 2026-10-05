@@ -2798,7 +2798,7 @@ def ai_device_context():
         {
             "hostname":    d.get("hostname", ""),
             "ip":          d.get("ip", ""),
-            "device_type": d.get("device_type", "cisco_ios"),
+            "device_type": d.get("device_type") or "unknown",
             "online":      bool(device_status_cache.get(d.get("ip", ""), False)),
         }
         for d in devices

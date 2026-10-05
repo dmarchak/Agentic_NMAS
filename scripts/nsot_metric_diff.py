@@ -56,9 +56,16 @@ def nested_constructs(config: str) -> dict:
 
 
 def platform_of(name, config):
+    """The dialect the config's own text says, or "" when it says neither: never a guess
+    (C453). IOS XE names itself, or runs version 16 or later; classic IOS runs 12 or 15."""
     if "IOS XE" in config[:400] or "C8000V" in config:
         return "cisco_iosxe"
-    return "cisco_ios"
+    version = next((line.split()[1] for line in config.splitlines()
+                    if line.startswith("version ") and len(line.split()) > 1), "")
+    major = version.split(".")[0]
+    if major.isdigit():
+        return "cisco_iosxe" if int(major) >= 16 else "cisco_ios"
+    return ""
 
 
 def main() -> int:
@@ -78,6 +85,9 @@ def main() -> int:
         with open(os.path.join(directory, f"{name}.cfg"), encoding="utf-8") as fh:
             config = fh.read()
         platform = platform_of(name, config)
+        if not platform:
+            print(f"{name:<8}{'?':<14}  SKIPPED: its config names no platform this reads")
+            continue
         try:
             hv = get_parser(platform).parse(config)
             rendered = roundtrip.render(hv, platform)

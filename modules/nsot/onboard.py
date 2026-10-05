@@ -1946,6 +1946,21 @@ def _abandon_onboarding(repo: str, hostname: str, list_name: str, *,
     return result
 
 
+def driver_for_plan(entry: dict) -> tuple:
+    """``(netmiko driver, "")`` for an onboarding plan's dialect (its `platform`), through
+    `platform.netmiko_type_for_dialect`, the one mapping; ``("", why)`` when the plan names
+    none, or one with no driver. Never another platform's driver (C453)."""
+    from modules.nsot.platform import netmiko_type_for_dialect
+
+    dialect = str((entry or {}).get("platform") or "").strip()
+    if not dialect:
+        return "", "its plan names no platform, so no session driver is known"
+    try:
+        return netmiko_type_for_dialect(dialect), ""
+    except Exception as exc:                   # noqa: BLE001
+        return "", f"its plan's platform {dialect!r} has no session driver ({exc})"
+
+
 def promote_device(repo: str, hostname: str, list_name: str, *,
                    actor: str = "", device_type: str = "",
                    username: str = "", password: str = "",
@@ -2003,6 +2018,11 @@ def promote_device(repo: str, hostname: str, list_name: str, *,
             "refusing to store the one-time bootstrap credential as this "
             "device's durable password — rotate it first, then promote")
         return result
+    if not device_type:
+        device_type, why = driver_for_plan(entry)
+        if not device_type:
+            result["error"] = f"'{hostname}': no row is written: {why}"
+            return result
 
     try:
         from modules.config import get_list_data_dir
@@ -2034,7 +2054,7 @@ def promote_device(repo: str, hostname: str, list_name: str, *,
                     row.update({
                         "hostname": hostname,
                         "ip": entry.get("mgmt_ip", ""),
-                        "device_type": device_type or "cisco_xe",
+                        "device_type": device_type,
                         "username": username or "admin",
                         # ALWAYS a token, even for an empty value (B14's rule: every
                         # reader decrypts these columns, and decrypting "" raises).
@@ -2282,7 +2302,7 @@ def discover_dhcp_address(mac: str, reserved: str = "", kea=None) -> dict:
 def verify_device(repo: str, hostname: str, list_name: str, *,
                   mgmt_ip: str = "", username: str = "admin",
                   password: str = "", secret: str = "",
-                  device_type: str = "cisco_xe", interface: str = "",
+                  device_type: str = "", interface: str = "",
                   online=None, reach=None, kea=None) -> dict:
     """Reach the device. **Reaching is the verification; failing is not.**
 
@@ -2366,6 +2386,16 @@ def verify_device(repo: str, hostname: str, list_name: str, *,
         from modules.connection import is_device_online as online
     if reach is None:
         from modules.connection import verify_device_connection as reach
+
+    # The session driver: the caller's, else the plan's dialect through the ONE mapping (C453:
+    # this defaulted to the C8000v's driver for every device). A dialect with no driver is
+    # refused, naming it, rather than reached as another platform.
+    if not device_type:
+        driver, why = driver_for_plan(entry or {})
+        if not driver:
+            return {"state": DID_NOT_ANSWER, "answered": False, "causes": [],
+                    "recovery": {"available": False}, "error": f"{hostname}: {why}"}
+        device_type = driver
 
     prompt, state, error = "", DID_NOT_ANSWER, ""
     try:

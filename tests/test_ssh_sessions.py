@@ -161,7 +161,7 @@ class TestOperationsCloseWhatTheyOpen:
     def test_verify_device_connection_closes_when_enable_raises(self):
         FakeConn.fail_enable = True
         with pytest.raises(RuntimeError):
-            C.verify_device_connection(IP, "u", "p", "p")
+            C.verify_device_connection(IP, "u", "p", "p", "cisco_ios")
         assert FakeConn.opened[0].disconnected and C.held_sessions() == {}
 
     @pytest.mark.parametrize("raises", [False, True], ids=["completes", "raises"])

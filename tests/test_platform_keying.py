@@ -59,8 +59,6 @@ KEYING = {
     # Coverage words per platform, compared with the manifest's platform
     # (platform_for_device()): the dialect.
     "modules/monitoring_coverage.py":       "dialect",
-    "modules/ai_assistant.py":              "driver",
-    "modules/connection.py":                "driver",
     "scripts/netmiko_timing_probe.py":      "driver",
     "scripts/nsot_metric_diff.py":          "dialect",
 }
