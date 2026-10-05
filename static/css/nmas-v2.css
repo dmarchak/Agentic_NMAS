@@ -114,6 +114,16 @@ a { color: var(--accent); }
 .mk-hi { fill: none; stroke: var(--brand-hi); stroke-width: 4; stroke-linecap: round; }
 .mk-gap { fill: none; stroke: var(--side); stroke-width: 12; }
 .mk-node { fill: var(--brand); stroke: var(--side); stroke-width: 3; }
+/* The phone top bar's lockup: the 32 px mark and the short name, only where the sidebar is a
+   drawer (the board's phone frames). */
+.topbar-brand { display: none; align-items: center; gap: 6px; font-weight: 600; }
+.mercury-mark-small { width: 40px; height: 21px; }
+/* Help > About's product card (board B). */
+.card.product-card { display: flex; flex-direction: row; gap: 22px; align-items: center; }   /* outranks .card, set later */
+.product-icon { flex-shrink: 0; }
+.product-words { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.product-name { font-size: 20px; }
+.faint { color: var(--ink-3); }
 .brand-words { display: flex; flex-direction: column; flex-grow: 1; line-height: 1.2; }
 .brand-name { color: #FFF; font-weight: 600; font-size: 16px; }
 .brand-sub { font-size: 11px; color: var(--side-ink-2); white-space: nowrap; }
@@ -330,9 +340,11 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   .scrim { display: block; position: fixed; inset: 0; background: var(--scrim); z-index: 30; }
   .icon-btn.menu-btn { display: inline-flex; }
   .brand-sub { display: none; }   /* at phone width, the mark plus the short name */
+  .topbar-brand { display: inline-flex; }
   .topbar { padding: 0 12px; gap: 10px; height: 52px; background: var(--side); color: #FFF; border-bottom: none; }
   .net-label, .who-name, .live-word, .jump kbd { display: none; }
   .net { color: #FFF; }
+  .topbar-brand + .net { border-left: 1px solid var(--side-rule); padding-left: 10px; }   /* the brand, then the network: two things */
   .jump { width: auto; flex: 1 1 0; min-width: 0; background: var(--side-on); border-color: var(--side-on); color: var(--side-ink); }
   .jump input { color: #FFF; }
   .topbar > .grow { display: none; }
@@ -355,12 +367,17 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
   .strip-words { display: none; }
   .net { max-width: 28vw; overflow: hidden; text-overflow: ellipsis; }
   .topbar { gap: 8px; }
+  /* Every working item must fit: the brand gives way first, its name to its mark (the mark's
+     label names it), measured by test_v2_layout_in_a_browser at 430, 390 and 360 px. */
+  .topbar-name { display: none; }
+  .topbar-brand + .net { border-left: none; padding-left: 0; }   /* the mark alone stands apart */
 }
 /* The narrowest phones (320 px, measured): with "Update available" drawn the avatar ran 14 px
    past the edge; tighter gaps make room without hiding anything. */
 @media (max-width: 360px) {
   .topbar { gap: 4px; padding: 0 8px; }
   .update-pill { padding: 2px 6px; }
+  .topbar-brand { display: none; }   /* at 320 px the bar has no room for the mark either */
 }
 /* A selector never wider than its row: a long dashboard title is cut with an ellipsis,
    its whole name on hover (2026-10-02, the phone ran it off the screen). */

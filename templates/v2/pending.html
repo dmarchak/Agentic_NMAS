@@ -7,7 +7,7 @@
     expect, and its three actions, which are built on today's page. -#}
 {%- set STATE = {'in_flight': ('pending', 'info'), 'overdue': ('overdue', 'warn'), 'stale': ('stale', 'danger')} -%}
 {%- set s = STATE.get(p.state, (p.state, 'muted')) -%}
-{% block title %}{{ p.name }} (pending) · NMAS{% endblock %}
+{% block title %}{{ p.name }} (pending) · {{ brand.short }}{% endblock %}
 {% block main %}
 <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices') }}">Devices</a><span aria-hidden="true">/</span><span>{{ p.name }}</span></nav>
 <div class="page-head">

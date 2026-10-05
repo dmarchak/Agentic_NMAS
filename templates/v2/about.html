@@ -1,6 +1,6 @@
 {%- extends "v2/base.html" -%}
 {%- from "v2/_macros.html" import info -%}
-{% block title %}About · Help · NMAS{% endblock %}
+{% block title %}About · Help · {{ brand.short }}{% endblock %}
 {% block main %}
 <div class="page-head">
   <div class="page-title">
@@ -11,6 +11,18 @@
 <div class="help-grid">
   {% with current='about' %}{% include "v2/_helpnav.html" %}{% endwith %}
   <div class="help-body">
+    {#- The product card (NSOT_STAGE7_PLAN 19, board B, approved 2026-10-05): the square icon,
+        the name and its line from modules/brand.py, the running commit, the licence still to
+        be chosen, the third-party components, and where the name comes from. -#}
+    <section class="card product-card" id="product">
+      <img class="product-icon" src="{{ url_for('static', filename='img/brand/mercury-icon.svg') }}" width="88" height="88" alt="">
+      <div class="product-words">
+        <strong class="product-name">{{ brand.name }}</strong>
+        <span class="muted">{{ brand.line }}</span>
+        <span class="small muted">Running <span class="mono">{{ (inst.running or 'unknown')[:7] }}</span> (a release number comes with Stage 10) · licence: the operator's choice, Apache-2.0 recommended · <a href="{{ url_for('v2.help_page', slug='third-party') }}">third-party components and their licences</a></span>
+        <span class="small faint">{{ brand.origin }}</span>
+      </div>
+    </section>
     {% include "v2/_installation.html" %}
   </div>
 </div>

@@ -7,13 +7,18 @@
     with three nodes, and the orbit's front half crossing over the planet behind a gap drawn
     in the colour the mark sits on (`.mk-gap`, the sidebar's `--side`), so it reads in both
     themes. Colours are classes, never attributes: the strict pages refuse inline styles. -#}
-{% macro mercury_mark(label='Mercury') -%}
-<svg class="mercury-mark" viewBox="-82 -42 164 84" role="img" aria-label="{{ label }}"><title>{{ label }}</title>
+{#- *small* draws the board's 32 px simplification (the phone top bar): no highlight, the two
+    side nodes, the gap kept. The geometry is modules/brand.py's (`mark_parts`), which the
+    static files are drawn from; tests/test_v2_brand.py holds the two to each other. -#}
+{% macro mercury_mark(label='Mercury', small=False) -%}
+<svg class="mercury-mark{{ ' mercury-mark-small' if small }}" viewBox="-82 -42 164 84" role="img" aria-label="{{ label }}"><title>{{ label }}</title>
 <g transform="rotate(-20)"><ellipse class="mk-orbit" rx="72" ry="26"></ellipse></g>
 <circle class="mk-planet" r="26"></circle>
+{%- if not small %}
 <path class="mk-hi" d="M-15.6,-9 A18 18 0 0 1 -4.7,-17.4"></path>
+{%- endif %}
 <g transform="rotate(-20)"><path class="mk-gap" d="M-72,0 A72 26 0 0 0 72,0"></path><path class="mk-orbit" d="M-72,0 A72 26 0 0 0 72,0"></path>
-<circle class="mk-node" cx="-72" r="9"></circle><circle class="mk-node" cx="72" r="9"></circle><circle class="mk-node" cy="26" r="9"></circle></g></svg>
+<circle class="mk-node" cx="-72" r="9"></circle><circle class="mk-node" cx="72" r="9"></circle>{% if not small %}<circle class="mk-node" cy="26" r="9"></circle>{% endif %}</g></svg>
 {%- endmacro %}
 
 {% macro icon(name, size=18, cls='') -%}

@@ -1,7 +1,7 @@
 {%- from "v2/_macros.html" import icon, badge, stamp, info -%}
 {#- The device page's NetBox (NSOT_GUI_BRIEF 3.3), from
     modules/device_netbox.for_device(): what NetBox holds about the device and
-    who owns that record by NMAS's own provenance. Read-only; writes stay on
+    who owns that record by {{ brand.short }}'s own provenance. Read-only; writes stay on
     today's NetBox tab behind its preview and token. -#}
 <section class="card netbox-rec" id="netbox" hx-get="{{ url_for('device_v2.netbox', name=device.hostname) }}"
          hx-trigger="nmas:netbox from:body" hx-swap="outerHTML">
@@ -33,13 +33,13 @@
     <div><dt>Last updated</dt><dd>{{ stamp(r.last_updated) }}</dd></div>
   </dl>
   {%- if nb.mods.error %}
-  <p class="muted">NMAS's record of its writes to NetBox could not be read ({{ nb.mods.error }}).</p>
+  <p class="muted">{{ brand.short }}'s record of its writes to NetBox could not be read ({{ nb.mods.error }}).</p>
   {%- elif nb.mods.count %}
-  <p class="muted">NMAS has recorded {{ nb.mods.count }} write(s) to this record, the last {{ stamp(nb.mods.last.at) }} by {{ nb.mods.last.actor }}.</p>
+  <p class="muted">{{ brand.short }} has recorded {{ nb.mods.count }} write(s) to this record, the last {{ stamp(nb.mods.last.at) }} by {{ nb.mods.last.actor }}.</p>
   {%- else %}
-  <p class="muted">NMAS has recorded no write to this record.</p>
+  <p class="muted">{{ brand.short }} has recorded no write to this record.</p>
   {%- endif %}
   <p><a class="ext" href="{{ nb.ui_url }}" rel="noopener" target="_blank">Open in NetBox {{ icon('ext', 13) }}</a></p>
   {%- endif %}
-  <p class="muted nb-limits">Read from NetBox and NMAS's own records. Importing and removing stay on today's NetBox tab, behind its preview and one-time confirmation.</p>
+  <p class="muted nb-limits">Read from NetBox and {{ brand.short }}'s own records. Importing and removing stay on today's NetBox tab, behind its preview and one-time confirmation.</p>
 </section>

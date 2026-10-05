@@ -16,7 +16,7 @@
   <p class="cov-head">{% if g.heartbeat.count %}{{ icon('check') }} {{ g.heartbeat.count }} heartbeat(s) in the last {{ g.window_hours }} h, the last {{ stamp(g.heartbeat.last_iso) }}. They are folded here; any other line about the heartbeat applet is listed below.{% else %}{{ icon('warn') }} No heartbeat line from {{ device.hostname }} in the last {{ g.window_hours }} h.{% endif %}</p>
   {%- endif %}
   {%- if g.unsync %}
-  <p class="muted">{{ g.unsync }} line(s) carry a device time {{ device.hostname }} marks unsynchronised (*): its clock is not trusted, so each line is placed by when the NMAS received it.</p>
+  <p class="muted">{{ g.unsync }} line(s) carry a device time {{ device.hostname }} marks unsynchronised (*): its clock is not trusted, so each line is placed by when {{ brand.short }} received it.</p>
   {%- endif %}
   {%- if not g.lines %}
   <p class="cov-head">{{ icon('info') }} {{ device.hostname }} sent nothing but heartbeats in the last {{ g.window_hours }} h.</p>
@@ -39,5 +39,5 @@
   </div>
   {%- endif %}
   {%- endif %}
-  <p class="muted nb-limits">From Loki: the lines {{ device.hostname }} names itself in (its origin-id), as the NMAS received them. Nothing here opens a session to the device.</p>
+  <p class="muted nb-limits">From Loki: the lines {{ device.hostname }} names itself in (its origin-id), as {{ brand.short }} received them. Nothing here opens a session to the device.</p>
 </section>

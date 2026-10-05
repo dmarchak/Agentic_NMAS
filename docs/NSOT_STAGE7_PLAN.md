@@ -4438,9 +4438,34 @@ inline, coloured by `--brand`, `--brand-hi` and the sidebar's `--side` for the g
 "Mercury" over "Network Automation Platform"; at phone width the mark and "Mercury". Drawn at
 52 × 27 px, a little under the board's 58 × 30, so the tagline fits the 248 px sidebar on one
 line (measured in a browser: it ends 18 px inside). With it, the drawer's dead close button
-went (C475). **Left:** page titles, the favicon and square icon (`static/img/brand/`, claimed in
-`docs/THIRD_PARTY.json`), the phone top bar's mark, the About page's product card, and "NMAS"
-out of user-facing text with its test.
+went (C475).
+
+**The rest BUILT 2026-10-05, completing this section** (the operator asked for it):
+- **Every mark file is generated:** `modules/brand.py` draws the master, the 32 px and 16 px
+  simplifications and the square icon from the master geometry, each identical to the
+  board's (compared). `scripts/nmas-brand-icons` writes them to `static/img/brand/`
+  (claimed as the project's own), and renders the 180 px home-screen PNG in a real browser,
+  since no SVG renderer ships.
+- **The page head** links the favicon (the 16 px square icon) and the home-screen icon.
+- **Every v2 page title** ends "· Mercury", from the constant.
+- **The phone top bar** draws the 32 px mark and "Mercury", with a divider before the
+  network. That holds down to 640 px. The board's phone bar drew only the menu, the brand
+  and the live state, but today's bar also carries the network, the search, the status, the
+  theme and the avatar. So the brand gives way first: below 640 px the mark alone, and at
+  360 px and under nothing (measured by the top-bar layout test at 430, 390, 360 and 320 px).
+  This deviates from the board at the narrowest widths, and the operator is told.
+- **Help › About** opens with board B's product card: the icon, the full name, the line, the
+  running commit, the licence still to be chosen, the link to a new manual page listing
+  every third-party component (drawn from `docs/THIRD_PARTY.json` when it opens), and the
+  name's origin.
+- **"NMAS" is out of the v2 screens and the manual.** The manual names the product through a
+  placeholder that `modules/manual.py` fills from the constant. Device-side identifiers stay
+  (the `NMAS-HEARTBEAT` applet, the `NMASPROBE` marker).
+- **`tests/test_v2_brand.py` holds all of it.** Every rendered v2 page and every manual page
+  is checked, with floors and a planted case.
+
+**Not in this section:** today's v1 pages keep "NMAS" until they retire at cutover, and
+internal names stay `nmas` until Stage 10.
 
 ## 20. Recover from a break-glass record IN THE APP (the operator, 2026-10-05; mockup first)
 

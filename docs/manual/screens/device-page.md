@@ -99,8 +99,8 @@ error that names the heartbeat is still listed.
 
 ## NetBox {#netbox-tab}
 
-The device's NetBox record, read-only, and who owns it: NMAS created it, NMAS adopted it, or a
-person's. NMAS's recorded writes to it are listed.
+The device's NetBox record, read-only, and who owns it: {{product}} created it, {{product}} adopted it, or a
+person's. {{product}}'s recorded writes to it are listed.
 
 ## Neighbours {#neighbours}
 

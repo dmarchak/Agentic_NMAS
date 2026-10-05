@@ -40,6 +40,7 @@ MANUAL_DIR = os.path.join(ROOT, "docs", "manual")
 H = "How it works"
 PAGES = (
     ("getting-started", "The model: intent, golden, device", "Getting started", "getting-started.md"),
+    ("third-party", "Third-party components and their licences", "Getting started", "third-party.md"),
     ("deploy", "Deploy a change", H, "how-it-works/deploy.md"),
     ("capture", "Capture and Save All", H, "how-it-works/capture.md"),
     ("restore", "Restore and re-apply a baseline", H, "how-it-works/restore.md"),
@@ -161,9 +162,39 @@ def nav() -> list:
             for g in GROUPS]
 
 
+#: The manual names the product through this placeholder, filled from `modules.brand`, the one
+#: place the name is kept (NSOT_STAGE7_PLAN 19): a rename is one change, never a sweep of prose.
+PRODUCT = "{{product}}"
+#: The third-party page's list, drawn from docs/THIRD_PARTY.json (its one owner) when read.
+THIRD_PARTY_LIST = "{{third_party}}"
+
+
+def third_party_markdown(path: str = None) -> str:
+    """Every third-party component, from docs/THIRD_PARTY.json: the vendored front-end files,
+    then the Python packages, each with its version and licence, as manual list items."""
+    import json
+
+    path = path or os.path.join(ROOT, "docs", "THIRD_PARTY.json")
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    out = ["## In the interface {#vendored}", ""]
+    for entry in sorted(doc.get("vendored", {}).values(), key=lambda e: e["component"].lower()):
+        out.append(f"- **{entry['component']}** {entry['version']}: {entry['licence']}")
+    out += ["", "## Python packages {#python}", ""]
+    for name, entry in sorted(doc.get("python", {}).items(), key=lambda kv: kv[0].lower()):
+        out.append(f"- **{name}** {entry['version']}: {entry['licence']}")
+    return "\n".join(out)
+
+
 def source(slug: str) -> str:
+    """A page's markdown, with the product's name and any generated part filled in."""
+    from modules import brand
+
     with open(os.path.join(MANUAL_DIR, page(slug)["file"]), encoding="utf-8") as fh:
-        return fh.read()
+        text = fh.read()
+    if THIRD_PARTY_LIST in text:
+        text = text.replace(THIRD_PARTY_LIST, third_party_markdown())
+    return text.replace(PRODUCT, brand.PRODUCT_SHORT)
 
 
 def declared_steps(op: str) -> list:

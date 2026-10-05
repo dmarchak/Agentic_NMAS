@@ -13,8 +13,10 @@
     links took it, and their first swap replaced #tab-body itself, so every later click had no
     target (since 2026-10-01). tests/test_swap_targets_resolve.py. -#}
 <meta name="htmx-config" content='{"allowEval": false, "allowScriptTags": false, "includeIndicatorStyles": false, "historyCacheSize": 0, "attributesToSettle": [], "disableInheritance": true}'>
-<title>{% block title %}NMAS{% endblock %}</title>
+<title>{% block title %}{{ brand.short }}{% endblock %}</title>
 <meta name="color-scheme" content="light dark">
+<link rel="icon" href="{{ url_for('static', filename='img/brand/favicon.svg') }}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='img/brand/apple-touch-icon.png') }}">
 <script src="{{ url_for('static', filename='js/nmas_theme.js') }}"></script>
 {#- Before the body: an early click on a script-driven control is kept and replayed (C399). -#}
 <script src="{{ url_for('static', filename='js/nmas_early.js') }}"></script>
@@ -60,6 +62,8 @@
 <div class="frame">
   <header class="topbar">
     <button type="button" class="icon-btn menu-btn" aria-label="Open the menu" x-on:click="open">{{ icon('menu', 22) }}</button>
+    {#- At phone width, where the sidebar is a drawer: the 32 px mark and the short name. -#}
+    <span class="topbar-brand">{{ mercury_mark(brand.short, small=True) }}<span class="topbar-name">{{ brand.short }}</span></span>
     <span class="net"><span class="net-label">Network</span> <strong>{{ list_name }}</strong></span>
     <form class="jump" action="{{ url_for('device_v2.device', name='r') }}" method="get" data-base="{{ url_for('device_v2.device', name='r')[:-1] }}" x-on:submit.prevent="jump">
       {{ icon('search', 15) }}<input type="text" name="name" aria-label="Go to device" placeholder="Go to device by name" autocomplete="off" x-ref="jumpbox"><kbd>/</kbd>

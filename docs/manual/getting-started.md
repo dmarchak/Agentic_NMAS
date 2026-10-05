@@ -1,6 +1,6 @@
 # The model: intent, golden, device
 
-NMAS keeps three things about every device, and almost everything it does moves one of them
+{{product}} keeps three things about every device, and almost everything it does moves one of them
 toward another. Learning which operation moves which is most of learning the tool.
 
 ## The three records
@@ -35,7 +35,7 @@ A deploy ADDS the lines intent has and the device lacks, and changes nothing els
 device has and intent lacks is reported as residue and left in place. Removing a line is its
 own operation, chosen line by line (see [Remove a line (Mode B)](removal)).
 
-![Merge versus replace: a merge sends only the lines intent has and the device lacks, and leaves the device's other lines in place; a replace would remove every line intent does not name, which NMAS never does.](diagrams/merge-and-mode-b.svg)
+![Merge versus replace: a merge sends only the lines intent has and the device lacks, and leaves the device's other lines in place; a replace would remove every line intent does not name, which {{product}} never does.](diagrams/merge-and-mode-b.svg)
 
 ## Preview, confirm, result
 

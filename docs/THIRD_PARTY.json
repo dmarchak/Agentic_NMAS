@@ -139,6 +139,7 @@
   "static/js/gen/*": "generated from this repository's templates",
   "static/css/nmas-v2.css": "this repository's",
   "static/img/topology/*": "the project's OWN router and switch symbols, drawn here 2026-10-04 in the conventional network-diagram style (the operator: no third-party artwork); the project's licence",
+  "static/img/brand/*": "the project's OWN Mercury mark and icons (NSOT_STAGE7_PLAN 19), drawn by modules/brand.py from the operator's master geometry; the PNG rendered from its SVG by scripts/nmas-brand-icons; the project's licence",
   "static/js/vendor/MANIFEST.json": "this repository's record of the vendored files"
  },
  "audit": [

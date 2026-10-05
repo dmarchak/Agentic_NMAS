@@ -4,13 +4,13 @@
 {#- A retired device's address (C185; the device-actions canvas, board 12, signed off
     2026-10-03): it is in no inventory and has no tabs, so its page is its retired record,
     read from its retire commit (`retire.retired_record`), never a bare 404. -#}
-{% block title %}{{ name }} (retired) · NMAS{% endblock %}
+{% block title %}{{ name }} (retired) · {{ brand.short }}{% endblock %}
 {% block main %}
 <nav class="crumbs" aria-label="Breadcrumb"><a href="{{ url_for('v2.devices') }}">Devices</a><span aria-hidden="true">/</span><span>{{ name }}</span></nav>
 <div class="page-head">
   <div class="page-title">
     <div class="title-row"><h1 class="mono">{{ name }} {{ info('retire', 'afterwards') }}</h1> {{ badge('Retired', 'muted') }}</div>
-    <p class="sub">Retired {{ stamp(r.at) }} · network {{ list_name }} · out of management: nothing in NMAS checks, captures or deploys it</p>
+    <p class="sub">Retired {{ stamp(r.at) }} · network {{ list_name }} · out of management: nothing in {{ brand.short }} checks, captures or deploys it</p>
   </div>
 </div>
 <section class="card retired-card">
