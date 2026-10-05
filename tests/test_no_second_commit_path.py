@@ -55,7 +55,7 @@ def _refuse_commits(repo):
 
 
 def _seed(lab):
-    out = R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n", "203.0.113.1")],
+    out = R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n", "203.0.113.1", platform="cisco_ios")],
                         allow_new=True)
     assert out["ok"], out
     return os.path.join(lab, "golden", "r1.cfg")
@@ -67,7 +67,7 @@ class TestAFailedSaveLeavesNothing:
         committed = open(path, "rb").read()
         _refuse_commits(lab)
         out = R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n changed\n",
-                                                 "203.0.113.1")])
+                                                 "203.0.113.1", platform="cisco_ios")])
         assert out["ok"] is False and "refused-by-hook" in out["error"]
         assert _g(lab, "diff", "--cached", "--name-only") == ""
         assert open(path, "rb").read() == committed
@@ -76,7 +76,7 @@ class TestAFailedSaveLeavesNothing:
     def test_a_new_golden_is_removed(self, lab):
         _seed(lab)
         _refuse_commits(lab)
-        out = R.save_golden("lab", [R.GoldenItem("r2", "hostname r2\n", "203.0.113.2")],
+        out = R.save_golden("lab", [R.GoldenItem("r2", "hostname r2\n", "203.0.113.2", platform="cisco_ios")],
                             allow_new=True)
         assert out["ok"] is False
         assert not os.path.exists(os.path.join(lab, "golden", "r2.cfg"))
@@ -85,7 +85,7 @@ class TestAFailedSaveLeavesNothing:
     def test_the_control_a_successful_save_still_commits(self, lab):
         path = _seed(lab)
         out = R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n changed\n",
-                                                 "203.0.113.1")])
+                                                 "203.0.113.1", platform="cisco_ios")])
         assert out["ok"] and out["changed"]
         assert "changed" in open(path).read()
         assert "Intent-Match:" in _g(lab, "log", "-1", "--format=%B")
@@ -186,7 +186,7 @@ class TestTheStatusNamesWhatIsLeft:
 class TestTheSourceIsRecordedAsGiven:
     def test_rotation_is_recorded_as_rotation(self, lab):
         _seed(lab)
-        out = R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n x\n", "203.0.113.1")],
+        out = R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n x\n", "203.0.113.1", platform="cisco_ios")],
                             source="rotation")
         assert out["ok"], out
         assert "Source: rotation" in _g(lab, "log", "-1", "--format=%B")
@@ -194,7 +194,7 @@ class TestTheSourceIsRecordedAsGiven:
     def test_a_malformed_source_is_refused_before_anything_is_written(self, lab):
         path = _seed(lab)
         before = open(path, "rb").read()
-        out = R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n y\n", "203.0.113.1")],
+        out = R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n y\n", "203.0.113.1", platform="cisco_ios")],
                             source="Not A Slug")
         assert out["ok"] is False and "nothing was saved" in out["error"]
         assert open(path, "rb").read() == before

@@ -116,7 +116,7 @@ class TestTheAssistantCanNeverMint:
         monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
 
         out = save_golden("lab", [GoldenItem("never-seen", "hostname x\n",
-                                             "203.0.113.77")],
+                                             "203.0.113.77", platform="cisco_ios")],
                           source="ai", actor="assistant")
         assert out["ok"] is False
         assert "not in the manifest" in out["error"]
@@ -160,7 +160,7 @@ class TestTheRefusalSaysWhereIdentitiesAreCreated:
                                 "nsot_device_tag_retention": 50}.get(key, default))
         monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
 
-        out = save_golden("lab", [GoldenItem("nope", "hostname x\n")],
+        out = save_golden("lab", [GoldenItem("nope", "hostname x\n", platform="cisco_ios")],
                           source="manual", actor="test")
         assert "onboarding wizard" in out["error"]
         # Add Device was removed (C102), so the refusal no longer names it;

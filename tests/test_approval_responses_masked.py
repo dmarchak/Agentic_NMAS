@@ -27,7 +27,7 @@ def queue(tmp_path, monkeypatch):
     monkeypatch.setattr("modules.config.get_current_list_name", lambda: "t")
     (tmp_path / "t").mkdir()
     ip = "203.0.113.12"
-    assert save_golden("t", [GoldenItem("r2", "hostname r2\n", ip)],
+    assert save_golden("t", [GoldenItem("r2", "hostname r2\n", ip, platform="cisco_ios")],
                        source="onboarding", actor="x", allow_new=True)["ok"]
     device = {"hostname": "r2", "ip": ip, "device_type": "cisco_xe", "platform": "cisco_iosxe"}
     monkeypatch.setattr("modules.nsot.restore._devices_of", lambda ln: [dict(device)])

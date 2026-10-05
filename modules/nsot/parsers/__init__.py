@@ -18,14 +18,20 @@ REGISTRY = {
     "cisco-ios-xe": CiscoIosXeParser,
 }
 
-DEFAULT_PARSER = CiscoIosParser
-
 
 def get_parser(platform: str):
-    """Return a parser instance for *platform*, defaulting to IOS."""
-    cls = REGISTRY.get((platform or "").strip().lower(), DEFAULT_PARSER)
+    """Return a parser instance for *platform*, or refuse: there is no default
+    parser (C452). An IOS parser handed a FortiGate's config would turn it into
+    IOS intent; refusing names the platform it was given."""
+    cls = REGISTRY.get((platform or "").strip().lower())
+    if cls is None:
+        from modules.nsot.platform import UnknownPlatform
+        raise UnknownPlatform(
+            f"no parser for platform '{(platform or '').strip() or '(none)'}': the tool parses "
+            f"{', '.join(sorted({c.platform for c in REGISTRY.values()}))} only, and never reads "
+            "a device as another platform")
     return cls()
 
 
 __all__ = ["BaseParser", "ConfigBlock", "split_blocks", "CiscoIosParser",
-           "CiscoIosXeParser", "REGISTRY", "get_parser", "DEFAULT_PARSER"]
+           "CiscoIosXeParser", "REGISTRY", "get_parser"]

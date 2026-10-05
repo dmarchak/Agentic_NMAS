@@ -20,7 +20,8 @@ import os
 import pytest
 
 from modules.nsot.platform import (
-    DEFAULT_PLATFORM, describe, netmiko_type_for_device, platform_for_device,
+    UnknownPlatform, describe, netmiko_type_for_device, platform_for_device,
+    require_platform,
 )
 
 
@@ -59,11 +60,14 @@ class TestBackwardCompatibility:
         assert platform_for_device({"device_type": "cisco_xe", "platform": "  "}) \
             == "cisco_iosxe"
 
-    def test_nothing_at_all_defaults(self):
-        assert platform_for_device({}) == DEFAULT_PLATFORM
+    def test_nothing_at_all_is_unknown_never_cisco_ios(self):
+        """C452: there is no default dialect."""
+        assert platform_for_device({}) == ""
 
-    def test_unknown_driver_defaults_without_raising(self):
-        assert platform_for_device({"device_type": "arista_eos"}) == DEFAULT_PLATFORM
+    def test_unknown_driver_is_unknown_without_raising(self):
+        """C452: a FortiGate's driver was read as cisco_ios."""
+        assert platform_for_device({"device_type": "fortinet"}) == ""
+        assert platform_for_device({"device_type": "arista_eos"}) == ""
 
     def test_derivation_is_reported_as_a_guess(self):
         assert "derived" in describe({"device_type": "cisco_ios"})["platform_source"]

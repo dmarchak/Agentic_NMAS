@@ -4154,8 +4154,8 @@ reads an unknown driver as `cisco_ios` (C452).
   - **A mismatch, or a report the tool cannot place,** refuses, naming both: "fw1: declared
     cisco_ios; it reports 'FortiGate-60F v7.2.8'". The tool never records a golden from a device
     it does not understand.
-- **The default goes (C452).** An unknown platform is an answer, "", that refuses, never
-  `cisco_ios`. NetBox's `platform_default_netmiko_type` is a guess with a warning, so it is
+- **The default goes (C452). DONE 2026-10-04, ahead of the rest, on the operator's decision:**
+  an unknown platform is an answer, "", that refuses by name, never `cisco_ios`. NetBox's `platform_default_netmiko_type` is a guess with a warning, so it is
   retired, or limited to the MONITORED tier, where a guess cannot reach a parser.
 - **After onboarding, the same comparison runs on every `platform-facts` read.** A device whose
   report stops matching (a replaced chassis, a re-imaged box) is a Needs attention row: "r3

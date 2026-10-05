@@ -27,11 +27,15 @@ import logging
 
 log = logging.getLogger(__name__)
 
-DEFAULT_PLATFORM = "cisco_ios"
+#: THERE IS NO DEFAULT DIALECT (C452, the operator, 2026-10-04). An unknown device
+#: was read as `cisco_ios`: a FortiGate in a CSV list would have been parsed with
+#: IOS's parser, rendered from IOS's templates and recorded as an IOS golden. An
+#: unknown platform is the answer "", and whatever needs a dialect refuses it,
+#: naming the device and what it reports (`UnknownPlatform`, `unknown_words`).
 
 #: Netmiko driver → config dialect, used only when no platform is recorded.
-#: A best-effort guess that keeps existing lists working; it is not a
-#: replacement for recording the platform.
+#: Five Cisco drivers whose dialect is certain; any other driver is unknown,
+#: never guessed.
 _DERIVED_FROM_DEVICE_TYPE = {
     "cisco_ios":     "cisco_ios",
     "cisco_xe":      "cisco_iosxe",
@@ -67,6 +71,48 @@ DIALECTS = frozenset({"cisco_ios", "cisco_iosxe"})
 def is_dialect(value: str) -> bool:
     """Is *value* a config dialect, as opposed to a slug or a driver?"""
     return (value or "").strip() in DIALECTS
+
+
+class UnknownPlatform(ValueError):
+    """A device whose config dialect the tool does not know (C452). Its words
+    name the device, what its inventory row says and what the device reports."""
+
+
+def _reported(hostname: str) -> str:
+    """What *hostname* says it is, from the `platform-facts` store (C426): its
+    own SNMP sysDescr. A store read, never a device or Prometheus read."""
+    try:
+        from modules.readers import platform_facts
+        devices, _at, why = platform_facts.facts()
+    except Exception as exc:                   # noqa: BLE001 - the words, never a crash
+        return f"what it reports could not be read ({exc})"
+    if why:
+        return f"what it reports is not known ({why})"
+    descr = ((devices.get(hostname) or {}).get("descr") or "").strip()
+    if not descr:
+        return f"it reports nothing yet (Prometheus holds no sysDescr for {hostname})"
+    return f"it reports '{descr}' (its SNMP sysDescr)"
+
+
+def unknown_words(device: dict) -> str:
+    """Why *device*'s platform is refused: the device, its row, its report."""
+    name = (device.get("hostname") or "").strip() or "this device"
+    said = [f"{label} '{(device.get(key) or '').strip()}'"
+            for key, label in (("platform", "platform"), ("_platform", "NetBox platform"),
+                               ("device_type", "device_type"))
+            if (device.get(key) or "").strip()]
+    return (f"{name}: the tool does not know its platform, and refuses rather than read it "
+            f"as another. Its inventory row says {', '.join(said) or 'no platform and no device_type'}; "
+            f"{_reported(name)}. The platforms the tool knows: {', '.join(sorted(DIALECTS))}")
+
+
+def require_platform(device: dict) -> str:
+    """*device*'s config dialect, or `UnknownPlatform` naming it. For anything
+    that parses, renders, records or sends: never a guessed dialect."""
+    dialect = platform_for_device(device)
+    if is_dialect(dialect):
+        return dialect
+    raise UnknownPlatform(unknown_words(device))
 
 
 def assert_dialect(value: str, where: str = "") -> str:
@@ -116,8 +162,8 @@ def platform_for_device(device: dict) -> str:
 
     1. an explicit ``platform`` column — the operator said so
     2. ``_platform``, the NetBox platform slug carried by the inventory adapter
-    3. derived from ``device_type``, the Netmiko driver — a guess, logged as one
-    4. :data:`DEFAULT_PLATFORM`
+    3. derived from ``device_type``, one of five Cisco drivers whose dialect is certain
+    4. ``""``: unknown, never a default (C452). `require_platform()` refuses it.
     """
     explicit = (device.get("platform") or "").strip().lower()
     if explicit:
@@ -134,10 +180,10 @@ def platform_for_device(device: dict) -> str:
         derived = _DERIVED_FROM_DEVICE_TYPE.get(device_type)
         if derived:
             return derived
-        log.debug("platform: no mapping for device_type %r on %s — defaulting to %s",
-                  device_type, device.get("hostname", "?"), DEFAULT_PLATFORM)
+        log.info("platform: device_type %r on %s names no dialect the tool knows; "
+                 "its platform is unknown", device_type, device.get("hostname", "?"))
 
-    return DEFAULT_PLATFORM
+    return ""
 
 
 def netmiko_type_for_dialect(dialect: str) -> str:
@@ -170,17 +216,26 @@ def netmiko_type_for_dialect(dialect: str) -> str:
 
 
 def netmiko_type_for_device(device: dict) -> str:
-    """The Netmiko driver — how to open a session. Unchanged by this module."""
-    return (device.get("device_type") or DEFAULT_PLATFORM).strip() or DEFAULT_PLATFORM
+    """The Netmiko driver — how to open a session: the row's own, else the one
+    mapped for its dialect, else `UnknownPlatform` (never `cisco_ios` by default,
+    C452)."""
+    driver = (device.get("device_type") or "").strip()
+    if driver:
+        return driver
+    return netmiko_type_for_dialect(require_platform(device))
 
 
 def describe(device: dict) -> dict:
     """Both answers plus where each came from, for the UI and diagnostics."""
     explicit = bool((device.get("platform") or "").strip())
     netbox = bool((device.get("_platform") or "").strip())
+    try:
+        driver = netmiko_type_for_device(device)
+    except ValueError:
+        driver = ""
     return {
         "platform": platform_for_device(device),
-        "netmiko_device_type": netmiko_type_for_device(device),
+        "netmiko_device_type": driver,
         "platform_source": ("explicit" if explicit
                             else "netbox" if netbox
                             else "derived from device_type"),

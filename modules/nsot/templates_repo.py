@@ -308,7 +308,8 @@ def _platform_slug(platform: str) -> str:
     """Map a NetBox platform slug to the parser platform the templates key on."""
     from modules.nsot.parsers import REGISTRY
     cls = REGISTRY.get((platform or "").strip().lower())
-    return cls.platform if cls else (platform or "cisco_ios")
+    # No `cisco_ios` default (C452): an unknown platform binds to no template.
+    return cls.platform if cls else (platform or "")
 
 
 def render_source(repo: str, device: str, platform: str) -> dict:

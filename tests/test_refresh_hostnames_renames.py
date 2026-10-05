@@ -33,7 +33,7 @@ def lab(tmp_path, monkeypatch, intent_matches):
     list_dir.mkdir()
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(list_dir))
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
-    assert R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n!\nend\n", IP)],
+    assert R.save_golden("lab", [R.GoldenItem("r1", "hostname r1\n!\nend\n", IP, platform="cisco_ios")],
                          allow_new=True)["ok"]
     repo = str(list_dir / "config_repo")
     devices = [{"hostname": "r1", "ip": IP, "device_type": "cisco_ios",

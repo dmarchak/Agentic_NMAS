@@ -257,7 +257,7 @@ class TestTheStaleTriggerIsGone:
 
         _repo.init_repo(repo_dir)
         _repo.save_golden("lab", [_repo.GoldenItem("r6", "hostname r6\n!\nend\n",
-                                                   "203.0.113.6")],
+                                                   "203.0.113.6", platform="cisco_ios")],
                           source="test", actor="t", allow_new=True)
 
         em._events.clear()

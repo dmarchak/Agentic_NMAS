@@ -232,7 +232,7 @@ def _setup(v, mp, client):
     # golden predates the intent, and a restore correctly skips it).
     v["_first_golden"] = R.git(repo, "rev-parse", "HEAD")[1].strip()
     v["template_secret"].append(_p("Rend"))
-    R.save_golden(LIST, [R.GoldenItem("r1", _head_golden(), DEVICE["ip"])],
+    R.save_golden(LIST, [R.GoldenItem("r1", _head_golden(), DEVICE["ip"], platform="cisco_ios")],
                   source="manual", actor="t", baseline=False)
     v["golden"].append(_p("HeadComm"))
 

@@ -143,10 +143,10 @@ class TestWhatIsCommitted:
         from modules.nsot import repo as R
         monkeypatch.setattr("modules.config.get_list_data_dir",
                             lambda name: os.path.dirname(repo))
-        item = R.GoldenItem("r1", "hostname r1\n", "203.0.113.1", netbox_id=1)
+        item = R.GoldenItem("r1", "hostname r1\n", "203.0.113.1", netbox_id=1, platform="cisco_ios")
         assert R.save_golden("Lab", [item], allow_new=True)["ok"]
         new = R.GoldenItem("r1", "hostname r1\nntp server 192.0.2.1\n", "203.0.113.1",
-                           netbox_id=1)
+                           netbox_id=1, platform="cisco_ios")
         with open(os.path.join(repo, "golden", "r1.cfg"), "w", newline="\n") as fh:
             fh.write(R.golden_body("r1", "203.0.113.1", new.config_text))
         got = R.save_golden("Lab", [new])
@@ -174,7 +174,7 @@ class TestReadersAndTags:
 
         monkeypatch.setattr(R, "git", refuse_tags)
         got = R.save_golden("Lab", [R.GoldenItem("r1", "hostname r1\n", "203.0.113.1",
-                                                 netbox_id=1)], allow_new=True)
+                                                 netbox_id=1, platform="cisco_ios")], allow_new=True)
         assert got["ok"] and got["tags"] == []
         assert got["tag_failures"] and "cannot lock ref" in got["tag_failures"][0]
 

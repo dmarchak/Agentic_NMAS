@@ -37,8 +37,14 @@ class TestRegistry:
         assert isinstance(get_parser("cisco_xe"), CiscoIosXeParser)
         assert isinstance(get_parser("cisco-ios-xe"), CiscoIosXeParser)
 
-    def test_unknown_platform_falls_back(self):
-        assert get_parser("arista_eos") is not None
+    def test_unknown_platform_is_refused_never_parsed_as_ios(self):
+        """C452: an IOS parser handed another platform's config turns it into
+        IOS intent. There is no default parser; the refusal names the platform."""
+        from modules.nsot.platform import UnknownPlatform
+        for platform in ("arista_eos", "fortios", "", None):
+            with pytest.raises(UnknownPlatform) as refused:
+                get_parser(platform)
+            assert (platform or "(none)") in str(refused.value)
 
     def test_registry_covers_the_platform_map_defaults(self):
         for slug in ("cisco-ios-xe", "cisco-ios"):

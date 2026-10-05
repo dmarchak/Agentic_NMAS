@@ -97,16 +97,24 @@ def _captured_running(list_name: str, hostname: str):
         return None, ""
 
 
-def _platform_for(hostname: str) -> str:
-    """The device's config dialect — not its Netmiko driver."""
+def _row_for(hostname: str) -> dict:
+    """The device's inventory row in the active list, or ``{}``."""
     from modules.device import get_current_device_list, load_saved_devices
-    from modules.nsot.platform import DEFAULT_PLATFORM, platform_for_device
 
     _name, csv_path = get_current_device_list()
     for dev in load_saved_devices(csv_path):
         if dev.get("hostname") == hostname:
-            return platform_for_device(dev)
-    return DEFAULT_PLATFORM
+            return dev
+    return {}
+
+
+def _platform_for(hostname: str) -> str:
+    """The device's config dialect — not its Netmiko driver. A device not in
+    the list has none: "" (C452), refused by name, never `cisco_ios` by default."""
+    from modules.nsot.platform import platform_for_device
+
+    row = _row_for(hostname)
+    return platform_for_device(row) if row else ""
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +464,10 @@ def preview(hostname):
             "or run a backup first — this view never reads from the device.")}), 404
 
     platform = _platform_for(hostname)
+    from modules.nsot.platform import is_dialect, unknown_words
+    if not is_dialect(platform):
+        return jsonify({"ok": False, "error": unknown_words(
+            _row_for(hostname) or {"hostname": hostname})}), 409
     template = templates_repo.template_for_device(repo, hostname, platform)
 
     artifact = artifact_for(hostname, source, repo, platform, template)

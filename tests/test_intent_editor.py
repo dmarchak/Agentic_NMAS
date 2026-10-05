@@ -56,6 +56,20 @@ def world(tmp_path, monkeypatch):
                             "nsot_git_author_name": "NMAS",
                             "nsot_git_author_email": "n@l"}.get(key, default))
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
+    # s4's INVENTORY ROW, with its platform (C452): the editor renders through
+    # the device's platform and refuses one it does not know, where it once read
+    # every unlisted device as cisco_ios.
+    import csv as _csv
+    from modules.device import DEVICE_CSV_FIELDS
+    inventory = list_dir / "devices.csv"
+    with open(inventory, "w", newline="", encoding="utf-8") as fh:
+        writer = _csv.DictWriter(fh, fieldnames=DEVICE_CSV_FIELDS)
+        writer.writeheader()
+        for name, ip in (("s4", "192.0.2.14"), ("s9", "192.0.2.9")):
+            writer.writerow({"hostname": name, "device_type": "cisco_ios", "ip": ip,
+                             "platform": "cisco_ios", "role": "switch"})
+    monkeypatch.setattr("modules.device.get_current_device_list",
+                        lambda: ("lab", str(inventory)))
 
     _repo.init_repo(repo_dir)
     # COMMITTED, not merely written. `_captured_golden()` reads at HEAD --

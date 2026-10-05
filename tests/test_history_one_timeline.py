@@ -50,9 +50,9 @@ def planted(lab):  # noqa: F811
     repo = lab["repo"]
     body = open(os.path.join(repo, "golden", "r3.cfg"), encoding="utf-8").read()
     assert R.save_golden("Lab", [R.GoldenItem("r4", body.replace("hostname r3", "hostname r4"),
-                                              "203.0.113.14"),
+                                              "203.0.113.14", platform="cisco_ios"),
                                  R.GoldenItem("s9", body.replace("hostname r3", "hostname s9"),
-                                              "203.0.113.29")],
+                                              "203.0.113.29", platform="cisco_ios")],
                          source="capture", actor="alex@example.com", allow_new=True)["ok"]
     # A rename, by hand: the older commits name s9, and s8's history follows them.
     assert R.git(repo, "mv", "golden/s9.cfg", "golden/s8.cfg")[0] == 0

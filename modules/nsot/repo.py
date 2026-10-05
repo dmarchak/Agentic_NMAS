@@ -881,6 +881,44 @@ def _supersede_drift_items(list_name: str, hosts: list, sha: str, source: str,
         return []
 
 
+def _platforms(repo: str, list_name: str, items: list) -> tuple:
+    """``({hostname: dialect}, {hostname: why})``: each item's config dialect,
+    or why it is unknown (C452).
+
+    The dialect comes from, in order: the item's own platform; the device's
+    inventory row (by address, then name); the platform its manifest entry
+    recorded. The one found is what the manifest records for the device. None
+    of them a known dialect is a refusal naming the device, its row and what it
+    reports, never `cisco_ios` by default."""
+    from modules.nsot.platform import is_dialect, platform_for_device, unknown_words
+
+    rows = {}
+    try:
+        from modules.config import get_list_data_dir
+        from modules.device import load_saved_devices
+        for dev in load_saved_devices(os.path.join(get_list_data_dir(list_name), "devices.csv")):
+            for key in ((dev.get("ip") or "").strip(), (dev.get("hostname") or "").strip().lower()):
+                if key:
+                    rows.setdefault(key, dev)
+    except Exception as exc:                   # noqa: BLE001 - the manifest still answers
+        log.debug("repo: inventory unavailable for '%s': %s", list_name, exc)
+    recorded = {(e.get("name") or "").lower(): e.get("platform") or ""
+                for e in _manifest.load(repo).get("devices", {}).values()}
+
+    dialects, unknown = {}, {}
+    for item in items:
+        row = rows.get((item.mgmt_ip or "").strip()) or rows.get(item.hostname.lower()) or {}
+        for candidate in (item.platform, platform_for_device(row) if row else "",
+                          recorded.get(item.hostname.lower(), "")):
+            dialect = platform_for_device({"platform": candidate}) if candidate else ""
+            if is_dialect(dialect):
+                dialects[item.hostname] = dialect
+                break
+        else:
+            unknown[item.hostname] = unknown_words(dict(row, hostname=item.hostname))
+    return dialects, unknown
+
+
 def save_golden(list_name: str, items: list, source: str = "manual",
                 actor: str = "nmas", message: str = "", allow_new: bool = False,
                 pipeline_id: str = None, baseline: bool = None,
@@ -916,7 +954,13 @@ def save_golden(list_name: str, items: list, source: str = "manual",
         init_repo(repo)
         os.makedirs(os.path.join(repo, "golden"), exist_ok=True)
 
+        # NEVER A GOLDEN FROM A DEVICE THE TOOL DOES NOT UNDERSTAND (C452): a device
+        # whose platform is unknown is refused here, alone, before its manifest entry
+        # or its file is touched.
+        dialects, unknown_platform = _platforms(repo, list_name, items)
         for item in items:
+            if item.hostname in unknown_platform:
+                continue
             identity = resolve_identity(repo, item)
             if identity is None:
                 if not allow_new:
@@ -937,7 +981,7 @@ def save_golden(list_name: str, items: list, source: str = "manual",
 
             _manifest.upsert_device(repo, identity, item.hostname, item.mgmt_ip,
                                     netbox_id=item.netbox_id,
-                                    platform=item.platform, golden=rel)
+                                    platform=item.platform or dialects[item.hostname], golden=rel)
 
             if not _content_changed(repo, rel, content):
                 unchanged.append(item.hostname)
@@ -965,7 +1009,10 @@ def save_golden(list_name: str, items: list, source: str = "manual",
                                                item.config_text, item.platform or "")
                   for item in items}
         acks = acknowledge_structural_change
-        refused, structural, kept = [], [], []
+        refused = [{"device": host, "kind": "platform", "lost": {},
+                    "reason": why + ". Nothing was recorded for it"}
+                   for host, why in unknown_platform.items()]
+        structural, kept = [], []
         for entry in pending:
             _item, _identity, _rel, abs_path, content = entry
             ack = (acks.get(_item.hostname, False) if isinstance(acks, dict) else acks)

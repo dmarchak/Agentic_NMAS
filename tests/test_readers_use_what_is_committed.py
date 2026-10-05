@@ -45,7 +45,7 @@ def lab(tmp_path, monkeypatch, intent_matches):
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
     repo = str(list_dir / "config_repo")
     ip = DEVICE["ip"]
-    out = R.save_golden("lab", [R.GoldenItem("r1", f"{HEAD_LINE}\n!\nend\n", ip)],
+    out = R.save_golden("lab", [R.GoldenItem("r1", f"{HEAD_LINE}\n!\nend\n", ip, platform="cisco_ios")],
                         allow_new=True)
     assert out["ok"], out
     monkeypatch.setattr("modules.ai_assistant._nsot_repo_dir", lambda: repo)

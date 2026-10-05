@@ -57,8 +57,8 @@ def lab(tmp_path, monkeypatch):
 
     _repo.init_repo(repo_dir)
     _repo.save_golden("lab", [
-        _repo.GoldenItem("r1", CONFIG.format(name="r1"), "203.0.113.1"),
-        _repo.GoldenItem("r2", CONFIG.format(name="r2"), "203.0.113.2"),
+        _repo.GoldenItem("r1", CONFIG.format(name="r1"), "203.0.113.1", platform="cisco_ios"),
+        _repo.GoldenItem("r2", CONFIG.format(name="r2"), "203.0.113.2", platform="cisco_ios"),
     ], source="test", actor="test", allow_new=True)
 
     # The legacy store holds r1 only -- the pre-migration world. r2 is the
@@ -185,7 +185,7 @@ class TestOneSubprocessForTheWholeStore:
         first = _repo.golden_commit_times(lab["repo"])["golden/r1.cfg"]
         time.sleep(1.1)
         _repo.save_golden("lab", [_repo.GoldenItem("r1", "hostname r1\n!\nchanged\nend\n",
-                                                   "203.0.113.1")],
+                                                   "203.0.113.1", platform="cisco_ios")],
                           source="test", actor="test")
         second = _repo.golden_commit_times(lab["repo"])["golden/r1.cfg"]
         assert second > first, (first, second)

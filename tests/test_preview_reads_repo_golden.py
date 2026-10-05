@@ -51,6 +51,11 @@ def world(tmp_path, monkeypatch):
     list_dir = tmp_path / "lab"
     (list_dir / "golden_configs").mkdir(parents=True)
     (list_dir / "golden_configs" / "s1.cfg").write_text(LEGACY_GOLDEN)
+    # s1's inventory row, with its platform: a golden is recorded only for a device
+    # whose platform is known (C452).
+    (list_dir / "devices.csv").write_text(
+        "hostname,device_type,ip,username,password,secret,role,platform\n"
+        "s1,cisco_ios,192.0.2.14,,,,switch,cisco_ios\n", encoding="utf-8")
 
     monkeypatch.setattr("modules.config.get_list_data_dir",
                         lambda name: str(list_dir))

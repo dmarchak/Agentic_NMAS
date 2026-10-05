@@ -148,7 +148,7 @@ def lab(tmp_path, monkeypatch):
 
 
 def _save(operational, name="R1"):
-    item = R.GoldenItem(name, f"hostname {name}\n", "203.0.113.1", netbox_id=42)
+    item = R.GoldenItem(name, f"hostname {name}\n", "203.0.113.1", netbox_id=42, platform="cisco_ios")
     # The test's fleet is this one device: coverage stated (C91).
     return R.save_golden("Lab", [item], source="save_all", allow_new=True,
                          operational=operational, inventory_size=1)

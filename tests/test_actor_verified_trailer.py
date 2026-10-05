@@ -132,7 +132,7 @@ class TestEveryCommitThroughTheChokePoint:
         monkeypatch.setattr("modules.config.get_list_data_dir",
                             lambda name: str(tmp_path / name))
         (tmp_path / "t").mkdir()
-        out = R.save_golden("t", [R.GoldenItem("r1", "hostname r1\n", "192.0.2.1")],
+        out = R.save_golden("t", [R.GoldenItem("r1", "hostname r1\n", "192.0.2.1", platform="cisco_ios")],
                             source="manual", actor="operator", allow_new=True)
         assert out.get("ok"), out
         msg = _last_message(str(tmp_path / "t" / "config_repo"))
@@ -257,7 +257,7 @@ class TestAnApprovalCommitsItsApprover:
         (tmp_path / "t").mkdir()
         ip = "203.0.113.12"
         # The device exists (an approval never mints an identity).
-        assert save_golden("t", [GoldenItem("r2", "hostname r2\n", ip)],
+        assert save_golden("t", [GoldenItem("r2", "hostname r2\n", ip, platform="cisco_ios")],
                            source="onboarding", actor="x", allow_new=True)["ok"]
         repo = str(tmp_path / "t" / "config_repo")
         head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],

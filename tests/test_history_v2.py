@@ -34,11 +34,11 @@ def _ref(repo):
 
 @pytest.fixture
 def repo(lab):  # noqa: F811
-    _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12"),
-                  R.GoldenItem("s4", R2.replace("hostname r2", "hostname s4"), "203.0.113.24")],
+    _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios"),
+                  R.GoldenItem("s4", R2.replace("hostname r2", "hostname s4"), "203.0.113.24", platform="cisco_ios")],
           source="save_all", actor="test-person@example.invalid")
     planted = R2.replace("hostname r2\n", f"hostname r2\nsnmp-server community {COMMUNITY} RO\n")
-    assert R.save_golden("Lab", [R.GoldenItem("r2", planted, "203.0.113.12")],
+    assert R.save_golden("Lab", [R.GoldenItem("r2", planted, "203.0.113.12", platform="cisco_ios")],
                          source="rotation", actor="other@example.invalid", allow_new=False)["ok"]
     return lab
 
@@ -61,7 +61,7 @@ class TestOneRead:
         two = list(calls)
         calls.clear()
         _seed("Lab", [R.GoldenItem(f"x{i}", R2.replace("hostname r2", f"hostname x{i}"),
-                                   f"203.0.113.{40 + i}") for i in range(5)],
+                                   f"203.0.113.{40 + i}", platform="cisco_ios") for i in range(5)],
               source="capture", actor="a@example.invalid")
         calls.clear()
         _timeline(repo, members=["r2", "s4"] + [f"x{i}" for i in range(5)])

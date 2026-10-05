@@ -74,14 +74,14 @@ def _tag(repo, commit, name):
 
 class TestTheNewestEarnedBaseline:
     def test_a_save_all_earns_one(self, lab):
-        out = _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12")], source="save_all")
+        out = _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")], source="save_all")
         tag = next(t for t in out["tags"] if t.startswith("baseline/"))
         assert SS.newest_earned(lab)["tag"] == tag
 
     def test_withdrawn_and_unrecorded_are_skipped(self, lab, monkeypatch):
-        first = _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12")], source="save_all")
+        first = _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")], source="save_all")
         older = next(t for t in first["tags"] if t.startswith("baseline/"))
-        second = _seed("Lab", [R.GoldenItem("r2", ROTATED, "203.0.113.12")], source="save_all")
+        second = _seed("Lab", [R.GoldenItem("r2", ROTATED, "203.0.113.12", platform="cisco_ios")], source="save_all")
         newer = next(t for t in second["tags"] if t.startswith("baseline/"))
         assert SS.newest_earned(lab)["tag"] == newer
         sha = R.git(lab, "rev-parse", f"{newer}^{{commit}}")[1].strip()
@@ -89,7 +89,7 @@ class TestTheNewestEarnedBaseline:
                             lambda s: {"reason": "x"} if s == sha else None)
         assert SS.newest_earned(lab)["tag"] == older
         # A tag on a commit that recorded nothing (taken before 7.2) earns nothing.
-        manual = _seed("Lab", [R.GoldenItem("r2", ROTATED + "!\n", "203.0.113.12")],
+        manual = _seed("Lab", [R.GoldenItem("r2", ROTATED + "!\n", "203.0.113.12", platform="cisco_ios")],
                        source="manual")
         assert "Baseline:" not in R.git(lab, "log", "-1", "--format=%B", manual["commit"])[1]
         _tag(lab, manual["commit"], "baseline/29991231T000000Z")
@@ -99,8 +99,8 @@ class TestTheNewestEarnedBaseline:
 
 class TestTheBuild:
     def test_rotate_then_build_carries_the_new_credential(self, lab):
-        _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12")], source="save_all")
-        assert R.save_golden("Lab", [R.GoldenItem("r2", ROTATED, "203.0.113.12")],
+        _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")], source="save_all")
+        assert R.save_golden("Lab", [R.GoldenItem("r2", ROTATED, "203.0.113.12", platform="cisco_ios")],
                              source="rotation", actor="t", allow_new=False)["ok"]
         got = SS.build("Lab", hosts=["r2"])
         assert got["ok"] and got["baseline"]["tag"].startswith("baseline/")
@@ -108,10 +108,10 @@ class TestTheBuild:
         assert NEW_ACCOUNT in text and OLD_ACCOUNT not in text
 
     def test_a_device_the_baseline_does_not_hold_is_refused_alone(self, lab):
-        out = _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12")], source="save_all")
+        out = _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")], source="save_all")
         tag = next(t for t in out["tags"] if t.startswith("baseline/"))
         _seed("Lab", [R.GoldenItem("r7", R2.replace("hostname r2", "hostname r7"),
-                                   "203.0.113.17")])
+                                   "203.0.113.17", platform="cisco_ios")])
         got = SS.build("Lab", hosts=["r2", "r7"])
         assert got["devices"]["r2"]["state"] == "ok"
         assert got["devices"]["r7"] == {"state": "refused", "why": (
@@ -119,7 +119,7 @@ class TestTheBuild:
             "(Save All) to build its file")}
 
     def test_no_earned_baseline_builds_nothing_and_says_why(self, lab):
-        _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12")])
+        _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")])
         got = SS.build("Lab", hosts=["r2"])
         assert got["ok"] is False and "has no earned baseline" in got["error"]
 
@@ -136,10 +136,10 @@ def _cli():
 class TestTheHelperTheSyncCalls:
     def test_it_writes_each_file_owner_only_and_a_row_per_device(self, lab, tmp_path,
                                                                  monkeypatch):
-        out = _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12")], source="save_all")
+        out = _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")], source="save_all")
         tag = next(t for t in out["tags"] if t.startswith("baseline/"))
         _seed("Lab", [R.GoldenItem("r7", R2.replace("hostname r2", "hostname r7"),
-                                   "203.0.113.17")])
+                                   "203.0.113.17", platform="cisco_ios")])
         monkeypatch.setattr("modules.device.load_saved_devices",
                             lambda path: [{"hostname": "r2"}, {"hostname": "r7"}])
         dest = tmp_path / "src"
@@ -152,7 +152,7 @@ class TestTheHelperTheSyncCalls:
         assert rows[2].startswith(f"r7\trefused\t{tag} holds no golden for r7")
 
     def test_no_baseline_is_exit_2_writing_nothing(self, lab, tmp_path, capsys):
-        _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12")])
+        _seed("Lab", [R.GoldenItem("r2", R2, "203.0.113.12", platform="cisco_ios")])
         dest = tmp_path / "src"
         assert _cli().main(["--out", str(dest), "--list", "Lab"]) == 2
         assert not dest.exists() and "has no earned baseline" in capsys.readouterr().err

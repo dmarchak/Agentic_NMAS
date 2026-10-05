@@ -56,7 +56,7 @@ def _seed(list_name, items, **kw):
     return R.save_golden(list_name, items, **kw)
 
 def _item(name="R1", body="hostname R1\n", ip="203.0.113.1", nb_id=42):
-    return R.GoldenItem(name, body, ip, netbox_id=nb_id)
+    return R.GoldenItem(name, body, ip, netbox_id=nb_id, platform="cisco_ios")
 
 
 def _commit_count(repo):
@@ -490,32 +490,32 @@ class TestIdentityIsResolvedNotMinted:
         assert len(self._entries(lab)) == 1
 
         _seed("Lab", [R.GoldenItem("R1", "hostname R1\n ip routing\n",
-                                           "203.0.113.1")])
+                                           "203.0.113.1", platform="cisco_ios")])
         assert len(self._entries(lab)) == 1, "a second entry was minted"
 
     def test_it_matches_on_management_ip(self, lab):
         _seed("Lab", [_item("R1", "hostname R1\n")])
         identity = next(iter(self._entries(lab)))
         _seed("Lab", [R.GoldenItem("R1-renamed-in-csv", "hostname R1\n x\n",
-                                           "203.0.113.1")])
+                                           "203.0.113.1", platform="cisco_ios")])
         assert list(self._entries(lab)) == [identity]
 
     def test_it_matches_on_hostname_when_the_ip_is_absent(self, lab):
         _seed("Lab", [_item("R1", "hostname R1\n")])
         identity = next(iter(self._entries(lab)))
-        _seed("Lab", [R.GoldenItem("R1", "hostname R1\n y\n")])
+        _seed("Lab", [R.GoldenItem("R1", "hostname R1\n y\n", platform="cisco_ios")])
         assert list(self._entries(lab)) == [identity]
 
     def test_allow_new_false_refuses_an_unknown_device(self, lab):
         result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n",
-                                                    "203.0.113.99")],
+                                                    "203.0.113.99", platform="cisco_ios")],
                                allow_new=False)
         assert result["ok"] is False
         assert "not in the manifest" in result["error"]
         assert self._entries(lab) == {}
 
     def test_the_refusal_says_what_to_do(self, lab):
-        result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n")],
+        result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n", platform="cisco_ios")],
                                allow_new=False)
         assert "Onboard it first" in result["error"]
         # It named "allow_new=True" and the Add Device form until C102
@@ -529,7 +529,7 @@ class TestIdentityIsResolvedNotMinted:
     def test_allow_new_true_still_onboards(self, lab):
         """Minting happens in exactly one place, and it still happens there."""
         result = R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n",
-                                                    "203.0.113.99")],
+                                                    "203.0.113.99", platform="cisco_ios")],
                                allow_new=True)
         assert result["ok"] is True
         assert len(self._entries(lab)) == 1
@@ -561,7 +561,7 @@ class TestTwoConsecutiveDeploysMakeOneEntry:
                 device_uid = existing.split(":", 1)[1]
         return _seed("Lab", [R.GoldenItem("s4", body, "203.0.113.24",
                                                   netbox_id=netbox_id,
-                                                  device_uid=device_uid)],
+                                                  device_uid=device_uid, platform="cisco_ios")],
                              source="pipeline", allow_new=False)
 
     def test_one_entry_after_two_deploys(self, lab):
@@ -681,7 +681,7 @@ class TestMintingIsNotReachableFromTheResolver:
 
         stranger = R.GoldenItem("R1", "hostname R1\n ip routing\n",
                                 "203.0.113.1",
-                                device_uid="11111111-2222-3333-4444-555555555555")
+                                device_uid="11111111-2222-3333-4444-555555555555", platform="cisco_ios")
         assert stranger.identity.startswith("uid:")
         result = R.save_golden("Lab", [stranger], allow_new=False)
 
@@ -691,12 +691,12 @@ class TestMintingIsNotReachableFromTheResolver:
 
     def test_the_same_with_allow_new_creates_exactly_once(self, lab):
         brand_new = R.GoldenItem("BRAND-NEW", "hostname X\n", "203.0.113.99",
-                                 device_uid="11111111-2222-3333-4444-555555555555")
+                                 device_uid="11111111-2222-3333-4444-555555555555", platform="cisco_ios")
         R.save_golden("Lab", [brand_new], allow_new=True)
         assert len(self._entries(lab)) == 1
 
         R.save_golden("Lab", [R.GoldenItem("BRAND-NEW", "hostname X\n y\n",
-                                           "203.0.113.99")], allow_new=True)
+                                           "203.0.113.99", platform="cisco_ios")], allow_new=True)
         assert len(self._entries(lab)) == 1, "the second save created another"
 
     def test_a_csv_uid_that_names_nothing_never_becomes_an_entry(self, lab):
@@ -706,7 +706,7 @@ class TestMintingIsNotReachableFromTheResolver:
         for _ in range(3):
             _seed("Lab", [R.GoldenItem(
                 "R1", f"hostname R1\n x{_}\n", "203.0.113.1",
-                device_uid="deadbeef-0000-0000-0000-000000000000")],
+                device_uid="deadbeef-0000-0000-0000-000000000000", platform="cisco_ios")],
                 allow_new=False)
 
         assert set(self._entries(lab)) == before
@@ -730,7 +730,7 @@ class TestMintingIsNotReachableFromTheResolver:
         to agree.
         """
         # No NetBox id, so the manifest holds a minted uid.
-        _seed("Lab", [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1")])
+        _seed("Lab", [R.GoldenItem("R1", "hostname R1\n", "203.0.113.1", platform="cisco_ios")])
         identity = next(iter(self._entries(lab)))
         assert identity.startswith("uid:")
 
@@ -738,7 +738,7 @@ class TestMintingIsNotReachableFromTheResolver:
         # resolve this, so an address fallback would create a second entry.
         supplied = R.GoldenItem("R1-renamed", "hostname R1\n y\n",
                                 "203.0.113.200",
-                                device_uid=identity.split(":", 1)[1])
+                                device_uid=identity.split(":", 1)[1], platform="cisco_ios")
         result = R.save_golden("Lab", [supplied], allow_new=False)
 
         assert result["ok"] is True
@@ -814,14 +814,14 @@ class TestSaveGoldenRefusesToLoseSections:
         alone: r9 recorded, r1 refused with ITS reason, and no baseline."""
         from modules.nsot.repo import GoldenItem, save_golden
 
-        save_golden("lab", [GoldenItem("r1", self.FULL, "203.0.113.1"),
+        save_golden("lab", [GoldenItem("r1", self.FULL, "203.0.113.1", platform="cisco_ios"),
                             GoldenItem("r9", self.FULL.replace("hostname r1", "hostname r9"),
-                                       "203.0.113.19")],
+                                       "203.0.113.19", platform="cisco_ios")],
                     source="manual", actor="test", allow_new=True)
         nine = self.FULL.replace("hostname r1", "hostname r9").replace(
             "transport input ssh", "transport input ssh telnet")
-        out = save_golden("lab", [GoldenItem("r1", self.FILTERED, "203.0.113.1"),
-                                  GoldenItem("r9", nine, "203.0.113.19")],
+        out = save_golden("lab", [GoldenItem("r1", self.FILTERED, "203.0.113.1", platform="cisco_ios"),
+                                  GoldenItem("r9", nine, "203.0.113.19", platform="cisco_ios")],
                           source="save_all", actor="test", allow_new=False,
                           inventory_size=2)
         assert out["ok"] is True and out["changed"] == ["r9"]
@@ -844,7 +844,7 @@ class TestSaveGoldenRefusesToLoseSections:
         from modules.nsot.repo import GoldenItem, save_golden
         kw.setdefault("allow_new", True)      # these fixtures onboard
         return save_golden("lab",
-                           [GoldenItem("r1", text, "203.0.113.1")],
+                           [GoldenItem("r1", text, "203.0.113.1", platform="cisco_ios")],
                            source="manual", actor="test", **kw)
 
     def test_a_filtered_capture_is_refused(self, lab):
@@ -924,16 +924,16 @@ class TestSaveGoldenRefusesToLoseSections:
 
         good = self.FULL.replace("hostname r1", "hostname r9")
         assert save_golden("lab",
-                           [GoldenItem("r1", self.FULL, "203.0.113.1"),
-                            GoldenItem("r9", good, "203.0.113.9")],
+                           [GoldenItem("r1", self.FULL, "203.0.113.1", platform="cisco_ios"),
+                            GoldenItem("r9", good, "203.0.113.9", platform="cisco_ios")],
                            source="manual", actor="test",
                            allow_new=True)["ok"] is True
         r9_before = read_shipped(os.path.join(lab, "golden", "r9.cfg"))
 
         grown = self.FULL.replace("!\nend\n", "interface GigabitEthernet9\n!\nend\n")
         out = save_golden("lab",
-                          [GoldenItem("r1", grown, "203.0.113.1"),
-                           GoldenItem("r9", self.FILTERED, "203.0.113.9")],
+                          [GoldenItem("r1", grown, "203.0.113.1", platform="cisco_ios"),
+                           GoldenItem("r9", self.FILTERED, "203.0.113.9", platform="cisco_ios")],
                           source="manual", actor="test", allow_new=True)
 
         assert out["ok"] is True and out["changed"] == ["r1"]
@@ -975,7 +975,7 @@ class TestABaselineNeedsNoCommit:
 
     def _items(self, names):
         from modules.nsot.repo import GoldenItem
-        return [GoldenItem(n, self.BODY.format(name=n), f"203.0.113.{i + 1}")
+        return [GoldenItem(n, self.BODY.format(name=n), f"203.0.113.{i + 1}", platform="cisco_ios")
                 for i, n in enumerate(names)]
 
     def _head(self, lab):

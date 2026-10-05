@@ -423,6 +423,11 @@ def preview_committed_edit(hostname):
                                     "against yet.")})
 
     platform = _platform_of_host(hostname)
+    from modules.nsot.platform import is_dialect, unknown_words
+    if not is_dialect(platform):
+        from routes.templates import _row_for
+        return jsonify({"ok": False, "stage": "render", "error": unknown_words(
+            _row_for(hostname) or {"hostname": hostname})}), 409
     template = templates_repo.template_for_device(repo, hostname, platform)
 
     # `artifact_for()`, not `build_artifact()` directly. The latter defaults
@@ -897,6 +902,10 @@ def _bulk_render_and_eligible(list_name: str, repo: str):
         if not capture:
             raise RuntimeError("no captured config to render against")
         platform = _platform_of_host(host)
+        from modules.nsot.platform import UnknownPlatform, is_dialect, unknown_words
+        if not is_dialect(platform):
+            from routes.templates import _row_for
+            raise UnknownPlatform(unknown_words(_row_for(host) or {"hostname": host}))
         template = templates_repo.template_for_device(repo, host, platform)
         from modules.nsot import profile as _profile
         art = artifact_for(host, capture, repo, platform, template,

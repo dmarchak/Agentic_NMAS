@@ -41,7 +41,7 @@ def test_golden_history_keeps_the_record_and_draws_the_exception(tmp_path, monke
     list_dir.mkdir()
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(list_dir))
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
-    R.save_golden("lab", [R.GoldenItem("s1", "hostname s1\n", "192.0.2.5")],
+    R.save_golden("lab", [R.GoldenItem("s1", "hostname s1\n", "192.0.2.5", platform="cisco_ios")],
                   allow_new=True, source="manual")
     repo = str(list_dir / "config_repo")
     sha = R.golden_history(repo, "s1")[0]["sha"]
