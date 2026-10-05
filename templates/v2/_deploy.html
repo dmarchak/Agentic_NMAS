@@ -14,7 +14,7 @@
                 'not_applicable': ('n/a', 'muted'), 'not_reached': ('not reached', 'muted')} -%}
 {%- if c.state == 'preview' %}
 <section class="op-card" id="device-op" aria-labelledby="op-title"
-         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='deploy', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
+         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='deploy', back=c.back) }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML" hx-include="find .op-form"{% endif %}>
   <div class="op-hd"><h2 id="op-title">Deploy committed intent to {{ c.host }}</h2>
     <div class="op-hd-actions">{{ how('deploy') }}{{ close_button('Cancel') }}</div></div>
   <form class="op-form" hx-get="{{ url_for('device_v2.deploy', name=c.host) }}" hx-trigger="change"

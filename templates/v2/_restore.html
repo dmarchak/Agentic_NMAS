@@ -71,7 +71,7 @@
 </section>
 {%- elif c.state == 'preview' %}
 <section class="op-card" id="device-op" aria-labelledby="op-title"
-         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='restore', back=c.back, moment=c.moment, un_onboard='1' if c.un_onboard else '') }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML"{% endif %}>
+         {%- if c.held %} hx-get="{{ url_for('device_v2.when_free', name=c.host, op='restore', back=c.back, moment=c.moment, un_onboard='1' if c.un_onboard else '') }}" hx-trigger="nmas:device_holds from:body" hx-swap="outerHTML" hx-include="find .op-form"{% endif %}>
   <div class="op-hd"><h2 id="op-title">Re-apply {{ c.moment_words }} to {{ c.host }}</h2>
     <div class="op-hd-actions">{{ how('restore') }}{{ choose_again() }}{{ close_button('Cancel') }}</div></div>
   <form class="op-form" hx-get="{{ url_for('device_v2.restore_preview', name=c.host) }}" hx-trigger="change"

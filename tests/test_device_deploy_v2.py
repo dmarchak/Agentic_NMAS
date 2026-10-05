@@ -24,11 +24,14 @@ removal. The plan is `routes.deploy.plan_devices`, the one `/deploy/plan` uses; 
 
 import html as html_mod
 import json
+import os
 import re
 
 import pytest
 
 from tests.test_profile_apply import lab  # noqa: F401 (the fixture)
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 @pytest.fixture
@@ -130,6 +133,27 @@ class TestTheCard:
         assert vals["command_hash"] != before["command_hash"]
         assert {"reason": "left over from the old design"} .items() <= next(
             a for a in json.loads(vals["authorise"]) if "load-interval" in a["line"]).items()
+
+    def test_a_freed_card_keeps_what_its_person_entered(self, deploy):
+        """C473 (2026-10-05): a card refused because another operation held the device redraws
+        when the hold ends, and it drew the card from its start, empty: the ticked removal and
+        every typed reason gone. Its redraw now sends the card's form, and `when_free` plans
+        from it, the same program and hash as the card had."""
+        _r, plain = _get(deploy, "/v2/device/r2/deploy?" + _reasons()[1:])
+        rid = _residue_id(plain)
+        q = f"rm={rid}&why::{rid}=left+over+from+the+old+design" + _reasons()
+        _r, direct = _get(deploy, f"/v2/device/r2/deploy?{q}")
+        _r, freed = _get(deploy, f"/v2/device/r2/when-free?op=deploy&back=overview&{q}")
+        assert "no load-interval 30" in freed, "the ticked removal survived"
+        assert _vals(freed)["command_hash"] == _vals(direct)["command_hash"]
+
+    def test_every_held_card_with_fields_sends_its_form_when_freed(self):
+        """The shape: each held card whose form a person fills (deploy, restore, retry) includes
+        that form in its `when_free` redraw. Retire and revert carry theirs in the URL."""
+        for name in ("_deploy.html", "_restore.html", "_retry.html"):
+            text = open(os.path.join(ROOT, "templates", "v2", name), encoding="utf-8").read()
+            held = [line for line in text.splitlines() if "device_v2.when_free" in line]
+            assert held and all('hx-include="find .op-form"' in line for line in held), name
 
     def test_the_header_opens_the_card_and_the_page_draws_it_without_script(self, deploy):
         _r, page = _get(deploy, "/v2/device/r2")

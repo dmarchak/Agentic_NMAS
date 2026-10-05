@@ -633,7 +633,9 @@ def when_free(name):
     if op == "rotate":
         return _strict(render_template("v2/_rotate.html", c=_rotate_starting(ref, dev, back)))
     if op == "deploy":
-        return _strict(render_template("v2/_deploy.html", c=_deploy_card(ref, dev, back, {})))
+        # The held card's redraw sends its form (C473): the ticks and reasons survive.
+        return _strict(render_template("v2/_deploy.html",
+                                       c=_deploy_card(ref, dev, back, request.args)))
     if op == "restore":
         return _strict(render_template("v2/_restore.html",
                                        c=_restore_card(ref, dev, back, request.args)))
