@@ -653,6 +653,8 @@ with a platform DEFINITION (data) and the pipeline that proves it (12.4).
 
 | **Support tiers per device** (NSOT_STAGE7_PLAN 18.1 to 18.4; added by the operator 2026-10-04) | An enterprise's first import is a mixed fleet. Without tiers the release refuses most of it, or reads it as the wrong platform (C452, whose default is already removed). The pieces: the tier as data capped by the platform; every screen's tier-aware actions; MONITORED and MANAGED ELSEWHERE; CONFIG BACKED UP through Oxidized's models; the platform measured at onboarding. FULLY MANAGED for another vendor stays section 12's platform layer |
 | **Licences and third-party use** (8.2a; the operator, 2026-10-04: "build the check now, the audit at the end") | A public release redistributes every component it ships. One without a recorded source and a redistributable licence, or a file that is not ours to give, makes the release unlawful to copy |
+| **The name: a trademark search** (the operator, 2026-10-04: the product is "Mercury Network Automation Platform", "Mercury" for short) | Before the public release, a search for "Mercury Network Automation Platform" in the software classes (Nice classes 9 and 42), recorded with its date and where it was searched. And the README notes the name's origin: a nod to the first place the author worked as a network engineer |
+| **Rename the internals to Mercury** (the operator, 2026-10-04: house-cleaning, close to the public release, NOT before) | Today's internal names stay `nmas`: modules, scripts, services (`nmas-update`, `nmas-deploy`), paths, settings keys, the `NMAS_*` environment variables. Done near the release as ONE planned change: its own inventory (a scan of every `nmas` name), host steps for every host-installed file and service renamed, with old names kept as aliases for one release and then removed. The user-facing name moves first and separately (NSOT_STAGE7_PLAN 19) |
 
 ## 8. The repository
 
@@ -680,6 +682,36 @@ Never a fork, and never a copy with history, so no past commit carries personal 
 - the lab runbooks and probes;
 - CLAUDE.md (a development-process file for this workspace);
 - anything personal.
+
+**The export procedure (the operator, 2026-10-04: this repository goes PRIVATE; the official
+release is a NEW public repository, its first commit with NO history).** Each step's check
+refuses the export:
+1. **Build the tree from the allowlist,** at a named commit of this repository whose CI
+   passed, into a fresh folder. Excluded on top of the list above:
+   - `lab/` and every lab-tooling path (6.0b);
+   - `data/`, `tests/fixtures/` content beyond what the shipped tests need (sanitised,
+     6.0b);
+   - the `.claude/` workspace settings.
+2. **The publication check** on the tree: `test_nothing_personal_is_published.py` against the
+   denylist, and the stage guard. Zero findings, or no export.
+3. **The licence audit** (8.2a):
+   - the inventory check passes on the tree;
+   - every item on its audit list is closed;
+   - the project's own licence file is chosen and present (8.2);
+   - NOTICE is generated from `docs/THIRD_PARTY.json` (every third-party component's
+     notice and licence text);
+   - an SBOM (CycloneDX) is generated from the lock and the vendored entries.
+4. **The suite** runs on the tree as the new repository's CI will run it: fresh clone, CI's
+   command.
+5. **Nothing non-redistributable:** a scan of the TREE for images, licence files, keys,
+   MIBs and captured device files (the release has no history, so the tree is all there is).
+6. **One commit, pushed to the new public repository.** Its message names this repository's
+   source commit, never its history.
+7. **The next release** repeats 1 to 6 from a later commit of this repository, as a NEW
+   commit on the public one (the public history is the releases). Fixes flow as 8.4 says.
+
+This repository's own history, which still holds what was removed (ccie_kb/, early lab
+values), never leaves: it is private.
 
 ### 8.2 The licence
 
@@ -783,6 +815,106 @@ cut-over.**
   its own Compose overrides.
 - **The design records that should outlive the course** (the plan's reasoning, the
   patterns) can be published later as a sanitised design document, a separate decision.
+
+### 8.5 This repository goes private: what breaks first, and the order (the operator, 2026-10-04)
+
+**Not flipped yet.** Each piece below is built and tested, THEN the operator makes the
+repository private, THEN an Update is verified end to end.
+
+**Measured 2026-10-05 (read-only):**
+- **CI usage**, from the last 100 runs (2026-10-02 to 10-05, via `nmas-ci-log`'s token):
+  - about 45 runs a day;
+  - 11.7 billed minutes a run (three jobs of about 4.3 minutes, each rounded up), so about
+    530 minutes a day;
+  - 16 of the 100 runs cancelled.
+  
+  A private repository's free 2,000 minutes would last about **4 days**. C440 (never cancel
+  on main) keeps every run.
+- **The host's GitHub reads:**
+  - **The fetch is ALREADY over SSH:** origin is `github-nmas:<account>/<repo>`, an ssh
+    alias with `IdentityFile ~/.ssh/nmas_repo` and `IdentitiesOnly yes`. The root updater
+    fetches as the checkout's owner (`runuser`), and so does the `app-pushed` reader.
+  - **Every API read** is unauthenticated, through one function: `nmas-deploy`'s
+    `github_get`. The endpoints are `actions/runs` and `actions/runs/<id>/jobs`. Its callers:
+    `nmas-deploy --wait`; the root updater's copy of it (`/usr/local/lib/nmas-update/`); the
+    `app-pushed` and `ci-verdict` readers; the Update page.
+- **The Proxmox host's room:** 40 CPUs (load about 17.6), 58 GB of memory available, 244 GB
+  free on `local-lvm` and 416 GB on the ZFS pool. The lab VM (100) holds 80 GB.
+
+**1. A self-hosted runner, so CI costs no minutes.**
+- **Recommended: a small VM on the Proxmox host,** not the laptop. The laptop is off when
+  the operator is away, and the Update button refuses a commit CI has not passed, so a
+  sleeping runner would stop every update.
+- **The VM:**
+  - Ubuntu 24.04, CI's image family; 8 vCPU, 16 GB, 60 GB on `local-lvm`;
+  - a CPU weight below the lab VM's (`cpuunits`), so a suite run never starves the lab: s3
+    is CPU-starved already (C93);
+  - its own VLAN address, with no route to the lab's device networks. Like the CI it
+    replaces, it reaches only GitHub and the package mirrors.
+- **What the suite expects of it, as CI's image provides today:**
+  - Python 3.12.3, the host's interpreter, built as `scripts/nmas-ci-env` builds it;
+  - the loopback namespace: `kernel.apparmor_restrict_unprivileged_userns=0`, set once on
+    the VM;
+  - Firefox and a geckodriver from outside any snap (`tests/browser.py`);
+  - promtool, unpacked as ci.yml does.
+- **Three runner instances on the VM,** one per shard, so the three jobs run at once, as
+  today. `runs-on: [self-hosted, nmas]` replaces `ubuntu-24.04`.
+- **Ephemeral:** each job starts from a clean workspace (`--ephemeral`, re-registered by a
+  systemd unit after each job), so no run inherits another's files.
+- **A self-hosted runner only on a PRIVATE repository.** On a public one, any fork's pull
+  request runs code on it.
+- **Parity (C349): the result must stay equal to today's.**
+  - Before switching, the same commit runs on both (`ubuntu-24.04` and the VM). The counts
+    per shard must be equal: passed, skipped, and which tests skipped.
+  - `scripts/nmas-env-facts --annotate` records both environments.
+  - A test that skips on one and runs on the other is a parity finding, never ignored.
+- **Its failure is visible:** a queued run with no runner is the CI-ci-refused row's
+  "waiting for a runner", naming the runner.
+
+**2. The host reads GitHub with credentials, never printed.**
+- **The fetch:** a READ-ONLY deploy key on the repository. If `nmas_repo` is already one
+  (the operator checks: Settings › Deploy keys), nothing changes. Otherwise a new ed25519
+  key, owner-only, installed by name, and the alias pointed at it.
+- **The API:** a fine-grained token, this repository only, with Actions: read (and
+  Metadata: read, which GitHub requires).
+  - **Stored** owner-only at `/etc/nmas/github-actions-read.token`, mode 0640, root and the
+    app's group, because both the root updater and the app's readers read it. It is never
+    in an argument, never logged, never printed.
+  - **`github_get` reads it** and sends it only as the Authorization header to
+    `api.github.com`, refusing a redirect elsewhere, as `nmas-ci-log` does today.
+  - **One function changes,** so the updater's installed copy changes with it: a
+    `Host-Step-After` reinstalls it.
+- **The Update page says plainly** when the key or the token is missing, refused (401 or
+  403) or near expiry. P.21's credential-health reader gains the token: its expiry from the
+  `github-authentication-token-expiration` header, warning at 30 days and danger at 7. A
+  missing or refused one is a Needs attention row naming where to renew it and where the
+  new value goes.
+- **Host steps in full, each read first and refusing unless the state is the expected one:**
+  install the token file; verify `github_get` answers 200 with it; verify the updater's copy
+  matches.
+
+**3. `nmas-ci-log`** already reads a fine-grained Actions-read token
+(`~/.config/nmas/github-actions-read.token`, owner-only), sent only in the header. On a
+private repository the same token works if it covers this repository: the operator checks
+its repository list. It expires 2026-12-30.
+
+**4. The order:**
+1. The runner: VM, the three instances, and parity proven on one commit.
+2. The deploy key: the fetch proven from the host as the checkout's owner.
+3. The token: `github_get` with it, the reader's row, the updater's copy reinstalled.
+4. **Then the operator flips the repository to private.**
+5. Verified end to end: a commit, the runner's green run, the host's Update page offering
+   it, an Update, the version shown.
+
+`nmas-ci-log` is proven after the flip too.
+
+**5. The public release is an export (8.1's procedure),** and the publication and licence
+checks are its gate.
+
+**What breaks if the order is skipped:**
+- CI stops at the minutes limit, so nothing new can deploy.
+- The host's API reads return 404, so the Update page cannot say whether a commit passed and
+  refuses every update. That is safe, and it is the failure the order prevents.
 
 ---
 

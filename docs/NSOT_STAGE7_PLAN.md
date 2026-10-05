@@ -4350,3 +4350,53 @@ as 18.2 says before its tier is accepted. The batch result counts by tier.
 - **New screens:** the tier column, the device page's tier chip and disabled actions, and the
   MANAGED ELSEWHERE link are drawn on the canvas for sign-off before any build, with 17's
   boards.
+
+## 19. The name and the mark: Mercury (the operator, 2026-10-04; mockup first)
+
+**Decided:** the product is **"Mercury Network Automation Platform"**, "Mercury" for short, a
+nod to the first place the author worked as a network engineer. It replaces the plain "NMAS"
+mark top left.
+
+**The mark: an orbit, the depth version, teal,** drawn as the project's OWN SVG and claimed as
+the project's own in `docs/THIRD_PARTY.json`. The master geometry is the operator's, centred
+at 0,0:
+- a planet: a filled circle `r=26`, teal `#1D9E75`;
+- a highlight arc in `#9FE1CB`;
+- an orbit: an ellipse `72 × 26`, rotated −20°, stroke 5;
+- three nodes on it: left, right and bottom, `r=9`;
+- the orbit's FRONT half drawn over the planet, behind a 12-wide stroke in GAP, the colour
+  the mark sits on (the sidebar's background token). So it visibly crosses in front, in both
+  themes.
+
+The teal and the highlight are fixed in both themes; they become tokens.
+
+**Sizes simplify:**
+- at about 16 px (the favicon): planet, orbit, two side nodes; no highlight, no front gap, no
+  bottom node;
+- at about 32 px: the gap kept, no highlight.
+
+**The square icon** (favicon, app and home-screen icon, GitHub avatar): the mark in white on a
+teal rounded square (radius about 23 % of the side), the gap in teal.
+
+**The lockup in the sidebar:** the mark plus "Mercury" (title weight) over "Network Automation
+Platform" (secondary). At phone width, the mark plus "Mercury".
+
+**The name in ONE place:** one constant (`PRODUCT_NAME`, `PRODUCT_SHORT`, `PRODUCT_TAGLINE`),
+read by the sidebar, page titles, the manual, the About page and the favicon's title. A
+later rename is one change.
+- "NMAS" leaves user-facing text: screens, the manual, page titles. Measured 2026-10-05: 37
+  occurrences in `templates/v2/` and `docs/manual/`, and `base.html`'s title block default.
+- A test holds it: no user-facing "NMAS" in a v2 template or the manual. Its population is
+  the rendered pages and the manual's pages, its floor their count, and it plants a page to
+  show it can fail.
+
+**Internal names stay `nmas`** (modules, scripts, services, settings, environment variables):
+renamed near the release as Stage 10's house-cleaning item, with its own host steps.
+
+**Mockup first, for sign-off:**
+- the sidebar at desktop and phone width, in light and dark;
+- a browser tab with the favicon;
+- the About page.
+
+**Stage 10 carries** the trademark search before the public release and the name's origin
+in the README (NSOT_STAGE10_PLAN 7.3).
