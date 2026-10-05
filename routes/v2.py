@@ -611,12 +611,27 @@ def coverage_table():
     return _strict(render_template("v2/_coverage.html", c=c))
 
 
+def _monitoring_network() -> str:
+    """The network a Monitoring request shows (P.8 step 8; decided 2026-10-04, the URL is
+    authoritative): the one its `list` names, which `list_param` has already refused when no
+    such list exists, else the active list. Every link the page draws carries it, so a copied
+    link shows the same network."""
+    from flask import request
+
+    from modules.nsot import listref
+    from routes.list_param import named_list
+
+    named = named_list(request)
+    return listref.resolve(named).name if named else listref.active().name
+
+
 def _fleet_ctx() -> dict:
     from flask import request
 
     from modules import device_page
-    from modules.nsot import listref
-    return {"m": device_page.fleet_monitoring(listref.active().name,
+    from modules.integration_groups import network_names
+    return {"networks": network_names(),
+            "m": device_page.fleet_monitoring(_monitoring_network(),
                                               chosen_uid=request.args.get("dashboard", ""),
                                               range_text=request.args.get("range", "1h"))}
 
@@ -642,8 +657,7 @@ def monitoring_panel(uid, panel_id):
     from flask import jsonify, request
 
     from modules import device_page
-    from modules.nsot import listref
-    payload, code = device_page.fleet_panel_data(listref.active().name, uid, panel_id,
+    payload, code = device_page.fleet_panel_data(_monitoring_network(), uid, panel_id,
                                                  request.args.get("range", "1h"))
     return jsonify(payload), code
 

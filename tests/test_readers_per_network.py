@@ -247,6 +247,18 @@ class TestAPageReadsItsOwnNetworksGrafana:
         assert [d["uid"] for d in m["offered"]] == ["branch-device", "branch-overview"]
         assert DP.fleet_monitoring("Lab-3", client=_NoLiveAsk())["default"] == "rcn-lab-overview"
 
+    def test_each_page_says_whose_grafana_it_read(self):
+        """A network inheriting Default's Grafana says so; one that declared Grafana not
+        applicable says that, never "not read yet", which would wait forever."""
+        from modules import device_page as DP
+
+        assert [DP.grafana_whose(n) for n in ("Default", "Branch", "Lab-3", "Shop")] == [
+            "Default", "Branch", "Default", None]
+        for m in (DP.fleet_monitoring("Shop", client=_NoLiveAsk()),
+                  DP.monitoring({"hostname": "sh-r1"}, "Shop", client=_NoLiveAsk())):
+            assert m["state"] == "not_applicable" and "Shop declared Grafana not applicable" in \
+                m["why"], m
+
     def test_a_reader_not_imported_yet_still_answers_per_network(self, monkeypatch):
         """Asked before its module was imported, a reader's groups were unknown and Default's
         store answered for Branch."""

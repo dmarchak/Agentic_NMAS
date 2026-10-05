@@ -14,7 +14,12 @@ out. On test_device_v2's lab: the real app, the real dashboards reader, real
 `api/ds/query` answers.
 """
 
+import json
 import re
+
+import pytest
+
+from modules import device
 
 from tests.test_device_v2 import (FILTERING_FIXTURE, _fixture, _get, _get_json,  # noqa: F401
                                   _text, lab)
@@ -37,10 +42,10 @@ class TestTheFleetPage:
         r, html = _get(lab, "/v2/monitoring")
         assert r.status_code == 200
         text = _text(html)
-        assert "No fleet dashboard is set for this network." in text
+        assert "No fleet dashboard is set for Lab." in text
         assert "Fleet dashboard UID" in text and _panels(html) == []
         assert re.search(r"Every dashboard Grafana holds: \d+\.", text)
-        assert f'href="/v2/monitoring?dashboard={FLEET}&amp;range=1h"' in html
+        assert f'href="/v2/monitoring?list=Lab&amp;dashboard={FLEET}&amp;range=1h"' in html
 
     def test_the_labs_fleet_dashboard_draws_every_panel_in_its_place(self, lab):
         lab["settings"]["grafana_fleet_dashboard_uid"] = FLEET
@@ -49,7 +54,7 @@ class TestTheFleetPage:
         native = [p["id"] for p in model["panels"] if p["type"] not in ("row", *NOT_DRAWN_HERE.values())]
         sourced = [int(re.search(r"/(\d+)\?", s).group(1)) for s in _panels(html)]
         assert len(native) == 10 and sorted(sourced) == sorted(native)
-        assert all(re.fullmatch(rf"/v2/monitoring/panel/{FLEET}/\d+\?range=1h", s) for s in _panels(html))
+        assert all(re.fullmatch(rf"/v2/monitoring/panel/{FLEET}/\d+\?list=Lab&amp;range=1h", s) for s in _panels(html))
         assert sorted(t for _title, t in _elsewhere(html)) == sorted(NOT_DRAWN_HERE.values())
         assert html.count("Grafana draws it, this page does not.") == 4
         for row in ("Health and alerts", "Reachability and latency", "Traps and syslog"):
@@ -113,6 +118,88 @@ class TestTheFleetPage:
         assert html.lstrip().startswith('<div class="monitoring" id="fleet"')
         assert 'hx-trigger="nmas:dashboards from:body"' in html
 
+
+
+class TestThePageCarriesItsNetwork:
+    """P.8 step 8, board A: the address carries the network, the title names it, and every
+    read is that network's. Lab's dashboards drawn under Branch's name is the wrong thing that
+    looks right."""
+
+    @pytest.fixture
+    def branch(self, lab, tmp_path, monkeypatch):
+        from modules import config, device_page
+        from modules import list_settings as L
+
+        monkeypatch.setattr(config, "LISTS_DIR", str(tmp_path / "lists"))
+        reg = json.loads(open(device.DEVICE_LISTS_CONFIG, encoding="utf-8").read())
+        reg["lists"]["Branch"] = "branch"
+        with open(device.DEVICE_LISTS_CONFIG, "w", encoding="utf-8") as fh:
+            json.dump(reg, fh)
+        assert L.write("Branch", {"grafana_url": "http://192.0.2.60:3000"})["ok"]
+        asked = []
+        real = device_page.grafana_client
+
+        def client(list_name):
+            asked.append(list_name)
+            return real(list_name) if list_name != "Branch" else _Unreachable()
+
+        monkeypatch.setattr(device_page, "grafana_client", client)
+        return asked
+
+    def test_the_title_and_every_link_name_the_network(self, lab):
+        lab["settings"]["grafana_fleet_dashboard_uid"] = FLEET
+        _r, html = _get(lab, "/v2/monitoring")
+        assert len(_panels(html)) == 10, "the panels' own requests are among the links"
+        assert "<h1>Monitoring · Lab" in html
+        fleet = html.split('id="fleet"', 1)[1]
+        links = re.findall(r'(?:href|hx-get|hx-push-url|data-panel-src)="(/v2/monitoring[^"]*)"', fleet)
+        menu = re.findall(r'data-what="the \w+ network"[^>]*\s+href="([^"]+)"', fleet)
+        # The range form's request is bare; its hidden field carries the network.
+        form = ["/v2/monitoring/dashboard"]
+        assert re.search(r'<input type="hidden" name="list" value="Lab">', fleet)
+        assert links.count(form[0]) == 1 and menu == ["/v2/monitoring?list=Default&amp;range=1h",
+                                                      "/v2/monitoring?list=Lab&amp;range=1h"]
+        rest = [u for u in links if u not in form + menu]
+        assert len(rest) > 10 and all("list=Lab" in u for u in rest), \
+            [u for u in rest if "list=Lab" not in u]
+
+    def test_another_network_is_its_own_grafana(self, lab, branch):
+        lab["settings"]["grafana_fleet_dashboard_uid"] = FLEET
+        _r, html = _get(lab, "/v2/monitoring?list=Branch")
+        text = re.sub(r"\s+", " ", _text(html)).replace("( ", "(").replace(" )", ")")
+        assert "Monitoring · Branch" in text and branch == ["Branch"], branch
+        assert "from Branch's Grafana (http://192.0.2.60:3000)." in text, text
+        assert "Branch's Grafana's dashboards have not been read yet." in text
+        assert re.findall(r'data-what="the [^"]* dashboard"', html) == [] and \
+            _panels(html) == [], "Lab's dashboards drawn under Branch's name"
+        code, body = _get_json(lab, f"/v2/monitoring/panel/{FLEET}/3?list=Branch&range=1h")
+        assert code == 503 and branch[-1] == "Branch", (code, body, branch)
+        # The control: the same page for Lab offers Lab's Grafana's dashboards.
+        _r, html = _get(lab, "/v2/monitoring?list=Lab")
+        assert len(re.findall(r'data-what="the [^"]* dashboard"', html)) > 1
+
+    def test_the_menu_opens_each_network(self, lab, branch):
+        _r, html = _get(lab, "/v2/monitoring")
+        assert re.findall(r'data-what="the (\w+) network"[^>]*\s+href="([^"]+)"', html) == [
+            ("Default", "/v2/monitoring?list=Default&amp;range=1h"),
+            ("Branch", "/v2/monitoring?list=Branch&amp;range=1h"),
+            ("Lab", "/v2/monitoring?list=Lab&amp;range=1h")]
+
+    def test_a_network_nobody_has_is_refused_naming_it(self, lab):
+        r, _html = _get(lab, "/v2/monitoring?list=Nowhere")
+        assert r.status_code == 404 and b"Nowhere" in r.data
+
+
+class _Unreachable:
+    """Branch's Grafana in these tests: never answers, and must not be Lab's."""
+
+    url = "http://192.0.2.60:3000"
+
+    def _get(self, *a, **k):
+        return {"ok": False, "error": "not reachable in a test"}
+
+    def query(self, *a, **k):
+        return {"ok": False, "error": "not reachable in a test"}
 
 
 class TestTheTabsAndTheSidebar:

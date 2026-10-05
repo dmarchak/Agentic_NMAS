@@ -341,8 +341,25 @@ pages.
    `panels.Stores(live, history, why)` read together by `panels.stores(datasources, list)`.
    A PromQL range check without them is refused; only the one-hour probes build a request
    without them, since every live store keeps at least a day. The Default-layer inventory
-   loses panels' two reads. **Left:** 8b, Monitoring's `?list=`, its header and selector;
-   8c, the UID-gone row.
+   loses panels' two reads. **8b BUILT 2026-10-05 (boards A and B):**
+   - `/v2/monitoring?list=<name>` shows that network. `list_param` has already refused a
+     list nobody has. With no `list`, the page shows the active list.
+   - Every link the page draws carries the network: the dashboard menu, the range, the
+     panels' own requests and the live refresh.
+   - The title names the network ("Monitoring · Branch"). A Network menu opens each
+     network's page. A line under the toolbar says whose fleet dashboard it is and whose
+     Grafana it reads ("from Default's Grafana, which Lab-3 inherits").
+   - A device's Monitoring tab says the same for its device's network, with no menu.
+   - A network that declared Grafana not applicable says so, never "not read yet".
+   - Coverage's title names the active list it shows.
+
+   **Left:**
+   - 8c, the UID-gone row.
+   - Coverage's `?list=`: its batch Apply writes to the list it shows, so the list must
+     reach the apply and its confirm first.
+   - With no `list`, the default is the installation-wide active list. The per-session
+     default is R3's other half (CONCURRENCY_AUDIT), and the sidebar's network chip shows
+     the active list until then.
 9. **Fold the five per-list files into the store,** one per commit.
 
 **Forecast:** P.8's own estimate was 10 to 15 commits, from C104's readers and C158's write

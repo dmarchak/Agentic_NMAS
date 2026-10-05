@@ -5,7 +5,11 @@
 {#- Re-rendered when Grafana's dashboards change (the reader announces only a change). -#}
 <div class="monitoring" id="monitoring" hx-get="{{ url_for('device_v2.monitoring', name=dev_name, dashboard=dash_uid, range=cur_range) }}"
      hx-trigger="nmas:dashboards from:body" hx-swap="outerHTML">
-<p class="tab-help">{{ info('device-page', 'monitoring-tab', 'About this tab') }}</p>
+<p class="tab-help">{{ info('device-page', 'monitoring-tab', 'About this tab') }}
+{#- Whose dashboard, from the same values the reads used (P.8 step 8, board B): a device
+    belongs to one network, so there is no network selector here. -#}
+{%- if m.grafana_from %} Network {{ m.network }}: {% if m.settings.uid %}{{ m.network }}'s device dashboard <span class="mono">{{ m.settings.uid }}</span>, from{% else %}reads{% endif %}
+  {{ m.grafana_from }}'s Grafana{% if m.grafana_from != m.network %}, which {{ m.network }} inherits{% endif %}.{% endif %}</p>
 {%- if mb is defined %}{% include "v2/_monitored_by.html" %}{% endif %}
 <div class="toolbar">
   <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close">
@@ -44,10 +48,12 @@
   {{ range_controls(cur_range, links, url_for('device_v2.monitoring', name=dev_name), {'dashboard': dash_uid}, 'range-in', m) }}
 </div>
 
-{%- if m.state == 'not_read' %}
-<div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>Grafana's dashboards have not been read yet.</strong> {{ m.why }}</div></div>
+{%- if m.state == 'not_applicable' %}
+<div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>{{ m.network }} has no Grafana.</strong> {{ m.why }}.</div></div>
+{%- elif m.state == 'not_read' %}
+<div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>{{ m.grafana_from }}'s Grafana's dashboards have not been read yet.</strong> {{ m.why }}</div></div>
 {%- elif m.state == 'not_set' %}
-<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>No device dashboard is set for this network.</strong>
+<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>No device dashboard is set for {{ m.network }}.</strong>
   Name one by UID in Settings &gt; Integrations &gt; Grafana (Device dashboard UID), or choose one above for this view.</div></div>
 {%- elif m.state == 'uid_gone' %}
 <div class="notice notice-danger">{{ icon('warn', 16) }}<div><strong>Grafana holds no dashboard with UID <span class="mono">{{ m.uid }}</span>.</strong>

@@ -145,6 +145,16 @@ def lab(tmp_path, monkeypatch):
     os.makedirs(list_dir / "config_repo", exist_ok=True)
     monkeypatch.setattr("modules.config.get_list_data_dir", lambda name: str(list_dir))
     monkeypatch.setattr("modules.config.get_current_list_name", lambda: "Lab")
+    # Registered, as an installation's active list is: a page's address names it (P.8 step 8),
+    # and a read naming a list nobody registered is refused (list_param).
+    registry = tmp_path / "device_lists.json"
+    registry.write_text(json.dumps({"current_list": "Lab", "lists": {"Lab": "lab"}}),
+                        encoding="utf-8")
+    monkeypatch.setattr("modules.device.DEVICE_LISTS_CONFIG", str(registry))
+    # The modules that bound the accessor when imported, which a walk over the registry's
+    # lists reaches (`modules.device.get_device_lists`).
+    for bound in ("modules.device", "modules.inventory", "modules.inventory.source_config"):
+        monkeypatch.setattr(f"{bound}.get_list_data_dir", lambda name: str(list_dir))
     monkeypatch.setattr("modules.nsot.hooks.run_post_commit", lambda ctx: None)
     settings = dict(SETTINGS)
     monkeypatch.setattr("modules.settings_schema.get_setting",
@@ -379,7 +389,7 @@ class TestMonitoringStates:
     def test_no_dashboard_set_names_the_setting(self, lab):
         lab["settings"]["grafana_device_dashboard_uid"] = ""
         _, html = _get(lab, "/v2/device/r3/monitoring")
-        assert "No device dashboard is set for this network" in html
+        assert "No device dashboard is set for Lab" in html
         assert "Device dashboard UID" in html
 
     def test_a_uid_grafana_does_not_hold_is_named_on_its_live_answer(self, lab):

@@ -9,6 +9,27 @@ with the dashboard's own queries; those it cannot (alert lists, text, logs) keep
 and link to Grafana. Another dashboard can be chosen for the view without changing the
 setting.
 
+## Which network {#network}
+
+Monitoring shows one network at a time, named in the page's title, and the address carries it
+(`/v2/monitoring?list=Branch`), so a copied link shows the same network to whoever opens it.
+With no network in the address, the page shows the active list. The Network menu lists every
+network. Choosing one opens that network's Monitoring.
+
+Everything on the Dashboards tab is that network's:
+- its fleet dashboard (Fleet dashboard UID, in its settings);
+- the Grafana it reads, named under the toolbar ("from Default's Grafana, which Lab-3
+  inherits" when the network has not set its own);
+- that Grafana's dashboards and data;
+- its live store's retention and its history store.
+
+A network that declared Grafana not applicable says so instead of drawing anything. A
+device's Monitoring tab works the same way for the device's own network, and has no network
+menu, because a device belongs to one network.
+
+Coverage shows the active list, which its title names. Choosing a network there arrives
+with Coverage's batch Apply, which writes to the list it shows.
+
 ## The time range {#time-range}
 
 One click for the last hour, 6 hours, 24 hours or 7 days, or type a range ("last 90

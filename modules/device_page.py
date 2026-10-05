@@ -369,6 +369,24 @@ def grafana_client(list_name: str):
     return GrafanaIntegration() if is_default(list_name) else GrafanaIntegration(list_name=list_name)
 
 
+def grafana_whose(list_name: str):
+    """Whose Grafana the network *list_name* reads, for the page to say: its own name when it
+    set Grafana itself, ``"Default"`` when it inherits Default's, None when it declared Grafana
+    not applicable (P.8 section 5: a page names the network its reads used)."""
+    from modules import integration_groups as IG
+
+    gid = IG.group_id("grafana", list_name)
+    if gid is None:
+        return None
+    return "Default" if gid == IG.DEFAULT_GROUP else list_name
+
+
+def _not_applicable(out: dict, list_name: str) -> dict:
+    out.update(state="not_applicable", why=f"{list_name} declared Grafana not applicable in its "
+                                           "settings, so it has no dashboards to draw")
+    return out
+
+
 def device_dashboard_settings(list_name: str) -> dict:
     """The device dashboard role of the network *list_name*: a device page passes its
     device's list (P.8 step 8; the operator, 2026-09-30: the roles are per network)."""
@@ -470,7 +488,10 @@ def monitoring(dev: dict, list_name: str, chosen_uid: str = "", range_text: str 
     cfg = device_dashboard_settings(list_name)
     client = client or grafana_client(list_name)
     value, at, why = _cached("grafana-dashboards", list_name)
-    out = {"settings": cfg, "network": list_name, "value_at": at, "range": range_text, "limit_words": panels.limit_words(panels.stores((value or {}).get("datasources") or [], list_name)), "offered": [], "state": "ok"}
+    out = {"settings": cfg, "network": list_name, "grafana_from": grafana_whose(list_name),
+           "value_at": at, "range": range_text, "limit_words": panels.limit_words(panels.stores((value or {}).get("datasources") or [], list_name)), "offered": [], "state": "ok"}
+    if out["grafana_from"] is None:
+        return _not_applicable(out, list_name)
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -751,7 +772,10 @@ def fleet_monitoring(list_name: str, chosen_uid: str = "", range_text: str = "1h
     client = client or grafana_client(list_name)
     value, at, why = _cached("grafana-dashboards", list_name)
     out = {"default": default, "network": list_name, "grafana_url": _grafana_url(list_name),
+           "grafana_from": grafana_whose(list_name),
            "value_at": at, "range": range_text, "limit_words": panels.limit_words(panels.stores((value or {}).get("datasources") or [], list_name)), "offered": [], "state": "ok"}
+    if out["grafana_from"] is None:
+        return _not_applicable(out, list_name)
     if value is None:
         out.update(state="not_read", why=why)
         return out

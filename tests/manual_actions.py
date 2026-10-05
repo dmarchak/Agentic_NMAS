@@ -52,6 +52,7 @@ def how_calls(text: str) -> list:
 #: (template, the control's label) -> why it starts no operation.
 NOT_AN_OPERATION = {
     ("_fleet.html", "Dashboard"): "chooses which dashboard to draw",
+    ("_fleet.html", "Network"): "chooses which network to show, by opening its address",
     ("_monitoring.html", "Dashboard"): "chooses which dashboard to draw",
     ("_macros.html", "Apply"): "applies a time range to the charts (range_controls)",
     ("history.html", "Show"): "applies the commit filters",
