@@ -1,0 +1,81 @@
+name: nmas-throwaway
+
+# ---------------------------------------------------------------------------
+# THE THROWAWAY SESSION: one C8000v, start to end, in its own lab and its own
+# list. Runbook: docs/THROWAWAY_SESSION.md. Nothing in this file touches the
+# fleet (r1-r6, s1-s4).
+#
+# tw-ztp-a boots CONFIGLESS, through the same patched launch script the P.6
+# probe made and measured (patches/patch-configless.py; nmas-ztp-a.clab.yml's
+# header has every reason). Its hash on the lab host was read 2026-10-05:
+# 972a0f72f1ee5847, the patched value P6_ZTP_PROBE.md records. One consequence
+# governs the whole session: the overlay is removed at every CONTAINER start,
+# so `docker restart` (or a redeploy) returns the node to no config at all.
+# An IOS `reload` inside the running container keeps what it saved.
+#
+# tw-frr is the BGP peer C117's rollback loop needs: FRR 10.2.1 (the image is
+# on the lab host, read 2026-10-05), running bgpd only, peering with
+# tw-ztp-a's Loopback1 and nothing else. It answers no DHCP and no DNS.
+#
+# Chosen and measured 2026-10-05, read-only:
+#   - the pair aa:bb:cc:00:02:60 -> 10.255.0.60 (and .35 for tw-frr): none of
+#     them in /etc/kea/kea-dhcp4.conf or the NMAS fragment (which holds 0
+#     entries); the lease file needs root, so step 2 of the runbook reads it;
+#   - 10.255.98.0/24, 10.255.99.0/24 and AS 65098/65099: in no golden and no
+#     host_vars of the Default list;
+#   - 172.30.90.0/24 is no docker network on the lab host (bridge, clab,
+#     clab-r6 only) and no other probe's subnet here;
+#   - br-mgmt holds enp6s19, s3-mgmt and r6-mgmt: `tw-mgmt` and `twfrr-mgmt`
+#     are free.
+#
+# br-mgmt is a PREREQUISITE, not something this file creates.
+#   Verify first:  ip -br link show master br-mgmt
+# ---------------------------------------------------------------------------
+
+mgmt:
+  network: clab-throwaway-probe
+  ipv4-subnet: 172.30.90.0/24
+
+topology:
+  kinds:
+    cisco_c8000v:
+      image: vrnetlab/cisco_c8000v:17.06.01a      # identical to r1-r5 and r6
+
+  nodes:
+    tw-ztp-a:
+      kind: cisco_c8000v
+      mgmt-ipv4: 172.30.90.11
+      # Deliberately NO startup-config: the node must ask (AutoInstall).
+      env:
+        # Gi1 becomes a tap onto the container's eth0, so qemu's own DHCP and
+        # TFTP servers are gone (nmas-ztp-a.clab.yml, M1's re-run).
+        CLAB_MGMT_PASSTHROUGH: "true"
+      binds:
+        - patches/c8000v-launch-configless.py:/launch.py   # smp=2, user-skip, configless
+
+    tw-frr:
+      kind: linux
+      image: quay.io/frrouting/frr:10.2.1
+      mgmt-ipv4: 172.30.90.12
+      binds:
+        - configs/tw-frr/daemons:/etc/frr/daemons
+        - configs/tw-frr/frr.conf:/etc/frr/frr.conf
+      exec:
+        - ip addr add 10.255.0.35/24 dev eth1
+        - ip addr add 10.255.98.1/32 dev lo
+        - ip route add 10.255.99.1/32 via 10.255.0.60
+
+    br-mgmt:
+      kind: bridge
+
+  links:
+    # Extended format: the only one with a per-endpoint `mac:`. Gi2, never Gi1
+    # (vrnetlab owns Gi1).
+    - type: veth
+      endpoints:
+        - node: tw-ztp-a
+          interface: Gi2
+          mac: aa:bb:cc:00:02:60
+        - node: br-mgmt
+          interface: tw-mgmt
+    - endpoints: ["tw-frr:eth1", "br-mgmt:twfrr-mgmt"]

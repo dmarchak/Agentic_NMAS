@@ -3108,6 +3108,10 @@ correction, covering 9 restart(s) already seen".)
 | C262 and C269: `cdp run` | r6's Device page (Mode B), then r1 to r4's intent and one batch deploy | 40 min | the register rows |
 | The browser break-glass export | the laptop holding `nmas-breakglass`; a passphrase | 15 min | 7.3's break-glass notes; verify `--against` the host's digests |
 
+**Session 2 is now ONE runbook, [THROWAWAY_SESSION](THROWAWAY_SESSION.md) (2026-10-05, about
+6 h):** it adds section 16's ZTP capture and timing and the guestshell probe, and a restore that
+sends a line, to the runs below.
+
 **Session 2: one throwaway C8000v, start to end (about 4 to 5 h).** One device, onboarded
 for the purpose into its own list, carries four runs, retired at the end (R1's shape).
 Prerequisites: the current main deployed; a probe lab on the lab host with the adopted launch
