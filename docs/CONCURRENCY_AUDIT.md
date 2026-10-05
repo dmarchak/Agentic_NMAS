@@ -773,7 +773,9 @@ same day). A subscriber that holds a person's input re-renders it away: Coverage
 row on `goldens` or `intent`. Each such subscriber must keep its input across a re-render
 first, or the broadcast turns every write into a reset. **DECIDED 2026-10-04 (the operator):
 as recommended, after C435.** C435 is decided the same day: confirm it in a browser, then carry
-the person's selection through each redraw.
+the person's selection through each redraw. **C435 FIXED 2026-10-04**
+(tests/test_coverage_selection_survives.py), so the broadcast half is unblocked. Its first step
+is the same survey for every other subscriber that holds a person's input.
 
 *FIXED 2026-10-02 (tests/test_reader_runs_one_at_a_time.py):* `run_once` holds a per-reader
 run lock across processes (`<store>.run`, a `PathLock`), so a run that starts while another

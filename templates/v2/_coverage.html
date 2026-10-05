@@ -15,7 +15,9 @@
 {%- set picked = offered | selectattr('checked') | list -%}
 {%- set n_picked = picked | map(attribute='supplies') | map('length') | sum -%}
 <section class="card coverage" id="coverage" hx-get="{{ url_for('v2.coverage_table') }}"
-         hx-trigger="nmas:goldens from:body, nmas:intent from:body, nmas:job_health from:body, nmas:coverage_reporting from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:intent from:body, nmas:job_health from:body, nmas:coverage_reporting from:body" hx-swap="outerHTML"
+         hx-include="find .cov-form">
+  {#- The redraw carries the person's selection (C435): the form's ticked devices and `picked`. -#}
   {%- if not c.total %}
   <p class="cov-head">{{ icon('info') }} {{ c.list }} has no devices.</p>
   {%- else %}
@@ -43,6 +45,7 @@
     {#- The combined deploy (artboard A2): the profile's lines and the IP SLA probes committed
         to intent, one program per device. -#}
     <input type="hidden" name="scope" value="templates">
+    <input type="hidden" name="picked" value="1">
     {%- if offered %}
     <div class="cov-bar" id="cov-bar"{% if not picked %} hidden{% endif %} x-bind:hidden="nonePicked">
       <span><strong x-text="summary">{{ picked | length }} device{{ 's' if picked | length != 1 }} selected</strong>

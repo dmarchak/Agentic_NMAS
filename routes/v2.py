@@ -562,8 +562,22 @@ def coverage():
 
 @bp.route("/monitoring/coverage/table", methods=["GET"])
 def coverage_table():
-    """The table alone, re-fetched when goldens, intent or job health move."""
-    return _strict(render_template("v2/_coverage.html", c=_coverage()))
+    """The table alone, re-fetched when goldens, intent or job health move.
+
+    THE PERSON'S SELECTION SURVIVES THE REDRAW (C435): another person's deploy announces
+    `goldens` and `intent` to every page, and the redraw ticked every offered row, so an
+    untick reverted while its person chose. The redraw sends its form (`picked` and the
+    ticked `device`s), and an offered row is ticked exactly when its person had it ticked.
+    A row newly offered since arrives unticked: nothing joins a selection unseen."""
+    from flask import request
+
+    c = _coverage()
+    if request.args.get("picked") == "1":
+        kept = set(request.args.getlist("device"))
+        for row in c["devices"]:
+            if row.get("selectable"):
+                row["checked"] = row["host"] in kept
+    return _strict(render_template("v2/_coverage.html", c=c))
 
 
 def _fleet_ctx() -> dict:
