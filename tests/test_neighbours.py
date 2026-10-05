@@ -223,7 +223,7 @@ def page(lab, monkeypatch):
     monkeypatch.setattr(N, "committed_intents", lambda repo: (intents, ""))
     rows = {h: {"hostname": h, "ip": "192.0.2.1", "platform": "cisco_iosxe"} for h in intents}
     monkeypatch.setattr(device_page, "find_device",
-                        lambda name: (listref.resolve("Lab"), dict(rows[name])))
+                        lambda name, ref=None: (listref.resolve("Lab"), dict(rows[name])))
     cap = _capture()
     asked = []
 
@@ -267,14 +267,14 @@ class TestThePage:
         assert "Every adjacency intent implies for r3 that is measured is up." in html
         for proto in ("OSPF", "OSPFv3", "BGP"):
             assert f'<h3 class="nb-proto">{proto}</h3>' in html
-        assert '<a href="/v2/device/r4">r4</a>' in html
+        assert '<a href="/v2/device/r4?list=Lab">r4</a>' in html
         assert "nothing here opens a session to the device" in html
         # Four instant queries, each filtered to the device.
         assert len(page.asked) == 4 and all('device="r3"' in q for q in page.asked)
 
     def test_the_tab_is_built(self, page):
         _r, html = page("/v2/device/r3?tab=neighbours")
-        assert 'hx-get="/v2/device/r3/neighbours"' in html and 'id="neighbours"' in html
+        assert 'hx-get="/v2/device/r3/neighbours?list=Lab"' in html and 'id="neighbours"' in html
 
     def test_a_rip_device_says_rip_keeps_no_table(self, page):
         _r, html = page("/v2/device/s1/neighbours")

@@ -24,7 +24,7 @@ def page(lab, monkeypatch):
     from modules.nsot import listref
     rows = {"r2": R2, "r9": R9}
     monkeypatch.setattr(device_page, "find_device",
-                        lambda name: (listref.resolve("Lab"), dict(rows[name])))
+                        lambda name, ref=None: (listref.resolve("Lab"), dict(rows[name])))
 
     def get(name):
         r = lab["client"].get(f"/v2/device/{name}/intent")
@@ -72,7 +72,7 @@ class TestTheIntentTab:
         r, html = page("r2")
         assert r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
         assert not re.search(r"\sstyle=|\son[a-z]+=", html)
-        assert 'data-op="edit-intent"' in html and 'hx-get="/v2/device/r2/intent/edit"' in html
+        assert 'data-op="edit-intent"' in html and 'hx-get="/v2/device/r2/intent/edit?list=Lab"' in html
         assert "today's page</a>" not in html, "editing intent is on v2 (board H)"
 
     def test_the_deep_link_opens_the_editor_on_the_page(self, lab, page):

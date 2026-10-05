@@ -185,7 +185,7 @@ from tests.test_profile_apply import lab  # noqa: E402,F401 (the fixture)
 def page(lab, loki, monkeypatch):
     from modules import device_logs, device_page
     from modules.nsot import listref
-    monkeypatch.setattr(device_page, "find_device", lambda name: (
+    monkeypatch.setattr(device_page, "find_device", lambda name, ref=None: (
         listref.resolve("Lab"), {"hostname": name, "ip": "192.0.2.1", "platform": "cisco_ios"}))
     real = device_logs.for_device
     monkeypatch.setattr(device_logs, "for_device", lambda dev, now=None: real(dev, now=_now()))
@@ -219,4 +219,4 @@ class TestThePage:
 
     def test_the_tab_is_built(self, page):
         _r, html = page("/v2/device/r3?tab=logs")
-        assert 'hx-get="/v2/device/r3/logs"' in html and 'id="logs"' in html
+        assert 'hx-get="/v2/device/r3/logs?list=Lab"' in html and 'id="logs"' in html

@@ -128,7 +128,7 @@ class TestTheChooser:
         _r, page = _get(history, "/v2/device/r2")
         menu = page[page.index('role="menu"'):page.index('class="tabs"')]
         row = menu[menu.index('data-op="restore"') - 50:menu.index('data-op="restore"') + 600]
-        assert 'hx-get="/v2/device/r2/restore?back=overview"' in row
+        assert 'hx-get="/v2/device/r2/restore?back=overview&amp;list=Lab"' in row
         assert "open on today" not in menu.split("Restore")[0][-200:]
         _r, page = _get(history, "/v2/device/r2?op=restore")
         body = page[page.index('id="tab-body"'):]

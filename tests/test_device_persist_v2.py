@@ -44,7 +44,7 @@ class TestTheMenu:
         html = lab["client"].get("/v2/device/r2").get_data(as_text=True)
         menu = html[html.index('role="menu"'):html.index('class="tabs"')]
         row = menu[menu.index('data-op="persist"') - 200:menu.index('data-op="persist"') + 1500]
-        assert 'hx-get="/v2/device/r2/persist?back=overview"' in row
+        assert 'hx-get="/v2/device/r2/persist?back=overview&amp;list=Lab"' in row
         assert 'aria-label="How does persist work?"' in row
         assert "Every action runs here." in menu
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
@@ -78,7 +78,7 @@ class TestThePreview:
         assert 'class="op-idle">Save and read back r2' in foot
         assert 'class="op-busy">Saving r2 and reading it back' in foot
         assert 'hx-disabled-elt="this"' in foot and '"list": "Lab"' in foot
-        assert 'hx-get="/v2/device/r2/history"' in html, "Cancel puts back the tab it replaced"
+        assert 'hx-get="/v2/device/r2/history?list=Lab"' in html, "Cancel puts back the tab it replaced"
 
     def test_a_device_with_no_driver_fails_its_check(self, lab):  # noqa: F811
         html = _card(lab, device="s9")
@@ -116,7 +116,7 @@ class TestTheConfirm:
         assert "test-person@example.invalid" in out[out.index("Recorded"):]
         assert "hourly startup check" in out[out.index("Still true"):]
         assert "Preview it again" not in out
-        assert 'hx-get="/v2/device/r2/history"' in out, "Close puts back the tab it replaced"
+        assert 'hx-get="/v2/device/r2/history?list=Lab"' in out, "Close puts back the tab it replaced"
 
     def test_saved_and_not_persisted_is_danger_and_offers_another_preview(self, lab):  # noqa: F811
         lab["state"]["answer"] = {"ok": False, "state": "not_persisted",

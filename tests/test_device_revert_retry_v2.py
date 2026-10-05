@@ -76,9 +76,9 @@ class TestTheMenu:
 
     def test_a_standing_block_offers_both_here_and_without_script(self, blocked):
         menu = _menu(blocked)
-        assert 'hx-get="/v2/device/r2/revert?back=overview"' in menu
-        assert 'hx-get="/v2/device/r2/retry?back=overview"' in menu
-        assert 'href="/v2/device/r2?tab=overview&amp;op=revert"' in menu
+        assert 'hx-get="/v2/device/r2/revert?back=overview&amp;list=Lab"' in menu
+        assert 'hx-get="/v2/device/r2/retry?back=overview&amp;list=Lab"' in menu
+        assert 'href="/v2/device/r2?tab=overview&amp;op=revert&amp;list=Lab"' in menu
         _r, body = _get(blocked, "/v2/device/r2?op=retry")
         body = body[body.index('id="tab-body"'):]
         assert 'id="device-op"' in body and "Retry the blocked change on r2" in body
@@ -226,7 +226,7 @@ def _open_from_menu(b, srv, op):
     b.click('.page-actions button[aria-haspopup="menu"]')
     b.wait_for("var m = document.querySelector('.page-actions [role=menu]');"
                "return m && m.offsetParent !== null", 10)
-    b.click(f'.page-actions a[href$="op={op}"]')
+    b.click(f'.page-actions a[role=menuitem][href*="op={op}"]')
 
 
 @pytest.mark.parametrize("op", ["revert", "retry"])

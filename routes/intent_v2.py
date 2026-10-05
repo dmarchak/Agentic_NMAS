@@ -13,11 +13,12 @@ import logging
 
 from flask import Blueprint, render_template, request
 
-from routes.device_v2 import _device_or_404, _strict
+from routes.device_v2 import _device_or_404, _strict, carry_list
 
 log = logging.getLogger(__name__)
 
 bp = Blueprint("intent_v2", __name__, url_prefix="/v2/device")
+bp.url_defaults(carry_list)       # the page's network on every URL it draws (C494)
 
 
 def may_commit() -> dict:

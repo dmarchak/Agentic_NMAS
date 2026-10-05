@@ -474,7 +474,7 @@ class TestMonitoredBy:
         from modules.nsot import listref
         rows = {"r2": R2, "r6": R6}
         monkeypatch.setattr(device_page, "find_device",
-                            lambda name: (listref.resolve("Lab"), dict(rows[name])))
+                            lambda name, ref=None: (listref.resolve("Lab"), dict(rows[name])))
         return lambda name: _get(ready, f"/v2/device/{name}/monitored-by")
 
     def test_r6_lacks_snmp_and_is_offered_the_profile(self, page):

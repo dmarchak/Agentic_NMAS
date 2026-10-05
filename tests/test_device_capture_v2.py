@@ -53,7 +53,7 @@ def _preview_card(lab):
 
     c = lab["client"]
     start = c.get("/v2/device/r2/capture?back=history").get_data(as_text=True)
-    assert 'hx-trigger="load"' in start and 'hx-post="/v2/device/r2/capture/start"' in start
+    assert 'hx-trigger="load"' in start and 'hx-post="/v2/device/r2/capture/start?list=Lab"' in start
     vals = re.search(r"hx-vals='([^']*)'", start).group(1)
     assert '"list": "Lab"' in vals and '"back": "history"' in vals
     reading = c.post("/v2/device/r2/capture/start", data={"list": "Lab", "back": "history"})
@@ -77,7 +77,7 @@ class TestTheMenu:
         html = lab["client"].get("/v2/device/r2").get_data(as_text=True)
         menu = html[html.index('role="menu"'):html.index('class="tabs"')]
         row = menu[menu.index('data-op="capture"') - 200:menu.index('data-op="capture"') + 1500]
-        assert 'hx-get="/v2/device/r2/capture?back=overview"' in row and 'hx-target="#tab-body"' in row
+        assert 'hx-get="/v2/device/r2/capture?back=overview&amp;list=Lab"' in row and 'hx-target="#tab-body"' in row
         assert 'aria-label="How does capture work?"' in row
         assert "Every action runs here." in menu and "today's device page" not in menu
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
@@ -88,7 +88,7 @@ class TestTheMenu:
     def test_without_script_the_row_opens_the_page_with_the_card(self, lab):
         html = lab["client"].get("/v2/device/r2?op=capture").get_data(as_text=True)
         body = html[html.index('id="tab-body"'):]
-        assert 'id="device-op"' in body and 'hx-post="/v2/device/r2/capture/start"' in body
+        assert 'id="device-op"' in body and 'hx-post="/v2/device/r2/capture/start?list=Lab"' in body
 
 
 class TestThePreview:
@@ -117,7 +117,7 @@ class TestThePreview:
         assert f"Bound to capture {h}" in foot
         assert 'class="op-idle">Record r2' in foot and 'class="op-busy">Reading r2 again' in foot
         assert 'hx-disabled-elt="this"' in foot and f'"hash": "{h}"' in foot
-        assert 'hx-get="/v2/device/r2/history"' in html, "Cancel puts back the tab it replaced"
+        assert 'hx-get="/v2/device/r2/history?list=Lab"' in html, "Cancel puts back the tab it replaced"
 
     def test_a_device_equal_to_its_golden_offers_no_confirm(self, lab):
         html = _preview_card(lab)
@@ -182,8 +182,8 @@ class TestTheConfirm:
         assert "r2 departs" in still and "the next deploy would send intent" in still
         assert "Edit intent…</a>" in out and "in today's intent editor, which this opens" in out
         assert 'data-op="removal"' in out
-        assert 'href="/v2/device/r2?tab=history"' in out and "Open in History" in out
-        assert 'hx-get="/v2/device/r2/history"' in out, "Close puts back the tab it replaced"
+        assert 'href="/v2/device/r2?tab=history&amp;list=Lab"' in out and "Open in History" in out
+        assert 'hx-get="/v2/device/r2/history?list=Lab"' in out, "Close puts back the tab it replaced"
 
     def test_a_device_that_moved_is_refused_naming_both_reads(self, lab):
         lab["running"]["r2"] = _broken(lab["captured"])

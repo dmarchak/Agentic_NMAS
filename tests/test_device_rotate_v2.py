@@ -70,7 +70,7 @@ def rot(lab, monkeypatch):  # noqa: F811
 def _preview(rot, back="history"):
     c = rot["client"]
     start = c.get(f"/v2/device/r2/rotate?back={back}").get_data(as_text=True)
-    assert 'hx-trigger="load"' in start and 'hx-post="/v2/device/r2/rotate/preview"' in start
+    assert 'hx-trigger="load"' in start and 'hx-post="/v2/device/r2/rotate/preview?list=Lab"' in start
     assert "Reading r2's account line now" in start
     r = c.post("/v2/device/r2/rotate/preview", data={"list": "Lab", "back": back})
     assert r.status_code == 200, r.get_data(as_text=True)[:400]
@@ -93,10 +93,10 @@ class TestTheMenu:
         html = rot["client"].get("/v2/device/r2").get_data(as_text=True)
         menu = html[html.index('role="menu"'):html.index('class="tabs"')]
         row = menu[menu.index('data-op="rotate"') - 200:menu.index('data-op="rotate"') + 1500]
-        assert 'hx-get="/v2/device/r2/rotate?back=overview"' in row
+        assert 'hx-get="/v2/device/r2/rotate?back=overview&amp;list=Lab"' in row
         assert "Every action runs here." in menu
         page = rot["client"].get("/v2/device/r2?op=rotate").get_data(as_text=True)
-        assert 'hx-post="/v2/device/r2/rotate/preview"' in page[page.index('id="tab-body"'):]
+        assert 'hx-post="/v2/device/r2/rotate/preview?list=Lab"' in page[page.index('id="tab-body"'):]
 
 
 class TestThePreview:
@@ -133,7 +133,7 @@ class TestThePreview:
             html = _preview(rot)
             assert "alex@example.invalid" in html and "op-confirm" not in html
             assert "This preview reads again when that operation finishes" in html
-            assert 'hx-get="/v2/device/r2/when-free?op=rotate&amp;back=history"' in html
+            assert 'hx-get="/v2/device/r2/when-free?op=rotate&amp;back=history&amp;list=Lab"' in html
             assert 'hx-trigger="nmas:device_holds from:body"' in html
             still = rot["client"].get("/v2/device/r2/when-free?op=rotate&back=history")
             assert still.status_code == 204 and still.get_data() == b""
@@ -141,7 +141,7 @@ class TestThePreview:
             device_ops.release("Lab", "r2")
         free = rot["client"].get("/v2/device/r2/when-free?op=rotate&back=history")
         assert free.status_code == 200
-        assert 'hx-post="/v2/device/r2/rotate/preview"' in free.get_data(as_text=True)
+        assert 'hx-post="/v2/device/r2/rotate/preview?list=Lab"' in free.get_data(as_text=True)
 
 
 class TestTheConfirm:
@@ -160,7 +160,7 @@ class TestTheConfirm:
         assert "Export the break-glass record again" in out
         assert 'data-op="breakglass-export"' in out
         assert "abc1234def56"[:12] in out[out.index("Recorded"):]
-        assert 'hx-get="/v2/device/r2/history"' in out, "Close puts back the tab it replaced"
+        assert 'hx-get="/v2/device/r2/history?list=Lab"' in out, "Close puts back the tab it replaced"
 
     def test_a_persist_that_stopped_is_partial_and_named(self, rot):
         rot["rot"]["persist_state"] = cr.ROTATED_UNVERIFIED

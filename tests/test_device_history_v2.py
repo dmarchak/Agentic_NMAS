@@ -123,7 +123,7 @@ class TestTheTab:
     def test_the_tab_is_built_and_the_fragment_strict(self, lab):
         from modules import csp
         r, html = _get(lab, "/v2/device/r3?tab=history")
-        assert 'hx-get="/v2/device/r3/history"' in html and 'id="history"' in html
+        assert 'hx-get="/v2/device/r3/history?list=Lab"' in html and 'id="history"' in html
         r, frag = _get(lab, "/v2/device/r3/history")
         assert r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY
         assert not re.search(r"\sstyle=|\son[a-z]+=", frag)

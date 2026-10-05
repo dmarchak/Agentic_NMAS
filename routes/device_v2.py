@@ -55,11 +55,57 @@ def _who() -> dict:
             "initials": (name or "?")[:2].upper(), "why": "", "note": ""}
 
 
+def _page_list() -> str:
+    """The network the address names (``?list=``, every way in names it), or ""."""
+    from routes.list_param import named_list
+    return named_list(request)
+
+
+def _page_ref():
+    """The page's network (C494): the one the address names, else the active one. An unknown
+    name raises `listref.UnknownList` (a GET naming one is refused before any view runs)."""
+    from modules.nsot import listref
+
+    named = _page_list()
+    return listref.resolve(named) if named else listref.active()
+
+
+def carry_list(endpoint, values):
+    """Every device-page URL drawn while serving a page carries that page's network (C494), so
+    a link, an hx-get or an hx-post resolves the device where the page found it, never in
+    whichever network is active when it is clicked. A URL naming its own list keeps it."""
+    from flask import g, has_request_context
+
+    if "list" in values or not has_request_context():
+        return
+    name = g.get("device_list") or _page_list()
+    if name:
+        values["list"] = name
+
+
+bp.url_defaults(carry_list)
+
+
 def _device_or_404(name):
+    """``((ref, dev), None)`` for *name* in the page's network, or ``(None, refusal)``; the
+    refusal names the other networks that hold the device when the address named none."""
+    from flask import g
+
+    from modules.nsot import listref
+
     try:
-        return device_page.find_device(name), None
+        ref = _page_ref()
+    except listref.UnknownList as exc:
+        return None, _strict(render_template("v2/not_found.html", why=str(exc), name=name,
+                                             who=_who()), 404)
+    try:
+        found = device_page.find_device(name, ref=ref)
     except device_page.NoSuchDevice as exc:
-        return None, _strict(render_template("v2/not_found.html", why=str(exc), who=_who()), 404)
+        elsewhere = [] if _page_list() else device_page.networks_holding(name, besides=ref.name)
+        return None, _strict(render_template("v2/not_found.html", why=str(exc), name=name,
+                                             elsewhere=elsewhere, who=_who()), 404)
+    g.device_list = found[0].name
+    return found, None
 
 
 def _overview_ctx(ref, dev):
@@ -130,10 +176,10 @@ def _retired(name):
     """``(list ref, record)`` for a device retired from the active list (a read may derive its
     list), from its retire commit (`retire.retired_record`), or None. An unreadable history
     is logged and is not a record."""
-    from modules.nsot import listref, retire
+    from modules.nsot import retire
 
     try:
-        ref = listref.active()
+        ref = _page_ref()
         rec = retire.retired_record(ref.repo_dir, name)
     except Exception as exc:                          # noqa: BLE001
         log.warning("device_v2: the retire record could not be read for %s: %s", name, exc)
@@ -149,7 +195,7 @@ def device(name):
     found, refusal = _device_or_404(name)
     if refusal is not None:
         try:
-            pending = device_page.find_pending(name)
+            pending = device_page.find_pending(name, ref=_page_ref())
         except Exception as exc:                      # noqa: BLE001
             log.warning("device_v2: pending onboardings could not be read for %s: %s", name, exc)
             pending = None
@@ -395,12 +441,25 @@ def _back(fields) -> str:
 def _named_device(name, list_name, template="v2/_capture.html"):
     """``(ref, dev, refusal)`` for a WRITE path: the device in the list the card carries
     (a write path carries its list; only a read derives the active one)."""
+    from flask import g
+
     from modules.nsot import listref
 
     if not list_name or not listref.exists(list_name):
         return None, None, _strict(render_template(
             template, c={"state": "refused_list", "host": name,
                                    "list": list_name}), 400)
+    page = _page_list()
+    if page and page != list_name:
+        # The confirm was drawn for one network and sent from a page of another (C494): which
+        # device it means is not knowable, so nothing is done, naming both.
+        return None, None, _strict(render_template(
+            template, c={"state": "failed", "host": name, "list": list_name,
+                         "error": (f"this confirm carries the network {list_name!r} its "
+                                   f"preview was made in, and was sent from a page of "
+                                   f"{page!r}; open {name} in the network you mean and preview "
+                                   "again")}), 409)
+    g.device_list = list_name
     try:
         ref, dev = device_page.find_device(name, ref=listref.resolve(list_name))
     except device_page.NoSuchDevice as exc:

@@ -72,7 +72,7 @@ class TestTheMenu:
     def test_the_row_runs_here_after_capture_and_without_script_opens_the_page(self, lab):
         _r, page = _get(lab, "/v2/device/r2")
         menu = page[page.index('role="menu"'):page.index('class="tabs"')]
-        assert 'hx-get="/v2/device/r2/seed?back=overview"' in menu
+        assert 'hx-get="/v2/device/r2/seed?back=overview&amp;list=Lab"' in menu
         assert "manage_device" not in menu.split("Seed intent")[0][-400:]
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
         assert labels[:4] == ["Plan a deploy…", "Capture", "Seed intent…", "Restore from…"], labels

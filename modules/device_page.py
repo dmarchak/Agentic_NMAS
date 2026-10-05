@@ -51,6 +51,28 @@ def find_device(name: str, ref=None):
     raise NoSuchDevice(f"no device named {name!r} in the list {ref.name!r}")
 
 
+def networks_holding(name: str, besides: str = "") -> list:
+    """The names of the networks (other than *besides*) whose inventory holds *name*, matched
+    as `find_device` does, sorted: what a page says when a device is not in the network it
+    looked in (C494), so a person is pointed to it instead of switching the active list. A
+    list whose inventory cannot be read is skipped, logged."""
+    from modules.device import load_saved_devices
+    from modules.nsot import listref
+
+    out = []
+    for list_name in sorted(listref._registry()):
+        if list_name == besides:
+            continue
+        try:
+            rows = load_saved_devices(listref.resolve(list_name).csv_path)
+        except Exception as exc:                   # noqa: BLE001
+            log.warning("device_page: %s's inventory could not be read: %s", list_name, exc)
+            continue
+        if any((d.get("hostname") or "").lower() == (name or "").lower() for d in rows):
+            out.append(list_name)
+    return out
+
+
 def find_pending(name: str, ref=None):
     """(list reference, pending row) for a device onboarded and not yet
     reached (the manifest's `pending_devices`), matched exactly, or None. A

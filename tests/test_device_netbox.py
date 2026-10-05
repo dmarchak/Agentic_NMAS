@@ -186,7 +186,7 @@ from tests.test_profile_apply import lab  # noqa: E402,F401 (the fixture)
 def page(lab, nb, monkeypatch):
     from modules import device_page
     from modules.nsot import listref
-    monkeypatch.setattr(device_page, "find_device", lambda name: (
+    monkeypatch.setattr(device_page, "find_device", lambda name, ref=None: (
         listref.resolve(LIST), {"hostname": name, "ip": "192.0.2.1", "platform": "cisco_iosxe"}))
 
     def no_session(*a, **k):
@@ -214,7 +214,7 @@ class TestThePage:
     def test_the_tab_is_built_and_redraws_on_netbox_writes(self, page):
         from modules import invalidation
         _r, html = page("/v2/device/r3?tab=netbox")
-        assert 'hx-get="/v2/device/r3/netbox"' in html and 'id="netbox"' in html
+        assert 'hx-get="/v2/device/r3/netbox?list=Lab"' in html and 'id="netbox"' in html
         keys = re.findall(r"nmas:(\w+) from:body", re.search(r'id="netbox" hx-get="[^"]*"\s+hx-trigger="([^"]*)"', html).group(1))
         src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
         assert keys == ["netbox"] and "netbox" in invalidation.VOCABULARY

@@ -1,7 +1,12 @@
 # The device page
 
-Everything about one device, addressed by its name. Its header names the model, platform,
-address and the account the tool signs in as; Actions lists the operations on the device.
+Everything about one device, addressed by its name and its network:
+`/v2/device/<name>?list=<network>`, or the network the app is showing when the address names
+none. Every link, tab and action on the page keeps that network, so the page never switches to
+another network's device of the same name; a confirm sent from a page of another network does
+nothing and says so. When the name is not in the network shown but is in one other network,
+the page says which, with the link. Its header names the model, platform, address and the
+account the tool signs in as; Actions lists the operations on the device.
 
 ## Actions {#actions}
 

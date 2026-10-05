@@ -220,7 +220,7 @@ class TestThePage:
         # r2: nothing to send, its SNMP not reporting named with where to diagnose it.
         idle = re.search(r'<li id="apply-r2">(.*?)</li>', text, re.S).group(1)
         assert "SNMP is not reporting" in idle
-        assert 'href="/v2/device/r2?tab=monitoring">diagnose it on r2</a>' in idle
+        assert 'href="/v2/device/r2?tab=monitoring&list=Lab">diagnose it on r2</a>' in idle
         # The bound statement, Back and the one confirm in the board's words.
         assert "Bound to these programs: if a device or a template changes before you confirm" in text
         assert '<a class="btn" href="/v2/monitoring/coverage">Back</a>' in text

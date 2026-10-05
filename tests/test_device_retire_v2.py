@@ -85,7 +85,7 @@ class TestTheMenu:
     def test_the_row_runs_here_and_every_action_does(self, page):
         _r, body = _get(page, "/v2/device/r5")
         menu = body[body.index('role="menu"'):body.index('class="tabs"')]
-        assert 'hx-get="/v2/device/r5/retire?back=overview"' in menu
+        assert 'hx-get="/v2/device/r5/retire?back=overview&amp;list=Lab"' in menu
         assert "manage_device" not in menu and "/manage/" not in menu
         assert "Every action runs here." in menu
         _r, body = _get(page, "/v2/device/r5?op=retire")
