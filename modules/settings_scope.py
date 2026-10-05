@@ -94,6 +94,42 @@ SCOPES: dict = {
 }
 
 
+#: What a person calls each network group (P.8 boards A to J): a card's title, a preview's row.
+#: A group of one not named here is called by its key.
+GROUP_LABELS: dict = {
+    "grafana": "Grafana", "grafana_roles": "Grafana dashboards", "prometheus": "Prometheus",
+    "loki": "Loki", "oxidized": "Oxidized", "kea": "Kea",
+    "topology_service": "Topology service", "lab": "Lab",
+    "monitoring_profile": "Monitoring profile", "s3_archive": "S3 archive",
+    "verify_settle_windows": "Verify settle windows", "deploy_max_workers": "Deploy workers",
+    "deploy_verify_failure_limit": "Deploy failure limit",
+    "nsot_device_tag_retention": "Golden tags kept", "nsot_config_read_timeout":
+    "Configuration read timeout", "netbox_excluded_vrfs": "NetBox excluded VRFs",
+    "tftp_server_ip": "TFTP server address",
+}
+
+#: The key whose value says a group's outside service is configured at all: with it empty
+#: nothing can be asked, so a reader skips the configuration and says "not configured"
+#: (NSOT_P8_DESIGN section 8, step 5) rather than failing every interval.
+URL_KEYS: dict = {
+    "grafana": "grafana_url", "prometheus": "prometheus_url", "loki": "loki_url",
+    "oxidized": "oxidized_url", "kea": "kea_url", "topology_service": "topology_service_url",
+    "s3_archive": "s3_endpoint",
+}
+
+
+def network_groups() -> tuple:
+    """Every group a network chooses for (inherit, its own, not applicable), sorted. The
+    host's declarations of "deliberately none" (`settings_not_applicable`) are the Default
+    network's own bookkeeping, never a group another network inherits or owns."""
+    return tuple(sorted({g for k, (s, g) in SCOPES.items()
+                         if s == NETWORK and g != "settings_not_applicable"}))
+
+
+def group_label(group: str) -> str:
+    return GROUP_LABELS.get(group, group)
+
+
 def scope_of(key: str) -> tuple:
     """``(scope, group)`` of a declared setting; KeyError names an undeclared one."""
     try:

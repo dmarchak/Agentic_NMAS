@@ -313,6 +313,12 @@ pages.
    - H: one navigation, a scope bar (Installation, Default, a network) with a network picker
      that leads with the networks that differ from Default.
 
+   **F to J APPROVED 2026-10-05 (the operator)**, as redrawn for optional inheritance
+   (canvas v45; section 8): inherit or standalone per network and per group, the previewed
+   switches J1 and J2, G's counts and H's mode bar. The v1 gap stands for now: a new network
+   is created on today's page, starts as inheriting, and its v2 Settings offers the switch at
+   once, until v2 can create networks (board I's form is built then).
+
    Point 4 (decided in F to H): the 12 retiring form-only settings are gone from v2, and
    today's page keeps them until cutover. The two recorded v1 exceptions (the Grafana and
    Proxmox tokens' declared expiries) are shown: Grafana's on each network's Grafana card,
@@ -439,7 +445,12 @@ choice is there from the first moment once it is built.
    declared, and each network credential is already grouped with its URL. The per-group choice
    uses exactly these group names.
 
-2. **Step 2, the store and the resolver (`modules/list_settings.py`).**
+2. **Step 2, the store and the resolver (`modules/list_settings.py`). BUILT 2026-10-05**
+   (boards F to J approved that day), as below. Two things the build added: `write()` had
+   rebuilt the store with only its values and declarations, so it now keeps the mode and the
+   choices; and the record is the list's `settings_record.jsonl` (0600), which keeps a removed
+   value as it was stored (a secret encrypted), so going back can restore it. The group
+   labels and each group's URL key are in `settings_scope.py` (`GROUP_LABELS`, `URL_KEYS`).
    - **The store** gains two optional keys:
      - `"mode": "inherit" | "standalone"` (absent means inherit, so every existing list keeps
        today's behaviour, and nothing is migrated);

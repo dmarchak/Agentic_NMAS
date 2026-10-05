@@ -98,6 +98,210 @@ class TestWriting:
         assert (p / "settings.json").read_text(encoding="utf-8") == "{not json"
 
 
+def _store_doc(store, name="branch"):
+    p = store / "lists" / name / "settings.json"
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+
+
+def _standalone(store, name="branch", **extra):
+    p = store / "lists" / name
+    p.mkdir(parents=True, exist_ok=True)
+    doc = {"values": {}, "not_applicable": {}, "mode": "standalone"}
+    doc.update(extra)
+    (p / "settings.json").write_text(json.dumps(doc), encoding="utf-8")
+
+
+@pytest.fixture
+def with_loki(store):
+    """Default also sets Loki, so two groups are inherited today."""
+    p = store / "user_settings.json"
+    doc = json.loads(p.read_text(encoding="utf-8"))
+    doc["loki_url"] = "http://192.0.2.10:3100"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    return store
+
+
+class TestInheritingIsAChoice:
+    """NSOT_P8_DESIGN section 8 (the operator, 2026-10-05): a network inherits from Default
+    or is standalone; each group chooses inherit, its own or not applicable; a standalone
+    network's unset value is "not configured for this network", never Default's."""
+
+    def test_a_store_with_no_mode_behaves_exactly_as_before(self, store):
+        p = store / "lists" / "branch"
+        p.mkdir(parents=True)
+        (p / "settings.json").write_text(json.dumps({"values": {}, "not_applicable": {}}),
+                                         encoding="utf-8")
+        assert L.mode("Branch") == L.INHERIT
+        assert L.resolve("Branch", "grafana_url") == ("http://192.0.2.10:3000", L.INHERITED)
+        assert L.secret("Branch", "grafana_token") == "default-token"
+
+    def test_a_standalone_network_never_reads_defaults_value_or_secret(self, store):
+        _standalone(store)
+        assert L.resolve("Branch", "grafana_url") == ("", L.NOT_CONFIGURED)
+        assert L.secret("Branch", "grafana_token") == "", "Default's token reached a standalone"
+        assert L.value("Branch", "grafana_url", "fallback") == "fallback"
+        # A group of one reads its schema default, never Default's.
+        assert L.resolve("Branch", "deploy_max_workers") == (1, L.NOT_CONFIGURED)
+
+    def test_a_standalone_networks_group_that_chose_inherit_reads_defaults(self, store):
+        _standalone(store, groups={"grafana": "inherit"})
+        assert L.resolve("Branch", "grafana_url") == ("http://192.0.2.10:3000", L.INHERITED)
+        assert L.secret("Branch", "grafana_token") == "default-token"
+        assert L.resolve("Branch", "loki_url")[1] == L.NOT_CONFIGURED
+
+    def test_own_with_nothing_set_is_not_configured(self, store):
+        p = store / "lists" / "branch"
+        p.mkdir(parents=True)
+        (p / "settings.json").write_text(json.dumps({"values": {}, "not_applicable": {},
+                                                     "groups": {"grafana": "own"}}),
+                                         encoding="utf-8")
+        assert L.resolve("Branch", "grafana_url") == ("", L.NOT_CONFIGURED)
+        assert L.secret("Branch", "grafana_token") == ""
+        assert L.resolve("Branch", "loki_url")[1] in (L.INHERITED, L.UNSET_EVERYWHERE)
+
+    def test_not_applicable_still_stops_the_lookup_in_a_standalone_network(self, store):
+        _standalone(store, not_applicable={"grafana": {"by": "a", "why": "no Grafana here"}})
+        assert L.resolve("Branch", "grafana_url") == (None, L.NOT_APPLICABLE)
+
+    def test_a_write_keeps_the_mode_and_the_groups_choices(self, store):
+        _standalone(store, groups={"loki": "inherit", "kea": "own"})
+        assert L.write("Branch", {"deploy_max_workers": 3})["ok"] is True
+        doc = _store_doc(store)
+        assert doc["mode"] == "standalone"
+        assert doc["groups"] == {"loki": "inherit", "kea": "own"}
+
+    def test_a_value_written_to_a_group_that_chose_inherit_makes_it_its_own(self, store):
+        _standalone(store, groups={"grafana": "inherit"})
+        L.write("Branch", {"grafana_url": "http://192.0.2.20:3000"})
+        assert _store_doc(store)["groups"]["grafana"] == "own"
+        assert L.secret("Branch", "grafana_token") == ""
+
+
+class TestTheModeSwitch:
+    def test_standalone_names_exactly_the_inherited_groups_that_become_unconfigured(
+            self, with_loki):
+        L.write("Branch", {"prometheus_url": "http://192.0.2.40:9090"})
+        plan = L.plan_mode("Branch", L.STANDALONE)
+        assert sorted(plan["unconfigured"]) == ["Grafana", "Loki"]
+        moving = {r["group"]: (r["today_state"], r["after_state"]) for r in plan["moving"]}
+        assert moving["grafana"] == ("inherited", "not_configured")
+        assert "prometheus" not in moving, "a group with its own values moved with the mode"
+        assert plan["confirmable"] is True
+        assert "Grafana and Loki are inherited from Default today" in " ".join(plan["what"])
+
+    def test_a_groups_own_choice_stands_when_the_mode_moves(self, with_loki):
+        p = with_loki / "lists" / "branch"
+        p.mkdir(parents=True)
+        (p / "settings.json").write_text(json.dumps(
+            {"values": {}, "not_applicable": {}, "groups": {"loki": "inherit"}}),
+            encoding="utf-8")
+        plan = L.plan_mode("Branch", L.STANDALONE)
+        assert plan["unconfigured"] == ["Grafana"]
+        assert "Loki" in " ".join(plan["what_not"])
+
+    def test_the_reverse_names_what_it_picks_up(self, with_loki):
+        _standalone(with_loki)
+        plan = L.plan_mode("Branch", L.INHERIT)
+        assert sorted(plan["picked"]) == ["Grafana", "Loki"]
+        assert "picks up Default's" in " ".join(plan["what"])
+
+    def test_a_preview_writes_nothing(self, store):
+        L.plan_mode("Branch", L.STANDALONE)
+        L.plan_group("Branch", "grafana", L.NA, reason="no Grafana at this site at all")
+        assert not (store / "lists" / "branch").exists()
+
+    def test_a_preview_never_carries_a_secret(self, store):
+        raw = json.dumps([L.plan_mode("Branch", L.STANDALONE),
+                          L.plan_group("Branch", "grafana", L.OWN,
+                                       values={"grafana_token": "branch-secret-t"})])
+        assert "default-token" not in raw and "branch-secret-t" not in raw
+        stored = json.loads((store / "user_settings.json").read_text())["grafana_token"]
+        assert stored not in raw, "the stored ciphertext reached a preview"
+
+    def test_apply_switches_and_records(self, with_loki):
+        plan = L.plan_mode("Branch", L.STANDALONE)
+        out = L.apply_mode("Branch", L.STANDALONE, plan["fingerprint"], "op@example.invalid",
+                           "access", seen=plan["operands"])
+        assert out["recorded"] is True and out["kind"] == "mode"
+        assert L.mode("Branch") == L.STANDALONE
+        assert L.resolve("Branch", "grafana_url")[1] == L.NOT_CONFIGURED
+        rec = L.changes("Branch")
+        assert rec["state"] == "ok" and rec["rows"][0]["actor"] == "op@example.invalid"
+        assert {m[0] for m in rec["rows"][0]["moved"]} >= {"grafana", "loki"}
+        p = with_loki / "lists" / "branch" / L.RECORD
+        assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+
+    def test_a_confirm_whose_settings_moved_is_refused_naming_both(self, with_loki):
+        plan = L.plan_mode("Branch", L.STANDALONE)
+        # Another person changes Default's Grafana between the preview and the confirm.
+        L.write("Default", {"grafana_url": "http://192.0.2.99:3000"})
+        with pytest.raises(L.SwitchRefused) as exc:
+            L.apply_mode("Branch", L.STANDALONE, plan["fingerprint"], "op@example.invalid",
+                         seen=plan["operands"])
+        msg = str(exc.value)
+        assert "http://192.0.2.10:3000" in msg and "http://192.0.2.99:3000" in msg
+        assert "Nothing was saved" in msg
+        assert L.mode("Branch") == L.INHERIT
+
+    def test_no_actor_and_the_default_network_are_refused(self, store):
+        plan = L.plan_mode("Branch", L.STANDALONE)
+        with pytest.raises(L.SwitchRefused):
+            L.apply_mode("Branch", L.STANDALONE, plan["fingerprint"], "")
+        with pytest.raises(L.SwitchRefused):
+            L.plan_mode("Default", L.STANDALONE)
+
+
+class TestTheGroupSwitch:
+    def test_back_to_inheriting_removes_its_values_and_the_record_keeps_them(self, store):
+        L.write("Branch", {"grafana_url": "http://192.0.2.20:3000", "grafana_token": "br-t"})
+        plan = L.plan_group("Branch", "grafana", L.INHERIT)
+        assert plan["removed"] == ["grafana_token", "grafana_url"]
+        rows = {r["key"]: r for r in plan["rows"]}
+        assert rows["grafana_url"]["after"] == "http://192.0.2.10:3000"
+        assert rows["grafana_token"]["today"] == "set"
+        out = L.apply_group("Branch", "grafana", L.INHERIT, plan["fingerprint"],
+                            "op@example.invalid", "access", seen=plan["operands"])
+        assert L.resolve("Branch", "grafana_url") == ("http://192.0.2.10:3000", L.INHERITED)
+        assert out["removed"]["grafana_url"] == "http://192.0.2.20:3000"
+        raw = (store / "lists" / "branch" / L.RECORD).read_text()
+        assert "br-t" not in raw, "a removed secret reached the record in plain text"
+        from modules.secrets_store import decrypt_value
+        assert decrypt_value(out["removed"]["grafana_token"]) == "br-t"
+
+    def test_its_own_with_values_writes_them_encrypted(self, store):
+        plan = L.plan_group("Branch", "grafana", L.OWN,
+                            values={"grafana_url": "http://192.0.2.60:3000",
+                                    "grafana_token": "own-t"})
+        L.apply_group("Branch", "grafana", L.OWN, plan["fingerprint"], "op@example.invalid",
+                      values={"grafana_url": "http://192.0.2.60:3000",
+                              "grafana_token": "own-t"}, seen=plan["operands"])
+        assert L.secret("Branch", "grafana_token") == "own-t"
+        assert "own-t" not in (store / "lists" / "branch" / "settings.json").read_text()
+
+    def test_values_sent_with_the_confirm_must_be_the_previewed_ones(self, store):
+        plan = L.plan_group("Branch", "grafana", L.OWN, values={"grafana_token": "one"})
+        with pytest.raises(L.SwitchRefused) as exc:
+            L.apply_group("Branch", "grafana", L.OWN, plan["fingerprint"], "op@example.invalid",
+                          values={"grafana_token": "two"}, seen=plan["operands"])
+        assert "not the ones previewed" in str(exc.value)
+
+    def test_not_applicable_needs_a_reason_and_records_who(self, store):
+        plan = L.plan_group("Branch", "kea", L.NA, reason="")
+        assert plan["confirmable"] is False
+        reason = "addresses come from the ISP's DHCP here"
+        plan = L.plan_group("Branch", "kea", L.NA, reason=reason)
+        L.apply_group("Branch", "kea", L.NA, plan["fingerprint"], "op@example.invalid",
+                      reason=reason, seen=plan["operands"])
+        decl = _store_doc(store)["not_applicable"]["kea"]
+        assert decl["by"] == "op@example.invalid" and decl["why"] == reason
+        assert L.resolve("Branch", "kea_url") == (None, L.NOT_APPLICABLE)
+
+    def test_a_switch_to_what_it_already_is_is_refused(self, store):
+        plan = L.plan_group("Branch", "grafana", L.INHERIT)
+        assert plan["confirmable"] is False
+        assert "already inherit from Default" in plan["gates"][-1]["why"]
+
+
 HOLDER = '''
 import sys, time
 sys.path.insert(0, {root!r})
