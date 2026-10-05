@@ -470,7 +470,7 @@ def monitoring(dev: dict, list_name: str, chosen_uid: str = "", range_text: str 
     cfg = device_dashboard_settings(list_name)
     client = client or grafana_client(list_name)
     value, at, why = _cached("grafana-dashboards", list_name)
-    out = {"settings": cfg, "network": list_name, "value_at": at, "range": range_text, "limit_words": panels.limit_words((value or {}).get("datasources") or []), "offered": [], "state": "ok"}
+    out = {"settings": cfg, "network": list_name, "value_at": at, "range": range_text, "limit_words": panels.limit_words(panels.stores((value or {}).get("datasources") or [], list_name)), "offered": [], "state": "ok"}
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -507,7 +507,7 @@ def monitoring(dev: dict, list_name: str, chosen_uid: str = "", range_text: str 
         return out
     try:
         seconds = panels.parse_range(range_text)
-        panels.check_range(seconds, "prometheus", *panels.history_store(datasources))
+        panels.check_range(seconds, "prometheus", panels.stores(datasources, list_name))
     except panels.RangeRefused as exc:
         out.update(state="range_refused", why=str(exc))
         return out
@@ -676,8 +676,8 @@ def panel_data(dev: dict, list_name: str, uid: str, panel_id: int, range_text: s
         fill = panels.variable_values(dash, cfg["variable"], variable_value(dev, cfg["value_from"]),
                                       value.get("datasources") or [])
         default_ds = panels.default_datasource(value.get("datasources") or [], "prometheus")
-        history, history_why = panels.history_store(value.get("datasources") or [])
-        body = panels.build_request(panel, dash, fill, seconds, default_ds, history, history_why)
+        st = panels.stores(value.get("datasources") or [], list_name)
+        body = panels.build_request(panel, dash, fill, seconds, default_ds, st)
     except panels.RangeRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
     got = client.query(body)
@@ -685,7 +685,7 @@ def panel_data(dev: dict, list_name: str, uid: str, panel_id: int, range_text: s
         return {"ok": False, "error": f"Grafana: {got.get('error')}"}, 502
     errors = panels.answer_errors(got["body"])
     payload = panels.render_payload(panel, got["body"], seconds)
-    payload["store"] = panels.store_words(seconds, panel, dash, fill, default_ds, history)
+    payload["store"] = panels.store_words(seconds, panel, dash, fill, default_ds, st)
     payload["errors"] = errors
     # What was asked, so an empty panel says what matched nothing, the panel's own sentence on
     # hover (C412).
@@ -694,7 +694,7 @@ def panel_data(dev: dict, list_name: str, uid: str, panel_id: int, range_text: s
         # A reading outside its range from sysUpTime is a restart: say when.
         try:
             probe = panels.build_request(panels.restart_panel(panel, cfg["variable"]), dash, fill,
-                                         max(seconds, 7200), default_ds, history, history_why)
+                                         max(seconds, 7200), default_ds, st)
             back = client.query(probe)
             at = panels.last_restart(back["body"]) if back.get("ok") else None
         except Exception as exc:                      # noqa: BLE001
@@ -751,7 +751,7 @@ def fleet_monitoring(list_name: str, chosen_uid: str = "", range_text: str = "1h
     client = client or grafana_client(list_name)
     value, at, why = _cached("grafana-dashboards", list_name)
     out = {"default": default, "network": list_name, "grafana_url": _grafana_url(list_name),
-           "value_at": at, "range": range_text, "limit_words": panels.limit_words((value or {}).get("datasources") or []), "offered": [], "state": "ok"}
+           "value_at": at, "range": range_text, "limit_words": panels.limit_words(panels.stores((value or {}).get("datasources") or [], list_name)), "offered": [], "state": "ok"}
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -772,7 +772,7 @@ def fleet_monitoring(list_name: str, chosen_uid: str = "", range_text: str = "1h
     out.update(dashboard={"uid": uid, "title": dash["title"]}, is_default=(uid == default))
     try:
         seconds = panels.parse_range(range_text)
-        panels.check_range(seconds, "prometheus", *panels.history_store(datasources))
+        panels.check_range(seconds, "prometheus", panels.stores(datasources, list_name))
     except panels.RangeRefused as exc:
         out.update(state="range_refused", why=str(exc))
         return out
@@ -809,19 +809,19 @@ def fleet_panel_data(list_name: str, uid: str, panel_id: int, range_text: str,
     datasources = value.get("datasources") or []
     try:
         seconds = panels.parse_range(range_text)
-        panels.check_range(seconds, "prometheus", *panels.history_store(datasources))
+        st = panels.stores(datasources, list_name)
+        panels.check_range(seconds, "prometheus", st)
         fill = panels.variable_values(dash, "", "", datasources)
-        history, history_why = panels.history_store(datasources)
         body = panels.build_request(panel, dash, fill, seconds,
-                                    panels.default_datasource(datasources, "prometheus"),
-                                    history, history_why)
+                                    panels.default_datasource(datasources, "prometheus"), st)
     except panels.RangeRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
     got = client.query(body)
     if not got.get("ok"):
         return {"ok": False, "error": f"Grafana: {got.get('error')}"}, 502
     payload = panels.render_payload(panel, got["body"], seconds)
-    payload["store"] = panels.store_words(seconds, panel, dash, fill, panels.default_datasource(datasources, "prometheus"), history)
+    payload["store"] = panels.store_words(seconds, panel, dash, fill,
+                                          panels.default_datasource(datasources, "prometheus"), st)
     payload["errors"] = panels.answer_errors(got["body"])
     payload["read_at"] = _iso(time.time())
     return payload, 200

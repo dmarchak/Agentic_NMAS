@@ -264,6 +264,28 @@ class TestAPageReadsItsOwnNetworksGrafana:
             R._REGISTRY[name] = kept
 
 
+@pytest.mark.usefixtures("networks")
+def test_each_network_judges_a_range_by_its_own_stores():
+    """The history store (C406) and the live retention are a network's own: Default's 90 days
+    with no history must refuse 91 days while Branch's 30 days with its lake serves 400."""
+    from modules import list_settings as L
+    from modules import panels
+
+    ds = [{"uid": "prom", "type": "prometheus", "name": "prometheus", "is_default": True},
+          {"uid": "lake", "type": "prometheus", "name": "Lake", "is_default": False}]
+    assert L.write("Branch", {"metrics_live_retention_days": 30,
+                              "grafana_history_datasource_uid": "lake"})["ok"]
+    branch, default = panels.stores(ds, "Branch"), panels.stores(ds, "Default")
+    assert (branch.live, branch.history["uid"]) == (30 * 86400, "lake")
+    assert (default.live, default.history) == (90 * 86400, None)
+    panels.check_range(400 * 86400, "prometheus", branch)
+    with pytest.raises(panels.RangeRefused, match="the live store keeps 90 days"):
+        panels.check_range(91 * 86400, "prometheus", default)
+    assert panels.limit_words(branch).endswith("reads the history store Lake")
+    with pytest.raises(TypeError):
+        panels.check_range(91 * 86400, "prometheus")
+
+
 def test_coverage_reporting_reads_per_network():
     from modules.readers import coverage_reporting
 

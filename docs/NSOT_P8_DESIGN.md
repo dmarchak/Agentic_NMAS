@@ -337,9 +337,12 @@ pages.
    (`_cached(…, list)`), and every live ask (`device_page.grafana_client(list)`, built once
    per request and passed down; the variable-values cache is keyed by network). A device
    page passes its device's list. Monitoring passes the active list until 8b carries it in
-   the URL. **Left:** 8a2, the history store and the live retention per network
-   (`panels.history_store`, `live_seconds`, two Default-layer reads); 8b, Monitoring's
-   `?list=`, its header and selector; 8c, the UID-gone row.
+   the URL. **8a2 BUILT 2026-10-05:** a range is judged and served by its network's stores,
+   `panels.Stores(live, history, why)` read together by `panels.stores(datasources, list)`.
+   A PromQL range check without them is refused; only the one-hour probes build a request
+   without them, since every live store keeps at least a day. The Default-layer inventory
+   loses panels' two reads. **Left:** 8b, Monitoring's `?list=`, its header and selector;
+   8c, the UID-gone row.
 9. **Fold the five per-list files into the store,** one per commit.
 
 **Forecast:** P.8's own estimate was 10 to 15 commits, from C104's readers and C158's write

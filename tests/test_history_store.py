@@ -38,49 +38,49 @@ def settings(monkeypatch):
 
 class TestTheHistoryStore:
     def test_unset_is_none_and_says_nothing(self, settings):
-        assert panels.history_store(DATASOURCES) == (None, "")
+        assert panels.history_store(DATASOURCES, "Default") == (None, "")
 
     def test_set_names_grafanas_promql_datasource(self, settings):
         settings["grafana_history_datasource_uid"] = "thanos-lake"
-        assert panels.history_store(DATASOURCES) == (
+        assert panels.history_store(DATASOURCES, "Default") == (
             {"uid": "thanos-lake", "type": "prometheus", "name": "Thanos (lake)"}, "")
 
     @pytest.mark.parametrize("uid,why", [("gone", "is not one Grafana holds"),
                                          ("loki", "is a loki datasource, not PromQL")])
     def test_a_wrong_setting_is_said(self, settings, uid, why):
         settings["grafana_history_datasource_uid"] = uid
-        ds, said = panels.history_store(DATASOURCES)
+        ds, said = panels.history_store(DATASOURCES, "Default")
         assert ds is None and why in said
 
 
 class TestTheRangeIsServedNeverTrimmed:
     def test_within_the_live_store_needs_no_history(self, settings):
-        panels.check_range(90 * DAY, "prometheus")
+        panels.check_range(90 * DAY, "prometheus", panels.stores(DATASOURCES, "Default"))
 
     def test_past_it_with_no_history_is_refused_naming_the_setting(self, settings):
         with pytest.raises(panels.RangeRefused, match=r"the live store keeps 90 days, and no "
                                                       r"history store is set"):
-            panels.check_range(91 * DAY, "prometheus")
+            panels.check_range(91 * DAY, "prometheus", panels.stores(DATASOURCES, "Default"))
 
     def test_past_it_with_a_wrong_setting_is_refused_naming_why(self, settings):
         settings["grafana_history_datasource_uid"] = "gone"
-        history, why = panels.history_store(DATASOURCES)
+        st = panels.stores(DATASOURCES, "Default")
         with pytest.raises(panels.RangeRefused, match="gone .* is not one Grafana holds"):
-            panels.check_range(91 * DAY, "prometheus", history, why)
+            panels.check_range(91 * DAY, "prometheus", st)
 
     def test_past_it_with_history_is_served(self, settings):
         settings["grafana_history_datasource_uid"] = "thanos-lake"
-        panels.check_range(400 * DAY, "prometheus", *panels.history_store(DATASOURCES))
+        panels.check_range(400 * DAY, "prometheus", panels.stores(DATASOURCES, "Default"))
 
     def test_the_live_retention_is_the_setting(self, settings):
         settings["metrics_live_retention_days"] = 30
         with pytest.raises(panels.RangeRefused, match="the live store keeps 30 days"):
-            panels.check_range(31 * DAY, "prometheus")
+            panels.check_range(31 * DAY, "prometheus", panels.stores(DATASOURCES, "Default"))
 
     def test_loki_keeps_its_own_limit(self, settings):
         settings["grafana_history_datasource_uid"] = "thanos-lake"
         with pytest.raises(panels.RangeRefused, match="Loki serves at most 30 days"):
-            panels.check_range(31 * DAY, "loki", *panels.history_store(DATASOURCES))
+            panels.check_range(31 * DAY, "loki", panels.stores(DATASOURCES, "Default"))
 
 
 def _traffic(stored):  # noqa: F811
@@ -90,12 +90,12 @@ def _traffic(stored):  # noqa: F811
 class TestThePanelReadsTheStoreThatKeepsTheRange:
     def test_a_long_range_asks_the_history_store_the_same_expression(self, settings, stored):  # noqa: F811
         settings["grafana_history_datasource_uid"] = "thanos-lake"
-        history, why = panels.history_store(DATASOURCES)
+        st = panels.stores(DATASOURCES, "Default")
         prom = panels.default_datasource(DATASOURCES, "prometheus")
         short = panels.build_request(_traffic(stored), stored, {"device": "s1"}, 7 * DAY, prom,
-                                     history, why)
+                                     st)
         long = panels.build_request(_traffic(stored), stored, {"device": "s1"}, 180 * DAY, prom,
-                                    history, why)
+                                    st)
         assert {q["datasource"]["uid"] for q in short["queries"]} == {"prom"}
         assert {q["datasource"]["uid"] for q in long["queries"]} == {"thanos-lake"}
         assert [q["expr"] for q in short["queries"]] == [q["expr"] for q in long["queries"]]
@@ -103,18 +103,18 @@ class TestThePanelReadsTheStoreThatKeepsTheRange:
 
     def test_the_panel_says_which_store_answered(self, settings, stored):  # noqa: F811
         settings["grafana_history_datasource_uid"] = "thanos-lake"
-        history, _why = panels.history_store(DATASOURCES)
+        st = panels.stores(DATASOURCES, "Default")
         prom = panels.default_datasource(DATASOURCES, "prometheus")
         assert panels.store_words(7 * DAY, _traffic(stored), stored, {"device": "s1"}, prom,
-                                  history) == ""
+                                  st) == ""
         assert panels.store_words(180 * DAY, _traffic(stored), stored, {"device": "s1"}, prom,
-                                  history) == ("from the history store Thanos (lake): the live "
+                                  st) == ("from the history store Thanos (lake): the live "
                                                "store keeps 90 days")
 
     def test_the_range_control_says_both_stores(self, settings):
-        assert panels.limit_words(DATASOURCES) == "The live store keeps 90 days"
+        assert panels.limit_words(panels.stores(DATASOURCES, "Default")) == "The live store keeps 90 days"
         settings["grafana_history_datasource_uid"] = "thanos-lake"
-        assert panels.limit_words(DATASOURCES) == ("The live store keeps 90 days; a longer range "
+        assert panels.limit_words(panels.stores(DATASOURCES, "Default")) == ("The live store keeps 90 days; a longer range "
                                                    "reads the history store Thanos (lake)")
 
     def test_through_the_device_panel_request(self, settings, stored, monkeypatch):  # noqa: F811

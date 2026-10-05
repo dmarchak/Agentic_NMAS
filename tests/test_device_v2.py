@@ -545,9 +545,9 @@ class TestRanges:
     def test_the_limit_refuses_past_it_and_passes_at_it(self):
         from modules import panels
 
-        panels.check_range(90 * 86400, "prometheus")
+        panels.check_range(90 * 86400, "prometheus", panels.stores([], "Default"))
         with pytest.raises(panels.RangeRefused, match=r"the live store keeps 90 days, and no history store is set \(grafana_history_datasource_uid\); this range is 91 days"):
-            panels.check_range(91 * 86400, "prometheus")
+            panels.check_range(91 * 86400, "prometheus", panels.stores([], "Default"))
         with pytest.raises(panels.RangeRefused, match="30 days 1 hour"):
             panels.check_range(31 * 86400, "loki")
 
