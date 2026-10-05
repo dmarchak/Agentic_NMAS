@@ -97,24 +97,45 @@ def _captured_running(list_name: str, hostname: str):
         return None, ""
 
 
-def _row_for(hostname: str) -> dict:
-    """The device's inventory row in the active list, or ``{}``."""
+def _row_for(hostname: str, list_name: str = "") -> dict:
+    """The device's inventory row in *list_name* (C495: a caller that holds its list passes
+    it; only one with none reads the active list), or ``{}``."""
     from modules.device import get_current_device_list, load_saved_devices
 
-    _name, csv_path = get_current_device_list()
+    if list_name:
+        from modules.nsot import listref
+        csv_path = listref.resolve(list_name).csv_path
+    else:
+        _name, csv_path = get_current_device_list()
     for dev in load_saved_devices(csv_path):
         if dev.get("hostname") == hostname:
             return dev
     return {}
 
 
-def _platform_for(hostname: str) -> str:
+def _platform_for(hostname: str, list_name: str = "") -> str:
     """The device's config dialect — not its Netmiko driver. A device not in
     the list has none: "" (C452), refused by name, never `cisco_ios` by default."""
     from modules.nsot.platform import platform_for_device
 
-    row = _row_for(hostname)
+    row = _row_for(hostname, list_name)
     return platform_for_device(row) if row else ""
+
+
+def unknown_platform_words(hostname: str, list_name: str = "") -> str:
+    """Why *hostname*'s platform is refused, naming what was compared: its row's platform and
+    device_type when the list holds one; when it holds none, THAT, naming the list read
+    (C495: "its inventory row says no platform" was said of a row that was never found)."""
+    from modules.config import get_current_list_name
+    from modules.nsot.platform import DIALECTS, unknown_words
+
+    row = _row_for(hostname, list_name)
+    if row:
+        return unknown_words(row)
+    where = list_name or get_current_list_name()
+    return (f"{hostname}: no row in {where}'s inventory, so its platform cannot be read; the "
+            f"tool refuses rather than read it as another. The platforms the tool knows: "
+            f"{', '.join(sorted(DIALECTS))}")
 
 
 # ---------------------------------------------------------------------------
@@ -449,11 +470,11 @@ def preview(hostname):
             "No captured configuration for this device. Save a golden config "
             "or run a backup first — this view never reads from the device.")}), 404
 
-    platform = _platform_for(hostname)
-    from modules.nsot.platform import is_dialect, unknown_words
+    platform = _platform_for(hostname, list_name)
+    from modules.nsot.platform import is_dialect
     if not is_dialect(platform):
-        return jsonify({"ok": False, "error": unknown_words(
-            _row_for(hostname) or {"hostname": hostname})}), 409
+        return jsonify({"ok": False,
+                        "error": unknown_platform_words(hostname, list_name)}), 409
     template = templates_repo.template_for_device(repo, hostname, platform)
 
     artifact = artifact_for(hostname, source, repo, platform, template)

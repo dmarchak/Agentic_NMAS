@@ -38,6 +38,18 @@ def test_the_row_phase_two_writes_opens_through_the_real_reader(repo):
     assert params["ip"] == "203.0.113.31" and params.get("password") == "R0tatedValue99"
 
 
+def test_the_row_carries_the_plans_platform_and_its_driver(repo):
+    """C495's question (the operator, 2026-10-05: "promotion wrote the row without platform or
+    device_type"): it writes both, from the onboarding record, and the tool resolves the row to
+    that dialect. Measured on the host the same evening: tw-ztp-a's row in throwaway holds
+    `cisco_iosxe` and `cisco_xe`; the refusal came from reading the ACTIVE list's inventory."""
+    from modules.nsot.platform import platform_for_device
+
+    row = _row(repo)
+    assert row["platform"] == "cisco_iosxe" and row["device_type"] == "cisco_xe", row
+    assert platform_for_device(row) == "cisco_iosxe"
+
+
 def test_a_row_with_a_secret_still_carries_it(repo):
     """The floor: a real secret is still encrypted and still read back."""
     from modules.device import decrypt_field

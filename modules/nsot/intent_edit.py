@@ -158,12 +158,14 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
                 "message": ("Valid. No captured config for this device, so there is nothing "
                             "to render against yet.")}
 
-    platform = _platform_of_host(hostname)
-    from modules.nsot.platform import is_dialect, unknown_words
+    # The platform from THIS list's inventory (C495): the active list's held no row for a
+    # device of another network, and the refusal said its row named no platform.
+    platform = _platform_of_host(hostname, list_name)
+    from modules.nsot.platform import is_dialect
     if not is_dialect(platform):
-        from routes.templates import _row_for
+        from routes.templates import unknown_platform_words
         return {"status": 409, "ok": False, "stage": "render",
-                "error": unknown_words(_row_for(hostname) or {"hostname": hostname})}
+                "error": unknown_platform_words(hostname, list_name)}
     template = templates_repo.template_for_device(repo, hostname, platform)
 
     # `artifact_for()`, never `build_artifact()` directly, which reports every device as not

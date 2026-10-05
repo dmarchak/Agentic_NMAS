@@ -588,11 +588,11 @@ def _bulk_render_and_eligible(list_name: str, repo: str):
         capture = golden or running
         if not capture:
             raise RuntimeError("no captured config to render against")
-        platform = _platform_of_host(host)
-        from modules.nsot.platform import UnknownPlatform, is_dialect, unknown_words
+        platform = _platform_of_host(host, list_name)       # this list's row (C495)
+        from modules.nsot.platform import UnknownPlatform, is_dialect
         if not is_dialect(platform):
-            from routes.templates import _row_for
-            raise UnknownPlatform(unknown_words(_row_for(host) or {"hostname": host}))
+            from routes.templates import unknown_platform_words
+            raise UnknownPlatform(unknown_platform_words(host, list_name))
         template = templates_repo.template_for_device(repo, host, platform)
         from modules.nsot import profile as _profile
         art = artifact_for(host, capture, repo, platform, template,
