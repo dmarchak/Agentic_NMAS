@@ -61,7 +61,7 @@ class _Asked(_Grafana):
 
 def _s3(client):
     from modules import device_page
-    return device_page.monitoring({"hostname": "s3", "ip": "192.0.2.23"}, client=client,
+    return device_page.monitoring({"hostname": "s3", "ip": "192.0.2.23"}, "Default", client=client,
                                   streams=(False, "s3 doesn't stream model-driven telemetry"),
                                   model=("vios_l2", "the golden's image line"))
 
@@ -83,7 +83,7 @@ class TestTheSelectorsAsked:
     def test_the_payload_carries_them(self, stored):  # noqa: F811
         from modules import device_page
         p = _panel(stored, "Traffic in")
-        payload, status = device_page.panel_data({"hostname": "r2"}, "nmas-device", p["id"], "1h",
+        payload, status = device_page.panel_data({"hostname": "r2"}, "Default", "nmas-device", p["id"], "1h",
                                                  client=_Grafana())
         assert status == 200, payload
         assert payload["asked"] and any("ifHCInOctets{" in s for s in payload["asked"])
@@ -136,7 +136,7 @@ class TestAKnownPlatformLimitLeadsWithItsReason:
 
         import app as A
         from modules import device_page
-        m = device_page.monitoring({"hostname": "s3", "ip": "192.0.2.23"}, client=_Asked(False),
+        m = device_page.monitoring({"hostname": "s3", "ip": "192.0.2.23"}, "Default", client=_Asked(False),
                                    streams=(False, "s3 doesn't stream model-driven telemetry"),
                                    model=model)
         with A.app.test_request_context("/"):

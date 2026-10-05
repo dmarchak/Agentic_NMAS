@@ -112,7 +112,7 @@ def _monitored_by(ref, dev) -> dict:
 def _monitoring_ctx(ref, dev):
     hw = device_page.hardware(ref, dev)
     return {"device": dev, "mb": _monitored_by(ref, dev), "m": device_page.monitoring(
-        dev, chosen_uid=request.args.get("dashboard", ""), range_text=request.args.get("range", "1h"),
+        dev, ref.name, chosen_uid=request.args.get("dashboard", ""), range_text=request.args.get("range", "1h"),
         streams=device_page.streams_telemetry(ref, dev),
         model=(hw.get("model") or "", hw.get("model_from") or ""))}
 
@@ -222,7 +222,8 @@ def panel(name, uid, panel_id):
         ref, dev = device_page.find_device(name)
     except device_page.NoSuchDevice as exc:
         return jsonify({"ok": False, "error": str(exc)}), 404
-    payload, code = device_page.panel_data(dev, uid, panel_id, request.args.get("range", "1h"),
+    payload, code = device_page.panel_data(dev, ref.name, uid, panel_id,
+                                           request.args.get("range", "1h"),
                                            streams=device_page.streams_telemetry(ref, dev))
     return jsonify(payload), code
 

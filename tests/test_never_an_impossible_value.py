@@ -117,10 +117,10 @@ class TestThePanelRouteSaysWhenItRestarted:
         fake.extra["nmas-device"] = _model()
         from modules.readers import grafana_dashboards
         _store("grafana-dashboards", grafana_dashboards.read(fake))
-        monkeypatch.setattr(device_page, "device_dashboard_settings", lambda: {
+        monkeypatch.setattr(device_page, "device_dashboard_settings", lambda *_l: {
             "uid": "nmas-device", "variable": "device", "value_from": "hostname"})
         pid = _clock_panel()["id"]
-        payload, code = device_page.panel_data({"hostname": "s3", "ip": "192.0.2.23"}, "nmas-device",
+        payload, code = device_page.panel_data({"hostname": "s3", "ip": "192.0.2.23"}, "Default", "nmas-device",
                                                pid, "1h", client=fake)
         assert code == 200, payload
         assert payload["value"] is None

@@ -120,7 +120,7 @@ class TestThePanelReadsTheStoreThatKeepsTheRange:
     def test_through_the_device_panel_request(self, settings, stored, monkeypatch):  # noqa: F811
         from modules import device_page
         value = {"dashboards": {"nmas-device": stored}, "datasources": DATASOURCES}
-        monkeypatch.setattr(device_page, "_cached", lambda reader: (value, "2026-10-04T00:00:00Z", ""))
+        monkeypatch.setattr(device_page, "_cached", lambda reader, *_l: (value, "2026-10-04T00:00:00Z", ""))
         settings["grafana_history_datasource_uid"] = "thanos-lake"
         asked = []
 
@@ -129,12 +129,12 @@ class TestThePanelReadsTheStoreThatKeepsTheRange:
                 asked.append(body)
                 return super().query(body)
 
-        payload, status = device_page.panel_data({"hostname": "s1"}, "nmas-device",
+        payload, status = device_page.panel_data({"hostname": "s1"}, "Default", "nmas-device",
                                                  _traffic(stored)["id"], "180d", client=G())
         assert status == 200, payload
         assert {q["datasource"]["uid"] for q in asked[0]["queries"]} == {"thanos-lake"}
         assert payload["store"].startswith("from the history store Thanos (lake)")
-        payload, status = device_page.panel_data({"hostname": "s1"}, "nmas-device",
+        payload, status = device_page.panel_data({"hostname": "s1"}, "Default", "nmas-device",
                                                  _traffic(stored)["id"], "7d", client=G())
         assert status == 200 and payload["store"] == ""
 

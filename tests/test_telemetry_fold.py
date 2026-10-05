@@ -57,9 +57,9 @@ def stored(monkeypatch):
     value = {"dashboards": {"nmas-device": dash},
              "datasources": [{"uid": "prom", "type": "prometheus", "name": "P", "is_default": True},
                              {"uid": "loki", "type": "loki", "name": "L", "is_default": False}]}
-    monkeypatch.setattr(device_page, "_cached", lambda reader: (value, "2026-09-30T20:00:00Z", ""))
+    monkeypatch.setattr(device_page, "_cached", lambda reader, *_l: (value, "2026-09-30T20:00:00Z", ""))
     monkeypatch.setattr(device_page, "device_dashboard_settings",
-                        lambda: {"uid": "nmas-device", "variable": "device", "value_from": "hostname"})
+                        lambda *_l: {"uid": "nmas-device", "variable": "device", "value_from": "hostname"})
     return dash
 
 
@@ -89,7 +89,7 @@ class TestTheFold:
     def test_a_switch_folds_exactly_the_telemetry_only_panels_under_one_line(self, stored):
         from modules import device_page
 
-        m = device_page.monitoring({"hostname": "s1", "ip": "192.0.2.21"}, client=_Grafana(),
+        m = device_page.monitoring({"hostname": "s1", "ip": "192.0.2.21"}, "Default", client=_Grafana(),
                                    streams=(False, "s1 doesn't stream model-driven telemetry"))
         assert m["folded"]["titles"] == ["Telemetry stream", "Interface flaps"]
         assert m["folded"]["line"] == ("2 panels hidden for s1: Telemetry stream and Interface flaps "
@@ -105,14 +105,14 @@ class TestTheFold:
     def test_a_router_that_streams_folds_nothing(self, stored):
         from modules import device_page
 
-        m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"}, client=_Grafana(),
+        m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"}, "Default", client=_Grafana(),
                                    streams=(True, "r2's configuration subscribes model-driven telemetry"))
         assert "folded" not in m and "Telemetry stream" in _titles(m)
 
     def test_unknown_folds_nothing_and_says_why(self, stored):
         from modules import device_page
 
-        m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"}, client=_Grafana(),
+        m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"}, "Default", client=_Grafana(),
                                    streams=(None, "r2's committed configuration could not be read (OSError)"))
         assert "folded" not in m and "could not be read" in m["streams_unknown"]
         assert "Telemetry stream" in _titles(m)
@@ -122,14 +122,14 @@ class TestTheFold:
 
         pid = next(p["id"] for p in stored["panels"] if p["title"] == "Telemetry stream")
         payload, code = device_page.panel_data(
-            {"hostname": "r2", "ip": "192.0.2.12"}, "nmas-device", pid, "1h", client=_Grafana(),
+            {"hostname": "r2", "ip": "192.0.2.12"}, "Default", "nmas-device", pid, "1h", client=_Grafana(),
             streams=(True, "r2's configuration subscribes model-driven telemetry"))
         assert code == 200 and payload["no_value_kind"] == "danger"
         assert payload["no_value"].startswith("No stream: r2's configuration subscribes")
         # The control: a panel WITH an SNMP fallback is never turned red.
         cpu = next(p["id"] for p in stored["panels"] if p["title"] == "IOS CPU, 1-minute average")
         payload, _ = device_page.panel_data(
-            {"hostname": "r2", "ip": "192.0.2.12"}, "nmas-device", cpu, "1h", client=_Grafana(),
+            {"hostname": "r2", "ip": "192.0.2.12"}, "Default", "nmas-device", cpu, "1h", client=_Grafana(),
             streams=(True, "subscribes"))
         assert "no_value_kind" not in payload
 
@@ -167,7 +167,7 @@ def _s3(stored, model=("vios_l2", "the golden's image line"), answer=None, ok=Tr
     g = _Grafana(answer if answer is not None else _answer(True, False))
     if not ok:
         g.query = lambda body: {"ok": False, "error": "Grafana did not answer"}
-    return device_page.monitoring({"hostname": "s3", "ip": "192.0.2.23"}, client=g,
+    return device_page.monitoring({"hostname": "s3", "ip": "192.0.2.23"}, "Default", client=g,
                                   streams=(False, "s3 doesn't stream model-driven telemetry"),
                                   model=model)
 
@@ -206,7 +206,7 @@ class TestShouldHaveDataNeverFolds:
     def test_a_router_that_streams_keeps_its_telemetry_panels(self, stored):
         from modules import device_page
 
-        m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"},
+        m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"}, "Default",
                                    client=_Grafana(_answer(True, True)),
                                    streams=(True, "r2 subscribes"), model=("C8000V", "chassis"))
         assert "folded" not in m and {"Telemetry stream", "Memory used", "Up for"} <= set(_titles(m))
@@ -215,7 +215,7 @@ class TestShouldHaveDataNeverFolds:
         from modules import device_page
 
         for model in (("C8000V", "chassis"), ("", "the golden names no model")):
-            m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"},
+            m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"}, "Default",
                                        client=_Grafana(_answer(True, True)),
                                        streams=(True, "r2 subscribes"), model=model)
             assert "Memory used" in _titles(m), model
@@ -242,7 +242,7 @@ class TestAFoldLeavesNoHole:
 
     def test_a_line_that_lost_nothing_keeps_its_exact_place(self, stored):
         from modules import device_page
-        m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"},
+        m = device_page.monitoring({"hostname": "r2", "ip": "192.0.2.12"}, "Default",
                                    client=_Grafana(_answer(True, True)),
                                    streams=(True, "r2 subscribes"), model=("C8000V", "chassis"))
         for c in _cells(m):

@@ -180,6 +180,90 @@ def test_another_networks_own_grafana_token_is_tracked():
     assert entry["expires_at"] and entry["expires_at"].startswith("2026-12-31"), entry
 
 
+def _store_dashboards(name, *uids):
+    """A stored grafana-dashboards read holding *uids*, as the reader writes it."""
+    import os
+    import time
+
+    os.makedirs(os.path.dirname(R.store_path(name)), exist_ok=True)
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    value = {"datasources": [], "dashboards": {
+        u: {"uid": u, "title": u, "variables": [], "panels": []} for u in uids}}
+    with open(R.store_path(name), "w", encoding="utf-8") as fh:
+        json.dump({"endpoints": ["x"], "last_attempt": {"at": stamp, "ok": True},
+                   "last_good": {"value_at": stamp, "value": value}}, fh)
+
+
+class _NoLiveAsk:
+    """A Grafana that must not be asked: every UID these tests choose is in the stored read."""
+
+    def _get(self, *a, **k):
+        raise AssertionError(f"asked Grafana live: {a}")
+
+
+@pytest.mark.usefixtures("networks")
+class TestAPageReadsItsOwnNetworksGrafana:
+    """P.8 step 8 (board E): list A's dashboards drawn on list B's device is the wrong thing
+    that looks right, every check passing. Each page reads its network's role setting, its
+    network's stored read, and asks its network's Grafana."""
+
+    @pytest.fixture(autouse=True)
+    def _two_grafanas(self, networks):
+        from modules import list_settings as L
+
+        _store_dashboards("grafana-dashboards", "nmas-device", "rcn-lab-overview")
+        _store_dashboards("grafana-dashboards@branch", "branch-device", "branch-overview")
+        assert L.write("Default", {"grafana_device_dashboard_uid": "nmas-device",
+                                   "grafana_fleet_dashboard_uid": "rcn-lab-overview"})["ok"]
+        assert L.write("Branch", {"grafana_device_dashboard_uid": "branch-device",
+                                  "grafana_fleet_dashboard_uid": "branch-overview"})["ok"]
+
+    def test_each_networks_client_is_its_own_grafana(self):
+        from modules import device_page as DP
+
+        assert DP.grafana_client("Branch").url == "http://192.0.2.60:3000"
+        assert DP.grafana_client("Default").url == "http://192.0.2.10:3000"
+        assert DP.grafana_client("Lab-3").url == "http://192.0.2.10:3000", "Lab-3 inherits"
+
+    def test_a_device_page_draws_its_devices_network(self):
+        from modules import device_page as DP
+
+        m = DP.monitoring({"hostname": "br-r1", "ip": "192.0.2.61"}, "Branch",
+                          client=_NoLiveAsk())
+        assert m["network"] == "Branch" and m["settings"]["uid"] == "branch-device"
+        assert m["dashboard"]["uid"] == "branch-device", m.get("state")
+        assert {d["uid"] for d in m["offered"] + m["not_offered"]} == {
+            "branch-device", "branch-overview"}, "only Branch's Grafana's dashboards are listed"
+        # The control: Default's device, the same code, Default's Grafana.
+        m = DP.monitoring({"hostname": "s1", "ip": "192.0.2.21"}, "Default", client=_NoLiveAsk())
+        assert m["dashboard"]["uid"] == "nmas-device"
+
+    def test_the_fleet_page_draws_its_network(self):
+        from modules import device_page as DP
+
+        m = DP.fleet_monitoring("Branch", client=_NoLiveAsk())
+        assert (m["network"], m["default"], m["grafana_url"]) == (
+            "Branch", "branch-overview", "http://192.0.2.60:3000")
+        assert [d["uid"] for d in m["offered"]] == ["branch-device", "branch-overview"]
+        assert DP.fleet_monitoring("Lab-3", client=_NoLiveAsk())["default"] == "rcn-lab-overview"
+
+    def test_a_reader_not_imported_yet_still_answers_per_network(self, monkeypatch):
+        """Asked before its module was imported, a reader's groups were unknown and Default's
+        store answered for Branch."""
+        import sys
+
+        name, module = "grafana-dashboards", "modules.readers.grafana_dashboards"
+        __import__(module)
+        kept = R._REGISTRY.pop(name)
+        monkeypatch.delitem(sys.modules, module)
+        try:
+            got = R.read_cached_for(name, "Branch")
+            assert set(got["doc"]["last_good"]["value"]["dashboards"]) == {
+                "branch-device", "branch-overview"}
+        finally:
+            R._REGISTRY[name] = kept
+
+
 def test_coverage_reporting_reads_per_network():
     from modules.readers import coverage_reporting
 

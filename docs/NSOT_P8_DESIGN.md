@@ -330,6 +330,16 @@ pages.
    - Monitoring names its network in the header, with a selector;
    - a device page reads its device's network;
    - a gone dashboard is a Needs attention row with its action and how it clears.
+
+   **APPROVED with A to E. 8a BUILT 2026-10-05:** the device page and the Monitoring page
+   read one network's Grafana end to end: its role settings (`device_dashboard_settings`,
+   `fleet_dashboard_uid`, the link address), its configuration's stored dashboards
+   (`_cached(…, list)`), and every live ask (`device_page.grafana_client(list)`, built once
+   per request and passed down; the variable-values cache is keyed by network). A device
+   page passes its device's list. Monitoring passes the active list until 8b carries it in
+   the URL. **Left:** 8a2, the history store and the live retention per network
+   (`panels.history_store`, `live_seconds`, two Default-layer reads); 8b, Monitoring's
+   `?list=`, its header and selector; 8c, the UID-gone row.
 9. **Fold the five per-list files into the store,** one per commit.
 
 **Forecast:** P.8's own estimate was 10 to 15 commits, from C104's readers and C158's write

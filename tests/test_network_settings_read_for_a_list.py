@@ -27,8 +27,7 @@ DEFAULT_READERS = {"default_layer", "default_layer_secret"}
 INVENTORY = {
     "modules/config_read.py": (1, "the SSH layer's read bound: a device dict carries no list (C462)"),
     "modules/nsot/onboard.py": (1, "onboarding's device sessions hold no list (C462)"),
-    "modules/device_page.py": (5, "paired with the Grafana client built for no list (step 8)"),
-    "modules/panels.py": (2, "paired with the Grafana client built for no list (step 8)"),
+    "modules/panels.py": (2, "the history store and live retention, per network next (step 8)"),
     "modules/heartbeat_windows.py": (1, "paired with the Loki it measures from (step 5)"),
     "modules/readers/coverage_reporting.py": (1, "a reader of one global integration (step 5)"),
     "modules/readers/credential_health.py": (2, "a reader of one global integration (step 5)"),

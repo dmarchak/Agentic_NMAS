@@ -615,7 +615,9 @@ def _fleet_ctx() -> dict:
     from flask import request
 
     from modules import device_page
-    return {"m": device_page.fleet_monitoring(chosen_uid=request.args.get("dashboard", ""),
+    from modules.nsot import listref
+    return {"m": device_page.fleet_monitoring(listref.active().name,
+                                              chosen_uid=request.args.get("dashboard", ""),
                                               range_text=request.args.get("range", "1h"))}
 
 
@@ -640,7 +642,9 @@ def monitoring_panel(uid, panel_id):
     from flask import jsonify, request
 
     from modules import device_page
-    payload, code = device_page.fleet_panel_data(uid, panel_id, request.args.get("range", "1h"))
+    from modules.nsot import listref
+    payload, code = device_page.fleet_panel_data(listref.active().name, uid, panel_id,
+                                                 request.args.get("range", "1h"))
     return jsonify(payload), code
 
 

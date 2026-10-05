@@ -359,13 +359,24 @@ def intent_check(ref, dev: dict) -> dict:
 
 # ---------------------------------------------------------------- Monitoring
 
-def device_dashboard_settings() -> dict:
-    # The Default network's, as the Grafana client these feed is (P.8 step 8 moves the pair).
-    from modules.list_settings import default_layer
+def grafana_client(list_name: str):
+    """The Grafana of the network *list_name* (P.8 step 8): every live ask a page makes for
+    that network goes to it, never to Default's. Default's is built as it was before lists
+    had settings, so a single-network installation asks exactly what it did."""
+    from modules.integrations.grafana import GrafanaIntegration
+    from modules.list_settings import is_default
 
-    return {"uid": (default_layer("grafana_device_dashboard_uid", "") or "").strip(),
-            "variable": (default_layer("grafana_device_variable", "device") or "device").strip(),
-            "value_from": default_layer("grafana_device_variable_value", "hostname")
+    return GrafanaIntegration() if is_default(list_name) else GrafanaIntegration(list_name=list_name)
+
+
+def device_dashboard_settings(list_name: str) -> dict:
+    """The device dashboard role of the network *list_name*: a device page passes its
+    device's list (P.8 step 8; the operator, 2026-09-30: the roles are per network)."""
+    from modules.list_settings import value
+
+    return {"uid": (value(list_name, "grafana_device_dashboard_uid", "") or "").strip(),
+            "variable": (value(list_name, "grafana_device_variable", "device") or "device").strip(),
+            "value_from": value(list_name, "grafana_device_variable_value", "hostname")
             or "hostname"}
 
 
@@ -380,12 +391,14 @@ VALUES_CACHE_SECONDS = 60
 
 
 def device_variable_state(dashboard: dict, variable: str, value: str, values_fill: dict,
-                          datasources: list, client=None, clock=time.time) -> dict:
+                          datasources: list, client=None, clock=time.time,
+                          network: str = "") -> dict:
     """Does the dashboard's device variable list this device? Asked of
     Prometheus through Grafana's data-source proxy with the variable's own
     query, cached a minute. Five answers, each drawn in its own words:
     listed, none (the variable lists nothing at all, C232), not_listed,
-    unparsed (a query this reads no further), could_not_ask."""
+    unparsed (a query this reads no further), could_not_ask. The cache is keyed by
+    *network* too: two Grafanas may hold a data source of the same UID."""
     v = panels.variable_of(dashboard, variable)
     q = (v or {}).get("query") or ""
     m = _LABEL_VALUES.match(q)
@@ -394,14 +407,12 @@ def device_variable_state(dashboard: dict, variable: str, value: str, values_fil
     sel = panels.interpolate(m.group("sel") or "", values_fill)
     label = m.group("label")
     ds = panels.default_datasource(datasources, "prometheus")
-    key = (ds.get("uid"), sel, label)
+    key = (network, ds.get("uid"), sel, label)
     hit = _VALUES_CACHE.get(key)
     if hit and clock() - hit[0] < VALUES_CACHE_SECONDS:
         values = hit[1]
     else:
-        if client is None:
-            from modules.integrations.grafana import GrafanaIntegration
-            client = GrafanaIntegration()
+        client = client or grafana_client(network)
         params = {"match[]": sel} if sel else {}
         got = client._get(f"api/datasources/proxy/uid/{ds.get('uid')}/api/v1/label/{label}/values", **params)
         if not got.get("ok"):
@@ -450,14 +461,16 @@ def _dashboard(stored: dict, uid: str, client=None) -> tuple:
     return (live.get("dashboard") if live.get("state") == "found" else None), live
 
 
-def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=None,
-               streams: tuple = (None, ""), model: tuple = ("", "")) -> dict:
+def monitoring(dev: dict, list_name: str, chosen_uid: str = "", range_text: str = "1h",
+               client=None, streams: tuple = (None, ""), model: tuple = ("", "")) -> dict:
     """Everything the Monitoring tab draws, or the state that replaces it:
     no dashboard set, the dashboards not read yet, the configured UID gone,
-    no such variable, the variable listing nothing, or the panels."""
-    cfg = device_dashboard_settings()
-    value, at, why = _cached("grafana-dashboards")
-    out = {"settings": cfg, "value_at": at, "range": range_text, "limit_words": panels.limit_words((value or {}).get("datasources") or []), "offered": [], "state": "ok"}
+    no such variable, the variable listing nothing, or the panels. All of it is the
+    network *list_name*'s: its role settings, its Grafana's stored read and its Grafana."""
+    cfg = device_dashboard_settings(list_name)
+    client = client or grafana_client(list_name)
+    value, at, why = _cached("grafana-dashboards", list_name)
+    out = {"settings": cfg, "network": list_name, "value_at": at, "range": range_text, "limit_words": panels.limit_words((value or {}).get("datasources") or []), "offered": [], "state": "ok"}
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -501,7 +514,7 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
     device_value = variable_value(dev, cfg["value_from"])
     fill = panels.variable_values(dash, cfg["variable"], device_value, datasources)
     out["variable_state"] = device_variable_state(dash, cfg["variable"], device_value, fill,
-                                                  datasources, client=client)
+                                                  datasources, client=client, network=list_name)
     drawn, left_out = panels.split_device_panels(dash, cfg["variable"])
     if streams[0] is None and streams[1]:
         out["streams_unknown"] = streams[1]
@@ -513,7 +526,7 @@ def monitoring(dev: dict, chosen_uid: str = "", range_text: str = "1h", client=N
                                                  {f["id"] for f in folds}],
                left_out=left_out,
                layout=panels.drawn_elsewhere(panels.layout(drawn, [f["id"] for f in folds]), uid,
-                                             _grafana_url()),
+                                             _grafana_url(list_name)),
                seconds=seconds, step=panels.step_for(seconds), range_words=panels.describe(seconds))
     # A panel a declared platform rule explains leads, when empty, with its reason (C429).
     for cell in out["layout"]:
@@ -557,10 +570,8 @@ def fold_panels(drawn: list, dev: dict, dash: dict, fill: dict, datasources: lis
     default_ds = panels.default_datasource(datasources, "prometheus")
 
     def asker():
-        nonlocal client
-        if client is None:
-            from modules.integrations.grafana import GrafanaIntegration
-            client = GrafanaIntegration()
+        # The device's network's Grafana, passed by `monitoring` (P.8 step 8); never a
+        # default built here, which would be Default's for a device of any network.
         return client
 
     for p in drawn:
@@ -637,13 +648,14 @@ def fold_summary(host: str, folds: list) -> dict:
             "line": f"{n} panel{'' if n == 1 else 's'} hidden for {host}: " + ", ".join(parts)}
 
 
-def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
-               streams: tuple = (None, "")) -> tuple:
+def panel_data(dev: dict, list_name: str, uid: str, panel_id: int, range_text: str,
+               client=None, streams: tuple = (None, "")) -> tuple:
     """(payload, http status) for one panel, drawn by the browser. Only a panel
     the dashboard holds AND that selects the device; the query is the
-    dashboard's, never the browser's."""
-    cfg = device_dashboard_settings()
-    value, _at, why = _cached("grafana-dashboards")
+    dashboard's, never the browser's, asked of the device's network's Grafana."""
+    cfg = device_dashboard_settings(list_name)
+    client = client or grafana_client(list_name)
+    value, _at, why = _cached("grafana-dashboards", list_name)
     if value is None:
         return {"ok": False, "error": f"the dashboards are not read yet: {why}"}, 503
     dash, live = _dashboard(value.get("dashboards") or {}, uid, client)
@@ -668,9 +680,6 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
         body = panels.build_request(panel, dash, fill, seconds, default_ds, history, history_why)
     except panels.RangeRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
-    if client is None:
-        from modules.integrations.grafana import GrafanaIntegration
-        client = GrafanaIntegration()
     got = client.query(body)
     if not got.get("ok"):
         return {"ok": False, "error": f"Grafana: {got.get('error')}"}, 502
@@ -716,29 +725,33 @@ def panel_data(dev: dict, uid: str, panel_id: int, range_text: str, client=None,
 # panel of the chosen dashboard is drawn, its variables at their own values.
 # ---------------------------------------------------------------------------
 
-def _grafana_url() -> str:
-    """Grafana's address, for a link a person opens (reachable from the LAN only)."""
-    from modules.list_settings import default_layer
-    return (default_layer("grafana_url", "") or "").strip()
+def _grafana_url(list_name: str) -> str:
+    """The network's Grafana address, for a link a person opens (reachable from the LAN
+    only)."""
+    from modules.list_settings import value
+    return (value(list_name, "grafana_url", "") or "").strip()
 
 
-def fleet_dashboard_uid() -> str:
-    from modules.list_settings import default_layer
-    return (default_layer("grafana_fleet_dashboard_uid", "") or "").strip()
+def fleet_dashboard_uid(list_name: str) -> str:
+    from modules.list_settings import value
+    return (value(list_name, "grafana_fleet_dashboard_uid", "") or "").strip()
 
 
 def _fleet_panels(dash: dict) -> list:
     return [p for p in dash.get("panels") or [] if p.get("type") != "row"]
 
 
-def fleet_monitoring(chosen_uid: str = "", range_text: str = "1h", client=None) -> dict:
-    """Everything the Monitoring page draws, or the state that replaces it: the
-    dashboards not read yet, no fleet dashboard set, the UID gone, a range
-    refused, or the panels. The selector lists EVERY dashboard Grafana holds;
+def fleet_monitoring(list_name: str, chosen_uid: str = "", range_text: str = "1h",
+                     client=None) -> dict:
+    """Everything the Monitoring page draws for the network *list_name*, or the state that
+    replaces it: the dashboards not read yet, no fleet dashboard set, the UID gone, a range
+    refused, or the panels. The selector lists EVERY dashboard that network's Grafana holds;
     choosing one changes the view, never the setting."""
-    default = fleet_dashboard_uid()
-    value, at, why = _cached("grafana-dashboards")
-    out = {"default": default, "value_at": at, "range": range_text, "limit_words": panels.limit_words((value or {}).get("datasources") or []), "offered": [], "state": "ok"}
+    default = fleet_dashboard_uid(list_name)
+    client = client or grafana_client(list_name)
+    value, at, why = _cached("grafana-dashboards", list_name)
+    out = {"default": default, "network": list_name, "grafana_url": _grafana_url(list_name),
+           "value_at": at, "range": range_text, "limit_words": panels.limit_words((value or {}).get("datasources") or []), "offered": [], "state": "ok"}
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -764,18 +777,21 @@ def fleet_monitoring(chosen_uid: str = "", range_text: str = "1h", client=None) 
         out.update(state="range_refused", why=str(exc))
         return out
     drawn = _fleet_panels(dash)
-    out.update(drawn=drawn, layout=panels.drawn_elsewhere(panels.layout(drawn), uid, _grafana_url()),
+    out.update(drawn=drawn, layout=panels.drawn_elsewhere(panels.layout(drawn), uid,
+                                                          _grafana_url(list_name)),
                seconds=seconds,
                step=panels.step_for(seconds), range_words=panels.describe(seconds),
                variables={k: v for k, v in panels.variable_values(dash, "", "", datasources).items()})
     return out
 
 
-def fleet_panel_data(uid: str, panel_id: int, range_text: str, client=None) -> tuple:
-    """(payload, http status) for one panel of a fleet dashboard. Only a panel
-    the dashboard holds; the query is the dashboard's, with its variables at
-    their own values, never anything the browser sends."""
-    value, _at, why = _cached("grafana-dashboards")
+def fleet_panel_data(list_name: str, uid: str, panel_id: int, range_text: str,
+                     client=None) -> tuple:
+    """(payload, http status) for one panel of a fleet dashboard of the network
+    *list_name*. Only a panel the dashboard holds; the query is the dashboard's, with its
+    variables at their own values, never anything the browser sends."""
+    client = client or grafana_client(list_name)
+    value, _at, why = _cached("grafana-dashboards", list_name)
     if value is None:
         return {"ok": False, "error": f"the dashboards are not read yet: {why}"}, 503
     dash, live = _dashboard(value.get("dashboards") or {}, uid, client)
@@ -801,9 +817,6 @@ def fleet_panel_data(uid: str, panel_id: int, range_text: str, client=None) -> t
                                     history, history_why)
     except panels.RangeRefused as exc:
         return {"ok": False, "error": str(exc)}, 400
-    if client is None:
-        from modules.integrations.grafana import GrafanaIntegration
-        client = GrafanaIntegration()
     got = client.query(body)
     if not got.get("ok"):
         return {"ok": False, "error": f"Grafana: {got.get('error')}"}, 502

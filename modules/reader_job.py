@@ -417,7 +417,9 @@ def read_cached_for(name: str, list_name: str) -> dict:
     service not applicable has none, and says so: ``{"state": "not_applicable", ...}``."""
     from modules import integration_groups as IG
 
-    reader = _REGISTRY.get(name)
+    # Asked before the reader's module was imported, its groups are unknown, and Default's
+    # store would answer for every network: so the declared modules are imported first.
+    reader = _REGISTRY.get(name) or {r.name: r for r in readers()}.get(name)
     if reader is None or not reader.per_group:
         return read_cached(name)
     gid = IG.combined_id(tuple(reader.per_group), list_name)
