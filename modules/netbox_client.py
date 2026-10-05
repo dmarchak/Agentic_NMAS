@@ -1077,10 +1077,45 @@ def excluded_vrfs() -> set:
     return {str(v).strip().lower() for v in (raw or []) if str(v).strip()}
 
 
+def _pick_address_object(matches: list, vrf_id: Optional[int]) -> Optional[dict]:
+    """Of the objects holding one address on one interface, the one to keep: already in the
+    intended VRF first (so nothing changes), then one this tool tagged, then the oldest by id.
+    None when there is none."""
+    if not matches:
+        return None
+
+    def rank(o):
+        in_vrf = vrf_id is not None and (o.get("vrf") or {}).get("id") == vrf_id
+        tagged = any((t or {}).get("slug") == "nmas-managed" for t in o.get("tags") or [])
+        return (not in_vrf, not tagged, o.get("id") or 0)
+
+    return sorted(matches, key=rank)[0]
+
+
+#: Why an address object is left beside the one kept (C470).
+DUPLICATE_ADDRESS_WHY = ("the same address is held more than once on one interface; the sync "
+                         "keeps the copy already as intended and never deletes, so remove the "
+                         "other copy in NetBox (it is named, with its id)")
+
+
+def _note_duplicate_address(address_cidr: str, interface_id: int, kept: dict, others: list,
+                            stats: Optional[dict]) -> None:
+    dev = getattr(_current_device, "name", "") or ""
+    names = ", ".join(f"#{o.get('id')} (VRF {(o.get('vrf') or {}).get('name') or 'none'}"
+                      f"{', untagged' if not o.get('tags') else ''})" for o in others)
+    log.warning("netbox: %s%s held %d times on interface %s: kept #%s, left %s",
+                f"{dev}: " if dev else "", address_cidr, 1 + len(others), interface_id,
+                (kept or {}).get("id"), names)
+    if stats is not None:
+        _skip(stats, f"duplicate address {address_cidr}: kept #{(kept or {}).get('id')}, "
+                     f"left {names}", DUPLICATE_ADDRESS_WHY, dev)
+
+
 def _ensure_ip_address(session, base: str, address_cidr: str,
                        interface_id: int,
                        description: str = "",
-                       vrf_id: Optional[int] = None) -> dict:
+                       vrf_id: Optional[int] = None,
+                       stats: Optional[dict] = None) -> dict:
     """Get-or-create this address **on this interface**.
 
     **The key is the interface, not the address.** The question is *"does
@@ -1130,12 +1165,19 @@ def _ensure_ip_address(session, base: str, address_cidr: str,
     # Scoped to the interface, then matched by value in Python: the answer
     # is a handful of rows, and it does not depend on NetBox accepting a
     # particular combination of filter names.
-    existing = None
-    for obj in _nb_get(session, base, "ipam/ip-addresses/",
-                       interface_id=interface_id):
-        if _same_address(obj.get("address"), address_cidr):
-            existing = obj
-            break
+    matches = [obj for obj in _nb_get(session, base, "ipam/ip-addresses/",
+                                      interface_id=interface_id)
+               if _same_address(obj.get("address"), address_cidr)]
+    existing = _pick_address_object(matches, vrf_id)
+    if len(matches) > 1:
+        # The sync that never settled (C470, 2026-10-05): s1, s2 and s3 each held ONE
+        # address twice on one interface (an untagged 2026-08-28 copy with no VRF, and the
+        # sync's own copy in VRF Default). Taking the FIRST, the untagged one, the sync asked
+        # every run to move it into VRF Default, and NetBox refused it as a duplicate there.
+        # Now the copy already as intended is taken, so nothing changes, and the others are
+        # NAMED: the importer never deletes, so a person removes them.
+        others = [o for o in matches if o is not existing]
+        _note_duplicate_address(address_cidr, interface_id, existing, others, stats)
 
     payload: dict = {
         "address":              address_cidr,
@@ -2204,7 +2246,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                     address_cidr=intf["cidr"],
                     interface_id=nb_intf["id"],
                     description=f"{hostname} {intf['name']}",
-                    vrf_id=vrf_id,
+                    vrf_id=vrf_id, stats=ipam_stats,
                 )
                 ipam_stats["ips_synced"] = ipam_stats.get("ips_synced", 0) + 1
 
@@ -2222,7 +2264,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                     _ensure_ip_address(session, base, address_cidr=sec_cidr,
                                        interface_id=nb_intf["id"],
                                        description=f"{hostname} {intf['name']} secondary",
-                                       vrf_id=vrf_id)
+                                       vrf_id=vrf_id, stats=ipam_stats)
                     ipam_stats["ips_synced"] = ipam_stats.get("ips_synced", 0) + 1
                 except Exception as exc:
                     _write_failed(f"secondary IP {sec_cidr} on {intf['name']}", exc, hostname)
@@ -2240,7 +2282,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                     nb_ip6 = _ensure_ip_address(session, base, address_cidr=v6_cidr,
                                        interface_id=nb_intf["id"],
                                        description=f"{hostname} {intf['name']} IPv6",
-                                       vrf_id=vrf_id)
+                                       vrf_id=vrf_id, stats=ipam_stats)
                     ipam_stats["ips_synced"] = ipam_stats.get("ips_synced", 0) + 1
                     if first_ipv6_id is None:
                         first_ipv6_id = nb_ip6["id"]
@@ -2438,7 +2480,7 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
                         address_cidr=mgmt_cidr,
                         interface_id=first_iface_id,
                         description=f"{hostname} management (device list SSH IP)",
-                        vrf_id=list_vrf_id,
+                        vrf_id=list_vrf_id, stats=ipam_stats,
                     )
                     mgmt_ip_id = nb_mgmt_ip["id"]
                     ipam_stats["ips_synced"] = ipam_stats.get("ips_synced", 0) + 1

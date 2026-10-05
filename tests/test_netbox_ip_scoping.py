@@ -153,6 +153,48 @@ class TestTheLookupIsKeyedOnTheInterface:
         assert out["id"] == 22, "it created a duplicate on the same interface"
         assert len(nb.objects("ipam/ip-addresses")) == 1
 
+    def test_two_copies_on_one_interface_keep_the_one_already_as_intended(self, monkeypatch):
+        """**The sync that never settled (C470, measured on the host 2026-10-05).** s1's
+        Vlan30 held 2001:db8:30::2/64 twice: #5, untagged, no VRF (2026-08-28), and #41, the
+        sync's own, in VRF Default. Taking the FIRST, the sync asked every run to move #5 into
+        VRF Default, and NetBox refused it ("Duplicate IP address found in VRF Default"). The
+        copy already as intended is kept, nothing is written, and the other is named."""
+        from modules import netbox_client as nc
+
+        nb = self._wire(monkeypatch)
+        desc = "s1 Vlan30 IPv6"
+        self._seed_on(nb, 5, "2001:db8:30::2/64", 10)
+        self._seed_on(nb, 41, "2001:db8:30::2/64", 10)
+        rows = {o["id"]: o for o in nb.objects("ipam/ip-addresses")}
+        rows[5].update(description=desc, vrf=None, tags=[])
+        rows[41].update(description=desc, vrf={"id": 1, "name": "Default"},
+                        tags=[{"slug": "nmas-managed"}])
+        stats = {}
+
+        out = nc._ensure_ip_address(nb, "http://nb", "2001:db8:30::2/64", interface_id=10,
+                                    description=desc, vrf_id=1, stats=stats)
+
+        assert out["id"] == 41, "it took the copy that is not as intended"
+        assert nb.patches == [] and nb.posts == [], "a sync of a settled address wrote"
+        (skip,) = stats["skipped"]
+        assert "#5 (VRF none, untagged)" in skip["what"] and "kept #41" in skip["what"], skip
+        assert skip["why"] == nc.DUPLICATE_ADDRESS_WHY
+
+    def test_one_copy_out_of_its_VRF_is_still_corrected(self, monkeypatch):
+        """The control: the choice must not stop the VRF being corrected where there is ONE
+        object (a fix that never wrote would pass the test above)."""
+        from modules import netbox_client as nc
+
+        nb = self._wire(monkeypatch)
+        self._seed_on(nb, 5, "2001:db8:30::2/64", 10)
+        nb.objects("ipam/ip-addresses")[0].update(description="d", vrf=None)
+
+        nc._ensure_ip_address(nb, "http://nb", "2001:db8:30::2/64", interface_id=10,
+                              description="d", vrf_id=1)
+
+        assert [(e, i, p.get("vrf")) for e, i, p in nb.patches] == \
+            [("ipam/ip-addresses", 5, 1)], nb.patches
+
     def test_case_differs_and_it_is_still_the_same_address(self, monkeypatch):
         """`2001:DB8::2/64` from a config and `2001:db8::2/64` from NetBox
         are one address. Compared as addresses, not as text — otherwise the
