@@ -25,7 +25,7 @@
 {% endfor %}{% if c.more %}<span class="muted">… {{ c.more }} more line(s), in the whole document below</span>
 {% endif %}</pre>
     {%- if c.document %}
-    <details><summary>The whole document ({{ c.document_lines }} lines)</summary><pre class="op-diff">{{ c.document }}</pre></details>
+    <details data-keep="document"><summary>The whole document ({{ c.document_lines }} lines)</summary><pre class="op-diff">{{ c.document }}</pre></details>
     {%- endif %}
     {%- else %}<p>{{ c.none }}</p>{% endif %}</div></div>
   {%- if c.parsed %}

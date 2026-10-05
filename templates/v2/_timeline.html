@@ -28,7 +28,7 @@
                      or (e.kind == 'restart' and e.outcome == 'crash')
                      or (e.kind == 'update' and e.outcome and e.outcome not in ('confirmed', 'done', 'ok'))
                      or (e.kind == 'breakglass' and e.outcome == 'not_intact') %}
-    <details class="hist-row tl-row" data-kind="{{ e.kind }}">
+    <details class="hist-row tl-row" data-kind="{{ e.kind }}" data-keep="{{ e.kind }}:{{ e.at }}:{{ e.sha or e.devices_words }}">
       <summary class="hist-sum"><span class="hist-when">{{ stamp(e.at) }}</span><span class="hist-kind">{{ badge(k[0], 'danger' if failed else 'warn' if e.pending else k[1]) }}</span>
         <span class="hist-dev{% if not e.devices %} muted{% endif %}">{{ e.devices_words }}</span>
         <span class="hist-what"><strong>{{ e.what }}</strong>{% for m in e.marks or [] %}<span class="tl-mark"> · {{ m }}</span>{% endfor %}</span>

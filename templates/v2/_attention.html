@@ -81,7 +81,7 @@
   {%- else %}
   <p class="att-clear">{{ icon('check', 16) }} Every source answered and none reports anything a person must do.</p>
   {%- endif %}
-  <details class="evidence">
+  <details class="evidence" data-keep="evidence">
     <summary>What was checked · {{ sources|length }} sources</summary>
     <table class="table">
       <thead><tr><th>Source</th><th>What it found</th><th>Value from</th><th>Rows</th></tr></thead>

@@ -69,7 +69,7 @@
   <div class="hist-list hist-bl">
     <div class="hist-head" aria-hidden="true"><span></span><span>Baseline</span><span>Taken</span><span>Earned</span><span>Can be re-applied</span><span></span></div>
     {%- for r in b.baselines %}
-    <details class="hist-row" data-baseline="{{ r.tag }}">
+    <details class="hist-row" data-baseline="{{ r.tag }}" data-keep="{{ r.tag }}">
       <summary class="hist-sum"><span class="hist-what mono">{{ r.tag }}</span><span class="hist-when">{{ stamp(r.created) }}</span>
         <span class="hist-meta"><span>
           {%- if r.withdrawn %}{{ badge('withdrawn', 'danger') }}

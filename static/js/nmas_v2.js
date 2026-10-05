@@ -134,6 +134,41 @@
     }
   }
 
+  /* PURE over the DOM: the keys of the open `<details data-keep="…">` inside *region*. A
+     details a person opened is their state, as a ticked box is (C472). */
+  function openKeys(region) {
+    var out = [];
+    if (!region || !region.querySelectorAll) return out;
+    var open = region.querySelectorAll('details[data-keep][open]');
+    for (var i = 0; i < open.length; i++) out.push(open[i].getAttribute('data-keep'));
+    return out;
+  }
+
+  /* Before ANY swap that replaces a region by its id (a live redraw, a person's own request,
+     or the redraw a released hold asks for), note what was open; after it settles, open the
+     same keys again in the region that replaced it. A key the new region no longer draws is
+     simply not there. */
+  var keptOpen = {};
+  function rememberOpen(e) {
+    var region = e.detail && e.detail.target;
+    if (!region || !region.id) return;
+    var keys = openKeys(region);
+    if (keys.length) keptOpen[region.id] = keys;
+  }
+  function reopenKept() {
+    for (var id in keptOpen) {
+      if (!Object.prototype.hasOwnProperty.call(keptOpen, id)) continue;
+      var region = root.document.getElementById(id);
+      var keys = keptOpen[id];
+      delete keptOpen[id];
+      if (!region) continue;
+      var all = region.querySelectorAll('details[data-keep]');
+      for (var i = 0; i < all.length; i++) {
+        if (keys.indexOf(all[i].getAttribute('data-keep')) >= 0) all[i].open = true;
+      }
+    }
+  }
+
   /* Once a held region is no longer being edited, ask for it again: the redraw it skipped. */
   function releaseHeld() {
     var held = root.document.querySelectorAll('[data-held="1"]');
@@ -656,7 +691,8 @@
       root.setInterval(function () { drawLive(); drawBadge(); releaseHeld(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
-    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); catchUpMissed(e); });
+    root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); catchUpMissed(e); reopenKept(); });
+    root.document.addEventListener('htmx:beforeSwap', rememberOpen);
     root.document.addEventListener('htmx:beforeRequest', noteAsked);
     root.document.addEventListener('htmx:beforeRequest', markTab);
     root.document.addEventListener('htmx:beforeSwap', neverSilent);
@@ -679,5 +715,5 @@
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
                   badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
-                  rewrittenWords: rewrittenWords};
+                  rewrittenWords: rewrittenWords, openKeys: openKeys};
 })(typeof window !== 'undefined' ? window : this);

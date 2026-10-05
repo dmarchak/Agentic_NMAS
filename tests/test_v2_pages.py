@@ -217,7 +217,7 @@ class TestTheLanding:
         assert r.status_code == 200
         text = _text(html)
         assert "Nothing needs attention" in text and "none reports anything a person must do" in text
-        assert '<details class="evidence">' in html and "9 devices probed" in text
+        assert '<details class="evidence" data-keep="evidence">' in html and "9 devices probed" in text
 
     def test_a_row_draws_its_level_cause_devices_and_one_action(self, landing):
         landing["page"] = _page([attention.row(

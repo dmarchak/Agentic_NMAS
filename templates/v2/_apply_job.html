@@ -73,7 +73,7 @@
   </ul>
   {%- endif %}
   {%- for t in res.targets or [] %}
-  <details class="apply-evidence">
+  <details class="apply-evidence" data-keep="apply-evidence">
     <summary>{{ t.name }}: what was sent and what was checked</summary>
     {%- if (t.sent or {}).lines %}
     <p>{{ t.sent.match_words }}.</p>

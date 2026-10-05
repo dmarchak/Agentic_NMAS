@@ -83,6 +83,45 @@ def test_a_page_with_no_form_open_redraws_at_once(served, needs_one_ack):  # noq
                f"return !!a && !a.dataset.old && {SETTLED}", 15)
 
 
+# ── C472: what a person opened stays open ───────────────────────────────────
+#
+# R27's survey (2026-10-05): C459's guard keeps typed text, never an open `<details>`, so a
+# redraw closed the evidence a person was reading on Needs attention, and the History row they
+# had opened. A `<details data-keep>` is reopened after any swap that replaces its region.
+
+def _redraw_and_wait(b, region_id, key):
+    b.js("document.getElementById(arguments[0]).dataset.old = '1';"
+         "document.body.dispatchEvent(new CustomEvent('nmas:' + arguments[1])); return 1",
+         region_id, key)
+    b.wait_for("var r = document.getElementById(arguments[0]);"
+               f"return !!r && !r.dataset.old && {SETTLED}", 15, region_id)
+
+
+def test_the_evidence_a_person_opened_stays_open(served):  # noqa: F811
+    srv, b = served
+    b.go(srv.url("/v2/"))
+    b.wait_for(READY, 15)
+    b.js("document.querySelector('#attention details.evidence').open = true; return 1")
+    _redraw_and_wait(b, "attention", "acknowledgements")
+    assert b.js("return document.querySelector('#attention details.evidence').open")
+    # The control beside it: a details nobody opened stays closed.
+    b.js("document.querySelector('#attention details.evidence').open = false; return 1")
+    _redraw_and_wait(b, "attention", "acknowledgements")
+    assert not b.js("return document.querySelector('#attention details.evidence').open")
+
+
+def test_a_history_row_a_person_opened_stays_open(served):  # noqa: F811
+    srv, b = served
+    b.go(srv.url("/v2/device/r3?tab=history"))
+    b.wait_for(READY + " && !!document.querySelector('#history details.hist-row')", 15)
+    key = b.js("var d = document.querySelector('#history details.hist-row'); d.open = true;"
+               "return d.getAttribute('data-keep')")
+    assert key
+    _redraw_and_wait(b, "history", "goldens")
+    assert b.js("var d = document.querySelector('#history details[data-keep=\"' + arguments[0]"
+                " + '\"]'); return !!d && d.open", key)
+
+
 # ── The flash: the first paint already reads as age words ──────────────────
 
 @pytest.mark.parametrize("ago, words", [(10, "just now"), (60, "1 min ago"), (600, "10 min ago"),

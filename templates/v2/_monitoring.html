@@ -83,7 +83,7 @@
   {%- if m.folded %}
   {#- ONE line for every panel that does not apply to this device; the panels' own
       explanations, unchanged, one level down (the operator, 2026-09-30). -#}
-  <details class="limits folded" id="folded-panels">
+  <details class="limits folded" id="folded-panels" data-keep="folded-panels">
     <summary>{{ m.folded.line }} <span class="muted">· details</span></summary>
     <ul class="plain-list">
       {%- for f in m.folded.panels %}
