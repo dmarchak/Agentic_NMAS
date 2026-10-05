@@ -479,6 +479,28 @@ class TestAStandaloneNetworksReaders:
         IG.merged("grafana", fetch)
         assert asked == ["", "Branch"], asked
 
+    def test_its_pages_say_not_configured_never_not_read_yet(self):
+        """A standalone network's Grafana is never read, so "not read yet" would wait for
+        ever: the Monitoring page and a device's tab say it is not configured, with Settings
+        as the action, and never name Default's Grafana."""
+        from flask import render_template
+
+        import app as A
+        from modules import device_page as DP
+
+        fleet = DP.fleet_monitoring("Remote", client=_NoLiveAsk())
+        tab = DP.monitoring({"hostname": "rm-r1"}, "Remote", client=_NoLiveAsk())
+        for m in (fleet, tab):
+            assert m["state"] == "not_configured", m
+            assert "Grafana is not configured for Remote" in m["why"]
+        assert DP.fleet_monitoring("Lab-3", client=_NoLiveAsk())["state"] != "not_configured"
+        with A.app.test_request_context("/v2/monitoring?list=Remote"):
+            html = render_template("v2/_fleet.html", m=fleet, net="Remote", cur_range="1h",
+                                   dash_uid="", ranges=[])
+        assert "Grafana is not configured for Remote." in html
+        assert 'href="/v2/settings/network/Remote#card-grafana"' in html
+        assert "192.0.2.10" not in html and "Remote reads" not in html
+
     def test_who_inherits_names_only_the_networks_that_chose_to(self):
         who = IG.who("grafana")
         assert who["inherit"] == ["Lab-3"]

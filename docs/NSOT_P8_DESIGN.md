@@ -525,7 +525,10 @@ choice is there from the first moment once it is built.
      single "Go back to inheriting", and its preview is the new switch preview;
    - the network header carries the network's choice (boards I and J).
 
-8. **Step 8, the OBSERVE pages (built):**
+8. **Step 8, the OBSERVE pages (built). BUILT 2026-10-05:** the not-configured state below,
+   on both pages, with the network's Settings as its link; `grafana_whose()` needed no change
+   (it already names the network for its own group), and the dashboard-settings row skips an
+   unconfigured configuration through `integration_groups.groups()` (step 5).
    - `device_page.grafana_whose()` returns the network's own name for a standalone network;
    - the Monitoring page and a device's tab gain a `not_configured` state, "Grafana is not
      configured for Branch-B", with Settings as its action, beside `not_applicable`;

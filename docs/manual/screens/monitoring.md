@@ -24,7 +24,10 @@ Everything on the Dashboards tab is that network's:
 - its live store's retention and its history store.
 
 A network that declared Grafana not applicable says so instead of drawing anything. A
-device's Monitoring tab works the same way for the device's own network, and has no network
+network whose Grafana is its own and names none (a standalone network that has not configured
+it) says "Grafana is not configured" for it, with a link to the network's Settings, where it
+can be configured or chosen to inherit Default's (see [Inherit or stand alone](settings-switch)).
+A device's Monitoring tab works the same way for the device's own network, and has no network
 menu, because a device belongs to one network.
 
 Coverage shows the active list, which its title names. Choosing a network there arrives

@@ -8,7 +8,7 @@
 <p class="tab-help">{{ info('device-page', 'monitoring-tab', 'About this tab') }}
 {#- Whose dashboard, from the same values the reads used (P.8 step 8, board B): a device
     belongs to one network, so there is no network selector here. -#}
-{%- if m.grafana_from %} Network {{ m.network }}: {% if m.settings.uid %}{{ m.network }}'s device dashboard <span class="mono">{{ m.settings.uid }}</span>, from{% else %}reads{% endif %}
+{%- if m.grafana_from and m.state != 'not_configured' %} Network {{ m.network }}: {% if m.settings.uid %}{{ m.network }}'s device dashboard <span class="mono">{{ m.settings.uid }}</span>, from{% else %}reads{% endif %}
   {{ m.grafana_from }}'s Grafana{% if m.grafana_from != m.network %}, which {{ m.network }} inherits{% endif %}.{% endif %}</p>
 {%- if mb is defined %}{% include "v2/_monitored_by.html" %}{% endif %}
 <div class="toolbar">
@@ -50,6 +50,8 @@
 
 {%- if m.state == 'not_applicable' %}
 <div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>{{ m.network }} has no Grafana.</strong> {{ m.why }}.</div></div>
+{%- elif m.state == 'not_configured' %}
+<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Grafana is not configured for {{ m.network }}.</strong> {{ m.why }}, so there are no dashboards to draw. <a href="{{ url_for('settings_v2.network', list_name=m.network) }}#card-grafana">Configure it in {{ m.network }}'s Settings</a>, or choose to inherit Default's there.</div></div>
 {%- elif m.state == 'not_read' %}
 <div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>{{ m.grafana_from }}'s Grafana's dashboards have not been read yet.</strong> {{ m.why }}</div></div>
 {%- elif m.state == 'not_set' %}

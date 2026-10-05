@@ -51,13 +51,15 @@
   {{ range_controls(cur_range, links, url_for('v2.monitoring_dashboard'), {'list': net, 'dashboard': dash_uid}, 'fleet-range-in', m) }}
 </div>
 {#- Whose reads these are, from the same values the reads used (P.8 section 5). -#}
-{%- if m.grafana_from %}
+{%- if m.grafana_from and m.state != 'not_configured' %}
 <p class="tab-help">{% if m.default %}{{ net }}'s fleet dashboard <span class="mono">{{ m.default }}</span>, from{% else %}{{ net }} reads{% endif %}
   {{ m.grafana_from }}'s Grafana{% if m.grafana_from != net %}, which {{ net }} inherits{% endif %}{% if m.grafana_url %} (<span class="mono">{{ m.grafana_url }}</span>){% endif %}.</p>
 {%- endif %}
 
 {%- if m.state == 'not_applicable' %}
 <div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>{{ net }} has no Grafana.</strong> {{ m.why }}. Choose another network above.</div></div>
+{%- elif m.state == 'not_configured' %}
+<div class="notice notice-warn">{{ icon('warn', 16) }}<div><strong>Grafana is not configured for {{ net }}.</strong> {{ m.why }}, so there are no dashboards to draw. <a href="{{ url_for('settings_v2.network', list_name=net) }}#card-grafana">Configure it in {{ net }}'s Settings</a>, or choose to inherit Default's there; or choose another network above.</div></div>
 {%- elif m.state == 'not_read' %}
 <div class="notice notice-muted">{{ icon('info', 16) }}<div><strong>{{ m.grafana_from }}'s Grafana's dashboards have not been read yet.</strong> {{ m.why }}</div></div>
 {%- elif m.state == 'not_set' %}

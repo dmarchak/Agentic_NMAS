@@ -381,6 +381,21 @@ def grafana_whose(list_name: str):
     return "Default" if gid == IG.DEFAULT_GROUP else list_name
 
 
+def _not_configured(out: dict, list_name: str):
+    """The network's Grafana is its own and names no Grafana at all (a standalone network, or
+    one that chose its own and set nothing: NSOT_P8_DESIGN section 8). Said as that, with
+    Settings as the action, never "not read yet", which would wait for ever on a reader that
+    is never asked (`integration_groups.unconfigured`). None when Grafana is configured."""
+    from modules import integration_groups as IG
+
+    if not IG.unconfigured(("grafana",), list_name):
+        return None
+    out.update(state="not_configured", why=(
+        f"Grafana is not configured for {list_name}: nothing is set for it there, and "
+        f"{list_name} takes nothing from Default's"))
+    return out
+
+
 def _not_applicable(out: dict, list_name: str) -> dict:
     out.update(state="not_applicable", why=f"{list_name} declared Grafana not applicable in its "
                                            "settings, so it has no dashboards to draw")
@@ -492,6 +507,8 @@ def monitoring(dev: dict, list_name: str, chosen_uid: str = "", range_text: str 
            "value_at": at, "range": range_text, "limit_words": panels.limit_words(panels.stores((value or {}).get("datasources") or [], list_name)), "offered": [], "state": "ok"}
     if out["grafana_from"] is None:
         return _not_applicable(out, list_name)
+    if _not_configured(out, list_name):
+        return out
     if value is None:
         out.update(state="not_read", why=why)
         return out
@@ -776,6 +793,8 @@ def fleet_monitoring(list_name: str, chosen_uid: str = "", range_text: str = "1h
            "value_at": at, "range": range_text, "limit_words": panels.limit_words(panels.stores((value or {}).get("datasources") or [], list_name)), "offered": [], "state": "ok"}
     if out["grafana_from"] is None:
         return _not_applicable(out, list_name)
+    if _not_configured(out, list_name):
+        return out
     if value is None:
         out.update(state="not_read", why=why)
         return out
