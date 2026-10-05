@@ -3219,9 +3219,9 @@ tool states the retention in force beside each (14.6) and says when it differs f
 | Raw metrics | Prometheus's local blocks and Thanos's raw blocks | 90 days | 90 days |
 | Downsampled metrics, 5 min | Thanos | 2 years | 1 year |
 | Downsampled metrics, 1 h | Thanos | 5 years | 2 years |
-| Logs | Loki | 1 year | 2 years, decided 2026-10-04 (90 days until 14.15 runs) |
-| Raw telemetry (14.4) | its bucket's `mdt/`, as Parquet | 30 days | 30 days (no rule applied until 14.15 runs) |
-| Archived syslog files | its bucket's `syslog/` | 1 year | 2 years, decided 2026-10-04 (14.15) |
+| Logs | Loki | 1 year | 2 years (14.15, done 2026-10-04) |
+| Raw telemetry (14.4) | its bucket's `mdt/`, as Parquet | 30 days | 30 days (14.15, done 2026-10-04) |
+| Archived syslog files | its bucket's `syslog/` | 1 year | 2 years (14.15, done 2026-10-04) |
 | Configuration history | git | kept for ever (already) | the same |
 
 A store applies its own retention (Thanos's compactor, Loki's compactor, a bucket lifecycle
@@ -3643,7 +3643,7 @@ a compactor fault cannot reach them first. **DECIDED 2026-10-04 (the operator): 
 recommended.** Live reads stay on Prometheus until the compactor has run a week without
 halting.
 
-### 14.15 Host step: logs 2 years; raw telemetry expires per prefix (the operator's)
+### 14.15 Host step: logs 2 years; raw telemetry expires per prefix (the operator's; DONE 2026-10-04)
 
 **DECIDED 2026-10-04 (the operator): as recommended below.** Logs are kept 2 years; in
 `raw-telemetry`, `mdt/` expires at 30 days and `syslog/` at 2 years. The operator asked for the
@@ -3731,7 +3731,7 @@ delete at once:
       printf '%s\n' "$delta" | grep -qE '^< +retention_period: 2160h *$' &&
       printf '%s\n' "$delta" | grep -qE '^> +retention_period: 17520h *$'; then
      sudo install -o root -g 10001 -m 0640 "$d/local-config.yaml" /etc/loki/local-config.yaml &&
-     docker restart loki
+     docker restart loki && echo "INSTALLED AND RESTARTED"
    else
      echo "REFUSED: the edit is not exactly 2160h to 17520h on one line; nothing installed:"; printf '%s\n' "$delta"
    fi
@@ -3751,11 +3751,24 @@ delete at once:
 
    ```
    curl -s 127.0.0.1:3100/ready                                                   # ready
-   curl -s 127.0.0.1:3100/config | awk '/^limits_config:/{s=1;next} /^[a-z_]+:/{s=0} s && /^  retention_period:/{print $2}'   # 730d
+   curl -s 127.0.0.1:3100/config | awk '/^limits_config:/{s=1;next} /^[a-z_]+:/{s=0} s && /^  retention_period:/{print $2}'   # 2y (Loki prints 17520h as 2y)
    curl -s 127.0.0.1:3100/config | awk '/^table_manager:/{s=1;next} /^[a-z_]+:/{s=0} s && /^  retention_period:/{print $2}'   # 0s, unchanged
    mc ilm rule ls lab/raw-telemetry --json | python3 -c 'import json,sys; r=json.load(sys.stdin)["config"]["Rules"]; print(sorted(((x.get("Filter") or {}).get("Prefix") or x.get("Prefix") or "-", (x.get("Expiration") or {}).get("Days") or None, (x.get("NoncurrentVersionExpiration") or {}).get("NoncurrentDays") or None) for x in r))'
    #   [('-', None, 7), ('mdt/', 30, None), ('syslog/', 730, None)]
    ```
+
+**DONE 2026-10-04 (the operator), step by step:**
+- **Step 0** printed `ALL READS AS EXPECTED`.
+- **Step 1** installed the edit, exactly `2160h` → `17520h` on one line, and restarted Loki.
+- **Step 2** added both rules: `mdt/` at 30 days and `syslog/` at 730 days, each under its own
+  rule ID.
+- **The verify:**
+  - `limits_config` `retention_period` reads `2y`. Loki prints 17520h as `2y`, not the `730d`
+    the step first expected; corrected above.
+  - `table_manager`'s `0s` is unchanged.
+  - The rules read `[('-', None, 7), ('mdt/', 30, None), ('syslog/', 730, None)]`.
+- **The operator's fix:** step 1 now prints `INSTALLED AND RESTARTED` on success, so a successful
+  step says so.
 
 **What this step does not do:**
 - **The tool's own Logs retention setting does not exist yet.** History's Query banner (board C,
@@ -3969,6 +3982,39 @@ part of a 120-day range, not a deletion.
 - **E's discovery card** becomes a link to L. E is approved, so that change is L's to
   sign off.
 
+### 15.7 The operator's decisions on v33 (2026-10-04)
+
+- **L and M: APPROVED.**
+  - **Pick reserves the MAC:** agreed, pending the capture. It is unmeasured whether a C8000v
+    in ZTP asks again and takes a boot file later, so L keeps it marked pending.
+  - **L shows the clock:** each discovered device shows "asking since" and "last asked".
+  - **Once measured** (16's timing measurement), L also shows the expected next request and
+    any give-up point, "this device will stop asking in about N min", as a warning as it
+    nears.
+  - **A device that has stopped** says so, and how to re-trigger it: a reload.
+  - **If the platform never gives up,** L says "keeps asking until configured", so Pick is
+    not presented as a race.
+- **Topology Ports:** a "Ports" toggle beside the others, default OFF on the wall and the
+  phone. The desktop default is the operator's, after looking at v33.
+- **Topology, the fourth pass (A to C redrawn):**
+  - **Text on the map again:** each end's port name, and a SHORT protocol state on the link
+    ("OSPF FULL", "OSPFv3 FULL", "BGP Estab", "RIP up"). Colour and line style still flag
+    what needs review. The LONG explanation ("intended FULL, now 2WAY") stays in the hover
+    and the attention list.
+  - **Level of detail for large fleets:** labels appear as you zoom in; zoomed out, icons
+    and colours only. A Labels toggle offers auto, on and off.
+  - **Device icons by class,** replacing boxes: router, L2 switch, L3 switch, firewall,
+    server, access point, controller, external/ISP (a cloud), and unknown.
+    - The class comes from the device's role and platform and from section 18's tier. An
+      unknown class gets a neutral icon, never a guess.
+    - **The icons' licence must allow redistribution in software** (the repository is
+      public). Cisco's topology icons are checked first, since their terms are written for
+      diagrams. Otherwise the set is a permissive open one, vendored locally with its licence
+      file beside it (strict CSP, never a CDN): Lucide (ISC), Tabler (MIT) or Material Symbols
+      (Apache 2.0).
+    - Stage 10's licence check (8.2a) holds the set to that.
+- **Section 18's tiers:** added to Stage 10's "required before release" (7.3).
+
 ## 16. ZTP: three ways in, one pipeline (the operator, 2026-10-04)
 
 It replaces "type the MAC" in 7.4e. The way in is chosen per device at planning:
@@ -4046,6 +4092,21 @@ script can read the device's serial and send it here, as way 1 needs: guestshell
 and `show license udi` or `show version` run from it.
 In this lab the answer cannot tell devices apart, since every C8000v reports one serial, so
 the measurement is of the MECHANISM.
+
+**And the timing, which decides how L behaves (the operator, 2026-10-04: "don't guess").** It
+is measured in the same throwaway session:
+1. **Boot the C8000v discovery-only:** no startup config and no boot file offered.
+2. **Record every DHCP DISCOVER with its time for at least 60 minutes,** using the capture
+   command above with `-tttt` added for absolute timestamps.
+3. **Read off:**
+   - the retry intervals, and whether they grow;
+   - whether it ever stops;
+   - what it falls back to: its empty configuration, or the setup dialog on the console.
+4. **After a Pick** (the MAC reserved, the boot file offered), how long until its next request
+   takes the boot file. And whether it takes it at all once it has fallen back.
+
+What L shows follows the answer (15.7): the expected next request; a give-up warning, or
+"keeps asking until configured"; and a stopped device with its re-trigger, a reload.
 
 The Kea host step (the discovery pool), and 7.4e redrawn with all three ways, follow these
 measurements.
@@ -4222,7 +4283,7 @@ as 18.2 says before its tier is accepted. The batch result counts by tier.
 
   An enterprise's first import is a mixed fleet. Without these, the release refuses most of
   it or misreads it. **Recommended:** add 18.1 to 18.4 to the Stage 10 plan's 7.3 (required
-  before release) beside 17. That is the operator's decision.
+  before release) beside 17. **DECIDED 2026-10-04 (the operator): added.**
 - **Stage 10's platform layer (Stage 9's 9.P and Stage 10's 12) is what moves a platform to
   FULLY MANAGED.** The tier is the coarse face of 12.2's capability declaration:
   - FULLY MANAGED means the platform declares `push`, `parse`, `render`, `rollback` and the

@@ -744,6 +744,9 @@ fail and read the truncated file as operation "?" by "unknown", held for decades
     the same mockup.
   - (C) Neither, until roles exist (9.I), with the process restart as the remedy.
   Recommendation: (A) on v2's refusal card, with (C) until the card is signed off.
+  **DECIDED 2026-10-04 (the operator): (A), a lease with a recorded takeover.** The refusal
+  card's mockup comes first, for sign-off. Until it is built, (C) applies: the process restart
+  is the remedy.
 
 **R27. Nobody is told what another person is doing** (live-4, live-14, intent-20,
 approvals-18, locks-13). Invalidation keys go only in the mutating request's own response
@@ -768,7 +771,9 @@ of another person's change), and draw the holder strip on the canvas for sign-of
 7.4 Fleet boards. **The broadcast half waits for C435** (found surveying its subscribers, the
 same day). A subscriber that holds a person's input re-renders it away: Coverage re-ticks every
 row on `goldens` or `intent`. Each such subscriber must keep its input across a re-render
-first, or the broadcast turns every write into a reset.
+first, or the broadcast turns every write into a reset. **DECIDED 2026-10-04 (the operator):
+as recommended, after C435.** C435 is decided the same day: confirm it in a browser, then carry
+the person's selection through each redraw.
 
 *FIXED 2026-10-02 (tests/test_reader_runs_one_at_a_time.py):* `run_once` holds a per-reader
 run lock across processes (`<store>.run`, a `PathLock`), so a run that starts while another
@@ -858,6 +863,16 @@ have (a holder that is not a thread), built into code 7.8 removes. Options:
 Recommendation: (B). The terminal is gated `break_glass`, and C101's write guard and R11's
 budget do not see it, so every week it stays is a week of a write path the safety model
 cannot see. Its replacement exists.
+
+**DECIDED 2026-10-04 (the operator): (B), remove the terminal now, AFTER a console drill
+proves the emergency path.** The drill:
+1. Reach one lab device by its console, through containerlab.
+2. Sign in with a credential from the break-glass record.
+3. Run one read.
+4. Leave.
+
+The runbook is docs/CONSOLE_DRILL.md. The operator runs it, then the terminal is
+removed, with docs/CUTOVER.md updated.
 
 **R40. The persistence chain's host files have no lock** (stores-31, stores-32, added on
 review). A rotation's persist stage `oxidized_row` (modules/nsot/credential_rotation.py,

@@ -651,17 +651,8 @@ with a platform DEFINITION (data) and the pipeline that proves it (12.4).
 |---|---|
 | **Bulk onboarding** (NSOT_STAGE7_PLAN 17, the operator, 2026-10-04) | An enterprise brings a whole fleet in at once, from a CSV, a spreadsheet or NetBox: one at a time is not a product for it |
 
-**PROPOSED for this table, the operator's decision (NSOT_STAGE7_PLAN 18.6):** support tiers per
-device (18.1 to 18.4).
-- **The pieces:**
-  - the tier as data, capped by the platform;
-  - every screen's tier-aware actions;
-  - MONITORED and MANAGED ELSEWHERE;
-  - CONFIG BACKED UP through Oxidized's models;
-  - the platform measured at onboarding.
-- **Why:** an enterprise's first import is a mixed fleet, and without tiers the release refuses
-  most of it or reads it as the wrong platform (C452).
-- **What moves a platform to FULLY MANAGED:** section 12's platform layer, as before.
+| **Support tiers per device** (NSOT_STAGE7_PLAN 18.1 to 18.4; added by the operator 2026-10-04) | An enterprise's first import is a mixed fleet. Without tiers the release refuses most of it, or reads it as the wrong platform (C452, whose default is already removed). The pieces: the tier as data capped by the platform; every screen's tier-aware actions; MONITORED and MANAGED ELSEWHERE; CONFIG BACKED UP through Oxidized's models; the platform measured at onboarding. FULLY MANAGED for another vendor stays section 12's platform layer |
+| **Licences and third-party use** (8.2a; the operator, 2026-10-04: "build the check now, the audit at the end") | A public release redistributes every component it ships. One without a recorded source and a redistributable licence, or a file that is not ours to give, makes the release unlawful to copy |
 
 ## 8. The repository
 
@@ -707,6 +698,40 @@ if the operator wants every hosted improvement returned.
 
 **One check before choosing:** the institution's policy on capstone work, which may assign
 or constrain the rights.
+
+### 8.2a Licences and third-party use: a release gate (the operator, 2026-10-04)
+
+**Required before release (7.3).** The check is built now; the audit runs at the end.
+
+**1. One inventory of everything third-party:** `THIRD_PARTY.md`, or a data file it is
+generated from. Each entry records the component's source, its version and its licence.
+- the Python packages, from the lock;
+- the vendored JavaScript: htmx, Alpine's CSP build, the Socket.IO client, uPlot;
+- icons and fonts;
+- vendored configuration: `deploy/snmp_exporter/` modules and the Grafana dashboards;
+- anything else copied in.
+
+**2. A CI check, now:**
+- every dependency's licence is on an approved list;
+- every vendored file has a recorded source and licence.
+
+A new one without an entry fails. It catches, for example, the topology icon set the day it
+is added.
+
+**3. At release:**
+- **The project's own licence**, the operator's decision. 8.2 recommends Apache-2.0. Its
+  compatibility is re-read against the inventory: a copyleft dependency (GPL, LGPL, AGPL)
+  decides what the release may be and how it is linked.
+- **A NOTICE**, the third-party attribution file.
+- **An SBOM**, in CycloneDX or SPDX.
+- **Confirmation that nothing non-redistributable is in the repository or its history:**
+  Cisco images, proprietary MIBs, and captured device files beyond what the fixtures need.
+  The history is public and is not rewritten, so a find there is a decision about the release
+  repository (8.1's curated export), never a rewrite of this one.
+
+**Excluded by design:** lab tooling that uses Cisco images ships no images. The lab's
+containerlab topologies name images the person supplies; the release carries no image, licence
+file or key for one.
 
 ### 8.3 CI in the release repository
 
