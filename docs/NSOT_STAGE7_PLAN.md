@@ -3794,6 +3794,12 @@ operator's words, then what the revision draws.
 
 Batch deploy B also carries C445 (the confirm returns a job, and the result is drawn in place)
 and C447 (an order set, previewed and hashed). Its running view carries C446's per-device states.
+It also carries C461 (2026-10-05): a batch ticked "Confirmed" and then left was never sent, and
+nothing said so. On v2:
+- A tick is "selected", and "confirmed" is said only once the server has accepted the confirm.
+- A selection not sent says so where it was left, and a re-plan names the selection it replaces.
+- Whether the server records a preview that was never confirmed is a detail board B did not
+  draw. It is drawn and put to the operator before it is built.
 
 ### 15.1 7.4 Fleet
 

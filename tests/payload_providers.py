@@ -510,6 +510,13 @@ def needs_attention(mp, tmp):
                                       "last_actor": "p@example.invalid",
                                       "last_reason": "still the same port"}}}}),
                               unreadable))
+    # C460: a band acknowledgement standing while it hides nothing, through the real
+    # writer, so the "in force" list is reached with every field.
+    from modules import acknowledgements as ACK
+    ACK.record("grafana:series:abc|ifDescr=Gi1/1,instance=192.0.2.13", "1790600000",
+               why="known issue no fix yet", by="ops@example.com", verified="access",
+               kind="alert", what="Discards on s3 Gi1/1", band=3.235, value=3.19,
+               devices=["s3"])
     return _ok(_client().get("/attention"))
 
 

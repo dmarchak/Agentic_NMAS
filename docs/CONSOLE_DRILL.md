@@ -207,7 +207,30 @@ Steps 1, 3 and 5 as above. Steps 2 and 4 change:
 **The result:** add a row for 2B: "asked for a login; the record's credential accepted (yes or
 no)".
 
+**DONE AND PROVEN on r2, 2026-10-05 (the operator):**
+- **Step 2:**
+  - the intent (`login local` under `line con 0`) committed;
+  - deployed from r2's v2 page, the program exactly `line con 0` / ` login local` / `exit`;
+  - the new golden `faa29a7cae` differs from the last by that one line.
+- **Step 3, variant B, passed at 02:55 UTC (20:55 the operator's time):**
+  - the console asked `Username:` and `Password:`;
+  - the break-glass record's credential was accepted
+    (`%SEC_LOGIN-5-LOGIN_SUCCESS … [Source: LOCAL]`);
+  - it landed at `r2#`, privilege 15. So the console is closed to anyone without the
+    record, and `enable` asks nothing past the login (C457).
+- On desktop, the deploy still shows the vertical stepper. That is expected until K (the one
+  stepper) is built in 7.4.
+
 ## Step 4: the fleet (written when step 3 passes)
+
+**The ROUTERS are done (the operator, 2026-10-05):**
+- r1, r3, r4 and r6 went as one batch, golden commit `6f5ebf26fc`.
+- r3's console was checked by hand and asked for the login.
+- All five routers now ask for a console login.
+- The first confirmed batch (r1, r2, r4 and r6, r2 by mistake) was re-planned before the one
+  that landed; what became of it is C461.
+
+**Next:** the switches, once vrnetlab's vIOS launch script has been read.
 
 **The operator's correction (2026-10-05): ROUTERS first.**
 - **The routers:** one change file for r1, r3, r4 and r6 (the C8000Vs, configured at boot by

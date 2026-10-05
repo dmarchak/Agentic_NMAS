@@ -181,6 +181,27 @@ class TestEveryHelpLinkRenders:
             "the link this test was written for was not reached"
 
 
+class TestTheFilterBarIsOneHeight:
+    def test_show_is_as_tall_as_the_fields_beside_it(self, served):
+        """History's filter bar (the operator, 2026-10-05: "the Show button is taller than the
+        filter fields beside it"): the button and every field stand the same height, their
+        bottoms aligned."""
+        srv, b = served
+        b.go(srv.url("/v2/history"))
+        b.wait_for("return document.querySelector('form.dev-filters .btn')", 10)
+        got = b.js(
+            "var f=document.querySelector('form.dev-filters'), out=[];"
+            "f.querySelectorAll('select, .hist-kinds-sum, input[type=search], .btn').forEach("
+            "function(e){var r=e.getBoundingClientRect();"
+            "out.push([e.tagName + '.' + (e.className||''), Math.round(r.height), Math.round(r.bottom)]);});"
+            "return out;")
+        heights = {h for _n, h, _b in got}
+        bottoms = {bt for _n, _h, bt in got}
+        assert len(got) >= 4, got
+        assert len(heights) == 1, f"the bar's controls differ in height: {got}"
+        assert max(bottoms) - min(bottoms) <= 1, f"their bottoms do not align: {got}"
+
+
 class TestNoOneLineRowOverflows:
     @pytest.mark.parametrize("width", [1366, 500])
     def test_every_cell_ends_inside_its_row(self, served, width):

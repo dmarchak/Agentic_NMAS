@@ -709,6 +709,14 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 /* Devices (NSOT_GUI_BRIEF 3.3). */
 .dev-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .dev-filters input[type="search"] { flex: 1 1 220px; min-width: 0; }
+/* One height for the bar's fields and its button (the operator, 2026-10-05: History's Show stood
+   taller than the filters beside it), aligned on their bottoms under the labels. */
+.dev-filters { align-items: flex-end; }
+.dev-filters select, .dev-filters input[type="search"], .dev-filters input[type="text"],
+.dev-filters .hist-kinds-sum, .dev-filters > .btn {
+  height: 30px; box-sizing: border-box; font-size: 13px; }
+.dev-filters > .btn { padding: 0 14px; }
+.dev-filters .hist-kinds-sum { display: flex; align-items: center; }
 .dev-table td, .dev-table th { white-space: nowrap; }
 /* At phone width a device is a stacked block, never a table scrolled sideways with its intent
    and last measurement off-screen (the operator, 2026-10-02). */

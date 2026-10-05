@@ -2648,6 +2648,31 @@ def _fold_one_cause(rows: list) -> list:
     return rows
 
 
+def _standing_acknowledgements(hiding: list) -> list:
+    """The band acknowledgements IN FORCE that hide nothing now (C433, the operator,
+    2026-10-05: s3's discards were acknowledged, the alert stopped, and the acknowledgement
+    showed nowhere). Each holds while its series stays at or under its band, firing or not,
+    so a person can find and review it. One already listed as hiding a row is not repeated.
+    An unreadable record lists nothing here: the row that says so is `_without_acknowledged`'s."""
+    from modules import acknowledgements as ACK
+
+    got = ACK.read()
+    if got["state"] == "unreadable":
+        return []
+    shown = {k.get("id") for k in hiding}
+    out = []
+    for a in ACK.standing_bands(got["rows"]):
+        if a.get("row") in shown:
+            continue
+        value = a.get("value")
+        out.append({"id": a.get("row"), "what": a.get("what") or a.get("kind") or "an alert",
+                    "by": a.get("by"), "why": a.get("why"), "at": a.get("at"),
+                    "band": (f"holds while its value stays at or under {float(a['band']):.3g}"
+                             + (f"; {float(value):.3g} when acknowledged" if value is not None
+                                else ""))})
+    return out
+
+
 def _without_acknowledged(rows: list):
     """``(rows, acknowledged, problem)``: the rows a person has not acknowledged, the ones
     they have (each with who, why and when, for the page's evidence), and a source result
@@ -2756,7 +2781,8 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
         now, _why = current(ops.get("value_expr", ""), ops.get("labels") or {})
         extra = {"band": b, "value": now}
     entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
-                       kind=f"{found['source']}/{found['kind']}", what=found["what"], **extra)
+                       kind=f"{found['source']}/{found['kind']}", what=found["what"],
+                       devices=found.get("devices") or [], **extra)
     return {"ok": True, "acknowledged": entry}
 
 
@@ -2777,6 +2803,7 @@ def needs_attention(sources=None) -> dict:
     rows, acknowledged, ack_result = _without_acknowledged(rows)
     if ack_result:
         results.append(ack_result)
+    in_force = _standing_acknowledgements(acknowledged)
     rows.sort(key=lambda r: (LEVELS.index(r["level"]), r["source"], r["id"]))
     unreadable = [res["label"] for res in results if res["state"] != "read"]
     if rows:
@@ -2784,7 +2811,7 @@ def needs_attention(sources=None) -> dict:
     else:
         headline = "Nothing needs attention"
     return {"ok": True, "headline": headline, "rows": rows,
-            "unreadable": unreadable, "acknowledged": acknowledged,
+            "unreadable": unreadable, "acknowledged": acknowledged, "in_force": in_force,
             "badge": badge_of(rows, results),
             "sources": [{k: res[k] for k in ("source", "label", "state", "read_at",
                                              "value_at", "took_ms", "checked")}

@@ -59,11 +59,47 @@ def covering(row_id: str, event: str, rows: list):
     return None
 
 
+def devices_of(entry: dict, host_by_address: dict = None) -> list:
+    """The devices an acknowledgement is about: its own `devices` (recorded since 2026-10-05),
+    else read from its row (an authorisation's `authorisations:<list>:<device>:…`, an alert
+    series' `instance=<address>`, through *host_by_address*), else none. History, Needs
+    attention and the device page all ask this, so a kind is never readable in one and not
+    another (C433's band acknowledgements were in none)."""
+    if entry.get("devices"):
+        return [str(d) for d in entry["devices"]]
+    row = str(entry.get("row", ""))
+    if row.startswith("authorisations:"):
+        parts = row.split(":")
+        return [parts[2]] if len(parts) > 2 and parts[2] else []
+    if row.startswith("grafana:series:"):
+        for pair in row.split("|", 1)[-1].split(","):
+            key, _, val = pair.partition("=")
+            if key in ("device", "hostname", "host") and val:
+                return [val]
+            if key == "instance" and val:
+                host = (host_by_address or {}).get(val.split(":")[0])
+                return [host] if host else []
+    return []
+
+
+def standing_bands(rows: list) -> list:
+    """The band acknowledgements in force (C433): the newest per alert series. Each holds
+    while its series' value stays at or under its band, firing or not, so a person can find
+    and review it even when it hides nothing."""
+    latest = {}
+    for a in rows:
+        if a.get("band") is not None:
+            latest[a.get("row")] = a
+    return sorted(latest.values(), key=lambda a: a.get("at", ""), reverse=True)
+
+
 def record(row_id: str, event: str, *, why: str, by: str, verified: str,
-           kind: str, what: str, band: float = None, value: float = None) -> dict:
+           kind: str, what: str, band: float = None, value: float = None,
+           devices: list = None) -> dict:
     """Append one acknowledgement. The caller has checked the row exists now and the
     reason's shape (`attention.acknowledge`, the one caller). *band* and *value* are a chronic
-    alert's measured band and its value then (C433): it holds only within the band."""
+    alert's measured band and its value then (C433): it holds only within the band. *devices*
+    are the row's devices, so History reads it on each device's timeline."""
     from modules.config import open_secure
     from modules.filestore import PathLock
     from modules.redact import redact_text
@@ -75,6 +111,8 @@ def record(row_id: str, event: str, *, why: str, by: str, verified: str,
              "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     if band is not None:
         entry["band"], entry["value"] = float(band), (None if value is None else float(value))
+    if devices:
+        entry["devices"] = [str(d) for d in devices]
     path = _path()
     with PathLock(path):
         with open_secure(path, "a", encoding="utf-8") as fh:

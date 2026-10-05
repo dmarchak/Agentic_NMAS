@@ -127,6 +127,42 @@ class TestEachSourceReachesTheTab:
         assert "the neighbour was down for maintenance" in html
         assert "Onboarding verify: done" in html
 
+    def test_every_acknowledgeable_kind_is_drawn_on_the_device(self, lab):  # noqa: F811
+        """EVERY kind Needs attention acknowledges (`attention.ACKNOWLEDGED_HERE`) is drawn in
+        its device's History (C433, 2026-10-05: the first band acknowledgement, s3's discards,
+        was recorded and drawn nowhere). This test missed it because it planted ONE kind,
+        a repeated authorisation; it now plants every declared kind, so a new one without a
+        reader fails here."""
+        from modules import acknowledgements
+        from modules.attention import ACKNOWLEDGED_HERE
+        planted = []
+        for source, kind in sorted(ACKNOWLEDGED_HERE):
+            key = f"{source}/{kind}"
+            if key in HS.DRAWN_ELSEWHERE:
+                continue          # drawn on its own event (a restart): its own test
+            band = {"band": 3.24, "value": 3.19} if key == "grafana/series" else {}
+            row = ("authorisations:Lab:r3:planted" if source == "authorisations"   # its real shape
+                   else f"{source}:planted:{kind}")
+            acknowledgements.record(row, _now(), why="planted",
+                                    by="alex@example.com", verified="person", kind=key,
+                                    what=f"planted {key}", devices=["r3"], **band)
+            planted.append(key)
+        assert len(planted) >= 3, planted
+        html = _history(lab)
+        missing = [k for k in planted if f"planted {k}" not in html]
+        assert not missing, f"acknowledged kinds History does not draw: {missing}"
+        assert "Acknowledged within its band: planted grafana/series" in html
+
+    def test_an_older_band_acknowledgement_finds_its_device_by_address(self, lab):  # noqa: F811
+        """Recorded before acknowledgements carried their devices: the alert's `instance`,
+        through the list's inventory (r3 is 10.255.1.13 in this lab)."""
+        from modules import acknowledgements
+        acknowledgements.record("grafana:series:uid1|ifDescr=Gi1,instance=10.255.1.13", "uid1|x",
+                                why="known issue", by="alex@example.com", verified="person",
+                                kind="grafana/series", what="Interface output discards on r3",
+                                band=3.24, value=3.19)
+        assert "Acknowledged within its band: Interface output discards on r3" in _history(lab)
+
     def test_a_window_an_acknowledgement_and_a_breakglass_export(self, lab):  # noqa: F811
         from modules import acknowledgements, config, restarts
         assert restarts.record_planned(["r3"], time.time(), time.time() + 600,

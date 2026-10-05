@@ -102,5 +102,13 @@
       {%- for k in a.acknowledged %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }}{% if k.band %} ({{ k.band }}){% endif %}</li>{% endfor %}
     </ul>
     {%- endif %}
+    {%- if a.in_force %}
+    {#- C433: an acknowledgement within a band holds while the value stays inside it, firing or
+        not; listed so a person can find and review it even when it hides nothing now. -#}
+    <p class="att-acked" id="att-in-force">Acknowledgements in force, hiding nothing now:</p>
+    <ul class="att-members">
+      {%- for k in a.in_force %}<li>{{ k.what }} — by {{ k.by }}, {{ stamp(k.at) }}: {{ k.why }} ({{ k.band }})</li>{% endfor %}
+    </ul>
+    {%- endif %}
   </details>
 </div>

@@ -292,10 +292,38 @@ def checks(ref, dev: dict) -> list:
         mine = [i for i in value.get("instances") or []
                 if i.get("kind") in ("condition", "no_data", "error")
                 and (i.get("device") == host or i.get("address") == ip)]
-        out.append({"name": "Alerts", "state": "danger" if mine else "ok", "at": at,
-                    "text": (", ".join(sorted({i.get("rule") or "?" for i in mine})) if mine
-                             else "none firing")})
+        acked, open_ = _acknowledged_alerts(mine, value.get("bands") or {})
+        words = [f"{i.get('rule') or '?'} (acknowledged by {a.get('by')}, within its band: "
+                 f"{reading:.3g} at or under {float(a['band']):.3g})" for i, a, reading in acked]
+        out.append({"name": "Alerts", "state": "danger" if open_ else "ok", "at": at,
+                    "text": ("; ".join(sorted({i.get("rule") or "?" for i in open_}
+                                              | set(words))) if mine else "none firing")})
     return out
+
+
+def _acknowledged_alerts(instances: list, bands: dict):
+    """``(acknowledged, open)``: each firing instance a person acknowledged within its
+    measured band, and inside it now (C433, the same judgement Needs attention makes:
+    `attention._without_acknowledged`), with the acknowledgement and the reading; and the
+    rest. An unreadable record acknowledges nothing."""
+    from modules import acknowledgements as ACK
+    from modules.alert_bands import series_key
+
+    got = ACK.read()
+    if got["state"] == "unreadable" or not instances:
+        return [], list(instances)
+    acked, open_ = [], []
+    for i in instances:
+        series = series_key(i.get("rule_uid"), i.get("labels"))
+        a = ACK.covering(f"grafana:series:{series}", series, got["rows"])
+        reading = (bands.get(series) or {}) if a else {}
+        if a and a.get("band") is not None and not reading and a.get("value") is not None:
+            reading = {"value": float(a["value"]), "in_band": float(a["value"]) <= float(a["band"])}
+        if a and a.get("band") is not None and reading.get("in_band"):
+            acked.append((i, a, float(reading["value"])))
+        else:
+            open_.append(i)
+    return acked, open_
 
 
 def intent_check(ref, dev: dict) -> dict:

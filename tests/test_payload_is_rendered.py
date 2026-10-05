@@ -356,6 +356,10 @@ LIST = ("the echo of the list the route answered for; the panel does not say "
 #: shrinks: a key that becomes drawn must leave (no ghosts).
 UNDRAWN = {
     "GET /attention": [
+        ("in_force",
+         "the band acknowledgements in force that hide nothing now (C460, 2026-10-05): drawn "
+         "by the v2 page (templates/v2/_attention.html, #att-in-force, from needs_attention() "
+         "directly); today's v1 panel gains no capability (the v1 rule), so it does not"),
         ("ways",
          "the machine form of clears.when, which both pages draw (the redesign's Needs "
          "attention also offers Acknowledge, from acknowledge and event, which the adapter "
@@ -784,7 +788,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 109  # -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 110  # +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

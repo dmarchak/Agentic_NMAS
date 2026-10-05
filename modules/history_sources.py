@@ -582,28 +582,62 @@ def onboarding(ctx):
                  for r in rows])
 
 
+#: Acknowledged kinds another source draws on its own event (a restart's acknowledgement is a
+#: mark on the restart), so this source does not draw them twice.
+DRAWN_ELSEWHERE = ("restarts/unplanned",)
+
+
+def _hosts_by_address(ref) -> dict:
+    """The list's devices by management address, for an older acknowledgement that names an
+    alert's `instance` and no device."""
+    try:
+        from modules.device import load_saved_devices
+        return {(d.get("ip") or "").strip(): d.get("hostname", "")
+                for d in load_saved_devices(ref.csv_path) if d.get("ip")}
+    except Exception:                                # noqa: BLE001 - the record still reads
+        return {}
+
+
 def acknowledgements(ctx):
-    """A person's acknowledgement of a row about a device other than a restart (a restart's is
-    drawn on the restart): a repeated authorisation, by its row id."""
+    """A person's acknowledgement of a row about a device, of EVERY kind acknowledged on Needs
+    attention but a restart (drawn on the restart): a repeated authorisation, an interrupted
+    operation, and an alert acknowledged within its measured band (C433, 2026-10-05: the
+    first real one, s3's discards, was recorded and drawn nowhere). Its devices come from the
+    record, or from its row (`acknowledgements.devices_of`)."""
     from modules import acknowledgements as _acks
     got = _acks.read()
     if got["state"] == "unreadable":
         return _out(errors=[f"the acknowledgement record could not be read: {got.get('error', '')}"])
-    prefix = f"authorisations:{ctx['ref'].name}:"
+    hosts = None
     rows = []
     for r in got["rows"]:
-        row_id = str(r.get("row", ""))
-        if not row_id.startswith(prefix):
+        if r.get("kind") in DRAWN_ELSEWHERE:
             continue
-        device = row_id[len(prefix):].split(":", 1)[0]
-        if _mine(ctx, device):
-            rows.append((device, r))
-    return _out([_event(r.get("at", ""), "acknowledged",
-                        f"Acknowledged: {r.get('what') or r.get('kind') or 'a row'}", [device],
-                        who=r.get("by", ""), detail=r.get("why", ""),
-                        record=[("Row", r.get("row")), ("Reason", r.get("why")),
-                                ("Verified", r.get("verified"))])
-                 for device, r in reversed(rows[-ctx["limit"]:])])
+        row_id = str(r.get("row", ""))
+        if row_id.startswith("authorisations:") and not row_id.startswith(
+                f"authorisations:{ctx['ref'].name}:"):
+            continue
+        if hosts is None and not r.get("devices") and row_id.startswith("grafana:"):
+            hosts = _hosts_by_address(ctx["ref"])
+        devices = [d for d in _acks.devices_of(r, hosts) if _mine(ctx, d)]
+        if devices:
+            rows.append((devices, r))
+    events = []
+    for devices, r in reversed(rows[-ctx["limit"]:]):
+        band = r.get("band")
+        what = r.get("what") or r.get("kind") or "a row"
+        title = (f"Acknowledged within its band: {what}" if band is not None
+                 else f"Acknowledged: {what}")
+        events.append(_event(
+            r.get("at", ""), "acknowledged", title, devices, who=r.get("by", ""),
+            detail=(r.get("why", "") + (f" (band {float(band):.3g}, value then "
+                                         f"{float(r['value']):.3g})" if band is not None
+                                         and r.get("value") is not None else "")),
+            record=[("Row", r.get("row")), ("Reason", r.get("why")),
+                    ("Band", f"{float(band):.4g}" if band is not None else None),
+                    ("Value then", f"{float(r['value']):.4g}" if r.get("value") is not None else None),
+                    ("Verified", r.get("verified"))]))
+    return _out(events)
 
 
 def breakglass(ctx):
