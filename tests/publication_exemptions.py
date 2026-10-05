@@ -22,6 +22,7 @@ REASONS = {
     "INVENTED_PATH": "an invented home directory in a test, naming no person",
     "SSH_FORM": "git's SSH URL form (the git user at GitHub's host, then owner/repo), GitHub's account, not a person's address",
     "VENDOR": "Cisco's own call-home address, printed by IOS-XE in the captured config",
+    "LICENCE": "a vendored third-party licence's own copyright line, kept verbatim as the licence requires (NSOT_STAGE10_PLAN 8.2); its author's address, not a person of this project",
 }
 
 #: (path, line hash) -> (reason key, rules excused)
@@ -439,4 +440,6 @@ EXEMPT = {
     ('tests/test_store_integrity_c158_c160.py', '7b0cdff27a72'): ('INVENTED', ('address',)),
     # tests/test_syslog_block.py
     ('tests/test_syslog_block.py', 'caed4d780f5d'): ('INVENTED', ('address',)),
+    # static/js/vendor/codemirror/LICENSE (vendored 2026-10-05)
+    ('static/js/vendor/codemirror/LICENSE', 'fcd59f69f685'): ('LICENCE', ('email',)),
 }

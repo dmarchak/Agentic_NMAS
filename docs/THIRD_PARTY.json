@@ -23,16 +23,22 @@
    "licence": "MIT",
    "source": "https://registry.npmjs.org/@alpinejs/csp/-/csp-3.17.4.tgz",
    "licence_file": null,
-   "audit": "no licence text beside it, and none in the minified file: the release adds the package's LICENSE"
+   "audit": "no licence text beside it, and none in the minified file. Measured 2026-10-05: the published @alpinejs/csp and alpinejs 3.17.4 tarballs hold only package.json (declaring MIT) and the built files, no licence file, so nmas-vendor cannot take one; the text is in Alpine's own repository, a source outside the registry's integrity check, the operator's decision"
   },
   "static/js/vendor/codemirror/*": {
    "component": "CodeMirror",
    "version": "5.65.16",
    "licence": "MIT",
-   "source": "https://codemirror.net/5/",
-   "licence_file": null,
-   "notice": "codemirror.js's header names the MIT licence and its URL",
-   "audit": "the release adds CodeMirror's LICENSE beside it"
+   "source": "https://registry.npmjs.org/codemirror/-/codemirror-5.65.16.tgz",
+   "licence_file": "static/js/vendor/codemirror/LICENSE",
+   "notice": "codemirror.js's header names the MIT licence and its URL. Measured 2026-10-05: codemirror.js, codemirror.css and mode/jinja2/jinja2.js are byte-identical to that tarball's lib/ and mode/ files (its sha512 verified), and the LICENSE is vendored from it (nmas-vendor)"
+  },
+  "static/js/vendor/bootstrap/*": {
+   "component": "Bootstrap (its licence, for the CSS and JS under static/css and static/js)",
+   "version": "5.3.3",
+   "licence": "MIT",
+   "source": "https://registry.npmjs.org/bootstrap/-/bootstrap-5.3.3.tgz",
+   "licence_file": "static/js/vendor/bootstrap/LICENSE"
   },
   "static/js/vendor/fontsource-ibm-plex-mono/*": {
    "component": "@fontsource/ibm-plex-mono (IBM Plex Mono)",
@@ -88,18 +94,18 @@
    "version": "5.3.3",
    "licence": "MIT",
    "source": "https://getbootstrap.com/",
-   "licence_file": null,
+   "licence_file": "static/js/vendor/bootstrap/LICENSE",
    "notice": "each file's header names the authors and the MIT licence",
-   "audit": "v1 only: leaves at cutover; until then the release adds Bootstrap's LICENSE"
+   "audit": "v1 only: leaves at cutover"
   },
   "static/js/bootstrap*": {
    "component": "Bootstrap (JS)",
    "version": "5.3.3",
    "licence": "MIT",
    "source": "https://getbootstrap.com/",
-   "licence_file": null,
+   "licence_file": "static/js/vendor/bootstrap/LICENSE",
    "notice": "each file's header names the authors and the MIT licence",
-   "audit": "v1 only: leaves at cutover; until then the release adds Bootstrap's LICENSE"
+   "audit": "v1 only: leaves at cutover"
   },
   "deploy/snmp_exporter/routing-modules.yml": {
    "component": "snmp_exporter modules generated from OSPF-MIB, OSPFV3-MIB, CISCO-SMI, CISCO-BGP4-MIB",
@@ -139,7 +145,7 @@
   "tests/fixtures/grafana/dashboards/rcn-lab-overview.json and rcn-lab1-snmp.json: captured from the lab's Grafana. Confirm neither was imported from grafana.com under terms that forbid redistribution",
   "tests/fixtures/ and docs/bootstrap-probe/configs/: captured device configurations. Keep only what fixtures need, sanitised (the publication check covers addresses and names, not licences)",
   "deploy/snmp_exporter/routing-modules.yml: the MIB-derived help text (reviewed: LicenseRef-MIB-derived)",
-  "The licence files missing beside alpinejs-csp, codemirror and Bootstrap",
+  "The licence file missing beside alpinejs-csp: Alpine publishes none in its packages (codemirror's and Bootstrap's vendored 2026-10-05)",
   "The history: no Cisco image, licence file, proprietary MIB or key was ever committed (NSOT_STAGE10_PLAN 8.2a); lab tooling names images the person supplies and ships none"
  ],
  "python": {

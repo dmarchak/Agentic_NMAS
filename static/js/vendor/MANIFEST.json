@@ -8,6 +8,24 @@
   "tarball": "https://registry.npmjs.org/@alpinejs/csp/-/csp-3.17.4.tgz",
   "version": "3.17.4"
  },
+ "bootstrap/LICENSE": {
+  "bytes": 1093,
+  "from": "LICENSE",
+  "integrity": "sha512-8HLCdWgyoMguSO9o+aH+iuZ+aht+mzW0u3HIMzVu7Srrpv7EBBxTnrFlSCskwdY1+EOFQSm7uMJhNQHkdPcmjg==",
+  "package": "bootstrap",
+  "sha256": "8c14611ae41ac6fd543c13349f22188eb12c69b3e59105c5eca3925a8e4eca3e",
+  "tarball": "https://registry.npmjs.org/bootstrap/-/bootstrap-5.3.3.tgz",
+  "version": "5.3.3"
+ },
+ "codemirror/LICENSE": {
+  "bytes": 1113,
+  "from": "LICENSE",
+  "integrity": "sha512-br21LjYmSlVL0vFCPWPfhzUCT34FM/pAdK7rRIZwa0rrtrIdotvP4Oh4GUHsu2E3IrQMCfRkL/fN3ytMNxVQvg==",
+  "package": "codemirror",
+  "sha256": "168a4becc968f5001e2ee2e0291b6e4daabafc1894a11ade1e11d56e96096e07",
+  "tarball": "https://registry.npmjs.org/codemirror/-/codemirror-5.65.16.tgz",
+  "version": "5.65.16"
+ },
  "fontsource-ibm-plex-mono/LICENSE": {
   "bytes": 5299,
   "from": "LICENSE",
