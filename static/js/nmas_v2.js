@@ -220,6 +220,7 @@
   function relayFreshness() { relay('freshness'); }
   function relayDrift() { relay('drift'); }
   function relayDashboards() { relay('dashboards'); }
+  function relaySettings() { relay('settings'); }
   function relayJobHealth() { relay('job_health'); }
   function relayCiVerdict() { relay('ci_verdict'); }
   function relayAppVersion() { relay('app_version'); }
@@ -296,6 +297,7 @@
     NMAS.subscribe('freshness', 'v2Freshness', relayFreshness);
     NMAS.subscribe('drift', 'v2Drift', relayDrift);
     NMAS.subscribe('dashboards', 'v2Dashboards', relayDashboards);
+    NMAS.subscribe('settings', 'v2Settings', relaySettings);
     NMAS.subscribe('job_health', 'v2JobHealth', relayJobHealth);
     NMAS.subscribe('ci_verdict', 'v2CiVerdict', relayCiVerdict);
     NMAS.subscribe('app_version', 'v2AppVersion', relayAppVersion);

@@ -353,8 +353,18 @@ pages.
    - A network that declared Grafana not applicable says so, never "not read yet".
    - Coverage's title names the active list it shows.
 
+   **8c BUILT 2026-10-05 (board E, C):** the grafana-dashboards reader, for each Grafana
+   configuration, checks every network that reads it:
+   - it takes each configured role UID and the layer that supplies it;
+   - it asks Grafana live about any UID its listing lacks (rule 11), each UID once;
+   - it stores the answers.
+
+   `attention.dashboard_roles_source` draws a warning per layer and UID. The row names the
+   networks, the setting, the UID, the Grafana and where to choose another. If Grafana could
+   not be asked, the row is Unknown. A stored check whose setting has since changed is not
+   drawn, and the reader's own failure is job health's row.
+
    **Left:**
-   - 8c, the UID-gone row.
    - Coverage's `?list=`: its batch Apply writes to the list it shows, so the list must
      reach the apply and its confirm first.
    - With no `list`, the default is the installation-wide active list. The per-session

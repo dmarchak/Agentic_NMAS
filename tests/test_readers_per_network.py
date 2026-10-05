@@ -298,6 +298,107 @@ def test_each_network_judges_a_range_by_its_own_stores():
         panels.check_range(91 * 86400, "prometheus")
 
 
+class _Grafana:
+    """A Grafana holding *held*; every live ask for one UID is counted."""
+
+    def __init__(self, held):
+        self.held, self.asked = set(held), []
+
+    def _get(self, path, **_k):
+        uid = path.rsplit("/", 1)[-1]
+        self.asked.append(uid)
+        if uid in self.held:
+            return {"ok": True, "response": _Answer({"dashboard": {"title": uid}})}
+        return {"ok": False, "status": 404, "error": "HTTP 404"}
+
+
+class _Answer:
+    def __init__(self, doc):
+        self.doc = doc
+
+    def json(self):
+        return self.doc
+
+
+@pytest.mark.usefixtures("networks")
+class TestAMissingDashboardIsARow:
+    """P.8 step 8c (board E, C): a network's dashboard setting naming a dashboard its Grafana
+    does not hold is a Needs attention row naming the network, the setting and the UID, with
+    the action and how it clears. Concluded from Grafana's LIVE answer, asked by the reader."""
+
+    @pytest.fixture(autouse=True)
+    def _settings(self, networks):
+        from modules import list_settings as L
+
+        assert L.write("Default", {"grafana_fleet_dashboard_uid": "rcn-lab-overview",
+                                   "grafana_device_dashboard_uid": "nmas-device"})["ok"]
+        assert L.write("Branch", {"grafana_fleet_dashboard_uid": "branch-overview"})["ok"]
+
+    def _store(self, gid, roles_):
+        import os
+        import time
+
+        name = IG.store_name("grafana-dashboards", gid)
+        os.makedirs(os.path.dirname(R.store_path(name)), exist_ok=True)
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        with open(R.store_path(name), "w", encoding="utf-8") as fh:
+            json.dump({"endpoints": ["x"], "last_attempt": {"at": stamp, "ok": True},
+                       "last_good": {"value_at": stamp, "value": {"roles": roles_}}}, fh)
+
+    def test_the_reader_checks_each_networks_roles_live(self):
+        from modules.readers import grafana_dashboards as GD
+
+        g = _Grafana(held={"nmas-device"})
+        held, why = GD.roles({"nmas-device": {}}, g, "")
+        assert why == "" and g.asked == ["rcn-lab-overview"], "only the UID the list lacks"
+        got = {(r["list"], r["role"]): (r["uid"], r["from"], r["state"]) for r in held}
+        assert got == {("Default", "fleet"): ("rcn-lab-overview", "Default", "absent"),
+                       ("Default", "device"): ("nmas-device", "Default", "present"),
+                       ("Lab-3", "fleet"): ("rcn-lab-overview", "Default", "absent"),
+                       ("Lab-3", "device"): ("nmas-device", "Default", "present")}
+        held, _ = GD.roles({}, _Grafana(held={"branch-overview"}), "Branch")
+        # Branch set a role, so it owns the roles group: its device UID is the schema's empty
+        # default, never Default's, and nothing is asked about it.
+        assert [(r["role"], r["from"], r["state"]) for r in held] == [("fleet", "Branch", "found")]
+
+    def test_one_row_per_setting_naming_every_network(self):
+        from modules import attention as A
+        from modules.readers import grafana_dashboards as GD
+
+        held, _ = GD.roles({"nmas-device": {}}, _Grafana(held=set()), "")
+        self._store("default", held)
+        res = A.dashboard_roles_source()
+        (r,) = res["rows"]
+        assert r["id"] == "dashboards:default:Default:grafana_fleet_dashboard_uid:rcn-lab-overview"
+        assert r["what"] == "Default and Lab-3's fleet dashboard is missing from its Grafana"
+        assert "grafana_fleet_dashboard_uid names rcn-lab-overview (set in Default's settings, " \
+               "which Lab-3 inherit), and http://192.0.2.10:3000 answered" in r["cause"]
+        assert r["action"]["label"].startswith("Choose Default and Lab-3's fleet dashboard in "
+                                               "Settings › Integrations › Grafana")
+        assert r["clears"]["ways"] == ["resolves"] and r["level"] == "warning"
+        assert "branch" in res["checked"].lower(), "Branch's store unread is said, not a row"
+
+    def test_the_row_leaves_when_the_setting_moves(self):
+        from modules import attention as A
+        from modules import list_settings as L
+        from modules.readers import grafana_dashboards as GD
+
+        held, _ = GD.roles({"nmas-device": {}}, _Grafana(held=set()), "")
+        self._store("default", held)
+        assert len(A.dashboard_roles_source()["rows"]) == 1
+        assert L.write("Default", {"grafana_fleet_dashboard_uid": "nmas-fleet"})["ok"]
+        assert A.dashboard_roles_source()["rows"] == []
+
+    def test_could_not_ask_is_unknown_never_missing(self):
+        from modules import attention as A
+
+        self._store("default", [{"list": "Default", "setting": "grafana_fleet_dashboard_uid",
+                                 "role": "fleet", "uid": "rcn-lab-overview", "from": "Default",
+                                 "state": "unknown", "error": "timed out"}])
+        (r,) = A.dashboard_roles_source()["rows"]
+        assert r["kind"] == "unconfirmed" and r["level"] == "unknown" and "timed out" in r["cause"]
+
+
 def test_coverage_reporting_reads_per_network():
     from modules.readers import coverage_reporting
 

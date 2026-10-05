@@ -145,9 +145,53 @@ def read(client=None, list_name: str = "") -> dict:
         urls, urls_why = {}, (f"{DATASOURCES} answered "
                               f"{listed.get('status') or listed.get('error') or 'nothing'}: "
                               "the token cannot read data source settings")
+    held, held_why = roles(dashboards, g, list_name)
     return {"dashboards": dashboards,
             "datasources": datasources(fs["response"].json() or {}, urls, urls_why),
+            "roles": held, "roles_why": held_why,
             "read_at": time.time()}
+
+
+#: The dashboard roles a network names by UID (CLAUDE.md, the roles table; per network since
+#: P.8): the setting, and the words for it.
+ROLE_SETTINGS = (("grafana_fleet_dashboard_uid", "fleet"),
+                 ("grafana_device_dashboard_uid", "device"))
+
+
+def roles(dashboards: dict, g, list_name: str = "") -> tuple:
+    """``([...], why)``: for every network that reads THIS Grafana, each role UID it names,
+    whose layer supplies it, and whether this Grafana holds it: ``present`` (in the list just
+    read), else Grafana's LIVE answer for that UID (`read_one`: ``found``, ``absent``,
+    ``unknown``). A missing UID is a CHECK, so the listing alone never says it is gone
+    (rule 11), and the page that draws the row asks nothing (P.8 step 8c). An unreadable list
+    store leaves the roles unknown, with why."""
+    from modules import integration_groups as IG
+    from modules import list_settings as L
+
+    me = list_name or L.DEFAULT_LIST
+    try:
+        names = next((c["lists"] for c in IG.groups(("grafana",)) if c["list"] == me), [me])
+        out, asked = [], {}
+        for name in names:
+            for key, role in ROLE_SETTINGS:
+                uid, origin = L.resolve(name, key)
+                uid = str(uid or "").strip()
+                if not uid:
+                    continue
+                if uid in dashboards:
+                    state, live = "present", {}
+                else:
+                    if uid not in asked:            # each missing UID asked once
+                        asked[uid] = read_one(uid, client=g)
+                    live = asked[uid]
+                    state = live.get("state") or "unknown"
+                own = origin == L.SET_HERE and not L.is_default(name)
+                out.append({"list": name, "setting": key, "role": role, "uid": uid,
+                            "from": name if own else L.DEFAULT_LIST, "state": state,
+                            "asked_at": live.get("asked_at"), "error": live.get("error", "")})
+        return out, ""
+    except L.ListSettingsUnreadable as exc:
+        return [], f"a list's settings could not be read: {exc}"
 
 
 def read_one(uid: str, client=None) -> dict:
@@ -206,7 +250,10 @@ def changed(previous: dict, value: dict) -> bool:
     """Did anything a page draws move? The models and the data sources; never
     the read time, which moves every cycle."""
     def key(v):
-        return ((v or {}).get("dashboards"), (v or {}).get("datasources"))
+        # The roles too: Needs attention's missing-dashboard rows move with them.
+        roles_ = [{k: r.get(k) for k in ("list", "setting", "uid", "from", "state")}
+                  for r in (v or {}).get("roles") or []]
+        return ((v or {}).get("dashboards"), (v or {}).get("datasources"), roles_)
     return key(previous) != key(value)
 
 

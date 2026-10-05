@@ -50,6 +50,20 @@ naming Rotate. Each row says where the credential is renewed and where its new v
 integration that **refuses** the tool's credential (a 401 or 403 to its probe, every minute) is
 a danger row of its own, never "down".
 
+**Dashboard settings** (every 5 minutes, with Grafana's dashboards): each network's Fleet and
+Device dashboard UIDs are checked against the Grafana that network reads. A UID missing from
+that Grafana's list is asked of Grafana directly before anything says it is missing, since the
+list may predate an import. If Grafana answers that it holds no such dashboard, the row is a
+warning. It names:
+- the setting and the UID;
+- the layer that sets it ("set in Default's settings, which Lab-3 inherit");
+- every network it affects;
+- the page that draws nothing until it is fixed;
+- where to choose another.
+
+If Grafana could not be asked, the row is **Unknown**. The row leaves as soon as the setting
+changes, and the next read checks the new UID.
+
 ## How a row clears {#clearing}
 
 Every row says, under its cause, how it leaves the page: "Clears when …". There are three ways:

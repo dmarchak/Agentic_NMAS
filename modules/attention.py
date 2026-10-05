@@ -96,6 +96,12 @@ ROW_KINDS = {
                                   "renew it where the service issues it and put it in Settings"),
     ("credential-health", "expiry"): ("a credential expires soon, or has expired",
                                       "renew it where the service issues it and put it in Settings"),
+    ("dashboards", "missing"): ("a network's fleet or device dashboard setting names a "
+                                "dashboard its Grafana does not hold, so that page draws none",
+                                "set it to a dashboard that Grafana holds"),
+    ("dashboards", "unconfirmed"): ("a network's dashboard setting names a dashboard missing "
+                                    "from its Grafana's list, and Grafana could not be asked",
+                                    "check that Grafana answers, or correct the setting"),
     ("credential-health", "age"): ("a credential is older than the age it is kept",
                                    "rotate it"),
     ("credential-health", "unread"): ("a credential's expiry cannot be read",
@@ -192,6 +198,11 @@ CLEARS = {
     ("integrations", "refused"): (("resolves",), "the next probe (every 60 s) is accepted"),
     ("credential-health", "expiry"): (("resolves",), "the reader (hourly) reads an expiry more "
                                       "than 30 days away"),
+    ("dashboards", "missing"): (("resolves",), "the setting names a dashboard that Grafana holds "
+                                "(the row leaves as soon as the setting changes; the reader "
+                                "checks the new one within 5 minutes), or Grafana holds it again"),
+    ("dashboards", "unconfirmed"): (("resolves",), "the reader's next read (every 5 minutes) "
+                                    "asks Grafana and gets an answer"),
     ("credential-health", "age"): (("resolves",), "the reader (hourly) reads it set within "
                                    "180 days"),
     ("credential-health", "unread"): (("resolves",), "the reader (hourly) reads its expiry"),
@@ -1773,6 +1784,96 @@ def credential_health_source(cached=None) -> dict:
 #: P.21's signed age (days): a credential with no expiry older than this is a row.
 MAX_CREDENTIAL_AGE = 180
 
+_ROLE_FIELD = {"grafana_fleet_dashboard_uid": "Fleet dashboard UID",
+               "grafana_device_dashboard_uid": "Device dashboard UID"}
+_ROLE_PAGE = {"fleet": "Monitoring shows no fleet dashboard",
+              "device": "a device's Monitoring tab shows no panels"}
+
+
+def _names(lists: list) -> str:
+    return lists[0] if len(lists) == 1 else ", ".join(lists[:-1]) + " and " + lists[-1]
+
+
+def dashboard_roles_source(read=None, current=None) -> dict:
+    """P.8 step 8c (board E, C): a network's fleet or device dashboard setting naming a
+    dashboard its Grafana does not hold. Drawn from what the grafana-dashboards reader
+    stored for each Grafana configuration, which asked Grafana LIVE about any UID its listing
+    lacked (rule 11), so this page asks nothing. One row per setting's layer and UID, naming
+    every network that uses it. A stored check whose setting has since changed is not drawn:
+    the row leaves the moment the setting moves, and the reader checks the new UID.
+
+    An unread store is not a row here: the reader's failure is job health's own row
+    (`reader:grafana-dashboards`), and two rows about one event say it twice."""
+    from modules import integration_groups as IG
+    from modules import reader_job
+    from modules.list_settings import value
+
+    started = time.time()
+    read = read or reader_job.read_cached
+    current = current or value
+    rows, unread, checked, oldest = [], [], 0, None
+    try:
+        configs = IG.groups(("grafana",))
+    except Exception as exc:                            # noqa: BLE001
+        return source_result("dashboards", "Dashboard settings", read_at=started, took_ms=0,
+                             error=f"the networks' settings could not be read: {exc}")
+    for c in configs:
+        got = read(IG.store_name("grafana-dashboards", c["id"]))
+        good = ((got.get("doc") or {}).get("last_good") or {}) if got["state"] == "ok" else {}
+        if not good:
+            unread.append(c["list"] if c["id"] != IG.DEFAULT_GROUP else "Default")
+            continue
+        v = good.get("value") or {}
+        at = _ts(good.get("value_at"))
+        oldest = at if oldest is None or (at and at < oldest) else oldest
+        url = str(current(c["list"], "grafana_url", "") or "").strip() or "its Grafana"
+        found = {}
+        for r in v.get("roles") or []:
+            if str(current(r["list"], r["setting"], "") or "").strip() != r["uid"]:
+                continue                     # the setting moved since the check
+            checked += 1
+            if r["state"] in ("absent", "unknown"):
+                found.setdefault((r["state"], r["from"], r["setting"], r["uid"], r["role"]),
+                                 []).append(r)
+        for (state, layer, setting, uid, role), rs in sorted(found.items()):
+            lists = [r["list"] for r in rs]
+            whose = (f"set in {layer}'s settings"
+                     + (f", which {_names([n for n in lists if n != layer])} inherit"
+                        if any(n != layer for n in lists) else ""))
+            where = (f"Settings › Integrations › Grafana ({_ROLE_FIELD[setting]})"
+                     if layer == "Default" else
+                     f"{layer}'s own settings ({setting}); the per-network Settings page is "
+                     "P.8 step 7's")
+            key = f"{c['id']}:{layer}:{setting}:{uid}"
+            if state == "absent":
+                rows.append(row(
+                    source="dashboards", kind="missing", key=key, level="warning",
+                    what=f"{_names(lists)}'s {role} dashboard is missing from its Grafana",
+                    cause=(f"{setting} names {uid} ({whose}), and {url} answered that it holds "
+                           f"no such dashboard (asked {rs[0].get('asked_at') or 'at the read'}). "
+                           f"Until it names one Grafana holds, {_ROLE_PAGE[role]} for "
+                           f"{_names(lists)}"),
+                    action={"label": f"Choose {_names(lists)}'s {role} dashboard in {where}"},
+                    operands={"setting": setting, "uid": uid, "grafana": url,
+                              "networks": ", ".join(lists)},
+                    read_at=at))
+            else:
+                rows.append(row(
+                    source="dashboards", kind="unconfirmed", key=key, level="unknown",
+                    what=(f"Whether {_names(lists)}'s {role} dashboard exists is not known"),
+                    cause=(f"{setting} names {uid} ({whose}); it is not in {url}'s list, and "
+                           f"Grafana could not be asked: {rs[0].get('error') or 'no answer'}"),
+                    action={"label": f"Check that {url} answers, or correct {setting} in "
+                                     f"{where}"},
+                    read_at=at))
+    took = int((time.time() - started) * 1000)
+    words = f"{checked} configured dashboard setting(s) checked against their Grafana"
+    if unread:
+        words += (f"; not read yet for {', '.join(unread)} (job health's "
+                  "reader:grafana-dashboards row says why)")
+    return source_result("dashboards", "Dashboard settings", read_at=started, took_ms=took,
+                         rows=rows, value_at=oldest, checked=words)
+
 
 def netbox_secrets_source(cached=None) -> dict:
     """A credential NetBox holds in a device's stored config context is a live
@@ -2566,7 +2667,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            reachability_source, netbox_secrets_source, credential_health_source,
            remote_source, pushed_source,
            host_steps_source, adjacency_source, lab_startup_source, restart_source,
-           interrupted_source)
+           interrupted_source, dashboard_roles_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -2599,6 +2700,8 @@ SOURCE_KEYS = {
     # A hold left by a process that ended is found at the next read; the page's catch-up on
     # reconnect (the process that ended was this app) is what re-reads it.
     "interrupted_source": ("deploy_job", "device_state"),
+    # The reader's stored check, and a setting changed in Settings, which removes a row.
+    "dashboard_roles_source": ("dashboards", "settings"),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.
