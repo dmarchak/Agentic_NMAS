@@ -317,19 +317,34 @@ class TestLiveness:
 # ---------------------------------------------------------------------------
 
 class TestScheduler:
-    def test_start_runs_each_reader_and_stop_ends_it(self):
+    def test_start_runs_each_reader_and_stop_ends_it(self, monkeypatch):
+        """ONLY the test's own reader is started (C163, 2026-10-05): `start()` starts every
+        registered reader, and `readers()` imports every declared one, so this test once
+        launched the REAL readers too (job-health, app-pushed, reachability...). Its stop
+        ended only the one it joined; a real reader mid-read finished afterwards and wrote
+        into the worker's store while the next modules (test_reads_create_no_list,
+        test_reads_write_nothing) removed and restored it. Measured: `reader:job-health`
+        was alive at the collision. So the population is this reader alone, and every
+        thread started is joined and shown ended."""
         ran = threading.Event()
 
         def read():
             ran.set()
             return {}
-        R.register(make(read))
+        mine = R.register(make(read))
+        monkeypatch.setattr(R, "readers", lambda: [mine])
+        started = []
         try:
-            assert "t-reader" in R.start()
+            started = R.start()
+            assert started == ["t-reader"], f"start() started more than this reader: {started}"
             assert ran.wait(10), "the reader did not run within 10 s of start()"
-            assert "t-reader" not in R.start(), "a running reader is not started twice"
+            assert R.start() == [], "a running reader is not started twice"
         finally:
             R.stop()
-            R._threads["t-reader"].join(10)
-            R._threads.pop("t-reader", None)
+            for name in started:
+                R._threads[name].join(10)
+            alive = [n for n in started if R._threads[n].is_alive()]
+            for name in started:
+                R._threads.pop(name, None)
+        assert not alive, f"threads still running after stop() and a 10 s join: {alive}"
         assert R.read_cached("t-reader")["state"] == "ok"

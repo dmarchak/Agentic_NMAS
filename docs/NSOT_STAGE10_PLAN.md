@@ -872,9 +872,14 @@ repository private, THEN an Update is verified end to end.
   "waiting for a runner", naming the runner.
 
 **2. The host reads GitHub with credentials, never printed.**
-- **The fetch:** a READ-ONLY deploy key on the repository. If `nmas_repo` is already one
-  (the operator checks: Settings › Deploy keys), nothing changes. Otherwise a new ed25519
-  key, owner-only, installed by name, and the alias pointed at it.
+- **The fetch:** a READ-ONLY deploy key on the repository. **DONE 2026-10-05 (the
+  operator).**
+  - `nmas_repo` (SHA256:CzA8miNG…VYpg, alias `github-nmas`) was a deploy key WITH write
+    access, which nothing needed. Publishing to the NSoT repository uses its own key,
+    `nsot_deploy` via `github-nsot`.
+  - It was deleted and the same public key re-added as a READ-ONLY deploy key (C456).
+  - Checked from the host: `fetch --dry-run` OK, `push --dry-run` refused.
+  - The fetch needs no change for the switch to private.
 - **The API:** a fine-grained token, this repository only, with Actions: read (and
   Metadata: read, which GitHub requires).
   - **Stored** owner-only at `/etc/nmas/github-actions-read.token`, mode 0640, root and the
@@ -900,7 +905,7 @@ its repository list. It expires 2026-12-30.
 
 **4. The order:**
 1. The runner: VM, the three instances, and parity proven on one commit.
-2. The deploy key: the fetch proven from the host as the checkout's owner.
+2. The deploy key: the fetch proven from the host as the checkout's owner. **DONE 2026-10-05** (read-only, fetch OK, push refused). Left: the runner and the token.
 3. The token: `github_get` with it, the reader's row, the updater's copy reinstalled.
 4. **Then the operator flips the repository to private.**
 5. Verified end to end: a commit, the runner's green run, the host's Update page offering
