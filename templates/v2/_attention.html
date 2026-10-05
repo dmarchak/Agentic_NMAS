@@ -62,7 +62,9 @@
       {%- if r.acknowledge %}
       {#- An event that cannot un-happen: a person acknowledges THIS event with a reason
           (attention.acknowledge); a later event is a new row. -#}
-      <div class="att-ack" x-data="acknowledge" data-url="{{ url_for('attention.acknowledge') }}" data-row="{{ r.id }}" data-event="{{ r.event }}">
+      {#- While the form is open and not yet sent, the row is being edited: a live redraw holds
+          (C459). Sent (busy), it lets the redraw remove the acknowledged row. -#}
+      <div class="att-ack" x-data="acknowledge" data-url="{{ url_for('attention.acknowledge') }}" data-row="{{ r.id }}" data-event="{{ r.event }}" x-bind:data-editing="(isOpen && !busy) ? 'true' : null">
         <button type="button" class="btn btn-small btn-outline" x-show="closed" x-on:click="open">Acknowledge…</button>
         <span class="att-ack-form" x-show="isOpen" x-cloak>
           <label class="sr-only" for="ack-{{ loop.index }}">Why this needs nothing more</label>

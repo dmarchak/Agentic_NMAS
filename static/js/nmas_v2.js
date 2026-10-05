@@ -74,6 +74,82 @@
     return name ? base + encodeURIComponent(name) : '';
   }
 
+  /* A LIVE REDRAW NEVER REPLACES WHAT A PERSON IS EDITING (C459, the operator, 2026-10-05: on
+     Needs attention, each refresh closed the open Acknowledge form and took the cursor). A
+     region about to be swapped that holds an element being edited (a focused text field, a
+     text field with unsent text, or anything marked `data-editing="true"`, as an open
+     form is) is HELD: the swap is skipped, the element says newer data is waiting, and the
+     region is asked again once the editing ends (the form sent, cancelled or emptied). The
+     whole region holds, not just the row: moving a live Alpine component out of a swap
+     re-creates it, which is the very thing that closed the form. */
+  var TEXTY = /^(text|search|email|url|tel|password|number|)$/i;
+
+  function isEditing(el) {
+    if (!el || el.disabled) return false;
+    if (el.getAttribute && el.getAttribute('data-editing') === 'true') return true;
+    var tag = (el.tagName || '').toLowerCase();
+    if (tag === 'textarea' || (tag === 'input' && TEXTY.test(el.type || ''))) {
+      if (el === root.document.activeElement) return true;
+      // Unsent text counts only while the field is shown: a form closed by Cancel keeps its
+      // text hidden, and holding a region for it would never let the redraw happen.
+      return el.offsetParent !== null && (el.value || '') !== (el.defaultValue || '');
+    }
+    return false;
+  }
+
+  /* PURE over the DOM: the first element inside *region* a person is editing, or null. */
+  function editingIn(region) {
+    if (!region || !region.querySelectorAll) return null;
+    var marked = region.querySelector('[data-editing="true"]');
+    if (marked) return marked;
+    var fields = region.querySelectorAll('input, textarea');
+    for (var i = 0; i < fields.length; i++) if (isEditing(fields[i])) return fields[i];
+    return null;
+  }
+
+  var HELD_WORDS = 'Newer data is waiting; it shows when you send or cancel.';
+
+  /* Was this swap caused by a LIVE update (a reader's or a job's announcement, `nmas:<key>`)?
+     Only those are held: a person's own submission swaps the region it was sent from,
+     typed reason and all, because that answer is what they asked for. */
+  function isLiveUpdate(d) {
+    var ev = d && d.requestConfig && d.requestConfig.triggeringEvent;
+    return !!(ev && typeof ev.type === 'string' && ev.type.indexOf('nmas:') === 0);
+  }
+
+  function holdWhileEditing(e) {
+    var region = e.detail && e.detail.target;
+    if (!e.detail || !e.detail.shouldSwap || !region || !isLiveUpdate(e.detail)) return;
+    var editing = editingIn(region);
+    if (!editing) return;
+    e.detail.shouldSwap = false;
+    region.setAttribute('data-held', '1');
+    var unit = (editing.closest && (editing.closest('[x-data]') || editing.parentNode)) || region;
+    if (!unit.querySelector('.held-note')) {
+      var note = root.document.createElement('span');
+      note.className = 'held-note';
+      note.setAttribute('role', 'status');
+      note.textContent = HELD_WORDS;
+      unit.appendChild(note);
+    }
+  }
+
+  /* Once a held region is no longer being edited, ask for it again: the redraw it skipped. */
+  function releaseHeld() {
+    var held = root.document.querySelectorAll('[data-held="1"]');
+    for (var i = 0; i < held.length; i++) {
+      var region = held[i];
+      if (editingIn(region)) continue;
+      region.removeAttribute('data-held');
+      var notes = region.querySelectorAll('.held-note');
+      for (var j = 0; j < notes.length; j++) notes[j].parentNode.removeChild(notes[j]);
+      var url = region.getAttribute('hx-get');
+      if (url && root.htmx) {
+        root.htmx.ajax('GET', url, {target: region, swap: region.getAttribute('hx-swap') || 'outerHTML'});
+      }
+    }
+  }
+
   function drawAges(scope) {
     var list = (scope || root.document).querySelectorAll('time[data-age]');
     var now = Date.now();
@@ -575,13 +651,15 @@
       drawAges();
       drawLive();
       drawBadge();
-      root.setInterval(function () { drawLive(); drawBadge(); }, 1000);
+      root.setInterval(function () { drawLive(); drawBadge(); releaseHeld(); }, 1000);
       root.setInterval(function () { drawAges(); }, 15000);
     });
     root.document.addEventListener('htmx:afterSettle', function (e) { drawAges(e.target); catchUpMissed(e); });
     root.document.addEventListener('htmx:beforeRequest', noteAsked);
     root.document.addEventListener('htmx:beforeRequest', markTab);
     root.document.addEventListener('htmx:beforeSwap', neverSilent);
+    root.document.addEventListener('htmx:beforeSwap', holdWhileEditing);  // after: the last word on a swap
+    root.document.addEventListener('focusout', function () { root.setTimeout(releaseHeld, 0); });
     root.document.addEventListener('htmx:sendError', noAnswer('the server did not answer'));
     root.document.addEventListener('htmx:timeout', noAnswer('no answer in time'));
     root.document.addEventListener('htmx:targetError', function (e) {

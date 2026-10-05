@@ -22,6 +22,37 @@ log = logging.getLogger(__name__)
 
 bp = Blueprint("v2", __name__, url_prefix="/v2")
 
+@bp.app_template_filter("age_words")
+def age_words(iso, now=None) -> str:
+    """An ISO time as the page's own age words ("just now", "3 min ago", "2 h ago"), the
+    SAME words `ageWords` in static/js/nmas_v2.js draws and keeps fresh.
+
+    Drawn on the server so a fragment's first paint already reads right (C459, 2026-10-05:
+    `stamp()` drew the raw ISO time, and the script rewrote it only after htmx settled, so
+    every live redraw flashed "2026-10-05T02:31:00Z" and back). An unreadable time is drawn
+    as itself, as before."""
+    import time as _time
+    from datetime import datetime
+
+    try:
+        then = datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return str(iso or "")
+    s = round((_time.time() if now is None else now) - then)
+    s = max(s, 0)
+    if s < 45:
+        return "just now"
+    if s < 90:
+        return "1 min ago"
+    m = round(s / 60)
+    if m < 60:
+        return f"{m} min ago"
+    h = round(m / 60)
+    if h < 36:
+        return f"{h} h ago"
+    return f"{round(h / 24)} d ago"
+
+
 #: How many receipts the landing shows under "Recent changes".
 RECENT_RECEIPTS = 5
 

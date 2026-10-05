@@ -81,7 +81,7 @@
 {%- endmacro %}
 
 {% macro stamp(iso, words='', note='') -%}
-{%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or iso }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
+{%- if iso %}<time class="stamp" datetime="{{ iso }}" title="{{ iso }}{{ ' · ' ~ note if note }}" data-age="{{ iso }}">{{ words or (iso | age_words) }}</time>{% else %}<span class="stamp">not recorded</span>{% endif -%}
 {%- endmacro %}
 
 {#- The stepper on a running job's card (NSOT_GUI_BRIEF 10a, signed off 2026-10-02; C370):
