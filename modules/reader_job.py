@@ -166,6 +166,12 @@ class Reader:
     announce_if: Callable = None      # (previous value, value) -> announce? (rule 9)
     announce_at_least_every: int = 0  # the keepalive that makes announce_if safe
     after_store: Callable = None      # run after each stored read, before the announcement
+    #: P.8 step 5: the settings groups this reader's outside service is configured by (e.g.
+    #: ``("grafana",)``). With them, the reader reads each distinct configuration across every
+    #: network ONCE, through ``read_for(list_name)`` for a list that uses it, and stores each
+    #: apart: Default's under the reader's own name (unchanged), another's as ``name@id``.
+    per_group: tuple = ()
+    read_for: Callable = None         # (list name) -> value; required with per_group
 
 
 _REGISTRY: dict = {}
@@ -199,6 +205,8 @@ def register(reader: Reader) -> Reader:
                         "be told from its stopping (rule 9)")
     if reader.stale_after_intervals < 2:
         problems.append("stale after fewer than two intervals would call one slow read a stop")
+    if reader.per_group and not callable(reader.read_for):
+        problems.append("it reads per configuration (per_group) with no read_for(list_name)")
     with _REGISTRY_MU:
         if reader.name in _REGISTRY and _REGISTRY[reader.name] is not reader:
             problems.append(f"a reader named {reader.name!r} is already registered")
@@ -365,7 +373,58 @@ def run_once(reader: Reader, announce=None, clock=time.time, trigger: dict = Non
     stored last over a fresher value, and two `app-pushed` runs fetched one checkout at
     once. A run now waits for the one in progress, so it reads after that one stored."""
     with _filestore.PathLock(store_path(reader.name) + ".run"):
-        return _run_once(reader, announce, clock, trigger)
+        if not reader.per_group:
+            return _run_once(reader, announce, clock, trigger)
+        # P.8 step 5: one run per distinct configuration. Each is a reader of its own in the
+        # store (its last good value, its failing streak, its runs), so every rule above holds
+        # per configuration; Default's keeps the reader's own name and is returned.
+        out = None
+        for v in configuration_readers(reader):
+            doc = _run_once(v, announce, clock, trigger)
+            if v.name == reader.name:
+                out = doc
+        return out
+
+
+def configuration_readers(reader: Reader) -> list:
+    """*reader* once per distinct configuration of its groups (`integration_groups`): each a
+    copy named for its store, reading through a list that uses it. A reader with no groups is
+    itself."""
+    import dataclasses
+
+    from modules import integration_groups as IG
+
+    if not reader.per_group:
+        return [reader]
+    out = []
+    for g in IG.groups(tuple(reader.per_group)):
+        if g["id"] == IG.DEFAULT_GROUP:
+            # Default's configuration is the reader's own `read`, exactly as before P.8, so
+            # a single-network installation reads what it always read.
+            out.append(dataclasses.replace(reader, per_group=(), read_for=None))
+            continue
+        rep = g["list"]
+        out.append(dataclasses.replace(
+            reader, name=IG.store_name(reader.name, g["id"]),
+            what=f"{reader.what} (the configuration of {', '.join(g['lists'])})",
+            read=(lambda rep=rep: reader.read_for(rep)), per_group=(), read_for=None))
+    return out
+
+
+def read_cached_for(name: str, list_name: str) -> dict:
+    """*name*'s stored value for the network *list_name*: its configuration's store. A
+    reader with no groups has one store for every network. A network that declared the
+    service not applicable has none, and says so: ``{"state": "not_applicable", ...}``."""
+    from modules import integration_groups as IG
+
+    reader = _REGISTRY.get(name)
+    if reader is None or not reader.per_group:
+        return read_cached(name)
+    gid = IG.combined_id(tuple(reader.per_group), list_name)
+    if gid is None:
+        return {"state": "not_applicable", "doc": None,
+                "why": f"{list_name} declared {', '.join(reader.per_group)} not applicable"}
+    return read_cached(IG.store_name(name, gid))
 
 
 def _run_once(reader: Reader, announce, clock, trigger) -> dict:
@@ -477,11 +536,26 @@ def _run_once(reader: Reader, announce, clock, trigger) -> dict:
 # Liveness (rule 7)
 # ---------------------------------------------------------------------------
 
+def _each_configuration(population) -> list:
+    """Every reader, a per-configuration one once per configuration (P.8 step 5), so each
+    store has its own liveness row. When the configurations cannot be read (a list's settings
+    store unreadable), Default's is kept and the failure is logged: liveness is never lost."""
+    out = []
+    for r in population:
+        try:
+            out.extend(configuration_readers(r))
+        except Exception as exc:                        # noqa: BLE001
+            log.error("reader %s: its configurations could not be listed (%s); only "
+                      "Default's is watched", r.name, exc)
+            out.append(r)
+    return out
+
+
 def health_rows(now: float = None, population: list = None) -> list:
     """One job-health row per reader, decided from its store alone."""
     now = time.time() if now is None else now
     rows = []
-    for r in (readers() if population is None else population):
+    for r in _each_configuration(readers() if population is None else population):
         unit = f"reader:{r.name}"
         base = {"unit": unit, "what": r.what, "state": "ok",
                 "max_age_minutes": (r.interval_seconds * r.stale_after_intervals) // 60}

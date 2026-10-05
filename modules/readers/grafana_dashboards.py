@@ -109,11 +109,12 @@ def _variables(model: dict) -> list:
     return out
 
 
-def read(client=None) -> dict:
-    """Ask Grafana. Raises when it could not ask or the answer is partial."""
+def read(client=None, list_name: str = "") -> dict:
+    """Ask Grafana. Raises when it could not ask or the answer is partial. *list_name* reads
+    that network's Grafana (P.8 step 5; empty is Default's, as before)."""
     from modules.integrations.grafana import GrafanaIntegration
 
-    g = client or GrafanaIntegration()
+    g = client or GrafanaIntegration(list_name=list_name)
     got = g._get(SEARCH, type="dash-db", limit=SEARCH_LIMIT)
     if not got.get("ok"):
         raise ConnectionError(f"{SEARCH}: {got.get('error') or 'no answer'}")
@@ -222,4 +223,7 @@ READER = reader_job.register(reader_job.Reader(
     window="the dashboards as they were at the read",
     announce_if=changed,
     announce_at_least_every=KEEPALIVE_SECONDS,
+    # P.8 step 5: each network's Grafana, once each.
+    per_group=("grafana",),
+    read_for=lambda list_name: read(list_name=list_name),
 ))

@@ -1,0 +1,159 @@
+"""P.8 step 5: a reader serving every network reads each distinct configuration ONCE.
+
+Two lists are two networks, and an integration inherits as a group: a list that sets none of
+Grafana's keys uses Default's Grafana, a list that sets one owns its own, and a list may
+declare it not applicable. A reader that read only the installation's (Default's) Grafana
+drew Default's alerts and dashboards for every network (NSOT_P8_DESIGN section 4). Now each
+distinct configuration is read once, stored apart (Default's under the reader's own name,
+unchanged), and a page asks for its own network's.
+"""
+
+import json
+
+import pytest
+
+from modules import integration_groups as IG
+from modules import reader_job as R
+
+
+@pytest.fixture
+def networks(tmp_path, monkeypatch):
+    """Four networks: Default; Branch with its own Grafana; Lab-3 inheriting Default's;
+    Shop declaring Grafana not applicable."""
+    from modules import config, device
+    from modules import list_settings as L
+
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(config, "LISTS_DIR", str(tmp_path / "lists"))
+    settings = tmp_path / "user_settings.json"
+    settings.write_text(json.dumps({"grafana_url": "http://192.0.2.10:3000"}), encoding="utf-8")
+    monkeypatch.setattr(config, "USER_SETTINGS_FILE", str(settings))
+    registry = tmp_path / "device_lists.json"
+    registry.write_text(json.dumps({"current_list": "Default", "lists": {
+        "Default": "default", "Branch": "branch", "Lab-3": "lab-3", "Shop": "shop"}}),
+        encoding="utf-8")
+    monkeypatch.setattr(device, "DEVICE_LISTS_CONFIG", str(registry))
+    assert L.write("Branch", {"grafana_url": "http://192.0.2.60:3000"})["ok"]
+    shop = tmp_path / "lists" / "shop"
+    shop.mkdir(parents=True)
+    (shop / "settings.json").write_text(json.dumps(
+        {"values": {}, "not_applicable": {"grafana": {"by": "t", "why": "no Grafana here"}}}),
+        encoding="utf-8")
+    return tmp_path
+
+
+def _reader(name="test-per-network"):
+    calls = []
+
+    def read():
+        calls.append("Default")
+        return {"from": "Default"}
+
+    def read_for(list_name):
+        calls.append(list_name)
+        return {"from": list_name}
+
+    r = R.Reader(name=name, what="a test reader", endpoints=("x",), interval_seconds=60,
+                 interval_basis="a test", read=read, invalidates=("alerts",),
+                 per_group=("grafana",), read_for=read_for)
+    return r, calls
+
+
+@pytest.mark.usefixtures("networks")
+class TestTheConfigurations:
+    def test_each_network_maps_to_the_layer_that_supplies_its_grafana(self):
+        assert IG.group_id("grafana", "Default") == "default"
+        assert IG.group_id("grafana", "Branch") == "branch"
+        assert IG.group_id("grafana", "Lab-3") == "default"
+        assert IG.group_id("grafana", "Shop") is None
+
+    def test_the_distinct_configurations_and_who_uses_them(self):
+        assert IG.groups(("grafana",)) == [
+            {"id": "default", "lists": ["Default", "Lab-3"], "list": "Default"},
+            {"id": "branch", "lists": ["Branch"], "list": "Branch"}]
+
+    def test_two_groups_together_are_default_only_when_both_are(self):
+        assert IG.combined_id(("grafana", "prometheus"), "Lab-3") == "default"
+        assert IG.combined_id(("grafana", "prometheus"), "Branch") == "branch+default"
+        assert IG.combined_id(("grafana", "prometheus"), "Shop") is None
+
+
+@pytest.mark.usefixtures("networks")
+class TestTheReaderReadsEachOnce:
+    def test_one_read_per_configuration_each_stored_apart(self):
+        r, calls = _reader()
+        R.run_once(r)
+        assert calls == ["Default", "Branch"], "each configuration read once, Lab-3 shares"
+        value = lambda got: got["doc"]["last_good"]["value"]          # noqa: E731
+        assert value(R.read_cached(r.name)) == {"from": "Default"}
+        assert value(R.read_cached(f"{r.name}@branch")) == {"from": "Branch"}
+
+    def test_a_page_reads_its_own_networks_value(self):
+        r, _calls = _reader()
+        R._REGISTRY[r.name] = r
+        try:
+            R.run_once(r)
+            value = lambda n: R.read_cached_for(r.name, n)["doc"]["last_good"]["value"]  # noqa: E731
+            assert value("Branch") == {"from": "Branch"}
+            assert value("Lab-3") == {"from": "Default"}, "an inheriting network shares Default's"
+            got = R.read_cached_for(r.name, "Shop")
+            assert got["state"] == "not_applicable" and "Shop" in got["why"]
+        finally:
+            R.unregister(r.name)
+
+    def test_each_configuration_has_its_own_liveness_row(self):
+        r, _calls = _reader()
+        R.run_once(r)
+        units = {row["unit"] for row in R.health_rows(population=[r])}
+        assert units == {f"reader:{r.name}", f"reader:{r.name}@branch"}
+
+    def test_a_reader_with_no_groups_is_unchanged(self):
+        """The control: a reader that declares no groups runs once, under its own name."""
+        calls = []
+        r = R.Reader(name="test-one-store", what="a test reader", endpoints=("x",),
+                     interval_seconds=60, interval_basis="a test",
+                     read=lambda: calls.append(1) or {"v": 1}, invalidates=("alerts",))
+        R.run_once(r)
+        assert calls == [1]
+        assert R.read_cached("test-one-store")["doc"]["last_good"]["value"] == {"v": 1}
+
+
+@pytest.mark.usefixtures("networks")
+def test_needs_attention_shows_every_networks_grafana_alerts():
+    """A page that read only Default's alerts store would drop Branch's own Grafana's alerts
+    while every check passed. Each configuration is its own source, named for its networks,
+    with its rows keyed apart."""
+    import os
+    import time
+
+    from modules import attention as A
+
+    def store(name, group):
+        os.makedirs(os.path.dirname(R.store_path(name)), exist_ok=True)
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        doc = {"endpoints": ["x"], "last_attempt": {"at": stamp, "ok": True},
+               "last_good": {"value_at": stamp, "value": {
+                   "rules": [], "instances": [], "stalled_groups": [
+                       {"group": group, "last_evaluation": "never", "interval_seconds": 60}]}}}
+        with open(R.store_path(name), "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+
+    store("grafana-alerts", "Default rules")
+    store("grafana-alerts@branch+default", "Branch rules")
+    results = [s() for s in A._with_every_configuration([A.grafana_source])]
+    labels = [r["label"] for r in results]
+    assert labels == ["Grafana alerts", "Grafana alerts (Branch)"], labels
+    ids = [row["id"] for r in results for row in r["rows"]]
+    assert "grafana:stalled:Default rules" in ids
+    assert "grafana@branch+default:stalled:Branch rules" in ids, ids
+
+
+def test_the_grafana_readers_read_per_network():
+    """The two Grafana readers declare their configuration, so Default's stays as it was and
+    another network's Grafana is read with that network's client."""
+    from modules.readers import grafana_alerts, grafana_dashboards
+
+    assert grafana_dashboards.READER.per_group == ("grafana",)
+    assert grafana_alerts.READER.per_group == ("grafana", "prometheus")
+    assert callable(grafana_dashboards.READER.read_for)
+    assert callable(grafana_alerts.READER.read_for)

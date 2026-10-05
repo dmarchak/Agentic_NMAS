@@ -326,12 +326,13 @@ def parse(ruler: dict, view: dict, alerts: list, read_at: float, silences=None,
             "silences_read": silences is not None}
 
 
-def read(client=None) -> dict:
+def read(client=None, list_name: str = "") -> dict:
     """Ask Grafana. Raises when it could not ask, naming the endpoint, so the
-    reader records a failed attempt and keeps the last good value (rule 3)."""
+    reader records a failed attempt and keeps the last good value (rule 3). *list_name*
+    reads that network's Grafana and Prometheus (P.8 step 5; empty is Default's, as before)."""
     from modules.integrations.grafana import GrafanaIntegration
 
-    g = client or GrafanaIntegration()
+    g = client or GrafanaIntegration(list_name=list_name)
     answers = {}
     for path in (RULER, RULES_VIEW, ALERTMANAGER, SILENCES):
         got = g._get(path)
@@ -342,15 +343,20 @@ def read(client=None) -> dict:
         except ValueError as exc:
             raise ValueError(f"{path}: the answer is not JSON ({exc})") from exc
     value = parse(answers[RULER], answers[RULES_VIEW], answers[ALERTMANAGER], time.time(),
-                  silences=answers[SILENCES], prom_uids=_prometheus_uids())
-    value["bands"] = band_readings(value)
+                  silences=answers[SILENCES], prom_uids=_prometheus_uids(list_name))
+    prom = None
+    if list_name:
+        from modules.integrations.prometheus import PrometheusIntegration
+        prom = PrometheusIntegration(list_name=list_name)
+    value["bands"] = band_readings(value, prom=prom)
     return value
 
 
-def _prometheus_uids() -> set:
+def _prometheus_uids(list_name: str = "") -> set:
     """The Prometheus datasources' uids, from the dashboards reader's stored list (a READ),
     or None when it holds none: then no rule is banded."""
-    got = reader_job.read_cached("grafana-dashboards")
+    got = (reader_job.read_cached_for("grafana-dashboards", list_name) if list_name
+           else reader_job.read_cached("grafana-dashboards"))
     sources = ((((got.get("doc") or {}).get("last_good") or {}).get("value") or {})
                .get("datasources") or [])
     uids = {d.get("uid") for d in sources if d.get("type") == "prometheus" and d.get("uid")}
@@ -402,4 +408,7 @@ READER = reader_job.register(reader_job.Reader(
     remedy=("Check Grafana's URL and token in Settings > Integrations; the error names "
             "the endpoint that refused"),
     window="the state at the read; history is not read here (8.6 reads it uncapped)",
+    # P.8 step 5: each network's Grafana (and the Prometheus its bands read), once each.
+    per_group=("grafana", "prometheus"),
+    read_for=lambda list_name: read(list_name=list_name),
 ))

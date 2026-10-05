@@ -270,7 +270,28 @@ pages.
    `expected()` to the Default layer (step 5). The general Settings form reads the Default
    layer by name, as it writes the global file (step 7). The integration clients built for
    no list keep reading the global file, which is the Default network's layer.
-5. **Readers loop lists;** caches are keyed by group identity.
+5. **Readers loop lists;** caches are keyed by group identity. **5a BUILT 2026-10-05:**
+   - `modules/integration_groups.py`: which network's layer supplies a group for each list
+     (Default, the list's own, or none if not applicable), and the distinct configurations.
+   - `reader_job`: a reader declares `per_group` and `read_for(list)`, and reads each
+     configuration once:
+     - Default's under its own name, through its own `read`, so a single-network
+       installation is unchanged;
+     - another network's as `name@id`.
+     Each store has its own last good value, failing streak and liveness row.
+     `read_cached_for(name, list)` gives a list its own.
+   - The two Grafana readers (dashboards; alerts with the Prometheus its bands read) are per
+     configuration.
+   - Needs attention draws each other network's alerts as a source of its own ("Grafana
+     alerts (Branch)"), its rows keyed apart, declared, cleared and acknowledged as the base
+     source's.
+
+   **Left (5b):**
+   - coverage-reporting, platform-facts, integrations and credential-health still read
+     Default's;
+   - the readers that loop lists still use one client.
+   The pages keep reading Default's configuration until step 8 moves each page with its
+   settings.
 6. **Grafana alerts resolved across lists** (the latent false claim). **BUILT 2026-10-05:** `attention._inventory()` reads every registered list; a labelled device of any network is found, and an address two networks reuse names both devices and decides neither (`tests/test_alerts_across_networks.py`). The list label on the rules waits for P.7.
 7. **The v2 Settings page per network.** It draws each value with its origin (set here,
    inherited, not applicable, unset). This is a new screen, so it needs a mockup and the

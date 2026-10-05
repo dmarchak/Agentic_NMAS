@@ -274,7 +274,10 @@ def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict
     if missing:
         raise RowRefused(f"a Needs attention row without {', '.join(missing)} "
                          "says something is wrong and not why or what to do")
-    if (source, kind) not in ROW_KINDS and ("*", kind) not in ROW_KINDS:
+    # A source read for one network's own configuration ("grafana@branch", P.8 step 5) is the
+    # same kind of source: its rows are declared, cleared and acknowledged as the base's.
+    base = source.split("@", 1)[0]
+    if (base, kind) not in ROW_KINDS and ("*", kind) not in ROW_KINDS:
         raise RowRefused(f"row kind {source}/{kind} is not declared in ROW_KINDS with what "
                          "is wrong and the action a person takes")
     if level not in LEVELS:
@@ -284,7 +287,7 @@ def row(*, source: str, kind: str, key: str, what: str, cause: str, action: dict
     if any(p in said for p in NOT_AN_ACTION):
         raise RowRefused(f"the action {action['label']!r} says there is nothing to do: a row "
                          "with no action belongs on its own page's detail")
-    declared = (source, kind) if (source, kind) in ROW_KINDS else ("*", kind)
+    declared = (base, kind) if (base, kind) in ROW_KINDS else ("*", kind)
     ways, when = CLEARS[declared]
     acknowledgeable = declared in ACKNOWLEDGED_HERE
     if acknowledgeable and not str(event or "").strip():
@@ -1287,12 +1290,20 @@ def silence_words(silences: list) -> str:
     return "; ".join(parts)
 
 
-def grafana_source(cached=None) -> dict:
+def grafana_source(cached=None, configuration: dict = None) -> dict:
     """Grafana's alert state, read from the reader's cache, NEVER from
     Grafana (rule 1 of modules/reader_job.py). The reader's own liveness is
-    job health's row (`reader:grafana-alerts`), judged at request time."""
+    job health's row (`reader:grafana-alerts`), judged at request time.
+
+    *configuration* (P.8 step 5) is another network's own Grafana: ``{"id", "lists"}``. Its
+    source is named for it ("Grafana alerts (Branch)") and its rows are keyed apart, so two
+    Grafanas' rows never collide; Default's configuration is this source as it always was."""
     from modules import reader_job
 
+    src_name, src_label = "grafana", "Grafana alerts"
+    if configuration:
+        src_name = f"grafana@{configuration['id']}"
+        src_label = f"Grafana alerts ({', '.join(configuration['lists'])})"
     started = time.time()
     got = reader_job.read_cached(GRAFANA_READER) if cached is None else cached
     doc = got.get("doc") or {}
@@ -1302,7 +1313,7 @@ def grafana_source(cached=None) -> dict:
         why = (got.get("why") if got["state"] != "ok" else
                "the reader has never stored a value; its last attempt: "
                + ((doc.get("last_attempt") or {}).get("error") or "none recorded"))
-        return source_result("grafana", "Grafana alerts", read_at=started, took_ms=took,
+        return source_result(src_name, src_label, read_at=started, took_ms=took,
                              error=f"not read yet: {why}")
     from modules.alert_bands import series_key
 
@@ -1312,7 +1323,7 @@ def grafana_source(cached=None) -> dict:
     rules_by_uid = {r.get("uid"): r for r in v.get("rules") or []}
 
     def add(key, what, cause, action, level, **kw):
-        rows.append(row(source="grafana", kind=key.split(":", 1)[0], key=key, what=what,
+        rows.append(row(source=src_name, kind=key.split(":", 1)[0], key=key, what=what,
                         cause=cause, action=action,
                         level=level, **kw))
 
@@ -1427,7 +1438,7 @@ def grafana_source(cached=None) -> dict:
 
     c = v.get("counts") or {}
     return source_result(
-        "grafana", "Grafana alerts", read_at=started, took_ms=took, rows=rows,
+        src_name, src_label, read_at=started, took_ms=took, rows=rows,
         value_at=_ts(good.get("value_at")), stale_after_seconds=doc.get("stale_after_seconds"),
         reader=GRAFANA_READER, detail="read from " + ", ".join(doc.get("endpoints") or []),
         checked=(f"{c.get('rules', 0)} rule(s); "
@@ -2757,11 +2768,18 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
     from modules.nsot.authorisation import reason_problem
 
     source = (row_id or "").split(":", 1)[0]
-    fn = _ACK_SOURCES.get(source)
+    fn = _ACK_SOURCES.get(source.split("@", 1)[0])
     if not fn:
         return {"ok": False, "error": f"{row_id!r} is not a row a person acknowledges: it "
                                       "clears when its condition resolves (its row says how)"}
-    found = next((r for r in globals()[fn]()["rows"] if r["id"] == row_id), None)
+    if "@" in source:
+        # Another network's own configuration (P.8 step 5): its source as the page draws it.
+        mine = [s for s in _with_every_configuration([globals()[fn]])
+                if getattr(s, "__name__", "") == f"{fn}@{source.split('@', 1)[1]}"]
+        rows = mine[0]()["rows"] if mine else []
+    else:
+        rows = globals()[fn]()["rows"]
+    found = next((r for r in rows if r["id"] == row_id), None)
     if found is None:
         return {"ok": False, "error": f"{row_id!r} is not on Needs attention now: nothing to "
                                       "acknowledge"}
@@ -2805,11 +2823,52 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
     return {"ok": True, "acknowledged": entry}
 
 
+def _with_every_configuration(sources) -> list:
+    """*sources*, with the Grafana alerts source once more for each OTHER network's own
+    Grafana (P.8 step 5): the reader stores each configuration apart, and a page that read
+    only Default's would drop another network's alerts while every check passed. Listing the
+    configurations failing keeps Default's and adds a source saying so."""
+    import functools
+
+    from modules import reader_job
+
+    out = list(sources)
+    if grafana_source not in out:
+        return out
+    try:
+        others = [v for v in reader_job.configuration_readers(_alerts_reader())
+                  if v.name != GRAFANA_READER]
+    except Exception as exc:                        # noqa: BLE001
+        def unread(why=f"{type(exc).__name__}: {exc}"):
+            return source_result("grafana@networks", "Grafana alerts (other networks)",
+                                 read_at=time.time(), took_ms=0,
+                                 error=f"the networks' Grafana configurations could not be "
+                                       f"listed ({why}), so only Default's alerts are shown")
+        return out + [unread]
+    from modules import integration_groups as IG
+
+    by_store = {IG.store_name(GRAFANA_READER, g["id"]): g
+                for g in IG.groups(tuple(_alerts_reader().per_group))}
+    for v in others:
+        g = by_store.get(v.name) or {"id": v.name.split("@", 1)[-1], "lists": []}
+        fn = functools.partial(grafana_source, reader_job.read_cached(v.name),
+                               configuration={"id": g["id"], "lists": g["lists"]})
+        fn.__name__ = f"grafana_source@{g['id']}"
+        out.append(fn)
+    return out
+
+
+def _alerts_reader():
+    from modules.readers import grafana_alerts
+
+    return grafana_alerts.READER
+
+
 def needs_attention(sources=None) -> dict:
     """The page: every row from every source, worst first, and every source
     with its read time, so an empty page says what it looked at."""
     results = []
-    for src in (SOURCES if sources is None else sources):
+    for src in (_with_every_configuration(SOURCES) if sources is None else sources):
         try:
             results.append(src())
         except Exception as exc:                   # noqa: BLE001
