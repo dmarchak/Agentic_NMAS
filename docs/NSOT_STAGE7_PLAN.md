@@ -1114,7 +1114,11 @@ the file name and by mtime rather than a commit time (register C103).
 | The Configure forms / the intent editor | **duplicate task**, and the forms send nothing | section 7 revised: a form is an input MODE of the one intent editor; the tab goes in 7.8 |
 | The TFTP server field on both pages | the stored copy of a derivable fact | goes with C48 (derive) |
 
-## 7. The Configure forms (decision 2), a parallel track
+## 7. The Configure forms (decision 2): REMOVED at 7.8 (decided 2026-10-05)
+
+**Decided 2026-10-05 (the operator):** the Configure forms do not block cutover and are removed
+at 7.8 with today's pages: the intent editor and deploy replace them. The design below is kept
+for the record of what was considered.
 
 P.3 removes the direct push. Stage 7 homes the forms as **"Author intent
 from a form"** on the Device page, and on a Fleet selection for the same
@@ -1145,7 +1149,7 @@ first.**
 | **7.6** | Source of truth: templates (the scheme-3 approval badge saying what it covers and what it does not, P.5; revoke, bindings, coverage, seed status), NetBox, credentials, freshness authorisations. **Templates A to C APPROVED 2026-10-05 (the operator, canvas v47, page "7.6 Source of truth, Templates"):** the configuration templates of a network with each approval, Approve… whose preview runs the check on every bound device's captured configuration and names the comparison and every failing line (an unmodelled line not acknowledged in committed intent, with the link to acknowledge it on the Intent tab; the device's own lines listed apart), the result in place, and Revoke… with its reason. Editing and bindings stay on today's page until their own boards. |
 | **7.7** | Settings split, file-only settings listed, diagnostics |
 | **7.8** | Removals, each with `check_removed_definitions.py` and a recorded reason, last so nothing goes before its replacement is on screen. **The Topology tab** (its built-in discovery, once 7.3's Neighbours carries it, and the topology-service panel, which goes with the deferred fleet view; C126). **The backup store retires only after section 6a's prerequisite** (the template preview and the two other renders read no backup), which is blocking, not a note. **The legacy golden store (`golden_configs/`) and the header-scan fallback** (`_find_golden_config_file`'s last link and the legacy entries of `repo.list_goldens()`): their retirement condition, `legacy_only_goldens()` empty for every list, holds on the host since r5's file was deleted 2026-09-28, so this is removal work with no prerequisite left (a plan item, never a notice on the landing page) |
-| **7.9** | Configure forms: batch 1 (a parallel track, not blocking) |
+| **7.9** | Configure forms: REMOVED at 7.8, not built (decided 2026-10-05; the intent editor and deploy replace them) |
 | **7.10** | What defers cleanly (opened 2026-09-27 by the scope decision in section 8's 7.1 notes; it was never added to this table). As opened: Stage 5's in-app monitoring views, adopt (A3), the 900-device list and selection screens (the no-per-device-work rule stays in force), switching a network's inventory source. **Since:** the monitoring views came back into Stage 7 natively (section 3, 2026-09-30), and adopt into 7.3 (2026-09-29, its two steps built). What remains here: adopting the nine reference devices at scale (A3), the 900-device screens, and the inventory-source switch |
 
 **Where each step stands is section 11** (2026-10-02). The row texts above are the plan as
@@ -2537,7 +2541,7 @@ something forces an item earlier.
 - **7.8 Removals**: the terminal, the Topology tab, the backup store after
   its prerequisite, and the legacy golden store with its header-scan
   fallback (retirable on the host since 2026-09-28).
-- **7.9 Configure forms**, batch 1 (a parallel track).
+- **7.9 Configure forms**: removed at 7.8, not built (decided 2026-10-05).
 - **Stage 8**: the agent has never executed a tool (27 recorded runs, zero
   calls). Every step is still to do: 8.1 models, 8.2 the tool library against
   today's program, 8.3 a real authority allowlist, 8.4 re-enabling it, 8.6 the
@@ -2962,10 +2966,10 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
 | 7.4 Devices (Fleet) | **PARTLY** | Built 2026-10-01: the v2 list (search, filters, a fixed number of git reads, last measurement, pending rows), and the batch Apply as a job in a rollout order (P.9 d2). **Left:** the selection's own batch deploy, Save All and bulk intent screens on v2 (it opens today's deploy), onboarding on v2 with N address sources, adopt, networks |
 | 7.5 History (Versions) | **PARTLY** | Built 2026-10-02 (commits, baselines with re-apply, authorisations, the remote); one timeline across every device and the fleet's own records, the device tab the same reader (C369, 2026-10-03). **Left:** the "N of M commits carry a verified identity" line, C83's subjects, the remote's connect (curl-only) |
 | 7.6 Source of truth | **PARTLY** on v2 | Credentials: the break-glass record (board 7, built and accepted on the host 2026-10-03); its credential list and expiries are still today's. Templates and NetBox open today's pages; template revoke and bindings, freshness authorise and credential profiles still have no GUI |
-| 7.7 Settings | **NOT STARTED** on v2 | The sidebar item opens today's page |
+| 7.7 Settings | **PARTLY** on v2 (2026-10-05) | Settings per network built (P.8 step 7a: `/v2/settings/network/<list>`, the sidebar's Settings); Installation (F), one field's Save and Default's warning (G), and the Installation/Diagnostics board (decided 2026-10-05) remain |
 | OBSERVE: Logs, DHCP, Topology | **NOT STARTED** | Logs and DHCP open today's pages; Topology (P.11) is not in the sidebar. They follow P.8 (per-network services) |
 | 7.8 removals | **NOT STARTED** | 17 REMOVE families in CUTOVER, the terminal and today's two pages among them; last by rule |
-| 7.9 Configure forms | **NOT STARTED** | A parallel track |
+| 7.9 Configure forms | **REMOVE at 7.8** (decided 2026-10-05) | Does not block cutover: the intent editor and deploy replace the forms, which already send nothing; the Ansible tab goes with them |
 | 7.10 | **NOT STARTED** | A3 at scale, the 900-device screens, the inventory-source switch |
 
 ### The plan items scheduled within Stage 7
@@ -2973,7 +2977,7 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
 | Item | State | Detail |
 |---|---|---|
 | P.7 alert rules generated | **PARTLY** | Built: the heartbeat generator with its 7-day lookback and its re-measure action (C300), the telemetry rules (C304), the generated scrape targets (C232). **Left:** the other hand-built rules generated and tested, the hand-built folder retired rule by rule |
-| P.8 per-network settings | **NOT STARTED** (decided 2026-09-28) | Gates the OBSERVE screens and per-network Grafana |
+| P.8 per-network settings | **PARTLY** (steps 1 to 6, 7a and 8 BUILT by 2026-10-05) | NSOT_P8_DESIGN section 6; step 9 (fold the per-list files) and 7's remaining boards left |
 | P.9 the monitoring profile | **BUILT**, (a) to (d4) | **Awaiting:** staged run 9 (changing a running IP SLA probe), C262 and C269 (the operator's `cdp run` steps) |
 | P.11 Topology | **NOT STARTED** (research done 2026-09-30) | After P.8 |
 | P.12 feature templates | **PARTLY** | The profile is the first instance; the monitoring templates' design (replacing the Heartbeat and IP SLA pages) is owed a mockup |
@@ -3062,7 +3066,7 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
    OBSERVE's query screens are designed to section 13's requirement (historical querying),
    mockups first; its store work (13.3) can run before them.
 5. **7.6 and 7.7** (Source of truth, Settings), which close the no-GUI list.
-6. **7.5's remainder**, then **7.8's removals**, last by rule; 7.9 in parallel.
+6. **7.5's remainder**, then **7.8's removals**, last by rule; 7.9 is removed at 7.8, not built (decided 2026-10-05).
 
 The real runs in section 12 run alongside, at the operator's lab sessions; none blocks the
 next build step except adopt's (after its screen).
