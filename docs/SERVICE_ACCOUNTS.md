@@ -39,9 +39,14 @@ scripts/nmas-netbox-census --out /tmp/census-before-switch.json
 ```
 
 The census records every object per type, by identity, as the current account sees it. It is
-what proves, after the switch, that the new account sees everything: **NetBox answers a read
-the account may not see with 200 and an empty list, not with an error**, so a missing view
-permission looks exactly like an empty type. Only a comparison can catch it.
+what proves, after the switch, that the new account sees everything. Two shapes, from
+NetBox's source and not measured on this instance (2026-10-05):
+- a view permission that is MISSING for a type is refused (403, "You do not have permission
+  to perform this action"). Settings › NetBox › Test now names such a type (C468), and the
+  census exits 2 naming it (C467);
+- a view permission that is CONSTRAINED, or objects the account may not see, answer 200 with
+  fewer items, which looks exactly like a smaller type. Only a comparison catches that, so
+  view is never constrained here.
 
 ### 1.2 Create the user
 
@@ -150,8 +155,9 @@ scripts/nmas-netbox-census --compare /tmp/census-before-switch.json
 
 - **The first** must read: `the stored token acts as 'nmas'`.
 - **The second** must exit **0**. The new account sees every object, per type and by
-  identity, that the old one saw. Exit 1 names the type that differs: a view permission is
-  missing for it.
+  identity, that the old one saw. Exit 1 names the type that differs. Exit 2 names a type it
+  could not read at all (a missing view). Since C467 it walks every type the tool reads, so a
+  baseline must be taken by the same version of the script.
 - **Then, at the next real NetBox write** (an import or an onboarding): C8's report names any
   refused write per device and per write. A 403 there names the object type whose add or
   change permission is missing. It is never silent.

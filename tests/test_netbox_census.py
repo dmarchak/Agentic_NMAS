@@ -111,7 +111,44 @@ class TestTheEdgeOfTheClaimIsStated:
 
     def test_it_names_what_it_does_not_count(self, census):
         assert census.NOT_COUNTED
-        assert "extras/tags" in census.NOT_COUNTED
+        assert "core/object-changes" in census.NOT_COUNTED
+
+    def test_it_covers_every_type_the_service_account_is_given_view_on(self, census):
+        """C467: SERVICE_ACCOUNTS 1.6 reads a census PASS as "every view still works". Every
+        type in `netbox_client.READ_PROBES` (the types the tool reads, held equal to 1.3's
+        `nmas-view`) is either counted or read."""
+        from modules.netbox_client import READ_PROBES
+
+        walked = {p for _n, p in census.ENDPOINTS} | {p for _n, p in census.READ_ONLY}
+        missing = sorted(p for p, _label in READ_PROBES if p not in walked)
+        assert missing == [], f"the tool reads these and the census does not: {missing}"
+
+    def test_a_refused_read_is_UNPROVEN_naming_the_type(self, census, monkeypatch, capsys):
+        """C467: a 403 on one type raised, and the traceback exited 1, "a type differs"."""
+        import requests
+
+        class _Resp:
+            status_code = 403
+
+            def json(self):
+                return {"detail": "You do not have permission to perform this action."}
+
+        def refuse(session, base, path, **params):
+            if path == "extras/tags/":
+                raise requests.HTTPError(response=_Resp())
+            return []
+
+        class _Ok:
+            def get(self, *a, **k):
+                return type("R", (), {"raise_for_status": lambda self: None})()
+
+        monkeypatch.setattr("modules.netbox_client._nb_ready",
+                            lambda: (True, "", _Ok(), "http://nb.invalid"))
+        monkeypatch.setattr("modules.netbox_client._nb_get", refuse)
+        monkeypatch.setattr(census.sys, "argv", ["nmas-netbox-census"])
+        assert census.main() == census.EXIT_UNPROVEN
+        out = capsys.readouterr().out
+        assert "UNPROVEN - extras/tags/ could not be read (HTTP 403" in out, out
 
     def test_every_type_the_sync_creates_is_counted(self, census):
         """The list must not fall behind the thing it audits."""
@@ -120,7 +157,7 @@ class TestTheEdgeOfTheClaimIsStated:
 
         src = io.open(os.path.join(ROOT, "modules", "netbox_client.py"),
                       encoding="utf-8").read()
-        used = set(re.findall(r'"((?:dcim|ipam)/[a-z-]+/)"', src))
+        used = set(re.findall(r'"((?:dcim|ipam|extras|vpn)/[a-z-]+/)"', src))
         counted = {path for _n, path in census.ENDPOINTS}
         known = counted | {f"{k}/" for k in census.NOT_COUNTED}
         # Not vacuous: 15 endpoints, measured. A regex that matched nothing

@@ -237,6 +237,7 @@ class TestRemoveNeverDeletesItsOwnTag:
 
         from modules.netbox_client import _REMOVAL_ORDER
 
-        assert "extras/tags" in census.NOT_COUNTED
-        assert "Remove never deletes one" in census.NOT_COUNTED["extras/tags"]
+        # Since C467 (2026-10-05) the census COUNTS tags, which is stronger than the prose it
+        # held: a tag Remove deleted would now be a REMOVED object in a census compare.
+        assert ("tags", "extras/tags/") in census.ENDPOINTS
         assert "extras/tags" not in _REMOVAL_ORDER

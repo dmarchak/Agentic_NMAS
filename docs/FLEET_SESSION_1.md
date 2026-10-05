@@ -183,8 +183,10 @@ down the UTC time.
 
 Expect:
 - `the stored token acts as 'nmas'`;
-- census `exit 0`. It walks 13 types (C467: not tags, custom fields, config templates,
-  tunnels or the change log), so the next two checks cover the rest;
+- census `exit 0`. Since C467 (2026-10-05) it walks every type the tool reads: 19 compared,
+  plus the change log and tokens read and never compared. A refused read exits 2 (UNPROVEN),
+  naming the type. A baseline taken by the older script holds 13 types, and compares as
+  "present in only one census", so take the baseline with the version this session runs;
 - `nmas-netbox-untagged` exits as it did before the switch, and never 2 (UNPROVEN). It reads
   every recorded object by id across every type the tool created, and the change log.
 
