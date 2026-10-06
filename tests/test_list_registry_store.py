@@ -58,11 +58,15 @@ who = sys.argv[1]
 for i in range(8):
     ok, msg = device.create_device_list(f"{{who}}{{i}}")
     assert ok, msg
+print("created", i + 1)
 '''
 
 
 def _run(tmp_path, body, *args, env):
-    script = tmp_path / f"s{abs(hash(body)) % 10_000}.py"
+    # ONE FILE PER CHILD (C527, CI #475): the three creators shared one script file, each start
+    # rewriting it while an earlier child could still be reading it; a child that read it
+    # truncated ran nothing and exited 0, and its lists were "lost".
+    script = tmp_path / f"s{abs(hash(body)) % 10_000}-{len(list(tmp_path.glob('s*.py')))}.py"
     script.write_text(body.format(root=ROOT))
     return subprocess.Popen([sys.executable, str(script), *args], env=env,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -96,8 +100,9 @@ def test_three_processes_creating_lists_at_once_lose_none(tmp_path):
     env = _env(tmp_path)
     procs = [_run(tmp_path, CREATOR, who, env=env) for who in ("a", "b", "c")]
     for p in procs:
-        _o, err = p.communicate(timeout=120)
+        out, err = p.communicate(timeout=120)
         assert p.returncode == 0, err[-500:]
+        assert out.strip() == "created 8", (out, err[-500:])   # it ran, all of it
     check = subprocess.run([sys.executable, "-c", (
         f"import sys; sys.path.insert(0, {ROOT!r}); from modules import device; "
         "import json; print(json.dumps(sorted(device._load_device_lists_config()['lists'])))")],
