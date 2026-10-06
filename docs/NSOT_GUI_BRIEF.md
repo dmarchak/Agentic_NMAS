@@ -41,6 +41,7 @@ state (R §11). Where the two meet, the project's rule governs and the research 
 | **A control a person may not use is disabled with its reason, never hidden.** This holds inside an Actions menu too. | Plan §2.6 |
 | **An empty space names which of three facts it is:** nothing yet, nothing matches, or could not be read. | R §5; the project's "a failed read is not an empty list" |
 | **A design layer over Bootstrap, not a rewrite** (section 9). | The operator's constraint; R §7 (Bootstrap's scale is already 4 px based) |
+| **If the safe path is tedious, people route around it.** Prefer measured or inherited defaults over settings, a few declarations over many, and defaults that work with nothing set. A safety check a person must configure per network, or feed many declarations, is a check that gets switched off. | The operator, 2026-10-06, deciding C506 (verify's expected effects): three declarations, not more; the rollback settle one installation-wide default that networks inherit and that is measured from the devices' own history, never a per-network chore |
 
 ## 2. The findability check: task-first, object-first, or hybrid
 

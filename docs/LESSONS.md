@@ -2015,6 +2015,27 @@ Dates, counts and statuses below are as they were written. Where a later entry o
   because the read is slow, but because *"is this drifted, is its template
   approved, when was it rotated"* are per-device questions.
 
+### The safe path must not be tedious
+
+*The rule (CLAUDE.md):* **If the safe path is tedious, people route around it.**
+
+- **The incident (C506, the throwaway session's Part 5.3, 2026-10-05 and 06).** Verify had no
+  model of what a change intends: a deploy's own `shutdown` counted as a failure, so a
+  deliberate cable move would be rolled back. The obvious repairs were all tedious: a
+  per-network setting for how long to wait before a rollback, and a declaration for every
+  effect a change might have. The operator's decision: three declarations, never more than the
+  program cannot show (an adjacency moves, a session ends, routes are expected to change); the
+  rest DERIVED from the program; the rollback's settle ONE installation-wide default that
+  networks inherit (P.8's model), MEASURED per platform from the devices' own flap-to-recovery
+  history, the result naming the settle it used.
+- **Why it is a rule:** a check that needs a person to configure it per network, or to feed it
+  many declarations, is a check that gets set once wrongly, or switched off, or answered with
+  whatever makes the button work. Safety the person has to maintain decays; safety that comes
+  measured, inherited and working with nothing set is the safety that stays on.
+- **How to apply:** prefer a measured or inherited default to a setting; a few declarations
+  over many; a default that works with nothing set. A new setting or declaration names why a
+  measurement or an inherited default could not answer instead.
+
 ## Operations and safety
 
 ### The device operation lifecycle

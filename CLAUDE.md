@@ -155,6 +155,10 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   lead with the state to act on. [tests/test_results_are_drawn.py; tests/test_in_flight.py] [why](docs/LESSONS.md#every-action-ends-readable)
 - **Never let a wrong thing look like a working thing:** for each feature name the state in which
   it is wrong and looks right, and what makes it visible. [not mechanised] [why](docs/LESSONS.md#never-let-a-wrong-thing-look-right)
+- **If the safe path is tedious, people route around it:** prefer measured or inherited defaults
+  over settings, a few declarations over many, and defaults that work with nothing set; a new
+  setting or declaration names why a measurement or an inherited default could not answer.
+  [not mechanised] [why](docs/LESSONS.md#the-safe-path-must-not-be-tedious)
 - **A refusal or guard names the comparison it made and both operands, never a guessed cause.**
   [not mechanised] [why](docs/LESSONS.md#refusals-name-both-operands)
 - **A view showing a subset says so; absent and unreadable are different states.** [partly:

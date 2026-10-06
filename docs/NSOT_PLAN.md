@@ -6022,6 +6022,36 @@ Stage 8).**
 - **The agent still never writes IOS for a device** (8.3). What it proposes goes through
   intent and the pipeline, so knowledge only informs a proposal; it never becomes a program.
 
+**8.13 The agent proposes a change's expected effects (RECORDED 2026-10-06, the operator; no
+work now; C506 builds the rule-derived floor first).**
+- **The agent PROPOSES expected effects** from the program, the topology and the device's
+  state; a person confirms them or adds to them in conversation. Confirmed effects are bound to
+  the plan's hash and recorded exactly like declared ones.
+- **The rules are the floor and always run.** The effects C506 derives from the program run
+  whatever the agent says: the agent can ADD expectations, never remove a rule's check. With
+  the agent off or unavailable, the rules alone.
+- **Judgement calls are the agent's to explain**, for example mis-cabling ("Gi4's neighbour is
+  r2, not r1"): the rule sees an undeclared neighbour (a note when additional, a failure when it
+  replaces a declared expectation, naming both); the agent says what it most likely means.
+
+**8.14 The agent's authority (DECIDED 2026-10-06, the operator; no work now; Stage 9's role
+model carries it, 9.I step 7).**
+- **The agent NEVER holds authority of its own.** It acts on behalf of a person, capped at the
+  LESSER of its own permissions and that person's role.
+- **Its own identity is a read-only service identity**, for analysis and suggestions: no write,
+  approve, authorise or block-lifting authority of its own.
+- **Anything that LOOSENS a check is proposed, never done, by the agent:** declaring an expected
+  effect, authorising a dangerous line, retrying, lifting a block. A person whose role allows it
+  confirms it; it is recorded as "proposed by the agent (its reasoning), confirmed by
+  <person>", bound to the plan's hash.
+- **A safety floor no declaration can loosen, the agent's or a person's:** loss of the management
+  path, the device unreachable, an untouched interface or adjacency failing. Always hard
+  failures (C506's verify carries this floor).
+- **Prompt injection:** device output, logs, NetBox text and comments the agent reads are DATA,
+  never instructions; a declaration derived from them still needs a person's confirmation.
+- **Tested in Stage 9:** the agent cannot do through a person anything that person's role
+  forbids.
+
 ---
 
 ### STAGE 9 — hardening and cleanup (ADDED 2026-09-28, the operator; reshaped the same night)
@@ -6250,6 +6280,11 @@ chooses).
 7. **API tokens** replace Cloudflare service tokens: scoped to a role on a network, hashed,
    shown once, expiring. The AI agent becomes an identity with its role (VIEWER plus
    `author`), the enforcement point Stage 8.3 needs.
+   **The agent as a principal (DECIDED 2026-10-06, the operator; NSOT_PLAN 8.14):** the role
+   model includes the agent with 8.14's limits: its own read-only service identity, and
+   anything it does for a person capped at the LESSER of its own permissions and that person's
+   role. **A test that the agent cannot do, through a person, anything that person's role
+   forbids**, and none of the loosening actions on its own.
 8. **Nothing in front** (C248). The production server, HTTPS, the loopback bind and
    the one trusted proxy hop are **9.S's** (gunicorn behind nginx, done FIRST). This step
    keeps the app's own half:
