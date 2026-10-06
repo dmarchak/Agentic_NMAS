@@ -339,6 +339,8 @@ first failed verify, which rolls that device back.
 
 Only after the PAUSE's deploy. s3's probe to r1 (`ip sla 1`, `icmp-echo 10.255.1.11
 source-interface Loopback0`, `frequency 10`, read from its intent and golden on 2026-10-05).
+Still waiting (the operator, 2026-10-06). It also eases s3's CPU: s3 is starved (C93), and this
+probe's ping every 10 s runs through it today, as the fleet's continuous pings do.
 
 1. **The intent:** open the editor for s3 (`/?open=intent_editor&device=s3&list=Default`),
    change ` frequency 10` to ` frequency 60` under `ip_sla` › id `'1'` › `settings`, **Check &
