@@ -50,6 +50,20 @@
     return 'Not acknowledged: ' + ((body && body.error) || ('HTTP ' + status));
   }
 
+  /* PURE: what an answer does to the Acknowledge form (C533): a refusal says why and frees the
+     button; a recorded acknowledgement that hides its row stays busy until the redraw removes
+     the row; one recorded and NOT hiding it (a value above the band) says so, with both
+     numbers, and frees the button. Never busy with nothing said once an answer is in. */
+  function ackAnswer(status, body) {
+    if (status !== 200 || !body || !body.ok) {
+      return {busy: false, isOpen: true, said: ackRefusal(status, body), note: ''};
+    }
+    if (body.hides_now === false) {
+      return {busy: false, isOpen: false, said: '', note: body.words || 'Recorded; the row stays.'};
+    }
+    return {busy: true, isOpen: true, said: '', note: ''};
+  }
+
   /* PURE: an age in words, from two times in milliseconds. */
   function ageWords(thenMs, nowMs) {
     if (thenMs !== thenMs || thenMs === null) return '';
@@ -462,12 +476,12 @@
     // `acknowledgements`, the list redraws and the row leaves it. Words only for a refusal.
     A.data('acknowledge', function () {
       return {
-        isOpen: false, busy: false, said: '',
+        isOpen: false, busy: false, said: '', note: '',
         get closed() { return !this.isOpen; },
         get label() { return ackLabel(this.busy); },
         open: function () {
           var box = this.$root.querySelector('input[name="why"]');
-          this.isOpen = true; this.said = '';
+          this.isOpen = true; this.said = ''; this.note = '';
           if (box && box.focus) root.setTimeout(function () { box.focus(); }, 0);
         },
         cancel: function () { this.isOpen = false; this.said = ''; },
@@ -482,7 +496,9 @@
           }).then(function (r) {
             return r.json().then(function (b) { return [r.status, b]; }, function () { return [r.status, null]; });
           }).then(function (got) {
-            if (got[0] !== 200) { self.busy = false; self.said = ackRefusal(got[0], got[1]); }
+            var next = ackAnswer(got[0], got[1]);
+            self.busy = next.busy; self.isOpen = next.isOpen;
+            self.said = next.said; self.note = next.note;
           }, function (e) { self.busy = false; self.said = 'Not acknowledged: ' + e.message; });
         }
       };
@@ -717,6 +733,7 @@
 
   root.NMAS_V2 = {ageWords: ageWords, liveWords: liveWords, jumpTarget: jumpTarget, KEYS: KEYS,
                   reloadIfRestored: reloadIfRestored, ackLabel: ackLabel, ackRefusal: ackRefusal,
+                  ackAnswer: ackAnswer,
                   badgeDoubt: badgeDoubt, missedKeys: missedKeys, isFragment: isFragment,
                   failWords: failWords, couldntWords: couldntWords, injectedScripts: injectedScripts,
                   rewrittenWords: rewrittenWords, openKeys: openKeys};

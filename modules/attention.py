@@ -2806,6 +2806,24 @@ def _standing_acknowledgements(hiding: list) -> list:
     return out
 
 
+def band_words(ack: dict, judged: dict) -> str:
+    """Both numbers, and which governs (C533, the operator, 2026-10-06: the row showed two band
+    values and said neither which applied): the band recorded with the acknowledgement, when,
+    and the value it is judged against, when and by whom it was read."""
+    from modules.alert_bands import words
+
+    at = (ack.get("at") or "")[11:16]
+    band = (f"Acknowledged by {ack.get('by')}{' at ' + at + ' UTC' if at else ''} within a "
+            f"band of {words(judged['band'])}, the band that governs")
+    if judged["value"] is None:
+        return f"{band}; its value now could not be read ({judged.get('why')})"
+    when = (judged.get("value_at") or "")[11:16]
+    side = "at or under it" if judged["in_band"] else "above it"
+    return (f"{band}; its value is {judged['value']:.3g}"
+            + (f" (read by {judged['value_from']} at {when} UTC)" if when else "")
+            + f", {side}")
+
+
 def _without_acknowledged(rows: list):
     """``(rows, acknowledged, problem)``: the rows a person has not acknowledged, the ones
     they have (each with who, why and when, for the page's evidence), and a source result
@@ -2830,25 +2848,18 @@ def _without_acknowledged(rows: list):
             # WITHIN ITS BAND ONLY (C433): hidden while the reader's reading is inside the
             # band recorded with the acknowledgement; outside it, or unread, the row stays and
             # says why, naming the band and the value.
-            reading = (r.get("operands") or {}).get("band_reading") or {}
-            if not reading and a.get("value") is not None:
-                # Until the reader's first reading: the value measured with the acknowledgement.
-                reading = {"value": float(a["value"]),
-                           "in_band": float(a["value"]) <= float(a["band"])}
-            if reading.get("in_band"):
+            # The acknowledgement's own band GOVERNS, against the newest value (C533,
+            # `acknowledgements.within_band`): the reader's stored reading can carry an older
+            # acknowledgement's band until it runs again.
+            judged = ACK.within_band(a, (r.get("operands") or {}).get("band_reading"))
+            if judged["in_band"]:
                 gone.append({"id": r["id"], "what": r["what"], "by": a.get("by"),
                              "why": a.get("why"), "at": a.get("at"),
-                             "band": f"within its band: {reading.get('value'):.3g} at or under "
-                                     f"{float(a['band']):.3g}"})
+                             "band": f"within its band: {judged['value']:.3g} at or under "
+                                     f"{judged['band']:.3g}"})
                 continue
-            from modules.alert_bands import words
             r = dict(r)
-            now = (f"its value is now {reading['value']:.3g}, above it"
-                   if reading.get("value") is not None else
-                   "its value now could not be read ("
-                   + (reading.get("why") or "the reader has not measured it yet") + ")")
-            r["cause"] = (f"{r['cause']}. Acknowledged by {a.get('by')} within a band of "
-                          f"{words(float(a['band']))}; {now}, so it is shown")
+            r["cause"] = f"{r['cause']}. {band_words(a, judged)}, so it is shown"
             kept.append(r)
         elif a:
             gone.append({"id": r["id"], "what": r["what"], "by": a.get("by"),
@@ -2923,7 +2934,18 @@ def acknowledge(row_id: str, event: str, why: str, *, by: str, verified: str) ->
     entry = ACK.record(row_id, found["event"], why=why, by=by, verified=verified,
                        kind=f"{found['source']}/{found['kind']}", what=found["what"],
                        devices=found.get("devices") or [], **extra)
-    return {"ok": True, "acknowledged": entry}
+    out = {"ok": True, "acknowledged": entry, "hides_now": True, "words": ""}
+    if extra:
+        # An acknowledgement within a band that cannot hide its row NOW says so (C533, the
+        # operator, 2026-10-06: three acknowledgements recorded, each above its band, and the
+        # button stayed "Acknowledging…" saying nothing).
+        judged = ACK.within_band(entry)
+        if not judged["in_band"]:
+            out["hides_now"] = False
+            out["words"] = (f"Recorded. {band_words(entry, judged)}, so the row stays until "
+                            "its value falls within the band; acknowledging again measures "
+                            "the same 7-day band.")
+    return out
 
 
 def _with_every_configuration(sources) -> list:

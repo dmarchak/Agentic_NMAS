@@ -67,6 +67,13 @@ class TestNeedsAttentionListsItInForce:
         assert 'id="att-in-force"' in html and "known issue no fix yet" in html
 
 
+def _after_ack():
+    """A reading's time as the reader records it (`band_readings` sets `at`), a minute after the
+    acknowledgement the fixture makes now: the newest value is the one judged (C533)."""
+    import time
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 60))
+
+
 def _instance(**over):
     return dict({"rule_uid": "rule-1", "rule": "Interface output discards", "kind": "condition",
                  "labels": LABELS, "device": "s3", "address": "192.0.2.23"}, **over)
@@ -75,14 +82,14 @@ def _instance(**over):
 class TestTheDevicePageSaysAcknowledged:
     def test_inside_its_band_it_reads_acknowledged(self, band_ack):
         from modules.device_page import _acknowledged_alerts
-        acked, open_ = _acknowledged_alerts([_instance()], {SERIES: {"value": 3.1, "in_band": True}})
+        acked, open_ = _acknowledged_alerts([_instance()], {SERIES: {"value": 3.1, "in_band": True, "at": _after_ack()}})
         assert not open_ and len(acked) == 1
         _i, a, reading = acked[0]
         assert a["by"] == "operator@example.com" and reading == pytest.approx(3.1)
 
     def test_above_its_band_it_is_firing(self, band_ack):
         from modules.device_page import _acknowledged_alerts
-        acked, open_ = _acknowledged_alerts([_instance()], {SERIES: {"value": 5.0, "in_band": False}})
+        acked, open_ = _acknowledged_alerts([_instance()], {SERIES: {"value": 5.0, "in_band": False, "at": _after_ack()}})
         assert not acked and len(open_) == 1
 
     def test_unread_it_judges_by_the_value_when_acknowledged(self, band_ack):

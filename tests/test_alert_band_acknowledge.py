@@ -14,6 +14,7 @@ is a fake answering the two queries the band and the reading make.
 """
 
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -125,8 +126,76 @@ class TestAcknowledgingWithinTheBand:
         value["bands"] = G.band_readings(value, prom=_Prom(now=5.0))   # the reader's next run
         (r,), gone, _p = A._without_acknowledged(_rows(value))
         assert gone == []
-        assert ("Acknowledged by operator@example.invalid within a band of 3.7 (its 7-day "
-                "95th percentile when acknowledged); its value is now 5, above it") in r["cause"]
+        assert re.search(r"Acknowledged by operator@example\.invalid at \d\d:\d\d UTC within a "
+                         r"band of 3\.7 \(its 7-day 95th percentile when acknowledged\), the "
+                         r"band that governs; its value is 5 \(read by the reader at \d\d:\d\d "
+                         r"UTC\), above it, so it is shown", r["cause"]), r["cause"]
+
+
+class TestTheStuckAcknowledgeC533:
+    """C533 (the operator, 2026-10-06, s3's discards): the row re-raised above its band; three
+    acknowledgements were RECORDED (bands 3.717, values 4.44, 5.92, 4.75, read on the host), each
+    above its band, so the row stayed; the button stayed "Acknowledging…" and said nothing. The
+    row named the newest acknowledgement's band while the reader still judged by the day
+    before's (3.235)."""
+
+    def _ack(self, monkeypatch, value, prom):
+        return TestAcknowledgingWithinTheBand._acknowledge(None, monkeypatch, value, prom)
+
+    def test_an_acknowledgement_that_cannot_hide_its_row_says_so_with_both_numbers(
+            self, store, inventory, monkeypatch):
+        out, _r = self._ack(monkeypatch, _firing(), _Prom(p95=3.717, now=4.44))
+        assert out["ok"] is True and out["hides_now"] is False
+        assert "Recorded." in out["words"] and "3.72" in out["words"] and "4.44" in out["words"]
+        assert "above it" in out["words"] and "the band that governs" in out["words"]
+
+    def test_one_that_hides_its_row_says_nothing_more(self, store, inventory, monkeypatch):
+        out, _r = self._ack(monkeypatch, _firing(), _Prom(p95=3.7, now=0.8))
+        assert out["hides_now"] is True and out["words"] == ""
+
+    def test_the_newest_acknowledgements_band_governs_never_the_readers_stale_one(
+            self, store, inventory, monkeypatch):
+        """The reader ran before the second acknowledgement and still carries the first one's
+        band (3.235, value 3.6 above it); the second recorded 3.717. Its band governs: 3.6 is
+        within it, so the row is hidden, and the words never name a band that did not decide."""
+        from modules import acknowledgements as ACK
+
+        value = _firing()
+        self._ack(monkeypatch, value, _Prom(p95=3.717, now=3.6))
+        key = next(iter(_rows(value)))["event"]
+        value["bands"] = {key: {"band": 3.235, "value": 3.6, "in_band": False,
+                                "at": "2099-01-01T00:00:00Z"}}
+        rows, gone, _p = A._without_acknowledged(_rows(value))
+        assert rows == [] and gone[0]["band"] == "within its band: 3.6 at or under 3.72"
+        a = ACK.read()["rows"][-1]
+        judged = ACK.within_band(a, value["bands"][key])
+        assert judged["band"] == pytest.approx(3.717) and judged["value_from"] == "the reader"
+
+    def test_the_newest_value_is_judged(self):
+        from modules import acknowledgements as ACK
+        a = {"band": 3.7, "value": 4.4, "at": "2026-10-06T18:28:54Z"}
+        older = {"value": 3.6, "at": "2026-10-06T18:20:00Z"}
+        newer = {"value": 3.6, "at": "2026-10-06T18:30:39Z"}
+        assert ACK.within_band(a, older)["in_band"] is False, "the acknowledgement's is newer"
+        assert ACK.within_band(a, newer)["in_band"] is True
+        assert ACK.within_band({"band": 3.7, "value": None}, {})["in_band"] is None
+
+
+def test_the_button_is_never_left_busy_with_nothing_said():
+    """The Acknowledge form's answer (`ackAnswer`, run in the shipped script): a refusal frees
+    it and says why; recorded-and-hidden stays busy for the redraw that removes the row;
+    recorded-and-NOT-hidden frees it and says why the row stays."""
+    from tests.test_device_v2 import _eval
+
+    def answer(status, body):
+        return json.loads(_eval("nmas_v2.js", "NMAS_V2", f"ackAnswer({status}, {json.dumps(body)})"))
+
+    hidden = answer(200, {"ok": True, "hides_now": True})
+    assert hidden["busy"] is True
+    stays = answer(200, {"ok": True, "hides_now": False, "words": "Recorded. above it"})
+    assert stays == {"busy": False, "isOpen": False, "said": "", "note": "Recorded. above it"}
+    refused = answer(409, {"ok": False, "error": "a reason"})
+    assert refused["busy"] is False and refused["said"] == "Not acknowledged: a reason"
 
     def test_a_band_that_cannot_be_measured_is_refused(self, store, inventory, monkeypatch):
         class Down(_Prom):

@@ -340,11 +340,12 @@ def _acknowledged_alerts(instances: list, bands: dict):
     for i in instances:
         series = series_key(i.get("rule_uid"), i.get("labels"))
         a = ACK.covering(f"grafana:series:{series}", series, got["rows"])
-        reading = (bands.get(series) or {}) if a else {}
-        if a and a.get("band") is not None and not reading and a.get("value") is not None:
-            reading = {"value": float(a["value"]), "in_band": float(a["value"]) <= float(a["band"])}
-        if a and a.get("band") is not None and reading.get("in_band"):
-            acked.append((i, a, float(reading["value"])))
+        # The acknowledgement's band governs, against the newest value (C533): the one
+        # judgement Needs attention makes (`acknowledgements.within_band`).
+        judged = (ACK.within_band(a, bands.get(series))
+                  if a and a.get("band") is not None else {})
+        if judged.get("in_band"):
+            acked.append((i, a, float(judged["value"])))
         else:
             open_.append(i)
     return acked, open_

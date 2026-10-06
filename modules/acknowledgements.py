@@ -59,6 +59,32 @@ def covering(row_id: str, event: str, rows: list):
     return None
 
 
+def within_band(ack: dict, reading: dict = None) -> dict:
+    """Whether a band acknowledgement holds now (C433; C533): THE judgement, for Needs
+    attention and the device page alike. The band recorded with *ack* GOVERNS, never a band a
+    reading carries from an older acknowledgement (the reader stores its last run's band until
+    it runs again: on 2026-10-06 it held 3.235 from the day before while the newest
+    acknowledgement said 3.72). The value is the newest measurement there is: the reader's
+    reading, or the one taken with the acknowledgement, whichever was read later.
+
+    ``{"band", "band_at", "value", "value_at", "value_from", "in_band"}``; ``in_band`` None when
+    no value was ever read."""
+    band = float(ack["band"])
+    candidates = []
+    if (reading or {}).get("value") is not None:
+        candidates.append((str(reading.get("at") or ""), float(reading["value"]), "the reader"))
+    if ack.get("value") is not None:
+        candidates.append((str(ack.get("at") or ""), float(ack["value"]),
+                           "the acknowledgement"))
+    if not candidates:
+        return {"band": band, "band_at": ack.get("at", ""), "value": None, "value_at": "",
+                "value_from": "", "in_band": None,
+                "why": (reading or {}).get("why") or "no value has been read"}
+    at, value, source = max(candidates, key=lambda c: c[0])
+    return {"band": band, "band_at": ack.get("at", ""), "value": value, "value_at": at,
+            "value_from": source, "in_band": value <= band}
+
+
 def devices_of(entry: dict, host_by_address: dict = None) -> list:
     """The devices an acknowledgement is about: its own `devices` (recorded since 2026-10-05),
     else read from its row (an authorisation's `authorisations:<list>:<device>:…`, an alert
