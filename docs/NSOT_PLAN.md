@@ -6061,6 +6061,15 @@ operator; no work now; C537's mockup draws the box).**
   a person confirms).
 - **The Devices page keeps its own search**, which FILTERS its list; the box never filters.
 
+**8.16 Fleet-wide read-only commands are the agent's evidence engine (RECORDED 2026-10-06, the
+operator; the screen is C548's, a board to draw).**
+- **One engine, two users:** a person picks devices (by name, role, network) and read-only
+  commands from the same allowlist (`readonly_commands`), with results summarised, grouped,
+  collapsed and compared; the agent asks the same engine for its evidence, never a session of
+  its own.
+- **The agent's reads are a person's reads:** the same allowlist, the same device holds while
+  reading, the same masked answers, recorded the same way, so what it saw can be read again.
+
 ---
 
 ### STAGE 9 — hardening and cleanup (ADDED 2026-09-28, the operator; reshaped the same night)

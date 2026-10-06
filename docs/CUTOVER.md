@@ -76,10 +76,10 @@ and built.
 | Device regions | `/devices/regions` | REMOVE, 7.8 | Today's device list; `/v2/devices` replaces it |
 | Backups | `/device/<ip>/backup_config`, `/backup_history`, `/backup_stats`, `/compare_backups`, `/delete_backup/<f>`, `/download_backup/<f>` | REMOVE, 7.8 | The backup store retires after section 6a's prerequisite (no render reads a backup) |
 | Device files | `/device/<ip>/refresh_files`, `/upload`, `/download_file`, `/delete_file`, `/download` | REMOVE, 7.8 | No arbitrary file transfer (the operator, 2026-10-02). Replaced by purpose-built operations: ZTP delivery in onboarding, and software image management (NSOT_PLAN P.13). **Before removing**: check what ZTP serves today (the lab's configs folder holds a TFTP-written file) and keep that path working |
-| Bulk operations | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | REMOVE, 7.8 (cut 2026-10-05) | Bulk read-only commands are cut; fleet-wide read questions are revisited with Stage 8's agent or History › Query |
+| Bulk operations | `/bulk_execute`, `/bulk_status/<id>`, `/bulk_clear/<id>` | REPLACED by a v2 screen (decided 2026-10-06, C548; a board to draw after the current order) | Fleet-wide read-only commands come back as a v2 screen: devices by name, role or network, commands from the same allowlist, results summarised, grouped and collapsed, compared side by side or as differences, saved command sets; the evidence engine of Stage 8's agent (NSOT_PLAN 8.16). Was: cut 2026-10-05. The writes stay cut. Bulk read-only commands were cut; fleet-wide read questions were to be revisited with Stage 8's agent or History › Query |
 | Bulk file actions | `/bulk_delete_file`, `/bulk_download_config`, `/bulk_tftp_upload`, `/bulk_tftp_download` | REMOVE, 7.8 | As device files |
 | Reload | `/bulk_reload` | REMOVE, 7.8; replaced by P.14 (a board to draw, decided 2026-10-05) | Reload becomes a gated device-page operation (NSOT_PLAN P.14: unsaved changes, drift, the boot credential and image, no holder, the blast radius), its planned-restart window declared before it acts, built in |
-| Ask the device | `/run_command/<ip>` | PLANNED, 7.3 | The device page's "Ask the device" tab (allowlisted) |
+| Ask the device | `/run_command/<ip>` | PLANNED, 7.3; its tab is signed off as a name only and drawn disabled, a board of its content to draw (C547, 2026-10-06) | The device page's "Ask the device" tab (allowlisted) |
 | Quick actions | `/add_quick_action`, `/delete_quick_action` | REMOVE, 7.8 | The terminal's companions; the terminal was removed 2026-10-05 (R39) |
 | Configure | `/configure/*` (6) | REMOVE, 7.8 (decided 2026-10-05) | The Configure forms and the Ansible tab do not block cutover: the intent editor and deploy replace them (they already send nothing) |
 | Legacy collectors | `/monitoring/config`, `/interfaces`, `/netflow` (2), `/snmp/poll`, `/snmp/traps` (2) | REMOVE, 7.8 | The in-app collector and SNMP Quick Poll are removed (the mockup review, 2026-09-29) |
@@ -119,8 +119,9 @@ library, transfer and upgrade); reload stays as a gated device-page operation
    result; bulk onboarding builds on it.
 6. One Installation/Diagnostics board: the drift schedule and "Check now", the server log, the
    in-flight panel, the posture.
-7. Bulk restore and bulk read-only commands are cut (fleet-wide reads revisited with Stage 8's
-   agent or History › Query).
+7. Bulk restore is cut. Bulk read-only commands were cut on 2026-10-05 and come back as a v2
+   screen (the operator, 2026-10-06, C548): fleet-wide reads from the same allowlist, the
+   evidence engine of Stage 8's agent.
 8. Revealing a golden version stays in the GUI (a person, recorded); the remote's connect,
    acknowledge and write probe are CLI only.
 9. Reload (P.14) gets a board, its planned-restart declaration built in.
