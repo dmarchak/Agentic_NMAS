@@ -170,6 +170,14 @@ class TestRetry:
             assert html_mod.escape(line, quote=False) in card
         assert "op-confirm" not in card and "waits on your reason" in card
 
+    def test_what_it_will_not_do_never_contradicts_itself(self, blocked):
+        """C508 (the operator, 2026-10-05, Part 6): the card said "this changes intent and
+        the record only" and then "Intent is not changed". A retry changes the record only."""
+        _r, card = _get(blocked, "/v2/device/r2/retry")
+        assert "changes the record only (the block is lifted)" in card
+        assert "changes intent and the record" not in card
+        assert "Intent is not changed" in card
+
     def test_a_reason_not_in_the_shape_of_one_says_so(self, blocked):
         _r, card = _get(blocked, "/v2/device/r2/retry?reason=ok")
         assert "op-confirm" not in card and "Not yet a reason:" in card

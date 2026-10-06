@@ -3057,6 +3057,11 @@ INTENT_OP_WORDS = {
 
 _NOT_SENT = ("Nothing is sent to the device: this changes intent and the record only. "
              "The device changes at the next deploy, planned and confirmed as always.")
+#: A retry changes the RECORD only (it lifts the block); intent stays as committed (C508: the
+#: retry card said "changes intent and the record" and then "Intent is not changed").
+_NOT_SENT_RETRY = ("Nothing is sent to the device: this changes the record only (the block is "
+                   "lifted). The device changes at the next deploy, planned and confirmed as "
+                   "always.")
 
 
 def _note_words(note) -> str:
@@ -3189,7 +3194,7 @@ def retry_preview(entry: dict, *, list_name: str, request) -> dict:
               "never" if not hist.get("count") else
               f"{hist['count']} time(s), last {hist['last']['at']} by {hist['last']['actor']}: "
               f"{hist['last']['reason']}")
-    what_not = [{"target": name, "kind": "not_sent", "text": _NOT_SENT, "lines": []},
+    what_not = [{"target": name, "kind": "not_sent", "text": _NOT_SENT_RETRY, "lines": []},
                 {"target": name, "kind": "intent_kept",
                  "text": ("Intent is not changed: the change that failed stays asserted, and the "
                           "next plan offers the program below again."), "lines": []}]
@@ -3241,7 +3246,7 @@ def retry_result(out: dict) -> dict:
     done = outcome == "authorised"
     words = INTENT_OP_WORDS.get(outcome, outcome)
     rec = out.get("record") or {}
-    did_not = [{"target": name, "kind": "not_sent", "text": _NOT_SENT, "lines": []}]
+    did_not = [{"target": name, "kind": "not_sent", "text": _NOT_SENT_RETRY, "lines": []}]
     if not done:
         did_not.insert(0, {"target": name, "kind": outcome,
                            "text": words + (f": {out['reason']}" if out.get("reason") else ""),
