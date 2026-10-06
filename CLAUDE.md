@@ -43,6 +43,10 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Read-only measurement of lab services is the agent's to run**, through `scripts/nmas-host`,
   printing counts and names, never values. Writes, devices, Proxmox and the lab host are the
   operator's. [tests/test_nmas_host.py: no forwards, no ssh options]
+- **The agent reads goldens, configs and backups only through `scripts/nmas-config-read`**, which
+  prints every line masked by Mercury's `redact_text`; a search matches the raw line and prints the
+  masked one. [hook: scripts/hooks/claude-no-raw-config-reads (.claude/settings.json);
+  tests/test_claude_config_reads.py] [why](docs/LESSONS.md#the-agent-reads-configs-masked)
 - **Search the register first, record a finding the turn it is raised with its bucket (A, B,
   UNKNOWN, C; the criterion applied), and move a fixed row to Closed the same turn.**
   [buckets and placement: tests/test_register_hygiene.py; search-first: not mechanised] [why](docs/LESSONS.md#record-findings-in-the-register)

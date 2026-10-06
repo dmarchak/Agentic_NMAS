@@ -136,6 +136,34 @@ Dates, counts and statuses below are as they were written. Where a later entry o
   looking at the screen, and that is the argument for a real run (R1, R2,
   C70) in EVERY stage, not a formality at the end of one.
 
+### The agent reads configs masked
+
+*The rule (CLAUDE.md):* **The agent reads goldens, configs and backups only through `scripts/nmas-config-read`**
+
+- **A product that masks every surface does not mask the agent's own reads**
+  (C536, 2026-10-06). Measuring whether NTP was in the switches' committed
+  config, the agent read each golden on the host with its own scratch
+  script and printed every line containing `ntp`. s1's `username admin …
+  secret 9` hash held that substring, so the line printed whole, into the
+  session transcript. Every product route masks config on the way out
+  (`redact_text`, by position, then by known value); the scratch read never
+  passed through it, because nothing made it. The credential is rotated
+  through Mercury (C536 stays open until it is).
+- **The fix is one reader and a guard that refuses every other way.**
+  `scripts/nmas-config-read` reads the COMMITTED file and prints every line
+  through `redact_text`. It runs on a host from the laptop's copy, so
+  nothing is installed there. A search matches the RAW line and prints the
+  MASKED one (the operator's choice): a pattern matching inside a secret
+  still finds its line, and the person sees that it was a secret line,
+  never the secret. The hook `scripts/hooks/claude-no-raw-config-reads`
+  (Bash, Read, Grep) refuses any other read of a config store. That
+  includes a scratch script redirected or piped into a host's interpreter:
+  the hook reads the script's text before it is sent, because the slip's
+  command line named no config at all.
+- **The allowance is per command segment.** `nmas-config-read …; cat
+  <store>` would otherwise carry the reader's allowance to the raw read
+  after the separator. A control showed the test catching exactly that.
+
 ### Record findings in the register
 
 *The rule (CLAUDE.md):* ****Search the register first, record a finding the turn it is raised with its bucket (A, B,**
