@@ -83,7 +83,7 @@ class TestTheMenu:
         labels = re.findall(r'role="menuitem"[^>]*>([^<]+)</a>', menu)
         assert labels == ["Plan a deploy…", "Capture", "Seed intent…", "Restore from…",
                           "Remove lines (Mode B)…",
-                          "Rotate credential…", "Persist", "Retire…"], labels
+                          "Rotate credential…", "Persist", "Mark drained…", "Retire…"], labels
 
     def test_without_script_the_row_opens_the_page_with_the_card(self, lab):
         html = lab["client"].get("/v2/device/r2?op=capture").get_data(as_text=True)

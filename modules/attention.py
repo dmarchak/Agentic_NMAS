@@ -1352,12 +1352,22 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
         inst["onset"], inst["onset_basis"] = _onset(inst)
     heartbeat_rules = {r.get("uid") for r in v.get("rules") or []
                        if (r.get("labels") or {}).get("nmas") == "heartbeat"}
+    drained, drained_why = _drained_devices()
+    held = []
     for group in _incidents(alerting):
         members = [_member(i, inv) for i in group]
         devices = sorted({m["device"] for m in members if m["device"]})
         first = group[0]
         heartbeats = {i.get("rule_uid") for i in group} & heartbeat_rules
         whole_pipeline = bool(heartbeat_rules) and heartbeats == heartbeat_rules
+        # A device a person marked drained (modules/drained.py, the operator 2026-10-06): its
+        # traffic falling is the drain, not a surprise, so an alert on drained devices only is
+        # said under What was checked, naming the drain, and raises no row. An alert naming
+        # any device in service is still a row.
+        if devices and not whole_pipeline and all(d in drained for d in devices):
+            held.append(f"{first.get('rule')} on {', '.join(devices)} ("
+                        + "; ".join(drained[d] for d in devices) + ")")
+            continue
         if whole_pipeline:
             what = "Every device's syslog heartbeat stopped at once"
             cause = ("all " + str(len(heartbeat_rules)) + " heartbeat rules are alerting with "
@@ -1456,7 +1466,28 @@ def grafana_source(cached=None, configuration: dict = None) -> dict:
                  f"{c.get('condition', 0)} alerting, {c.get('no_data', 0)} no data, "
                  f"{c.get('error', 0)} error, {c.get('pending', 0)} pending, "
                  f"{c.get('normal_no_data', 0)} reading no data as healthy by decision"
+                 + (f"; {len(held)} alert(s) on drained devices, not raised: "
+                    + "; ".join(held) if held else "")
+                 + (f"; {drained_why}" if drained_why else "")
                  + (f"; {inv_why}" if inv is None else "")))
+
+
+def _drained_devices() -> tuple:
+    """``({device: "drained by X at T: why"}, problem)`` over EVERY network: an alert names a
+    device of any network (P.8 step 6). A store that cannot be read drains nothing, and says
+    so, so an unreadable record never hides an alert."""
+    from modules import drained as D
+    from modules.device import get_device_lists
+
+    out = {}
+    try:
+        for entry in get_device_lists():
+            for host, event in D.current(entry.get("name") or "").items():
+                out[host] = D.words(event)
+    except Exception as exc:                       # noqa: BLE001
+        return {}, (f"the drained record could not be read ({type(exc).__name__}), so no "
+                    "alert was held back for a drained device")
+    return out, ""
 
 
 # ---------------------------------------------------------------------------
@@ -2684,7 +2715,7 @@ SOURCE_KEYS = {
     "deploy_source": ("deploy_job", "goldens"),
     "baseline_source": ("baselines", "goldens"),
     "authorisation_source": ("deploy_job", "goldens"),
-    "grafana_source": ("alerts",),
+    "grafana_source": ("alerts", "inventory"),   # inventory: a device marked drained
     "freshness_source": ("freshness",),
     "integrations_source": ("integration_health",),
     "ci_source": ("ci_verdict",),

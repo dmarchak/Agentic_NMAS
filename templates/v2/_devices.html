@@ -9,7 +9,7 @@
 {%- set IKIND = {'at_intent': 'ok', 'departs': 'warn', 'no_intent': 'muted', 'no_golden': 'warn',
                  'pending': 'info', 'unknown': 'muted', 'unrecorded': 'muted'} -%}
 <section class="card devices" id="devices" hx-get="{{ url_for('v2.devices_table', q=d.q, state=d.state, platform=d.platform) }}"
-         hx-trigger="nmas:reachability from:body, nmas:goldens from:body" hx-swap="outerHTML"
+         hx-trigger="nmas:reachability from:body, nmas:goldens from:body, nmas:inventory from:body" hx-swap="outerHTML"
          hx-include="find .dev-form">
   {#- The redraw carries the person's ticks (C472, as Coverage does for C435). -#}
   {%- if d.error %}
@@ -39,7 +39,7 @@
           {%- for r in d.rows %}
           <tr>
             <td>{%- if not r.pending %}<input type="checkbox" name="device" value="{{ r.name }}" id="dev-{{ r.name }}" aria-label="Select {{ r.name }}"{% if r.checked %} checked{% endif %}>{% endif -%}</td>
-            <th scope="row"><a href="{{ url_for('device_v2.device', name=r.name) }}">{{ r.name }}</a>{% if r.role %}<span class="muted"> · {{ r.role }}</span>{% endif %}</th>
+            <th scope="row"><a href="{{ url_for('device_v2.device', name=r.name) }}">{{ r.name }}</a>{% if r.role %}<span class="muted"> · {{ r.role }}</span>{% endif %}{% if r.drained %} {{ badge('Drained', 'warn', title=r.drained) }}{% endif %}</th>
             <td>{{ badge(r.status.words, KIND.get(r.status.state, 'muted')) }}{% if r.status.since %} <span class="muted">since {{ stamp(r.status.since) }}</span>{% endif %}</td>
             <td class="mono">{{ r.address }}</td>
             <td>{{ r.platform or '—' }}</td>

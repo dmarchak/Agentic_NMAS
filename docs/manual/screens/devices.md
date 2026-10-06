@@ -7,7 +7,9 @@ Every device in the network, searchable and filterable.
 Each row: the device's status (answering or not, from the reachability reader), its address
 and platform, whether it was at its committed intent when it was last MEASURED and by
 what, and when that was. Hover the time to see when its golden last changed. Onboardings
-still pending are rows too, and open their own page.
+still pending are rows too, and open their own page. A device a person marked drained carries
+a Drained badge beside its name; hover it for who, when and why (see
+[Mark a device drained](drained)).
 
 A measurement is any save that read the device and compared it with its golden: a capture,
 a deploy's or restore's read after the push, and a Save All that found it unchanged (which

@@ -263,7 +263,7 @@ class TestThePage:
         _r, html = self._get(inv, "/v2/devices/table")
         keys = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"', html).group(1))
         src = open(os.path.join(ROOT, "static", "js", "nmas_v2.js"), encoding="utf-8").read()
-        assert keys == ["reachability", "goldens"]
+        assert keys == ["reachability", "goldens", "inventory"]   # inventory: a drained mark
         for k in keys:
             assert k in invalidation.VOCABULARY and f"NMAS.subscribe('{k}'" in src
 

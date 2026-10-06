@@ -5,7 +5,7 @@
     (history_sources.timeline) and the same drawing (_timeline.html), so one can never show what
     the other lacks. -#}
 <section class="card history" id="history" hx-get="{{ url_for('device_v2.history', name=device.hostname) }}"
-         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body" hx-swap="outerHTML">
+         hx-trigger="nmas:goldens from:body, nmas:deploy_job from:body, nmas:restarts from:body, nmas:acknowledgements from:body, nmas:rotation from:body, nmas:device_state from:body, nmas:inventory from:body" hx-swap="outerHTML">
 <p class="tab-help">{{ info('device-page', 'history-tab', 'About this tab') }} <a class="small" href="{{ url_for('v2.history_page', device=device.hostname, since='') }}">The fleet's timeline, filtered to {{ device.hostname }}</a></p>
   {%- if not h.events and not h.errors %}
   <p class="cov-head">{{ icon('info') }} Nothing is recorded for {{ device.hostname }} yet: no golden, no intent commit, no deploy.</p>

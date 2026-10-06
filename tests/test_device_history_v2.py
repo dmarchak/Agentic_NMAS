@@ -129,6 +129,7 @@ class TestTheTab:
         assert not re.search(r"\sstyle=|\son[a-z]+=", frag)
         assert frag.lstrip().startswith('<section class="card history" id="history"')
         keys = re.findall(r"nmas:(\w+) from:body", re.search(r'hx-trigger="([^"]*)"', frag).group(1))
-        # + rotation and device_state (C359): a persist and a rotation re-read History.
+        # + rotation and device_state (C359): a persist and a rotation re-read History; +
+        # inventory: a device marked drained or cleared (modules/drained.py).
         assert keys == ["goldens", "deploy_job", "restarts", "acknowledgements", "rotation",
-                        "device_state"]
+                        "device_state", "inventory"]

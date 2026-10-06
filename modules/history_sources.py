@@ -640,6 +640,25 @@ def acknowledgements(ctx):
     return _out(events)
 
 
+def drained(ctx):
+    """Each time a person marked a device drained, or cleared the mark, with who, when and why
+    (`modules/drained.py`, the network's own store)."""
+    from modules import drained as _drained
+    try:
+        rows = _drained.events(ctx["ref"].name)
+    except OSError as exc:
+        return _out(errors=[f"the drained record could not be read: {exc}"])
+    events = []
+    for r in reversed([r for r in rows if _mine(ctx, r.get("device", ""))][-ctx["limit"]:]):
+        state = r.get("state")
+        events.append(_event(
+            r.get("at", ""), "drained",
+            "Marked drained" if state == _drained.DRAINED else "Drained mark cleared",
+            [r.get("device", "")], who=r.get("by", ""), detail=r.get("why", ""),
+            record=[("Reason", r.get("why")), ("Verified", r.get("verified"))]))
+    return _out(events)
+
+
 def breakglass(ctx):
     """Each break-glass export of the list's record, about every device whose credential it
     sealed."""
@@ -792,7 +811,7 @@ SOURCES = {
     "restart_windows": restart_windows, "rotation": rotation, "retries": retries,
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
     "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
-    "updates": updates,
+    "updates": updates, "drained": drained,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -806,7 +825,8 @@ KIND_GROUPS = (
                               ("interrupted", "Cut off mid-run", ("interrupted",)),
                               ("retries", "Retries authorised", ("retry",)))),
     ("What happened to a device", (("restarts", "Restarts", ("restart",)),
-                                   ("windows", "Planned windows", ("window",)))),
+                                   ("windows", "Planned windows", ("window",)),
+                                   ("drained", "Drained and back", ("drained",)))),
     ("Decisions and records", (("approvals", "Approvals", ("approval",)),
                                ("acknowledged", "Acknowledgements", ("acknowledged",)),
                                ("freshness", "Freshness authorised", ("freshness",)),

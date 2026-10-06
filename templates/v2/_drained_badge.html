@@ -1,0 +1,4 @@
+{%- from "v2/_macros.html" import badge -%}
+{#- The device page header's Drained badge (modules/drained.py), its own fragment so a mark
+    set or cleared from any tab or window redraws it in place (`nmas:inventory`). -#}
+<span id="drained-badge" hx-get="{{ url_for('device_v2.drained_badge', name=device.hostname) }}" hx-trigger="nmas:inventory from:body" hx-swap="outerHTML">{% if drained %}{{ badge('Drained', 'warn', title=drained.words) }}{% endif %}</span>

@@ -193,6 +193,14 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         pending = []
         errors.append(f"pending onboardings could not be read ({exc})")
 
+    # Drained by a person (modules/drained.py): the network's own store, read once.
+    from modules import drained as _drained
+    try:
+        drained_now = _drained.current(ref.name)
+    except OSError as exc:
+        drained_now = {}
+        errors.append(f"the drained record could not be read ({exc})")
+
     rows = []
     for dev in inventory:
         host = dev.get("hostname", "")
@@ -217,6 +225,8 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         rows.append({"name": host, "pending": False, "status": _status(reach, dev.get("ip", "")),
                      "address": dev.get("ip", ""), "platform": platform_for_device(dev) or "",
                      "role": dev.get("role", ""), "intent": intent,
+                     "drained": (_drained.words(drained_now[host]) if host in drained_now
+                                 else ""),
                      "measured": ({"at": m["at"], "iso": _iso(m["at"]), "sha": m["sha"],
                                    "words": measured_words(m), "changed": m["changed"]}
                                   if m and not hist_err else None),
@@ -229,7 +239,7 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
                          f"awaiting DHCP ({p['reserved_address']})" if p.get("reserved_address")
                          else "no address recorded"),
                      "platform": "", "role": "", "measured": None, "golden_changed": None,
-                     "intent": {"state": "pending", "words": "pending: not reached yet"}})
+                     "drained": "", "intent": {"state": "pending", "words": "pending: not reached yet"}})
 
     total = len(rows)
     counts = {s: sum(1 for r in rows if r["intent"]["state"] == s) for s in STATES}

@@ -232,6 +232,8 @@ DECLARED = {
     "run_command": ("device_state",),
     "persist.apply": ("device_state",),
     "device_v2.persist_confirm": ("device_state",),   # the same apply
+    # A device marked drained or cleared (modules/drained.py): a row's state in its list.
+    "device_v2.drained_confirm": ("inventory",),
     # The Update button: a request is written now; the version moves when the
     # root-owned updater acts, and the page waits on /health for it.
     "update.apply": ("app_version",),
