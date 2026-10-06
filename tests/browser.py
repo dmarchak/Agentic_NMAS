@@ -166,8 +166,34 @@ def close_socketio_sessions() -> int:
     return len(sids)
 
 
+def stop_group(pgid: int, wait_s: float = 5.0) -> bool:
+    """Stop every process left in the process group *pgid* (a session's geckodriver's, made
+    for it with `start_new_session`): TERM, then KILL after *wait_s*. True when none is left.
+    By the group this module made, never by a name (CLAUDE.md: identity, not pattern)."""
+    import signal
+
+    for sig, wait in ((signal.SIGTERM, wait_s), (signal.SIGKILL, wait_s)):
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return True
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return True
+            time.sleep(0.05)
+    return False
+
+
 class Browser:
     """One headless Firefox session; stopped on exit, geckodriver with it."""
+
+    #: The new-session call's bound, the 60 s every call had (not re-measured here); a session
+    #: not started in it is one that will not start, and its Firefox is stopped with its group
+    #: (C521). A test lowers it to plant a session that never answers.
+    START_TIMEOUT_S = 60
 
     def __init__(self, prefs: dict = None, page_load: str = "normal"):
         #: WebDriver's pageLoadStrategy: "none" returns from a navigation at once, so a test can
@@ -200,8 +226,12 @@ class Browser:
         # what the SERVER's code does at a later date. Nothing here otherwise.
         for key in [k for k in env if k == "LD_PRELOAD" or k.startswith("FAKETIME")]:
             env.pop(key)
+        # Its own process group (C521): the Firefox it starts is in it, so stopping the group
+        # stops that Firefox too, by identity. Terminating geckodriver alone orphaned a Firefox
+        # whose session never answered (CI #473), and it kept writing into the folder.
         self.proc = subprocess.Popen([_geckodriver(), "--port", str(self.port)], env=env,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                     start_new_session=True)
         self.session = ""
 
     def _call(self, method, path, body=None, timeout=60):
@@ -229,7 +259,8 @@ class Browser:
                     time.sleep(0.2)
             self.session = self._call("POST", "/session", {"capabilities": {"alwaysMatch": {
                 "pageLoadStrategy": self.page_load,
-                "moz:firefoxOptions": {"args": ["-headless"], "prefs": self.prefs}}}})["sessionId"]
+                "moz:firefoxOptions": {"args": ["-headless"], "prefs": self.prefs}}}},
+                timeout=self.START_TIMEOUT_S)["sessionId"]
         except BaseException:
             self.__exit__(None, None, None)
             raise
@@ -279,5 +310,6 @@ class Browser:
                 self.proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+            stop_group(self.proc.pid)
             if not remove_folder(self.tmp):
                 LEFT_BEHIND.append(self.tmp)

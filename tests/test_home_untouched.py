@@ -226,6 +226,49 @@ def test_the_scan_finds_a_planted_one_and_skips_a_comment(tmp_path):
     assert names_the_download_folder(str(planted)) == [3]
 
 
+def test_a_session_that_never_answers_stops_its_firefox_and_leaves_nothing(monkeypatch,
+                                                                            tmp_path):
+    """C521 (CI #473): a new-session call that never answered timed out, geckodriver was
+    stopped, and the Firefox it had started was orphaned, still writing into the session's
+    folder, so the folder stayed and failed the run. A planted geckodriver whose "Firefox"
+    writes into the folder for as long as it lives: the group is stopped and nothing is left."""
+    fake = os.path.join(ROOT, "tests", "fixtures", "fake_geckodriver.py")
+    wrapper = tmp_path / "geckodriver"
+    wrapper.write_text(f"#!/bin/sh\nexec {sys.executable} {fake} \"$@\"\n")
+    wrapper.chmod(0o755)
+    monkeypatch.setattr(browser, "_geckodriver", lambda: str(wrapper))
+    monkeypatch.setattr(browser.Browser, "START_TIMEOUT_S", 2)
+    pidfile = tmp_path / "firefox.pid"
+    monkeypatch.setenv("FAKE_GECKO_PIDFILE", str(pidfile))
+    b = browser.Browser()
+    firefox = None
+    try:
+        with pytest.raises(OSError):
+            b.__enter__()
+        assert b.proc.poll() is not None, "its geckodriver stopped"
+        firefox = int(pidfile.read_text())
+        try:
+            os.kill(firefox, 0)
+            alive = True
+        except ProcessLookupError:
+            alive = False
+        assert not alive, "its Firefox still runs"
+        assert not os.path.exists(b.tmp), "its folder removed"
+        assert b.tmp not in browser.LEFT_BEHIND
+    finally:
+        # Whatever the code under test did: the planted Firefox (by the pid it recorded) and
+        # its folder go, so a failing run leaves nothing either.
+        import signal
+        if firefox:
+            try:
+                os.kill(firefox, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        browser.remove_folder(b.tmp)
+        if b.tmp in browser.LEFT_BEHIND:
+            browser.LEFT_BEHIND.remove(b.tmp)
+
+
 def test_a_session_that_cannot_start_leaves_nothing(monkeypatch):
     """C392: the probe's session failed to start, never reached __exit__, and left its
     geckodriver running and its folder behind, once per confined test process."""
