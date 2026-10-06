@@ -975,6 +975,19 @@ select { max-width: 100%; }
 .intent-bad .ie-text { border-color: var(--danger); }
 .ie-col { display: flex; flex-direction: column; gap: 14px; }
 .ie-k { margin: 0 0 6px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+/* C500: a diff as rows, one line each: a section's line, then its removed and added lines. */
+.ie-diff { margin: 0; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--line-2);
+  border-radius: var(--r); font-family: var(--mono); font-size: 12.5px; line-height: 1.6; }
+.dr { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dr-head { color: var(--ink-2); }
+.dr-del, .dr-add, .dr-keep { padding-left: 1.5em; text-indent: -1.2em; }
+.dr-del { color: var(--danger); background: var(--danger-soft); }
+.dr-add { color: var(--ok); background: var(--ok-soft); }
+.dr-sign { display: inline-block; width: 1.2em; text-indent: 0; }
+.ie-sub { margin: 0 0 4px; font-size: 13px; }
+.ie-pending { margin: 4px 0 6px; padding-left: 18px; font-size: 13px; }
+.ie-pending li { margin: 2px 0; overflow-wrap: anywhere; }
+.ie-keep { margin-top: 8px; }
 .ie-err { color: var(--danger); }
 .ie-err p { margin: 0 0 6px; }
 .ie-errline { color: var(--ink); }

@@ -1,4 +1,4 @@
-{%- from "v2/_macros.html" import icon, badge -%}
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
 {#- H's right column, drawn again as the document is typed (routes/intent_v2.check): an error
     on its line and column (the commit waits), else what the edit changes, what a deploy would
     send, the checks, and the lines the parser does not model with whether each is
@@ -12,18 +12,49 @@
   <p class="muted small">The commit waits until the document is valid.</p>
 </div>
 {%- else %}
+{#- C500 (board H revised, approved 2026-10-05, canvas v52): every diff line its own row. When
+    a deploy would send exactly what the edit changes, ONE diff and the line saying so; when
+    they differ, both, the deploy's lines not from this edit labelled from the device's golden
+    history, and a line this edit deletes that a merge-only deploy keeps said plainly. -#}
+{%- macro rows(list, cls='') -%}
+<div class="ie-diff {{ cls }}">{% for r in list %}<div class="dr dr-{{ r.kind }}">{% if r.kind == 'del' %}<span class="dr-sign" aria-label="removed">-</span>{% elif r.kind == 'add' %}<span class="dr-sign" aria-label="added">+</span>{% endif %}{{ r.text }}</div>{% endfor %}</div>
+{%- endmacro %}
+{%- set d = p.diffs or {} %}
+{%- macro golden_words() -%}
+{%- if d.golden %}its golden <span class="mono">{{ d.golden.sha[:7] }}</span> (captured {{ stamp(d.golden.timestamp) }}){% elif p.captured_from == 'running' %}its last captured running config{% else %}its capture{% endif %}
+{%- endmacro %}
 <div class="ie-col">
-  <div><h3 class="ie-k">What your edit changes in {{ host }}'s configuration</h3>
-    {%- if p.vs_intent %}<pre class="op-diff">{{ p.vs_intent }}</pre>
+  {%- if d.same %}
+  <div><h3 class="ie-k">What your edit changes in {{ host }}, and what a deploy would send {{ badge('the same', 'ok') }}</h3>
+    {{ rows(d.edit_rows) }}
+    <p class="small">A deploy would send exactly this change: {{ d.sent }} line{{ '' if d.sent == 1 else 's' }}, merge-only{% if d.replaces %}; each line it changes is one setting, so the new value replaces the old{% endif %}. {{ host }} matches its intent now ({{ golden_words() }}), so nothing else is pending.</p></div>
+  {%- else %}
+  <div><h3 class="ie-k">What your edit changes in {{ host }}'s intent</h3>
+    {%- if d.edit_changes %}{{ rows(d.edit_rows) }}
     {%- elif p.intent_note %}<p class="muted">{{ p.intent_note }}</p>
     {%- elif p.document_changed %}<p class="muted">The document changed and its render did not: the edit changes nothing {{ host }} would be sent.</p>
     {%- elif p.message %}<p class="muted">{{ p.message }}</p>
-    {%- else %}<p class="muted">Nothing yet: the document is what is committed.</p>{% endif %}</div>
+    {%- else %}<p class="muted">Nothing yet: the document is what is committed.</p>{% endif %}
+    {%- if d.not_removed %}
+    <div class="notice notice-warn ie-keep">{{ icon('warn', 16) }}<div><p><strong>A deploy will not remove what this edit deletes.</strong> Deploys are merge-only: they add and change lines, never remove them. After this commit {{ host }} keeps these, and departs from its intent by them, until you remove them with Actions › Remove lines (Mode B)…, which removes only lines you select, each with a reason:</p>
+      {{ rows(d.not_removed, 'ie-diff-keep') }}</div></div>
+    {%- endif %}</div>
   <div><h3 class="ie-k">What a deploy would send to {{ host }}, after this commit</h3>
-    {%- if p.vs_device %}<pre class="op-diff">{{ p.vs_device }}</pre>
-    <p class="muted small">Merge-only, against {{ host }}'s captured golden.{% if p.masked_not_compared %} {{ p.masked_not_compared }} secret-bearing line{{ "" if p.masked_not_compared == 1 else "s" }} could not be compared.{% endif %}</p>
+    {%- if d.sent %}
+    {%- if d.from_edit_rows %}<p class="ie-sub">From this edit: {{ d.from_edit }} line{{ '' if d.from_edit == 1 else 's' }}</p>{{ rows(d.from_edit_rows) }}{% endif %}
+    {%- if d.not_from %}
+    <p class="ie-sub">{{ badge('not from this edit', 'warn') }} {{ d.not_from | length }} line{{ '' if d.not_from | length == 1 else 's' }}, already pending before it. They are sent too.</p>
+    <ul class="ie-pending">
+      {%- for n in d.not_from %}
+      <li><span class="mono">{{ n.line }}</span>{% if n.section != '(global)' and n.section != n.line %} <span class="faint">in {{ n.section }}</span>{% endif %} <span class="muted">{{ n.words }}{% if n.sha %} {{ stamp(n.at) }} (<span class="mono">{{ n.sha[:7] }}</span>), {{ n.then }}{% endif %}</span></li>
+      {%- endfor %}
+    </ul>
+    <p class="muted small">Where each came from is read from {{ host }}'s golden history: a line its goldens never held was committed and not yet deployed; a line an earlier golden held and a later one lacks was changed on the device. When the history cannot say, the line reads "already pending" alone.</p>
+    {%- endif %}
+    <p class="muted small">Against {{ golden_words() }}, merge-only, {{ d.sent }} line{{ '' if d.sent == 1 else 's' }} in all.{% if p.masked_not_compared %} {{ p.masked_not_compared }} secret-bearing line{{ "" if p.masked_not_compared == 1 else "s" }} could not be compared.{% endif %}</p>
     {%- elif p.rendered is defined and p.rendered %}<p class="muted">Nothing: {{ host }} already holds what this document renders.</p>
     {%- else %}<p class="muted">{{ p.message or 'Not rendered.' }}</p>{% endif %}</div>
+  {%- endif %}
   <div><h3 class="ie-k">Checks</h3>
     <ul class="op-gates">
       <li>{{ badge('pass', 'ok') }}<span>The document parses, and names {{ host }}; every interface key is one intent reads; no secret value in the text; every character a device accepts</span></li>

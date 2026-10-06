@@ -188,13 +188,14 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
     committed = hostvars.from_yaml(committed_raw) if committed_raw is not None else None
     document_changed = committed_raw is not None and committed_raw != text
 
-    vs_intent, intent_note = "", None
+    vs_intent, intent_note, current_render = "", None, None
     if intent_state == hostvars.NEVER_COMMITTED:
         intent_note = hostvars.intent_gap_note(repo, hostname)
     elif committed:
         current = artifact_for(hostname, capture, repo, platform, template,
                                host_vars=hostvars.hydrate_secrets(_eff(committed), hostname,
                                                                   list_name))
+        current_render = current.rendered_masked
         vs_intent = roundtrip.canonical_diff(
             current.rendered_masked, edited.rendered_masked,
             fromfile=f"committed ({hostname})", tofile=f"edited ({hostname})")
@@ -208,8 +209,155 @@ def preview(list_name: str, hostname: str, text: str) -> dict:
             "intent_state": intent_state, "intent_note": intent_note,
             "document_changed": document_changed,
             "vs_device": vs_device, "masked_not_compared": masked,
+            # The v2 editor's right column (C500): the same two diffs as rows, compared.
+            "diffs": diffs(repo, hostname, current_render, edited.rendered_masked, capture),
+            "captured_from": "golden" if golden else "running",
             "rendered": edited.rendered_masked, "template": template,
             "unmodelled": lines}
+
+
+#: Commands that hold ONE value in their section, so a new line replaces the old on the
+#: device (C500's rule: an edit's deleted line that one of these replaces is changed by a
+#: deploy, not left behind). Longest prefix first; anything not here is not known to be one
+#: setting, and the editor then shows both diffs, which is the safe reading.
+ONE_SETTING = ("ip ospf priority", "ip ospf cost", "switchport access vlan", "switchport mode",
+               "ip address", "description", "hostname", "bandwidth", "ip mtu", "mtu",
+               "delay", "speed", "duplex", "load-interval", "router-id", "ip domain name")
+
+#: How many of a device's goldens the "not from this edit" labels read (C500), newest first.
+GOLDENS_READ = 20
+
+
+def _setting(line: str) -> str:
+    """The one-setting command *line* sets, or "" when it is not known to be one."""
+    if " secondary" in f" {line} ":
+        return ""
+    for prefix in sorted(ONE_SETTING, key=len, reverse=True):
+        if line == prefix or line.startswith(prefix + " "):
+            return prefix
+    return ""
+
+
+def _rows_of(pairs, kind: str = "add") -> list:
+    """Rows for (section, line) pairs, each section's line drawn once above its lines."""
+    rows, last = [], None
+    for section, line in pairs:
+        if not line:
+            rows.append({"kind": kind, "text": section})
+            last = section
+            continue
+        if section != last and section != "(global)":
+            rows.append({"kind": "head", "text": section})
+        last = section
+        rows.append({"kind": kind, "text": line})
+    return rows
+
+
+_GOLDEN_LINES = {}
+
+
+def _golden_pairs(repo: str, hostname: str, sha: str):
+    """The (section, line) pairs of *hostname*'s golden at *sha*, or None when unreadable;
+    kept per commit (a commit's golden never changes)."""
+    from modules.nsot import repo as repo_service
+    from modules.nsot.roundtrip import canonical_lines
+
+    key = (repo, hostname, sha)
+    if key not in _GOLDEN_LINES:
+        text = repo_service.golden_at(repo, hostname, sha)
+        if text is None:
+            return None
+        pairs, section = set(), "(global)"
+        for line in canonical_lines(text):
+            if line.startswith("    "):
+                pairs.add((section, line[4:]))
+            else:
+                section = line
+                pairs.add((section, ""))
+        if len(_GOLDEN_LINES) > 512:
+            _GOLDEN_LINES.clear()
+        _GOLDEN_LINES[key] = pairs
+    return _GOLDEN_LINES[key]
+
+
+def where_from(repo: str, hostname: str, pairs) -> dict:
+    """Where each deploy line NOT from this edit came from, read from *hostname*'s golden
+    history (C500): ``{"labels": {pair: {"words", "sha", "at"}}, "golden": newest or None,
+    "read": n}``. A line an earlier golden held and a later one lacks was changed on the
+    device; a line no golden read held was committed and not yet deployed; when the history
+    cannot say, "already pending" alone."""
+    from modules.nsot import repo as repo_service
+
+    history = repo_service.golden_history(repo, hostname, limit=GOLDENS_READ)
+    labels = {}
+    for pair in pairs:
+        labels[pair] = {"words": "already pending", "sha": "", "at": ""}
+        if not history:
+            continue
+        held = None
+        unreadable = False
+        for entry in history:
+            got = _golden_pairs(repo, hostname, entry["sha"])
+            if got is None:
+                unreadable = True
+                break
+            if pair in got:
+                held = entry
+                break
+        if unreadable:
+            continue
+        if held is not None:
+            labels[pair] = {"words": f"on {hostname} until its golden of", "sha": held["sha"],
+                            "at": held["timestamp"], "then": "gone since: changed on the device"}
+        elif held is None:
+            within = (f" in its last {len(history)} goldens"
+                      if len(history) >= GOLDENS_READ else "")
+            labels[pair] = {"words": f"never on {hostname}{within}: not yet deployed",
+                            "sha": "", "at": ""}
+    return {"labels": labels, "golden": history[0] if history else None,
+            "read": len(history)}
+
+
+def diffs(repo: str, hostname: str, committed_render, edited_render: str,
+          capture: str) -> dict:
+    """The right column's two diffs, by the rule approved on board H (C500): EQUAL when the
+    deploy's lines are exactly the edit's added lines and every line the edit deletes is a
+    one-setting line an added one replaces; then one diff. Otherwise both, the deploy's lines
+    split into those from this edit and those not (each labelled from the golden history),
+    and the lines this edit deletes that a merge-only deploy will not remove named."""
+    from modules.nsot.roundtrip import change_rows
+
+    edit = (change_rows(committed_render, edited_render) if committed_render is not None
+            else {"rows": [], "removed": [], "added": [], "masked": 0})
+    deploy = change_rows(capture, edited_render)
+    edit_added = set(edit["added"])
+    replaced_keys = {(sec, _setting(line)) for sec, line in edit["added"] if _setting(line)}
+    not_removed = [(sec, line) for sec, line in edit["removed"]
+                   if not (line and (sec, _setting(line)) in replaced_keys)]
+    from_edit = [p for p in deploy["added"] if p in edit_added]
+    not_from = [p for p in deploy["added"] if p not in edit_added]
+    same = (bool(edit["rows"]) and set(deploy["added"]) == edit_added and not not_removed)
+    origin = where_from(repo, hostname, not_from) if not_from else {"labels": {}, "read": 0}
+    if same or not not_from:
+        from modules.nsot import repo as repo_service
+        history = repo_service.golden_history(repo, hostname, limit=1)
+        origin["golden"] = history[0] if history else None
+    sent = len([p for p in deploy["added"] if p[1]])
+    return {
+        "same": same,
+        "edit_rows": edit["rows"],
+        "edit_changes": bool(edit["rows"]),
+        "replaces": bool(edit["removed"]) and not not_removed,
+        "not_removed": _rows_of(not_removed, "keep"),
+        "from_edit_rows": _rows_of(from_edit),
+        "from_edit": len([p for p in from_edit if p[1]]),
+        "not_from": [{"section": sec, "line": line or sec,
+                      **origin["labels"].get((sec, line), {"words": "already pending"})}
+                     for sec, line in not_from],
+        "sent": sent,
+        "golden": origin.get("golden"),
+        "masked": deploy["masked"],
+    }
 
 
 def merge3(base: str, theirs: str, yours: str):

@@ -380,6 +380,54 @@ def canonical_diff(left: str, right: str, *, fromfile: str = "left",
     return (diff, masked) if report_masked else diff
 
 
+def change_rows(left: str, right: str) -> dict:
+    """What differs between two configs, as ROWS a person reads one line each (C500): only the
+    changed lines, each under its section's line. ``{"rows": [{"kind": "head"|"del"|"add",
+    "text", "section"}], "removed": [(section, line)], "added": [(section, line)],
+    "masked": n}``. Over :func:`canonical_lines` as :func:`canonical_diff` is, masked values
+    neutralised the same way; a whole section added or removed is its own row (``line`` "")."""
+    import difflib
+
+    left_lines, right_lines, masked = _neutralise(
+        canonical_lines(left), canonical_lines(right))
+
+    def _where(lines, index):
+        line = lines[index]
+        if not line.startswith("    "):
+            return line, ""
+        for back in range(index - 1, -1, -1):
+            if not lines[back].startswith("    "):
+                return lines[back], line[4:]
+        return "(global)", line[4:]
+
+    removed, added = [], []
+    matcher = difflib.SequenceMatcher(None, left_lines, right_lines, autojunk=False)
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            continue
+        removed += [_where(left_lines, i) for i in range(i1, i2)]
+        added += [_where(right_lines, j) for j in range(j1, j2)]
+    rows, last = [], None
+    order = []
+    for section, line in removed + added:
+        if section not in order:
+            order.append(section)
+    for section in order:
+        for kind, items in (("del", removed), ("add", added)):
+            for sec, line in items:
+                if sec != section:
+                    continue
+                if not line:
+                    rows.append({"kind": kind, "text": section, "section": section})
+                    last = section
+                    continue
+                if last != section and section != "(global)":
+                    rows.append({"kind": "head", "text": section, "section": section})
+                last = section
+                rows.append({"kind": kind, "text": line, "section": section})
+    return {"rows": rows, "removed": removed, "added": added, "masked": masked}
+
+
 def compare(running_config: str, rendered_config: str, host_vars: dict = None) -> dict:
     """Compare a rendered config against the real one. Returns a coverage report."""
     running = _sections("\n".join(normalize.strip_for_roundtrip(running_config)))
