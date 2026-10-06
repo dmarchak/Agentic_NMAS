@@ -333,7 +333,9 @@ def rotate_job_card(ref, host: str, job_id: str, got) -> dict:
                          or [] if i.get("kind") != "not_doing"],
                 record=(result.get("record") or {}).get("statement", ""),
                 not_watched=result.get("not_watched", ""),
-                next=nxt.get("text", ""), export=nxt.get("open") == "breakglass_export")
+                next=nxt.get("text", ""), export=nxt.get("open") == "breakglass_export",
+                # C541: rotated with its persistence not attempted: the card's button is Persist.
+                persist=nxt.get("open") == "persist")
 
 
 # ---------------------------------------------------------------------------

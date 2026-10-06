@@ -586,7 +586,7 @@ def summarise(result: dict, *, where: str = "cli") -> str:
     mentioned the record, so the recovery path decayed with nothing saying it.
     *where* names the export the reader can use: the command in a terminal, the
     browser's own export in a browser."""
-    message = _summary(result)
+    message = _summary(result, where)
     if result.get("state") in (ROTATED_PERSISTED, ROTATED_PENDING_PERSIST,
                                ROTATED_UNVERIFIED, ROTATED_NOT_RECORDED):
         message += (" The break-glass record now holds its OLD credential: export it "
@@ -594,8 +594,30 @@ def summarise(result: dict, *, where: str = "cli") -> str:
     return message
 
 
-def _summary(result: dict) -> str:
+def _own_save_failed(result: dict) -> bool:
+    """Persistence failed at the DEVICE's own startup config, whose remedy is its own save
+    (C541, C50), never the lab boot-file chain."""
+    return any(not s.get("ok") and s.get("name") == "device_startup_config"
+               for s in result.get("persistence") or [])
+
+
+def _summary(result: dict, where: str = "cli") -> str:
     device = result.get("device", "the device")
+    state = result.get("state")
+    # C541: in a browser the job has ENDED, so nothing "runs next": persistence was not
+    # attempted, and the words say what that leaves (a reload boots the old credential).
+    if state == ROTATED_PENDING_PERSIST and where == "browser":
+        return (f"{device}: ROTATED, verified and committed, and NOT PERSISTED: persistence was "
+                "not attempted, so its startup config still holds the old credential and a "
+                "reload would boot it. Persist it now.")
+    if state == ROTATED_UNVERIFIED and _own_save_failed(result):
+        return (f"{device}: NOT SAFE TO REBOOT OR REDEPLOY. Its startup config does not hold "
+                "the new password: persistence FAILED at "
+                f"{_failed_stage(result) or 'device_startup_config'}. The device IS ROTATED and "
+                "committed, the new credential is live and recorded, and it is NOT reverted for "
+                "this. Nothing is retrying. A reload would boot the OLD password: fix the cause, "
+                "then persist it again with its own save (Persist on its Device page, or "
+                f"`scripts/nmas-persist-native {device} --list <its list>`).")
     return {
         ROTATED_PERSISTED: (
             f"{device}: rotated, verified, committed, and confirmed present in "

@@ -77,6 +77,9 @@
     {%- for d in c.did_not %}<p><strong>{{ d[0] | upper }}{{ d[1:] }}.</strong></p>{% endfor %}</div></div>
   <div class="op-part"><h3>What next</h3><div class="op-next">
     <div><span>{{ c.next }}</span></div>
+    {%- if c.persist %}
+    <div><a class="btn btn-primary" data-op="persist" data-next-acts="persist" href="{{ url_for('device_v2.device', name=c.host, op='persist') }}" hx-get="{{ url_for('device_v2.persist', name=c.host, back=c.back) }}" hx-target="#device-op" hx-swap="outerHTML">Persist {{ c.host }}…</a>{{ how('persist', compact=True, op='persist') }}<span class="muted">saves the running config to startup and reads it back</span></div>
+    {%- endif %}
     {%- if c.export %}
     <div><a class="btn" data-op="breakglass-export" data-next-acts="breakglass_export" href="{{ url_for('v2.credentials', list=c.list, open='export') }}">Export {{ c.list }}'s break-glass record…</a>{{ how('breakglass-export', compact=True, op='the break-glass export') }}<span class="muted">opens Credentials › The break-glass record, the export ready</span></div>
     {%- endif %}</div></div>

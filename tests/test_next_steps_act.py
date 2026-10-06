@@ -49,6 +49,10 @@ OPENERS = {
     "intent_tab": ("document.querySelector('[role=tab].on') && /Intent/"
                    ".test(document.querySelector('[role=tab].on').textContent) && "
                    "document.querySelector('#tab-body')"),
+    # The v2 device page's Persist card (C541: a rotation left unpersisted, on its result card
+    # and its Needs attention row).
+    "persist": ("document.querySelector('#device-op h2') && /Persist r2/"
+                ".test(document.querySelector('#device-op h2').textContent)"),
     #: v2 pages whose content IS the action.
     "update_page": None,
     "profile_apply_page": None,
@@ -146,6 +150,7 @@ class TestEachOpenerActsInARealBrowser:
         ("retry", "/v2/device/r2?op=retry"),
         ("deploy_card", "/v2/device/r2?op=deploy"),
         ("intent_tab", "/v2/device/r2?tab=intent"),
+        ("persist", "/v2/device/r2?op=persist"),
     ])
     def test_the_link_leaves_its_tool_open(self, page, name, query):
         if query.startswith("/"):

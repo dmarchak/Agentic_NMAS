@@ -48,8 +48,8 @@ what it waits on), or waiting. Each step groups the numbered steps above:
 The result names one state, with its one next step:
 
 - **rotated and persisted**: export the break-glass record again;
-- **rotated, persistence not yet attempted**: persist it from the device's page, then export the break-glass record;
-- **rotated, persistence unverified**: a stage of the persistence chain stopped (the result names it). Do not reload the device; fix the stage and run `nmas-persist-credential` for it;
+- **rotated, persistence not attempted**: the most dangerous state. The device runs the new credential and its startup config still holds the old one, so a reload would boot the old credential. The result's one button is **Persist**, which opens the device's Persist card in place (it saves the running config to startup and reads it back); then export the break-glass record. Needs attention shows the same row, with the same Persist button, until a persist reads SAFE;
+- **rotated, persistence unverified**: a stage of the persistence chain stopped (the result names it). Do not reload the device. If it stopped at the device's own startup config, the remedy is the device's own save again: **Persist**, on the result and on Needs attention (or `nmas-persist-native` on the host). If it stopped at a lab stage (Oxidized, the lab's startup file), fix the stage and run `nmas-persist-credential` for it;
 - **rotated, not recorded**: the device holds a password the tool did not record. The staged copy is kept and is the only copy; run `nmas-rotation-recover` for it;
 - **reverted**: the device is unchanged, and the result says why the verify failed;
 - **revert failed**: the device refused the old password after the revert; recover it on its console with the break-glass record;

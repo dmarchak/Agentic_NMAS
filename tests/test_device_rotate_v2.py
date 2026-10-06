@@ -82,6 +82,12 @@ def _confirm(rot, html, **over):
     return rot["client"].post("/v2/device/r2/rotate/confirm", data={**vals, **over})
 
 
+def _persist_button(html):
+    """The card's Persist button: opens the device's Persist card in place."""
+    return ('data-next-acts="persist"' in html
+            and 'hx-get="/v2/device/r2/persist' in html and "Persist r2…" in html)
+
+
 def _finish(rot, rotating_html):
     job = re.search(r"/rotate/job/([0-9a-f]+)", rotating_html).group(1)
     assert capture_job.wait(job, 30)
@@ -167,7 +173,17 @@ class TestTheConfirm:
         out = _finish(rot, _confirm(rot, _preview(rot)).get_data(as_text=True))
         assert "op-card op-danger" in out
         assert "Persistence stopped at device_startup_config" in out
-        assert "nmas-persist-credential r2 --list Lab" in out
+        # C541 (C50): the device's own startup config is its own save, never the lab chain.
+        assert "nmas-persist-credential" not in out
+        assert "Persist it again" in out and _persist_button(out)
+
+    def test_persistence_not_attempted_offers_persist_first(self, rot):
+        """C541: the most dangerous state (a reload boots the old credential). Its words name
+        the risk, and its ONE button is Persist, opening the device's Persist card in place."""
+        rot["rot"]["persist_state"] = cr.ROTATED_PENDING_PERSIST
+        out = _finish(rot, _confirm(rot, _preview(rot)).get_data(as_text=True))
+        assert "a reload would boot the old credential" in out
+        assert _persist_button(out) and 'data-op="breakglass-export"' not in out
 
     def test_a_moved_fingerprint_is_refused_with_nothing_sent(self, rot):
         html = _preview(rot)

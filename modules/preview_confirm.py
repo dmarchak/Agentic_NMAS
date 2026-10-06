@@ -766,7 +766,10 @@ class ResultIncomplete(ValueError):
 #: function name from the server: the client maps each to its one opener
 #: (`data-nmas-open`), so a result can offer the next operation without the
 #: server naming code to run.
-NEXT_OPENS = ("breakglass_export", "profile_apply")
+NEXT_OPENS = ("breakglass_export", "profile_apply",
+              # C541: a rotation left with its persistence not attempted opens the device's
+              # Persist card (v2 draws it; today's v1 page draws the words only, the v1 rule).
+              "persist")
 
 
 def build_result(*, action: str, level: str, summary: str, targets: list,
@@ -3033,15 +3036,25 @@ def rotate_preview(plan: dict, *, busy: str, request) -> dict:
                                       "a different one."}]})
 
 
-def _rotate_state_action(state: str, name: str, list_name: str) -> str:
+def _rotate_state_action(state: str, name: str, list_name: str, failed_stage: str = "") -> str:
     """The ONE action for each state a rotation can reach, in words."""
     from modules.nsot import credential_rotation as cr
 
+    if state == cr.ROTATED_UNVERIFIED and failed_stage == "device_startup_config":
+        # C541 (C50): the device's own startup config did not carry the credential; its running
+        # config holds the only working one. Its remedy is its own save, never the lab chain.
+        return (f"Do not reload it: {name}'s startup config did not take the new credential, so "
+                "its running config holds the only working one. Persist it again: Persist saves "
+                "the running config to startup and reads it back.")
     return {
         cr.ROTATED_PERSISTED: ("Export the break-glass record again: the record you keep holds "
                                "the credential this rotation replaced."),
-        cr.ROTATED_PENDING_PERSIST: (f"Persist it: Persist… on {name}'s page, then export the "
-                                     "break-glass record again."),
+        # C541: the most dangerous state, its risk named and its ONE action first.
+        cr.ROTATED_PENDING_PERSIST: (f"Persist it now: {name} runs the new credential and its "
+                                     "startup config still holds the old one, so a reload would "
+                                     "boot the old credential. Persist saves the running config "
+                                     "to startup and reads it back; then export the break-glass "
+                                     "record again."),
         cr.ROTATED_UNVERIFIED: (f"Do not reload it. Fix the failed stage, then "
                                 f"nmas-persist-credential {name} --list {list_name}."),
         cr.ROTATED_NOT_RECORDED: (f"Do not rotate again or reload it. Run "
@@ -3082,7 +3095,13 @@ def rotate_result(result: dict, plan: dict) -> dict:
     verify = next((s for s in steps if s.get("name") == cr.VERIFY), None)
     level = {cr.ROTATED_PERSISTED: "success",
              cr.ROTATED_PENDING_PERSIST: "partial"}.get(state, "failed")
-    action = _rotate_state_action(state, name, list_name)
+    # C541: where persistence failed decides the remedy: the DEVICE's own startup config is
+    # Persist again; a lab boot-file chain stage is that chain's command (C50).
+    failed_stage = next((s.get("name") for s in result.get("persistence") or []
+                         if not s.get("ok")), "")
+    own_save = (state == cr.ROTATED_PENDING_PERSIST
+                or (state == cr.ROTATED_UNVERIFIED and failed_stage == "device_startup_config"))
+    action = _rotate_state_action(state, name, list_name, failed_stage)
     did_not = []
     for stage in result.get("persistence") or []:
         if not stage.get("ok"):
@@ -3120,11 +3139,13 @@ def rotate_result(result: dict, plan: dict) -> dict:
         titles=ROTATE_RESULT_TITLES,
         # The next step in its own slot (C219), and where the rotation leaves the
         # record stale, the export itself (the operator, 2026-09-29).
+        # C541: persistence not attempted opens Persist, never the export: the button does what
+        # the words say first, and the export follows once the device is safe to reload.
         next_step={"text": action,
-                   "open": ("breakglass_export" if state in (cr.ROTATED_PERSISTED,
-                                                             cr.ROTATED_PENDING_PERSIST)
+                   "open": ("persist" if own_save else
+                            "breakglass_export" if state == cr.ROTATED_PERSISTED
                             and list_name != "<its list>" else ""),
-                   "args": {"list": list_name}})
+                   "args": {"list": list_name, "devices": [name]}})
 
 
 # ---------------------------------------------------------------------------

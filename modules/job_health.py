@@ -737,6 +737,17 @@ def known_devices() -> tuple:
     return names, ""
 
 
+def _persist_action(device: str) -> dict:
+    """The ONE action for a device whose running config holds the only working credential
+    (C541): its own save, Persist on its Device page (`open`, drawn as the button), or the same
+    save from the host. Never `nmas-persist-credential`, the lab boot-file chain (C50)."""
+    return {"label": f"Persist {device} now: Persist… on its Device page saves the running "
+                     "config to startup and reads it back (or on the host, with the device's "
+                     "own list)",
+            "command": f"nmas-persist-native {device} --list <its list>",
+            "open": "persist", "device": device}
+
+
 def _held_devices() -> set:
     """Every device an operation holds now, in any list, lower-cased (a READ)."""
     from modules.nsot import device_ops
@@ -815,10 +826,7 @@ def rotation_rows(records: list = None, known: tuple = None, held: set = None) -
                            f"a save at {at} could not run or be read back, and no earlier "
                            f"record says whether the startup config carries the running "
                            f"credential. Persist it again"))
-            act = {"label": "Persist the running credential on the device before anything "
-                            "reloads it: Persist… on its Device page, or on the host (the "
-                            "record names no list: use the device's own)",
-                   "command": f"nmas-persist-native {device} --list <its list>"}
+            act = _persist_action(device)
         elif state in (cr.REVERTED, cr.NOT_STARTED):
             st, detail = "ok", f"unchanged: the last rotation ended {state} at {at}"
         elif state == cr.ROTATED_UNVERIFIED and stage == "device_startup_config":
@@ -830,10 +838,7 @@ def rotation_rows(records: list = None, known: tuple = None, held: set = None) -
                           f"at {at} the device's startup config did NOT carry the rotated "
                           f"credential: its running config holds the only working one. Do "
                           f"not reload it; run nmas-persist-native {device} --list <list>")
-            act = {"label": "Persist the running credential on the device before anything "
-                            "reloads it: Persist… on its Device page, or on the host (the "
-                            "record names no list: use the device's own)",
-                   "command": f"nmas-persist-native {device} --list <its list>"}
+            act = _persist_action(device)
         elif state == cr.ROTATED_UNVERIFIED:
             st, detail = ("not_safe_to_reboot",
                           f"rotated at {at}; persistence FAILED at {stage or 'the chain'}. "
@@ -864,11 +869,14 @@ def rotation_rows(records: list = None, known: tuple = None, held: set = None) -
             act = {"label": "Run the recovery again when the device answers",
                    "command": f"nmas-rotation-recover {device} --list <its list>"}
         elif state == cr.ROTATED_PENDING_PERSIST:
+            # C541: the most dangerous state, named with its risk and the device's OWN save.
+            # `nmas-persist-credential` is the lab boot-file chain and must not be advised for a
+            # device's startup config (C50: it resolves an unknown lab to another lab's paths).
             st, detail = ("not_safe_to_reboot",
-                          f"rotated at {at}; persistence NOT ATTEMPTED. Run "
-                          f"nmas-persist-credential {device} to verify the boot file")
-            act = {"label": "Verify the boot file holds the rotated credential",
-                   "command": f"nmas-persist-credential {device}"}
+                          f"rotated at {at}; persistence NOT ATTEMPTED: {device} runs the new "
+                          f"credential and its startup config still holds the old one, so a "
+                          f"reload would boot the old credential. Persist it now")
+            act = _persist_action(device)
         elif state == cr.REVERT_FAILED:
             st, detail = "revert_failed", (f"the new credential did not verify and the "
                                            f"revert failed at {at}: the device may be "

@@ -442,7 +442,7 @@ pytest                    # unconfined; says so in its header
 - **The gate runs CI's command in CI's interpreter** (`scripts/nmas-ci-env`, two workers,
   coverage; docs/TESTING.md). Failing CI runs: `scripts/nmas-ci-log` (never print its token).
 - **Bounds:** `NMAS_TEST_TIMEOUT` (300 s) names each process's test and stack when it fires;
-  `faulthandler_timeout = 45`; CI's job bound is 10 min.
+  `faulthandler_timeout = 45`; CI's job bound is 14 min (`timeout-minutes` in the workflow).
 - **No live network, three layers** (C46): the test process refuses non-loopback connects, every
   child is refused by construction, and `scripts/nmas-test` runs in a loopback namespace
   (`network: CONFINED`). **No live store:** a temporary `NMAS_DATA_DIR`, and a run fails if the
