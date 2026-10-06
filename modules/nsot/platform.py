@@ -140,6 +140,26 @@ def assert_dialect(value: str, where: str = "") -> str:
     return value
 
 
+#: Config dialect → the Oxidized model that backs it up (C512): the name of Oxidized's model
+#: file, which is what a router.db row's second field names. Oxidized's `ios` model reads both
+#: IOS and IOS-XE (its REST node list reports the class as `IOS`; every node of this lab's fleet,
+#: routers and switches, was read so on 2026-10-06).
+_OXIDIZED_MODEL = {
+    "cisco_ios":   "ios",
+    "cisco_iosxe": "ios",
+}
+
+
+def oxidized_model_for_dialect(dialect: str) -> str:
+    """The Oxidized model for *dialect*; raises `ValueError` for one with none (never another
+    dialect's model)."""
+    wanted = assert_dialect(dialect, where="oxidized_model_for_dialect()")
+    model = _OXIDIZED_MODEL.get(wanted, "")
+    if not model:
+        raise ValueError(f"no Oxidized model is known for dialect '{wanted}'")
+    return model
+
+
 def dialect_for_netbox_slug(slug: str) -> str:
     """The config dialect a NetBox platform *slug* names, or ``""`` when it
     names none this program knows (the table, then the `platform_map`

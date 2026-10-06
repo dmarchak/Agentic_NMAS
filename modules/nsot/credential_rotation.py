@@ -1910,6 +1910,17 @@ def update_oxidized_row(mgmt_ip: str, username: str, password: str,
                        json.dumps({"username": username, "password": password}), router_db)
 
 
+def add_oxidized_row(mgmt_ip: str, model: str, username: str, password: str,
+                     router_db: str = "") -> dict:
+    """Append ONE row, an onboarded device's (C512), through the root-owned helper's ADD mode.
+    The password goes on stdin; a row already exactly so is ``already_present``, any other row
+    for the address is refused (adding never changes a row)."""
+    import json
+
+    return _run_helper(["--ip", mgmt_ip, "--add", "--model", model],
+                       json.dumps({"username": username, "password": password}), router_db)
+
+
 def remove_oxidized_row(mgmt_ip: str, router_db: str = "") -> dict:
     """Remove ONE row, a retired device's (C398), through the root-owned helper's REMOVE mode:
     no credential is read or sent; an absent row is ``already_absent``. The app never reads
@@ -1921,6 +1932,24 @@ def oxidized_addresses(router_db: str = "") -> dict:
     """``{"ok", "addresses"}``: router.db's addresses through the helper, never a credential
     (C398: job health compares them with the devices the tool manages)."""
     return _run_helper(["--addresses"], "", router_db)
+
+
+def oxidized_node_names(rest: str = "") -> tuple:
+    """``(names, "")``: the nodes Oxidized itself lists (its REST node list), or ``(None, why)``.
+    What Oxidized loaded from router.db, where the helper's address list is what the file holds:
+    a row whose model Oxidized cannot load is in the file and not in this list."""
+    import json
+
+    client, refusal = oxidized_client(rest)
+    if refusal:
+        return None, refusal.get("error") or "Oxidized is not configured"
+    raw, error = _oxidized_get(client, "nodes.json")
+    if error:
+        return None, f"GET {client.url}/nodes.json failed: {error}"
+    try:
+        return [n.get("name", "") for n in json.loads(raw)], ""
+    except (ValueError, AttributeError, TypeError) as exc:
+        return None, f"Oxidized's node list could not be read: {type(exc).__name__}"
 
 
 def oxidized_managed() -> bool:

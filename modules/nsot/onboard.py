@@ -1965,8 +1965,9 @@ def driver_for_plan(entry: dict) -> tuple:
 def promote_device(repo: str, hostname: str, list_name: str, *,
                    actor: str = "", device_type: str = "",
                    username: str = "", password: str = "",
-                   secret: str = "") -> dict:
-    """Phase 2's last step: the device answered, so it joins the inventory.
+                   secret: str = "", oxidized=None) -> dict:
+    """Phase 2's last step: the device answered, so it joins the inventory, and Oxidized's
+    router.db gains its row (`add_to_oxidized`, C512; *oxidized* injects it for tests).
 
     **The exit from pending, and it was built with the flag rather than
     after it.** A state an operator cannot clear is the trap that was just
@@ -2083,7 +2084,70 @@ def promote_device(repo: str, hostname: str, list_name: str, *,
     result["verified"] = True
     result["verified_at"] = marked.get("verified_at", "")
     result["ok"] = True
+    # OXIDIZED, AFTER THE DEVICE IS MANAGED (C512): no path added its router.db row, so an
+    # onboarded device got no config backups. Its own outcome, never this one's `ok`: the device
+    # is in the inventory either way, and the caller draws it as its own step.
+    result["oxidized"] = (oxidized or add_to_oxidized)(
+        entry.get("mgmt_ip", ""), entry.get("platform", ""), username or "admin", password)
     return result
+
+
+def add_to_oxidized(mgmt_ip: str, dialect: str, username: str, password: str) -> dict:
+    """Give a newly managed device its row in Oxidized's router.db (C512), through the
+    root-owned helper's ADD mode, then confirm OXIDIZED lists it after a reload, which is also
+    the check that its model loads. ``{"managed", "ok", "added", "detail"}``.
+
+    An address router.db already holds is left as it is: its credential is rotation's to change,
+    and an adopted device may have been backed up before the tool managed it. No Oxidized
+    configured is ``managed: False``, said, never a failure."""
+    from modules.nsot import credential_rotation as CR
+    from modules.nsot.platform import oxidized_model_for_dialect
+
+    out = {"managed": True, "ok": False, "added": False, "detail": ""}
+    if not CR.oxidized_managed():
+        return dict(out, managed=False, ok=True,
+                    detail="no Oxidized is configured, so there is no router.db row to keep")
+
+    def _no(why):
+        return dict(out, detail=f"Oxidized does not back it up: {why}")
+
+    if not mgmt_ip:
+        return _no("no management address is recorded for it")
+    try:
+        model = oxidized_model_for_dialect(dialect)
+    except ValueError as exc:
+        return _no(str(exc))
+    if not password:
+        return _no("no password was given for its router.db row")
+    held = CR.oxidized_addresses()
+    if not held.get("ok"):
+        return _no(f"router.db's addresses could not be read ({held.get('error') or 'no reason'})")
+    if mgmt_ip in (held.get("addresses") or []):
+        return dict(out, ok=True, detail=f"router.db already holds {mgmt_ip}; it was left as it "
+                                         "is (its credential is rotation's to change)")
+    got = CR.add_oxidized_row(mgmt_ip, model, username, password)
+    if not got.get("ok"):
+        return _no(f"the helper refused the row ({got.get('error') or 'no reason given'})")
+    back = CR.oxidized_addresses()
+    if not back.get("ok") or mgmt_ip not in (back.get("addresses") or []):
+        return dict(_no("the helper said added, and router.db read back "
+                        + ("without it" if back.get("ok") else
+                           f"could not be read ({back.get('error') or 'no reason'})")),
+                    added=bool(got.get("added")))
+    reload = CR.reload_oxidized()
+    if not reload.get("ok"):
+        return dict(out, added=True, detail=(
+            f"added to router.db (model {model}), and Oxidized did not reload "
+            f"({reload.get('error') or 'no reason'}): it backs it up from its next reload"))
+    names, why = CR.oxidized_node_names()
+    if names is None or mgmt_ip not in names:
+        return dict(out, added=True, detail=(
+            f"added to router.db (model {model}), and Oxidized "
+            + (f"could not be asked for its nodes ({why})" if names is None else
+               f"does not list it after a reload: its model '{model}' may not load there")))
+    return dict(out, ok=True, added=True,
+                detail=f"added to Oxidized's router.db (model {model}); Oxidized lists it and "
+                       "backs it up on its schedule")
 
 
 # ---------------------------------------------------------------------------
@@ -2607,8 +2671,20 @@ def bootstrap_artifact(repo: str, hostname: str) -> dict:
 #: asserts the suite notices.
 #: The monitoring profile is sent after the RW removal and before the save
 #: and the first golden (P.9 step c), so the first golden records it.
+#: `oxidized` (C512) follows promotion and reports what promotion did for Oxidized: its row is
+#: added only for a device that is managed, so an abandoned onboarding leaves none behind.
+#: Promotion stays the last step that can leave the device pending.
 PHASE_TWO_STEPS = ("verify", "capture", "rotate", "remove_rw", "profile", "persist",
-                   "golden", "netbox", "promote")
+                   "golden", "netbox", "promote", "oxidized")
+
+
+def oxidized_step(prom: dict) -> tuple:
+    """``(ok, detail)`` of the step drawing promotion's Oxidized outcome (C512), for every caller
+    that promotes. A promotion that said nothing of it is a failure, never a pass."""
+    got = prom.get("oxidized") or {}
+    if not got:
+        return False, "promotion did not say whether Oxidized's router.db holds it"
+    return bool(got.get("ok")), got.get("detail", "")
 
 
 def capture_config(mgmt_ip: str, username: str, password: str, secret: str,
@@ -3281,6 +3357,7 @@ def run_phase_two(repo: str, hostname: str, list_name: str, *, actor: str = "",
         return _stop("promote", prom.get("error") or "promotion failed")
 
     result["promoted"] = True
+    _step("oxidized", *oxidized_step(prom))
     return _finish()
 
 

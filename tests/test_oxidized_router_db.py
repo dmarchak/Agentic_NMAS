@@ -294,8 +294,148 @@ class TestRemovingOneRow:
 
     def test_remove_and_list_together_are_refused(self, db):
         code, body = act(db, "--ip", "10.255.1.12", "--remove", "--addresses")
-        assert code != 0 and "two different acts" in body["error"]
+        assert code != 0 and "different acts" in body["error"]
         assert rows_of(db) == ROWS
+
+
+def add(db_path, ip, model="ios", username="admin", password="NewPassword2", *flags):
+    """Run the helper's ADD mode, the credential on stdin as the app sends it."""
+    proc = subprocess.run(
+        [sys.executable, HELPER, "--file", str(db_path), "--ip", ip, "--add",
+         *(["--model", model] if model is not None else []), *flags],
+        input=json.dumps({"username": username, "password": password}),
+        capture_output=True, text=True)
+    try:
+        body = json.loads(proc.stdout or "{}")
+    except ValueError:
+        body = {"ok": False, "error": "non-JSON output", "raw": proc.stdout}
+    return proc.returncode, body
+
+
+class TestAddingOneRow:
+    """C512 (the operator, 2026-10-06, the throwaway session's STOP 8 and STOP 10): onboarding
+    never put a device in router.db, and the helper could only change a row it held. ADD
+    appends exactly one row, never changes one, and prints no credential."""
+
+    NEW = "192.0.2.31"
+
+    def test_exactly_that_row_is_appended_and_the_rest_keep_their_order(self, db):
+        code, body = add(db, self.NEW, "ios", "admin", "Fresh3", "--no-backup")
+        assert code == 0 and body["ok"] and body["added"] == 1 and body["rows"] == 4, body
+        assert rows_of(db) == ROWS + [f"{self.NEW}:ios:admin:Fresh3"]
+
+    def test_the_first_row_of_an_empty_file(self, tmp_path):
+        empty = tmp_path / "router.db"
+        empty.write_text("", encoding="utf-8")
+        code, body = add(empty, self.NEW, "ios", "admin", "Fresh3", "--no-backup")
+        assert code == 0 and body["added"] == 1 and rows_of(empty) == [
+            f"{self.NEW}:ios:admin:Fresh3"]
+
+    def test_the_same_row_again_is_already_present_and_writes_nothing(self, db):
+        add(db, self.NEW, "ios", "admin", "Fresh3", "--no-backup")
+        before = (db.read_text(encoding="utf-8"), os.stat(db).st_mtime_ns)
+        code, body = add(db, self.NEW, "ios", "admin", "Fresh3")
+        assert code == 0 and body["ok"] and body["added"] == 0 and body["already_present"]
+        assert body["backup"] == "", "nothing written, so nothing backed up"
+        assert (db.read_text(encoding="utf-8"), os.stat(db).st_mtime_ns) == before
+
+    def test_an_address_held_with_another_credential_is_refused_untouched(self, db):
+        before = db.read_text(encoding="utf-8")
+        code, body = add(db, "10.255.1.12", "ios", "admin", "Different9", "--no-backup")
+        assert code != 0 and not body["ok"], body
+        assert "already in router.db with a different password" in body["error"]
+        assert "OldPassword1" not in json.dumps(body) and "Different9" not in json.dumps(body)
+        assert db.read_text(encoding="utf-8") == before
+
+    def test_a_different_model_is_named_and_refused(self, db):
+        code, body = add(db, "10.255.1.12", "nxos", "admin", "OldPassword1", "--no-backup")
+        assert code != 0 and "a different model" in body["error"]
+        assert rows_of(db) == ROWS
+
+    @pytest.mark.parametrize("model", [None, "", "ios:x", "ios\nx", "../ios"])
+    def test_a_missing_or_unsafe_model_is_refused(self, db, model):
+        code, body = add(db, self.NEW, model, "admin", "Fresh3", "--no-backup")
+        assert code != 0 and "--model" in body["error"], body
+        assert rows_of(db) == ROWS
+
+    def test_a_model_without_add_is_refused(self, db):
+        code, body = act(db, "--ip", "10.255.1.12", "--remove", "--model", "ios")
+        assert code != 0 and "--model is for --add only" in body["error"]
+        assert rows_of(db) == ROWS
+
+    def test_an_address_that_is_not_one_is_refused(self, db):
+        code, body = add(db, "not-an-address", "ios", "admin", "Fresh3", "--no-backup")
+        assert code != 0 and "not an IPv4 address" in body["error"]
+        assert rows_of(db) == ROWS
+
+    @pytest.mark.parametrize("password", ["", "a:b", "a\nb"])
+    def test_a_credential_that_would_split_the_row_is_refused(self, db, password):
+        code, body = add(db, self.NEW, "ios", "admin", password, "--no-backup")
+        assert code != 0 and not body["ok"]
+        assert rows_of(db) == ROWS
+
+    def test_a_malformed_file_is_refused_and_untouched(self, db):
+        db.write_text(ROWS[0] + "\nnot-a-row\n", encoding="utf-8")
+        before = db.read_text(encoding="utf-8")
+        code, body = add(db, self.NEW, "ios", "admin", "Fresh3", "--no-backup")
+        assert code != 0 and "malformed" in body["error"]
+        assert db.read_text(encoding="utf-8") == before
+
+    def test_a_backup_is_taken_owner_only(self, db):
+        code, body = add(db, self.NEW, "ios", "admin", "Fresh3")
+        assert code == 0 and body["backup"]
+        assert oct(os.stat(body["backup"]).st_mode & 0o777) == "0o600"
+        assert rows_of(type(db)(body["backup"])) == ROWS, "the backup is the file before"
+
+    def test_no_credential_appears_in_the_output(self, db):
+        _code, body = add(db, self.NEW, "ios", "admin", "Fresh3", "--no-backup")
+        assert "Fresh3" not in json.dumps(body) and "admin" not in json.dumps(body)
+
+    def test_add_and_remove_together_are_refused(self, db):
+        code, body = add(db, self.NEW, "ios", "admin", "Fresh3", "--remove")
+        assert code != 0 and "different acts" in body["error"]
+        assert rows_of(db) == ROWS
+
+    def test_the_addition_is_validated_against_what_was_written(self):
+        source = open(HELPER, encoding="utf-8").read()
+        assert "lambda b, w: validate_addition(b, w, row)" in source
+
+
+class TestTheAdditionCheck:
+    """`validate_addition` itself, loaded from the helper's file (it imports nothing from the
+    repository, so it is loaded the way it runs): each wrong write it exists to catch."""
+
+    @pytest.fixture(scope="class")
+    def check(self):
+        import importlib.machinery
+        import importlib.util
+
+        loader = importlib.machinery.SourceFileLoader("nmas_oxidized_cred", HELPER)
+        spec = importlib.util.spec_from_loader("nmas_oxidized_cred", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod.validate_addition
+
+    BEFORE = [tuple(r.split(":")) for r in ROWS]
+    ROW = ("192.0.2.31", "ios", "admin", "Fresh3")
+
+    def test_the_one_row_appended_passes(self, check):
+        check(self.BEFORE, self.BEFORE + [self.ROW], self.ROW)
+
+    @pytest.mark.parametrize("after, words", [
+        (BEFORE, "expected one more"),
+        (BEFORE[:2] + [ROW, BEFORE[2]], "order moved"),
+        ([BEFORE[0], ("10.255.1.12", "ios", "admin", "Changed"), BEFORE[2], ROW], "order moved"),
+        (BEFORE + [("192.0.2.31", "ios", "admin", "Other")], "not the one asked for"),
+    ])
+    def test_a_wrong_write_is_refused(self, check, after, words):
+        with pytest.raises(ValueError, match=words):
+            check(self.BEFORE, after, self.ROW)
+
+    def test_an_address_already_held_is_refused(self, check):
+        held = ("10.255.1.12", "ios", "admin", "OldPassword1")
+        with pytest.raises(ValueError, match="already present"):
+            check(self.BEFORE, self.BEFORE + [held], held)
 
 
 class TestListingAddresses:

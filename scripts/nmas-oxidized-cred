@@ -1,10 +1,13 @@
 #!/usr/bin/python3 -I
-"""Update or remove exactly one row of Oxidized's router.db, or list its addresses.
+"""Update, add or remove exactly one row of Oxidized's router.db, or list its addresses.
 Root-owned helper.
 
-THREE ACTS, each one row or none
+FOUR ACTS, each one row or none
     (default)     replace one row's username and password (from STDIN);
-    --remove      remove one row, a retired device's (C398); reads no credential;
+    --add         append one row, an onboarded device's (C512): --model names its Oxidized
+                  model and the credential comes on STDIN. An address already held is
+                  refused, unless its row is exactly the one asked for (``already_present``);
+    --remove     remove one row, a retired device's (C398); reads no credential;
     --addresses   print the addresses only, never a credential (job health compares them
                   with the devices the tool manages).
 
@@ -23,6 +26,7 @@ THE SHEBANG IS PART OF THE SECURITY OF THIS SCRIPT
     only while a sudoers option stays set is safe by coincidence.
 
     sudo /usr/local/sbin/nmas-oxidized-cred --file <router.db> --ip <device-ip>
+    sudo /usr/local/sbin/nmas-oxidized-cred --file <router.db> --ip <device-ip> --add --model ios
     (credentials arrive as JSON on STDIN: {"username": …, "password": …})
 
 WHY THIS EXISTS AS A SEPARATE, ROOT-OWNED SCRIPT
@@ -79,6 +83,8 @@ import time
 
 FIELDS = 4
 IPV4 = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+#: An Oxidized model is the name of its model file (``ios`` loads ``model/ios.rb``).
+MODEL = re.compile(r"[A-Za-z0-9_]{1,32}")
 
 #: THE ONE router.db (C414, the operator's review, 2026-10-04: the root helper edited whatever
 #: file its caller named). As root, the helper acts only on the path this root-owned file
@@ -212,6 +218,21 @@ def validate_removal(before, after, target_ip):
         raise ValueError("a row other than the removed one changed, or the order moved")
 
 
+def validate_addition(before, after, row):
+    """Adding ONE row (C512, an onboarded device): exactly *row* is appended at the end, its
+    address held by no row before, and every other row is unchanged, in its order."""
+    if len(after) != len(before) + 1:
+        raise ValueError(f"row count changed: {len(before)} -> {len(after)}, expected one more")
+    if row[0] in [r[0] for r in before]:
+        raise ValueError(f"{row[0]} was already present")
+    if after[:-1] != before:
+        raise ValueError("a row other than the added one changed, or the order moved")
+    if after[-1] != tuple(row):
+        raise ValueError(f"the appended row is not the one asked for {row[0]}")
+    if not row[3]:
+        raise ValueError(f"row for {row[0]} has an empty password")
+
+
 def write_checked(path, before, after, check, no_backup):
     """Back up, write a temp file, re-read and validate WHAT WAS WRITTEN with *check*, then
     replace atomically. Returns the backup's path ("" with *no_backup*); fails leaving the
@@ -316,10 +337,62 @@ def pruned(path, backup):
         return {"backups_removed": 0, "prune_error": f"{type(exc).__name__}: {exc}"}
 
 
+def read_credential():
+    """``(username, password)`` from the JSON on STDIN, refused when either is empty or would
+    split a colon-delimited row."""
+    try:
+        payload = json.load(sys.stdin)
+        username = payload["username"]
+        password = payload["password"]
+    except Exception as exc:                  # noqa: BLE001
+        _fail(f"could not read credentials from stdin: {type(exc).__name__}")
+    if not username or not password:
+        _fail("username and password must both be non-empty")
+    if any(":" in v or "\n" in v for v in (username, password)):
+        _fail("username and password must not contain ':' or a newline — "
+              "router.db is colon-delimited and one would split the row")
+    return username, password
+
+
+def add_row(path, ip, model, username, password, no_backup):
+    """Append *ip*'s row (C512). An address already held is never changed here: a row exactly
+    as asked is ``already_present`` (promotion run again), any other is refused, naming which
+    field differs and never its value (a credential changes through rotation)."""
+    try:
+        before = parse_rows(open(path, encoding="utf-8").read(), allow_empty=True)
+    except ValueError as exc:
+        _fail(f"refusing to edit a malformed router.db: {exc}")
+    row = (ip, model, username, password)
+    held = [r for r in before if r[0] == ip]
+    if held:
+        if held[0] == row:
+            print(json.dumps({"ok": True, "ip": ip, "rows": len(before), "backup": "",
+                              "added": 0, "already_present": True}))
+            return
+        differs = [name for name, a, b in zip(("model", "username", "password"),
+                                              held[0][1:], row[1:]) if a != b]
+        _fail(f"{ip} is already in router.db with a different {' and '.join(differs)}: "
+              "adding never changes a row (a credential changes through rotation)",
+              known=len(before))
+    after = before + [row]
+    try:
+        validate_addition(before, after, row)
+    except ValueError as exc:
+        _fail(f"validation failed, nothing written: {exc}")
+    backup = write_checked(path, before, after,
+                           lambda b, w: validate_addition(b, w, row), no_backup)
+    print(json.dumps({"ok": True, "ip": ip, "rows": len(after), "backup": backup,
+                      "added": 1, **pruned(path, backup)}))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--file", required=True)
     ap.add_argument("--ip")
+    ap.add_argument("--add", action="store_true",
+                    help="append the --ip row (an onboarded device); credential on stdin")
+    ap.add_argument("--model", default="",
+                    help="with --add: the row's Oxidized model (its model file's name)")
     ap.add_argument("--remove", action="store_true",
                     help="remove the --ip row (a retired device); reads no credential")
     ap.add_argument("--addresses", action="store_true",
@@ -328,10 +401,17 @@ def main():
                     help="tests only; the real path always backs up")
     args = ap.parse_args()
 
-    if args.remove and args.addresses:
-        _fail("--remove and --addresses are two different acts: give one")
+    if sum((args.add, args.remove, args.addresses)) > 1:
+        _fail("--add, --remove and --addresses are different acts: give one")
     if not args.addresses and not args.ip:
         _fail("--ip is required")
+    if args.ip and not IPV4.match(args.ip):
+        _fail(f"--ip {args.ip!r} is not an IPv4 address")
+    if args.add and not MODEL.fullmatch(args.model):
+        _fail(f"--add needs --model, an Oxidized model name ({MODEL.pattern}); "
+              f"given {args.model!r}")
+    if args.model and not args.add:
+        _fail("--model is for --add only")
     if args.no_backup and os.geteuid() == 0:
         _fail("--no-backup is for tests only, never as root: the real path always backs up")
     try:
@@ -339,7 +419,8 @@ def main():
     except (ValueError, OSError) as exc:
         _fail(str(exc))
     if not args.addresses and os.path.exists(path):
-        hold_router_db(path, "remove" if args.remove else "rotate", args.ip)   # read→replace (R40)
+        hold_router_db(path, "add" if args.add else "remove" if args.remove else "rotate",
+                       args.ip)                                         # read→replace (R40)
     if args.remove or args.addresses:
         if not os.path.exists(path):
             _fail(f"{path} does not exist")
@@ -369,20 +450,13 @@ def main():
                           "removed": 1, **pruned(path, backup)}))
         return
 
-    try:
-        payload = json.load(sys.stdin)
-        username = payload["username"]
-        password = payload["password"]
-    except Exception as exc:                  # noqa: BLE001
-        _fail(f"could not read credentials from stdin: {type(exc).__name__}")
-    if not username or not password:
-        _fail("username and password must both be non-empty")
-    if any(":" in v or "\n" in v for v in (username, password)):
-        _fail("username and password must not contain ':' or a newline — "
-              "router.db is colon-delimited and one would split the row")
-
+    username, password = read_credential()
     if not os.path.exists(path):
         _fail(f"{path} does not exist")
+
+    if args.add:
+        add_row(path, args.ip, args.model, username, password, args.no_backup)
+        return
 
     original = open(path, encoding="utf-8").read()
     try:

@@ -593,8 +593,9 @@ def is_adoption_staged(repo: str, hostname: str) -> bool:
 #: only when everything before it held.
 #: The monitoring profile (P.9 step c) after the accounts and before the
 #: save, so the first golden records it.
+#: `oxidized` (C512) follows it and draws what promotion did for Oxidized's router.db.
 APPLY_STEPS = ("confirm", "account", "owner_account", "profile", "persist", "golden", "netbox",
-               "promote")
+               "promote", "oxidized")
 
 #: What adopt does NOT do, stated at the confirm (a commit records its
 #: non-actions; so does a preview).
@@ -1370,6 +1371,7 @@ def _apply(list_name, hostname, *, mgmt_ip, platform, supplied_username, supplie
     result["promote"] = prom
     if not _step("promote", prom.get("ok"), prom.get("error", "") or "in the inventory"):
         return _stop("promote", prom.get("error") or "promotion failed")
+    _step("oxidized", *onboard.oxidized_step(prom))
 
     result["state"] = "adopted"
     result["reason"] = (f"{hostname} adopted: the tool logs in as '{tool_username}', and "

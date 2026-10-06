@@ -133,7 +133,8 @@ def pending(lab, monkeypatch):
                 "remove_rw": lambda *a, **k: {"ok": True, "removed": [], "kept": []},
                 "persist": lambda *a, **k: {"ok": True, "detail": "carries it"},
                 "netbox": lambda *a, **k: {"ok": True, "created": []},
-                "promote": lambda *a, **k: {"ok": True},
+                "promote": lambda *a, **k: {"ok": True, "oxidized": {  # as promotion says (C512)
+                    "managed": False, "ok": True, "detail": "no Oxidized is configured"}},
                 "send_profile": send or (lambda *a, **k: sent.append(a[-1]) or {"ok": True})}
     return {**lab, "before": before, "after": after, "program": program, "sent": sent,
             "rotated": rotated, "steps": steps}

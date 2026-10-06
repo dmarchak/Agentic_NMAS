@@ -407,7 +407,7 @@ class TestTheApply:
     def test_a_failed_persist_stops_and_a_rerun_resumes_without_a_second_account(self, lab):
         out = _apply(lab, persist=lambda *a: {"ok": False, "detail": "no startup"})
         assert not out["ok"] and "do not reload" in out["reason"]
-        assert [s["step"] for s in out["remaining"]] == ["golden", "netbox", "promote"]
+        assert [s["step"] for s in out["remaining"]] == ["golden", "netbox", "promote", "oxidized"]
         assert lab["calls"]["netbox"] == 0
         adds = [l for l in lab["router"].sent if l.startswith("username nmas")]
         # The resumed adoption: the preview says so, and the apply adds nothing.
@@ -428,7 +428,7 @@ class TestTheApply:
             return {"ok": False, "objects": [], "error": "NetBox could not be read"}
         out = _apply(lab, fingerprint=_plan(lab, netbox_existing=existing)["fingerprint"],
                      netbox_existing=existing)
-        assert not out["ok"] and [r["step"] for r in out["remaining"]] == ["promote"]
+        assert not out["ok"] and [r["step"] for r in out["remaining"]] == ["promote", "oxidized"]
         assert "recorded first" in out["reason"] and lab["calls"]["netbox"] == 0
 
     def test_a_held_device_is_refused_before_anything(self, lab):
