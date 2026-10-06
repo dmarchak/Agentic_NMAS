@@ -35,6 +35,17 @@ stopping is one), Oxidized freshness, integrations, reachability, routing adjace
 baselines, the remote's publication, the lab's startup files, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.
 
+**An operation re-reads what it changed, at once.** Each reader runs on its own interval, and
+an operation that changes what a reader reports runs that reader again as soon as it is done:
+a Save All re-reads the baselines, a rotation or an onboarding re-reads job health (the
+rotation's safety, the break-glass record) and credential health, a break-glass export or drill
+re-reads job health, a persist re-reads the save record, an acknowledgement re-reads its alert.
+So a row the operation resolved clears for everyone looking, without waiting for the next
+cycle. A rotation still running raises no "persistence not attempted" row: that is the moment
+between its rotate and its persist; the row appears only if the rotation ends there. Every row
+says how old the reading it stands on is ("read 2 min ago"), and a Save All that would record
+the same state as a baseline just taken says so in its preview, with when and by whom.
+
 **Credentials** (hourly, metadata only, never a value): a credential with an expiry is a
 warning 30 days before it expires, a danger row 7 days before, and a danger row as soon as it
 has expired. One expiring more than a year out has no row. Where each expiry comes from:

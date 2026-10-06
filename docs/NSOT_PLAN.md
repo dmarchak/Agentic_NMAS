@@ -6052,6 +6052,15 @@ model carries it, 9.I step 7).**
 - **Tested in Stage 9:** the agent cannot do through a person anything that person's role
   forbids.
 
+**8.15 The top bar's command box is where the person asks the agent (RECORDED 2026-10-06, the
+operator; no work now; C537's mockup draws the box).**
+- **One box, Ctrl-K or its button, in the v2 top bar**, replacing the wide global device
+  search. Before Stage 8 it jumps to a device or a page.
+- **From Stage 8, the same box answers both:** a device name (or a page) navigates; a question
+  goes to the agent, whose answer opens beside the page, under 8.14's authority (it proposes,
+  a person confirms).
+- **The Devices page keeps its own search**, which FILTERS its list; the box never filters.
+
 ---
 
 ### STAGE 9 — hardening and cleanup (ADDED 2026-09-28, the operator; reshaped the same night)

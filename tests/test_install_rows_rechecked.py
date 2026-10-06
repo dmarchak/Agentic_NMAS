@@ -136,7 +136,8 @@ def test_the_row_draws_its_reading_time():
             "ok": True, "rows": [row], "sources": [], "headline": "1", "counts": {},
             "badge": {"n": 1, "level": "warning"}})
     meta = html.split('class="att-meta"')[1].split("</p>")[0]
-    assert "read at" in meta and A._iso(T0) in meta, meta
+    # C539 (3): drawn as its age ("read 15 d ago"), the exact time on the element and its hover.
+    assert "read <time" in meta and f'datetime="{A._iso(T0)}"' in meta, meta
 
 
 def test_the_clearing_words_state_the_readers_real_interval():

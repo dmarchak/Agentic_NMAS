@@ -1888,8 +1888,27 @@ def _structure_gate(structure: dict) -> dict:
                 "with your reason below")
 
 
+def _repeats_words(repeats: dict, now: float = None) -> str:
+    """C539 (2): "A baseline was taken 2 min ago by X (baseline/…); nothing has changed since:
+    another Save All would record the same state." From `routes.golden.last_baseline_if_current`."""
+    import time
+    from datetime import datetime
+    now = time.time() if now is None else now
+    try:
+        then = datetime.fromisoformat(str(repeats.get("at")).replace("Z", "+00:00")).timestamp()
+        mins = max(0, int((now - then) // 60))
+        ago = ("just now" if mins < 1 else f"{mins} min ago" if mins < 120
+               else f"{mins // 60} h ago" if mins < 2880 else f"{mins // 1440} days ago")
+    except (TypeError, ValueError):
+        ago = f"at {repeats.get('at') or 'an unrecorded time'}"
+    return (f"A baseline was taken {ago} by {repeats.get('actor') or 'someone not recorded'} "
+            f"({repeats.get('tag')}); nothing has changed since: every device reads as its "
+            "golden, so another Save All would record the same state.")
+
+
 def capture_preview(entries: list, *, fleet: bool, inventory: list, request=None,
-                    not_read: list = None, timing: dict = None, confirm: dict = None) -> dict:
+                    not_read: list = None, timing: dict = None, confirm: dict = None,
+                    repeats: dict = None) -> dict:
     """*entries*: per device ``{device, read, error, capture_hash, diff,
     changed, intent, platform}`` from reading it now. *not_read*: devices a
     scope left out (they already have a committed golden), named so the
@@ -1904,6 +1923,13 @@ def capture_preview(entries: list, *, fleet: bool, inventory: list, request=None
                                   + "."),
                          "lines": []})
     read = [e for e in entries if e.get("read")]
+    # C539 (2): a Save All that would repeat the baseline just taken says so first, with when
+    # and by whom: only when every device was read and none differs from its golden, and no
+    # golden has been committed since that baseline (*repeats*, from the caller).
+    if fleet and repeats and entries and len(read) == len(entries) \
+            and not any(e.get("changed") for e in read):
+        what_not.insert(0, {"target": "this baseline", "kind": "repeats",
+                            "text": _repeats_words(repeats), "lines": []})
     for e in entries:
         name = e["device"]
         intent = e.get("intent") or {}

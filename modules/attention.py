@@ -3002,6 +3002,12 @@ def needs_attention(sources=None) -> dict:
             log.error("attention: source %s raised: %s", name, exc)
             results.append(source_result(name, name, read_at=time.time(), took_ms=0,
                                          error=f"its adapter raised {type(exc).__name__}: {exc}"))
+    # C539 (3): every row shows the age of its reading. A row that names none is as old as
+    # the value its source shows (a stored reader's value, or this request's live read).
+    for res in results:
+        for r in res["rows"]:
+            if not r.get("read_at"):
+                r["read_at"] = res.get("value_at") or res.get("read_at")
     rows = _attach(_fold_one_cause([r for res in results for r in res["rows"]]))
     rows, acknowledged, ack_result = _without_acknowledged(rows)
     if ack_result:

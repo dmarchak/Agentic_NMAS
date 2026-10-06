@@ -755,6 +755,9 @@ def trigger_words(trigger: dict, viewer: str = "") -> str:
         return "re-read after a commit"
     if kind == "job_finished":
         return f"re-read when {trigger.get('by') or 'a host job'} finished"
+    if kind == "after_operation":
+        # C539: an operation that changes this reader's answer re-reads it at once.
+        return f"re-read at once after {trigger.get('by') or 'an operation'}"
     return "what started it was not recorded" if not kind else f"started by {kind}"
 
 

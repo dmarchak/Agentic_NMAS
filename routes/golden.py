@@ -514,6 +514,32 @@ def capture_preview():
                     "nothing": ""}), 202
 
 
+def last_baseline_if_current(repo: str) -> dict:
+    """The newest EARNED baseline when no golden has been committed since it (its tag's golden
+    tree is HEAD's), as ``{tag, at, actor}``, else None (C539 (2)): a Save All that finds every
+    device unchanged then repeats it, and the preview says so. Withdrawn and denied baselines
+    are never "taken"."""
+    from modules.nsot import repo as R
+
+    try:
+        newest = next((b for b in R.list_baselines(repo)
+                       if not b.get("withdrawn") and not b.get("deleted")
+                       and b.get("decision") == "earned"), None)
+        if newest is None:
+            return None
+        tree_at = R.git(repo, "rev-parse", f"{newest['commit']}:golden")[1].strip()
+        tree_now = R.git(repo, "rev-parse", "HEAD:golden")[1].strip()
+        if not tree_at or tree_at != tree_now:
+            return None
+        actor = R.git(repo, "log", "-1", "--format=%(trailers:key=Actor,valueonly,separator=%x2C)",
+                      newest["commit"])[1].strip()
+        return {"tag": newest["tag"], "at": newest.get("created", ""), "actor": actor}
+    except Exception as exc:                          # noqa: BLE001
+        log.info("capture preview: the last baseline could not be read (%s); no repeat is said",
+                 exc)
+        return None
+
+
 def start_capture_preview(list_name: str, inventory: list, devices: list, *, fleet: bool,
                           excluded: list = None) -> str:
     """Start the capture preview's reads as a job and return its id: THE start, for
@@ -543,7 +569,8 @@ def start_capture_preview(list_name: str, inventory: list, devices: list, *, fle
         read, timing = _read_all(list_name, repo, devices, progress=progress)
         entries = [e for e, _t in read]
         preview = _parts(entries, fleet=fleet, inventory=inventory, confirm=confirm,
-                         not_read=excluded or [], timing=timing)
+                         not_read=excluded or [], timing=timing,
+                         repeats=last_baseline_if_current(repo) if fleet else None)
         # The preview alone: it draws each device's read, and its
         # `select_data` carries the hash the confirm is bound to. The raw
         # reads are not sent. `nothing` is always carried (empty here): one

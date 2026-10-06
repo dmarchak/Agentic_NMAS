@@ -40,6 +40,9 @@ NOT_YET_SUBSCRIBED = {
     "agent": "the agent tab; 8.4 (the agent returns last)",
     "backups": "backups; 7.5 (Versions)",
     "bulk_ops": "bulk operation records; cut in 7.8",
+    "breakglass": ("C539: the key wakes job health's reader, whose `job_health` announcement "
+                   "redraws Needs attention; the Credentials page's record card draws its own "
+                   "result in place, and subscribes with C538's Finish-the-job checklist"),
     "chat": "the chat panel draws its own stream",
     "credentials": "credential profiles; 7.6 (Source of truth, Credentials)",
     "device_files": "the device page's file list; 7.3 (Device)",
@@ -52,7 +55,7 @@ NOT_YET_SUBSCRIBED = {
     "topology": "the topology layout is drawn by its own editor",
     "variables": "the CSV-era variable store; cut in 7.8",
 }
-NOT_YET_CEILING = 15  # -1 2026-10-06: templates, heard by the Templates table (C516). Before: -1 2026-10-05: settings, heard by Needs attention's dashboard settings (P.8 step 8c). Before: -2 2026-10-02: device_state and intent, heard by Needs attention and its count. Before: the redesign's landing subscribes to `netbox` (2026-09-30); C148 retired "staging" with extraction's routes (seed intent replaced them); the freshness panel and Needs attention subscribe to `freshness` (7.2 step 15); Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
+NOT_YET_CEILING = 16  # +1 2026-10-06: breakglass (C539), declared so the export, the drill and the intact check wake job health; its own subscriber comes with C538. Before: -1 2026-10-06: templates, heard by the Templates table (C516). Before: -1 2026-10-05: settings, heard by Needs attention's dashboard settings (P.8 step 8c). Before: -2 2026-10-02: device_state and intent, heard by Needs attention and its count. Before: the redesign's landing subscribes to `netbox` (2026-09-30); C148 retired "staging" with extraction's routes (seed intent replaced them); the freshness panel and Needs attention subscribe to `freshness` (7.2 step 15); Needs attention subscribes to approvals, baselines, pending and rolled_back (7.2 step 11); the golden panel subscribes to `goldens` (C102's rename); C102 retired "discovery" with its routes; C104 "history" with the manual commit
 
 _SUB = re.compile(r"^\s*NMAS\.subscribe\(\s*'([a-z_]+)'\s*,\s*'(\w+)'\s*,\s*(\w+)", re.M)
 

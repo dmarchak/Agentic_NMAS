@@ -737,7 +737,16 @@ def known_devices() -> tuple:
     return names, ""
 
 
-def rotation_rows(records: list = None, known: tuple = None) -> list:
+def _held_devices() -> set:
+    """Every device an operation holds now, in any list, lower-cased (a READ)."""
+    from modules.nsot import device_ops
+    try:
+        return {(h.get("device") or "").lower() for h in device_ops.held_anywhere()}
+    except Exception:                                 # noqa: BLE001
+        return set()
+
+
+def rotation_rows(records: list = None, known: tuple = None, held: set = None) -> list:
     """One row per device with a recorded rotation, from its LATEST record.
 
     s1's rotation of an exposed credential left its boot file holding that
@@ -767,9 +776,15 @@ def rotation_rows(records: list = None, known: tuple = None) -> list:
             if rec.get("state") != cr.SAVE_UNVERIFIED:
                 judged[rec["device"]] = rec
     latest.update(judged)
+    # C542: a device an operation holds now is mid-rotation, and "persistence not attempted" is
+    # the moment between rotate and persist under ONE hold, not a state left behind; that row
+    # waits for the hold's release, whose announcement re-reads job health at once (C539).
+    held = _held_devices() if held is None else {d.lower() for d in held}
     rows = []
     for device, rec in sorted(latest.items()):
         state, stage, at = rec.get("state", ""), rec.get("failed_stage", ""), rec.get("at", "")
+        if state == cr.ROTATED_PENDING_PERSIST and device.lower() in held:
+            continue
         if not why_not and device.lower() not in names:
             unsafe = state not in (cr.ROTATED_PERSISTED, cr.SAVE_PERSISTED, cr.REVERTED,
                                    cr.NOT_STARTED)

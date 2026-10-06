@@ -79,6 +79,8 @@ VOCABULARY = {
     "freshness": "Oxidized freshness: the stored comparison and its authorisations",
     "backups": "stored backups of device configs",
     "device_state": "what a device runs: anything read live from it",
+    "breakglass": "the break-glass export log, its intact checks and its drills (job health's "
+                  "break-glass rows read them)",
     "device_files": "a device's filesystem listing",
     "files": "files on this host from device transfers",
     "agent": "the background agent: status, log, timers",
@@ -236,16 +238,12 @@ DECLARED = {
     "update.step_done": ("app_version",),
     "attention.acknowledge": ("acknowledgements",),
     "restarts.planned": ("restarts",),
-    "v2.credentials_drill": Nothing("appends the drill to its own log, which job health's reader "
-                                    "and History read; the answer is the drill's card, drawn in place"),
+    # C539: each writes a log job health's break-glass rows read, so it wakes that reader.
+    "v2.credentials_drill": ("breakglass",),
     "v2.credentials_check": Nothing("appends the check's verdict to its own log, which History "
                                     "reads; the answer is the verdict, drawn in place"),
-    "v2.credentials_intact": Nothing("appends the browser's word on a download to its own log, "
-                                    "which job health's reader and the Credentials page read; the "
-                                    "answer is the result card, drawn in place"),
-    "breakglass.export": Nothing("appends to the export log and the reveal record, which job "
-                                 "health's reader reads on its own interval; no panel shows "
-                                 "either directly"),
+    "v2.credentials_intact": ("breakglass",),
+    "breakglass.export": ("breakglass",),
     "v2.profile_apply_confirm": Nothing("starts a job and answers at once; the batch deploys and ANNOUNCES deploy_job as each device finishes, and what a deploy changes at the end (ANNOUNCERS)"),
     "rotate.apply": Nothing("starts a job and answers at once; the job changes the credential and ANNOUNCES rotation when it finishes (ANNOUNCERS)"),
     "device_v2.restore_confirm": Nothing("starts a job and answers at once; the restore ANNOUNCES deploy_job as it finishes, and what a restore changes (ANNOUNCERS deploy-job)"),
@@ -401,6 +399,10 @@ def set_emitter(emit) -> None:
     _emitter = emit
 
 
+#: How a reader names itself announcing (`reader_job.announce_via_page`): never a wake.
+READER_BY = "reader:"
+
+
 def announce(keys, by: str, ok: bool = True) -> dict:
     """Tell every open page that the data under *keys* changed, and who
     changed it. Raises when it cannot: the caller counts it (a reader counts
@@ -417,6 +419,13 @@ def announce(keys, by: str, ok: bool = True) -> dict:
     msg = {"keys": keys, "by": by, "ok": bool(ok),
            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     _emitter(ANNOUNCE_EVENT, msg)
+    # C539: a job that changed a store re-reads, at once, each reader that reports on it, so a
+    # Needs attention row it resolved clears for every viewer. A READER's own announcement
+    # wakes nothing: it changed no store, and some readers announce keys the wake table holds
+    # (baseline-usability announces `baselines`, which wakes it), so waking on it would loop.
+    if not str(by).startswith(READER_BY):
+        from modules import reader_wakes
+        reader_wakes.wake(keys, by)
     return msg
 
 
@@ -444,6 +453,10 @@ def install(app) -> None:
         if not keys:
             return response
         response.headers[HEADER] = ",".join(keys)
+        # C539: the readers whose answer this route's write changes are read again at once.
+        if response.status_code < 400:
+            from modules import reader_wakes
+            reader_wakes.wake(keys, request.endpoint or "")
         if response.mimetype == "application/json" and not response.direct_passthrough:
             try:
                 body = json.loads(response.get_data(as_text=True))
