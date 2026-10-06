@@ -83,7 +83,7 @@ Each with a reason. These are settable by editing
 |---|---|
 | `platform_map` | A nested mapping of platform → driver, template dir, transport, NETCONF support. A form for it would be a worse JSON editor. Editing it wrongly breaks every deploy, and it changes when a **vendor** is added, not when an operator changes their mind. |
 | `role_map` | Same shape, same reasoning: NetBox role slug → internal role. |
-| `verify_settle_windows` | Per-protocol convergence timings, nested. Changed when a protocol's behaviour is *measured*, not adjusted by feel — a slider would invite the second. |
+| `verify_settle_windows` | Per-protocol convergence timings, nested. Changed when a protocol's behaviour is *measured*, not adjusted by feel — a slider would invite the second. Its `unexpected` window (C506; default 2 s first wait, 10 s in all, re-read every 2 s) is the short settle before an interface the change did not touch, gone down, fails verify at once: one installation-wide value every network inherits, to be measured per platform from the devices' flap-to-recovery history. |
 | `cf_access_service_labels` | A mapping of service Client ID → human label, edited when a service token is issued, which is already a host-side operation. |
 | `cf_access_jwks_ttl` | Cache lifetime for Cloudflare's signing keys. A wrong value degrades verification silently; the default is correct and there is no operational reason to change it. |
 | `deploy_max_workers` | Deploy concurrency, default 1. Raising it changes the blast radius of a bad plan. Deliberately awkward. |

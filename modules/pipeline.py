@@ -1163,6 +1163,34 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
             "snapshot": latest["snapshot"]}
 
 
+def _await_interfaces(ctx, ip: str, settled, check: str = "unexpected") -> dict:
+    """Re-read the interfaces by name within *check*'s settle window until *settled(states)*.
+    ``{"state", "states", "elapsed", "window"}``; ``states`` is the last read ({} when none
+    could be made). The "unexpected" window is the short settle before an unexpected hard
+    failure rolls back (C506): the operator's one installation-wide default, inherited by every
+    network (`verify_settle_windows`), 10 s until measured per platform."""
+    from modules.commands import run_device_command
+    from modules.connection import get_persistent_connection
+    from modules.nsot.expected_effects import interface_states
+
+    dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
+    window = _window_for(check, _list_of(ctx))
+    if dev is None:
+        return {"state": _FAILED, "states": {}, "elapsed": 0.0, "window": window}
+    latest = {"states": {}}
+
+    def _probe():
+        get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
+        latest["states"] = interface_states(
+            run_device_command(_conn_of(_session_for(ctx, dev)), _INTERFACES_READ))
+        return latest["states"]
+
+    result = _wait_for(check, _probe, lambda states: bool(states) and settled(states),
+                       sleep=ctx.settle_sleep or time.sleep, list_name=_list_of(ctx))
+    return {"state": result["state"], "states": latest["states"],
+            "elapsed": result["elapsed"], "window": window}
+
+
 def _watch_bgp_hold(ctx, ip: str, baseline: int, config: str) -> dict:
     """Read BGP once more, no earlier than the hold time after the push
     (C178). ``{"state", "hold_s", "basis", "watched_s", "before", "after",
@@ -1309,6 +1337,37 @@ def _stage_verify(ctx: PipelineContext) -> None:
         )
         issues: list[str] = []
 
+        # ── Interfaces by NAME, against what the program intends, FIRST (C506) ──
+        # An interface the program shuts going down is its intended effect, never a loss; one
+        # it did not touch going down is an UNEXPECTED hard failure. That is read first, given
+        # only the short "unexpected" settle to come back, and if it does not, verify fails AT
+        # ONCE: the neighbour windows, BGP's hold-time watch and the route window are not
+        # waited out over a failure already visible (tw-ztp-a stayed broken 4 min 40 s).
+        from modules.nsot import expected_effects as _fx
+        expected = _fx.derive(ctx.rendered_commands.get(ip) or [])
+        pre_states = (pre.get("interfaces") or {}).get("states") or {}
+        post_states = (post.get("interfaces") or {}).get("states") or {}
+        named, unexpected_settle, hard = None, None, False
+        if pre_states and post_states:
+            named = _fx.judge(expected, pre_states, post_states)
+            if named["lost_unexpected"]:
+                waited = _await_interfaces(
+                    ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)["lost_unexpected"])
+                unexpected_settle = {"seconds": waited["window"]["timeout"],
+                                     "elapsed": waited["elapsed"],
+                                     "basis": "the installation's default, inherited by this "
+                                              "network; not yet measured for its platforms"}
+                if waited["states"]:
+                    named = _fx.judge(expected, pre_states, waited["states"])
+                if named["lost_unexpected"]:
+                    hard = True
+                    issues.append(
+                        "Interface(s) the change did not touch went down: "
+                        + ", ".join(named["lost_unexpected"])
+                        + f" (up before, still not up after the {unexpected_settle['seconds']} s"
+                          " settle); verify failed at once, without waiting out the routing "
+                          "protocols' windows")
+
         # ── Routing neighbours, EVERY protocol the device runs (C62) ───────
         # Each protocol read before the push is compared on its own. The
         # first version compared one protocol per device, and on r3 and r4 the
@@ -1339,7 +1398,8 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # back for them, because the tool cannot see what the change did.
         cant_read: list[str] = []
 
-        for pre_proto, pre_count in sorted(pre_counts.items()):
+        # A hard failure already visible: nothing is waited out over it (C506).
+        for pre_proto, pre_count in ([] if hard else sorted(pre_counts.items())):
             post_count = post_counts.get(pre_proto, -1)
             # A read that could not be trusted goes to the settle window below,
             # which reads again on a new session; only when that read cannot be
@@ -1395,7 +1455,7 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # an unrelated deploy a rollback would undo a good change. It makes
         # verify NOT pass, recorded and drawn, so "verify passed" never
         # stands over a protocol intent requires and the device lacks.
-        for proto in from_intent:
+        for proto in ([] if hard else from_intent):
             settled = _await_neighbour_convergence(
                 ctx, ip, hostname, proto, pre_counts.get(proto, 0), need=1)
             record.setdefault("neighbors_by_protocol", {})[proto] = settled
@@ -1421,7 +1481,8 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # after the push, and a session gone by then fails verify.
         bgp_failed = any(i.startswith("bgp ") for i in issues) or any(
             u.startswith("bgp ") for u in unmet)
-        if "bgp" in checked and not bgp_failed and scope["scope"] != verify_scope.QUICK:
+        if ("bgp" in checked and not bgp_failed and not hard
+                and scope["scope"] != verify_scope.QUICK):
             baseline = pre_counts.get("bgp", 0) or (1 if "bgp" in from_intent else 0)
             watch = _watch_bgp_hold(ctx, ip, baseline, post.get("running_config") or "")
             record["bgp_watch"] = watch
@@ -1446,6 +1507,7 @@ def _stage_verify(ctx: PipelineContext) -> None:
         _skip_route = (
             ctx.config_type in _ROUTE_INSTALLING_CONFIG_TYPES
             or ctx.params.get("skip_route_check", False)
+            or hard              # C506: not waited out over a visible hard failure
         )
         pre_routes  = pre.get("routes",  {}).get("total_count", -1)
         post_routes = post.get("routes", {}).get("total_count", -1)
@@ -1479,7 +1541,24 @@ def _stage_verify(ctx: PipelineContext) -> None:
         if pre_up >= 0 and (post.get("interfaces") or {}).get("error"):
             cant_read.append(f"interfaces: `{_INTERFACES_READ}`: "
                              f"{post['interfaces']['error']}")
-        if pre_up >= 0 and post_up >= 0:
+        if named is not None:
+            # By name (C506): an unexpected loss was judged first, above. What remains is the
+            # intended end state: an interface the program brings up must be up, given the
+            # interfaces' settle window.
+            if named["not_up"] and not hard:
+                waited = _await_interfaces(
+                    ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)["not_up"],
+                    check="interfaces")
+                if waited["states"]:
+                    named = dict(named, not_up=_fx.judge(expected, pre_states,
+                                                         waited["states"])["not_up"])
+                if named["not_up"]:
+                    issues.append(
+                        "The change brings up " + ", ".join(named["not_up"])
+                        + f" (no shutdown), and it is not up after {waited['window']['timeout']} s")
+        elif pre_up >= 0 and post_up >= 0:
+            # Counted, only when a read named no interface (an older snapshot, an output the
+            # parser does not know); the result says which comparison ran.
             down_delta = pre_up - post_up
             if down_delta > _INTERFACE_DOWN_TOLERANCE:
                 issues.append(
@@ -1590,6 +1669,14 @@ def _stage_verify(ctx: PipelineContext) -> None:
             # What was actually compared, by name, so a record can say which
             # checks ran on this device (the deploy receipt, C60).
             "checked_protocols": checked,
+            # C506: the program's expected interface effects, the interfaces judged by name
+            # against them ("count" when a read named none), and, when an unexpected loss was
+            # seen, the settle given and whether verify failed at once over it.
+            "expected_effects": expected,
+            "interfaces": {"compared_by": "name" if named is not None else "count",
+                           **(named or {})},
+            "unexpected_settle": unexpected_settle,
+            "failed_at_once": hard,
         }
         if unmet:
             log.error("pipeline[8/verify]: %s intent not met (no rollback): %s",
@@ -2281,10 +2368,15 @@ def _capture_operational_snapshot(conn, ip: str, hostname: str) -> dict:
         )                                             # _INTERFACES_READ
         up_count   = intf_out.lower().count("line protocol is up")
         down_count = intf_out.lower().count("line protocol is down")
+        from modules.nsot.expected_effects import interface_states
         snap["interfaces"] = {
             "output":     intf_out[:3000],
             "up_count":   up_count,
             "down_count": down_count,
+            # Each interface by NAME (C506): verify compares names, so a change that downs
+            # one interface and brings up another cannot net to zero and hide a third.
+            # Parsed from the whole read, never the truncated copy kept for display.
+            "states":     interface_states(intf_out),
         }
     except Exception as exc:
         snap["interfaces"] = {"error": str(exc), "up_count": -1, "down_count": -1}

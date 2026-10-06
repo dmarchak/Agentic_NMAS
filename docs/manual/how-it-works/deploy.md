@@ -126,11 +126,16 @@ the run ends. Its stages, in the order the code declares them:
    `pre_snapshot`, and `show running-config`. Sent: nothing. Recorded: nothing yet; verify and
    `save_golden` use it.
 8. `verify`. Read: the two snapshots, and the device again while it waits. Sent: nothing.
-   Recorded: what it compared, for the receipt. A neighbour lost, in any protocol read before
+   Recorded: what it compared, for the receipt. Interfaces are judged first, by name, against
+   what the program intends: one it shuts going down is its effect, never a loss; one it did not
+   touch going down is an unexpected hard failure, given a short settle (10 s by default, one
+   installation-wide window networks inherit) and then failed at once, without waiting out the
+   windows and hold time below; one it brings up (`no shutdown`) must be up within the
+   interfaces' window. A read that named no interface is counted instead, and the receipt says
+   which comparison ran. A neighbour lost, in any protocol read before
    the push, is waited out for its settle window (by default OSPF 45 s, BGP 60 s, RIP 90 s, others 45 s)
    and fails only if it persists; a count still rising is reported as not yet converged. The
-   route table must keep 90% of its routes, re-read for up to 90 s; the count of interfaces up
-   must not fall; BGP is read once more no earlier than its configured hold time after the push
+   route table must keep 90% of its routes, re-read for up to 90 s; BGP is read once more no earlier than its configured hold time after the push
    (180 s when none is set), except for a program that touches only management sections
    (terminal lines, logging, SNMP, NTP, banners, users), where each new line is read back from
    the configuration instead. Removals must read back gone, and re-created IP SLA operations as
