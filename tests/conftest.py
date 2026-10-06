@@ -186,6 +186,10 @@ def pytest_sessionfinish(session, exitstatus):
         sys.stderr.write("\n" + home + "\n")
         _ci_annotate("error", "the run touched the home", home)
         session.exitstatus = 1
+    note = "" if worker else home_guard.noted(getattr(session, "nmas_home_before", {}),
+                                              home_guard.snapshot())
+    if note:
+        sys.stderr.write("\n" + note + "\n")
     leaked = leaked_threads()
     if leaked:
         message = ("the session ended with NON-DAEMON threads still alive, which keep this "
