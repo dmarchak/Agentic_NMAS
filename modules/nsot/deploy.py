@@ -816,23 +816,62 @@ def _negation_pair(chain_key: tuple, canonical: str, negations: dict,
     return None
 
 
+def landed_key(chain, line) -> tuple:
+    """A configuration line as the device holds it: its header chain and its own text,
+    canonicalised and unindented. THE identity `landed` compares by (C501)."""
+    from modules.nsot import ifnames
+
+    return (tuple(ifnames.canonicalise_line(c).strip() for c in chain),
+            ifnames.canonicalise_line(line).strip())
+
+
+def landed_between(pre_config: str, post_config: str) -> list:
+    """``[(chain, line)]``: every line of *post_config* (headers and settings) that
+    *pre_config* did not hold UNDER THE SAME HEADERS.
+
+    C501, the rollback's first real run: `landed` was the whole-line TEXT new since the
+    snapshot, so a pushed ` shutdown` under `interface Loopback1` was not "landed" because
+    the device already printed ` shutdown` under another interface; the line was filed as
+    rejected, never undone, and the card said nothing landed. A line is identified by its
+    chain, as a program's are (`program_lines`)."""
+    pre = {landed_key(chain, line) for line, chain in _section_chains(pre_config)}
+    out, seen = [], set()
+    for line, chain in _section_chains(post_config):
+        key = landed_key(chain, line)
+        if key not in pre and key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
+
+
+def _landed_set(landed):
+    """*landed* as a set of `landed_key`s, or None. Bare text is refused: a line without its
+    chain is the C501 defect."""
+    if landed is None:
+        return None
+    out = set()
+    for item in landed:
+        if isinstance(item, str):
+            raise TypeError("landed is (chain, line) pairs from landed_between(), never bare "
+                            f"text: {item!r} cannot say which section it is in (C501)")
+        chain, line = item
+        out.add(landed_key(chain, line))
+    return out
+
+
 def landed_leaves(pushed: list, landed) -> tuple:
     """Split a pushed program into ``(applied, rejected)`` leaves.
 
-    *landed* is the set of lines the failure-state capture saw on the device
-    that were not there before. ``None`` means the capture could not read the
-    device, in which case everything pushed is treated as applied — the
-    conservative answer when you do not know.
+    *landed* is what the failure-state capture saw on the device that was not there before,
+    as ``(chain, line)`` pairs (`landed_between`). ``None`` means the capture could not read
+    the device, or the push completed with no line refused, in which case everything pushed
+    is treated as applied — the conservative answer when you do not know.
     """
-    from modules.nsot import ifnames
-
     leaves = program_leaves(pushed)
-    if landed is None:
+    seen = _landed_set(landed)
+    if seen is None:
         return leaves, []
-
-    seen = {ifnames.canonicalise_line(l).strip() for l in landed}
-    applied = [e for e in leaves
-               if ifnames.canonicalise_line(e.line).strip() in seen]
+    applied = [e for e in leaves if landed_key(e.chain, e.line) in seen]
     rejected = [e for e in leaves if e not in applied]
     return applied, rejected
 
@@ -1050,12 +1089,12 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
     # source error `landed` exists to prevent, one level up from the leaves it
     # already covers. `landed is None` means the capture could not be read, and
     # everything pushed is then treated as applied.
-    if landed is None:
+    landed_keys = _landed_set(landed)
+    if landed_keys is None:
         landed_containers = set(created)
     else:
-        seen = {ifnames.canonicalise_line(l).strip() for l in landed}
         landed_containers = {(chain, line) for chain, line in created
-                             if line.strip() in seen}
+                             if landed_key(chain, line) in landed_keys}
     created = landed_containers
     under_created = {chain + (line,) for chain, line in created}
 
@@ -1067,8 +1106,7 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
     # Terminal lines the device already had, regrouped by the push (C307):
     # undone per line, never as a creation and never per setting alone.
     held_ranges = {}
-    landed_seen = (None if landed is None else
-                   {ifnames.canonicalise_line(l).strip() for l in landed})
+    landed_seen = landed_keys
     for entry in program_structure(pushed):
         if not entry["chain"] and not entry["leaf"] \
                 and line_range_held(entry["line"], pre_config):
@@ -1086,7 +1124,8 @@ def rollback_commands(pushed: list, pre_config: str, landed=None) -> list:
             # already be text under the old stanzas: the range's own header is
             # the evidence. IOS prints `line vty 0 4` exactly when all its
             # lines now match, which is what the push did.
-            if entry["leaf"] and (landed_seen is None or chain[0].strip() in landed_seen):
+            if entry["leaf"] and (landed_seen is None
+                                  or landed_key((), chain[0]) in landed_seen):
                 held_ranges[chain[0].rstrip()].append(line)
             continue
         if _is_implied(chain):

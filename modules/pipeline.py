@@ -226,6 +226,8 @@ class PipelineContext:
     # ---- Phase 3c: convergence and golden-save state ---------------------
     convergence:         dict = field(default_factory=dict)  # Stage 8: ip -> checks
     pending_convergence: list = field(default_factory=list)  # not-yet-converged notes
+    #: Stage 8.2 (C501): ip -> {"ok", "error"}, the save to startup after verify passed.
+    saved_startup:       dict = field(default_factory=dict)
     golden_result:       dict = field(default_factory=dict)  # Stage 8.5
     golden_skipped:      list = field(default_factory=list)
     warnings:            list = field(default_factory=list)
@@ -313,6 +315,7 @@ _STAGE_TABLE: list[tuple[str, str]] = [
     ("deploy",          "rollback"),  # 6
     ("post_snapshot",   "rollback"),  # 7
     ("verify",          "rollback"),  # 8
+    ("save_startup",    "continue"),  # 8.2 a change is saved only once it passes (C501)
     ("save_golden",     "continue"),  # 8.5 records what was actually pushed
     ("audit_log",       "abort"),     # 9  always runs
 ]
@@ -332,6 +335,8 @@ STAGE_WORDS = {
     "deploy": ("Send", "the program sent to the device, merge-only"),
     "post_snapshot": ("Read after", "the running configuration read again"),
     "verify": ("Verify", "each protocol's settle window, and BGP's hold time"),
+    "save_startup": ("Save", "the running configuration written to startup, only once verify "
+                             "passed"),
     "save_golden": ("Record golden", "the golden recorded from what was sent"),
     "audit_log": ("Audit", "the receipt written"),
 }
@@ -345,7 +350,7 @@ STEPS = tuple((n, STAGE_WORDS[n][0], STAGE_WORDS[n][1], (n,)) for n in STAGE_NAM
 
 class PipelineRunner:
     """
-    Executes the nine stages in strict order.
+    Executes the stages of `_STAGE_TABLE` in strict order.
 
     Usage::
 
@@ -375,6 +380,7 @@ class PipelineRunner:
             _stage_deploy,
             _stage_post_snapshot,
             _stage_verify,
+            _stage_save_startup,
             _stage_save_golden,
         ]
         # Each stage is PROGRESS on the device this run holds (C98): a second
@@ -437,8 +443,8 @@ class PipelineRunner:
             got_name      = STAGE_NAMES[expected_idx]
             expected_name = STAGE_NAMES[self._next_expected]
             raise PipelineOrderError(
-                f"Stage '{got_name}' (#{expected_idx + 1}/9) invoked out of order; "
-                f"'{expected_name}' (#{self._next_expected + 1}/9) must run first."
+                f"Stage '{got_name}' (#{expected_idx + 1}/{len(STAGE_NAMES)}) invoked out of order; "
+                f"'{expected_name}' (#{self._next_expected + 1}/{len(STAGE_NAMES)}) must run first."
             )
 
 
@@ -986,7 +992,9 @@ def _push_via_netmiko(dev: dict, cmds: list[str], pool: dict, lock: Any) -> str:
     conn.enable()
     output = conn.send_config_set(cmds, read_timeout=60,
                                   error_pattern=IOS_ERROR_PATTERN)
-    conn.save_config()
+    # NOT saved here (C501): the push wrote startup two seconds after it landed, before
+    # verify, so a change that then failed verify was in startup whatever the rollback did.
+    # A change is saved only once it passes: `_stage_save_startup`, after verify.
     return output
 
 
@@ -1659,12 +1667,13 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
             from modules.nsot.recreate import operations as _sla_ops
             ctx.failure_sla[ip] = _sla_ops(post)
             pre = _pre_change(ctx, ip)
-            pre_lines = [l.rstrip() for l in pre.splitlines()]
-            post_lines = [l.rstrip() for l in post.splitlines()]
-            pre_set, post_set = set(pre_lines), set(post_lines)
+            # Section-aware (C501): a line is new only if the device did not hold it UNDER
+            # THE SAME HEADERS. Whole-line text missed ` shutdown` pushed under one
+            # interface because another interface already printed it.
+            from modules.nsot.deploy import landed_between
             entry.update({
-                "landed": [l for l in post_lines if l and l not in pre_set],
-                "lost": [l for l in pre_lines if l and l not in post_set],
+                "landed": [[list(c), l] for c, l in landed_between(pre, post)],
+                "lost": [[list(c), l] for c, l in landed_between(post, pre)],
                 "have_pre_snapshot": bool(pre),
             })
             entry["device_changed"] = bool(entry["landed"] or entry["lost"])
@@ -1691,7 +1700,8 @@ def _capture_failure_state(ctx: PipelineContext) -> None:
 #: the device where it was before the push.
 ROLLBACK_STATES = {
     "restored": "the undo program was sent and a read-back finds nothing left to undo",
-    "nothing_to_undo": "nothing of the push landed, so there was nothing to undo",
+    "nothing_to_undo": ("the device held everything the push sent before it, so nothing "
+                        "changed; read back to confirm"),
     "incomplete": "the undo was sent and a read-back still finds pushed lines on the device",
     "sent_unverified": "the undo was sent and the device could not be read back",
     "failed": "sending the undo program failed",
@@ -1716,10 +1726,8 @@ def _rollback_readback(ctx, dev, pushed, pre_cfg, units=(), recreated=()) -> dic
     except Exception as exc:                    # noqa: BLE001
         return {"state": "sent_unverified",
                 "detail": f"the device could not be read back: {exc}", "remaining": []}
-    pre_set = {l.rstrip() for l in (pre_cfg or "").splitlines()}
-    landed = [l.rstrip() for l in (post or "").splitlines()
-              if l.strip() and l.rstrip() not in pre_set]
-    remaining = rollback_commands(pushed, pre_cfg, landed=landed)
+    from modules.nsot.deploy import landed_between
+    remaining = rollback_commands(pushed, pre_cfg, landed=landed_between(pre_cfg, post or ""))
     if units:
         # A removed line that is still missing is an undo still needed.
         from modules.nsot.removal import restore_program
@@ -1837,6 +1845,13 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             # command answering something that never happened.
             state = ctx.failure_state.get(ip) or {}
             landed = state.get("landed") if state.get("landed") is not None else None
+            # A push that COMPLETED refused no line: the error pattern raises on the first
+            # one the device rejects. So every pushed line was accepted, and nothing may be
+            # filed "rejected, never applied" (C501: a landed ` shutdown` was, from a
+            # whole-line comparison). The capture's `landed` decides only for a push that
+            # stopped part-way, where some lines never reached the device.
+            if (ctx.push_results.get(ip) or {}).get("ok"):
+                landed = None
             undo = rollback_commands(pushed, pre_cfg, landed=landed)
             _applied, rejected = landed_leaves(pushed, landed)
             if rejected or sla_not_undone:
@@ -1854,9 +1869,20 @@ def _stage_rollback(ctx: PipelineContext) -> None:
             ctx.rollback_commands[ip] = undo
 
             if not undo:
-                log.info("pipeline[rollback]: %s — nothing to undo", hostname)
-                ctx.rollback_outcome[ip] = {"state": "nothing_to_undo", "remaining": [],
-                                            "detail": ROLLBACK_STATES["nothing_to_undo"]}
+                # "Nothing to undo" is a claim about the device, so it is READ BACK on a
+                # fresh connection before it is said (C501: it was said of a device that
+                # still held the push). A read-back that finds the push still there is
+                # `incomplete`, naming what remains.
+                back = _rollback_readback(ctx, dev, pushed, pre_cfg,
+                                          removal.get("units") or [], recreated)
+                if back["state"] == "restored":
+                    log.info("pipeline[rollback]: %s — nothing to undo (read back)", hostname)
+                    ctx.rollback_outcome[ip] = {"state": "nothing_to_undo", "remaining": [],
+                                                "detail": ROLLBACK_STATES["nothing_to_undo"]}
+                else:
+                    log.error("pipeline[rollback]: %s — no undo was built, and the read-back "
+                              "finds the push still there: %s", hostname, back["detail"])
+                    ctx.rollback_outcome[ip] = back
                 _unrestorable_is_incomplete(ctx, ip, unrestorable)
                 continue
 
@@ -1959,12 +1985,61 @@ def _restore_config(conn, commands) -> None:
         # push: the forward failure at least leaves someone looking at it.
         conn.send_config_set(lines, read_timeout=120,
                              error_pattern=IOS_ERROR_PATTERN)
-        conn.save_config()
+        # NOT saved (C501). The push no longer saves, so startup still holds the device as
+        # it was before it; saving here, before the read-back, would write an undo that
+        # turns out incomplete over that good copy.
 
 
 # ---------------------------------------------------------------------------
 # Stage 8.5 — Save golden
 # ---------------------------------------------------------------------------
+
+def _stage_save_startup(ctx: PipelineContext) -> None:
+    """Write running to startup on every device whose change was pushed and VERIFIED, and on
+    no other (C501). The push used to save two seconds after it landed, before verify, so a
+    change that failed verify was in startup whatever the rollback then did; on tw-ztp-a a
+    shutdown that broke BGP survived the rollback and would have survived a reload.
+
+    Runs after verify passed (a failed verify rolls back and never reaches this stage), on a
+    fresh connection (C272: the push's session can be unreadable after a save). A save that
+    fails leaves the change running and NOT in startup: recorded per device and reported
+    ("continue"), never rolled back over, because the change itself passed."""
+    # The ONE save there is (`onboard.persist_on_device`: write memory, then the startup read
+    # back), so the deploy and onboarding cannot disagree about what "saved" means.
+    from modules.nsot.onboard import persist_on_device
+
+    # Sequential: one device per run (`routes/deploy.py` `_deploy_one`), and the batch above
+    # it is sequential for its circuit breaker.
+    for dev in ctx.selected_devices:
+        ip = dev["ip"]
+        result = ctx.push_results.get(ip) or {}
+        if not result.get("ok") or result.get("skipped"):
+            continue
+        hostname = dev.get("hostname", ip)
+        try:
+            # The row holds encrypted tokens; decrypted here as `stored_connection_params`
+            # does for every other session to the device.
+            from modules.device import decrypt_field
+            got = persist_on_device(ip, dev.get("username", ""),
+                                    decrypt_field(dev.get("password", "")),
+                                    decrypt_field(dev.get("secret", "")),
+                                    dev.get("device_type", ""))
+        except Exception as exc:              # noqa: BLE001
+            got = {"ok": False, "detail": str(exc)}
+        if got.get("ok"):
+            ctx.saved_startup[ip] = {"ok": True}
+            log.info("pipeline[save_startup]: %s saved to startup after verify", hostname)
+        else:
+            ctx.saved_startup[ip] = {"ok": False, "error": got.get("detail") or "not saved"}
+            log.error("pipeline[save_startup]: %s NOT saved to startup: %s", hostname,
+                      got.get("detail"))
+    unsaved = [d.get("hostname", d["ip"]) for d in ctx.selected_devices
+               if not (ctx.saved_startup.get(d["ip"]) or {"ok": True}).get("ok")]
+    if unsaved:
+        raise PipelineStageError(
+            "verified and running, NOT saved to startup (a reload loses the change): "
+            + ", ".join(unsaved))
+
 
 def _stage_save_golden(ctx: PipelineContext) -> None:
     """Commit the post-deploy config as the new golden baseline.

@@ -869,7 +869,16 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
                                     "Read it before anything else is sent to it.",
                             "lines": list(rb.get("remaining") or [])})
         not_undone = (r.get("rollback") or {}).get("not_undone") or []
-        if not_undone:
+        if not_undone and r.get("stage") not in ("", "deploy"):
+            # C501: a push that COMPLETED (it failed later, at {stage}) rejected no line, so
+            # "rejected, never applied" contradicts "it received N lines". Never said; said
+            # instead that the device may still hold them.
+            did_not.append({"target": name, "kind": "not_restored",
+                            "text": "The rollback did not undo these lines, and the push that "
+                                    "sent them completed, so the device accepted them: it may "
+                                    "still hold them. Read it before anything else is sent to "
+                                    "it.", "lines": list(not_undone)})
+        elif not_undone:
             did_not.append({"target": name, "kind": "not_undone",
                             "text": "Rejected by the device when pushed, so not undone by the "
                                     "rollback: never applied.", "lines": list(not_undone)})

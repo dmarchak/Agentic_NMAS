@@ -2,7 +2,7 @@
 
 A deploy moves a device toward its committed intent: it sends the lines intent has and the
 device lacks, checks the device is still working, and records what landed. It changes the
-device's running configuration and its startup configuration (the push ends with a save),
+device's running configuration, its startup configuration (saved only once verify passes),
 its golden in the list's repository, and the deploy record.
 
 ![The deploy in three bands. In the tool, the plan reads the committed golden and committed intent and builds the exact program, which a person confirms; the run then reads the device, sends the program over SSH, reads the device again on a new session and verifies; the batch commits one golden and writes a receipt per device. A failed verify sends an undo program back to the device.](diagrams/deploy.svg)
@@ -116,7 +116,8 @@ the run ends. Its stages, in the order the code declares them:
    line is already present, or one adding more than 200 lines. With no running configuration
    it is skipped.
 6. `deploy`. Read: the device's replies. Sent: `enable`, then the program in configuration
-   mode on the pooled SSH session, then `write memory`. A reply line such as `% Invalid input`
+   mode on the pooled SSH session; NOT saved to startup yet (`save_startup` does that once
+   verify passes, so a change that fails verify never reaches startup). A reply line such as `% Invalid input`
    or `ERROR:` stops the push. NETCONF is used instead only where the platform map and the
    `netconf_enabled` setting both allow it, falling back to SSH on a NETCONF error. Recorded:
    the time the push ended, for the BGP watch. Nothing is negated except a re-created IP SLA
@@ -137,12 +138,16 @@ the run ends. Its stages, in the order the code declares them:
    device was not running before and is still not up, a read that could not be trusted, or a
    new line not read back makes verify not pass, without a rollback: undoing the change cannot
    fix those.
-9. `save_golden`. Read: `post_snapshot`'s running configuration. Sent: nothing. Recorded: the
+9. `save_startup`. Read: nothing. Sent: `write memory`, on a fresh SSH session, to each device
+   whose push completed, once verify did not fail. Recorded: whether each saved. A save that
+   fails leaves the change running and NOT in startup (a reload would lose it): said in the
+   result, never rolled back over, since the change itself passed.
+10. `save_golden`. Read: `post_snapshot`'s running configuration. Sent: nothing. Recorded: the
    capture, staged in `.nsot/staging/post_deploy/` and handed to the batch, which commits once
    for every device (see [What is recorded](#what-is-recorded)). It runs when verify did not
    fail, including when verify did not pass, and records nothing for a device rolled back or
    with no post-change read.
-10. `audit_log`. Read: the run's results. Sent: nothing. Recorded: a JSON entry,
+11. `audit_log`. Read: the run's results. Sent: nothing. Recorded: a JSON entry,
     `pipeline_audit/tpl-<device>.json` in the data directory: stages, push results, the
     snapshot counts, verify and whether a rollback ran, without the program. It is written
     whatever happened, and the next deploy to that device overwrites it; the receipt is the
@@ -154,19 +159,23 @@ A failure in `deploy`, `post_snapshot` or `verify` starts the rollback on a devi
 was attempted, including one whose push failed half-way:
 
 1. **Read what landed.** Read: `show running-config` on a fresh SSH session, compared with the
-   pre-change snapshot. Sent: nothing. Recorded: the lines that landed and the lines lost, in
-   the result. On a partial push what landed differs from what was sent, and only what landed
-   is undone; a line the device rejected is reported as never applied.
+   pre-change snapshot section by section: a line is new only if the device did not hold it
+   under the same headers. Sent: nothing. Recorded: the lines that landed and the lines lost,
+   in the result. A push that completed rejected nothing, so everything it sent is undone; on
+   a push that stopped part-way, what landed differs from what was sent, only what landed is
+   undone, and a line the device rejected is reported as never applied.
 2. **Build the undo.** Read: the pushed program, the snapshot and what landed. Sent: nothing.
    Recorded: nothing. An old line is sent back where the change replaced it, a new line is
    negated where there was none, a section the push created is removed by one negation, a
    removed line is put back verbatim, and a re-created IP SLA operation gets its old
    definition back. Every undo line must answer something the push sent, and the undo is
    exempt from the dangerous-line gate, since undoing `no shutdown` is `shutdown`.
-3. **Send it.** Sent: the undo in configuration mode on the pooled session, then
-   `write memory`. Recorded: nothing yet.
+3. **Send it.** Sent: the undo in configuration mode on the pooled session, NOT saved: a
+   change is saved only once it passes, so startup still holds the device as it was before
+   the push. Recorded: nothing yet.
 4. **Read it back.** Read: `show running-config` on a fresh session; the undo is computed again
-   against it. Sent: nothing. Recorded: the outcome, by name: restored, nothing to undo,
+   against it, and "nothing to undo" is read back too before it is said. Sent: nothing.
+   Recorded: the outcome, by name: restored, nothing to undo,
    incomplete (with what remains), sent but unverified, failed, or not attempted (no
    pre-change snapshot).
 5. **Block the change.** Recorded: the device's current intent commit and the failed additions,

@@ -137,7 +137,8 @@ class TestTheStepper:
                                                  ("config_diff", 1009), ("deploy", 1010),
                                                  ("post_snapshot", 1014), ("verify", 1020)),
                           now=1050.0, starts=True)
-        assert [r["state"] for r in rows] == ["done"] * 7 + ["running", "waiting", "waiting"]
+        # Verify running; save_startup (C501), save_golden and audit_log waiting.
+        assert [r["state"] for r in rows] == ["done"] * 7 + ["running"] + ["waiting"] * 3
         assert rows[7]["took_s"] == 30 and "settle window" in rows[7]["waits"]
         assert rows[3]["took_s"] == 5, "read before ran from its start to the compare's"
 

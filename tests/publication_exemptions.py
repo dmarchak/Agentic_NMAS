@@ -49,7 +49,7 @@ EXEMPT = {
     ('docs/NSOT_WRITEUP_NOTES.md', '90a9938fc540'): ('VRNETLAB', ('address',)),
     # docs/OPEN_FINDINGS.md
     ('docs/OPEN_FINDINGS.md', 'd61da30d6e24'): ('FIXTURE_LOG', ('address',)),
-    ('docs/OPEN_FINDINGS.md', '22925f26679b'): ('FIXTURE_LOG', ('address',)),
+    ('docs/OPEN_FINDINGS.md', '434e6a46e110'): ('FIXTURE_LOG', ('address',)),
     ('docs/OPEN_FINDINGS.md', '07623b5e97d7'): ('CAPTURE', ('address',)),
     ('docs/OPEN_FINDINGS.md', '27d3c4ac05f6'): ('VRNETLAB', ('address',)),
     # docs/P6_ZTP_PROBE.md

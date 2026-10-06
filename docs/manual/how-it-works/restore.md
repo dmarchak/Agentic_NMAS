@@ -101,7 +101,7 @@ for the commands each stage sends and reads):
    configuration. Sent: nothing. Recorded: the pre-change snapshot, for a rollback.
 5. `config_diff`. Read: the program and the running configuration. Sent: nothing. Recorded:
    the counts. Refuses a program the device holds in full, or one adding more than 200 lines.
-6. `deploy`. Sent: the program in configuration mode over SSH, then `write memory`. Recorded:
+6. `deploy`. Sent: the program in configuration mode over SSH, not saved to startup yet. Recorded:
    the push time.
 7. `post_snapshot`. Read: the same facts on a new SSH session. Sent: nothing. Recorded:
    nothing yet.
@@ -111,9 +111,11 @@ for the commands each stage sends and reads):
    predates the device's intent, only what was running before is checked. A failure rolls the
    device back exactly as a deploy does (see
    [When verify fails](deploy#when-verify-fails-the-rollback)).
-9. `save_golden`. Read: the post-change running configuration. Sent: nothing. Recorded: the
+9. `save_startup`. Sent: `write memory`, only once verify passed (a restore that fails verify
+   never reaches startup). Recorded: whether it saved.
+10. `save_golden`. Read: the post-change running configuration. Sent: nothing. Recorded: the
    capture, staged and handed to the batch.
-10. `audit_log`. Recorded: the run's audit entry, as for a deploy (the latest per device).
+11. `audit_log`. Recorded: the run's audit entry, as for a deploy (the latest per device).
 
 Then, once for the batch:
 

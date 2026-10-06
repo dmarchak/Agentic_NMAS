@@ -74,9 +74,11 @@ Each device runs the deploy's pipeline, its stages in the order the code declare
    program that touches only management sections (logging, SNMP, NTP, users, terminal
    lines, banners) gets the quick verify: each new line read back, no wait for BGP's hold
    time. LLDP, CDP, telemetry or the heartbeat's applet get the full one.
-9. **The golden** (`save_golden`). Read: the configuration after the change. Sent: nothing.
+9. **Save** (`save_startup`). Sent: `write memory`, only once verify passed. Recorded: whether
+   it saved.
+10. **The golden** (`save_golden`). Read: the configuration after the change. Sent: nothing.
    Recorded: the batch's captures as ONE golden commit, as you, after the last device.
-10. **The record** (`audit_log`). Read: nothing. Sent: nothing. Recorded: the run's audit
+11. **The record** (`audit_log`). Read: nothing. Sent: nothing. Recorded: the run's audit
     file, whatever happened; and, after the commit, a receipt per device (what was sent, the
     checks that ran, any rollback), shown on the device page's History tab.
 

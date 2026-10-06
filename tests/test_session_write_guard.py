@@ -279,8 +279,9 @@ HELD_BY_CALLER = {
     # C203, fixed 2026-09-29: credential_rotation.persist() holds the device
     # itself now, so the CLI rotation's save is held as well.
     "modules/nsot/onboard.py:persist_on_device": (
-        "run_phase_two, nmas-persist-native, and credential_rotation.persist() "
-        "(the CLI rotation, C203)"),
+        "run_phase_two, nmas-persist-native, credential_rotation.persist() "
+        "(the CLI rotation, C203), and the pipeline's save_startup, inside the deploy and "
+        "restore applies, which hold every target (acquire_many; C501)"),
 }
 
 #: Writers a caller reaches WITHOUT holding the device: the runtime guard

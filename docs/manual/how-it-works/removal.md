@@ -93,7 +93,7 @@ additions and any re-created IP SLA operations, through the same pipeline (see
    back from.
 5. `config_diff`. Read: the program and the running configuration. Sent: nothing. Recorded:
    the counts.
-6. `deploy`. Sent: the program in configuration mode over SSH, then `write memory`. Each
+6. `deploy`. Sent: the program in configuration mode over SSH, not saved to startup yet. Each
    removal is `no` plus the device's own line, verbatim, inside its section; a line that is
    itself a `no` line is removed by its positive form; a stanza is removed by negating its
    header once. Recorded: the push time.
@@ -103,9 +103,10 @@ additions and any re-created IP SLA operations, through the same pipeline (see
    were checked and any still present, for the receipt. Each removed line must read back gone;
    one still there fails verify and starts the rollback. A configuration that could not be read
    makes verify not pass, without a rollback.
-9. `save_golden`. Read: the post-change configuration. Sent: nothing. Recorded: the capture,
+9. `save_startup`. Sent: `write memory`, only once verify passed. Recorded: whether it saved.
+10. `save_golden`. Read: the post-change configuration. Sent: nothing. Recorded: the capture,
    handed to the batch's one golden commit.
-10. `audit_log`. Recorded: the run's audit entry, as for any deploy.
+11. `audit_log`. Recorded: the run's audit entry, as for any deploy.
 
 If verify fails, the undo puts the device's own removed lines back as they were, taken from the
 pre-change snapshot and only those still missing, each checked to be a line the snapshot held:

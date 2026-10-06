@@ -42,8 +42,9 @@ def r1():
 
 
 def _landed(pre, post):
-    pre_set = {l.rstrip() for l in pre.splitlines()}
-    return [l.rstrip() for l in post.splitlines() if l.strip() and l.rstrip() not in pre_set]
+    """What landed, section-aware (C501): the one producer the pipeline uses."""
+    from modules.nsot.deploy import landed_between
+    return landed_between(pre, post)
 
 
 class TestTheRangeIsHeld:

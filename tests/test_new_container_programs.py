@@ -28,7 +28,7 @@ Each time: exact assertions, sound logic, an input that could never reach them.
 
 import pytest
 
-from modules.nsot.deploy import (assert_rollback_provenance, created_containers,
+from modules.nsot.deploy import (assert_rollback_provenance, created_containers, landed_between,
                                  merge_commands, rollback_commands)
 
 #: The device has a hostname and nothing else. **Every container in the
@@ -186,7 +186,7 @@ class TestACreationIsUndoneOnlyIfItLanded:
 
     def test_the_container_landed_and_is_removed(self):
         assert rollback_commands(self.PUSHED, BARE,
-                                 landed=["interface Loopback0"]) == \
+                                 landed=landed_between(BARE, BARE + "interface Loopback0\n description x\n")) == \
             ["no interface Loopback0"]
 
     def test_an_unreadable_capture_is_conservative(self):

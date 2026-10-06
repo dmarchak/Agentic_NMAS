@@ -140,13 +140,13 @@ class TestStageTableContract:
     """
 
     def test_stage_count(self):
-        assert len(_STAGE_TABLE) == 10
+        assert len(_STAGE_TABLE) == 11
 
     def test_stage_names_cover_all_required_stages(self):
         required = {
             "netbox_query", "template_render", "ci_gate",
             "pre_snapshot", "config_diff", "deploy",
-            "post_snapshot", "verify", "save_golden", "audit_log",
+            "post_snapshot", "verify", "save_startup", "save_golden", "audit_log",
         }
         assert set(STAGE_NAMES) == required
 
@@ -159,8 +159,9 @@ class TestStageTableContract:
         assert STAGE_NAMES[5] == "deploy"
         assert STAGE_NAMES[6] == "post_snapshot"
         assert STAGE_NAMES[7] == "verify"
-        assert STAGE_NAMES[8] == "save_golden"
-        assert STAGE_NAMES[9] == "audit_log"
+        assert STAGE_NAMES[8] == "save_startup"    # saved only once verify passed (C501)
+        assert STAGE_NAMES[9] == "save_golden"
+        assert STAGE_NAMES[10] == "audit_log"
 
     def test_audit_log_is_last(self):
         assert STAGE_NAMES[-1] == "audit_log"
@@ -829,7 +830,8 @@ class TestFailureStateIsCaptured:
     def test_a_partial_write_is_reported_as_a_change(self):
         entry = self._run_capture("hostname R1\n description NSoT-managed b\n")
         assert entry["device_changed"] is True
-        assert entry["landed"] == [" description NSoT-managed b"]
+        # Section-aware (C501): the line and the header it sits under.
+        assert entry["landed"] == [[["hostname R1"], "description NSoT-managed b"]]
         assert entry["push_ok"] is False
 
     def test_an_untouched_device_is_reported_as_unchanged(self):
@@ -839,7 +841,7 @@ class TestFailureStateIsCaptured:
 
     def test_a_removed_line_is_reported_too(self):
         entry = self._run_capture("", pre="hostname R1\nip routing\n")
-        assert sorted(entry["lost"]) == ["hostname R1", "ip routing"]
+        assert sorted(entry["lost"]) == [[[], "hostname R1"], [[], "ip routing"]]
 
     def test_an_unreadable_device_says_so_rather_than_unchanged(self):
         from modules.pipeline import _capture_failure_state

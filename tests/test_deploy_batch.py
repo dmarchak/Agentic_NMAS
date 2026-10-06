@@ -806,7 +806,7 @@ class TestARejectedCommandFailsCapturesAndRollsBack:
         assert state["push_ok"] is False
         assert state["device_changed"] is True, (
             "a partially applied push must be reported as a change")
-        assert "interface GigabitEthernet0/1" in state["landed"]
+        assert [[], "interface GigabitEthernet0/1"] in state["landed"]     # (chain, line), C501
 
         # The description was REJECTED — it is not in what landed — so there is
         # nothing to undo and it is reported instead. Undoing a line the device

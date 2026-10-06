@@ -60,9 +60,9 @@ KNOWN_DUPLICATES = {
     # C103 (2026-09-29): Save Device Config and Save to Startup REMOVED, the
     # operator's decision: Persist is the one save a person reaches, and the two
     # that went could report success without proving it.
-    ("save_startup",): {"modules/pipeline.py:_push_via_netmiko",
-                        "modules/pipeline.py:_restore_config",
-                        "modules/nsot/onboard.py:persist_on_device"},
+    # ("save_startup",) LEFT this list 2026-10-05 (C501): the push and the rollback no longer
+    # save (the push saved before verify, so a failed change reached startup), and the
+    # deploy's save after verify calls `persist_on_device`, the one home.
     ("delete", "file"): {"app.py:delete_file", "modules/bulk_ops.py:_execute_delete_file"},
     ("copy", "file", "tftp"): {"app.py:download_device_file",
                                "modules/bulk_ops.py:_execute_tftp_download"},
@@ -188,7 +188,8 @@ def test_the_scan_finds_something():
     # Positive anchors: a single implementation, and the known duplicate.
     # Moved, still ONE home: bulk reload calls it (C153).
     assert found[("reload",)] == {"modules/device_reload.py:reload_device"}
-    assert found[("save_startup",)] == KNOWN_DUPLICATES[("save_startup",)]
+    # The save to startup: ONE home since C501 (the deploy's save after verify calls it).
+    assert found[("save_startup",)] == {"modules/nsot/onboard.py:persist_on_device"}
 
 
 def test_every_device_changing_effect_has_one_implementation():

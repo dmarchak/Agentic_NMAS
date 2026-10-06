@@ -23,7 +23,7 @@ import os
 import pytest
 
 from modules.nsot.deploy import (RollbackNotInverse, assert_rollback_provenance,
-                                 classify_diff, rollback_commands)
+                                 classify_diff, landed_between, rollback_commands)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
@@ -128,7 +128,7 @@ class TestAPushedNoLineWithNothingToPair:
 
     def test_a_landed_no_line_is_undone_by_its_positive(self):
         pushed = ["no logging console"]
-        rb = rollback_commands(pushed, R2, landed=["no logging console"])
+        rb = rollback_commands(pushed, R2, landed=landed_between(R2, R2 + "no logging console\n"))
         assert rb == ["logging console"], rb
         assert not any(line.strip().startswith("no no") for line in rb)
         assert_rollback_provenance(rb, pushed, R2)
@@ -151,7 +151,7 @@ class TestAPushedNoLineWithNothingToPair:
 
     def test_a_positive_line_is_still_negated_the_control(self):
         rb = rollback_commands(["logging console critical"], R2,
-                               landed=["logging console critical"])
+                               landed=landed_between(R2, R2 + "logging console critical\n"))
         assert rb == ["no logging console critical"], rb
 
 

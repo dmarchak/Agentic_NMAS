@@ -569,7 +569,9 @@ class TestIosRejectionsAreDetected:
 
         conn = self._Conn("s4(config)#banner motd 100% authorised use only\n")
         _restore_config(conn, "banner motd 100% authorised use only\n")
-        assert conn.saved is True
+        # It completed without raising (the % is not a rejection), and, since C501, a
+        # rollback never saves: startup still holds the device as it was before the push.
+        assert conn.saved is False
 
 
 class TestRollbackIsComputedNotReplayed:
@@ -1131,36 +1133,78 @@ class TestRollbackUndoesWhatLandedNotWhatWasPushed:
     PUSHED = ["interface Loopback0", " description 3B test", " ip mtu 20000", "exit"]
     PRE = ("interface Loopback0\n description mgmt identity\n"
            " ip address 10.255.1.24 255.255.255.255\n")
+    #: The device after a partial push: the description landed, the mtu was refused.
+    POST = ("interface Loopback0\n description 3B test\n"
+            " ip address 10.255.1.24 255.255.255.255\n")
 
     def test_only_the_landed_line_is_undone(self):
-        from modules.nsot.deploy import rollback_commands
+        from modules.nsot.deploy import landed_between, rollback_commands
         undo = rollback_commands(self.PUSHED, self.PRE,
-                                 landed=[" description 3B test"])
+                                 landed=landed_between(self.PRE, self.POST))
         assert undo == ["interface Loopback0", " description mgmt identity", "exit"]
         assert not any("mtu" in c for c in undo)
 
     def test_the_rejected_line_is_reported(self):
-        from modules.nsot.deploy import landed_leaves
-        _applied, rejected = landed_leaves(self.PUSHED, [" description 3B test"])
+        from modules.nsot.deploy import landed_between, landed_leaves
+        _applied, rejected = landed_leaves(self.PUSHED, landed_between(self.PRE, self.POST))
         assert [e.line for e in rejected] == [" ip mtu 20000"]
 
     def test_nothing_landed_means_nothing_to_undo(self):
-        from modules.nsot.deploy import rollback_commands
+        from modules.nsot.deploy import landed_between, rollback_commands
         assert rollback_commands(self.PUSHED, self.PRE, landed=[]) == []
 
     def test_an_unknown_capture_undoes_everything(self):
         """Conservative: None means the capture could not read the device."""
-        from modules.nsot.deploy import rollback_commands
+        from modules.nsot.deploy import landed_between, rollback_commands
         undo = rollback_commands(self.PUSHED, self.PRE, landed=None)
         assert " description mgmt identity" in undo
         assert " no ip mtu 20000" in undo
 
     def test_provenance_holds_for_a_landed_only_rollback(self):
-        from modules.nsot.deploy import (assert_rollback_provenance,
+        from modules.nsot.deploy import (assert_rollback_provenance, landed_between,
                                          rollback_commands)
         undo = rollback_commands(self.PUSHED, self.PRE,
-                                 landed=[" description 3B test"])
+                                 landed=landed_between(self.PRE, self.POST))
         assert_rollback_provenance(undo, self.PUSHED)
+
+
+class TestALandedLineIsKnownByItsSection:
+    """C501 (the operator, 2026-10-05, the throwaway session's Part 5.3, the rollback's first
+    real run): tw-ztp-a took `interface Loopback1 / shutdown`, verify failed (BGP dropped past
+    its hold), and the rollback said "nothing of the push landed" while the device held it.
+    `landed` was whole-line TEXT new since the snapshot, and ` shutdown` was not new: another
+    interface already printed it. So the landed line was filed as rejected and never undone.
+
+    The device here has the shape that hid it: an interface that was ALREADY shut down."""
+
+    PUSHED = ["interface Loopback1", " shutdown", "exit"]
+    PRE = ("hostname tw-a\n"
+           "interface Loopback1\n ip address 192.0.2.81 255.255.255.255\n"
+           "interface GigabitEthernet4\n no ip address\n shutdown\n")
+    POST = ("hostname tw-a\n"
+            "interface Loopback1\n ip address 192.0.2.81 255.255.255.255\n shutdown\n"
+            "interface GigabitEthernet4\n no ip address\n shutdown\n")
+
+    def test_the_line_landed_under_its_own_interface(self):
+        from modules.nsot.deploy import landed_between
+        assert landed_between(self.PRE, self.POST) == [(("interface Loopback1",), "shutdown")]
+
+    def test_it_is_applied_not_rejected(self):
+        from modules.nsot.deploy import landed_between, landed_leaves
+        applied, rejected = landed_leaves(self.PUSHED, landed_between(self.PRE, self.POST))
+        assert [e.line.strip() for e in applied] == ["shutdown"] and rejected == []
+
+    def test_the_rollback_sends_no_shutdown_under_loopback1(self):
+        from modules.nsot.deploy import landed_between, rollback_commands
+        undo = rollback_commands(self.PUSHED, self.PRE,
+                                 landed=landed_between(self.PRE, self.POST))
+        assert undo == ["interface Loopback1", " no shutdown", "exit"]
+
+    def test_bare_text_cannot_be_passed_as_landed(self):
+        """The defect's shape refused at the boundary: a line without its section."""
+        from modules.nsot.deploy import rollback_commands
+        with pytest.raises(TypeError, match="C501"):
+            rollback_commands(self.PUSHED, self.PRE, landed=[" shutdown"])
 
 
 class TestDiffCategoriesDistinguishReplaceFromResidue:
