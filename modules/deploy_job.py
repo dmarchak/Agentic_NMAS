@@ -47,8 +47,9 @@ _lock = threading.Lock()
 
 def start(list_name: str, order: list, confirmations: dict, command_hashes: dict, *,
           authorise: dict, remove: dict, scope: str, actor: str, actor_kind: str,
-          ident) -> str:
-    """Start the batch, in *order*, and return the job's id at once."""
+          ident, declare: dict = None) -> str:
+    """Start the batch, in *order*, and return the job's id at once. *declare*: each device's
+    declared effects (C506 phase 3), checked again at apply and folded into its hash."""
     from modules import identity
     from modules.nsot import capture_job
 
@@ -88,7 +89,7 @@ def start(list_name: str, order: list, confirmations: dict, command_hashes: dict
             report = apply_batch(list_name, {d: confirmations[d] for d in order},
                                  command_hashes, authorise=authorise, remove=remove,
                                  scope=scope, actor=actor, actor_kind=actor_kind,
-                                 on_device=on_device)
+                                 on_device=on_device, declare=declare)
         # A device refused at apply (its program moved) or skipped as drifted
         # never reaches the batch's own loop, so no event names it: it is
         # recorded from the report, or its row would read "not reached", the

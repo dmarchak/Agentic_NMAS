@@ -1167,6 +1167,36 @@ def _await_neighbour_convergence(ctx, ip: str, hostname: str, protocol: str,
             "snapshot": latest["snapshot"]}
 
 
+def _await_move(ctx, ip: str, move: dict, first: dict, before: dict) -> dict:
+    """A declared move (C506 phase 3): re-read the protocol's neighbours within its settle
+    window until the declared peer has formed on the declared interface. *first* is the
+    post-change read, judged before any wait; *before*, the pre-change read (a neighbour already
+    on the declared interface replaces nothing). ``{"judged", "elapsed", "window"}``; the
+    judgement is the last read's (``expected_effects.judge_move``)."""
+    from modules.connection import get_persistent_connection
+    from modules.nsot.expected_effects import judge_move, neighbour_rows
+
+    proto = move["proto"]
+    window = _window_for(proto, _list_of(ctx))
+    before_rows = neighbour_rows(before, proto)
+    latest = {"judged": judge_move(move, neighbour_rows(first, proto), before_rows)}
+    if latest["judged"]["state"] == "formed":
+        return {"judged": latest["judged"], "elapsed": 0.0, "window": window}
+    dev = next((d for d in ctx.selected_devices if d["ip"] == ip), None)
+    if dev is None:
+        return {"judged": latest["judged"], "elapsed": 0.0, "window": window}
+
+    def _probe():
+        get_persistent_connection(dev, ctx.connections_pool, ctx.pool_lock)  # reachable, or raise
+        snapshot = _detect_routing_neighbors(_session_for(ctx, dev))
+        latest["judged"] = judge_move(move, neighbour_rows(snapshot, proto), before_rows)
+        return latest["judged"]
+
+    result = _wait_for(proto, _probe, lambda j: j["state"] == "formed",
+                       sleep=ctx.settle_sleep or time.sleep, list_name=_list_of(ctx))
+    return {"judged": latest["judged"], "elapsed": result["elapsed"], "window": window}
+
+
 def _await_interfaces(ctx, ip: str, settled, check: str = "unexpected") -> dict:
     """Re-read the interfaces by name within *check*'s settle window until *settled(states)*.
     ``{"state", "states", "elapsed", "window"}``; ``states`` is the last read ({} when none
@@ -1404,8 +1434,14 @@ def _stage_verify(ctx: PipelineContext) -> None:
 
         # The adjacencies the program is expected to drop (C506 phase 2), as the plan showed
         # them: left out of each protocol's comparison, by identity where the read names them.
-        adj_drops = (((ctx.expected_effects or {}).get(ip) or {}).get("adjacencies_drop")
-                     or [])
+        # And what the person DECLARED with a reason (C506 phase 3): an ended session and a
+        # moved adjacency's old place are expected to go; the move's new place is required below.
+        fx_here = (ctx.expected_effects or {}).get(ip) or {}
+        declared_fx = list(fx_here.get("declared") or [])
+        adj_drops = list(fx_here.get("adjacencies_drop") or [])
+        known = {(d.get("proto"), d.get("rid") or d.get("address")) for d in adj_drops}
+        adj_drops += [d for d in _fx.as_drops(declared_fx)
+                      if (d["proto"], d.get("rid") or d.get("address")) not in known]
         expected_gone: dict = {}
         for pre_proto in pre_counts:
             expect = _fx.expected_ids(adj_drops, pre_proto)
@@ -1490,6 +1526,30 @@ def _stage_verify(ctx: PipelineContext) -> None:
                 unmet.append(f"{proto} is declared by intent and is not up after the "
                              f"change ({why}); it was not up before it either")
 
+        # ── Declared moves: each must re-form on its declared interface (C506 phase 3) ──
+        # Within the protocol's settle window, judged by the peer's router-id and the interface
+        # it is on: re-forming elsewhere, or someone else forming there instead, fails, naming
+        # both; the failure rolls back like any other.
+        moves_checked: list = []
+        for mv in ([] if hard else [d for d in declared_fx if d.get("kind") == "moves"]):
+            waited = _await_move(ctx, ip, mv, post_nbr, pre_nbr)
+            judged = waited["judged"]
+            moves_checked.append({"move": _fx.words(mv), "state": judged["state"],
+                                  "elapsed": waited["elapsed"],
+                                  "window": waited["window"]["timeout"]})
+            if judged["state"] != "formed":
+                issues.append(_fx.move_words(mv, judged, waited["window"]["timeout"]))
+        # A neighbour nobody declared, forming beside the expected ones, is a NOTE (the board's
+        # decision); one forming where a declared move expected its peer failed above.
+        notes: list = []
+        moved_ids = {d.get("rid") for d in declared_fx if d.get("kind") == "moves"}
+        for proto in ("ospf", "ospfv3"):
+            new_ids = (_fx.neighbour_ids(post_nbr, proto) - _fx.neighbour_ids(pre_nbr, proto)
+                       - moved_ids)
+            if new_ids and pre_counts.get(proto) is not None:
+                notes.append(f"{'OSPFv3' if proto == 'ospfv3' else 'OSPF'}: an adjacency nobody declared "
+                             f"formed with {', '.join(sorted(new_ids))} (additional, so a note)")
+
         # ── BGP, watched to its hold time (C178) ─────────────────────────
         # A session a change broke without resetting TCP reads Established
         # until its hold timer expires, so a reading before then could not
@@ -1532,9 +1592,15 @@ def _stage_verify(ctx: PipelineContext) -> None:
         post_routes = post.get("routes", {}).get("total_count", -1)
         if not _skip_route and pre_routes > 0 and (post.get("routes") or {}).get("error"):
             cant_read.append(f"routes: `show ip route summary`: {post['routes']['error']}")
+        # Declared to change (C506 phase 3): read and recorded, never a failure, never waited on.
+        routes_declared = next((d.get("reason", "") for d in declared_fx
+                                if d.get("kind") == "routes"), "")
         if not _skip_route and pre_routes > 0 and post_routes >= 0:
             retention = post_routes / pre_routes
-            if retention < _ROUTE_RETENTION_MIN:
+            if retention < _ROUTE_RETENTION_MIN and routes_declared:
+                notes.append(f"Route table {pre_routes} → {post_routes}: declared to change "
+                             f"(\"{routes_declared}\"), so not a failure")
+            elif retention < _ROUTE_RETENTION_MIN:
                 # Re-read within the route window before calling it (C115):
                 # the table settles after its protocols, and a count read the
                 # instant after a push can be mid-reconvergence.
@@ -1701,6 +1767,12 @@ def _stage_verify(ctx: PipelineContext) -> None:
                            **(named or {})},
             "unexpected_settle": unexpected_settle,
             "failed_at_once": hard,
+            # C506 phase 3: what the person declared, each move's outcome, and the notes (an
+            # undeclared additional adjacency; a declared route change read).
+            "declared": declared_fx,
+            "declared_moves": moves_checked,
+            "routes_declared": routes_declared or None,
+            "notes": notes,
         }
         if unmet:
             log.error("pipeline[8/verify]: %s intent not met (no rollback): %s",
@@ -2505,7 +2577,10 @@ def _parse_ospf_neighbor_rows(out: str) -> list:
     for line in (out or "").splitlines():
         fields = line.split()
         if len(fields) >= 3 and re.match(r"^\d+\.\d+\.\d+\.\d+$", fields[0]):
-            rows.append({"neighbor_id": fields[0], "state": fields[2]})
+            # The Interface column is last in both (C506 phase 3: a declared move is judged by
+            # the interface the adjacency re-forms on).
+            rows.append({"neighbor_id": fields[0], "state": fields[2],
+                         "interface": fields[-1] if len(fields) >= 6 else ""})
     return rows
 
 
@@ -2575,6 +2650,7 @@ def _read_routing_protocols(conn, unreadable: dict = None) -> dict:
             found["ospf"] = {"count": len(rows),
                              "states": [r["state"] for r in rows],
                              "neighbors": [r["neighbor_id"] for r in rows],
+                             "rows": rows,
                              "output": out[:2000]}
     except Exception as exc:                          # noqa: BLE001
         unreadable["show ip ospf neighbor"] = f"{type(exc).__name__}: {exc}"
@@ -2604,6 +2680,7 @@ def _read_routing_protocols(conn, unreadable: dict = None) -> dict:
             rows = _parse_ospf_neighbor_rows(out)
             found["ospfv3"] = {"count": len(rows), "states": [r["state"] for r in rows],
                                "neighbors": [r["neighbor_id"] for r in rows],
+                               "rows": rows,
                                "output": out[:2000]}
     except Exception as exc:                          # noqa: BLE001
         unreadable["show ospfv3 neighbor"] = f"{type(exc).__name__}: {exc}"

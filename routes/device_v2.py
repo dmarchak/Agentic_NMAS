@@ -760,6 +760,52 @@ def _deploy_form(fields):
     return picked, reasons, danger
 
 
+def _declare_form(fields):
+    """What the card's Expected effects carry (C506 phase 3): ``(raw, pending)``. *raw*: each
+    declaration already made (a hidden `decl`, less any ticked `undecl`), then each new one
+    whose fields are complete and whose reason has the shape of one; *pending*: the new one's
+    fields as typed, with why it is not declared yet, so the card keeps them."""
+    import json
+
+    from modules.nsot.authorisation import reason_problem
+
+    getlist = getattr(fields, "getlist", lambda k: [])
+    dropped = {i for i in getlist("undecl") if i.isdigit()}
+    raw = []
+    for i, text in enumerate(getlist("decl")):
+        if str(i) in dropped:
+            continue
+        try:
+            item = json.loads(text)
+        except ValueError:
+            continue
+        if isinstance(item, dict):
+            raw.append(item)
+    got = {k: (fields.get(k) or "").strip()
+           for k in ("mv_id", "mv_to", "mv_why", "end_id", "end_why", "rt_why")}
+    pending = dict(got, problem="", open="")
+    for kind, need, why in (("moves", ("mv_id", "mv_to"), "mv_why"),
+                            ("ends", ("end_id",), "end_why"), ("routes", (), "rt_why")):
+        if not (got[why] or any(got[k] for k in need)):
+            continue
+        pending["open"] = kind
+        missing = [k for k in need if not got[k]]
+        problem = ("choose " + (" and ".join({"mv_id": "the adjacency", "mv_to": "where it moves",
+                                              "end_id": "the adjacency"}[k] for k in missing))
+                   if missing else reason_problem({"line": "this declaration",
+                                                   "reason": got[why]}))
+        if problem:
+            pending["problem"] = problem
+            continue
+        raw.append({"kind": kind, "reason": got[why],
+                    **({"id": got["mv_id"], "to": got["mv_to"]} if kind == "moves" else {}),
+                    **({"id": got["end_id"]} if kind == "ends" else {})})
+        for k in need + (why,):
+            pending[k] = ""
+        pending["open"] = ""
+    return raw, pending
+
+
 def _deploy_card(ref, dev, back, fields, focus=""):
     """The deploy card for *dev*: THE plan (`routes.deploy.plan_devices`, captured configs
     only, no device contacted) planned again with what the form carries, each stated reason
@@ -767,14 +813,17 @@ def _deploy_card(ref, dev, back, fields, focus=""):
     exactly the program on the screen."""
     from modules import device_actions, identity
     from modules.nsot.authorisation import key
+    from modules.nsot.expected_effects import raw_of
     from modules.outbound import mask_payload
     from modules.preview_confirm import confirm_part, deploy_preview
     from routes.deploy import plan_devices
 
     host = dev.get("hostname", "")
     picked, reasons, danger = _deploy_form(fields)
+    raw_declared, pending = _declare_form(fields)
     remove = {host: picked} if picked else {}
-    entry = plan_devices(ref.name, [host], remove=remove)[0]
+    declare = {host: raw_declared} if raw_declared else {}
+    entry = plan_devices(ref.name, [host], remove=remove, declare=declare)[0]
     rm = entry.get("removals") or {}
     authorise = [{"line": k, "reason": reasons[rid]}
                  for rid, k in zip(rm.get("ids") or [], rm.get("keys") or [])
@@ -783,17 +832,19 @@ def _deploy_card(ref, dev, back, fields, focus=""):
                   for i, line in enumerate(entry.get("dangerous") or []) if danger.get(i)]
     if authorise:
         entry = plan_devices(ref.name, [host], remove=remove,
-                             authorise={host: authorise})[0]
+                             authorise={host: authorise}, declare=declare)[0]
     out = mask_payload({"entry": entry, "preview": deploy_preview([entry], request, scope="")})
     c = device_actions.deploy_card(
         ref, host, out["entry"], out["preview"],
         viewer=dict(confirm_part(request, "confirm"), actor=identity.identify(request).actor or ""),
-        reasons=reasons, danger_reasons=danger)
+        reasons=reasons, danger_reasons=danger, pending=pending)
     if c["may"]:
         rm = entry.get("removals") or {}
+        # From the UNMASKED plan, as the hashes are: what is declared is what was hashed.
         c["confirm"] = {"capture_hash": entry.get("capture_hash", ""),
                         "command_hash": entry.get("command_hash", ""),
-                        "remove": list(rm.get("ids") or []), "authorise": authorise}
+                        "remove": list(rm.get("ids") or []), "authorise": authorise,
+                        "declare": [raw_of(d) for d in entry.get("declared") or []]}
     c.update(back=back, ip=dev.get("ip", ""))
     if focus == "removal":
         c["focus"] = "removal"
@@ -855,6 +906,8 @@ def deploy_confirm(name):
     try:
         remove = json.loads(request.form.get("remove") or "[]")
         authorise = json.loads(request.form.get("authorise") or "[]")
+        # The declared effects (C506 phase 3), in the hash: checked again at apply.
+        declare = json.loads(request.form.get("declare") or "[]")
     except ValueError:
         return _strict(render_template("v2/_deploy.html", c={
             "state": "refused_hash", "host": host, "list": ref.name,
@@ -864,7 +917,7 @@ def deploy_confirm(name):
         authorise={host: authorise} if authorise else {}, remove={host: remove} if remove else {},
         scope="", actor=identity.identify(request).actor or "",
         actor_kind=getattr(identity.identify(request), "kind", ""),
-        ident=identity.verified_identity())
+        ident=identity.verified_identity(), declare={host: declare} if declare else None)
     return _strict(render_template("v2/_deploy.html", c={
         "state": "deploying", "op": "deploy", "host": host, "list": ref.name, "job": job,
         "back": _back(request.form), "steps": device_actions.job_steps("deploy", ref.name, host)}))

@@ -78,6 +78,8 @@ def path_for(list_name: str) -> str:
 
 def _checks(result: dict) -> dict:
     """What verify compared on this device, or why it did not run."""
+    from modules.redact import redact_text
+
     verify = result.get("verify") or {}
     outcome = result.get("outcome", "")
     if outcome == "refused":
@@ -128,6 +130,10 @@ def _checks(result: dict) -> dict:
         # Quick or full, and why (verify_scope); a quick verify's read-back.
         "verify_scope": verify.get("verify_scope"),
         "read_back": verify.get("read_back"),
+        # C506 phase 3: each declared move's outcome, and verify's notes (an adjacency nobody
+        # declared forming beside the expected ones; a declared route change read).
+        "declared_moves": list(verify.get("declared_moves") or []),
+        "notes": [redact_text(n) for n in verify.get("notes") or []],
     }
     if not protocols:
         checks["neighbours_note"] = ("no routing protocol on this device: the "
@@ -216,6 +222,10 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
             "removals": [{"id": r.get("id", ""), "chain": [redact_text(c) for c in r.get("chain") or []],
                           "line": redact_text(r.get("line", ""))}
                          for r in (result.get("removals") or [])],
+            # What the person declared verify should expect (C506 phase 3), each with its
+            # reason, in the hash: testimony, masked like the authorisations' reasons.
+            "declared": [dict(d, reason=redact_text(d.get("reason", "")))
+                         for d in (result.get("declared") or [])],
             "checks": _checks(result),
             "rollback": {
                 "performed": bool(result.get("rolled_back")),

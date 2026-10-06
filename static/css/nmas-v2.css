@@ -863,6 +863,16 @@ select { max-width: 100%; }
   font-size: 13px; }
 .op-gates li { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 10px; align-items: baseline; }
 .op-gates .badge { justify-content: center; }
+/* C506 phase 3: the three declarations, each a disclosure under Expected effects; the open one
+   lays its fields out under the row of choices. */
+.op-declare { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; margin: 4px 0 8px; }
+.op-declare details[open] { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface-2); }
+.op-declare summary { list-style: none; cursor: pointer; width: max-content; }
+.op-declare summary::-webkit-details-marker { display: none; }
+.op-declare label { display: block; max-width: 100%; font-size: 13px; }
+.op-declare select { display: block; width: 100%; margin-top: 4px; }
+.op-undeclare { white-space: nowrap; }
 .op-next { display: flex; flex-direction: column; gap: 8px; }
 .op-next > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .op-ft { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 20px;

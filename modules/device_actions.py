@@ -343,8 +343,56 @@ def rotate_job_card(ref, host: str, job_id: str, got) -> dict:
 # pipeline's stages; the result from the receipt the apply wrote.
 # ---------------------------------------------------------------------------
 
+def _declare_part(ref, entry: dict, pending: dict) -> dict:
+    """The card's declarations (C506 phase 3, the board approved 2026-10-06): what is declared,
+    each with what verify will require and its reason, carried as the form's own value between
+    plans; what may be declared; and the new declaration being typed, with why it is not one
+    yet."""
+    import json
+
+    from modules.nsot import expected_effects as fx
+    from modules.nsot.convergence import window_for
+
+    effects = entry.get("expected_effects") or {}
+    offers = effects.get("offers") or {}
+
+    def requires(d):
+        if d.get("kind") == "moves":
+            try:
+                seconds = window_for(d["proto"], ref.name)["timeout"]
+            except Exception:                  # noqa: BLE001
+                seconds = None
+            return (f"it must re-form on {d['to']} within "
+                    + (f"{'OSPFv3' if d['proto'] == 'ospfv3' else 'OSPF'}'s settle window "
+                       f"({seconds} s)" if seconds else "its protocol's settle window")
+                    + ", or verify fails and the change is rolled back")
+        if d.get("kind") == "ends":
+            return "its loss is expected, and is not a failure"
+        return "a smaller route table is recorded, and is not a failure"
+
+    declared = [{"words": fx.words(d)[0].upper() + fx.words(d)[1:], "reason": d.get("reason", ""),
+                 "requires": requires(d), "raw": json.dumps(fx.raw_of(d), sort_keys=True)}
+                for d in entry.get("declared") or []]
+    moves = [{"id": m["id"], "words": fx.offer_words(m)} for m in offers.get("moves") or []]
+    ends = [{"id": e["id"], "words": fx.offer_words(e)} for e in offers.get("ends") or []]
+    to = list(offers.get("to") or [])
+    return {
+        "declared": declared, "moves": moves, "to": to, "ends": ends,
+        "routes_declared": any(d.get("kind") == "routes" for d in entry.get("declared") or []),
+        "moves_none": ("" if moves and to else
+                       "Nothing to move: the program drops no OSPF adjacency whose router-id "
+                       "intent gives" if not moves else
+                       "Nowhere to move it: the program brings up no interface with OSPF on it"),
+        "ends_none": "" if ends else ("Nothing to end: committed intent gives this device no "
+                                      "other adjacency with a known identity"),
+        "pending": dict({"mv_id": "", "mv_to": "", "mv_why": "", "end_id": "", "end_why": "",
+                         "rt_why": "", "problem": "", "open": ""}, **(pending or {})),
+        "kinds": dict(fx.DECLARE_WORDS),
+    }
+
+
 def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
-                reasons=None, danger_reasons=None) -> dict:
+                reasons=None, danger_reasons=None, pending=None) -> dict:
     """The deploy card for *host* from `routes.deploy.plan_devices`'s *entry* and
     `deploy_preview`'s *preview*, both masked (the ticked residue is the plan's own `removals`),
     *reasons* each ticked line's stated reason (by id), *danger_reasons* each dangerous line's (by its
@@ -382,8 +430,9 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
             "notes": [{"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
                       for n in program.get("notes") or []],
             "dangerous": dangerous, "residue": residue,
-            # What the program is meant to do, derived (C506 phase 2).
+            # What the program is meant to do, derived (C506 phase 2), and declared (phase 3).
             "expected": program.get("expected") or {},
+            "declare": _declare_part(ref, entry, pending),
             "waiting": waiting, "authorisation_error": entry.get("authorisation_error", ""),
             "blocking": blocking, "refused": refused,
             "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
@@ -393,7 +442,8 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
             "confirm": ({"capture_hash": entry.get("capture_hash", ""),
                          "command_hash": entry.get("command_hash", ""),
                          "remove": list(removals.get("ids") or []),
-                         "authorise": list(entry.get("authorised") or [])} if may else None),
+                         "authorise": list(entry.get("authorised") or []),
+                         "declare": []} if may else None),
             "command_hash": entry.get("command_hash", "")}
 
 
@@ -770,6 +820,14 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
     outcome = happened.get("outcome", "unknown")
     rolled_back = bool(rollback.get("performed"))
     words = happened.get("words", outcome.replace("_", " "))
+    # C506 phase 3: each declared move as verify found it, and verify's notes (an adjacency
+    # nobody declared beside the expected ones; a declared route change), from the receipt.
+    declared_lines = [
+        (f"As declared: {m.get('move')}, formed at +{m.get('elapsed', 0):.0f} s"
+         if m.get("state") == "formed" else
+         f"Declared and not found: {m.get('move')} (within {m.get('window')} s)")
+        for m in checks.get("declared_moves") or []] + [
+        f"Note: {n}" for n in checks.get("notes") or []]
     return dict(card, state="result", level=DEPLOY_LEVELS.get(result.get("level"), "danger"),
                 outcome=outcome, words=words,
                 # The one device, never the batch's "N of N device(s) deployed" (C408).
@@ -777,7 +835,8 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
                 sent=list(sent.get("lines") or []), match_words=sent.get("match_words", ""),
                 none=sent.get("none", ""), authorised=list(sent.get("authorised") or []),
                 checks=list(checks.get("statements") or ([checks["why"]]
-                                                         if checks.get("why") else [])),
+                                                         if checks.get("why") else []))
+                + declared_lines,
                 rolled_back=rolled_back, rollback_state=rollback.get("state", ""),
                 rollback_detail=rollback.get("detail", ""),
                 # The save to startup after verify (C511), said once: `saved` here, so the

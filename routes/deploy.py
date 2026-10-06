@@ -408,8 +408,28 @@ def _expected_effects(list_name: str, hostname: str, commands, intents=None) -> 
     return out
 
 
+def _effects_and_declared(list_name: str, hostname: str, commands, raw, intents=None) -> tuple:
+    """``(effects, declared, problems)`` for *hostname*'s program: the derived effects, what a
+    person may declare on them (``effects["offers"]``), and *raw* checked against those offers
+    (C506 phase 3). ONE computation for the plan, the apply's recompute and the pipeline's
+    expectations, so what verify expects is what was confirmed. *intents*: the network's
+    ``(intents, error)``, read once per plan when given."""
+    from modules.nsot import expected_effects
+
+    if intents is None:
+        intents = _committed_intents_of(list_name)
+    effects = _expected_effects(list_name, hostname, commands, intents=intents[0])
+    if intents[1]:
+        effects["unread"] = (f"committed intent could not be read ({intents[1]}): adjacencies "
+                             "not derived")
+    effects["offers"] = expected_effects.offers(intents[0] or {}, hostname, effects)
+    declared, problems = expected_effects.declared_from(raw, effects["offers"])
+    effects["declared"] = declared
+    return effects, declared, problems
+
+
 def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
-                 remove: dict = None, scope: str = "") -> list:
+                 remove: dict = None, scope: str = "", declare: dict = None) -> list:
     """Every device's plan entry: its exact program, hashes, gates and what it
     holds back. THE plan, for `/deploy/plan` and the v2 batch preview (P.9 d2)
     alike. Reads captured configs only; contacts no device."""
@@ -467,12 +487,16 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             # verify then expects. Committed intent read once per plan, never per device.
             if intents_once is None:
                 intents_once = _committed_intents_of(list_name)
-            entry["expected_effects"] = _expected_effects(list_name, hostname, commands,
-                                                          intents=intents_once[0])
-            if intents_once[1]:
-                entry["expected_effects"]["unread"] = (
-                    f"committed intent could not be read ({intents_once[1]}): adjacencies "
-                    "not derived")
+            # And what the person declares on them (C506 phase 3), each with its reason: in the
+            # hash below and the record. One that names nothing this plan offers refuses it.
+            entry["expected_effects"], declared, declare_problems = _effects_and_declared(
+                list_name, hostname, commands, (declare or {}).get(hostname),
+                intents=intents_once)
+            entry["declared"] = declared
+            if declare_problems:
+                entry["deployable"] = False
+                entry["blocking_reasons"] = list(entry.get("blocking_reasons") or []) + [
+                    f"a declared effect is refused: {p}" for p in declare_problems]
             entry["removals"] = {k: full[k] for k in
                                  ("removed", "refused", "secret_position",
                                   "removal_commands", "keys", "ids")}
@@ -516,7 +540,8 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
             from modules.nsot import authorisation as _auth
             authorised = _auth.normalise(authorise.get(hostname))
             entry["authorised"] = authorised
-            entry["command_hash"] = command_fingerprint(commands, authorised, full["ids"])
+            entry["command_hash"] = command_fingerprint(commands, authorised, full["ids"],
+                                                        declared)
             # The history of each line needing a reason, removals included: a
             # removal rolled back before shows when and why beside its box (the
             # operator: unblocked, but the person sees what happened last time).
@@ -609,7 +634,8 @@ def plan():
 
 def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 authorise: dict = None, remove: dict = None, scope: str = "",
-                actor: str, actor_kind: str = "", on_device=None) -> dict:
+                actor: str, actor_kind: str = "", on_device=None,
+                declare: dict = None) -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
     verify failures). THE apply, for `/deploy/apply` and the v2 batch confirm
@@ -661,7 +687,14 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 recomputed = full["commands"]
                 device_auth = authorise.get(hostname) or []
                 assert_authorised(recomputed, device_auth, full["keys"])
-                now = command_fingerprint(recomputed, device_auth, full["ids"])
+                # What was declared, checked again against THIS program (C506 phase 3): a
+                # declaration the recomputed plan no longer offers refuses, naming it.
+                _fx, declared, problems = _effects_and_declared(
+                    list_name, hostname, recomputed, (declare or {}).get(hostname))
+                if problems:
+                    raise NotAuthorised("a declared effect no longer fits the program: "
+                                        + "; ".join(problems))
+                now = command_fingerprint(recomputed, device_auth, full["ids"], declared)
             except (NotAuthorised, profile_apply.ScopeRefused, _profile.ProfileRefused) as exc:
                 refused.append({"device": hostname, "outcome": "refused",
                                 "reason": str(exc)})
@@ -744,7 +777,8 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
     try:
         batch = plan_batch(artifacts, confirmations, fresh_captures)
 
-        extra = {**({"remove": remove} if remove else {}), **({"scope": scope} if scope else {})}
+        extra = {**({"remove": remove} if remove else {}), **({"scope": scope} if scope else {}),
+                 **({"declare": declare} if declare else {})}
         record, pending = _pending_receipts(list_name, "deploy", confirmations, command_hashes,
                                             actor=actor, actor_kind=actor_kind)
         def _one(entry):
@@ -1140,7 +1174,7 @@ def _program(intended: str, captured: str, selected: list, device: dict,
 
 def _deploy_one(entry, list_name: str, device_rows: dict,
                 authorise: dict = None, source_ref: str = "", remove: dict = None,
-                scope: str = "") -> dict:
+                scope: str = "", declare: dict = None) -> dict:
     """Run the pipeline for a single device. The only path that connects."""
     import threading
 
@@ -1271,9 +1305,16 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         target_intent = getattr(artifact, "host_vars", None)
     ctx.declared_protocols = {device.get("ip", ""): (
         declared_protocols(target_intent) if target_intent is not None else None)}
-    # The program's derived effects (C506 phase 2), by the function the plan drew them with.
-    ctx.expected_effects = {device.get("ip", ""): _expected_effects(list_name, hostname,
-                                                                     commands)}
+    # The program's derived effects (C506 phase 2) and what was declared on them (phase 3), by
+    # the computation the plan drew them with; a declaration this program no longer offers
+    # stops the device here too, since this path runs whether or not a hash was compared.
+    effects, declared, declare_problems = _effects_and_declared(
+        list_name, hostname, commands, (declare or {}).get(hostname))
+    if declare_problems:
+        return {"device": hostname, "outcome": FAILED, "stage": "declared",
+                "reason": "a declared effect no longer fits the program: "
+                          + "; ".join(declare_problems)}
+    ctx.expected_effects = {device.get("ip", ""): effects}
 
     try:
         result = PipelineRunner(ctx).run()
@@ -1334,7 +1375,10 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # pipeline was given, with the authorisation folded in, exactly as the
         # confirm hash is computed).
         "verify": dict((result.verify_result or {}).get(device.get("ip", ""), {})),
-        "program_hash": command_fingerprint(commands, authorised, full["ids"]),
+        "program_hash": command_fingerprint(commands, authorised, full["ids"], declared),
+        # What the person declared, each with its reason (C506 phase 3): in the hash above, so
+        # the receipt keeps what verify was told to expect.
+        "declared": declared,
         # What was selected for removal, by ID, with the line as the capture
         # held it: the receipt ties the selection to what was sent (Mode B).
         "removals": [{"id": i, "chain": list(u["chain"]), "line": u["line"]}

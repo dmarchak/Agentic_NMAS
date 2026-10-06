@@ -137,7 +137,14 @@ the run ends. Its stages, in the order the code declares them:
    or to a peer on its subnet (all read from committed intent). Verify leaves exactly those out
    of its neighbour comparison, by the peer's identity; one whose identity intent does not give
    (no explicit router-id) is still compared, and its loss still fails. An interface the
-   program shuts must be down. A neighbour lost, in any protocol read before
+   program shuts must be down. What the program cannot show, you declare on the card, each with
+   your reason, and the declarations are in the confirm's hash and the receipt: **an adjacency
+   moves** (one the program drops, to an interface it brings up with OSPF on it) must re-form
+   on that interface within its protocol's settle window, or verify fails, naming where it
+   formed instead or who formed there in its place; **a session ends** (decommissioned at the
+   far end) is expected to go; **routes are expected to change**, and a smaller route table is
+   recorded, never a failure. A neighbour nobody declared forming beside the expected ones is
+   a note in the result. A neighbour lost, in any protocol read before
    the push, is waited out for its settle window (by default OSPF 45 s, BGP 60 s, RIP 90 s, others 45 s)
    and fails only if it persists; a count still rising is reported as not yet converged. The
    route table must keep 90% of its routes, re-read for up to 90 s; BGP is read once more no earlier than its configured hold time after the push

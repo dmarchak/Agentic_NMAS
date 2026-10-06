@@ -490,7 +490,16 @@ UNDRAWN = {
          "C506 phase 2, the plan's Expected effects: drawn by the v2 deploy card "
          "(templates/v2/_deploy.html, #expected, from preview_confirm.expected_part) and reached "
          "in tests/test_expected_effects_plan.py; today's v1 deploy page gains no capability "
-         "(the v1 rule), so it does not")],
+         "(the v1 rule), so it does not"),
+        ("declared ends moves offers to",
+         "C506 phase 3, what a person may declare and has declared: drawn by the v2 deploy card "
+         "(templates/v2/_deploy.html, #expected, from device_actions._declare_part) and reached "
+         "in tests/test_declared_effects.py; the v1 deploy page gains no capability")],
+    "GET /deploy/receipts": [
+        ("declared_moves notes",
+         "C506 phase 3, each declared move's outcome and verify's notes: drawn by the v2 deploy "
+         "result card from the job's verify (device_actions.deploy_job_card); the receipt's "
+         "own display in History is C506 phase 4")],
     "POST /golden/restore/preview": [
         ("add intent_restored inventory_size mode partial ref un_onboarding",
          "structured forms of claims the drawn `summary` sentence makes (C23's "
@@ -581,6 +590,23 @@ EMPTY_IN_FIXTURE = {
     "POST /deploy/plan devices[].expected_effects.may_form": (
         R_, "the fixture's program brings no interface up (C506 phase 2); reached in "
             "tests/test_expected_effects_plan.py"),
+    # C506 phase 3: nothing is declared in the fixtures' plans and runs, and their programs
+    # drop and bring up nothing; each declaration, offer and outcome is reached in
+    # tests/test_declared_effects.py.
+    "POST /deploy/plan devices[].declared": (R_, "nothing is declared in the fixture's plan"),
+    "POST /deploy/plan devices[].expected_effects.declared": (
+        R_, "nothing is declared in the fixture's plan"),
+    "POST /deploy/plan devices[].expected_effects.offers.moves": (
+        R_, "the fixture's program drops no adjacency, so none can be declared to move"),
+    "POST /deploy/plan devices[].expected_effects.offers.ends": (
+        R_, "the fixture's committed intent gives the device no adjacency with an identity"),
+    "POST /deploy/plan devices[].expected_effects.offers.to": (S_, _STRINGS),
+    "GET /deploy/receipts changes[].result.targets[].checks.declared_moves": (
+        R_, "no move is declared in the fixture's run"),
+    "GET /deploy/receipts changes[].result.targets[].checks.notes": (S_, _STRINGS),
+    "POST /deploy/apply result.targets[].checks.declared_moves": (
+        R_, "no move is declared in the fixture's run"),
+    "POST /deploy/apply result.targets[].checks.notes": (S_, _STRINGS),
     "POST /deploy/plan devices[].excluded_unrenderable": (S_, _STRINGS),
     "POST /deploy/plan devices[].masked_refs": (S_, _STRINGS),
     "POST /deploy/plan devices[].shares_key[].chain": (S_, _STRINGS),
@@ -725,7 +751,10 @@ EMPTY_IN_FIXTURE = {
 # 26 -> 28: C506 phase 2 (2026-10-06): the plan's derived adjacency drops and the adjacencies
 # that may form, empty because the fixture's program shuts and brings up nothing; both reached
 # in tests/test_expected_effects_plan.py.
-EMPTY_RECORDS_CEILING = 28
+# 28 -> 34: C506 phase 3 (2026-10-06): the plan's declarations and offers (moves, ends) and the
+# run's declared moves, empty because the fixtures declare nothing; reached in
+# tests/test_declared_effects.py.
+EMPTY_RECORDS_CEILING = 34
 
 
 def _empty_paths(obj, path=""):
@@ -804,7 +833,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 113  # +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 120  # +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

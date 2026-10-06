@@ -48,6 +48,50 @@
     <ul class="op-gates">{% for e in c.expected.derived %}<li>{{ badge('derived', 'info') }}<span>{{ e }}</span></li>{% endfor %}</ul>
     {%- else %}<p>None derived: the program shuts no interface and brings none up, so every interface and adjacency on {{ c.host }} is expected to stay as it is.</p>{% endif %}
     {%- if c.expected.unread %}<p class="op-note">{{ c.expected.unread }}</p>{% endif %}
+    {#- C506 phase 3: what the program cannot show, declared with a reason. Each declaration is
+        carried as the form's own value and checked again on every plan; it is in the hash. -#}
+    {%- set dx = c.declare %}
+    {%- if dx.declared %}
+    <p class="op-wait">Declared by you, with a reason</p>
+    <ul class="op-gates op-declared">
+      {%- for d in dx.declared %}
+      <li>{{ badge('declared', 'info') }}<span>{{ d.words }}: {{ d.requires }}. Reason: “{{ d.reason }}” · in the hash and the record ·
+        <label class="op-undeclare"><input type="checkbox" name="undecl" value="{{ loop.index0 }}"> Remove</label></span>
+        <input type="hidden" name="decl" value="{{ d.raw }}"></li>
+      {%- endfor %}
+    </ul>
+    {%- endif %}
+    <p class="op-wait">Declare an effect the program cannot show:</p>
+    <div class="op-declare">
+      <details data-keep="declare-moves"{% if dx.pending.open == 'moves' %} open{% endif %}><summary class="btn btn-small btn-outline">{{ dx.kinds.moves }}…</summary>
+        {%- if dx.moves_none %}<p class="muted">{{ dx.moves_none }}.</p>
+        {%- else %}
+        <label>Which adjacency <select name="mv_id"><option value="">choose one</option>
+          {%- for m in dx.moves %}<option value="{{ m.id }}"{% if m.id == dx.pending.mv_id %} selected{% endif %}>{{ m.words }}</option>{% endfor %}</select></label>
+        <label>Moves to <select name="mv_to"><option value="">choose one</option>
+          {%- for t in dx.to %}<option value="{{ t }}"{% if t == dx.pending.mv_to %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+        <label class="op-reason">Why (recorded with the change and in the hash)
+          <input type="text" name="mv_why" value="{{ dx.pending.mv_why }}" placeholder="the uplink moves to the new cable"></label>
+        {%- endif %}
+      </details>
+      <details data-keep="declare-ends"{% if dx.pending.open == 'ends' %} open{% endif %}><summary class="btn btn-small btn-outline">{{ dx.kinds.ends }}…</summary>
+        {%- if dx.ends_none %}<p class="muted">{{ dx.ends_none }}.</p>
+        {%- else %}
+        <label>Which session <select name="end_id"><option value="">choose one</option>
+          {%- for e in dx.ends %}<option value="{{ e.id }}"{% if e.id == dx.pending.end_id %} selected{% endif %}>{{ e.words }}</option>{% endfor %}</select></label>
+        <label class="op-reason">Why (recorded with the change and in the hash)
+          <input type="text" name="end_why" value="{{ dx.pending.end_why }}" placeholder="the peer is decommissioned tonight"></label>
+        {%- endif %}
+      </details>
+      <details data-keep="declare-routes"{% if dx.pending.open == 'routes' %} open{% endif %}><summary class="btn btn-small btn-outline">{{ dx.kinds.routes }}…</summary>
+        {%- if dx.routes_declared %}<p class="muted">Declared above.</p>
+        {%- else %}
+        <label class="op-reason">Why the route table is expected to change (recorded with the change and in the hash)
+          <input type="text" name="rt_why" value="{{ dx.pending.rt_why }}" placeholder="the summary replaces the specific routes"></label>
+        {%- endif %}
+      </details>
+    </div>
+    {%- if dx.pending.problem %}<p class="op-note" role="status">Not declared yet: {{ dx.pending.problem }}.</p>{% endif %}
     <p class="muted small">{{ c.expected.unexpected }}</p>
   </div></div>
   {%- endif %}
@@ -94,7 +138,7 @@
     <p class="op-note">{{ c.effect }} Bound to program {{ c.command_hash[:12] }}: if {{ c.host }} or its intent moves before you confirm, nothing is sent.</p>
     <span class="op-act"><button type="button" class="btn btn-primary op-confirm" data-op="deploy"
             hx-post="{{ url_for('device_v2.deploy_confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML"
-            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "capture_hash": c.confirm.capture_hash, "command_hash": c.confirm.command_hash, "remove": c.confirm.remove | tojson, "authorise": c.confirm.authorise | tojson} | tojson }}'><span class="op-idle">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again and starting the deploy…</span></button>{{ how('deploy', compact=True, op='deploy') }}</span>
+            hx-disabled-elt="this" hx-vals='{{ {"list": c.list, "back": c.back, "capture_hash": c.confirm.capture_hash, "command_hash": c.confirm.command_hash, "remove": c.confirm.remove | tojson, "authorise": c.confirm.authorise | tojson, "declare": c.confirm.declare | tojson} | tojson }}'><span class="op-idle">Deploy {{ c.sent | length }} line(s) to {{ c.host }}</span><span class="op-busy">Computing the program again and starting the deploy…</span></button>{{ how('deploy', compact=True, op='deploy') }}</span>
     {%- else %}
     <p class="op-note">Not available:
       {%- if c.waiting %} waits on your stated reason on every dangerous or ticked line; give it above and the plan is computed again.
