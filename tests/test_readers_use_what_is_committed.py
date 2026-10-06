@@ -49,7 +49,7 @@ def lab(tmp_path, monkeypatch, intent_matches):
                         allow_new=True)
     assert out["ok"], out
     monkeypatch.setattr("modules.ai_assistant._nsot_repo_dir", lambda: repo)
-    monkeypatch.setattr("modules.ai_assistant._identity_for_ip", lambda ip: "")
+    monkeypatch.setattr("modules.ai_assistant._identity_for_ip", lambda ip, list_name="": "")
     monkeypatch.setattr("modules.ai_assistant._migrate_golden_configs", lambda: None)
     monkeypatch.setattr("modules.ai_assistant._legacy_header_scan", lambda ip: None)
     R._WORKTREE_WARNED.clear()

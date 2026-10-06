@@ -186,7 +186,7 @@ class TestTheFileRecordsAndMemoryDecides:
     for ever. Same file, no indication, and the key was written by the
     scheduler after every run -- which is what made it look authoritative.
 
-    The schedule lives in `DriftChecker._next_ts` and is set by construction,
+    The schedule lives in `DriftChecker.next_ts(<network>)`, one per network (C491), set by construction,
     by a completed run, by `trigger()`, by re-enabling, or by an interval
     change. That is the whole list.
     """
@@ -200,7 +200,7 @@ class TestTheFileRecordsAndMemoryDecides:
                        "next_ts": time.time()})
         checker = d.DriftChecker()
         # Built from last_check_ts + interval, not from the stored next_ts.
-        assert abs(checker._next_ts
+        assert abs(checker.next_ts("alpha")
                    - (d._load_state()["last_check_ts"] + d._get_interval())) < 1
 
     def test_the_scheduler_stops_writing_it(self, lists):
@@ -208,7 +208,7 @@ class TestTheFileRecordsAndMemoryDecides:
         reaches the same wrong conclusion from the same evidence.
 
         Asserted on the KEY, not on the text `next_ts`, which appears three
-        times in this method as `self._next_ts`. The first version of this
+        times in this method as `self._next`. The first version of this
         test looked for `'"next_ts"'` with double quotes -- `ast.unparse`
         emits single ones, so it could not fail. Sixth can't-fail control of
         this project, and the second in a test written about a key that was
@@ -218,7 +218,7 @@ class TestTheFileRecordsAndMemoryDecides:
 
         d = lists["module"]
         tree = ast.parse(__import__("textwrap").dedent(
-            __import__("inspect").getsource(d.DriftChecker._loop)))
+            __import__("inspect").getsource(d.DriftChecker.record)))
         keys = [k.value for node in ast.walk(tree)
                 if isinstance(node, ast.Dict)
                 for k in node.keys
@@ -230,7 +230,7 @@ class TestTheFileRecordsAndMemoryDecides:
         restart, the next one down does not exist."""
         d = lists["module"]
         d._save_state({"last_check_ts": 1_700_000_000.0})
-        assert d.DriftChecker()._last_ts == 1_700_000_000.0
+        assert d.DriftChecker().next_ts("alpha") == 1_700_000_000.0 + d._get_interval()
 
     def test_disabled_is_live_not_only_at_construction(self, lists):
         d = lists["module"]
@@ -253,7 +253,7 @@ class TestTheFileRecordsAndMemoryDecides:
         checker = d.DriftChecker()
         d._save_state({"last_check_ts": time.time() - 10_000})
         checker.set_disabled(False)
-        assert abs(checker._next_ts - (time.time() + d._get_interval())) < 2
+        assert abs(checker.next_ts("alpha") - (time.time() + d._get_interval())) < 2
 
     def test_trigger_is_the_only_way_to_bring_a_run_forward(self, lists):
         import time
@@ -261,4 +261,4 @@ class TestTheFileRecordsAndMemoryDecides:
         d = lists["module"]
         checker = d.DriftChecker()
         checker.trigger()
-        assert checker._next_ts <= time.time() + 1
+        assert checker.next_ts("alpha") <= time.time() + 1

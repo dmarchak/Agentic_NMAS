@@ -64,7 +64,13 @@ def _captured_record(repo: str, hostname: str) -> dict:
     if record["text"] is not None or record["refused"]:
         return record
 
-    from modules.ai_assistant import _golden_record, _list_golden_configs
+    import os as _os
+
+    from modules.ai_assistant import _golden_record, _list_golden_configs, _nsot_repo_dir
+    # The legacy `golden_configs/` store is the ACTIVE list's: never the answer for another
+    # list's repository (C498: it read another network's golden as this one's).
+    if _os.path.abspath(repo) != _os.path.abspath(_nsot_repo_dir()):
+        return record
     legacy = next((e for e in _list_golden_configs()
                    if e.get("hostname") == hostname), None)
     if legacy is None:

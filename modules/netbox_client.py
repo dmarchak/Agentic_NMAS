@@ -2968,7 +2968,7 @@ def _parse_routing_context_from_config(config: str) -> dict:
     return ctx
 
 
-def _scan_device_from_golden(dev: dict) -> dict:
+def _scan_device_from_golden(dev: dict, list_name: str = "") -> dict:
     """Build a NetBox scan result from the device's saved golden config.
 
     No SSH session is opened — all data comes from the golden config file.
@@ -2996,7 +2996,7 @@ def _scan_device_from_golden(dev: dict) -> dict:
     if dev.get("preview_config") is not None and _guard.is_dry_run():
         record = {"text": dev["preview_config"], "refused": ""}
     else:
-        record = _golden_record(ip)
+        record = _golden_record(ip, list_name)        # its OWN list's golden (C498)
     golden = record["text"]
     if not golden:
         return {
@@ -3167,7 +3167,7 @@ def _sync_list_to_netbox_impl(list_name: str, devices: list[dict],
         _write_failed(f"list VRF {list_name}", exc)
 
     # Populate from golden configs — no SSH needed, works for offline devices.
-    scanned: list[dict] = [_scan_device_from_golden(d) for d in devices]
+    scanned: list[dict] = [_scan_device_from_golden(d, list_name) for d in devices]
 
     # CDP/LLDP neighbors are learned operational state, not something a
     # golden config file can contain — this is the one piece of the sync

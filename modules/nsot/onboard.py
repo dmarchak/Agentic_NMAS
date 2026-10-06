@@ -1313,7 +1313,8 @@ def create_netbox_record(repo: str, hostname: str, list_name: str, *,
 
         _identity, entry = _m.find_by_name(repo, hostname)
         mgmt_ip = (entry or {}).get("mgmt_ip", "")
-        if not mgmt_ip or not _load_golden_config_file(mgmt_ip):
+        # Its OWN list's golden (C498: the active list's was read).
+        if not mgmt_ip or not _load_golden_config_file(mgmt_ip, list_name):
             out["deferred"] = True
             out["reason"] = (
                 f"'{hostname}' has no captured config yet, and the NetBox "

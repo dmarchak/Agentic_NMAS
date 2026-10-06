@@ -66,7 +66,7 @@ def drift(monkeypatch):
     monkeypatch.setattr("modules.device.get_current_device_list", lambda: ("lab", "lab.csv"))
     monkeypatch.setattr("modules.device.load_saved_devices", lambda path: list(devices))
     monkeypatch.setattr("modules.ai_assistant._golden_record",
-                        lambda ip: {"text": golden.get(ip), "path": "", "commit": "",
+                        lambda ip, list_name="": {"text": golden.get(ip), "path": "", "commit": "",
                                     "source": "", "refused": ""})
     monkeypatch.setattr("modules.connection.get_persistent_connection",
                         lambda dev, pool, lock: dev["ip"])
@@ -74,7 +74,7 @@ def drift(monkeypatch):
     monkeypatch.setattr("modules.approval_queue.add_approval",
                         lambda **kw: queued.append(kw) or {"ok": True})
     monkeypatch.setattr("modules.approval_queue.supersede_drift",
-                        lambda hosts, reason, by="": superseded.append((list(hosts), reason)))
+                        lambda hosts, reason, by="", list_name="": superseded.append((list(hosts), reason)))
     return {"module": drift_check, "running": running, "queued": queued,
             "superseded": superseded}
 

@@ -106,7 +106,7 @@ def drift(monkeypatch, tmp_path):
     monkeypatch.setattr("modules.device.get_current_device_list", lambda: ("lab", "lab.csv"))
     monkeypatch.setattr("modules.device.load_saved_devices", lambda path: list(devices))
     monkeypatch.setattr("modules.ai_assistant._golden_record",
-                        lambda ip: {"text": r2, "path": "", "commit": "", "source": "",
+                        lambda ip, list_name="": {"text": r2, "path": "", "commit": "", "source": "",
                                     "refused": ""})
     monkeypatch.setattr("modules.connection.get_persistent_connection",
                         lambda dev, pool, lock: dev["ip"])

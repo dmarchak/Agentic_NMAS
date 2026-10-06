@@ -139,7 +139,7 @@ class TestARunWhoseResultCannotBeRecorded:
     def test_check_now_says_so(self, lab, monkeypatch):
         D = lab["D"]
         monkeypatch.setattr(D, "_run_drift_check",
-                            lambda triggered_by="": {"ok": True, "summary": "checked 1 of 1",
+                            lambda triggered_by="", list_name="": {"ok": True, "summary": "checked 1 of 1",
                                                      "drifted": 0})
         with open(lab["state"], "w", encoding="utf-8") as fh:
             fh.write("{torn")
@@ -221,7 +221,7 @@ class TestTheShippedPanel:
     def test_an_unrecorded_run_is_never_drawn_green(self, lab, monkeypatch):
         D = lab["D"]
         monkeypatch.setattr(D, "_run_drift_check",
-                            lambda triggered_by="": {"ok": True, "summary": "checked 1 of 1",
+                            lambda triggered_by="", list_name="": {"ok": True, "summary": "checked 1 of 1",
                                                      "drifted": 0})
         with open(lab["state"], "w", encoding="utf-8") as fh:
             fh.write("{torn")

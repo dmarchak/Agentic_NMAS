@@ -200,7 +200,7 @@ class TestNothingRecordsIt:
         monkeypatch.setattr("modules.device.get_current_device_list", lambda: ("lab", "x.csv"))
         monkeypatch.setattr("modules.device.load_saved_devices", lambda p: [dict(dev)])
         monkeypatch.setattr("modules.ai_assistant._golden_record",
-                            lambda ip: {"text": _r2(), "path": "", "commit": "",
+                            lambda ip, list_name="": {"text": _r2(), "path": "", "commit": "",
                                         "source": "", "refused": ""})
         monkeypatch.setattr("modules.connection.get_persistent_connection",
                             lambda d, p, l: _Session(_stitched()))

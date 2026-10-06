@@ -379,7 +379,7 @@ class TestNetBoxIsCreatedInPhaseTwo:
         from modules.nsot.onboard import create_netbox_record
 
         monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
-                            lambda ip: "hostname bp1\n!\nend\n")
+                            lambda ip, list_name="": "hostname bp1\n!\nend\n")
         out = create_netbox_record(
             repo, "bp1", "probe",
             sync=lambda *a, **k: {"ok": True, "failed": [
@@ -393,7 +393,7 @@ class TestNetBoxIsCreatedInPhaseTwo:
         from modules.nsot.onboard import create_netbox_record
 
         monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
-                            lambda ip: "hostname bp1\n!\nend\n")
+                            lambda ip, list_name="": "hostname bp1\n!\nend\n")
         monkeypatch.setattr("modules.netbox_guard.get_created",
                             lambda lst, endpoint="": {
                                 "dcim/devices": [{"id": 42, "name": "bp1"}]})
@@ -411,7 +411,7 @@ class TestNetBoxIsCreatedInPhaseTwo:
         from modules.nsot.onboard import verify_and_promote
 
         monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
-                            lambda ip: "hostname bp1\n!\nend\n")
+                            lambda ip, list_name="": "hostname bp1\n!\nend\n")
         monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
                             lambda *a, **k: {"ok": True, "failed": []})
         monkeypatch.setattr("modules.netbox_guard.get_created",
@@ -432,7 +432,7 @@ class TestNetBoxIsCreatedInPhaseTwo:
         from modules.nsot.onboard import verify_and_promote
 
         monkeypatch.setattr("modules.ai_assistant._load_golden_config_file",
-                            lambda ip: "hostname bp1\n!\nend\n")
+                            lambda ip, list_name="": "hostname bp1\n!\nend\n")
         monkeypatch.setattr("modules.netbox_client.sync_list_to_netbox",
                             lambda *a, **k: {"ok": False, "blocked": True,
                                              "error": "writes are disabled"})

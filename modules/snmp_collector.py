@@ -69,16 +69,29 @@ def set_trap_callback(fn) -> None:
     _trap_callback = fn
 
 def _trap_file() -> str:
+    """ONE store for the installation (C491). The receiver is one port, every network's
+    devices send to it, and each reader filters by its own network's device addresses
+    (`get_recent_traps(device_ips=…)`); the ring was written whole into whichever list was
+    ACTIVE, so a restart read back only that list's copy."""
+    return os.path.join(DATA_DIR, "snmp_traps.json")
+
+
+def _legacy_trap_file() -> str:
+    """Where the ring was written before C491: the active list's folder. Read once, when the
+    installation's store does not exist yet."""
     try:
         from modules.config import get_current_list_data_dir
         return os.path.join(get_current_list_data_dir(), "snmp_traps.json")
-    except Exception:
-        return os.path.join(DATA_DIR, "snmp_traps.json")
+    except Exception:                          # noqa: BLE001
+        return ""
 
 
 def _load_traps_from_disk() -> None:
+    path = _trap_file()
+    if not os.path.exists(path) and _legacy_trap_file() and os.path.exists(_legacy_trap_file()):
+        path = _legacy_trap_file()
     try:
-        with open(_trap_file(), encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             loaded = json.load(fh)
         with _trap_lock:
             _traps.extend(loaded[-_MAX_TRAPS:])

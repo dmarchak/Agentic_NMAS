@@ -402,13 +402,18 @@ def _find_golden_config_file(device_ip: str) -> Optional[str]:
     return legacy
 
 
-def _identity_for_ip(device_ip: str) -> str:
-    """Stable identity for a device, from the active inventory."""
+def _identity_for_ip(device_ip: str, list_name: str = "") -> str:
+    """Stable identity for a device, from *list_name*'s inventory (C498: a caller that holds
+    its list passes it; only one with none reads the active list)."""
     try:
         from modules.device import get_current_device_list, load_saved_devices
         from modules.nsot.manifest import identity_for
 
-        _name, csv_path = get_current_device_list()
+        if list_name:
+            from modules.nsot import listref
+            csv_path = listref.resolve(list_name).csv_path
+        else:
+            _name, csv_path = get_current_device_list()
         for dev in load_saved_devices(csv_path):
             if dev.get("ip") == device_ip:
                 return identity_for(dev.get("_netbox_id"), dev.get("device_uid", ""))
@@ -470,8 +475,11 @@ def _identity_parts_for_ip(device_ip: str) -> tuple:
     return None, ""
 
 
-def _golden_record(device_ip: str) -> dict:
-    """The golden for a device AS COMMITTED (C104's consumers), with why not.
+def _golden_record(device_ip: str, list_name: str = "") -> dict:
+    """The golden for a device AS COMMITTED (C104's consumers), with why not, in
+    *list_name*'s repository (C491, C498: drift, onboarding's NetBox record, NetBox sync and
+    the deploy plan each hold a list and read the ACTIVE one's goldens; only a caller with no
+    list reads the active list).
 
     ``{"text", "path", "commit", "source", "refused"}``. ``text`` is None both
     when the device has no golden (``refused`` empty) and when one exists and
@@ -486,12 +494,18 @@ def _golden_record(device_ip: str) -> dict:
     commit to read, and ``legacy_only_goldens()`` is that store's exit.
     """
     _migrate_golden_configs()
-    repo = _nsot_repo_dir()
+    from modules.config import get_current_list_name
+    named_other = bool(list_name) and list_name != get_current_list_name()
+    if named_other:
+        from modules.nsot import listref
+        repo = listref.resolve(list_name).repo_dir
+    else:
+        repo = _nsot_repo_dir()            # the active list's, named or not
     entry = None
     try:
         from modules.nsot import manifest as _m
 
-        identity = _identity_for_ip(device_ip)
+        identity = _identity_for_ip(device_ip, list_name if named_other else "")
         if identity:
             entry = _m.find_by_identity(repo, identity)
         if not entry:
@@ -508,7 +522,8 @@ def _golden_record(device_ip: str) -> dict:
     except Exception as exc:                   # noqa: BLE001
         logger.debug("golden: manifest lookup failed for %s: %s", device_ip, exc)
 
-    legacy = _find_golden_config_file(device_ip)
+    # The legacy `golden_configs/` store is the active list's: never read for another one.
+    legacy = None if named_other else _find_golden_config_file(device_ip)
     if legacy and not legacy.startswith(repo):
         try:
             with open(legacy, encoding="utf-8") as fh:
@@ -519,10 +534,10 @@ def _golden_record(device_ip: str) -> dict:
     return {"text": None, "path": "", "commit": "", "source": "", "refused": ""}
 
 
-def _load_golden_config_file(device_ip: str) -> Optional[str]:
-    """The committed golden for a device, or None (no golden, or refused:
-    :func:`_golden_record` says which, and a refusal is logged by path)."""
-    return _golden_record(device_ip)["text"]
+def _load_golden_config_file(device_ip: str, list_name: str = "") -> Optional[str]:
+    """The committed golden for a device in *list_name* (else the active list), or None (no
+    golden, or refused: :func:`_golden_record` says which, and a refusal is logged by path)."""
+    return _golden_record(device_ip, list_name)["text"]
 
 
 def _list_golden_configs() -> list:

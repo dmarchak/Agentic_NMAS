@@ -36,11 +36,20 @@ _netflow_stop   = threading.Event()
 # ---------------------------------------------------------------------------
 
 def _flow_file() -> str:
+    """ONE store for the installation (C491): one collector port for every network's devices,
+    readers filtering by their own; the ring was written whole into whichever list was
+    ACTIVE, so a restart read back only that list's copy."""
+    return os.path.join(DATA_DIR, "netflow_flows.json")
+
+
+def _legacy_flow_file() -> str:
+    """Where the ring was written before C491 (the active list's folder): read once, when the
+    installation's store does not exist yet."""
     try:
         from modules.config import get_current_list_data_dir
         return os.path.join(get_current_list_data_dir(), "netflow_flows.json")
-    except Exception:
-        return os.path.join(DATA_DIR, "netflow_flows.json")
+    except Exception:                          # noqa: BLE001
+        return ""
 
 
 def _load_flows() -> None:
@@ -49,6 +58,8 @@ def _load_flows() -> None:
     try:
         path = _flow_file()
         if not os.path.exists(path):
+            path = _legacy_flow_file()
+        if not path or not os.path.exists(path):
             return
         with open(path, encoding="utf-8") as fh:
             stored = json.load(fh)

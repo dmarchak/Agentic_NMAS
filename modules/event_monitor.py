@@ -97,15 +97,6 @@ def _push_event(event_type: str, title: str, detail: str, severity: str = "info"
     log.debug("event_monitor: pushed [%s] %s", event_type, title)
 
 
-def _load_golden_configs() -> list:
-    """Load golden config metadata for the current list."""
-    try:
-        from modules.ai_assistant import _list_golden_configs
-        return _list_golden_configs()
-    except Exception:
-        return []
-
-
 def _check_missing_golden_configs() -> None:
     """Push an event if any device in the inventory lacks a golden config.
 
@@ -116,42 +107,48 @@ def _check_missing_golden_configs() -> None:
       list has no CSV, so the hand-rolled reader fell through to
       `DATA_DIR/Devices.csv` -- **a different list's devices** -- and reported
       them missing against this list's goldens.
-    * `_load_golden_configs()` now enumerates the repo. It listed the
+    * The goldens come from the repo's one enumerator (`repo.list_goldens`, per network since
+      C491). The old reader listed the
       deprecated `golden_configs/` directory, so every device onboarded after
       the migration was reported as having no golden while its golden sat in
       `config_repo/`. A warning banner that is wrong about devices you know
       are fine is how an operator learns to dismiss the banner.
     """
     try:
-        from modules.device import get_current_device_list, load_saved_devices
+        from modules.device import load_saved_devices
+        from modules.nsot import listref
+        from modules.nsot.repo import list_goldens
 
-        _name, list_file = get_current_device_list()
-        device_ips = [d.get("ip", "").strip() for d in load_saved_devices(list_file)
-                      if d.get("ip")]
-        if not device_ips:
-            return
-
-        golden_ips = {e["device_ip"] for e in _load_golden_configs()}
-        missing = [ip for ip in device_ips if ip not in golden_ips]
-
-        if missing:
-            # Only push this event once per session (check if already queued)
+        # EVERY network (C491): it read the active list's devices and goldens only, so a
+        # network that was not active was never checked.
+        for list_name in sorted(listref._registry()):
+            device_ips = [d.get("ip", "").strip()
+                          for d in load_saved_devices(listref.resolve(list_name).csv_path)
+                          if d.get("ip")]
+            if not device_ips:
+                continue
+            golden_ips = {e["device_ip"] for e in list_goldens(list_name)}
+            missing = [ip for ip in device_ips if ip not in golden_ips]
+            if not missing:
+                continue
+            # Only push this event once per network until acknowledged.
             with _lock:
                 already = any(
                     ev["type"] == "missing_golden_configs" and not ev["acked"]
+                    and (ev.get("metadata") or {}).get("list") == list_name
                     for ev in _events
                 )
             if not already:
                 _push_event(
                     event_type="missing_golden_configs",
-                    title=f"{len(missing)} device(s) have no golden config",
+                    title=f"{list_name}: {len(missing)} device(s) have no golden config",
                     detail=(
-                        f"Devices without a verified baseline: {', '.join(missing)}. "
-                        f"After the next successful CI run, the agent should call "
-                        f"save_golden_config for each."
+                        f"Devices in {list_name} without a verified baseline: "
+                        f"{', '.join(missing)}. After the next successful CI run, the agent "
+                        f"should call save_golden_config for each."
                     ),
                     severity="warning",
-                    metadata={"missing_ips": missing},
+                    metadata={"missing_ips": missing, "list": list_name},
                 )
     except Exception as exc:
         log.debug("event_monitor: golden config check error: %s", exc)
@@ -160,42 +157,42 @@ def _check_missing_golden_configs() -> None:
 def _check_empty_variables() -> None:
     """Push an event if the current list has devices but no stored variables."""
     try:
-        from modules.ai_assistant import _load_variables
-        variables = _load_variables()
-        if variables:
-            return   # variables exist — nothing to do
+        from modules.device import load_saved_devices
+        from modules.nsot import listref
 
-        # Through the single dispatch point, for the same reason as
-        # `_check_missing_golden_configs`: a NetBox-sourced list has no
-        # devices.csv, and the DATA_DIR fallback counted a DIFFERENT list's
-        # devices against this list's (empty) variable store.
-        from modules.device import get_current_device_list, load_saved_devices
-
-        _name, list_file = get_current_device_list()
-        device_count = sum(1 for d in load_saved_devices(list_file) if d.get("ip"))
-        if device_count == 0:
-            return
-
-        # Avoid spamming — only push once until resolved
-        with _lock:
-            already = any(
-                ev["type"] == "empty_variables" and not ev.get("acked")
-                for ev in _events
+        # EVERY network (C491), each its own variable store. Devices through the single
+        # dispatch point: a NetBox-sourced list has no devices.csv.
+        for list_name in sorted(listref._registry()):
+            ref = listref.resolve(list_name)
+            try:
+                with open(os.path.join(ref.data_dir, "variables.json"), encoding="utf-8") as fh:
+                    if json.load(fh):
+                        continue   # variables exist: nothing to do
+            except FileNotFoundError:
+                pass
+            device_count = sum(1 for d in load_saved_devices(ref.csv_path) if d.get("ip"))
+            if device_count == 0:
+                continue
+            # Avoid spamming: once per network until acknowledged.
+            with _lock:
+                already = any(
+                    ev["type"] == "empty_variables" and not ev.get("acked")
+                    and (ev.get("metadata") or {}).get("list") == list_name
+                    for ev in _events
+                )
+            if already:
+                continue
+            _push_event(
+                event_type="empty_variables",
+                title=f"No network facts stored for {list_name} ({device_count} devices)",
+                detail=(
+                    f"{list_name}'s variable store is empty. The agent should survey the "
+                    f"network and store key facts: device roles, loopback IPs, OSPF process "
+                    f"IDs, routing protocols, interface assignments, and BGP AS numbers."
+                ),
+                severity="warning",
+                metadata={"device_count": device_count, "list": list_name},
             )
-        if already:
-            return
-
-        _push_event(
-            event_type="empty_variables",
-            title=f"No network facts stored for this list ({device_count} devices)",
-            detail=(
-                f"The variable store is empty. The agent should survey the network and "
-                f"store key facts: device roles, loopback IPs, OSPF process IDs, routing "
-                f"protocols, interface assignments, and BGP AS numbers."
-            ),
-            severity="warning",
-            metadata={"device_count": device_count},
-        )
     except Exception as exc:
         log.debug("event_monitor: empty variables check error: %s", exc)
 

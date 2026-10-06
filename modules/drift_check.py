@@ -319,10 +319,11 @@ def _get_interval() -> float:
 _UNREADABLE_SAID = set()
 
 
-def _is_disabled() -> bool:
-    """An unreadable state reads as PAUSED (R19): its switch cannot be known, and nothing a
-    run produced could be recorded. Logged once per cause."""
-    state = _load_state()
+def _is_disabled(list_name: str = "") -> bool:
+    """*list_name*'s switch (else the active list's). An unreadable state reads as PAUSED
+    (R19): its switch cannot be known, and nothing a run produced could be recorded. Logged
+    once per cause."""
+    state = _load_state(list_name)
     if UNREADABLE in state:
         if state[UNREADABLE] not in _UNREADABLE_SAID:
             _UNREADABLE_SAID.add(state[UNREADABLE])
@@ -331,7 +332,7 @@ def _is_disabled() -> bool:
     return bool(state.get("disabled", False))
 
 
-def set_disabled(disabled: bool, actor: str = "") -> None:
+def set_disabled(disabled: bool, actor: str = "", list_name: str = "") -> None:
     """Switch the scheduler off or on, and record that it happened.
 
     The state file was the **only** record that drift had ever been enabled,
@@ -347,7 +348,7 @@ def set_disabled(disabled: bool, actor: str = "") -> None:
         "disabled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                        if disabled else None,
         "disabled_by": actor or None if disabled else None,
-    })
+    }, list_name)
 
 
 # ---------------------------------------------------------------------------
@@ -397,18 +398,31 @@ def answer_by_golden(list_name: str, hosts, why: str) -> list:
         return []
 
 
-def run_drift_check(triggered_by: str = "scheduled") -> dict:
-    """One drift run of the active list, and only one at a time across processes
-    (CONCURRENCY_AUDIT R19): raises `DriftRunning` naming the run in progress. Keyed on the
-    name of the device list the run reads."""
-    from modules.device import get_current_device_list
+def network_for(req, data=None) -> str:
+    """The network a drift route acts on (C491): the one the request names (`?list=`, or
+    `list_name` in its body), else the active one. The scheduler runs every network on its
+    own; a route reads or changes ONE, named."""
+    from modules.config import get_current_list_name
+    from routes.list_param import named_list
+    return ((data or {}).get("list_name") or "").strip() or named_list(req) or \
+        get_current_list_name()
 
-    name, _ = get_current_device_list()
+
+def run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> dict:
+    """One drift run of *list_name* (else the active list), and only one at a time per list
+    across processes (CONCURRENCY_AUDIT R19): raises `DriftRunning` naming the run in
+    progress. Every read and write of the run is that list's (C491: its inventory, goldens,
+    stale check and approval queue were the ACTIVE list's)."""
+    from modules.config import get_current_list_name
+
+    name = list_name or get_current_list_name()
     with _OneRun(_run_lock_path(name), triggered_by):
-        return _run_drift_check(triggered_by)
+        result = _run_drift_check(triggered_by, name)
+    result["list"] = name
+    return result
 
 
-def _run_drift_check(triggered_by: str = "scheduled") -> dict:
+def _run_drift_check(triggered_by: str = "scheduled", list_name: str = "") -> dict:
     """Check every device in the inventory for config drift.
 
     **The population is the inventory, not the golden store.** It used to
@@ -442,7 +456,11 @@ def _run_drift_check(triggered_by: str = "scheduled") -> dict:
         base.update(kw)
         return base
 
-    _, list_file = get_current_device_list()
+    if list_name:
+        from modules.nsot import listref
+        list_file = listref.resolve(list_name).csv_path
+    else:
+        _, list_file = get_current_device_list()
     devices = load_saved_devices(list_file)
     if not devices:
         log.info("drift_check: inventory is empty — nothing to check")
@@ -469,14 +487,14 @@ def _run_drift_check(triggered_by: str = "scheduled") -> dict:
         # that is no longer part of this list.
         try:
             from modules.inventory import is_stale
-            if is_stale(device_ip):
+            if is_stale(device_ip, list_name=list_name):
                 log.info("drift_check: skipping stale device %s (%s)", hostname, device_ip)
                 skip_list.append((hostname, "no longer in NetBox for this list"))
                 return
         except ImportError:
             pass
 
-        record = _golden_record(device_ip)
+        record = _golden_record(device_ip, list_name)
         golden_text = record["text"]
         if golden_text is None and record["refused"]:
             # A golden this tool will not use is not "no golden": saying so
@@ -542,7 +560,7 @@ def _run_drift_check(triggered_by: str = "scheduled") -> dict:
             supersede_drift([hostname], f"the drift check at {timestamp} ({triggered_by}) "
                                         f"found {hostname} at its golden under the current "
                                         "rules, so the queued diff no longer stands",
-                            by="drift check")
+                            by="drift check", list_name=list_name)
             return
         if note:
             diff.append(note)
@@ -562,6 +580,7 @@ def _run_drift_check(triggered_by: str = "scheduled") -> dict:
                 diff            = diff_text,
                 action_params   = {"device_ip": device_ip, "hostname": hostname},
                 context         = f"Detected by {triggered_by} drift check",
+                list_name       = list_name,
             )
         except StoreUnreadable as exc:
             # The drift is recorded (it is in this run's result); the queue that would
@@ -636,54 +655,66 @@ def _run_drift_check(triggered_by: str = "scheduled") -> dict:
 # ---------------------------------------------------------------------------
 
 class DriftChecker:
-    """Standalone background drift-check scheduler.
+    """Standalone background drift-check scheduler, for EVERY network on its own schedule
+    (C491).
 
-    Runs independently of the AI assistant — the scheduler thread is always
-    alive while the app is running; individual checks respect a configurable
-    interval read from agent_timers.
-    """
+    It followed the active list: one schedule, one run of whichever list was active, and its
+    result saved to whichever list was active at save time. So every other network went
+    unchecked while one was active (Default's last run was the moment the throwaway network
+    was made active). Now each network has its own next run (its last run plus the interval),
+    its own switch and its own state; a run is for one named network; the active list
+    decides nothing here.
+
+    Runs independently of the AI assistant -- the scheduler thread is always alive while the
+    app is running; the interval is read from agent_timers (one interval, every network)."""
 
     def __init__(self) -> None:
         self._stop    = threading.Event()
         self._trigger = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._running_lock = threading.Lock()
-        self._running  = False         # True while a check is in flight
-        self._last_result: Optional[dict] = None
-        self._last_ts:    float = 0.0  # epoch of last completed check
-        self._next_ts:    float = 0.0  # epoch of next scheduled check
-
-        # Restore persisted timestamp so interval survives restarts
-        state = _load_state()
-        saved = state.get("last_check_ts", 0)
-        if saved > 0:
-            self._last_ts = saved
-            interval = _get_interval()
-            self._next_ts = saved + interval
-        else:
-            # First run — fire after startup grace period
-            self._next_ts = time.time() + _STARTUP_GRACE
-
-        # Also restore last result for display before the first check runs
-        if state.get("last_result"):
-            self._last_result = state["last_result"]
+        self._running: set = set()      # the networks with a run in flight here
+        self._next: dict = {}           # network -> epoch of its next run
+        self._started = time.time()
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def networks() -> list:
+        """Every network the installation holds, by name: each gets its own schedule."""
+        from modules.nsot import listref
+        return sorted(listref._registry())
+
+    @staticmethod
+    def _name(list_name: str = "") -> str:
+        from modules.config import get_current_list_name
+        return list_name or get_current_list_name()
+
+    def next_ts(self, list_name: str) -> float:
+        """*list_name*'s next run: its last recorded run plus the interval, or the startup
+        grace for a network never checked. Rebuilt from its state file, never stored there."""
+        if list_name not in self._next:
+            last = 0.0
+            try:
+                last = float(_load_state(list_name).get("last_check_ts") or 0)
+            except Exception:                  # noqa: BLE001
+                last = 0.0
+            self._next[list_name] = (last + _get_interval() if last > 0
+                                     else self._started + _STARTUP_GRACE)
+        return self._next[list_name]
+
+    def is_running(self, list_name: str = "") -> bool:
+        return self._name(list_name) in self._running
+
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(
-            target=self._loop,
-            daemon=True,
-            name="drift-scheduler",
-        )
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="drift-scheduler")
         self._thread.start()
-        log.info("drift_check: scheduler started (next check in %.0fs)",
-                 max(0, self._next_ts - time.time()))
+        log.info("drift_check: scheduler started for %d network(s)", len(self.networks()))
 
     def stop(self) -> None:
         self._stop.set()
@@ -691,68 +722,58 @@ class DriftChecker:
         if self._thread:
             self._thread.join(timeout=5)
 
-    def trigger(self) -> None:
-        """Request an immediate drift check (non-blocking)."""
-        self._next_ts = time.time()
+    def trigger(self, list_name: str = "") -> None:
+        """Request an immediate drift check of *list_name* (else the active list)."""
+        self._next[self._name(list_name)] = time.time()
         self._trigger.set()
 
-    def set_disabled(self, disabled: bool, actor: str = "") -> None:
-        """Forwards *actor* to the module-level recorder.
+    def rearm(self) -> None:
+        """The interval changed: every network's next run is rebuilt from its last run."""
+        self._next.clear()
+        self._trigger.set()
 
-        Stage 3.3c added `actor` to `set_disabled()` and left this method --
-        the one the route actually calls -- unchanged, so every attempt to
-        toggle the scheduler from the panel raised `TypeError` before
-        reaching the state file. The same shape as the `write_committed()`
-        crash in the 1.4 repair: a caller written against a signature that
-        does not exist, and tests that exercised the module function while
-        the route went through the method.
-        """
-        set_disabled(disabled, actor=actor)
+    def set_disabled(self, disabled: bool, actor: str = "", list_name: str = "") -> None:
+        """Switch *list_name*'s checks off or on, recording who (see `set_disabled`)."""
+        name = self._name(list_name)
+        set_disabled(disabled, actor=actor, list_name=name)
         if not disabled:
-            # Re-arm: schedule next run one interval from now
-            self._next_ts = time.time() + _get_interval()
+            self._next[name] = time.time() + _get_interval()
             self._trigger.set()
 
-    def status(self) -> dict:
-        """What the scheduler will do next, and for which list.
+    def record(self, list_name: str, result: dict) -> None:
+        """Store *list_name*'s run in ITS state file and schedule its next run. `_save_state`
+        merges; `next_ts` is deliberately not written (it is rebuilt from the last run)."""
+        now = time.time()
+        self._next[list_name] = now + _get_interval()
+        _save_state({"last_check_ts": now, "last_result": result}, list_name)
 
-        ``state`` is the field the panel reads: **disabled**, **idle** (on,
-        nothing due yet) or **running**. They were distinguishable before only
-        by noticing that ``next_at`` was null, and a scheduler that is alive
-        and waiting looked exactly like one that is switched off.
-        """
-        from modules.config import get_current_list_name
+    def status(self, list_name: str = "") -> dict:
+        """What the scheduler will do next for *list_name* (else the active list).
 
+        ``state`` is the field the panel reads: **disabled**, **idle** (on, nothing due yet)
+        or **running**."""
+        name = self._name(list_name)
         interval = _get_interval()
-        list_name = get_current_list_name()
-        state = _load_state(list_name)
+        state = _load_state(name)
         unreadable = state.get(UNREADABLE)
         disabled = bool(state.get("disabled", False))
-        # A run another person or process started is running too (R19): the scheduler's
-        # own flag knew only about its own runs.
-        elsewhere = running_now(list_name)
-
+        # A run another person or process started is running too (R19).
+        elsewhere = running_now(name)
         if unreadable:
             phase = "unreadable"
         elif disabled:
             phase = "disabled"
-        elif self._running or elsewhere is not None:
+        elif name in self._running or elsewhere is not None:
             phase = "running"
         else:
             phase = "idle"
-
-        # From the file, not from memory: one scheduler object serves every
-        # list, so its in-memory last result belongs to whichever list ran
-        # most recently, not necessarily the one being looked at.
-        last_result = state.get("last_result") or (
-            self._last_result if not state else None)
-        last_ts = state.get("last_check_ts") or (
-            self._last_ts if not state else 0)
-
+        last_result = state.get("last_result")
+        last_ts = state.get("last_check_ts") or 0
+        nxt = self.next_ts(name)
         return {
-            "list":        list_name,
+            "list":        name,
             "state":       phase,
-            "running":     self._running or elsewhere is not None,
+            "running":     name in self._running or elsewhere is not None,
             "running_run": elsewhere,
             "unreadable":  unreadable,
             "disabled":    disabled,
@@ -762,13 +783,11 @@ class DriftChecker:
             "last_ts":     last_ts,
             "last_at":     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last_ts))
                            if last_ts else None,
-            # Computed in memory, not read from the state file -- see
-            # `_state_file`. Reported so the panel can say so rather than
-            # presenting it as something the file decides.
+            # Computed in memory, not read from the state file -- see `_state_file`.
             "next_from":   "memory",
-            "next_ts":     self._next_ts if not disabled else None,
-            "next_at":     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self._next_ts))
-                           if (self._next_ts and not disabled) else None,
+            "next_ts":     nxt if not disabled else None,
+            "next_at":     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(nxt))
+                           if (nxt and not disabled) else None,
             "interval_s":  interval,
             "interval_h":  round(interval / 3600, 1),
         }
@@ -777,77 +796,59 @@ class DriftChecker:
     # Internal loop
     # ------------------------------------------------------------------
 
+    def run_one(self, list_name: str, triggered_by: str = "scheduled") -> Optional[dict]:
+        """One run of *list_name* by this scheduler, its result recorded in its own state;
+        None when another run holds the network (it records its own; this retries in a
+        minute, R19)."""
+        with self._running_lock:
+            if list_name in self._running:
+                return None
+            self._running.add(list_name)
+        try:
+            try:
+                result = run_drift_check(triggered_by=triggered_by, list_name=list_name)
+            except DriftRunning as exc:
+                log.info("drift_check: %s's %s run not started: %s", list_name,
+                         triggered_by, exc)
+                self._next[list_name] = time.time() + 60
+                return None
+            except Exception as exc:            # noqa: BLE001
+                log.exception("drift_check: %s: unexpected error: %s", list_name, exc)
+                result = {
+                    "ok": False, "checked": 0, "drifted": 0, "clean": 0, "list": list_name,
+                    "errors": [{"hostname": "scheduler", "reason": str(exc)}],
+                    "summary": f"Drift check failed: {exc}",
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "triggered_by": triggered_by,
+                }
+        finally:
+            with self._running_lock:
+                self._running.discard(list_name)
+        try:
+            self.record(list_name, result)
+        except DriftStateUnreadable as exc:
+            log.error("drift_check: %s's run was not recorded: %s", list_name, exc)
+        return result
+
     def _loop(self) -> None:
         log.info("drift_check: scheduler loop running")
         while not self._stop.is_set():
-            now      = time.time()
-            due_in   = max(0.0, self._next_ts - now)
-            # Wake up when due or when trigger() is called, whichever first
-            self._trigger.wait(timeout=min(due_in + 1, 60))
+            names = self.networks()
+            # Sequential across networks: each run is already concurrent across its own
+            # devices (`_run_drift_check`'s pool), and a network's run is one record.
+            for name in names:
+                if self._stop.is_set():
+                    break
+                if time.time() < self.next_ts(name):
+                    continue
+                if _is_disabled(name):
+                    continue   # paused: its next run stays due, and enabling re-arms it
+                self.run_one(name)
+            waits = [max(0.0, self.next_ts(n) - time.time()) for n in names]
+            # Wake when the soonest is due or on trigger(), whichever first; at least once a
+            # minute, so a network added or a switch turned on is noticed.
+            self._trigger.wait(timeout=min(min(waits) + 1 if waits else 60, 60))
             self._trigger.clear()
-
-            if self._stop.is_set():
-                break
-
-            if _is_disabled():
-                continue  # scheduler paused — keep loop alive so enable re-arms it
-
-            if time.time() < self._next_ts:
-                continue  # spurious wakeup — not time yet
-
-            with self._running_lock:
-                if self._running:
-                    continue   # already in flight
-                self._running = True
-
-            started = False
-            try:
-                try:
-                    result = run_drift_check(triggered_by="scheduled")
-                    started = True
-                except DriftRunning as exc:
-                    # Another run (Check now, or another process) holds this list: it
-                    # records its own result; this one tries again in a minute (R19).
-                    log.info("drift_check: scheduled run not started: %s", exc)
-                    self._next_ts = time.time() + 60
-                except Exception as exc:
-                    log.exception("drift_check: unexpected error: %s", exc)
-                    started = True
-                    result = {
-                        "ok": False, "checked": 0, "drifted": 0, "clean": 0,
-                        "errors": [{"hostname": "scheduler", "reason": str(exc)}],
-                        "summary": f"Drift check failed: {exc}",
-                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "triggered_by": "scheduled",
-                    }
-            finally:
-                with self._running_lock:
-                    self._running  = False
-            if not started:
-                continue
-            self._last_result = result
-            self._last_ts     = time.time()
-            interval          = _get_interval()
-            self._next_ts     = self._last_ts + interval
-            # `_save_state` merges. This used to hand `json.dump` a
-            # fresh three-key dict, dropping `disabled` and anything else
-            # the file held.
-            # `next_ts` is deliberately NOT written. It was, and it was
-            # read nowhere -- `__init__` rebuilds the schedule from
-            # `last_check_ts + interval` and every other path sets
-            # `self._next_ts` directly. A key that looks authoritative,
-            # is not, and sits in the same file as `disabled` (which IS
-            # live, re-read every iteration) cost an operator a
-            # twenty-minute experiment: editing one works, editing the
-            # other does nothing, with nothing on screen saying which.
-            try:
-                _save_state({
-                    "last_check_ts": self._last_ts,
-                    "last_result":   result,
-                })
-            except DriftStateUnreadable as exc:
-                log.error("drift_check: the run's result was not recorded: %s", exc)
-
         log.info("drift_check: scheduler loop stopped")
 
 

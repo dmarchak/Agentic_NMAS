@@ -633,7 +633,7 @@ class TestTheImporterHonoursAPreviewTextOnlyInADryRun:
     def test_dry_run_only(self, monkeypatch):
         from modules import netbox_client, netbox_guard
         monkeypatch.setattr("modules.ai_assistant._golden_record",
-                            lambda ip: {"text": "", "refused": ""})
+                            lambda ip, list_name="": {"text": "", "refused": ""})
         dev = {"ip": IP, "hostname": HOST, "preview_config": _config()}
         assert "error" in netbox_client._scan_device_from_golden(dev), \
             "a real import never builds from a caller's text"

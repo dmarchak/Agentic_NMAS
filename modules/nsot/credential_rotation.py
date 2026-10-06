@@ -1078,7 +1078,7 @@ def preflight(list_name: str, hostname: str, *, device: dict = None,
     import os
 
     from modules.config import get_list_data_dir
-    from modules.device import get_current_device_list, load_saved_devices
+    from modules.device import load_saved_devices
     from modules.nsot import manifest as _m
 
     repo = os.path.join(get_list_data_dir(list_name), "config_repo")
@@ -1097,7 +1097,9 @@ def preflight(list_name: str, hostname: str, *, device: dict = None,
     _check("helper_runs_without_a_password", sudo["ok"], sudo["reason"])
 
     if device is None:
-        _name, csv_path = get_current_device_list()
+        # THIS list's inventory (C496: the active list's was read, so Rotate on a device of
+        # a network that is not active was refused "not in this list").
+        csv_path = _csv_path_for(list_name)
         device = next((d for d in load_saved_devices(csv_path)
                        if d.get("hostname") == hostname), None)
         if not _check("device_in_inventory", device is not None,

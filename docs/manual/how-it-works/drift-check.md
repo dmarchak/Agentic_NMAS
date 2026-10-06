@@ -10,10 +10,13 @@ on [Drift](drift).
 
 ## The run, step by step
 
-The same run serves the schedule and the Drift panel's Check now button.
+The same run serves the schedule and the Drift panel's Check now button. A run is for ONE
+network, named, and the schedule runs every network on its own: each has its own next run
+(its last run plus the interval), its own on/off switch and its own record, whichever network
+the tool is showing. Check now and the Drift panel act on the network the page names.
 
-1. **Take the population from the inventory.** Read: the device list currently selected in
-   the tool, every device in its inventory. Sent: nothing. Recorded: nothing. The inventory,
+1. **Take the population from the inventory.** Read: the network's inventory, every device in
+   it. Sent: nothing. Recorded: nothing. The inventory,
    not the golden store, is what is checked, so a device without a golden is named instead of
    being absent. An empty inventory ends the run with "Inventory is empty, nothing to check".
 2. **Set aside what cannot be checked.** Read: whether the device is stale, and its golden as

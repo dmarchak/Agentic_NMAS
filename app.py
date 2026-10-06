@@ -3057,13 +3057,15 @@ def ai_clear():
 
 @app.route("/drift/status")
 def drift_status():
-    """Return drift checker status and last-run result."""
+    """Return drift checker status and last-run result, for the network named."""
     from modules.drift_check import get_checker
     from modules.approval_queue import get_pending_count
     from modules.filestore import StoreUnreadable
-    status = get_checker().status()
+    from modules.drift_check import network_for
+    name = network_for(request)
+    status = get_checker().status(name)
     try:
-        status["pending_approvals"] = get_pending_count()
+        status["pending_approvals"] = get_pending_count(name)
     except StoreUnreadable as exc:
         status["pending_approvals"] = None
         status["pending_approvals_error"] = str(exc)
@@ -3072,26 +3074,31 @@ def drift_status():
 
 @app.route("/drift/check", methods=["POST"])
 def drift_check_trigger():
-    """Trigger an immediate drift check.  Returns immediately; check runs async."""
+    """Trigger an immediate drift check of the network named.  Returns immediately; the
+    check runs async."""
     from modules.drift_check import get_checker
     checker = get_checker()
-    if checker._running:
-        return jsonify({"ok": False, "message": "Drift check already in progress"}), 409
-    checker.trigger()
-    return jsonify({"ok": True, "message": "Drift check triggered"})
+    from modules.drift_check import network_for
+    name = network_for(request, request.get_json(silent=True))
+    if checker.is_running(name):
+        return jsonify({"ok": False, "message": f"A drift check of {name} is already in progress"}), 409
+    checker.trigger(name)
+    return jsonify({"ok": True, "message": f"Drift check of {name} triggered", "list": name})
 
 
 @app.route("/drift/check/sync", methods=["POST"])
 def drift_check_sync():
-    """Run a drift check synchronously and return the result.
+    """Run a drift check of the network named synchronously and return the result.
     Suitable for manual 'Check Now' button clicks where the user wants to see results."""
     from modules.drift_check import (DriftRunning, DriftStateUnreadable, get_checker,
                                      run_drift_check)
     checker = get_checker()
-    if checker._running:
-        return jsonify({"ok": False, "message": "Drift check already in progress"}), 409
+    from modules.drift_check import network_for
+    name = network_for(request, request.get_json(silent=True))
+    if checker.is_running(name):
+        return jsonify({"ok": False, "message": f"A drift check of {name} is already in progress"}), 409
     try:
-        result = run_drift_check(triggered_by="manual")
+        result = run_drift_check(triggered_by="manual", list_name=name)
     except DriftRunning as exc:
         # One run per list across processes (CONCURRENCY_AUDIT R19), named, never run twice.
         return jsonify({"ok": False, "running_run": exc.holder, "error": str(exc)}), 409
@@ -3099,15 +3106,8 @@ def drift_check_sync():
         app.logger.error("drift check sync error: %s", exc, exc_info=True)
         return jsonify({"ok": False, "error": str(exc)}), 500
     try:
-        # Persist, don't only cache. `status()` reads the per-list state file,
-        # so a manual run that updated only the in-memory attributes vanished
-        # from the panel on the next list switch -- and the last run recorded
-        # for this list stayed whatever the scheduler last wrote.
-        import time as _time
-        from modules.drift_check import _save_state
-        checker._last_result = result
-        checker._last_ts     = _time.time()
-        _save_state({"last_check_ts": checker._last_ts, "last_result": result})
+        # Persisted in THAT network's state, and its next scheduled run counts from now.
+        checker.record(name, result)
         return jsonify(result)
     except DriftStateUnreadable as exc:
         return jsonify({**result, "ok": False,
@@ -3119,18 +3119,21 @@ def drift_check_sync():
 
 @app.route("/drift/settings", methods=["GET"])
 def drift_settings_get():
-    """Return current drift check interval and disabled flag."""
+    """Return the drift check interval (one, every network) and the named network's switch."""
     from modules.drift_check import _is_disabled, _get_interval
+    from modules.drift_check import network_for
+    name = network_for(request)
     return jsonify({
         "ok":        True,
+        "list":      name,
         "interval_s": int(_get_interval()),
-        "disabled":  _is_disabled(),
+        "disabled":  _is_disabled(name),
     })
 
 
 @app.route("/drift/settings", methods=["POST"])
 def drift_settings_post():
-    """Update drift check interval and/or disabled flag.
+    """Update drift check interval and/or the named network's disabled flag.
 
     Wrapped, and the outcome is **read back from the state file** rather than
     echoed from the request. Echoing the input reports what was asked for; the
@@ -3142,17 +3145,17 @@ def drift_settings_post():
     from modules.agent_timers import save as save_timers
     data     = request.get_json(silent=True) or {}
     checker  = get_checker()
-    saved    = {}
+    from modules.drift_check import network_for
+    name     = network_for(request, data)
+    saved    = {"list": name}
 
     try:
         if "interval_s" in data:
             interval_s = int(data["interval_s"])
             save_timers({"drift_check_interval": interval_s})
             saved["interval_s"] = interval_s
-            # Re-arm the scheduler with the new interval
-            import time as _time
-            checker._next_ts = _time.time() + interval_s
-            checker._trigger.set()
+            # Every network's next run is rebuilt from its last run and the new interval.
+            checker.rearm()
 
         if "disabled" in data:
             # Who switched it off is part of the record. See `set_disabled`.
@@ -3164,14 +3167,14 @@ def drift_settings_post():
                 actor = ident.actor if ident.is_identified else ""
             except Exception:                  # noqa: BLE001
                 actor = ""
-            checker.set_disabled(bool(data["disabled"]), actor=actor)
+            checker.set_disabled(bool(data["disabled"]), actor=actor, list_name=name)
             # What is stored, not what was asked for.
-            saved["disabled"] = _is_disabled()
+            saved["disabled"] = _is_disabled(name)
     except Exception as exc:                   # noqa: BLE001
         app.logger.error("drift settings save failed: %s", exc, exc_info=True)
         return jsonify({"ok": False,
                         "error": f"Could not save drift settings: {exc}",
-                        "disabled": _is_disabled()}), 500
+                        "disabled": _is_disabled(name)}), 500
 
     return jsonify({"ok": True, **saved})
 

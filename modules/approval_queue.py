@@ -141,6 +141,7 @@ def add_approval(
     diff:         str = "",
     action_params: Optional[dict] = None,
     context:      str = "",
+    list_name:    str = "",
 ) -> str:
     """
     Add a pending approval request.  Returns the new entry's ID.
@@ -148,15 +149,18 @@ def add_approval(
     action_type values:
       'update_golden_config'  — save current running-config as new golden for device
       'revert_to_golden'      — restore golden config to device (destructive)
+
+    *list_name*: the queue of the device's own list (C491: the drift check of a network that
+    is not active queued its items in the active one's); else the active list's.
     """
-    with _lock():
+    with _lock(list_name):
         return _add_locked(action_type, description, device_ip, device_hostname, diff,
-                           action_params, context)
+                           action_params, context, list_name)
 
 
 def _add_locked(action_type, description, device_ip, device_hostname, diff, action_params,
-                context) -> str:
-    entries = _expire_old(_load_queue())
+                context, list_name: str = "") -> str:
+    entries = _expire_old(_load_queue(list_name))
 
     # Deduplicate: don't add if there is already a pending entry for the same
     # device and action type (avoid flooding the queue with repeated drift checks)
@@ -189,7 +193,7 @@ def _add_locked(action_type, description, device_ip, device_hostname, diff, acti
         "resolved_at":     None,
     }
     entries.append(entry)
-    _save_queue(entries)
+    _save_queue(entries, list_name)
     log.info("approval_queue: added [%s] %s — %s", entry_id, action_type, description[:80])
     return entry_id
 
@@ -219,11 +223,11 @@ def read_pending() -> tuple:
             and not (e.get("created_ts") and e["created_ts"] < cutoff)], None
 
 
-def get_pending() -> list:
+def get_pending(list_name: str = "") -> list:
     """Return all pending (not yet resolved, not expired) approval requests. A READ: it
     writes nothing (expiry applies in memory) and raises `StoreUnreadable` for a queue it
     cannot read."""
-    return [e for e in _expire_old(_read()) if e.get("status") == "pending"]
+    return [e for e in _expire_old(_read(list_name)) if e.get("status") == "pending"]
 
 
 def get_all(limit: int = 100) -> list:
@@ -231,8 +235,8 @@ def get_all(limit: int = 100) -> list:
     return list(reversed(_expire_old(_read())))[:limit]
 
 
-def get_pending_count() -> int:
-    return len(get_pending())
+def get_pending_count(list_name: str = "") -> int:
+    return len(get_pending(list_name))
 
 
 def resolve(entry_id: str, action: str, actor: str = "") -> dict:
