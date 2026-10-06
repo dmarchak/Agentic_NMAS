@@ -319,6 +319,57 @@ return [out, n];
 """
 
 
+#: C505 and the operator's check (2026-10-05): every DRAWN "How does this work?" sits right after
+#: the control it documents (the nearest drawn element before it carries data-op naming the
+#: link's page), and no control has two (a drawn help link before it is a second one). A control
+#: hidden until some state (Update's Stop waiting) leaves its link beside whatever is drawn.
+#: Returns one line per link that breaks it, and the number read.
+HELP_BESIDE_JS = """
+var out=[], n=0;
+function shown(e){ return e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden'; }
+function name(e){ return e.tagName.toLowerCase() + (e.id ? '#'+e.id : '')
+  + ' "' + (e.textContent||'').trim().replace(/\\s+/g, ' ').slice(0, 30) + '"'; }
+document.querySelectorAll('a.how-link').forEach(function(a){
+  if (!shown(a)) return;
+  n++;
+  var slug=(a.getAttribute('data-manual')||'').split('#')[0], p=a.previousElementSibling;
+  while (p && !shown(p)) p=p.previousElementSibling;
+  var words=a.getAttribute('aria-label') || (a.textContent||'').trim();
+  // Beside a HEADING (an op card's or a card's head row): it documents the card, not a control.
+  var head=a.closest('.op-hd, .card-head');
+  if (!p && head && head.querySelector('h1, h2, h3')) return;
+  if (!p) out.push(words+' ('+slug+'): no control is drawn before it');
+  else if (p.matches('a.how-link, a.info-link')) out.push(words+' ('+slug+'): a second help '
+    + 'link beside the same control, after '+((p.getAttribute('aria-label')||p.textContent||'').trim()));
+  else if (p.getAttribute('data-op') !== slug) out.push(words+' ('+slug+'): beside '+name(p)
+    + ', which documents '+(p.getAttribute('data-op') || 'nothing'));
+});
+return [out, n];
+"""
+
+
+def measure_help_links(b, page_label):
+    """``(problems, links)`` for the page *b* shows, every <details> open."""
+    b.js("document.querySelectorAll('details').forEach(function(d){d.open=true}); return 1")
+    got, n = b.js(HELP_BESIDE_JS)
+    return [f"{page_label}: {p}" for p in got], n
+
+
+class TestEveryHelpLinkSitsBesideItsControl:
+    def test_the_nearest_drawn_control_is_the_one_its_page_documents(self, served):
+        srv, b = served
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1366, "height": 1000})
+        problems, links = [], 0
+        for page in PAGES:
+            b.go(srv.url(page))
+            b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 10)
+            got, n = measure_help_links(b, page)
+            problems += got
+            links += n
+        assert not problems, "\n".join(problems)
+        assert links >= 5, links
+
+
 def measure_layout(b, page_label):
     """Both measurements on the page *b* shows, every <details> open: ``(problems, tables,
     controls)``."""

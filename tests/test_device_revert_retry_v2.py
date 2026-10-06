@@ -293,7 +293,7 @@ def test_a_long_commit_subject_stays_inside_the_revert_card(blocked, width):
         pytest.skip(f"no real browser here ({why})")
     import app as A
     from tests.test_intent_ops import _edit
-    from tests.test_v2_layout_in_a_browser import measure_layout
+    from tests.test_v2_layout_in_a_browser import measure_help_links, measure_layout
 
     _edit(blocked["repo"], lambda doc: doc.update(ntp_servers=list(
         doc.get("ntp_servers") or []) + ["192.0.2.124"]), LONG_SUBJECT)
@@ -306,6 +306,7 @@ def test_a_long_commit_subject_stays_inside_the_revert_card(blocked, width):
             assert LONG_SUBJECT in b.js(f"return {CARD}.querySelector('select[name=sha]')"
                                         ".textContent")
             problems, _tables, controls = measure_layout(b, f"revert at {width}")
+            problems += measure_help_links(b, f"revert at {width}")[0]
             assert not problems, "\n".join(problems)
             assert controls >= 3, controls
             assert b.js("return document.documentElement.scrollWidth <= window.innerWidth + 1"), \

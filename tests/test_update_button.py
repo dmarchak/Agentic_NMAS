@@ -1269,6 +1269,14 @@ class TestClickingTheShippedButton:
         b.wait_for("var w=document.querySelector('#update-waiting');"
                    "return window.Alpine && w && getComputedStyle(w).display !== 'none' && w.textContent")
         assert b.js("return document.querySelector('[data-update-hold]')") is None
+        # C505: waiting, Stop waiting is drawn with its own (i), and each help link sits
+        # beside the control it documents.
+        from tests.test_v2_layout_in_a_browser import measure_help_links
+        problems, links = measure_help_links(b, "update, waiting")
+        assert not problems and links >= 1, (problems, links)
+        assert b.js("var s=document.querySelector('#update-stop-waiting');"
+                    "return getComputedStyle(s).display !== 'none' && "
+                    "getComputedStyle(s.nextElementSibling).display !== 'none'")
         b.js("document.querySelector('#update-panel').setAttribute('data-old', '1');"
              "htmx.trigger(document.body, 'nmas:app_version'); return 1")
         b.wait_for("var p=document.querySelector('#update-panel'); return p && !p.hasAttribute('data-old')")
@@ -1307,6 +1315,10 @@ class TestClickingTheShippedButton:
         shown = b.js("var s=document.querySelector('#update-stop-waiting');"
                      "return s ? getComputedStyle(s).display : 'absent'")
         assert shown in ("none", "absent"), shown
+        # C505: with no wait, Stop waiting's (i) is not drawn either, so Update has one link.
+        from tests.test_v2_layout_in_a_browser import measure_help_links
+        problems, _links = measure_help_links(b, f"update, no wait, selectable={selectable}")
+        assert not problems, problems
 
     def test_a_redraw_with_no_wait_draws_no_stop_waiting(self, served_update, monkeypatch):
         """C279, reproduced by the operator (2026-10-01): a hard reload drew

@@ -18,7 +18,7 @@
   {%- endif %}
   {%- if not is_default %}
   <div class="set-choice">
-    <div class="seg" role="group" aria-label="Where {{ c.label }}'s values come from">
+    <div class="seg" role="group" data-op="settings-switch" aria-label="Where {{ c.label }}'s values come from">
       {%- for ch in c.choices %}
       {%- if ch.on %}<span class="seg-btn on" aria-current="true">{{ ch.words[:1] | upper }}{{ ch.words[1:] }}</span>
       {%- else %}<a class="seg-btn" href="{{ url_for('settings_v2.group_preview', list_name=list_name, group=g, to=ch.value) }}" hx-get="{{ url_for('settings_v2.group_preview', list_name=list_name, group=g, to=ch.value) }}" hx-target="#card-{{ g }}" hx-swap="outerHTML" title="Opens the preview: nothing is saved until you confirm">{{ ch.words[:1] | upper }}{{ ch.words[1:] }}</a>{% endif %}

@@ -132,13 +132,14 @@ def test_the_table_s_first_column_is_inside_its_card(tl, width):
         pytest.skip(f"no real browser here ({why})")
     import app as A
     from tests.test_device_seed_v2 import SETTLED
-    from tests.test_v2_layout_in_a_browser import measure_layout
+    from tests.test_v2_layout_in_a_browser import measure_help_links, measure_layout
     with browser.Served(A.app) as srv, browser.Browser() as b:
         try:
             b._call("POST", f"/session/{b.session}/window/rect", {"width": width, "height": 1000})
             b.go(srv.url(f"/v2/templates?list=Lab&approve={REL}"))
             b.wait_for("return !!document.querySelector('#tpl-card') && " + SETTLED, 15)
             problems, tables, controls = measure_layout(b, f"templates at {width}")
+            problems += measure_help_links(b, f"templates at {width}")[0]
             assert not problems, "\n".join(problems)
             assert tables >= 1 and controls >= 3, (tables, controls)
         finally:

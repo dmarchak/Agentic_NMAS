@@ -103,11 +103,15 @@
     {#- Every stage visible: the button says it is sending, a refusal is shown
         with its reason, and once accepted the stepper follows the updater's own
         steps (its record names the step it is on). -#}
-    <button type="button" class="btn btn-primary" id="update-confirm" data-op="update" x-on:click="confirm"
-            x-bind:disabled="blocked" x-show="showButton" x-text="buttonText">Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}</button>{{ how('update') }}
+    {#- The button and its link are drawn together or not at all (C505's check: while waiting,
+        the link stayed beside the paragraph above). -#}
+    <span class="op-act" x-show="showButton"><button type="button" class="btn btn-primary" id="update-confirm" data-op="update" x-on:click="confirm"
+            x-bind:disabled="blocked" x-show="showButton" x-text="buttonText">Update to {{ f.target[:10] or '?' }}{{ ' when CI passes' if p.waitable else '' }}</button>{{ how('update') }}</span>
     <p class="wait" id="update-waiting" x-show="waiting" x-cloak x-text="words" role="status" aria-live="polite"></p>
-    <button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak data-op="update" x-on:click="stopWaiting"
-            x-bind:disabled="stopping" x-text="stopText">Stop waiting</button>{{ how('update', 'update-when-ci-passes', compact=True, op='waiting for CI') }}
+    {#- Stop waiting and its (i) are drawn together or not at all (C505: the (i) stayed when the
+        button was hidden, a second link beside Update). -#}
+    <span class="op-act" x-show="waiting" x-cloak><button type="button" class="btn" id="update-stop-waiting" x-show="waiting" x-cloak data-op="update" x-on:click="stopWaiting"
+            x-bind:disabled="stopping" x-text="stopText">Stop waiting</button>{{ how('update', 'update-when-ci-passes', compact=True, op='waiting for CI') }}</span>
     <div class="notice notice-danger" x-show="refused" x-cloak role="alert"><p x-text="refusal"></p></div>
     <ol class="stepper" data-stepper x-show="running" x-cloak aria-label="Update progress">
       {%- for key, words in steps %}
