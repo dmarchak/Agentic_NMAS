@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""Claude Code PreToolUse hook: the agent reads goldens, configs and backups only through
+`scripts/nmas-config-read`, which masks every line it prints (C536, the operator,
+2026-10-06).
+
+The agent read a committed golden on the host with its own script, searched for `ntp`, and
+printed s1's `username` line whole, because the secret hash held the substring. Every
+product surface masks config on the way out; the agent's scratch reads did not, because
+nothing made them.
+
+Wired in `.claude/settings.json` for Bash, Read and Grep. Claude Code passes the tool call
+as JSON on stdin; exit 2 refuses it with the message on stderr; exit 0 lets it run; an
+input the hook cannot read exits 1 (a visible hook error, the call allowed), because a
+broken hook must not stop every command.
+
+**Refused** (refusing by resemblance is safe; allowing by it is not):
+- Read or Grep of a path in a config store: under a `data/` folder, `lists/`,
+  `config_cache/` or `checkpoints/`, or any `config_repo`, `golden_configs`, `pre_change`
+  or `backups` folder of a list.
+- A Bash command segment that names such a path.
+- A Bash command segment that reaches a host (`nmas-host <host> --`, `ssh`, `scp`) and
+  names configuration (`golden`, `config_repo`, `.cfg`, `running-config`, `show run`,
+  `LISTS_DIR`…) in the part run there, OR in any local file the segment names (a script
+  redirected or piped into the host's interpreter is read here, before it is sent).
+- A local segment naming a script outside this checkout (a scratch script) whose text
+  names a config store.
+
+**Allowed:** a segment that runs `nmas-config-read`, directly or as the file redirected
+into a host's `python3 -`. Its output is masked, so piping it on is fine.
+"""
+
+import json
+import os
+import re
+import shlex
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+READER = "nmas-config-read"
+SEPARATORS = {";", "&&", "||", "&", ";;"}
+
+#: A path inside a store holding device configuration, on any machine. Each store is a
+#: FOLDER, so its name must end the path or be followed by `/`: `modules/backups.py` and
+#: `screens/backups.md` are not stores (no tracked file matches; the test says so).
+STORE_PATH = re.compile(
+    r"(?:^|[/\s'\"=])(?:data/(?:lists|config_cache|checkpoints)(?=/|[\s'\"]|$)|data/?$"
+    r"|[^\s'\"]*/(?:config_repo|golden_configs|pre_change|backups)(?=/|[\s'\"]|$))")
+#: Words naming configuration, in a part run on a host or in a script sent to one.
+CONFIG_WORDS = re.compile(
+    r"golden|config_repo|config_cache|checkpoints|pre_change|\bbackups?\b|\.cfg\b"
+    r"|running-config|startup-config|\bshow\s+run|\bLISTS_DIR\b|\bdata/lists\b")
+#: In a scratch script run on the laptop: names a store.
+SCRIPT_STORE_WORDS = re.compile(
+    r"config_repo|golden_configs|config_cache|pre_change|\bLISTS_DIR\b|data/lists"
+    r"|load_golden|list_goldens|read_golden")
+
+MESSAGE = (
+    "Refused by the project's PreToolUse hook (scripts/hooks/claude-no-raw-config-reads): "
+    "{what}. Goldens, configs and backups are read only through scripts/nmas-config-read, "
+    "which prints every line masked (C536: a substring search printed a secret hash). On a "
+    "host: scripts/nmas-host nmas -- env PYTHONDONTWRITEBYTECODE=1 python3 - --checkout "
+    "<checkout> [--grep RE | --stanza RE] golden/<device>.cfg < scripts/nmas-config-read")
+
+
+def _tokens(command):
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lex.whitespace_split = True
+        return list(lex)
+    except ValueError:
+        return command.split()
+
+
+def _segments(tokens):
+    """Split on ; && || & (a pipe stays inside its segment: what it pipes is what ran)."""
+    seg, out = [], []
+    for tok in tokens:
+        if tok in SEPARATORS:
+            if seg:
+                out.append(seg)
+            seg = []
+        else:
+            seg.append(tok)
+    if seg:
+        out.append(seg)
+    return out
+
+
+def _base(tok):
+    return tok.rsplit("/", 1)[-1]
+
+
+def _runs_reader(seg):
+    """The segment runs nmas-config-read: as its program, or redirected into one."""
+    for i, tok in enumerate(seg):
+        if _base(tok) == READER:
+            prev = seg[i - 1] if i else ""
+            if i == 0 or prev in ("<", "|") or _base(prev) in ("python3", "python", "env"):
+                return True
+    return False
+
+
+def _remote_part(seg):
+    for i, tok in enumerate(seg):
+        base = _base(tok)
+        if base == "nmas-host":
+            rest = seg[i + 1:]
+            return rest[rest.index("--") + 1:] if "--" in rest else rest
+        if base in ("ssh", "scp"):
+            return seg[i + 1:]
+    return None
+
+
+def _local_files(seg):
+    """Existing local files the segment names (a script redirected or piped to a host)."""
+    out = []
+    for tok in seg:
+        if tok in ("<", ">", "|") or _base(tok) in ("nmas-host", READER):
+            continue
+        path = os.path.expanduser(tok)
+        if os.path.isfile(path) and os.path.getsize(path) < 1_000_000:
+            out.append(path)
+    return out
+
+
+def _read(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+    except OSError:
+        return ""
+
+
+def _inside_checkout(path):
+    return os.path.abspath(path).startswith(ROOT + os.sep)
+
+
+def bash_offence(command):
+    for seg in _segments(_tokens(command)):
+        if _runs_reader(seg):
+            continue
+        text = " ".join(seg)
+        m = STORE_PATH.search(text)
+        if m:
+            return f"this command names a config store ({m.group(0).strip()!r})"
+        remote = _remote_part(seg)
+        if remote is not None:
+            m = CONFIG_WORDS.search(" ".join(remote))
+            if m:
+                return f"this command reads configuration on a host ({m.group(0)!r})"
+            for path in _local_files(seg):
+                m = CONFIG_WORDS.search(_read(path))
+                if m:
+                    return (f"the script {os.path.basename(path)} sent to a host names "
+                            f"configuration ({m.group(0)!r})")
+            continue
+        for path in _local_files(seg):
+            if not _inside_checkout(path) and path.endswith((".py", ".sh")):
+                m = SCRIPT_STORE_WORDS.search(_read(path))
+                if m:
+                    return (f"the script {os.path.basename(path)} names a config store "
+                            f"({m.group(0)!r})")
+    return None
+
+
+def path_offence(path):
+    if not path:
+        return None
+    norm = os.path.abspath(os.path.expanduser(path)).replace(os.sep, "/")
+    m = STORE_PATH.search(norm)
+    if m:
+        return f"{path} is in a config store"
+    return None
+
+
+def offence(call):
+    name = call.get("tool_name") or ""
+    args = call.get("tool_input") or {}
+    if name == "Bash":
+        return bash_offence(args.get("command") or "")
+    if name in ("Read", "Grep"):
+        return path_offence(args.get("file_path") or args.get("path") or "")
+    return None
+
+
+def main():
+    try:
+        call = json.load(sys.stdin)
+        what = offence(call)
+    except (ValueError, AttributeError) as exc:
+        print(f"claude-no-raw-config-reads: could not read the tool call: {exc}",
+              file=sys.stderr)
+        return 1
+    if what:
+        print(MESSAGE.format(what=what), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

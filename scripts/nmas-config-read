@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Read committed configuration files through the masking every product surface uses.
+
+    nmas-config-read golden/s1.cfg                      # the whole file, masked
+    nmas-config-read --grep '^ntp ' golden/s1.cfg golden/s2.cfg
+    nmas-config-read --stanza '^interface GigabitEthernet0/2$' golden/s1.cfg
+    nmas-config-read --list Lab --rev HEAD~1 golden/r1.cfg
+
+    # on a host, from the laptop's copy, nothing installed there:
+    nmas-host nmas -- env PYTHONDONTWRITEBYTECODE=1 python3 - --checkout <checkout> \\
+        --grep '^ntp ' golden/s1.cfg < scripts/nmas-config-read
+
+**Why it exists** (C536, 2026-10-06). The agent read a committed golden on the host with
+its own script, searched for `ntp`, and printed s1's `username` line whole: the secret hash
+held the substring. Every product surface masks config on the way out; a scratch read went
+around it because nothing made it use the masking. This is the one way the agent's own
+tooling reads goldens, configs and backups (the hook `claude-no-raw-config-reads` refuses
+every other), and every line it prints has passed `redact.redact_text`: by position
+(passwords, secrets, keys, communities), then by the values this installation holds.
+
+**A search matches the RAW line and prints the MASKED one.** A pattern that matches inside
+a secret still finds its line, and the line printed shows the placeholder where the secret
+was: the person sees that the match was a secret line, never the secret.
+
+**What it reads:** the COMMITTED file (`git show <rev>:<path>`) in a list's
+`config_repo`, never the working tree (readers take what is committed). Paths are relative
+to that repository: `golden/<device>.cfg`, `host_vars/<device>.yml`, `templates/...`.
+
+**Reads only.** It writes nothing; `sys.dont_write_bytecode` keeps a host checkout clean.
+
+Exit: 0 every path read; 1 a path is not in the revision (named on stderr); 2 the
+repository could not be found.
+"""
+
+import sys
+
+sys.dont_write_bytecode = True
+
+import argparse  # noqa: E402
+import os  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+
+
+def _checkout(given: str) -> str:
+    """The checkout whose `modules` hold the masking: --checkout, else this file's own
+    checkout, else the working directory (a script read from stdin has no file)."""
+    if given:
+        return os.path.abspath(os.path.expanduser(given))
+    here = globals().get("__file__") or ""
+    if here and os.path.exists(here):
+        return os.path.dirname(os.path.dirname(os.path.abspath(here)))
+    return os.getcwd()
+
+
+def _repo(list_name: str, given: str) -> str:
+    if given:
+        return os.path.abspath(given)
+    from modules.config import LISTS_DIR
+    return os.path.join(LISTS_DIR, list_name, "config_repo")
+
+
+def stanzas(lines, pattern):
+    """Each block that starts at a line matching *pattern* and runs to the next `!` line
+    or the next unindented line, whichever comes first."""
+    out, inside = [], False
+    for line in lines:
+        if inside and (line.strip() == "!" or (line[:1] not in (" ", "\t", ""))):
+            inside = False
+        if not inside and pattern.search(line):
+            inside = True
+        if inside:
+            out.append(line)
+    return out
+
+
+def masked_lines(text: str, grep=None, stanza=None) -> list:
+    """The lines to print, each masked. A search runs on the raw lines; what is printed is
+    always the masked form of the line it found."""
+    from modules.redact import redact_text
+
+    lines = text.splitlines()
+    if stanza is not None:
+        lines = stanzas(lines, stanza)
+    if grep is not None:
+        lines = [line for line in lines if grep.search(line)]
+    return [redact_text(line) for line in lines]
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("paths", nargs="+", help="paths in the list's config_repo")
+    ap.add_argument("--list", default="default", help="the list's folder (default: default)")
+    ap.add_argument("--repo", default="", help="a repository path, in place of --list")
+    ap.add_argument("--rev", default="HEAD", help="the revision to read (default: HEAD)")
+    ap.add_argument("--grep", default=None, help="print only lines matching this regex")
+    ap.add_argument("--stanza", default=None,
+                    help="print only the blocks whose first line matches this regex")
+    ap.add_argument("--checkout", default="", help="the NMAS checkout (default: this one)")
+    args = ap.parse_args(argv)
+
+    checkout = _checkout(args.checkout)
+    sys.path.insert(0, checkout)
+    os.chdir(checkout)
+    repo = _repo(args.list, args.repo)
+    if not os.path.isdir(repo):
+        print(f"nmas-config-read: no repository at {repo}", file=sys.stderr)
+        return 2
+
+    grep = re.compile(args.grep) if args.grep else None
+    stanza = re.compile(args.stanza) if args.stanza else None
+    missing = 0
+    for path in args.paths:
+        got = subprocess.run(["git", "-C", repo, "show", f"{args.rev}:{path}"],
+                             capture_output=True, text=True, check=False)
+        if got.returncode:
+            print(f"nmas-config-read: {path} is not in {args.rev}", file=sys.stderr)
+            missing += 1
+            continue
+        for line in masked_lines(got.stdout, grep, stanza):
+            print(f"{path}: {line}")
+    return 1 if missing else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
