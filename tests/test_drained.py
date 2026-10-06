@@ -84,9 +84,53 @@ class TestTheGoldens:
         for cmd in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "g"]):
             subprocess.run(["git", "-C", str(repo), *cmd], check=True, env=env)
         got = D.interfaces_from_goldens(str(repo))["r2"]
-        assert got["GigabitEthernet2"] == {"address": ["192.0.2.12"], "vrf": False}
+        assert got["GigabitEthernet2"] == {"address": ["192.0.2.12"], "vrf": False, "areas": set()}
         assert got["GigabitEthernet4"]["vrf"] is True
         assert got["Loopback0"]["address"] == ["203.0.113.2"]
+
+
+class TestR2sRealGolden:
+    """The operator, 2026-10-06: every device here is managed on Loopback0, so the management
+    path is the interfaces in the loopback's OSPF area (r2: Gi2, by `ipv6 ospf 1 area 0` and
+    `network 10.255.3.0 0.0.0.255 area 0`); Gi1 is in the clab-mgmt VRF; Gi3 is data. r2 is
+    drained exactly when Gi3 is under the floor."""
+
+    @pytest.fixture(scope="class")
+    def r2(self, tmp_path_factory):
+        import shutil
+        repo = tmp_path_factory.mktemp("repo")
+        (repo / "golden").mkdir()
+        shutil.copy(os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet",
+                                 "r2.cfg"), repo / "golden" / "r2.cfg")
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
+        for cmd in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "g"]):
+            subprocess.run(["git", "-C", str(repo), *cmd], check=True, env=env)
+        ifs = D.interfaces_from_goldens(str(repo))
+        # The management address is Loopback0's own, taken from the golden.
+        return ifs, ifs["r2"]["Loopback0"]["address"][0]
+
+    @staticmethod
+    def _series(gi3):
+        up = {("r2", n): 1 for n in ("Gi1", "Gi2", "Gi3", "Lo0")}
+        busy = {("r2", "Gi1"): 20.0, ("r2", "Gi2"): 40.0}
+        return {"up": up, "in": {**busy, ("r2", "Gi3"): gi3}, "out": {**busy, ("r2", "Gi3"): gi3},
+                "max_in": {**busy, ("r2", "Gi3"): gi3}, "max_out": {**busy, ("r2", "Gi3"): gi3}}
+
+    def test_the_areas_are_read(self, r2):
+        ifs, _addr = r2
+        assert ifs["r2"]["Loopback0"]["areas"] == {"0"}
+        assert ifs["r2"]["GigabitEthernet2"]["areas"] == {"0"}
+        assert ifs["r2"]["GigabitEthernet3"]["areas"] == set()
+        assert ifs["r2"]["GigabitEthernet1"]["vrf"] is True
+
+    @pytest.mark.parametrize("gi3,drained", [(0.0, True), (0.49, True), (0.5, False),
+                                             (25.0, False)])
+    def test_r2_is_drained_exactly_when_gi3_is_under_the_floor(self, r2, gi3, drained):
+        ifs, addr = r2
+        (v,) = D.judge({"r2": addr}, ifs, self._series(gi3)).values()
+        assert v["drained"] is drained
+        assert v["judged"] == ["Gi3"] and v["management"] == "GigabitEthernet2"
 
 
 VERDICT = {"device": "r2", "drained": True, "judged": ["Gi3"], "management": "GigabitEthernet2",

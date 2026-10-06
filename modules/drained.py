@@ -60,10 +60,12 @@ def interfaces_from_goldens(repo_dir: str) -> dict:
     from modules.nsot import repo as R
 
     rc, out, err = R.git(repo_dir, "grep", "-e", "^interface ", "-e", "^ ip address ",
-                         "-e", "^ \\(ip \\)\\?vrf forwarding ", "HEAD", "--", "golden/")
+                         "-e", "^ \\(ip \\)\\?vrf forwarding ",
+                         "-e", "^ \\(ip \\|ipv6 \\)\\?ospf\\(v3\\)\\? .*area ",
+                         "-e", "^ network [0-9.]* [0-9.]* area ", "HEAD", "--", "golden/")
     if rc not in (0, 1):
         raise RuntimeError((err or out or "git grep failed").strip())
-    found, current = {}, {}
+    found, current, networks = {}, {}, {}
     for line in out.splitlines():
         try:
             _ref, path, text = line.split(":", 2)
@@ -73,15 +75,36 @@ def interfaces_from_goldens(repo_dir: str) -> dict:
         ifs = found.setdefault(dev, {})
         if text.startswith("interface "):
             current[dev] = text.split(None, 1)[1].strip()
-            ifs[current[dev]] = {"address": [], "vrf": False}
+            ifs[current[dev]] = {"address": [], "vrf": False, "areas": set()}
+        elif text.startswith(" network "):
+            # `router ospf`'s network statements: an interface whose address they cover is in
+            # that area (RIP's and BGP's network lines carry no "area").
+            parts = text.split()
+            networks.setdefault(dev, []).append((parts[1], parts[2], parts[4]))
         elif dev in current:
+            parts = text.split()
             if "vrf forwarding" in text:
                 ifs[current[dev]]["vrf"] = True
-            else:
-                parts = text.split()
-                if len(parts) >= 3:
-                    ifs[current[dev]]["address"].append(parts[2])
+            elif "area" in parts:
+                ifs[current[dev]]["areas"].add(parts[parts.index("area") + 1])
+            elif len(parts) >= 3:
+                ifs[current[dev]]["address"].append(parts[2])
+    for dev, nets in networks.items():
+        for i in found.get(dev, {}).values():
+            for net, wildcard, area in nets:
+                if any(_covers(net, wildcard, a) for a in i["address"]):
+                    i["areas"].add(area)
     return found
+
+
+def _covers(net: str, wildcard: str, address: str) -> bool:
+    """Does OSPF's `network <net> <wildcard>` cover *address*?"""
+    import ipaddress
+    try:
+        n, w, a = (int(ipaddress.IPv4Address(x)) for x in (net, wildcard, address))
+    except ValueError:
+        return False
+    return (a & ~w) == (n & ~w)
 
 
 def judge(devices: dict, golden_ifs: dict, series: dict) -> dict:
@@ -98,14 +121,25 @@ def judge(devices: dict, golden_ifs: dict, series: dict) -> dict:
             out[dev] = {"drained": False, "why": "no committed golden to find its management path"}
             continue
         mgmt = [n for n, i in ifs.items() if mgmt_ip and mgmt_ip in i["address"]]
-        if not mgmt or _key(mgmt[0])[0] in ("lo",):
+        if not mgmt:
             out[dev] = {"drained": False, "why": (
                 f"no interface in its golden carries its management address {mgmt_ip}, so its "
-                "management path is not known" if not mgmt else
-                f"its management address is on {mgmt[0]}, so the path to the manager is not "
-                "one interface")}
+                "management path is not known")}
             continue
-        excluded = {_key(mgmt[0])} | {_key(n) for n, i in ifs.items() if i["vrf"]}
+        if _key(mgmt[0])[0] == "lo":
+            # The management address on a loopback (the operator, 2026-10-06: every device
+            # here): the path to the manager is every interface sharing the loopback's routing
+            # domain toward the core, its OSPF/OSPFv3 area(s); every other interface is data.
+            areas = ifs[mgmt[0]].get("areas") or set()
+            path = [n for n, i in ifs.items() if n != mgmt[0] and _key(n)[0] != "lo"
+                    and not i["vrf"] and areas & (i.get("areas") or set())]
+            if not path:
+                out[dev] = {"drained": False, "why": (
+                    f"its management address is on {mgmt[0]}, which is in no OSPF area another "
+                    "interface shares, so its management path is not known")}
+                continue
+            mgmt = path
+        excluded = {_key(n) for n in mgmt} | {_key(n) for n, i in ifs.items() if i["vrf"]}
         judged, rates = [], {}
         for (d, ifname), state in series["up"].items():
             if d != dev or state != 1 or _key(ifname)[0] in ("lo", "nu") \
@@ -114,14 +148,14 @@ def judge(devices: dict, golden_ifs: dict, series: dict) -> dict:
             judged.append(ifname)
             rates[ifname] = (series["in"].get((dev, ifname)), series["out"].get((dev, ifname)))
         if not judged:
-            out[dev] = {"drained": False, "management": mgmt[0],
+            out[dev] = {"drained": False, "management": ", ".join(mgmt),
                         "why": "no up interface besides its management path to judge"}
             continue
         quiet = all(series["max_in"].get((dev, n)) is not None
                     and series["max_out"].get((dev, n)) is not None
                     and series["max_in"][(dev, n)] < FLOOR_PPS
                     and series["max_out"][(dev, n)] < FLOOR_PPS for n in judged)
-        out[dev] = {"drained": quiet, "judged": sorted(judged), "management": mgmt[0],
+        out[dev] = {"drained": quiet, "judged": sorted(judged), "management": ", ".join(mgmt),
                     "rates": rates, "why": ""}
     return out
 
