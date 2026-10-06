@@ -131,7 +131,7 @@ RENDERS = {
         ((DW, "openDeployPlan", "d"), (DW, "_renderDeployPlan", "plan")),
         maps=("select_data",),
         adapters={"modules/preview_confirm.py": ("deploy_preview", "_deploy_gates",
-                                                 "_removal_words")}),
+                                                 "_removal_words", "expected_part")}),
     "POST /deploy/apply": Render(
         lambda mp, tmp: P.deploy_apply(mp),
         {DW: ("applyDeploy", "_renderDeployResult"), PC: PC_RESULT_FNS},
@@ -485,7 +485,12 @@ UNDRAWN = {
         ("complete", "the conjunction of two gates drawn by name (template "
                      "reproduces the device; every line modelled or acknowledged)"),
         ("deployable_count", "the summary sentence recomputes it from the "
-                             "devices the preview draws")],
+                             "devices the preview draws"),
+        ("derived expected unexpected",
+         "C506 phase 2, the plan's Expected effects: drawn by the v2 deploy card "
+         "(templates/v2/_deploy.html, #expected, from preview_confirm.expected_part) and reached "
+         "in tests/test_expected_effects_plan.py; today's v1 deploy page gains no capability "
+         "(the v1 rule), so it does not")],
     "POST /golden/restore/preview": [
         ("add intent_restored inventory_size mode partial ref un_onboarding",
          "structured forms of claims the drawn `summary` sentence makes (C23's "
@@ -568,6 +573,14 @@ EMPTY_IN_FIXTURE = {
     "GET /templates templates[].bound_devices": (S_, _STRINGS),
     "GET /templates/approval/<path> changes": (S_, _STRINGS),
     "POST /deploy/plan devices[].blocking_reasons": (S_, _STRINGS),
+    "POST /deploy/plan devices[].expected_effects.up": (S_, _STRINGS),
+    "POST /deploy/plan devices[].expected_effects.adjacencies_drop": (
+        R_, "the fixture's program shuts no interface (C506 phase 2); an adjacency over a shut "
+            "interface and a BGP session sourced from one are reached in "
+            "tests/test_expected_effects_plan.py and drawn by the v2 deploy card"),
+    "POST /deploy/plan devices[].expected_effects.may_form": (
+        R_, "the fixture's program brings no interface up (C506 phase 2); reached in "
+            "tests/test_expected_effects_plan.py"),
     "POST /deploy/plan devices[].excluded_unrenderable": (S_, _STRINGS),
     "POST /deploy/plan devices[].masked_refs": (S_, _STRINGS),
     "POST /deploy/plan devices[].shares_key[].chain": (S_, _STRINGS),
@@ -709,7 +722,10 @@ EMPTY_IN_FIXTURE = {
 # the intersection) found the restore plan's per-device copy of C140's
 # aggregate, the same state the deploy plan's entry already declares. New
 # coverage: the walker had hidden it, the fixture did not stop reaching it.
-EMPTY_RECORDS_CEILING = 26
+# 26 -> 28: C506 phase 2 (2026-10-06): the plan's derived adjacency drops and the adjacencies
+# that may form, empty because the fixture's program shuts and brings up nothing; both reached
+# in tests/test_expected_effects_plan.py.
+EMPTY_RECORDS_CEILING = 28
 
 
 def _empty_paths(obj, path=""):
@@ -788,7 +804,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 110  # +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 113  # +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

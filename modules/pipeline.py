@@ -249,6 +249,10 @@ class PipelineContext:
     #: protocol an operation exists to bring back was the one it could not
     #: check (C107's sibling, the operator's, C70 re-run 2026-09-27).
     declared_protocols:  dict = None
+    #: ip -> `expected_effects.for_device`: the effects the program implies, derived from it
+    #: and committed intent, exactly as the plan showed them (C506 phase 2). Verify leaves an
+    #: adjacency the program is expected to drop out of the neighbour comparison.
+    expected_effects:    dict = None
     #: ip -> ``{"units", "commands"}``: the removals a person selected (Mode B),
     #: the TAIL of the confirmed program. Verify reads back that each is gone;
     #: rollback undoes them by re-adding the device's own lines, never by
@@ -1398,8 +1402,21 @@ def _stage_verify(ctx: PipelineContext) -> None:
         # back for them, because the tool cannot see what the change did.
         cant_read: list[str] = []
 
+        # The adjacencies the program is expected to drop (C506 phase 2), as the plan showed
+        # them: left out of each protocol's comparison, by identity where the read names them.
+        adj_drops = (((ctx.expected_effects or {}).get(ip) or {}).get("adjacencies_drop")
+                     or [])
+        expected_gone: dict = {}
+        for pre_proto in pre_counts:
+            expect = _fx.expected_ids(adj_drops, pre_proto)
+            pre_ids = _fx.neighbour_ids(pre_nbr, pre_proto)
+            expected_gone[pre_proto] = len(expect & pre_ids)
+        record["adjacencies_expected_down"] = adj_drops
+
         # A hard failure already visible: nothing is waited out over it (C506).
         for pre_proto, pre_count in ([] if hard else sorted(pre_counts.items())):
+            # Compared without the adjacencies the program drops on purpose (C506 phase 2).
+            pre_count = pre_count - expected_gone.get(pre_proto, 0)
             post_count = post_counts.get(pre_proto, -1)
             # A read that could not be trusted goes to the settle window below,
             # which reads again on a new session; only when that read cannot be
@@ -1483,7 +1500,9 @@ def _stage_verify(ctx: PipelineContext) -> None:
             u.startswith("bgp ") for u in unmet)
         if ("bgp" in checked and not bgp_failed and not hard
                 and scope["scope"] != verify_scope.QUICK):
-            baseline = pre_counts.get("bgp", 0) or (1 if "bgp" in from_intent else 0)
+            # Less the sessions the program drops on purpose (C506 phase 2).
+            baseline = (max(0, pre_counts["bgp"] - expected_gone.get("bgp", 0))
+                        if pre_counts.get("bgp") else (1 if "bgp" in from_intent else 0))
             watch = _watch_bgp_hold(ctx, ip, baseline, post.get("running_config") or "")
             record["bgp_watch"] = watch
             if watch.get("issue"):
@@ -1545,6 +1564,11 @@ def _stage_verify(ctx: PipelineContext) -> None:
             # By name (C506): an unexpected loss was judged first, above. What remains is the
             # intended end state: an interface the program brings up must be up, given the
             # interfaces' settle window.
+            if named.get("not_down") and not hard:
+                # The program shuts it and it is still up: the change did not take, and an
+                # adjacency the plan expected to drop on it would be judged on a wrong premise.
+                issues.append("The change shuts " + ", ".join(named["not_down"])
+                              + ", and it is still up")
             if named["not_up"] and not hard:
                 waited = _await_interfaces(
                     ctx, ip, lambda s: not _fx.judge(expected, pre_states, s)["not_up"],

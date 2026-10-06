@@ -39,6 +39,18 @@
     {%- endfor %}
     {%- if c.authorisation_error %}<p class="op-note">{{ c.authorisation_error }}</p>{% endif %}
   </div></div>
+  {%- if c.sent %}
+  {#- C506 (board approved 2026-10-06): what the program is MEANT to do, derived from it and
+      committed intent. Verify expects each; none of them rolls back by happening. -#}
+  <div class="op-part" id="expected"><h3>Expected effects</h3><div>
+    {%- if c.expected.derived %}
+    <p class="op-wait">What this change is meant to do on {{ c.host }}. Verify checks each one; none of them triggers a rollback by happening.</p>
+    <ul class="op-gates">{% for e in c.expected.derived %}<li>{{ badge('derived', 'info') }}<span>{{ e }}</span></li>{% endfor %}</ul>
+    {%- else %}<p>None derived: the program shuts no interface and brings none up, so every interface and adjacency on {{ c.host }} is expected to stay as it is.</p>{% endif %}
+    {%- if c.expected.unread %}<p class="op-note">{{ c.expected.unread }}</p>{% endif %}
+    <p class="muted small">{{ c.expected.unexpected }}</p>
+  </div></div>
+  {%- endif %}
   <div class="op-part{{ ' op-focus' if c.focus == 'removal' }}" id="removal"><h3>Left on the device</h3><div>
     {%- if c.focus == 'removal' %}<p class="op-focus-note">Removals are made as part of a deploy: tick the lines to remove here; anything intent adds is sent with them.</p>{% endif %}
     {%- if c.residue %}

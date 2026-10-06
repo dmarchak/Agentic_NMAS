@@ -355,6 +355,27 @@ def verify_note(commands: list, scope: str = ""):
     return {"title": title, "lines": v["forwarding"] or v["sections"]}
 
 
+def expected_part(effects) -> dict:
+    """The plan's Expected effects for one device (C506; board approved 2026-10-06), from
+    `expected_effects.for_device`: ``{"derived": [sentence], "unexpected": sentence,
+    "unread": why or ""}``; ``derived`` empty when the program implies none."""
+    fx = effects or {}
+    derived = [f"{n} goes down: the program shuts it." for n in fx.get("down") or []]
+    for d in fx.get("adjacencies_drop") or []:
+        who = d.get("peer") or d.get("address") or d.get("rid") or "a peer"
+        derived.append(f"{d.get('proto', '').upper()} to {who} drops: {d.get('why', '')}.")
+    derived += [f"{n} comes up: the program brings it up (no shutdown)." for n in fx.get("up")
+                or []]
+    derived += [f"An OSPF adjacency may form on {m.get('via')}: OSPF is enabled on it. Not "
+                "required." for m in fx.get("may_form") or []]
+    return {"derived": derived,
+            "unexpected": ("Anything else is unexpected and still fails verify: an interface "
+                           "the program does not touch going down is read again after a short "
+                           "settle and, if it stands, fails at once, without waiting for BGP's "
+                           "hold time."),
+            "unread": fx.get("unread") or ""}
+
+
 def deploy_preview(devices: list, request, scope: str = "") -> dict:
     """The deploy plan's per-device entries, as the six parts. With *scope*
     ``profile`` (P.9 step b) it is "Apply monitoring profile": the profile's
@@ -485,7 +506,10 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
                         "authorisation_error": d.get("authorisation_error") or "",
                         "none": "" if commands else none, "notes": notes,
                         # Which verify runs after the push, and why.
-                        "verify": verify_note(commands, scope)},
+                        "verify": verify_note(commands, scope),
+                        # What the program is meant to do, derived (C506 phase 2): verify
+                        # expects each, and none of them rolls back by happening.
+                        "expected": expected_part(d.get("expected_effects"))},
             "operands": operands, "gates": _deploy_gates(d, failed)})
     n = len(targets)
     ready = sum(1 for t in targets if t["selectable"])

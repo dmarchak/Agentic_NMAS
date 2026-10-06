@@ -378,6 +378,36 @@ def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captu
     return out
 
 
+def _committed_intents_of(list_name: str) -> tuple:
+    """``({hostname: host_vars}, error)``: the network's committed intent, read once. A name no
+    network has is an error, never a folder made for it (resolving a list's path creates it)."""
+    from modules.neighbours import committed_intents
+    from modules.nsot import listref
+
+    try:
+        if not listref.exists(list_name):
+            return {}, f"no network is named {list_name!r}"
+        return committed_intents(listref.resolve(list_name).repo_dir)
+    except Exception as exc:                    # noqa: BLE001
+        return {}, f"{type(exc).__name__}: {exc}"
+
+
+def _expected_effects(list_name: str, hostname: str, commands, intents=None) -> dict:
+    """The effects *commands* imply on *hostname* (`expected_effects.for_device`), from the
+    network's committed intent: what the plan shows and verify uses (C506 phase 2). Intent that
+    cannot be read derives the interfaces alone, and says so."""
+    from modules.nsot import expected_effects
+
+    if intents is None:
+        intents, error = _committed_intents_of(list_name)
+    else:
+        error = ""
+    out = expected_effects.for_device(intents or {}, hostname, commands)
+    if error:
+        out["unread"] = f"committed intent could not be read ({error}): adjacencies not derived"
+    return out
+
+
 def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                  remove: dict = None, scope: str = "") -> list:
     """Every device's plan entry: its exact program, hashes, gates and what it
@@ -392,6 +422,7 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
     authorise = authorise or {}
     remove = remove or {}
     devices = []
+    intents_once = None
     for hostname in hostnames:
         built, error = _artifact_for(list_name, hostname)
         if built is None:
@@ -432,6 +463,16 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                             entry.get("platform", ""))
             commands = full["commands"]
             entry["commands"] = commands
+            # What the program is meant to do (C506 phase 2): shown at the confirm, and what
+            # verify then expects. Committed intent read once per plan, never per device.
+            if intents_once is None:
+                intents_once = _committed_intents_of(list_name)
+            entry["expected_effects"] = _expected_effects(list_name, hostname, commands,
+                                                          intents=intents_once[0])
+            if intents_once[1]:
+                entry["expected_effects"]["unread"] = (
+                    f"committed intent could not be read ({intents_once[1]}): adjacencies "
+                    "not derived")
             entry["removals"] = {k: full[k] for k in
                                  ("removed", "refused", "secret_position",
                                   "removal_commands", "keys", "ids")}
@@ -1230,6 +1271,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         target_intent = getattr(artifact, "host_vars", None)
     ctx.declared_protocols = {device.get("ip", ""): (
         declared_protocols(target_intent) if target_intent is not None else None)}
+    # The program's derived effects (C506 phase 2), by the function the plan drew them with.
+    ctx.expected_effects = {device.get("ip", ""): _expected_effects(list_name, hostname,
+                                                                     commands)}
 
     try:
         result = PipelineRunner(ctx).run()

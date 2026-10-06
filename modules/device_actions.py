@@ -382,6 +382,8 @@ def deploy_card(ref, host: str, entry: dict, preview: dict, viewer: dict, *,
             "notes": [{"title": n.get("title", ""), "lines": list(n.get("lines") or [])}
                       for n in program.get("notes") or []],
             "dangerous": dangerous, "residue": residue,
+            # What the program is meant to do, derived (C506 phase 2).
+            "expected": program.get("expected") or {},
             "waiting": waiting, "authorisation_error": entry.get("authorisation_error", ""),
             "blocking": blocking, "refused": refused,
             "what_not": t["what_not"], "operands": list(t["target"].get("operands") or []),
