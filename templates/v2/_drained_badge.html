@@ -2,4 +2,4 @@
 {#- The device page header's Drained badge, MEASURED (modules/drained.py, C551): no host traffic
     on any interface but the management path. Its own fragment, re-read on the reachability
     reader's announcement; the measurement is cached per network, so that costs no query. -#}
-<span id="drained-badge" hx-get="{{ url_for('device_v2.drained', name=device.hostname) }}" hx-trigger="nmas:reachability from:body" hx-swap="outerHTML">{% if drained %}{{ badge('Drained: ' ~ drained.words, 'warn', title='measured from interface counters in Prometheus; nobody sets it') }}{% endif %}</span>
+<span id="drained-badge" hx-get="{{ url_for('device_v2.drained', name=device.hostname) }}" hx-trigger="nmas:reachability from:body" hx-swap="outerHTML">{% if drained %}{{ badge('Drained: ' ~ drained.words, 'warn', title=drained.hover) }}{% endif %}</span>

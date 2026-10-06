@@ -225,7 +225,8 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         rows.append({"name": host, "pending": False, "status": _status(reach, dev.get("ip", "")),
                      "address": dev.get("ip", ""), "platform": platform_for_device(dev) or "",
                      "role": dev.get("role", ""), "intent": intent,
-                     "drained": (_drained.words(drained_now[host]) if host in drained_now
+                     "drained": (_drained.words(drained_now[host]) + "; " + _drained.HOVER
+                                 if host in drained_now
                                  else ""),
                      "measured": ({"at": m["at"], "iso": _iso(m["at"]), "sha": m["sha"],
                                    "words": measured_words(m), "changed": m["changed"]}

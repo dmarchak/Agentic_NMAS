@@ -31,7 +31,7 @@ GOLDEN = {"r2": {"GigabitEthernet1": {"address": [], "vrf": False},
 def _series(gi3_in=0.0, gi3_out=0.1, peak=0.2, gi1_up=2):
     up = {("r2", "Gi1"): gi1_up, ("r2", "Gi2"): 1, ("r2", "Gi3"): 1, ("r2", "Gi4"): 1,
           ("r2", "Lo0"): 1}
-    busy = {("r2", "Gi2"): 40.0, ("r2", "Gi4"): 30.0, ("r2", "Gi1"): 9.0}
+    busy = {("r2", "Gi2"): 40.0, ("r2", "Gi4"): 30.0, ("r2", "Gi1"): 19.0}
     return {"up": up, "in": {**busy, ("r2", "Gi3"): gi3_in}, "out": {**busy, ("r2", "Gi3"): gi3_out},
             "max_in": {**busy, ("r2", "Gi3"): peak}, "max_out": {**busy, ("r2", "Gi3"): peak}}
 
@@ -43,7 +43,7 @@ class TestTheJudgement:
         assert v["rates"]["Gi3"] == (0.0, 0.1)
 
     def test_one_busy_interface_is_not_drained(self):
-        (v,) = D.judge({"r2": "192.0.2.12"}, GOLDEN, _series(peak=0.5)).values()
+        (v,) = D.judge({"r2": "192.0.2.12"}, GOLDEN, _series(peak=10.0)).values()
         assert not v["drained"] and v["judged"] == ["Gi3"]
 
     def test_the_control_a_down_interface_is_judged_once_up(self):
@@ -112,10 +112,12 @@ class TestR2sRealGolden:
 
     @staticmethod
     def _series(gi3):
-        up = {("r2", n): 1 for n in ("Gi1", "Gi2", "Gi3", "Lo0")}
-        busy = {("r2", "Gi1"): 20.0, ("r2", "Gi2"): 40.0}
-        return {"up": up, "in": {**busy, ("r2", "Gi3"): gi3}, "out": {**busy, ("r2", "Gi3"): gi3},
-                "max_in": {**busy, ("r2", "Gi3"): gi3}, "max_out": {**busy, ("r2", "Gi3"): gi3}}
+        up = {("r2", n): 1 for n in ("GigabitEthernet1", "GigabitEthernet2", "GigabitEthernet3",
+                                     "Loopback0", "Null0", "VoIP-Null0")}
+        busy = {("r2", "GigabitEthernet1"): 20.0, ("r2", "GigabitEthernet2"): 40.0}
+        g3 = ("r2", "GigabitEthernet3")
+        return {"up": up, "in": {**busy, g3: gi3}, "out": {**busy, g3: gi3},
+                "max_in": {**busy, g3: gi3}, "max_out": {**busy, g3: gi3}}
 
     def test_the_areas_are_read(self, r2):
         ifs, _addr = r2
@@ -124,13 +126,15 @@ class TestR2sRealGolden:
         assert ifs["r2"]["GigabitEthernet3"]["areas"] == set()
         assert ifs["r2"]["GigabitEthernet1"]["vrf"] is True
 
-    @pytest.mark.parametrize("gi3,drained", [(0.0, True), (0.49, True), (0.5, False),
-                                             (25.0, False)])
+    # The host's ifDescr names (read 2026-10-06); 5.87 pkt/s is the measured polling of s2
+    # across Gi3 (below the management-polling level); Null0 and VoIP-Null0 are never judged.
+    @pytest.mark.parametrize("gi3,drained", [(0.0, True), (5.87, True), (9.99, True),
+                                             (10.0, False), (25.0, False)])
     def test_r2_is_drained_exactly_when_gi3_is_under_the_floor(self, r2, gi3, drained):
         ifs, addr = r2
         (v,) = D.judge({"r2": addr}, ifs, self._series(gi3)).values()
         assert v["drained"] is drained
-        assert v["judged"] == ["Gi3"] and v["management"] == "GigabitEthernet2"
+        assert v["judged"] == ["GigabitEthernet3"] and v["management"] == "GigabitEthernet2"
 
 
 class PromQLError(ValueError):
@@ -278,11 +282,13 @@ class TestTheScreens:
         page = lab["client"].get("/v2/device/r2").get_data(as_text=True)
         head = page[page.index('class="title-row"'):page.index('class="sub"')]
         assert "Drained: no host traffic on Gi3 (in 0.0/s, out 0.0/s) since 21:58 UTC" in head
+        assert "below the management-polling level" in head and "under 10 unicast pkt/s" in head
         badge = lab["client"].get("/v2/device/r2/drained").get_data(as_text=True)
         assert 'hx-trigger="nmas:reachability from:body"' in badge and "Drained: " in badge
         listing = lab["client"].get("/v2/devices").get_data(as_text=True)
         r2 = listing[listing.index(">r2<"):listing.index(">r2<") + 600]
         assert ">Drained<" in r2 and "no host traffic on Gi3" in r2
+        assert "below the management-polling level" in r2
         s9 = listing[listing.index(">s9<"):listing.index(">s9<") + 400]
         assert ">Drained<" not in s9
 

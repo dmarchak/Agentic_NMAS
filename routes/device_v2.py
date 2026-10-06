@@ -265,7 +265,7 @@ def _drained_now(ref, dev) -> dict:
     """The device's drained verdict if it is measured drained now, with its words, else None."""
     from modules import drained as D
     now = D.state_of(ref.name, dev.get("hostname", ""))
-    return dict(now, words=D.words(now)) if now else None
+    return dict(now, words=D.words(now), hover=D.HOVER) if now else None
 
 
 @bp.route("/device/<name>/drained", methods=["GET"])

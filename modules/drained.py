@@ -30,9 +30,17 @@ import time
 
 log = logging.getLogger(__name__)
 
-#: Unicast packets per second, in and out, below which an interface carries no host traffic
-#: (the operator, 2026-10-06: "e.g. < 0.5 pkt/s"; RIP and OSPF hellos are multicast).
-FLOOR_PPS = 0.5
+#: Unicast packets per second, in and out, below which an interface carries no host traffic:
+#: BELOW THE MANAGEMENT-POLLING LEVEL (the operator, 2026-10-06). A data interface can carry
+#: management for a device behind it: s2's loopback is reachable only via r2, so the
+#: manager's polling of s2 crosses r2's Gi3 (measured 5.87 pkt/s out, 0.28 in, the replies
+#: returning through s1). 0.5 pkt/s read that as host traffic, so the floor is 10 until
+#: IP-MIB's forwarded-against-delivered counters separate host from management (C551).
+FLOOR_PPS = 10.0
+#: The badge's hover: what "drained" was measured against.
+HOVER = (f"every data interface under {FLOOR_PPS:g} unicast pkt/s in and out for "
+         "3 minutes: below the management-polling level; measured from interface counters "
+         "in Prometheus, nobody sets it")
 #: How long every judged interface must stay under the floor (the operator: 3 minutes).
 QUIET_SECONDS = 180
 #: The rate window (the operator: 2 min, twice the 60 s SNMP scrape measured on the host).
@@ -142,7 +150,7 @@ def judge(devices: dict, golden_ifs: dict, series: dict) -> dict:
         excluded = {_key(n) for n in mgmt} | {_key(n) for n, i in ifs.items() if i["vrf"]}
         judged, rates = [], {}
         for (d, ifname), state in series["up"].items():
-            if d != dev or state != 1 or _key(ifname)[0] in ("lo", "nu") \
+            if d != dev or state != 1 or _key(ifname)[0] == "lo" or "null" in ifname.lower() \
                     or _key(ifname) in excluded:
                 continue
             judged.append(ifname)
