@@ -432,6 +432,75 @@ def move_words(move: dict, judged: dict, seconds) -> str:
     return f"{who} was declared to move to {move['to']}, and did not form there within {seconds} s"
 
 
+def verify_checks(effects: dict, *, commands, list_name: str, captured: str = "") -> list:
+    """What verify will check on this device, each check naming the object it reads, never a
+    count (C506 phase 4, the board's "What verify checks"): ``[{"check", "expects", "read"}]``,
+    from the plan's derived and declared effects, the network's settle windows, the program's
+    verify scope and BGP's hold time in the device's captured config. The same rules the
+    pipeline runs (`pipeline._stage_verify`), stated before the confirm."""
+    from modules.nsot import verify_scope
+    from modules.nsot.convergence import bgp_hold_times, window_for
+
+    def secs(check):
+        try:
+            return window_for(check, list_name)["timeout"]
+        except Exception:                          # noqa: BLE001
+            return None
+
+    def within(check, words):
+        s = secs(check)
+        return f"within {words}, {s} s" if s else f"within {words}"
+
+    fx = effects or {}
+    declared = fx.get("declared") or []
+    scope = verify_scope.classify(list(commands or []))
+    rows = [{"check": f"{n} down", "expects": "derived: the program shuts it",
+             "read": "at the first read"} for n in fx.get("down") or []]
+    rows += [{"check": f"{n} up", "expects": "derived: the program brings it up",
+              "read": within("interfaces", "the interfaces' settle window")}
+             for n in fx.get("up") or []]
+    for d in declared:
+        if d.get("kind") == "moves":
+            rows.append({"check": f"{_who(d)} formed on {d['to']}",
+                         "expects": f"declared move, from {d.get('from')}",
+                         "read": within(d["proto"], f"{_PROTO_WORDS.get(d['proto'])}'s settle "
+                                                    "window")})
+        elif d.get("kind") == "ends":
+            rows.append({"check": f"{_who(d)} gone", "expects": "declared end",
+                         "read": "expected: its loss is not a failure"})
+    settle = secs("unexpected")
+    rows.append({"check": "Every other interface up before the change",
+                 "expects": "still up; a loss is UNEXPECTED",
+                 "read": ("at the first read; a loss is read again after the "
+                          + (f"{settle} s " if settle else "") + "settle, then rolled back at "
+                          "once")})
+    if scope["scope"] == verify_scope.QUICK:
+        rows.append({"check": "Each new line", "expects": "reads back from the running config",
+                     "read": f"after the push ({scope['why']})"})
+        return rows
+    ended = {(d.get("proto"), d.get("rid") or d.get("address")) for d in declared
+             if d.get("kind") == "ends"}
+    hold = bgp_hold_times(captured or "") if captured else {"max": None, "peers": {}}
+    for e in (fx.get("offers") or {}).get("ends") or []:
+        if (e["proto"], e.get("rid") or e.get("address")) in ended:
+            continue
+        if e["proto"] == "bgp":
+            h = (hold.get("peers") or {}).get(e.get("address"), {}).get("hold") or hold.get("max")
+            read = (f"to its hold time, {h} s after the push" if h else "to its hold time")
+        else:
+            read = within(e["proto"], f"{_PROTO_WORDS.get(e['proto'])}'s settle window")
+        rows.append({"check": offer_words(e), "expects": "held", "read": read})
+    from modules.pipeline import _ROUTE_RETENTION_MIN     # the floor verify applies
+    routes_declared = next((d for d in declared if d.get("kind") == "routes"), None)
+    rows.append({"check": "The route table",
+                 "expects": ("declared to change: recorded, not a failure" if routes_declared
+                             else f"back to {_ROUTE_RETENTION_MIN:.0%} of its routes before the "
+                                  "change"),
+                 "read": ("after the push" if routes_declared
+                          else within("routes", "the route window"))})
+    return rows
+
+
 def judge(expected: dict, before: dict, after: dict) -> dict:
     """Compare the interface states by name against the expected effects.
 

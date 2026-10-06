@@ -185,6 +185,17 @@ class TestTheConfirm:
         assert "a reload would boot the old credential" in out
         assert _persist_button(out) and 'data-op="breakglass-export"' not in out
 
+    def test_a_persist_that_could_not_start_names_the_device_s_own_save(self, rot, monkeypatch):
+        """C541: the branch where the job's own persist cannot run (no credential to persist
+        with) said "or with nmas-persist-credential", the lab chain (C50)."""
+        from modules.nsot import rotate_op as RO
+        monkeypatch.setattr(RO, "_inventory_password", lambda l, h: "")
+        rot["rot"]["persist_state"] = cr.ROTATED_PENDING_PERSIST
+        out = _finish(rot, _confirm(rot, _preview(rot)).get_data(as_text=True))
+        assert rot["rot"]["calls"][-1][0] == "rotate", "its persist did not run"
+        assert "Persist did not run" in out and "nmas-persist-native r2 --list Lab" in out
+        assert "nmas-persist-credential" not in out and _persist_button(out)
+
     def test_a_moved_fingerprint_is_refused_with_nothing_sent(self, rot):
         html = _preview(rot)
         rot["rot"]["plan"] = _plan(fingerprint="fp-moved")

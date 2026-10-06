@@ -37,6 +37,7 @@ yet, and those parts wait for it rather than run there.
 | 3.2 template approval | DONE on v2 2026-10-05 (C481 closed) | Source of truth › Templates, `/v2/templates?list=throwaway`, Approve… |
 | 3.3 seed | DONE on v2 | the device page, Actions › Seed intent… |
 | 4 the break-glass export | DONE on v2 | Source of truth › Credentials |
+| 4b a rotation left unpersisted (C541) | NEXT RUN (added 2026-10-06, below) | Needs attention's row, the device page's Persist |
 | 5, 6 | DONE on v2 2026-10-05 and 06 (STOP 5 and STOP 6, below; C501 found and proven repaired) | the device page (deploy, revert and retry), the Intent tab (H) |
 | 8 | DONE on v2 2026-10-06 (STOP 8, below) | the device page, Actions › Retire… |
 | 7 the restore | DONE on v2 (rewritten, below) | the device page, Actions › Restore from… |
@@ -691,6 +692,34 @@ In this order:
 - Part 9 cannot be answered on this lab (the vUDI regenerates); it runs on real hardware.
 - Part 10 step 1: read what the VRF, site and region deletes take (C517, still unmeasured), and
   remove any startup file a sync wrote into another lab (C492).
+
+## Part 4b (next run): a rotation left unpersisted, recovered by Persist (20 min)
+
+Added 2026-10-06 (the operator, C541): the first real run of the most dangerous rotation state is
+on a device nothing depends on. After Part 4 (the record holds the current credential), before
+Part 5.
+
+1. **Produce the state, on the host (the operator):**
+   `scripts/nmas-rotate-credential tw-ztp-a --list throwaway --skip-persist`. The flag stops by
+   design after the rotation is verified and recorded: `tw-ztp-a` runs the new credential, its
+   startup config still holds the old one. Nothing reloads it.
+2. **Needs attention:** expect a Critical row for `tw-ztp-a`, "persistence NOT ATTEMPTED: …
+   a reload would boot the old credential. Persist it now", with **Persist tw-ztp-a…** as its
+   button and no `nmas-persist-credential` anywhere. The command line is not one of the app's
+   operations, so the row appears at job health's next read (within 300 s), or at once with
+   "Check now".
+3. **Recover with the row's button:** Persist tw-ztp-a… opens the device page's Persist card;
+   confirm. It saves the running config to startup and reads it back SAFE. The persist re-reads
+   job health at once (C539): the row should leave the page within seconds, for every open tab.
+4. **The card's button:** the device page's own rotation shows **Persist tw-ztp-a…** on its result
+   only when its persist could not run, and nothing on the screen stops it there. No
+   throwaway-only control is added for it, since that would be a new way into this state; the path
+   is tested through the real route (`tests/test_device_rotate_v2.py`). If a safe interruption
+   of the device page's rotation is wanted for this run, it is the operator's decision first.
+5. **Export the break-glass record again** (the rotation changed the credential).
+
+**STOP 4b. Paste:** the row's words as drawn, the Persist result, the UTC time the row appeared
+and the time it left the page.
 
 ## What each answer decides
 

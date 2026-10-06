@@ -108,10 +108,12 @@ def run(list_name: str, hostname: str, *, actor: str, fingerprint: str,
                 return result
             password = _inventory_password(list_name, hostname)
             if not result.get("new_hash") or not password:
+                # C541: the device's own save, never the lab boot-file chain (C50).
                 result["persist_skipped"] = (
                     "the rotation did not carry the hash, or the inventory holds no credential "
-                    "after it: the device IS rotated and recorded; persist it from this page "
-                    "or with nmas-persist-credential")
+                    "after it: the device IS rotated and recorded, and a reload would boot the "
+                    "old credential; persist it now (Persist on this page, or "
+                    f"nmas-persist-native {hostname} --list {list_name})")
                 return result
             device_ops.note("persisting")
             return cr.persist(result, mgmt_ip=result.get("mgmt_ip", ""),
