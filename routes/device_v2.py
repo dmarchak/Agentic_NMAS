@@ -239,7 +239,6 @@ def device(name):
                       _revert_card(ref, dev, tab, request.args) if op == "revert" else
                       _retry_card(ref, dev, tab, request.args) if op == "retry" else
                       _seed_card(ref, dev, tab) if op == "seed" else
-                      _drained_card(ref, dev, tab) if op == "drained" else
                       _retire_card(ref, dev, tab, request.args) if op == "retire" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
@@ -254,79 +253,30 @@ def actions_menu(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_actions_menu.html", device=dev, list_name=ref.name,
-                                   tab=_back(request.args), block=_block_state(ref, dev),
-                                   drained=_drained_now(ref, dev)))
+                                   tab=_back(request.args), block=_block_state(ref, dev)))
 
 
 # ---------------------------------------------------------------------------
-# Drained (the operator, 2026-10-06: the smallest form, approved without a mockup: a badge,
-# and a Set/Clear card in the Actions menu). A person's recorded word; nothing is sent.
+# Drained, MEASURED (C551, the operator 2026-10-06): no host traffic on any interface but the
+# management path (`modules/drained.py`). Nobody sets it; the header badge reads it.
 # ---------------------------------------------------------------------------
 
 def _drained_now(ref, dev) -> dict:
-    """The device's drained event if it is drained now, with its words, else None."""
+    """The device's drained verdict if it is measured drained now, with its words, else None."""
     from modules import drained as D
     now = D.state_of(ref.name, dev.get("hostname", ""))
     return dict(now, words=D.words(now)) if now else None
 
 
-def _drained_card(ref, dev, back, **extra):
-    host = dev.get("hostname", "")
-    now = _drained_now(ref, dev)
-    c = {"op": "drained", "state": "preview", "host": host, "list": ref.name, "back": back,
-         "drained": now, "want": "cleared" if now else "drained", "why": "", "refusal": ""}
-    c.update(extra)
-    return c
-
-
 @bp.route("/device/<name>/drained", methods=["GET"])
 def drained(name):
-    """The Drained card: set the mark, or clear it, with a reason. A READ."""
-    found, refusal = _device_or_404(name)
-    if refusal is not None:
-        return refusal
-    ref, dev = found
-    return _strict(render_template("v2/_drained.html",
-                                   c=_drained_card(ref, dev, _back(request.args))))
-
-
-@bp.route("/device/<name>/drained/badge", methods=["GET"])
-def drained_badge(name):
-    """The header's Drained badge alone, re-read when a mark is set or cleared. A READ."""
+    """The header's Drained badge alone, re-read as the measurement moves. A READ."""
     found, refusal = _device_or_404(name)
     if refusal is not None:
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_drained_badge.html", device=dev,
                                    drained=_drained_now(ref, dev)))
-
-
-@bp.route("/device/<name>/drained/confirm", methods=["POST"])
-def drained_confirm(name):
-    """Mark the device drained, or clear the mark, as the verified person, with a reason,
-    recorded in the network's store (`modules/drained.py`). Nothing is sent to the device. A
-    refusal is drawn in the card, naming why, and records nothing."""
-    from modules import drained as D, identity
-
-    ref, dev, refusal = _named_device(name, request.form.get("list", ""), "v2/_drained.html")
-    if refusal is not None:
-        return refusal
-    # The verified person, never a name the form carries; no person, no mark.
-    who = identity.identify(request)
-    actor = who.actor if who.is_identified else ""
-    want, why = request.form.get("state", ""), request.form.get("why", "")
-    back = _back(request.form)
-    try:
-        event = D.mark(ref.name, dev.get("hostname", ""), want, why=why, by=actor,
-                       verified=identity.actor_verification(actor) if actor else "none")
-    except D.Refused as exc:
-        return _strict(render_template("v2/_drained.html", c=_drained_card(
-            ref, dev, back, why=why, refusal=str(exc))), 409)
-    return _strict(render_template("v2/_drained.html", c={
-        "op": "drained", "state": "result", "host": dev.get("hostname", ""), "list": ref.name,
-        "back": back, "event": event,
-        "words": (D.words(event) if event["state"] == D.DRAINED else
-                  f"cleared by {event['by']} at {event['at']}: {event['why']}")}))
 
 
 @bp.route("/device/<name>/overview", methods=["GET"])

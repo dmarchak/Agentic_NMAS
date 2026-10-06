@@ -254,7 +254,6 @@ HISTORY = {
     "device_v2.restore_confirm": ("receipts", "golden"),
     "persist.apply": ("rotation",),
     "device_v2.persist_confirm": ("rotation",),
-    "device_v2.drained_confirm": ("drained",),
     "rotate.apply": ("rotation", "golden", "intent"),
     "device_v2.rotate_confirm": ("rotation", "golden", "intent"),
     "onboard.verify": ("onboarding", "golden"),

@@ -193,13 +193,13 @@ def listing(ref, *, q: str = "", state: str = "", platform: str = "", now: float
         pending = []
         errors.append(f"pending onboardings could not be read ({exc})")
 
-    # Drained by a person (modules/drained.py): the network's own store, read once.
+    # Drained, MEASURED (modules/drained.py, C551): one cached read for the whole network.
     from modules import drained as _drained
     try:
         drained_now = _drained.current(ref.name)
-    except OSError as exc:
+    except Exception as exc:                      # noqa: BLE001
         drained_now = {}
-        errors.append(f"the drained record could not be read ({exc})")
+        errors.append(f"whether a device is drained could not be measured ({exc})")
 
     rows = []
     for dev in inventory:

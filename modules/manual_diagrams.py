@@ -728,25 +728,6 @@ def seed():
     ])
 
 
-def drained():
-    return svg(270, (
-        "Marking a device drained, or clearing the mark. You give a reason; the tool checks "
-        "that you are a verified person, that the reason has the shape of one and that the "
-        "device is not already in that state, then appends who, when and why to the network's "
-        "drained record. The Devices list and the device page draw the badge, History shows "
-        "the event, and Needs attention holds back Grafana alerts on drained devices only. "
-        "Nothing is sent."), [
-        lanes(20, 264),
-        person(14, 40, 186, 30, "You give a reason"), num(14, 40, 1),
-        _down(107, 72, 92),
-        store(14, 94, 186, 40, "The drained record", "who, when, why"), num(14, 94, 2),
-        _down(107, 136, 156),
-        store(14, 158, 186, 40, "Badge and History", "alerts on it held back"),
-        device(240, 60, 140, 44, "The device", "not contacted", off=True),
-        nosend(310, 150, ("nothing is sent", "a person's word")),
-    ])
-
-
 def adopt():
     return svg(540, (
         "Adopting a device the tool did not build. The preview reads the device with the "
@@ -1097,7 +1078,6 @@ DIAGRAMS = {
     "rotate": rotate,
     "persist": persist,
     "seed": seed,
-    "drained": drained,
     "adopt": adopt,
     "retire": retire,
     "monitoring-templates": monitoring_templates,

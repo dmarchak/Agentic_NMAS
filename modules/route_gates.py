@@ -214,7 +214,6 @@ GATES = {
     "persist.preview": _g(N, "computes the persist plan from the inventory and the startup check's record; contacts no device and writes nothing"),
     "update.step_done": _g(C, "records that a person did a host step the tool cannot check: the release's record of what was done on the host"),
     "attention.acknowledge": _g(K, "records that a person acknowledged one event row on Needs attention, with a reason; the row leaves the page and the event stays in its record"),
-    "device_v2.drained_confirm": _g(K, "marks a device drained or clears the mark, as a verified person with a reason, in the network's drained record (modules/drained.py); sends nothing to the device"),
     "restarts.planned": _g(K, "records a planned-restart window, so the restarts it covers are not reported as unexpected; a window covering a restart already seen needs a correction with its reason", operation="planned_restart"),
     "update.check": _g(N, "runs the app-pushed reader now: fetches origin and asks CI; moves nothing that runs"),
     "jobs.job_finished": _g(N, "a host job ended: runs the job-health reader now; reads systemd and the stores, moves nothing, and accepts only a declared job's unit"),

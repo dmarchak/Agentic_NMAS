@@ -7,9 +7,19 @@ Every device in the network, searchable and filterable.
 Each row: the device's status (answering or not, from the reachability reader), its address
 and platform, whether it was at its committed intent when it was last MEASURED and by
 what, and when that was. Hover the time to see when its golden last changed. Onboardings
-still pending are rows too, and open their own page. A device a person marked drained carries
-a Drained badge beside its name; hover it for who, when and why (see
-[Mark a device drained](drained)).
+still pending are rows too, and open their own page.
+
+## Drained {#drained}
+
+A **Drained** badge beside a device's name (and in its page's header) is MEASURED, never set
+by hand: every interface that is up, not a loopback, not in a VRF, and not the device's
+management path (the interface its golden gives the management address) carried less than
+0.5 unicast packets a second, in and out, over the last 3 minutes, read from the interface
+counters Prometheus already scrapes. Its words name each interface, its rates now and since
+when it has been quiet. It goes when traffic rises again. A device with no golden, or whose
+management address is on no interface in its golden (a loopback), is not judged, so it is
+never drawn drained. Needs attention lists a Grafana alert on drained devices only under What
+was checked instead of raising it as a row.
 
 A measurement is any save that read the device and compared it with its golden: a capture,
 a deploy's or restore's read after the push, and a Save All that found it unchanged (which

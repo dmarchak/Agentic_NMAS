@@ -31,9 +31,6 @@
       {% for label, op, words in [('Rotate credential…', 'rotate', 'rotation'), ('Persist', 'persist', 'persist')] %}
       <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
       {% endfor %}
-      {#- Drained (the operator, 2026-10-06): a person's recorded word that the device is out of
-          service on purpose; one row, setting or clearing by its state now. -#}
-      <div class="menu-row"><a role="menuitem" class="menu-item" data-op="drained" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='drained') }}" hx-get="{{ url_for('device_v2.drained', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close"{% if drained %} title="{{ drained.words }}"{% endif %}>{{ 'Clear the drained mark…' if drained else 'Mark drained…' }}</a>{{ how('drained', compact=True, op='drained') }}</div>
       <div class="menu-rule"></div>
       <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retire') }}" hx-get="{{ url_for('device_v2.retire', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
     </div>
