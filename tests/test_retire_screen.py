@@ -193,6 +193,24 @@ class TestTheApply:
         # The Not-Done list drawn again, after the fact.
         assert "Oxidized may still poll it" in html and "NetBox device 9 is KEPT" in html
 
+    def test_a_row_the_plan_found_absent_is_not_said_to_be_polled(self):
+        """C513 (the throwaway session's STOP 8): the plan read no router.db row ("already
+        done") and the result said "Oxidized may still poll it"."""
+        from modules.preview_confirm import retire_result
+        plan = {"hostname": "tw-a", "steps": [{"key": "oxidized", "what": "remove", "done": True}]}
+        res = retire_result({"ok": True, "done": ["commit", "csv"]}, plan)
+        assert "Oxidized does not poll it" in res["not_watched"]
+        assert "may still poll it" not in res["not_watched"]
+        removed = retire_result({"ok": True, "done": ["oxidized"]}, {"hostname": "tw-a"})
+        assert "no longer polls it" in removed["not_watched"]
+
+    def test_where_an_export_went_reads_as_english(self):
+        """C514 (STOP 8): an export the browser downloaded read "to downloaded by …"."""
+        from modules.preview_confirm import _export_where
+        assert _export_where({"path": "downloaded by op@example.com at 20:27:17Z"}) == \
+            "downloaded by op@example.com at 20:27:17Z"
+        assert _export_where({"path": "/srv/bg/throwaway.bg"}) == "to /srv/bg/throwaway.bg"
+
     def test_the_record_reads_back_by_name_after_the_golden_is_gone(self, screen):
         _export(screen)
         self._apply(screen, _preview(screen))

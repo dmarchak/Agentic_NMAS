@@ -360,8 +360,9 @@ class TestEveryActionHasItsLink:
         assert unresolved(calls) == []
 
     def test_a_menu_loop_s_pages_exist(self):
-        """The device page's Actions rows name their pages in a loop: each is a page."""
-        text = _templates()["device.html"]
+        """The device page's Actions rows (their own fragment since C507) name their pages in a
+        loop: each is a page."""
+        text = _templates()["_actions_menu.html"]
         ops = re.findall(r"\('[^']+', '([a-z-]+)', '[^']+'\)", text)
         assert len(ops) >= 4      # capture, restore, rotate, persist (2026-10-03); removal and
         #                           seed stand alone, each held by the action test above

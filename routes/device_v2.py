@@ -241,6 +241,19 @@ def device(name):
     return _strict(render_template("v2/device.html", **ctx))
 
 
+@bp.route("/device/<name>/actions", methods=["GET"])
+def actions_menu(name):
+    """The Actions menu alone (C507), read now: the page re-reads it on every key that changes
+    what it offers (a rollback recorded or lifted, intent, goldens, a deploy, a hold, the
+    inventory, the device's state), so Revert and Retry appear or grey without a reload."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_actions_menu.html", device=dev, list_name=ref.name,
+                                   tab=_back(request.args), block=_block_state(ref, dev)))
+
+
 @bp.route("/device/<name>/overview", methods=["GET"])
 def overview(name):
     found, refusal = _device_or_404(name)

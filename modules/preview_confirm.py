@@ -2526,6 +2526,14 @@ RETIRE_GATES = (
 BREAKGLASS_GATE = "a break-glass export holds its current credential"
 
 
+def _export_where(export: dict) -> str:
+    """Where a break-glass export went, in words: a file path as "to <path>", and an export the
+    browser downloaded (whose log records "downloaded by <person> at <time>") as that phrase
+    (C514: the retire card said "to downloaded by …")."""
+    path = str((export or {}).get("path") or "")
+    return path if path.startswith("downloaded by ") else f"to {path or 'an unrecorded place'}"
+
+
 def _retire_step_line(s: dict) -> str:
     return ("done already: " if s.get("done") else "") + s.get("what", "")
 
@@ -2543,7 +2551,7 @@ def retire_preview(plan: dict, *, busy: str, request) -> dict:
         export = bg.get("export") or {}
         gates.append(gate(BREAKGLASS_GATE, "pass" if bg.get("ok") else "fail",
                           (f"the export log: the newest export of {plan.get('list_name')} "
-                           f"({export.get('at')}, to {export.get('path')}) recorded its current "
+                           f"({export.get('at')}, {_export_where(export)}) recorded its current "
                            "credential; checked again at apply. " + (bg.get("statement") or ""))
                           if bg.get("ok") else (bg.get("why") or "not established")))
     else:
@@ -2603,7 +2611,7 @@ def retire_preview(plan: dict, *, busy: str, request) -> dict:
             f"Retiring {name} takes it out of management. What SURVIVES: its intent and "
             f"golden ({files}) stay in history, the parent of the retire commit; "
             + (f"its credential survives ONLY in the break-glass export of "
-               f"{export.get('at')} (to {export.get('path')}), since the CSV row is its only "
+               f"{export.get('at')} ({_export_where(export)}), since the CSV row is its only "
                "copy here and is deleted last. " if row_pending else "")
             + "To manage it again is onboarding or adopt, not an undo.")
         confirm["button"] = f"Retire {name}"
@@ -2680,7 +2688,14 @@ def retire_result(result: dict, plan: dict) -> dict:
         not_watched=(f"Nothing in Mercury watches {name} after this: no drift check, capture or "
                      "deploy. "
                      + ("Oxidized no longer polls it (its row removed and read back); "
-                        if "oxidized" in done else "Oxidized may still poll it; ")
+                        if "oxidized" in done else
+                        # The plan READ no row before the run (its step "already done"): not
+                        # "may still poll it" (C513, the throwaway session's STOP 8).
+                        "Oxidized does not poll it (its router.db held no row for it, read "
+                        "before the run); "
+                        if any(s.get("key") == "oxidized" and s.get("done")
+                               for s in (plan or {}).get("steps") or [])
+                        else "Oxidized may still poll it; ")
                      + "NetBox still records it."),
         titles=RETIRE_RESULT_TITLES)
 

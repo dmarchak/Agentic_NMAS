@@ -38,15 +38,15 @@ yet, and those parts wait for it rather than run there.
 | 3.3 seed | DONE on v2 | the device page, Actions › Seed intent… |
 | 4 the break-glass export | DONE on v2 | Source of truth › Credentials |
 | 5, 6 | DONE on v2 2026-10-05 and 06 (STOP 5 and STOP 6, below; C501 found and proven repaired) | the device page (deploy, revert and retry), the Intent tab (H) |
-| 8 | NEXT | the device page, Actions › Retire… |
+| 8 | DONE on v2 2026-10-06 (STOP 8, below) | the device page, Actions › Retire… |
 | 7 the restore | DONE on v2 (rewritten, below) | the device page, Actions › Restore from… |
-| 9 the serial probe | after 8 | the device page |
-| 10 cleanup | last | the lab host; Settings › the network (v2) |
+| 9 the serial probe | SKIPPED: the lab's vUDI regenerates; real hardware | the console |
+| 10 cleanup | DONE 2026-10-06 (STOP 10, below) | the lab host; NetBox and the list on today's page |
 
-**The session is PAUSED** after Parts 0 to 4 and 7. `tw-ztp-a` stays onboarded and running.
-It resumes at Parts 5, 6 and 8 when the intent editor (H, with acknowledging an unmodelled
-line) and template approval are on v2 on a commit CI has passed. Parts 2 and 3.1 are redone on
-v2 when 7.4's onboarding exists (after the network picker, N).
+**The session FINISHED on 2026-10-06** (about 01:06 UTC): Parts 0 to 8 and 10 done, Part 9
+skipped (the lab cannot answer it), the lab destroyed and the census passed. `tw-ztp-a` is
+retired and gone. Parts 2 and 3.1 are redone on v2 when 7.4's onboarding exists (after the
+network picker, N), on a fresh throwaway run.
 
 **Times:** write every time as UTC (`date -u +%FT%TZ`). A device's own timestamps are not used
 for anything (its clock is not trusted); an event's time is when you saw it, or its syslog
@@ -652,6 +652,46 @@ In this order:
 - the override line;
 - `git status` (empty).
 
+**MEASURED 2026-10-06 (STOP 8, STOP 9 and STOP 10, the operator; UTC):**
+- **STOP 8, retire (v2), about 00:59:** every gate passed, the break-glass one against the
+  export log (20:27:17Z); the steps in order: the override cleared, the startup file declared
+  unmapped, intent and golden removed in one commit (606fd07, with its `Not-Done:` trailers),
+  the CSV row deleted last; Prometheus targets regenerated and read back without it; no
+  heartbeat rule; kept: NetBox device 15 (masked) and the template approval; the retired record
+  page shown. Findings: the result's "Oxidized may still poll it" against the plan's "(already
+  done)" (C513, repaired: the plan was right, its router.db never held the device, C512); the
+  stray lab file declared unmapped rather than removed (C492); "to downloaded by …" (C514,
+  repaired); the card once re-planned with "Reason: none given" after a reason was typed (C515,
+  repaired: a held card re-read itself without its form).
+- **STOP 9: SKIPPED.** The lab's vUDI regenerates on every fresh boot, so serial-keyed ZTP cannot
+  identify a lab router; the mechanism waits for real hardware.
+- **STOP 10, cleanup, about 01:06:** NetBox Remove (today's page) for throwaway: 7 deleted (the
+  management prefix's address, tw-ztp-a's Gi1 and Gi2, device 15, the VRF, site and region
+  "throwaway"), accepted 7, refused 0; the nmas account's DELETE proven under its
+  `{"tags__slug": "nmas-managed"}` constraint, so C100 is proven in full (view, add, change,
+  delete). The preview said what the VRF, site and region deletes take with them "has not been
+  measured on this NetBox" (C517). The lab destroyed (`--cleanup`): `br-mgmt` back to `enp6s19`,
+  `s3-mgmt` and `r6-mgmt`; the throwaway-probe network count 0. The census against
+  `/tmp/census-throwaway.json`: PASS, exit 0 (one modification, on tw-ztp-a, created and removed
+  in the session). Kea: the reservation removed (ok, reloaded); subnet 255 holds 0
+  reservations; D4 intact. Credential overrides: only r6's (claimed); no orphan for the throwaway
+  address. `git status`: empty. `nmas-jobs`: 52 of 53 ok (the shared lab serial only). The
+  throwaway list deleted on today's page; the active list is Default. Findings: onboarding never
+  adds the device to Oxidized's router.db (C512; job health reads 9 managed, 0 retired), and the
+  stray file in Default's lab is the operator's host step (C492).
+
+**Runbook fixes made during the session (2026-10-05 and 06), for the next run:**
+- Open a throwaway device by its address, `/v2/device/tw-ztp-a?list=throwaway` (C494), and leave
+  the active list on Default: switching it paused Default's scheduled work (C491).
+- Part 3.2 approves on `/v2/templates?list=throwaway` (C481); before Part 5, correct the seeded
+  intent on the Intent tab's Edit where a device-owned line was recorded (C485).
+- Part 5.3 expects the rollback to undo what landed and startup to stay untouched: a change is
+  saved only after verify passes (C501).
+- Part 8 step 4: there is no Oxidized row to finish while onboarding does not add one (C512).
+- Part 9 cannot be answered on this lab (the vUDI regenerates); it runs on real hardware.
+- Part 10 step 1: read what the VRF, site and region deletes take (C517, still unmeasured), and
+  remove any startup file a sync wrote into another lab (C492).
+
 ## What each answer decides
 
 - **Part 1 and 2:** what board L draws for a device not yet picked:
@@ -668,3 +708,17 @@ In this order:
   row.
 - **Part 9:** whether way 1 (the device reports its serial) is possible on IOS-XE, or the list
   works from MAC and client-id only.
+
+**What each answer DECIDED (2026-10-06):**
+- **Parts 1 and 2:** recorded at STOP 1 and STOP 2 above: board L's requirements, including that
+  a Pick made late is not taken (C479; a fresh boot takes it), and the discovery filter and
+  watcher fixes.
+- **Part 5.2:** C178's hold watch IS needed on IOS-XE in practice: a silent path held the session
+  Established for about 180 s, to its hold expiry, so a verify that returned at its first read
+  would have passed a broken change.
+- **Parts 5.3 to 8:** C117's real run proven after C501's repair (C117 closed); A2 (Retry and
+  Revert) and A3 (retire) proven on v2, with C507, C508, C509, C510, C511, C512, C513, C514 and
+  C515 found on the way. What a person sees while a device stays broken before the rollback is
+  C506 (the operator's decision).
+- **Part 9:** NOT decided: the lab cannot answer it. Until real hardware does, the list works from
+  MAC and client-id.

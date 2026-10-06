@@ -79,7 +79,7 @@ NOT_AN_OPERATION = {
     ("_coverage_deploy_preview.html", "Leave out"): "leaves a device out of the deploy the confirm carries",
     ("_coverage_deploy_preview.html", "Back"): "returns to Coverage, sending nothing",
     ("_timeline.html", "Show the change"): "reads one commit's masked change",
-    ("device.html", "Actions"): "opens the actions menu; each row carries its own link",
+    ("_actions_menu.html", "Actions"): "opens the actions menu; each row carries its own link",
     ("_capture.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_capture.html", "Edit intent…"): ("opens today's intent editor on the device (C372); "
                                         "editing intent has no How it works page of its own"),

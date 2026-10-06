@@ -178,6 +178,20 @@ def test_a_free_device_draws_the_card_again(exported):
     assert "Retire r5 from management" in out and 'id="device-op"' in out
 
 
+def test_a_held_card_keeps_the_reason_typed_when_it_reads_again(exported):
+    """C515 (the throwaway session's STOP 8): the card re-planned with "Reason: none given"
+    after a reason was typed. A held card re-read itself through a URL frozen with the
+    reason of its last plan; it sends its FORM now (C473's shape), so what is typed survives."""
+    import os
+    src = open(os.path.join(os.path.dirname(__file__), "..", "templates", "v2", "_retire.html"),
+               encoding="utf-8").read()
+    (held,) = [l for l in src.splitlines() if "when_free" in l and "op='retire'" in l]
+    assert 'hx-include="find .op-form"' in held and "reason=" not in held, held
+    _r, out = _get(exported, "/v2/device/r5/when-free?op=retire&back=history"
+                             "&reason=returned+to+the+provider")
+    assert 'value="returned to the provider"' in out
+
+
 class TestTheReadBack:
     def test_targets_after_says_dropped_still_or_not_managed(self, monkeypatch, tmp_path):
         from modules import prometheus_targets as PT

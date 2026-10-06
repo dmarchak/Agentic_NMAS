@@ -7,45 +7,16 @@
 <div class="page-head">
   <div class="page-title">
     <div class="title-row">
-      <h1 class="mono">{{ device.hostname }} {{ info('device-page', 'actions') }}</h1>
+      <h1 class="mono">{{ device.hostname }}</h1>
       {% include "v2/_status.html" %}
     </div>
     <p class="sub"><span title="{{ ('from ' ~ hw.model_from ~ (', commit ' ~ hw.model_commit if hw.model_commit else '')) if hw.model else hw.model_from }}">{{ hw.model or 'model not recorded' }}</span> · <span title="from {{ hw.platform_from or 'nowhere: no platform recorded' }}">{{ hw.platform or 'platform not recorded' }}</span> · <span class="mono">{{ device.ip }}</span> · signs in as <span class="mono">{{ device.username or '?' }}</span> · network {{ list_name }}</p>
   </div>
-  <div class="page-actions">
-    <div class="menu-wrap" x-data="menu" x-on:keydown.escape="close" x-on:click.outside="close" x-on:nmas-close-menu="close">
-      <button type="button" class="btn btn-primary" aria-haspopup="menu" x-bind:aria-expanded="expanded" x-on:click="toggle">Actions{{ icon('down', 14) }}</button>
-      <div class="menu" role="menu" x-show="isOpen" x-cloak>
-        <p class="menu-note">Every action runs here. Revert and Retry are offered only while a rollback blocks a change on {{ device.hostname }}; otherwise they say why.</p>
-        {#- A row built on v2 draws its card in place of the tab; its href opens the page with
-            the card for a browser without script. -#}
-        {#- Plan a deploy is the FIRST row (the operator, 2026-10-04): one control for every action, no separate button. -#}
-        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="deploy" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='deploy') }}" hx-get="{{ url_for('device_v2.deploy', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Plan a deploy…</a>{{ how('deploy', compact=True, op='deploy') }}</div>
-        {% for label, op, words in [('Capture', 'capture', 'capture'), ('Seed intent…', 'seed', 'seeding'), ('Restore from…', 'restore', 'restore')] %}
-        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
-        {% endfor %}
-        {#- Mode B lives in the deploy card (C403): the row opens it at what is left on the device;
-            with nothing removable the server answers the row itself, and the menu stays open. -#}
-        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="removal" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='deploy', focus='removal') }}" hx-get="{{ url_for('device_v2.deploy', name=device.hostname, back=tab, focus='removal') }}" hx-target="this" hx-swap="outerHTML">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}</div>
-        <div class="menu-rule"></div>
-        {#- The two ways out of a rollback (board 11): offered only while a block stands; else
-            each says why, on hover and for a screen reader. -#}
-        {%- if block.blocked %}
-        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="revert-retry" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='revert') }}" hx-get="{{ url_for('device_v2.revert', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Revert intent…</a>{{ how('revert-retry', compact=True, op='revert') }}</div>
-        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="revert-retry" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retry') }}" hx-get="{{ url_for('device_v2.retry', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Retry rolled-back change…</a>{{ how('revert-retry', compact=True, op='retry') }}</div>
-        {%- else %}
-        <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ block.why }}">Revert intent…<span class="sr-only"> (not offered: {{ block.why }})</span></span></div>
-        <div class="menu-row"><span role="menuitem" class="menu-item" aria-disabled="true" title="Not offered: {{ block.why }}">Retry rolled-back change…<span class="sr-only"> (not offered: {{ block.why }})</span></span></div>
-        {%- endif %}
-        <div class="menu-rule"></div>
-        {% for label, op, words in [('Rotate credential…', 'rotate', 'rotation'), ('Persist', 'persist', 'persist')] %}
-        <div class="menu-row"><a role="menuitem" class="menu-item" data-op="{{ op }}" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op=op) }}" hx-get="{{ url_for('device_v2.' ~ op, name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">{{ label }}</a>{{ how(op, compact=True, op=words) }}</div>
-        {% endfor %}
-        <div class="menu-rule"></div>
-        <div class="menu-row"><a role="menuitem" class="menu-item danger" data-op="retire" href="{{ url_for('device_v2.device', name=device.hostname, tab=tab, op='retire') }}" hx-get="{{ url_for('device_v2.retire', name=device.hostname, back=tab) }}" hx-target="#tab-body" hx-swap="innerHTML" x-on:htmx:after-request="close">Retire…</a>{{ how('retire', compact=True, op='retirement') }}</div>
-      </div>
-    </div>
-  </div>
+  <div class="page-actions" id="actions-menu"
+       hx-get="{{ url_for('device_v2.actions_menu', name=device.hostname, back=tab) }}"
+       hx-trigger="nmas:rolled_back from:body, nmas:intent from:body, nmas:goldens from:body, nmas:deploy_job from:body, nmas:device_holds from:body, nmas:inventory from:body, nmas:device_state from:body" hx-swap="innerHTML">
+    {% include "v2/_actions_menu.html" %}
+  </div>{{ info('device-page', 'actions', label='How the Actions menu works') }}
 </div>
 <div class="tabs" role="tablist" aria-label="{{ device.hostname }} views">
   {% for key, label in tabs %}
