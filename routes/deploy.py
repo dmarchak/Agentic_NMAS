@@ -1273,6 +1273,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         "rollback_outcome": dict((result.rollback_outcome or {}).get(device.get("ip", ""), {})),
         "rollback_not_undone": list(
             (result.rollback_not_undone or {}).get(device.get("ip", ""), [])),
+        # The save to startup after verify (C501), per device, or {} when it did not run (C511).
+        "saved_startup": dict((result.saved_startup or {}).get(device.get("ip", ""), {})),
         "rollback_dangerous_exempt": list(
             (result.rollback_dangerous or {}).get(device.get("ip", ""), [])),
         "device_changed": any(e.get("device_changed") for e in failure_state),

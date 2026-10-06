@@ -584,7 +584,9 @@ def intent_op_result_card(op: str, ref, host: str, result: dict) -> dict:
             "summary": (result.get("happened") or {}).get("summary", ""),
             "checks": list(checks.get("statements") or ([checks["why"]]
                                                         if checks.get("why") else [])),
-            "did_not": [i.get("text", "") for i in did_not],
+            # A block's state is the check above, drawn once (C510); `standing` still reads it.
+            "did_not": [i.get("text", "") for i in did_not
+                        if not str(i.get("kind", "")).startswith("block_")],
             "standing": any(i.get("kind") in ("block_standing", "block_unknown")
                             for i in did_not),
             "record": (result.get("record") or {}).get("statement", ""),
@@ -776,7 +778,11 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
                                                          if checks.get("why") else [])),
                 rolled_back=rolled_back, rollback_state=rollback.get("state", ""),
                 rollback_detail=rollback.get("detail", ""),
+                # The save to startup after verify (C511), said once: `saved` here, so the
+                # not-saved item is left out of the list below.
+                saved=target.get("saved") or {},
                 did_not=[i.get("text", "") for i in (result.get("did_not") or {}).get("items")
-                         or [] if i.get("target") in (host, "this batch")],
+                         or [] if i.get("target") in (host, "this batch")
+                         and i.get("kind") != "not_saved"],
                 record=(result.get("record") or {}).get("statement", ""),
                 not_watched=result.get("not_watched", ""))

@@ -126,6 +126,8 @@ class TestRevert:
         msg = _git(blocked["repo"], "log", "-1", "--format=%B")
         assert f"Reverts: {blocked['b']}" in msg and f"Actor: {TEST_PERSON}" in msg
         assert "Actor-Verified: access" in msg
+        assert out.count("The rollback block STANDS") == 1, "said once (C510)"
+        assert "its rollback block STANDS" in out
 
     def test_a_revert_that_clears_the_block_is_ok_and_offers_no_way_on(self, page):
         _note(page, "no longer applies")
@@ -134,6 +136,7 @@ class TestRevert:
                                   data=_vals(card)).get_data(as_text=True)
         assert "op-ok" in out and "Block still stands" not in out
         assert "data-next-acts" not in out
+        assert out.count("The rollback block is lifted") == 1, "said once (C510)"
         from modules.nsot import hostvars
         assert hostvars.rolled_back_note(page["repo"], HOST) is None
         now = hostvars.read_committed(page["repo"], HOST)

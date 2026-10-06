@@ -110,6 +110,7 @@
   <div class="op-part"><h3>What happened</h3><div>
     <p>{{ c.host }}: {{ c.words }}.{% if c.sent %} It received {{ c.sent | length }} line(s); {{ c.match_words }}.{% else %} {{ c.none }}{% endif %}</p>
     {%- for s in c.checks %}{% if s %}<p>{{ s }}</p>{% endif %}{% endfor %}
+    {%- if c.saved.words %}<p>{% if c.saved.state == 'not_saved' %}<strong>{{ c.saved.words }}.</strong> Save it with Persist, from the Actions menu.{% else %}{{ c.saved.words }}.{% endif %}</p>{% endif %}
     {%- if c.rolled_back %}<p><strong>Rolled back ({{ c.rollback_state | replace('_', ' ') }}):</strong> {{ c.rollback_detail }}</p>{% endif %}
     {%- for d in c.did_not %}<p><strong>{{ d[0] | upper }}{{ d[1:] }}</strong></p>{% endfor %}</div></div>
   {%- if c.authorised %}

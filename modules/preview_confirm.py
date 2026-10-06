@@ -786,6 +786,8 @@ def build_result(*, action: str, level: str, summary: str, targets: list,
             # A rollback only where the operation has one: an import does not.
             "targets": [{"name": t["name"], "sent": t["sent"], "checks": t["checks"],
                          **({"rollback": t["rollback"]} if "rollback" in t else {}),
+                         # The save to startup, where the operation saves (C511).
+                         **({"saved": t["saved"]} if "saved" in t else {}),
                          "stage": t.get("stage", ""),
                          "reason": t.get("reason", ""), "outcome": t.get("outcome", "")}
                         for t in targets],
@@ -809,8 +811,31 @@ def result_level(rows: list, receipt_ok: bool, breaker_tripped: bool = False) ->
     clean = (len(done) == len(rows) and receipt_ok and not breaker_tripped
              and all(r.get("matches_confirmed") is True for r in done if r.get("sent"))
              and all((r.get("checks") or {}).get("ok") is True
-                     for r in done if (r.get("checks") or {}).get("ran")))
+                     for r in done if (r.get("checks") or {}).get("ran"))
+             # Verified and running, not in startup: a reload loses it, so never green (C511).
+             and not any((r.get("saved_startup") or {}).get("state") == "not_saved"
+                         for r in done))
     return "success" if clean else "partial"
+
+
+#: What a result says of the save to startup after verify (C511), by the receipt's state.
+SAVED_STARTUP_WORDS = {
+    "saved": "Saved to startup after verify",
+    "not_saved": "Verified and running, NOT saved to startup (a reload loses the change)",
+    "not_run": "Not saved to startup",
+}
+
+
+def saved_startup_words(saved) -> dict:
+    """``{"state", "words"}`` for a receipt row's ``saved_startup``; a row recorded before the
+    save was (C511) says so rather than reading as either."""
+    if not saved:
+        return {"state": "unrecorded",
+                "words": "Whether it was saved to startup is not in this receipt (recorded "
+                         "before the save was)"}
+    words = SAVED_STARTUP_WORDS.get(saved.get("state"), saved.get("state") or "")
+    detail = saved.get("detail") or ""
+    return {"state": saved.get("state", ""), "words": words + (f": {detail}" if detail else "")}
 
 
 def operation_result(rows: list, report: dict, receipt_status: dict, action: str,
@@ -856,7 +881,14 @@ def operation_result(rows: list, report: dict, receipt_status: dict, action: str
                      "actor": r.get("actor", "")},
             "checks": r.get("checks") or {"ran": False, "why": "no check was recorded"},
             "rollback": r.get("rollback") or {},
+            "saved": saved_startup_words(r.get("saved_startup")),
         })
+        if (r.get("saved_startup") or {}).get("state") == "not_saved":
+            did_not.append({"target": name, "kind": "not_saved",
+                            "text": SAVED_STARTUP_WORDS["not_saved"] + ": "
+                                    + (r["saved_startup"].get("detail") or "no reason")
+                                    + ". Save it with Persist, from its Device page.",
+                            "lines": []})
         if outcome != "deployed":
             did_not.append({"target": name, "kind": outcome,
                             "text": f"{words}" + (f": {r['reason']}" if r.get("reason") else ""),
@@ -3156,6 +3188,15 @@ def revert_preview(entry: dict, *, list_name: str, request) -> dict:
                                       "was elsewhere. They mean opposite things."}]})
 
 
+#: A committed revert's summary ending, by its block's measured state (C510).
+_REVERT_BLOCK_WORDS = {
+    "cleared": ", and its rollback block lifted.",
+    "gone": ", and its rollback block lifted.",
+    "standing": "; its rollback block STANDS.",
+    "unknown": "; its rollback block is left standing, unmeasured.",
+}
+
+
 def revert_result(out: dict) -> dict:
     """*out*: `intent_ops.revert_apply()`'s."""
     name, outcome = out["device"], out["outcome"]
@@ -3174,8 +3215,10 @@ def revert_result(out: dict) -> dict:
                            "text": block["text"], "lines": []})
     level = ("failed" if not done else
              "partial" if block.get("state") in ("standing", "unknown") else "success")
+    # SAID ONCE (C510): the summary names the block's state in a few words; its measured
+    # sentence is the check, drawn once on the card.
     summary = (f"{name}: {e.get('target')}'s change is undone in its intent (commit "
-               f"{commit[:12]}). {block.get('text', '')}" if done
+               f"{commit[:12]}){_REVERT_BLOCK_WORDS.get(block.get('state'), '.')}" if done
                else f"{name}: {words}" + (f": {out['reason']}" if out.get("reason") else ""))
     return build_result(
         action="revert", level=level, summary=summary.strip(),

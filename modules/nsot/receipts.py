@@ -143,6 +143,30 @@ def _authorised_record(given) -> list:
             for a in authorisation.normalise(given)]
 
 
+def _saved_startup(result: dict) -> dict:
+    """Whether the change was saved to startup after verify (C511): ``{"state", "detail"}``,
+    the state `saved`, `not_saved` (verified and running, a reload loses it) or `not_run`,
+    with why. Since C501 the save follows a passed verify, so "saved" and "running and not
+    saved" are different results, and a receipt that said neither read them alike."""
+    from modules.redact import redact_text
+
+    got = result.get("saved_startup") or {}
+    if got.get("ok") is True:
+        return {"state": "saved", "detail": ""}
+    if got:
+        return {"state": "not_saved",
+                "detail": redact_text(got.get("error") or "no reason was recorded")}
+    if result.get("rolled_back"):
+        why = "the change was rolled back, so there was nothing to save"
+    elif not result.get("commands") or result.get("outcome") == "refused":
+        why = "nothing was sent"
+    elif result.get("outcome") == "deployed":
+        why = "the save did not run"
+    else:
+        why = f"the deploy stopped at {result.get('stage') or 'an unnamed stage'}, before it"
+    return {"state": "not_run", "detail": why}
+
+
 def rows_for(report: dict, *, list_name: str, action: str, actor: str,
              actor_kind: str, confirmations: dict = None,
              command_hashes: dict = None, source_ref: str = "") -> list:
@@ -204,6 +228,7 @@ def rows_for(report: dict, *, list_name: str, action: str, actor: str,
                 "commands": [redact_text(c) for c in result.get("rollback_commands") or []],
                 "not_undone": list(result.get("rollback_not_undone") or []),
             },
+            "saved_startup": _saved_startup(result),
             "golden_commit": golden.get("commit", "") if host in golden_devices else "",
             "commit_state": (COMMITTED if golden.get("commit") and host in golden_devices
                              else NO_GOLDEN),

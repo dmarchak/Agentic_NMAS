@@ -88,6 +88,7 @@
     {%- else %}
     <p class="muted">Nothing was verified: {{ c.why }}.</p>
     {%- endif %}
+    {%- if (t.saved or {}).words %}<p{% if t.saved.state == 'not_saved' %} class="apply-refused"{% endif %}>{{ t.saved.words }}.</p>{% endif %}
     {%- if (t.rollback or {}).performed %}<p>Rolled back: {{ t.rollback.state }}{% if t.rollback.detail %} ({{ t.rollback.detail }}){% endif %}.</p>{% endif %}
   </details>
   {%- endfor %}
