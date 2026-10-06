@@ -27,6 +27,10 @@ The counts come first: approved, not approved, revoked. Then one row per templat
   not yet committed. A template no device is bound to cannot be approved: nothing can validate
   it.
 
+The table redraws itself whenever anyone approves, revokes, edits a template or changes a
+binding, here, in another tab or on today's Templates tab. A card you have open below it stays
+as it is; its confirm checks again.
+
 ## Approve… {#approve}
 
 Opens the check below the table: every bound device's captured configuration, parsed into

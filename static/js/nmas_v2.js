@@ -38,7 +38,9 @@
               'coverage_reporting',
               // A held device's operation reached its next step: a running card redraws its
               // stepper (C370).
-              'device_progress'];
+              'device_progress',
+              // A template approved or revoked anywhere: the Templates table re-reads (C516).
+              'templates'];
 
   /* PURE: the Acknowledge button's words, busy on itself. */
   function ackLabel(busy) { return busy ? 'Acknowledging…' : 'Acknowledge'; }
@@ -280,6 +282,7 @@
   function relayDeviceHolds() { relay('device_holds'); }
   function relayRotation() { relay('rotation'); }
   function relayDeviceProgress() { relay('device_progress'); }
+  function relayTemplates() { relay('templates'); }
 
   /* PURE: whether the sidebar's count may be out of date, and why, from the live channel's
      state and the moment its oldest source passes its promise (data-stale-at). '' when it
@@ -355,6 +358,7 @@
     NMAS.subscribe('device_holds', 'v2DeviceHolds', relayDeviceHolds);
     NMAS.subscribe('rotation', 'v2Rotation', relayRotation);
     NMAS.subscribe('device_progress', 'v2DeviceProgress', relayDeviceProgress);
+    NMAS.subscribe('templates', 'v2Templates', relayTemplates);
   }
 
   /* The tab that asked is drawn chosen at once, before the fragment arrives. */

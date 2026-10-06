@@ -1511,8 +1511,24 @@ def save_templates(list_name: str, files: list, actor: str = "user",
     subject = message or f"template: update {names}"
     trailers = [f"Actor: {actor}", f"Template-Files: {','.join(files)}"]
     # *files* are relative to ``templates/``; only they are staged (C175).
-    return _commit_paths(list_name, paths or [f"templates/{f}" for f in files],
-                         subject, trailers, "template")
+    out = _commit_paths(list_name, paths or [f"templates/{f}" for f in files],
+                        subject, trailers, "template")
+    if out.get("ok"):
+        _announce_templates()
+    return out
+
+
+def _announce_templates() -> None:
+    """Tell every open page the template library moved (C516): an approval, a revocation, an
+    edit or a binding committed here is drawn by another tab's Templates table without a
+    reload. A route's own response tells only the tab that made it. An announcement that
+    cannot be made is logged and the commit stands: it is a notice, never the record."""
+    from modules import invalidation
+
+    try:
+        invalidation.announce(("templates",), by="template-library")
+    except (RuntimeError, ValueError) as exc:
+        log.warning("save_templates: committed, and the announcement failed: %s", exc)
 
 
 #: What an ``Actor:`` trailer may hold, and why the distinction is load-bearing.

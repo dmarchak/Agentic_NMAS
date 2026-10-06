@@ -1,0 +1,35 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- The Templates table alone (C516): the counts and the rows, re-read on its own when an
+    approval or a revocation is announced (`templates`), so the op card below keeps what a
+    person is in the middle of. -#}
+{%- if not lib.ok %}
+<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Couldn't load the templates:</strong> {{ lib.error }}. Nothing was read past it.</p></div>
+{%- elif not lib.rows %}
+<div class="notice notice-warn">{{ icon('warn', 16) }}<p>{{ list_name }} has no committed configuration template. The library is seeded into the network's repository when its first template is opened on today's Templates page; a file nobody committed is never drawn here.</p></div>
+{%- else %}
+<p class="tpl-counts">{% for s, n in lib.counts.items() %}<span>{{ s }} <strong>{{ n }}</strong></span>{{ ' · ' if not loop.last }}{% endfor %}{% if lib.shared %} <span class="faint">({{ lib.shared }} shared macro file{{ '' if lib.shared == 1 else 's' }}, counted in each template's imports)</span>{% endif %}</p>
+<div class="card tpl-card"><table class="table tpl-table">
+  <thead><tr><th scope="col">Template</th><th scope="col">Platform</th><th scope="col">Devices bound</th><th scope="col">Approval</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+  <tbody>
+  {%- for r in lib.rows %}
+  {%- set st = r.status %}
+  <tr id="tpl-row-{{ loop.index }}">
+    <td class="mono">{{ r.path }}{% if r.imports %} <span class="faint">+ {{ r.imports }} import{{ '' if r.imports == 1 else 's' }}</span>{% endif %}</td>
+    <td>{{ r.platform }}</td>
+    <td>{%- if not r.bound %}0{% elif r.bound | length <= 3 %}{{ r.bound | length }}: {% for d in r.bound %}<a href="{{ url_for('device_v2.device', name=d) }}">{{ d }}</a>{{ ', ' if not loop.last }}{% endfor %}{% else %}<details class="tpl-bound" data-keep="tpl-bound-{{ r.path }}"><summary>{{ r.bound | length }} devices</summary>{% for d in r.bound %}<a href="{{ url_for('device_v2.device', name=d) }}">{{ d }}</a>{{ ', ' if not loop.last }}{% endfor %}</details>{% endif %}</td>
+    <td>{%- if r.state == 'approved' %}{{ badge('approved', 'ok') }} <span class="muted small">by {{ st.actor }}{% if st.approved_at %}, {{ stamp(st.approved_at) }}{% endif %}</span>
+        {%- elif r.state == 'revoked' %}{{ badge('revoked', 'danger') }} <span class="muted small">{{ (st.reason or '')[9:] if (st.reason or '').startswith('REVOKED: ') else st.reason }}{% if st.actor %} ({{ st.actor }}){% endif %}</span>
+        {%- else %}{{ badge('not approved', 'warn' if r.bound else 'muted') }} <span class="muted small">{% if not r.bound %}nothing bound to validate it{% else %}{{ st.reason }}{% endif %}</span>{% endif %}</td>
+    <td class="tpl-act">
+      {%- if r.state == 'approved' %}
+      <a class="btn btn-small" data-op="approve-template" href="{{ url_for('templates_v2.page', list=list_name, revoke=r.path) }}" hx-get="{{ url_for('templates_v2.revoke_form', list=list_name, path=r.path) }}" hx-target="#tpl-op" hx-swap="innerHTML"><span class="op-idle">Revoke…</span><span class="op-busy">Opening…</span></a>{{ how('approve-template', 'revoke', compact=True, op='revoking an approval') }}
+      {%- elif r.bound %}
+      <a class="btn btn-small btn-primary" data-op="approve-template" href="{{ url_for('templates_v2.page', list=list_name, approve=r.path) }}" hx-get="{{ url_for('templates_v2.check', list=list_name, path=r.path) }}" hx-target="#tpl-op" hx-swap="innerHTML"><span class="op-idle">Approve…</span><span class="op-busy">Checking…</span></a>{{ how('approve-template', compact=True, op='approving a template') }}
+      {%- else %}
+      <button type="button" class="btn btn-small" data-op="approve-template" disabled title="No device is bound to it, so nothing can validate it">Approve…</button>{{ how('approve-template', compact=True, op='approving a template') }}
+      {%- endif %}</td>
+  </tr>
+  {%- endfor %}
+  </tbody>
+</table></div>
+{%- endif %}

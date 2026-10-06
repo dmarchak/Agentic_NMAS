@@ -119,6 +119,8 @@ ANNOUNCERS = {
     # A restore run as a job (the v2 device page) also moves intent and approvals.
     # modules/arrival_watch.py: the combined deploy's watch, as each first arrival lands.
     "arrival-watch": ("deploy_job",),
+    # modules/nsot/repo.save_templates: each template-library commit (C516).
+    "template-library": ("templates",),
     "deploy-job": ("deploy_job", "device_state", "baselines", "drift", "rolled_back",
                    "freshness", "goldens", "remote", "intent", "approvals"),
 }

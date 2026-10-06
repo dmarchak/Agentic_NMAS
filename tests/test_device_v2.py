@@ -633,7 +633,8 @@ class TestTheShippedScripts:
                                                     "/v2/monitoring/coverage/table",
                                                     "/v2/monitoring/apply/job/x",
                                                     "/v2/device/r3/capture/job/x",
-                                                    "/v2/device/r3/rotate/job/x"))
+                                                    "/v2/device/r3/rotate/job/x",
+                                                    "/v2/templates?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
         from routes import device_v2
@@ -649,7 +650,8 @@ class TestTheShippedScripts:
         # +2 2026-10-03: rotation and device_holds (7.3's rotate card); +1 device_progress
         # (C370: a running job's stepper); +1 credential_health (P.21's reader, on Needs
         # attention); +1 coverage_reporting (Coverage's not-reporting reader).
-        assert len(keys) == 30
+        # +1 2026-10-06: templates (C516: the Templates table, heard on its page).
+        assert len(keys) == 31
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

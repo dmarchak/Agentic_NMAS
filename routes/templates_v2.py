@@ -15,6 +15,7 @@ bindings stay on today's page until their own boards. Nothing here contacts a de
 import logging
 
 from flask import Blueprint, render_template, request
+from html import escape
 
 from routes.device_v2 import _strict
 
@@ -97,6 +98,18 @@ def table():
         return _card({"state": "refused", "list": name,
                       "why": f"No network is named {name!r}: nothing was read."}, 404)
     return _region(name)
+
+
+@bp.route("/rows", methods=["GET"])
+def rows():
+    """The table alone (C516), re-read when `templates` is announced: an approval or a
+    revocation made elsewhere (another tab, a template edit that revokes) shows here without a
+    reload, and the op card below it is left as it is. Writes nothing."""
+    name = _list_name()
+    if not _known(name):
+        return _strict(f'<div class="notice notice-danger" role="alert"><p>Couldn\'t load: no '
+                       f'network is named {escape(name)}, so nothing was read.</p></div>'), 404
+    return _strict(render_template("v2/_templates_table.html", **_lib_ctx(name)))
 
 
 @bp.route("/approve", methods=["GET"])
