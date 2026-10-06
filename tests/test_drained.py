@@ -36,6 +36,24 @@ def _series(gi3_in=0.0, gi3_out=0.1, peak=0.2, gi1_up=2):
             "max_in": {**busy, ("r2", "Gi3"): peak}, "max_out": {**busy, ("r2", "Gi3"): peak}}
 
 
+class TestSwitchedOff:
+    """C552: the interface-counter measurement drew nearly every device drained on the host
+    and held back their alerts; it is off until C551's design replaces it."""
+
+    def test_nothing_is_drained_and_nothing_is_asked(self, monkeypatch):
+        def asked(*a, **k):
+            raise AssertionError("the measurement ran while switched off")
+        monkeypatch.setattr(D, "measure", asked)
+        assert D.ENABLED is False
+        assert D.current("Lab") == {} and D.state_of("Lab", "r2") is None
+
+    def test_the_control_switched_on_it_measures(self, monkeypatch):
+        monkeypatch.setattr(D, "ENABLED", True)
+        monkeypatch.setattr(D, "_cache", {})
+        monkeypatch.setattr(D, "measure", lambda name, now: {"r2": {"drained": True}})
+        assert D.current("Lab") == {"r2": {"drained": True}}
+
+
 class TestTheJudgement:
     def test_quiet_on_all_but_the_management_path_is_drained(self):
         (v,) = D.judge({"r2": "192.0.2.12"}, GOLDEN, _series()).values()

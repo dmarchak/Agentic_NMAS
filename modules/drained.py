@@ -48,6 +48,11 @@ RATE_WINDOW = "2m"
 #: How far back "since" is looked for, at the scrape's step.
 SINCE_LOOKBACK_SECONDS = 6 * 3600
 SINCE_STEP_SECONDS = 60
+#: OFF (C552, 2026-10-06): measured on the host, this lab's host traffic is a few pkt/s, below
+#: the management-polling level, so no floor separates them and the measurement drew nearly
+#: every device drained, holding back their Grafana alerts. Nothing is drawn or held back
+#: until C551's design (customer traffic, counted by address) replaces it; `judge()` stays.
+ENABLED = False
 #: The pages that draw the badge re-read on the reachability reader's 5 s announcement; the
 #: measurement moves by the minute, so a network is asked at most this often.
 CACHE_SECONDS = 30
@@ -274,7 +279,10 @@ def measure(list_name: str, now: float = None) -> dict:
 
 def current(list_name: str) -> dict:
     """``{device: verdict}`` for each device MEASURED drained now, cached `CACHE_SECONDS`.
-    Raises when the measurement cannot be made (the caller says so; nothing is drained)."""
+    Raises when the measurement cannot be made (the caller says so; nothing is drained).
+    Empty while `ENABLED` is off (C552)."""
+    if not ENABLED:
+        return {}
     now = time.time()
     with _lock:
         hit = _cache.get(list_name)

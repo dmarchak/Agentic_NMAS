@@ -642,6 +642,27 @@ Dates, counts and statuses below are as they were written. Where a later entry o
   read the run's outcome when it lands; on red, stop new work and fix forward before anything
   else.
 
+- **UNDER A DEADLINE, CI WAS BYPASSED FOUR TIMES, AND TWO PULLS CARRIED DEFECTS; THE
+  SAFEGUARDS WERE RIGHT** (the class challenge, 2026-10-06, C550 to C552). To make a timed
+  exercise, the operator pulled 56d7afb, 26ce5ad, 6e9e4ab and 107aaa9 onto the host from the
+  terminal, each before GitHub's run on it had finished, instead of waiting for the Update
+  button. Each had passed the local gate (CI's three commands in CI's interpreter); GitHub
+  passed all four afterwards (#488 to #491). Two carried defects the operator then found on
+  the host: 26ce5ad's peaks query never closed `max_over_time(`, so Prometheus answered HTTP
+  400 and the page said "could not be measured"; 107aaa9's 10 pkt/s floor drew nearly every
+  device drained (measured on the host's Prometheus: this lab's host traffic is a few pkt/s,
+  below the management-polling level) and so held back their Grafana alerts, one of them
+  firing (C552). **What the record says:** CI could not have caught either one. Its tests
+  asserted the query TEXT, never sent it to a Prometheus, and judged the floor against
+  values typed into the test, never the fleet's. Both defects showed in seconds to a
+  read-only run against the host's Prometheus, which is the agent's to make (*Walk the path
+  for real*); it was made only after the operator reported each one. So the deadline removed
+  two safeguards, not one: the wait for CI, which would have let both through, and the real
+  run, which would have stopped both. **The lesson:** a deadline never removes the real run.
+  Before a pull past CI, run the new code's reads against the real service and judge the
+  whole fleet with it, never only the device in hand. A pull past CI stays the operator's
+  decision, and the commit that is pulled names what was run for real.
+
 ### The commit message file
 
 *The rule (CLAUDE.md):* **Gate `git commit -F` on the message file's first line naming THIS commit**

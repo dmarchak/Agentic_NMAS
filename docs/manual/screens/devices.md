@@ -11,6 +11,11 @@ still pending are rows too, and open their own page.
 
 ## Drained {#drained}
 
+**Switched off for now:** in a network managed in band, the manager's own polling crosses data
+interfaces at about the rate customer traffic does, so interface counters cannot tell a
+drained device from a quiet one. No badge is drawn and no alert is held back until Drained is
+measured from customer traffic by address. What follows is how it worked while it was on.
+
 A **Drained** badge beside a device's name (and in its page's header) is MEASURED, never set
 by hand: every interface that is up, not a loopback, not in a VRF, and not the device's
 management path (the interface its golden gives the management address) carried less than
