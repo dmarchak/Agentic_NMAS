@@ -494,8 +494,17 @@ UNDRAWN = {
         ("declared ends moves offers to",
          "C506 phase 3, what a person may declare and has declared: drawn by the v2 deploy card "
          "(templates/v2/_deploy.html, #expected, from device_actions._declare_part) and reached "
-         "in tests/test_declared_effects.py; the v1 deploy page gains no capability")],
+         "in tests/test_declared_effects.py; the v1 deploy page gains no capability"),
+        ("check expects read",
+         "C506 phase 4, What verify checks: drawn by the v2 deploy card (templates/v2/_deploy.html, "
+         "#expected, its table, from preview_confirm.expected_part) and reached in "
+         "tests/test_verify_checks.py; the v1 deploy page gains no capability")],
     "GET /deploy/receipts": [
+        ("expected_effects failed_at_once interfaces unexpected_settle",
+         "C506 phase 4, how verify compared the interfaces and the settle it gave an unexpected "
+         "loss: drawn in words by the v2 deploy result card (device_actions.deploy_job_card) and "
+         "reached in tests/test_verify_checks.py; the receipt's structured view in History "
+         "comes with C537's mockup"),
         ("declared_moves notes",
          "C506 phase 3, each declared move's outcome and verify's notes: drawn by the v2 deploy "
          "result card from the job's verify (device_actions.deploy_job_card); the receipt's "
@@ -607,6 +616,16 @@ EMPTY_IN_FIXTURE = {
     "POST /deploy/apply result.targets[].checks.declared_moves": (
         R_, "no move is declared in the fixture's run"),
     "POST /deploy/apply result.targets[].checks.notes": (S_, _STRINGS),
+    # C506 phase 4: the fixtures' runs record no verify by name; reached in
+    # tests/test_verify_checks.py.
+    "GET /deploy/receipts changes[].result.targets[].checks.expected_effects": (
+        R_, "the fixture's verify records no expected effects"),
+    "GET /deploy/receipts changes[].result.targets[].checks.interfaces": (
+        R_, "the fixture's verify compared no interface by name"),
+    "POST /deploy/apply result.targets[].checks.expected_effects": (
+        R_, "the fixture's verify records no expected effects"),
+    "POST /deploy/apply result.targets[].checks.interfaces": (
+        R_, "the fixture's verify compared no interface by name"),
     "POST /deploy/plan devices[].excluded_unrenderable": (S_, _STRINGS),
     "POST /deploy/plan devices[].masked_refs": (S_, _STRINGS),
     "POST /deploy/plan devices[].shares_key[].chain": (S_, _STRINGS),
@@ -754,7 +773,9 @@ EMPTY_IN_FIXTURE = {
 # 28 -> 34: C506 phase 3 (2026-10-06): the plan's declarations and offers (moves, ends) and the
 # run's declared moves, empty because the fixtures declare nothing; reached in
 # tests/test_declared_effects.py.
-EMPTY_RECORDS_CEILING = 34
+# 34 -> 38: C506 phase 4 (2026-10-06): the receipt's expected effects and interfaces, empty
+# because the fixtures' runs compare no interface by name; reached in tests/test_verify_checks.py.
+EMPTY_RECORDS_CEILING = 38
 
 
 def _empty_paths(obj, path=""):
@@ -833,7 +854,7 @@ def _flat(table):
 # when the NetBox previews would have added three more copies of the exemption.
 # 104 -> 103: a ztp row's `stage` is drawn in the pending banner (7.1).
 # 103 -> 102: each integration's `name` is drawn by the status bar (7.2).
-UNDRAWN_CEILING = 120  # +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
+UNDRAWN_CEILING = 127  # +4: C506 phase 4, the receipt's expected_effects, failed_at_once, interfaces, unexpected_settle, drawn in words by the v2 result card. +3: C506 phase 4, What verify checks (check, expects, read) drawn by the v2 deploy card only (2026-10-06). Before: +7: C506 phase 3, the plan's declarations and offers (declared, ends, moves, offers, to) drawn by the v2 deploy card only, and the receipt's declared_moves and notes drawn by the v2 result card (History's receipt display is phase 4) (2026-10-06). Before: +3: C506 phase 2, the plan's Expected effects (derived, expected, unexpected), drawn by the v2 deploy card only (the v1 page gains nothing) (2026-10-06). Before: +1: C460, in_force, drawn by the v2 page only (the v1 panel gains nothing) (2026-10-05). Before: -1: R12's client half reads the approval state's fingerprint (2026-10-04). Before: +1: clears.ways (2026-10-02), the machine form of clears.when, which both pages draw. Before: +3: C315, the Baselines provider reaches a stale credential, and credential_detail's form at the ref and at HEAD was never drawn (new coverage, not a regression). Before: -1: C310, the deploy result reads its golden's `refused` (a device whose golden was not recorded). Before: -1: P.9 (b)'s deploy wizard reads the plan's `list` (the scope carries it)
 PHANTOM_CEILING = 18
 
 

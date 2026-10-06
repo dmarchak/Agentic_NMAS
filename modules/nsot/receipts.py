@@ -134,6 +134,13 @@ def _checks(result: dict) -> dict:
         # declared forming beside the expected ones; a declared route change read).
         "declared_moves": list(verify.get("declared_moves") or []),
         "notes": [redact_text(n) for n in verify.get("notes") or []],
+        # C506 phase 4: the interfaces as verify compared them (by name, or counted when a read
+        # named none), the program's expected effects, and the settle an unexpected loss was
+        # given and whether verify failed at once over it.
+        "interfaces": dict(verify.get("interfaces") or {}),
+        "expected_effects": dict(verify.get("expected_effects") or {}),
+        "unexpected_settle": verify.get("unexpected_settle"),
+        "failed_at_once": verify.get("failed_at_once"),
     }
     if not protocols:
         checks["neighbours_note"] = ("no routing protocol on this device: the "

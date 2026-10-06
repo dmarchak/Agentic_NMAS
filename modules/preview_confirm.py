@@ -369,6 +369,8 @@ def expected_part(effects) -> dict:
     derived += [f"An OSPF adjacency may form on {m.get('via')}: OSPF is enabled on it. Not "
                 "required." for m in fx.get("may_form") or []]
     return {"derived": derived,
+            # C506 phase 4: what verify will check, each naming its object (`verify_checks`).
+            "checks": list(fx.get("checks") or []),
             "unexpected": ("Anything else is unexpected and still fails verify: an interface "
                            "the program does not touch going down is read again after a short "
                            "settle and, if it stands, fails at once, without waiting for BGP's "

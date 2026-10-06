@@ -493,6 +493,12 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
                 list_name, hostname, commands, (declare or {}).get(hostname),
                 intents=intents_once)
             entry["declared"] = declared
+            # What verify will check, each check naming its object (C506 phase 4, the board's
+            # "What verify checks"), from the same effects, windows and captured config.
+            from modules.nsot import expected_effects as _fx
+            entry["expected_effects"]["checks"] = _fx.verify_checks(
+                entry["expected_effects"], commands=commands, list_name=list_name,
+                captured=captured)
             if declare_problems:
                 entry["deployable"] = False
                 entry["blocking_reasons"] = list(entry.get("blocking_reasons") or []) + [

@@ -830,6 +830,25 @@ def deploy_job_card(ref, host: str, job_id: str, got) -> dict:
          f"Declared and not found: {m.get('move')} (within {m.get('window')} s)")
         for m in checks.get("declared_moves") or []] + [
         f"Note: {n}" for n in checks.get("notes") or []]
+    # C506 phase 4: how the interfaces were compared, and the settle an unexpected loss got.
+    ifs = checks.get("interfaces") or {}
+    if ifs.get("compared_by") == "name":
+        parts = [f"{', '.join(ifs[k])} {w}" for k, w in (
+            ("lost_expected", "down, as the program intends"),
+            ("came_up", "came up"),
+            ("lost_unexpected", "down, which the program did not touch"))
+            if ifs.get(k)]
+        declared_lines.append("Interfaces compared by name: "
+                              + ("; ".join(parts) if parts else "every one as it was") + ".")
+    elif ifs.get("compared_by") == "count":
+        declared_lines.append("Interfaces counted, not named: the read named none.")
+    settle = checks.get("unexpected_settle") or {}
+    if settle:
+        declared_lines.append(
+            f"An unexpected loss was read again after the {settle.get('seconds')} s settle "
+            f"({settle.get('basis', 'its basis not recorded')})"
+            + ("; verify failed at once, without the routing protocols' windows."
+               if checks.get("failed_at_once") else "."))
     return dict(card, state="result", level=DEPLOY_LEVELS.get(result.get("level"), "danger"),
                 outcome=outcome, words=words,
                 # The one device, never the batch's "N of N device(s) deployed" (C408).

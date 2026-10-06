@@ -38,6 +38,7 @@ yet, and those parts wait for it rather than run there.
 | 3.3 seed | DONE on v2 | the device page, Actions › Seed intent… |
 | 4 the break-glass export | DONE on v2 | Source of truth › Credentials |
 | 4b a rotation left unpersisted (C541) | NEXT RUN (added 2026-10-06, below) | Needs attention's row, the device page's Persist |
+| 4c a link bounce, timed (C506 phase 4) | NEXT RUN (added 2026-10-06, below) | the lab host; the device's History tab |
 | 5, 6 | DONE on v2 2026-10-05 and 06 (STOP 5 and STOP 6, below; C501 found and proven repaired) | the device page (deploy, revert and retry), the Intent tab (H) |
 | 8 | DONE on v2 2026-10-06 (STOP 8, below) | the device page, Actions › Retire… |
 | 7 the restore | DONE on v2 (rewritten, below) | the device page, Actions › Restore from… |
@@ -720,6 +721,22 @@ Part 5.
 
 **STOP 4b. Paste:** the row's words as drawn, the Persist result, the UTC time the row appeared
 and the time it left the page.
+
+## Part 4c (next run): how long a link bounce takes, for verify's settle (15 min)
+
+Added 2026-10-06 (C506 phase 4): verify reads an untouched interface lost by a change again
+after a short settle (10 s, the installation's default) and then rolls the change back at once.
+Fourteen days of syslog hold ONE real bounce (r3, down 14 s, longer than the 10 s), so the
+settle is measured here, on purpose, on a device nothing depends on.
+
+1. **On the lab host (the operator):** take one of `tw-ztp-a`'s data links down and up from
+   the host side, five times, each down for about 1 s (the link's veth, `ip link set <veth>
+   down; sleep 1; ip link set <veth> up`), a minute apart. Not the management link.
+2. **Read back:** the device's History tab (or Logs) shows each `LINEPROTO-5-UPDOWN` down and up
+   with its receive time. The bounce is up minus down.
+
+**STOP 4c. Paste:** the five down-to-up durations. They set the platform's settle (2.5 times
+the slowest, per the bounds rule) or confirm the 10 s.
 
 ## What each answer decides
 

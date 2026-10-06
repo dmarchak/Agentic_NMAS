@@ -126,7 +126,10 @@ the run ends. Its stages, in the order the code declares them:
    `pre_snapshot`, and `show running-config`. Sent: nothing. Recorded: nothing yet; verify and
    `save_golden` use it.
 8. `verify`. Read: the two snapshots, and the device again while it waits. Sent: nothing.
-   Recorded: what it compared, for the receipt. Interfaces are judged first, by name, against
+   Recorded: what it compared, for the receipt (how the interfaces were compared, by name or
+   counted; the settle an unexpected loss was given; whether verify failed at once), said in
+   words on the result. The card's "What verify checks" lists, before you confirm, each check
+   by the object it reads, what it expects and when it reads. Interfaces are judged first, by name, against
    what the program intends: one it shuts going down is its effect, never a loss; one it did not
    touch going down is an unexpected hard failure, given a short settle (10 s by default, one
    installation-wide window networks inherit) and then failed at once, without waiting out the

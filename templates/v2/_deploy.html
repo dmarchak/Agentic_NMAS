@@ -93,6 +93,16 @@
     </div>
     {%- if dx.pending.problem %}<p class="op-note" role="status">Not declared yet: {{ dx.pending.problem }}.</p>{% endif %}
     <p class="muted small">{{ c.expected.unexpected }}</p>
+    {#- C506 phase 4 (the board's "What verify checks"): each check names the object it reads,
+        never a count, with what it expects and when it reads. -#}
+    {%- if c.expected.checks %}
+    <p class="op-wait">What verify checks</p>
+    <div class="op-checks-wrap"><table class="op-checks">
+      <thead><tr><th scope="col">Check</th><th scope="col">Expects</th><th scope="col">Read</th></tr></thead>
+      <tbody>{% for k in c.expected.checks %}<tr><td>{{ k.check }}</td><td>{{ k.expects }}</td><td>{{ k.read }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="muted small">Each check names what it reads, never a count: an interface down and another up no longer net to zero.</p>
+    {%- endif %}
   </div></div>
   {%- endif %}
   <div class="op-part{{ ' op-focus' if c.focus == 'removal' }}" id="removal"><h3>Left on the device</h3><div>

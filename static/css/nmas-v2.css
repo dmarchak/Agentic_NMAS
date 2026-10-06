@@ -873,6 +873,12 @@ select { max-width: 100%; }
 .op-declare label { display: block; max-width: 100%; font-size: 13px; }
 .op-declare select { display: block; width: 100%; margin-top: 4px; }
 .op-undeclare { white-space: nowrap; }
+/* C506 phase 4: What verify checks, one row per check; scrolls inside its box on a phone. */
+.op-checks-wrap { overflow-x: auto; max-width: 100%; }
+.op-checks { border-collapse: collapse; width: 100%; font-size: 13px; }
+.op-checks th { text-align: left; padding: 6px 10px; color: var(--ink-2); font-weight: 500;
+  background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.op-checks td { padding: 6px 10px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
 .op-next { display: flex; flex-direction: column; gap: 8px; }
 .op-next > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
 .op-ft { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 20px;
