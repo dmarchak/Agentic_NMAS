@@ -274,3 +274,73 @@ class TestTheTopBarFits:
         assert got["who"][2] > 0 and got["who"][1] <= width, ("the avatar is not on the screen", got)
         assert got["jump"] >= 60, ("the search box gave way to nothing usable", got)
         assert got["pill"][1] > 0 and got["pill"][0] <= width, ("Update available not shown", got)
+
+
+#: C502 (the operator, 2026-10-05: the Templates table's first column touched the card's left
+#: border). Every drawn table's first cell: its text starts at least TABLE_GAP_PX inside the
+#: nearest box that draws a left border (a card, an op card, the table itself). Returns one line
+#: per table that does not, and the number of tables read.
+TABLE_GAP_PX = 8
+FIRST_COLUMN_JS = """
+var out=[], n=0;
+document.querySelectorAll('table').forEach(function(t){
+  if (!t.offsetParent) return;
+  var row=t.querySelector('tbody tr') || t.querySelector('tr'); if (!row || !row.cells[0]) return;
+  var cell=row.cells[0], box=null;
+  for (var p=t; p && p!==document.body; p=p.parentElement){
+    var cs=getComputedStyle(p);
+    if (parseFloat(cs.borderLeftWidth)>0 && cs.borderLeftStyle!=='none'){box=p; break;}
+  }
+  if (!box) return;
+  n++;
+  var edge=box.getBoundingClientRect().left + parseFloat(getComputedStyle(box).borderLeftWidth);
+  var text=cell.getBoundingClientRect().left + parseFloat(getComputedStyle(cell).paddingLeft);
+  if (text - edge < %d) out.push((t.className||'table')+': its first column starts '
+    + Math.round(text-edge)+' px inside '+(box.className||box.tagName));
+});
+return [out, n];
+""" % TABLE_GAP_PX
+
+#: C509 (the operator, 2026-10-05: the Revert card's "Commit to revert" dropdown ran past the
+#: card and the page on a long commit subject). Every drawn form control and button ends inside
+#: the card holding it. Returns one line per control that does not, and the number read.
+CONTROLS_INSIDE_JS = """
+var out=[], n=0;
+document.querySelectorAll('select, textarea, input:not([type=hidden]), button, .btn').forEach(function(e){
+  if (!e.offsetParent) return;
+  var card=e.closest('.card, .op-card'); if (!card) return;
+  n++;
+  var R=card.getBoundingClientRect().right, r=e.getBoundingClientRect();
+  if (r.right > R + 1) out.push(e.tagName.toLowerCase()+(e.name ? '[name='+e.name+']' : '')
+    +' ends at '+Math.round(r.right)+', past its card at '+Math.round(R)
+    +': '+(e.textContent||e.value||'').trim().slice(0, 40));
+});
+return [out, n];
+"""
+
+
+def measure_layout(b, page_label):
+    """Both measurements on the page *b* shows, every <details> open: ``(problems, tables,
+    controls)``."""
+    b.js("document.querySelectorAll('details').forEach(function(d){d.open=true}); return 1")
+    tables, n_tables = b.js(FIRST_COLUMN_JS)
+    controls, n_controls = b.js(CONTROLS_INSIDE_JS)
+    return ([f"{page_label}: {p}" for p in tables + controls], n_tables, n_controls)
+
+
+class TestTablesAndControlsSitInsideTheirCards:
+    @pytest.mark.parametrize("width", [1366, 500])
+    def test_every_first_column_is_padded_and_every_control_ends_inside(self, served, width):
+        srv, b = served
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": width, "height": 1000})
+        problems, tables, controls = [], 0, 0
+        for page in PAGES:
+            b.go(srv.url(page))
+            b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 10)
+            got, t, c = measure_layout(b, f"{page} at {width}")
+            problems += got
+            tables += t
+            controls += c
+        assert not problems, "\n".join(problems)
+        # Floors: the population read, so a page that drew nothing cannot pass by emptiness.
+        assert tables >= 3 and controls >= 14, (tables, controls)   # measured 2026-10-06: 3, 14

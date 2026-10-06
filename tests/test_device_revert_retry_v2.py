@@ -274,3 +274,42 @@ def test_a_real_browser_goes_from_the_menu_to_the_result(blocked, op):
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
+
+
+#: A commit subject as long as a real one gets (C509: the operator's ran the chooser past the
+#: card and the page).
+LONG_SUBJECT = ("host_vars: r2 realign every interface description with the carrier's circuit "
+                "identifiers after the October migration, and add the second NTP source the "
+                "site survey asked for")
+
+
+@pytest.mark.parametrize("width", [1280, 500])
+def test_a_long_commit_subject_stays_inside_the_revert_card(blocked, width):
+    """C509: the Revert card's "Commit to revert" chooser ends inside the card at a desktop and
+    a narrow width, every control with it; the long subject is the chooser's own option."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    from tests.test_intent_ops import _edit
+    from tests.test_v2_layout_in_a_browser import measure_layout
+
+    _edit(blocked["repo"], lambda doc: doc.update(ntp_servers=list(
+        doc.get("ntp_servers") or []) + ["192.0.2.124"]), LONG_SUBJECT)
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": width, "height": 1000})
+            b.go(srv.url("/v2/device/r2?op=revert"))
+            b.wait_for(f"return {CARD} && {CARD}.querySelector('select[name=sha]') && {SETTLED}",
+                       15)
+            assert LONG_SUBJECT in b.js(f"return {CARD}.querySelector('select[name=sha]')"
+                                        ".textContent")
+            problems, _tables, controls = measure_layout(b, f"revert at {width}")
+            assert not problems, "\n".join(problems)
+            assert controls >= 3, controls
+            assert b.js("return document.documentElement.scrollWidth <= window.innerWidth + 1"), \
+                "the page scrolls sideways"
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()

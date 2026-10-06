@@ -836,6 +836,13 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
   font-weight: 600; }
 .op-part p { margin: 0 0 6px; }
 .op-part p:last-child { margin-bottom: 0; }
+/* A select is as wide as its longest option unless something holds it (C509: a long commit
+   subject ran the Revert card's chooser past the card and the page). Never past its box;
+   the chosen option's text is cut at the edge, and every option is whole in the open list. */
+select { max-width: 100%; }
+.op-reason { display: block; max-width: 100%; }
+.op-reason select { display: block; width: 100%; margin-top: 4px; font: inherit; font-size: 13px; padding: 6px 9px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); }
 .op-wait { color: var(--ink-2); }
 /* The part a menu row opened the card at (C403: Mode B opens the deploy at the residue). */
 .op-part.op-focus { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
@@ -987,7 +994,9 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 /* Source of truth > Templates (7.6, boards A to C): the table, then the op card in place. */
 .tpl-lib { display: flex; flex-direction: column; gap: 12px; }
 .tpl-counts { margin: 0; font-size: 13px; color: var(--ink-2); }
-.tpl-card { padding: 0; overflow-x: auto; }
+/* The card's own padding stays (C502): `.table`'s cells have none on the left, so a card
+   without it put the first column on the border. */
+.tpl-card { overflow-x: auto; }
 .tpl-table td { vertical-align: top; }
 .tpl-table .tpl-act { white-space: nowrap; text-align: right; }
 .tpl-bound summary { cursor: pointer; color: var(--accent); }

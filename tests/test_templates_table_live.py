@@ -119,3 +119,28 @@ def test_a_real_browser_redraws_the_table_and_keeps_the_open_card(tl):
         finally:
             b.go("about:blank")
             browser.close_socketio_sessions()
+
+
+@pytest.mark.parametrize("width", [1366, 500])
+def test_the_table_s_first_column_is_inside_its_card(tl, width):
+    """C502 (the operator, 2026-10-05): the Templates table's first column touched the card's
+    left border. Measured as test_v2_layout_in_a_browser measures every v2 table, with the
+    approve card open so its controls are measured too."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    from tests.test_device_seed_v2 import SETTLED
+    from tests.test_v2_layout_in_a_browser import measure_layout
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": width, "height": 1000})
+            b.go(srv.url(f"/v2/templates?list=Lab&approve={REL}"))
+            b.wait_for("return !!document.querySelector('#tpl-card') && " + SETTLED, 15)
+            problems, tables, controls = measure_layout(b, f"templates at {width}")
+            assert not problems, "\n".join(problems)
+            assert tables >= 1 and controls >= 3, (tables, controls)
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
