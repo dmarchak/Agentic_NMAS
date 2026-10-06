@@ -133,6 +133,136 @@ class TestR2sRealGolden:
         assert v["judged"] == ["Gi3"] and v["management"] == "GigabitEthernet2"
 
 
+class PromQLError(ValueError):
+    pass
+
+
+_DUR = r"[0-9]+(?:ms|s|m|h|d|w|y)"
+#: The functions these queries may call, and how many arguments each takes.
+_FUNCS = {"rate": 1, "max_over_time": 1}
+
+
+def promql_parse(text: str) -> str:
+    """A strict parser for the PromQL subset the drained queries use (no PromQL library is
+    installed here or in CI): `expr := func "(" expr ")" [range] | metric [matchers] [range]`,
+    `range := "[" dur "]" | "[" dur ":" dur "]"`, matchers `name op "go-string"`, joined by
+    commas. Returns the text; raises PromQLError naming the offset."""
+    import re as _re
+    pos = 0
+
+    def fail(why):
+        raise PromQLError(f"{why} at offset {pos}: {text[pos:pos + 30]!r}")
+
+    def ws():
+        nonlocal pos
+        while pos < len(text) and text[pos] == " ":
+            pos += 1
+
+    def take(pattern):
+        nonlocal pos
+        m = _re.compile(pattern).match(text, pos)
+        if not m:
+            return None
+        pos = m.end()
+        return m.group(0)
+
+    def string():
+        if not take(r'"'):
+            fail("a string must open with a double quote")
+        while True:
+            if pos >= len(text):
+                fail("an unterminated string")
+            if take(r'"'):
+                return
+            if take(r"\\"):
+                if not take(r'[abfnrtv\\"]'):
+                    fail("an invalid escape in a string")
+            else:
+                take(r'[^"\\]')
+
+    def matchers():
+        if not take(r"\{"):
+            return
+        ws()
+        while True:
+            if not take(r"[a-zA-Z_][a-zA-Z0-9_]*"):
+                fail("a label name")
+            if not take(r"=~|!~|!=|="):
+                fail("a matcher operator")
+            string()
+            ws()
+            if take(r"\}"):
+                return
+            if not take(r","):
+                fail("a comma or a closing brace")
+            ws()
+
+    def rng():
+        if take(r"\["):
+            if not take(_DUR):
+                fail("a duration")
+            if take(r":") and not take(_DUR):
+                fail("a subquery step")
+            if not take(r"\]"):
+                fail("a closing bracket")
+
+    def expr():
+        ws()
+        name = take(r"[a-zA-Z_:][a-zA-Z0-9_:]*")
+        if not name:
+            fail("a metric or function name")
+        ws()
+        if take(r"\("):
+            if name not in _FUNCS:
+                fail(f"an unknown function {name}")
+            expr()
+            ws()
+            if not take(r"\)"):
+                fail(f"{name}( is not closed")
+        else:
+            matchers()
+        rng()
+
+    expr()
+    ws()
+    if pos != len(text):
+        fail("text after the expression")
+    return text
+
+
+class TestTheQueries:
+    """The operator, 2026-10-06: 26ce5ad's peaks query was refused (HTTP 400): it never closed
+    `max_over_time(`, and it selected `device`/`ifName` where the series carry `instance` and
+    `ifDescr`."""
+
+    def test_every_query_parses_and_selects_by_instance(self):
+        qs = D.queries(["192.0.2.12", "192.0.2.22"])
+        assert sorted(qs) == ["in", "max_in", "max_out", "out", "up"]
+        for q in qs.values():
+            promql_parse(q)
+            assert 'instance=~"192\\\\.0\\\\.2\\\\.12|192\\\\.0\\\\.2\\\\.22"' in q
+        assert qs["max_in"] == ('max_over_time(rate(ifHCInUcastPkts{instance=~"192\\\\.0\\\\.2'
+                                '\\\\.12|192\\\\.0\\\\.2\\\\.22"}[2m])[180s:30s])')
+        promql_parse(D.since_query("ifHCInUcastPkts", "192.0.2.12", ["GigabitEthernet3"]))
+
+    @pytest.mark.parametrize("broken,why", [
+        ('max_over_time(rate(ifHCInUcastPkts{device=~"r2"}[2m])[180s:30s]', "is not closed"),
+        ('rate(ifHCInUcastPkts{instance=~"192\\.0\\.2\\.12"}[2m])', "invalid escape"),
+        ('rate(ifHCInUcastPkts{instance=~"192"}[2m]', "is not closed"),
+        ('max_over_time(rate(x[2m])[180s:])', "a subquery step"),
+    ])
+    def test_the_control_the_parser_refuses_what_prometheus_refused(self, broken, why):
+        with pytest.raises(PromQLError, match=why):
+            promql_parse(broken)
+
+    def test_series_are_read_by_instance_and_ifdescr(self):
+        rows = [{"metric": {"instance": "192.0.2.12", "ifDescr": "GigabitEthernet3"},
+                 "value": [0, "0.25"]},
+                {"metric": {"instance": "192.0.2.99", "ifDescr": "GigabitEthernet3"},
+                 "value": [0, "9"]}]
+        assert D._by_interface(rows, {"192.0.2.12": "r2"}) == {("r2", "GigabitEthernet3"): 0.25}
+
+
 VERDICT = {"device": "r2", "drained": True, "judged": ["Gi3"], "management": "GigabitEthernet2",
            "rates": {"Gi3": (0.0, 0.0)}, "since": 1791323880.0}
 

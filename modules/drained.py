@@ -160,12 +160,44 @@ def judge(devices: dict, golden_ifs: dict, series: dict) -> dict:
     return out
 
 
-def _by_interface(rows: list) -> dict:
+#: The SNMP exporter's labels on the interface series, read on the host (the operator,
+#: 2026-10-06): the polled address as `instance`, the interface as `ifDescr`.
+ADDRESS_LABEL, INTERFACE_LABEL = "instance", "ifDescr"
+
+
+def _alternatives(values) -> str:
+    """A PromQL regex matching exactly *values*, its backslashes doubled for PromQL's string
+    (a bare `\\.` is an invalid escape there)."""
+    return "|".join(re.escape(v).replace("\\", "\\\\") for v in sorted(values))
+
+
+def queries(addresses) -> dict:
+    """The five instant queries for the devices at *addresses*, one text each, the same text
+    the reads send (tests/test_drained.py parses them)."""
+    sel = f'{{{ADDRESS_LABEL}=~"{_alternatives(addresses)}"}}'
+    out = {"up": f"ifOperStatus{sel}"}
+    for key, metric in (("in", "ifHCInUcastPkts"), ("out", "ifHCOutUcastPkts")):
+        rate = f"rate({metric}{sel}[{RATE_WINDOW}])"
+        out[key] = rate
+        out["max_" + key] = f"max_over_time({rate}[{QUIET_SECONDS}s:30s])"
+    return out
+
+
+def since_query(metric: str, address: str, interfaces) -> str:
+    return (f'rate({metric}{{{ADDRESS_LABEL}="{address}",'
+            f'{INTERFACE_LABEL}=~"{_alternatives(interfaces)}"}}[{RATE_WINDOW}])')
+
+
+def _by_interface(rows: list, by_address: dict) -> dict:
+    """``{(device, interface): value}``, the device found by the series' polled address."""
     got = {}
     for row in rows or []:
         m = row.get("metric") or {}
+        dev = by_address.get(m.get(ADDRESS_LABEL, ""))
+        if not dev:
+            continue
         try:
-            got[(m.get("device", ""), m.get("ifName", ""))] = float((row.get("value") or [0, "nan"])[1])
+            got[(dev, m.get(INTERFACE_LABEL, ""))] = float((row.get("value") or [0, "nan"])[1])
         except (TypeError, ValueError):
             continue
     return got
@@ -178,14 +210,12 @@ def _query(prom, query: str, what: str) -> list:
     return (r["response"].json().get("data") or {}).get("result") or []
 
 
-def _since(prom, dev: str, judged: list, now: float) -> float:
+def _since(prom, dev: str, address: str, judged: list, now: float) -> float:
     """When every judged interface last went under the floor: the sample after the newest
     one at or over it, in the lookback; None when none is in the lookback (quiet throughout)."""
-    names = "|".join(re.escape(n) for n in judged)
     last_busy = None
     for metric in ("ifHCInUcastPkts", "ifHCOutUcastPkts"):
-        r = prom._get("api/v1/query_range",
-                      query=f'rate({metric}{{device="{dev}",ifName=~"{names}"}}[{RATE_WINDOW}])',
+        r = prom._get("api/v1/query_range", query=since_query(metric, address, judged),
                       start=now - SINCE_LOOKBACK_SECONDS, end=now, step=SINCE_STEP_SECONDS)
         if not r.get("ok"):
             raise RuntimeError(f"Prometheus could not be asked for {dev}'s history: {r.get('error')}")
@@ -220,22 +250,15 @@ def measure(list_name: str, now: float = None) -> dict:
     prom = PrometheusIntegration(list_name=list_name)
     if not prom.is_configured():
         return {d: {"drained": False, "why": "Prometheus is not configured"} for d in devices}
-    sel = '{device=~"' + "|".join(re.escape(d) for d in sorted(devices)) + '"}'
-    q = f"[{QUIET_SECONDS}s:30s]"
-    series = {
-        "up": _by_interface(_query(prom, f"ifOperStatus{sel}", "interface states")),
-        "in": _by_interface(_query(prom, f"rate(ifHCInUcastPkts{sel}[{RATE_WINDOW}])", "rates in")),
-        "out": _by_interface(_query(prom, f"rate(ifHCOutUcastPkts{sel}[{RATE_WINDOW}])",
-                                    "rates out")),
-        "max_in": _by_interface(_query(
-            prom, f"max_over_time(rate(ifHCInUcastPkts{sel}[{RATE_WINDOW}]){q}", "peaks in")),
-        "max_out": _by_interface(_query(
-            prom, f"max_over_time(rate(ifHCOutUcastPkts{sel}[{RATE_WINDOW}]){q}", "peaks out")),
-    }
+    by_address = {ip: d for d, ip in devices.items() if ip}
+    what = {"up": "interface states", "in": "rates in", "out": "rates out",
+            "max_in": "peaks in", "max_out": "peaks out"}
+    series = {k: _by_interface(_query(prom, q, what[k]), by_address)
+              for k, q in queries(by_address).items()}
     verdicts = judge(devices, interfaces_from_goldens(ref.repo_dir), series)
     for dev, v in verdicts.items():
         if v["drained"]:
-            v["since"] = _since(prom, dev, v["judged"], now)
+            v["since"] = _since(prom, dev, devices[dev], v["judged"], now)
             v["device"] = dev
             v["words"] = words(v)
     return verdicts
