@@ -34,10 +34,11 @@ yet, and those parts wait for it rather than run there.
 | 0, 1 | DONE 2026-10-05; Part 1's hour of discovery is measured and NOT repeated | none needed (the lab host and the captures) |
 | 2 (the Pick) | DONE on today's page; **redone on v2** once 7.4's onboarding is built | Devices › Add device (board E, ZTP's MAC way), the discovery list (L) |
 | 3.1 Verify | DONE on today's page; **redone on v2** with 2 | the pending device's onboarding card (F) |
-| 3.2 template approval | READY on v2 once deployed (built 2026-10-05; C481 closed) | Source of truth › Templates, `/v2/templates?list=throwaway`, Approve… |
+| 3.2 template approval | DONE on v2 2026-10-05 (C481 closed) | Source of truth › Templates, `/v2/templates?list=throwaway`, Approve… |
 | 3.3 seed | DONE on v2 | the device page, Actions › Seed intent… |
 | 4 the break-glass export | DONE on v2 | Source of truth › Credentials |
-| 5, 6, 8 | READY once deployed: first tw-ztp-a's intent corrected on the Intent tab's Edit (C485: the expanded client-id line removed from its `unmodeled` list), then 3.2 | the device page (deploy, revert and retry, retire), the Intent tab (H) |
+| 5, 6 | DONE on v2 2026-10-05 and 06 (STOP 5 and STOP 6, below; C501 found and proven repaired) | the device page (deploy, revert and retry), the Intent tab (H) |
+| 8 | NEXT | the device page, Actions › Retire… |
 | 7 the restore | DONE on v2 (rewritten, below) | the device page, Actions › Restore from… |
 | 9 the serial probe | after 8 | the device page |
 | 10 cleanup | last | the lab host; Settings › the network (v2) |
@@ -521,6 +522,33 @@ the program you confirmed"; golden de39fa1; baseline `baseline/20261005T204311Z`
 throwaway; the receipt recorded.
 
 **STOP 7. Paste:** the preview's program, the checks, and the result.
+
+**MEASURED 2026-10-05 and 06 (STOP 5 and STOP 6, the operator; times on the router's clock):**
+- **5.1:** the deploy (Loopback1, the static route, eBGP 65099 to 65098) passed after the hold
+  wait; BGP Established (FRR: the peer up).
+- **5.2 (C178):** a blackhole on the FRR side; tw-ztp-a's MsgRcvd froze while the session stayed
+  Established, then `%BGP-3-NOTIFICATION … 4/0 (hold time expired)` at 23:45:00, about 180 s of
+  silence: a silent path holds BGP up to its hold expiry, so a verify that returned at its first
+  read would have passed. Healed: Up 23:45:55.
+- **5.3:** verify failed correctly at 181 s, but the rollback (before efe09b2) left Loopback1
+  shut and SAVED it: C501, repaired in efe09b2. Brought back through the tool (intent
+  `no_shutdown`, a deploy, the save after verify at 00:32:49), then intent tidied to its defaults
+  (the plan: nothing to send).
+- **C501 PROVEN (efe09b2):** the same shutdown re-deployed; verify failed at 183 s, the rollback
+  sent `no shutdown`, "restored: nothing of the push remains", startup untouched, the block
+  recorded. C117 closed.
+- **6.1 Retry:** the block lifted, nothing sent; the next plan offered `shutdown` again (its
+  authorisation remembered). **6.2:** re-deployed: failed at 181 s, restored again, blocked again.
+- **6.3 Revert:** commit 93e788b (`Source: revert`, `Reverts: 80e438c`), the block lifted
+  (measured), the plan: nothing to send. After a reload the Actions menu greys Revert and Retry
+  ("nothing to revert or retry"), correctly: nothing stands.
+- **Findings folded in:** the Actions menu stale until a reload (C507); the Retry card's
+  contradiction (C508, repaired); the Revert dropdown overflowing its card (C509); the Revert
+  result repeating "The rollback block is lifted…" (C510); the deploy result silent about the
+  save after verify (C511); about 4 min 40 s broken before the rollback while an interface loss
+  was visible at once (C506, the operator's decision).
+
+**Next:** Part 8 (retire), then 9 and 10.
 
 ## Part 8: retire, A3 (20 min)
 
