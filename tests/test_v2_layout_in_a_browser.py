@@ -348,11 +348,93 @@ return [out, n];
 """
 
 
+#: C503's rule (the operator, 2026-10-06; NSOT_GUI_BRIEF 10b): "How does this work?" in words
+#: ONCE per context. A card (`.card`, `.op-card`) that draws any such link draws exactly one in
+#: words (beside its heading, or its one standalone button), the rest the (i) alone; a menu's
+#: rows the (i) alone; a standalone button outside any card or menu the words. Links in a card
+#: nested inside another card belong to the inner one. Returns one line per context or link
+#: that breaks it, and the number of contexts read.
+HELP_CONTEXT_JS = """
+var out=[], cards=new Map(), n=0;
+function shown(e){ return e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden'; }
+function label(e){ var h=e.querySelector('h1, h2, h3');
+  return (e.id ? '#'+e.id+' ' : '') + '"' + ((h ? h.textContent : e.className)||'').trim()
+    .replace(/\\s+/g, ' ').slice(0, 40) + '"'; }
+document.querySelectorAll('a.how-link').forEach(function(a){
+  if (!shown(a)) return;
+  var words=!a.classList.contains('compact'), slug=(a.getAttribute('data-manual')||'').split('#')[0];
+  var menu=a.closest('[role=menu]'), card=a.closest('.op-card, .card');
+  if (menu && (!card || card.contains(menu))) {
+    if (words) out.push('a menu row carries the words ('+slug+')');
+    return;
+  }
+  if (!card) {
+    if (!words) out.push('a standalone (i) outside any card or menu ('+slug+')');
+    return;
+  }
+  var c=cards.get(card) || {words: 0, icons: 0}; c[words ? 'words' : 'icons']++; cards.set(card, c);
+});
+cards.forEach(function(c, card){
+  n++;
+  if (c.words === 0) out.push(label(card)+': no "How does this work?" in words, '+c.icons+' (i) alone');
+  else if (c.words > 1) out.push(label(card)+': "How does this work?" in words '+c.words+' times');
+});
+return [out, n];
+"""
+
+
+#: The contexts that broke C503's rule when it was written (2026-10-06), kept on screen as they
+#: are until the operator decides (register C522): each a lone (i) in a card with no words.
+#: Matched on the problem's text; the list may only shrink (`test_the_known_gaps_only_shrink`).
+C503_KNOWN_GAPS = (
+    '#intent "Editing',                     # the intent editor's card (_intent_edit.html)
+    '#hist-baselines ',                     # History's baselines card (history.html:83)
+    '#installation "About this installation"',   # _installation.html:27
+    '#card-',                               # each Settings card (_settings_card.html:59)
+    'a standalone (i) outside any card or menu (settings-switch)',   # the switch's choice
+    '#update-owed "Still to do on the host"',    # _update.html:136
+    '#update-preview "Update from',         # Update while waiting: its worded link hides
+    '"card tpl-card"',                      # the Templates table (_templates_table.html)
+)
+C503_GAPS_CEILING = 8
+
+
 def measure_help_links(b, page_label):
-    """``(problems, links)`` for the page *b* shows, every <details> open."""
+    """``(problems, links)`` for the page *b* shows, every <details> open: each drawn help link
+    beside its control (C505) and the words once per context (C503), less its known gaps."""
     b.js("document.querySelectorAll('details').forEach(function(d){d.open=true}); return 1")
     got, n = b.js(HELP_BESIDE_JS)
-    return [f"{page_label}: {p}" for p in got], n
+    ctx, _contexts = b.js(HELP_CONTEXT_JS)
+    ctx = [p for p in ctx if not any(g in p for g in C503_KNOWN_GAPS)]
+    return [f"{page_label}: {p}" for p in got + ctx], n
+
+
+def test_the_known_gaps_only_shrink():
+    assert len(C503_KNOWN_GAPS) <= C503_GAPS_CEILING
+
+
+def test_the_context_rule_fails_each_way_on_a_planted_page(served):
+    """The rule's three failures and its passes, planted in a page the browser draws: a card
+    with no words, a card with words twice, a menu row with words, a standalone (i)."""
+    srv, b = served
+    b.go(srv.url("/v2/help/about"))
+    b.wait_for("return !!window.Alpine", 10)
+    w = '<a class="how-link" data-manual="deploy" href="#"><span>How does this work?</span></a>'
+    i = '<a class="how-link compact" data-manual="deploy" href="#"></a>'
+    b.js("var m=document.createElement('div'); m.id='planted'; m.innerHTML=arguments[0];"
+         "document.querySelector('main').appendChild(m); return 1",
+         f'<section class="card" id="p-none"><h2>None</h2><button>Go</button>{i}</section>'
+         f'<section class="card" id="p-twice"><h2>Twice</h2>{w}<button>Go</button>{w}</section>'
+         f'<section class="card" id="p-once"><h2>Once</h2>{w}<button>Go</button>{i}</section>'
+         f'<div role="menu"><a role="menuitem">Row</a>{w}</div>'
+         f'<p><button>Alone</button>{i}</p>')
+    got, _n = b.js(HELP_CONTEXT_JS)
+    planted = [p for p in got if "#p-" in p or "menu row" in p or "standalone (i)" in p]
+    assert any('#p-none' in p and "no " in p for p in planted), got
+    assert any('#p-twice' in p and "2 times" in p for p in planted), got
+    assert not any('#p-once' in p for p in planted), got
+    assert any("a menu row carries the words" in p for p in planted), got
+    assert any("a standalone (i) outside any card or menu (deploy)" in p for p in planted), got
 
 
 class TestEveryHelpLinkSitsBesideItsControl:

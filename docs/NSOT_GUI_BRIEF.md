@@ -978,6 +978,16 @@ Built as drawn (the mockups artifact, page "The manual"):
   in the side panel; a running operation's card carries the same link, and the panel sits
   beside the live stepper. In the panel: the diagram first, then the steps (what is read, sent
   and recorded, and why), then "Open in the manual".
+- **The help-link rule (C503, the operator's decision, 2026-10-06), replacing the line above
+  where they differ:** "How does this work?" in words ONCE per context: beside a page's or a
+  card's heading, or a standalone button. Inside that context (a card's buttons, a menu's rows)
+  the (i) alone, its tooltip and accessible name saying the words; an (i) beside a button that
+  opens another operation (a result card's ways on) links to that operation's page. An (i)
+  beside a page title or a tab's opening line (`info()`) says what the screen is, and is not
+  this rule's. Enforced in a real browser: a card that draws any such link draws exactly one
+  in words, a menu row never carries the words, a button outside any card or menu carries them
+  (`HELP_CONTEXT_JS`, tests/test_v2_layout_in_a_browser.py). The contexts that broke it when
+  it was written are named there as known gaps, only shrinking (register C522).
 - **Today's pages carry links too**: the onboarding wizard and the pending banner open the
   page in a new tab, since today's pages have no panel.
 - **Help's index lists every operation and screen**, those still on today's app marked, and

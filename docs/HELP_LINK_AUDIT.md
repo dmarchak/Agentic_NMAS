@@ -25,7 +25,14 @@ op card's head row), or *other* (a tab's opening line, a paragraph, a control gr
 
 ## What the practice is
 
-The practice is consistent, and differs from the signed-off rule in one place:
+**Corrected 2026-10-06, after the operator chose option 3:** the check that enforces the chosen
+rule found the practice NOT consistent. Eight contexts draw a lone (i) in a card with no words
+anywhere in it (the Settings cards, the Templates table, the intent editor, History's
+baselines, About's installation card, Update's "Still to do on the host", Update while waiting,
+and the Settings switch's choice outside a card); they are register C522. The paragraph below
+described the op cards and was written as if it covered every button.
+
+The practice in the op cards, and where it differs from the signed-off rule:
 
 - **Words for the whole operation.** Every op card's head row carries "How does this work?"
   (43), and so does a page's main action that stands alone (11: Update, Apply, Deploy on the
