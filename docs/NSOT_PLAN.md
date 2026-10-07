@@ -4607,6 +4607,51 @@ the most it is worth. Nothing outside the product becomes a row.
 **Decided** (above): the thresholds, Grafana's declared expiry, and that an expiry beyond a year
 is listed and draws no row.
 
+### P.22 — Runbooks (DECIDED 2026-10-07, the operator; NOT BUILT; placed after Stage 7)
+
+A drain is both a built-in action and an instance of custom procedures (vendors' maintenance
+modes; Apstra's Drain state, CloudVision Change Control, Nautobot Jobs, NetBox scripts, AWX
+job templates). Mercury's shape, in order:
+
+1. **A runbook engine on the existing pipeline**: ordered, vetted steps, nothing a person
+   could not do step by step. The steps are:
+   - an intent change and its deploy (preview, confirm by hash, apply, verify, rollback,
+     record);
+   - wait for a measurement;
+   - check a condition;
+   - set a NetBox status;
+   - record;
+   - notify.
+
+   A run plans across devices as one change set, with one preview and one confirm, and the
+   change set is reverted as one.
+2. **Drain and Return to service, the first BUILT-IN runbook** (the design and its mockup
+   approved 2026-10-07: [NSOT_DRAINED_DESIGN](NSOT_DRAINED_DESIGN.md), canvas v71):
+   - per-platform drain profiles, and neighbour-side steps from topology or declared;
+   - NetBox's custom `drained` status set as the intended state;
+   - success only when the measured state agrees.
+3. **Custom runbooks per network**: declarative YAML of those steps, versioned in the
+   network's repository and approved before use as templates are. Stage 8's agent may draft
+   one for approval. Arbitrary scripts come later if ever, and only through the pipeline.
+
+**Prerequisites:**
+- C531: measured removal shapes, Revert this change, change sets.
+- C553: a job starts when an operation creates its work.
+- The drained measurement's section 10 measurements.
+
+**Beside:** P.16 decides the machinery a run survives a restart on; the operations stay
+Mercury's.
+
+**Its first mockup covers:**
+- Drain started from a device's Actions menu and from a Devices selection;
+- the preview (profiles, neighbour steps, the change set's program, NetBox's status change and
+  the `PUT` check, the measurement now);
+- the confirm;
+- the run's stepper with its bounded "waiting for Drained ✓" step;
+- the result;
+- Return to service;
+- later, the Runbooks library.
+
 ### Course labs against the plan (decided 2026-09-26)
 
 - **Lab 7, unit testing and coverage:** coverage is a MEASUREMENT, reported

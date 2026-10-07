@@ -6,8 +6,9 @@ record of what was done. Measurements own what is observed. Each piece below has
 owner. Mercury may show a piece it does not own, always with its source and its age, and may
 write it only where the "writes" column says so.
 
-Part 1 is the map, as decided. Part 2 is a proposal for the operator's decision: what changes
-if networks are NetBox-sourced by default. It is a plan, and nothing in it is built.
+Part 1 is the map, as decided. Part 2 is what changes when networks are NetBox-sourced by
+default, APPROVED IN SHAPE 2026-10-07 with its five decisions; nothing in it is built. Part 3 is
+Default's census.
 
 ## Part 1. The map
 
@@ -63,7 +64,7 @@ if networks are NetBox-sourced by default. It is a plan, and nothing in it is bu
 | The counting ACL (designed) | NetBox's customer prefixes | the drained measurement's template section |
 | Lab startup files | the newest earned baseline and current credentials | the clab sync (lab tooling) |
 
-## Part 2. Proposal: NetBox-sourced by default (for the operator's decision; no build)
+## Part 2. NetBox-sourced by default (approved in shape 2026-10-07; not built)
 
 **Today.** Each network's inventory is `local` (a CSV in Mercury) or `netbox` (read from
 NetBox), and Default is local. Onboarding writes the device into the CSV AND creates its NetBox
@@ -84,12 +85,30 @@ the declared exception, for a lab or an installation without NetBox, and says so
 | **The local list** | the default | the declared exception: its pages say "local list: no NetBox", and the lab-specifics rule keeps lab-only behaviour out of the product |
 | **Default, today's network** | local | moved once, by a census: every CSV device must match a NetBox device by name and management address, and Mercury refuses the switch, naming each mismatch, until they agree |
 
-**Decisions for the operator:**
-1. Is Planned → Active the onboarding contract, with the NetBox device made first by a person
-   (or by onboarding's first confirmed step)?
-2. Retire: should Mercury set Decommissioning only, or also delete the NetBox device it once
-   created?
-3. Interfaces and addresses: keep Mercury's import into NetBox, or have NetBox own IPAM?
-4. The network's filter in NetBox: site, tenant or tag (C174 left tenants against regions
-   open)?
-5. Default's move: now, with the census, or after the drain runbook?
+**Decided (the operator, 2026-10-07; approved in shape):**
+1. **Planned → Active is the onboarding contract.** The NetBox device is made by a person, or
+   by onboarding's first confirmed step.
+2. **Retire sets Decommissioning only.** Deleting the NetBox device stays a person's act in
+   NetBox.
+3. **Mercury's interface and address import into NetBox stays**, for now. NetBox-owned IPAM is
+   a later, separate change.
+4. **The network's NetBox filter is a tag by default**, with site as the alternative.
+5. **Default's census runs NOW**, read-only, reporting the mismatches (part 3). Default moves
+   after Stage 7's cutover.
+
+## Part 3. Default's census (read-only)
+
+Every device in Default's local list against NetBox, by name and management address, so the
+move after cutover starts from a known list of mismatches. Read on the host on 2026-10-07
+(GETs only; the live checkout unchanged):
+
+| Check | Found | What the move needs |
+|---|---|---|
+| Name and management address | **9 of 9** local devices match a NetBox device | nothing |
+| In NetBox, not in the local list | **r5**, status **Active** | r5 was retired in Mercury before the retire contract: its status set to Decommissioning (a person in NetBox, or retire's confirmed step once built) |
+| Platform | NetBox says `ios` for all ten; Mercury knows r1 to r4 and r6 as `cisco_iosxe` | NetBox's platform corrected for the five IOS-XE routers, and the mapping table (one owner) from NetBox's slug to Mercury's platform |
+| The network's tag (the decided filter) | none: no device carries a network tag (r6 alone has `nmas-managed`) | a tag for Default created and set on its nine devices |
+| Role, site, status | routers and switches by role, all in site `default`, all Active | nothing |
+
+The census is repeated read-only before the move; the move refuses while any row above
+still needs something.

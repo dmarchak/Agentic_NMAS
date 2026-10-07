@@ -1,8 +1,8 @@
-# Drained: intended in NetBox, observed by measurement, done by a runbook (design, for sign-off)
+# Drained: intended in NetBox, observed by measurement, done by a runbook (design)
 
-The operator, 2026-10-06 and 07, after the class challenge (C550 to C552). Status: **a design
-for sign-off, with its mockup; then the measurements in section 10; then the build.** Nothing
-here is built. Register: C551 (the measurement), C552 (the interface-counter version,
+The operator, 2026-10-06 and 07, after the class challenge (C550 to C552). Status: **the
+design APPROVED in shape and its mockup APPROVED (canvas v71, page "C551 Drained"), both
+2026-10-07; next, the measurements in section 10, then the build.** Nothing here is built. Register: C551 (the measurement), C552 (the interface-counter version,
 switched off), C531 (revert as one action, which Return to service uses), C553 (a job starts
 when an operation creates its work). The ownership of every piece of device state is in
 [NSOT_OWNERSHIP](NSOT_OWNERSHIP.md).
@@ -84,8 +84,9 @@ Return to service can take it back.
 
 **Customer prefixes come from the source of truth:** the NetBox prefixes carrying one prefix
 role, IPv4 and IPv6. The role is named by a setting, `drained_customer_prefix_role`, empty by
-default. While it is empty, or the role holds no prefixes, every device is "Not measured",
-saying which.
+default, set for the installation with a per-network override (P.8's inherit model; the
+operator, 2026-10-07). While it is empty, or the role holds no prefixes, every device is "Not
+measured", saying which.
 
 **The ACL counts and never blocks.** Mercury generates one per address family from those
 prefixes. It is rendered into intent by a template section and deployed through the normal
@@ -106,9 +107,17 @@ ipv6 access-list NMAS-CUST-V6
 ```
 
 - **It never blocks.** Every entry permits, and verify refuses a deploy whose running ACL does
-  not end in `permit … any any`.
-- **It is applied inbound on every data interface:** up, not a loopback, not in the
-  management VRF. Every crossing packet enters once, so inbound counts each packet once.
+  not end in `permit … any any`. On IPv6 that final entry also permits Neighbor Discovery,
+  which an IPv6 ACL's implicit rules would otherwise govern.
+- **It is applied inbound on every ROUTED data interface:** a routed port or an SVI that is
+  up, not a loopback, and not in the management VRF (inbound only, agreed 2026-10-07). Every
+  packet the device routes enters on one of them once, so inbound counts each packet once.
+  **Never on a layer-2 port:** bridged traffic crossing a switch is not traffic the switch
+  routes, so it says nothing about a router's drain, and vIOS-L2's port ACLs are limited.
+- **It also counts customer packets TO the device itself:** a host pinging its gateway, a
+  DHCP request the device relays, ND and ARP's IP-level neighbours. These are a few packets a
+  minute against customer traffic's tens per second, and the floor measurement (section 10,
+  step 4) confirms they stay under the floor while a device is drained.
 - **When the prefixes change,** its entries change through Mode B's `named-acl.entry`, which is
   measured exact for IPv4 on both platforms. IPv6 needs C554 first: the context check misses
   `ipv6 access-list`.
@@ -253,6 +262,9 @@ whatever P.16 decides. It comes before Stage 8's agent drafts runbooks.
 
 ## 10. To measure first (the operator's runs; the agent's read-only reads)
 
+0. **The customer prefixes, first:** a person adds this lab's customer prefixes to NetBox with
+   the role (in this lab, two IPv4 /24s and three IPv6 /64s, the operator's list). The agent
+   then reads the role back (read-only) and reports what it finds.
 1. **C8000v telemetry:** does `Cisco-IOS-XE-acl-oper` stream per-entry `match-counter` on a
    periodic subscription, at what minimum period, counting what the data plane forwards? On
    r2: a test ACL with a permit entry for a host prefix, inbound on Gi3; known traffic across
@@ -261,7 +273,9 @@ whatever P.16 decides. It comes before Stage 8's agent drafts runbooks.
    <name>` takes on s1 (never s3).
 3. **The ACL's cost:** forwarding before and after a 50-entry ACL inbound on one interface of
    each platform, under the same load.
-4. **The floor, W and T:** customer pkt/s on r2 during a known drain and after it.
+4. **The floor, W and T:** customer pkt/s on r2 during a known drain and after it, including
+   what the customer packets TO the device (gateway pings, relayed DHCP) add while it is
+   drained, confirmed negligible against the floor.
 5. **The removal shapes** (C531 part 1): the probe runs on each platform, so Return to service
    can take each drain line back.
 
@@ -275,11 +289,12 @@ whatever P.16 decides. It comes before Stage 8's agent drafts runbooks.
 - Settings › NetBox: the customer prefix role with the prefixes it finds, and whether NetBox
   has the `drained` status.
 
-## 12. Questions for the operator
+## 12. Decisions (the operator, 2026-10-07: approved in shape, with sections 6 and 10 tightened)
 
-1. The prefix role: one setting per network, or one for the installation?
-2. Inbound-only counting on data interfaces: agreed?
-3. The hold-back narrowed to rules labelled `nmas_traffic="1"`: agreed, with the monitoring
-   templates labelling the traffic rules?
-4. ~~NetBox's status~~: answered 2026-10-07 (section 8): a custom `drained`, never `offline`.
-5. P.22 Runbooks: placed as proposed in section 9?
+1. The prefix role: installation-wide, with a per-network override (P.8's inherit model).
+2. Counting: inbound only, on routed interfaces and SVIs.
+3. The hold-back: only rules labelled `nmas_traffic="1"`.
+4. NetBox's status: a custom `drained`, never `offline` (section 8).
+5. P.22 Runbooks: after Stage 7, as proposed.
+
+The mockup (canvas v71, page "C551 Drained"): APPROVED 2026-10-07.
