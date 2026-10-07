@@ -224,6 +224,40 @@ it boots, and r2 makes RIP reconverge. In order, the two with no reload first:
   timed by the syslog's receive times (never the device's clock). The wait's bound is 2.5
   times the longest, written beside it.
 
+### 9a. M1's result (the operator's runs and the agent's host reads, 2026-10-07)
+
+- **Both devices timed out** asking the host's logging address, and **the responder received
+  every request**: 30 refusals recorded 20:17 to 20:19 UTC. r2 asked from its Gi2 address
+  (its route to the host is OSPF E2 via Gi2), s1 from a data-interface address (its default
+  route); neither from `Loopback0`, the address Mercury knows each by. So TFTP does need its
+  source pinned (prerequisite P1).
+- **The cause of the timeout is the reply's address (C563):** the responder answers each
+  request from a fresh socket whose source the kernel picks by route, the host's lab-facing
+  address, not the logging address the device asked. A TFTP client ignores a reply from an
+  address it did not ask. Reverse-path filtering is loose (2) on every interface, and ufw
+  (enabled) passed every request in. ZTP works because its reservations name the lab-facing
+  address itself. The decisive check is still to run: the same request to the lab-facing
+  address, which this predicts is refused at once.
+- **Pinning the source does not by itself cure the timeout,** nor does curing the reply
+  remove the need to pin: they are two separate things, and Phase 2 needs both.
+
+### 9b. Prerequisites of the build (the operator's decision, 2026-10-07)
+
+- **P1, the management profile: management protocols leave from the management loopback,
+  through INTENT.** A profile like the monitoring profile (`modules/nsot/profile.py`: one
+  committed document per network, data never configuration text, every device's intent
+  inheriting it through `effective()`, rendered by the platform templates), holding
+  `ip tftp source-interface <loopback>` and `ip ssh source-interface <loopback>`, and later
+  `ip scp server enable` (C562). Previewed and deployed like any change, never a side script.
+  The interface is the network's data (this lab's is `Loopback0`), never written into code.
+  The parsers and templates gain the lines it carries, measured round-trip like every other
+  modelled line. Whether it is a sibling document or a section of the monitoring profile is
+  settled with its mockup (the Coverage and Apply screens already draw a profile).
+- **P2, the transfer answers from the address it was asked on (C563),** in the code ZTP's
+  responder and the revert's one-shot transfer share, re-measured by M1 once built.
+- **Then M1 again,** with the profile deployed to r2 and s1: the request leaves from
+  `Loopback0`, is refused at once, and the audit row names the loopback.
+
 ## 10. Decisions for the operator (as put, 2026-10-07; decided in section 12)
 
 - **D1, the transfer.** No device has `ip scp server enable` or an `archive` stanza (the nine
