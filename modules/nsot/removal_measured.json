@@ -98,6 +98,12 @@
         "device": "s4",
         "result": "exact"
       },
+      "ospf.max-metric": {
+        "at": "2026-10-07T04:24:23Z",
+        "detail": "every form (bare, on-startup, external-lsa, include-stub summary-lsa external-lsa) removed exactly by the bare `no max-metric router-lsa`; `no <the line>` had removed only the options (IOS treats them as modifiers of one setting)",
+        "device": "s1",
+        "result": "exact"
+      },
       "ospfv3.max-metric": {
         "at": "2026-10-07T03:39:48Z",
         "detail": "the platform rejects the command: ConfigInvalidException: Invalid input detected at command: ipv6 router ospf 9199",
@@ -202,6 +208,12 @@
         "device": "r3",
         "result": "exact"
       },
+      "ospf.max-metric": {
+        "at": "2026-10-07T04:22:17Z",
+        "detail": "every form (bare, on-startup, external-lsa, include-stub summary-lsa external-lsa) removed exactly by the bare `no max-metric router-lsa`; `no <the line>` had removed only the options (IOS treats them as modifiers of one setting)",
+        "device": "r2",
+        "result": "exact"
+      },
       "ospfv3.max-metric": {
         "at": "2026-10-07T03:33:56Z",
         "detail": "",
@@ -212,11 +224,6 @@
   },
   "unmeasured": {
     "cisco_ios": {
-      "ospf.max-metric": {
-        "at": "2026-10-07T03:39:48Z",
-        "device": "s1",
-        "reason": "REDEFINED 2026-10-07: `no <line>` was measured here, exact for the bare form and DIFFERENT for every form with options (it removed only the options and left `max-metric router-lsa`: IOS treats them as modifiers of one setting); the shape now removes every form with the bare `no max-metric router-lsa`, which awaits its measurement"
-      },
       "rip.offset-list": {
         "at": "2026-10-07T03:39:48Z",
         "device": "s1",
@@ -228,11 +235,6 @@
         "at": "2026-09-29T05:08:24Z",
         "device": "r3",
         "reason": "IOS-XE never DISPLAYS this form: `access-list 97 permit X` is shown as `ip access-list standard 97` / ` 10 permit X`, measured exact as `numbered-acl.list-entry`. A golden on this platform does not hold this form, so Mode B never builds it here"
-      },
-      "ospf.max-metric": {
-        "at": "2026-10-07T03:33:56Z",
-        "device": "r2",
-        "reason": "REDEFINED 2026-10-07: `no <line>` was measured here, exact for the bare form and DIFFERENT for every form with options (it removed only the options and left `max-metric router-lsa`: IOS treats them as modifiers of one setting); the shape now removes every form with the bare `no max-metric router-lsa`, which awaits its measurement"
       },
       "rip.offset-list": {
         "at": "2026-10-07T03:33:56Z",

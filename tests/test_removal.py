@@ -305,18 +305,39 @@ class TestTheCommittedRecord:
             "global.ip-prefix-list-entry", "named-acl.entry",
             # C531 part 1, s1, 2026-10-07 (the operator's run):
             "global.ip-route", "global.ipv6-route", "interface.ipv6-rip-default-originate",
-            "interface.shutdown", "interface.ospf-cost"}
+            "interface.shutdown", "interface.ospf-cost",
+            # re-measured with the bare negation, s1, 2026-10-07:
+            "ospf.max-metric"}
         # vIOS-L2 rejects the IPv6 forms themselves: a fact about the platform, recorded.
         assert rows["interface.ipv6-ospf-cost"]["result"] == "unsupported"
         assert rows["ospfv3.max-metric"]["result"] == "unsupported"
-        # Redefined after `no <line>` measured DIFFERENT: not a platform fact until re-measured.
-        assert "ospf.max-metric" not in rows
-        assert "REDEFINED" in rec["unmeasured"]["cisco_ios"]["ospf.max-metric"]["reason"]
+        # `no <line>` measured DIFFERENT for every form with options; re-measured with the bare
+        # `no max-metric router-lsa`: exact on both platforms (r2, s1, 2026-10-07).
+        for dialect in ("cisco_ios", "cisco_iosxe"):
+            assert rec["by_dialect"][dialect]["ospf.max-metric"]["result"] == "exact"
+            assert "ospf.max-metric" not in rec["unmeasured"].get(dialect, {})
         assert rows["global.numbered-acl-entry"]["result"] == "broader"
         assert "access-list 97 permit 192.0.2.2" in rows["global.numbered-acl-entry"]["detail"]
         assert rows["global.logging-buffered"]["result"] == "overrides_default"
         assert all(v["result"] not in ("unmeasured", "failed") for v in rows.values())
 
+
+
+class TestADrainsMaxMetricIsRemovedInOneLine:
+    """The drain of 2026-10-06 added `max-metric router-lsa external-lsa` to r2's OSPF, and
+    taking it back took hand edits. With the bare form measured exact (r2, s1, 2026-10-07),
+    Mode B's gated path removes any form with one line."""
+
+    @pytest.mark.real_measurements
+    def test_the_gated_program_is_the_bare_negation(self):
+        drained = R2.replace("router ospf 1\n", "router ospf 1\n max-metric router-lsa "
+                                                "external-lsa on-startup 5\n", 1)
+        assert drained != R2, "the fixture holds router ospf 1"
+        out = program(drained, [_unit(["router ospf 1"],
+                                      " max-metric router-lsa external-lsa on-startup 5")],
+                      mgmt_ip="10.255.1.12", dialect="cisco_iosxe")
+        assert out["refused"] == [], out["refused"]
+        assert out["commands"] == ["router ospf 1", " no max-metric router-lsa", "exit"]
 
 
 class TestWhyAShapeIsUnmeasured:
