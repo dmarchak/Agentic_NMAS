@@ -94,6 +94,10 @@
             {#- IP SLA is reached from its cells until it folds into the profile (the operator,
                 2026-10-02): the ring is the link to its page, scoped to this device. #}
             <td class="gc" data-state="unused"><a class="nr-link" href="{{ url_for('v2.ip_sla', list=c.list, device=d.host) }}" title="{{ at }}not configured: {{ cell.words }}" aria-label="{{ d.host }} IP SLA not configured: {{ cell.words }}"><span class="m-no" aria-hidden="true"></span></a></td>
+            {%- elif cell.state == 'not_rendered' %}
+            {#- C566: the profile supplies it and the device's template drops it, so Apply cannot
+                send it; the way out is the template, on Templates. -#}
+            <td class="gc" data-state="not_rendered"><a class="nr-link" href="{{ url_for('templates_v2.page', list=c.list) }}" title="{{ at }}{{ cell.words }}" aria-label="{{ at }}{{ cell.words }}"><span class="m-drop" aria-hidden="true">{{ icon('warn', 14) }}</span></a></td>
             {%- elif cell.state in ('gap', 'gap_open') %}
             <td class="gc" data-state="{{ cell.state }}" title="{{ at }}not configured: {{ cell.words }}{% if cell.state == 'gap' %}. Select the device to deploy it{% endif %}"><span class="sr-only">not configured: {{ cell.words }}</span><span class="m-no" aria-hidden="true"></span></td>
             {%- elif cell.state == 'unknown' %}
@@ -113,6 +117,9 @@
     <span><span class="m-no"></span> not configured: tick its device to deploy it; IP SLA's ring opens the IP SLA page</span>
     <span><span class="m-nr">!</span> not reporting: configured, its data not arriving; opens where to find why</span>
     <span>blank: not applicable (to the device, or its platform)</span>
+    {%- if c.not_rendered %}
+    <span id="cov-legend-dropped"><span class="m-drop">{{ icon('warn', 14) }}</span> not rendered: the profile supplies it and the device's template drops it; opens Templates</span>
+    {%- endif %}
     {%- if c.unknown_cells %}
     <span id="cov-legend-unknown"><span class="m-unk">{{ icon('info', 14) }}</span> unknown: what decides it could not be read or is not measured; hover for which</span>
     {%- endif %}

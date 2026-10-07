@@ -55,9 +55,14 @@ Each cell is an icon. Hover over it to see why:
 - **A tick:** configured.
 - **A quiet ring:** not configured.
 - **An amber mark:** configured but not reporting (see below).
+- **A red warning mark:** not rendered. The profile supplies the section, but the device's
+  template renders none of it (an older shipped template), so Apply cannot send it. It links
+  to Templates, where the shipped version is brought in.
 - **Blank:** not applicable to the device or its platform.
 
-IP SLA's ring links to the IP SLA page for that device, where probes are suggested.
+IP SLA's ring links to the IP SLA page for that device, where probes are suggested. The last
+column, Mgmt sources, is the profile's management section: `ip tftp source-interface` and
+`ip ssh source-interface` on the management interface, configured when the golden holds both.
 
 The columns are SNMP, Syslog, Heartbeat, NTP, LLDP, Telemetry and IP SLA. NTP's server lines and
 LLDP's `lldp run` are read from the golden. A golden with no `lldp run` means LLDP is off only

@@ -343,7 +343,6 @@ def _unrendered(list_name: str, hostname: str, artifact, device: dict) -> list:
     said "nothing to send" while Propose said the device inherits it. ``[]`` when the profile
     cannot be read (the plan refuses that by name elsewhere) or the device has no intent."""
     from modules.nsot import hostvars, profile as _profile, profile_apply, templates_repo
-    from modules.nsot.deploy import render_for_deploy
     from modules.preview_confirm import PROFILE_SECTION_WORDS
 
     repo = _repo_for(list_name)
@@ -352,21 +351,12 @@ def _unrendered(list_name: str, hostname: str, artifact, device: dict) -> list:
     except _profile.ProfileRefused:
         return []
     own = hostvars.read_committed(repo, hostname) if doc else None
-    if not doc or own is None or hostvars.is_bootstrap_only(own):
+    if not doc or own is None:
         return []
     role = ((device or {}).get("role") or "").strip()
     sections = _profile.sections_for(doc, artifact.platform, role, own)
-    root = getattr(artifact, "template_root", "") or None
-    name = (artifact.template or "base.j2").split("/")[-1]
-
-    def render(intent):
-        return render_for_deploy(hostvars.hydrate_secrets(intent, hostname, list_name),
-                                 artifact.platform, template_root=root, template_name=name)
-
-    key = "|".join([root or "", name, artifact.platform,
-                    templates_repo.library_signature(root or "")])
-    missing = profile_apply.unrendered(sections, own, render, artifact.platform, role,
-                                       library_key=key)
+    missing, _template = profile_apply.unrendered_for_device(
+        list_name, repo, hostname, artifact.platform, role, own, sections)
     if not missing:
         return []
     behind = templates_repo.behind_shipped(repo)

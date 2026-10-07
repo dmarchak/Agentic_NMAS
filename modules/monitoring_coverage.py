@@ -251,7 +251,8 @@ def rows(devices=None, golden=None, get=None, now=None, keeper=None, record=True
 #: words, the regex that finds it in a committed golden (CHECKS, plus IP SLA),
 #: and the profile section that supplies it.
 COLUMNS = (("snmp", "SNMP"), ("syslog", "Syslog"), ("heartbeat", "Heartbeat"),
-           ("ntp", "NTP"), ("lldp", "LLDP"), ("telemetry", "Telemetry"), ("ip_sla", "IP SLA"))
+           ("ntp", "NTP"), ("lldp", "LLDP"), ("telemetry", "Telemetry"), ("ip_sla", "IP SLA"),
+           ("management", "Mgmt sources"))
 def sent_columns(sc: dict) -> list:
     """The templates whose lines a scoped program SENDS (`profile_apply.scoped`'s
     `to_send` and `by_section`), as section keys in Coverage's column order, then any other
@@ -279,7 +280,11 @@ _IP_SLA = re.compile(r"^ip sla \d+", re.M)
 _NTP = re.compile(r"^ntp server \S+", re.M)
 _LLDP_ON = re.compile(r"^lldp run\s*$", re.M)
 _LLDP_OFF = re.compile(r"^no lldp run\s*$", re.M)
-_SECTION_OF_COLUMN = {**SECTION_OF, "ip_sla": "ip_sla", "ntp": "ntp", "lldp": "lldp"}
+_SECTION_OF_COLUMN = {**SECTION_OF, "ip_sla": "ip_sla", "ntp": "ntp", "lldp": "lldp",
+                      "management": "management"}
+#: The management section (Phase 2, P1): configured when BOTH lines are in the golden.
+_MGMT_TFTP = re.compile(r"^ip tftp source-interface \S+", re.M)
+_MGMT_SSH = re.compile(r"^ip ssh source-interface \S+", re.M)
 
 
 #: The connector that makes each integration one the network uses.
@@ -289,9 +294,30 @@ _CONNECTOR_OF = {"snmp": "Prometheus", "syslog": "Loki", "heartbeat": "Loki",
 _UNUSED_WORDS = {"ntp": "not used — no NTP servers are set (ntp_servers) and the profile has no "
                          "NTP section",
                  "lldp": "not used — nothing scrapes LLDP (no Prometheus connector) and the "
-                          "profile has no LLDP section"}
+                          "profile has no LLDP section",
+                 "management": "not used — the profile has no management sources section"}
 _SECTION_WORDS = {"snmp": "SNMP", "syslog": "syslog", "telemetry": "telemetry",
-                  "ip_sla": "IP SLA", "ntp": "NTP", "lldp": "LLDP", "cdp": "CDP"}
+                  "ip_sla": "IP SLA", "ntp": "NTP", "lldp": "LLDP", "cdp": "CDP",
+                  "management": "management sources"}
+
+
+def _not_rendered(ref, host: str, platform: str, role: str, intent: dict, doc: dict,
+                  section: str, signatures: dict) -> str:
+    """Why the device's template drops *section*, or "" (C566): a cell the profile would
+    supply and Apply cannot send, since the program is rendered through that template. The
+    plan's "not sent" item is the same judgement (`profile_apply.unrendered_for_device`)."""
+    from modules.nsot import profile_apply
+
+    data = (((doc or {}).get("sections") or {}).get(section) or {}).get("data")
+    if not data:
+        return ""
+    missing, template = profile_apply.unrendered_for_device(
+        ref.name, ref.repo_dir, host, platform, role, intent, {section: data}, signatures)
+    if not missing:
+        return ""
+    return (f"not rendered — this network's template ({template}) renders none of the "
+            f"profile's {_SECTION_WORDS.get(section, section)} section, so Apply cannot send "
+            "it: bring in the shipped version on Templates")
 _PLATFORM_WORDS = {"cisco_ios": "IOS", "cisco_iosxe": "IOS-XE"}
 _IP_SLA_POLICY_WORDS = {"gateway": "probe the default gateway",
                         "peers": "probe the routing peers", "none": "probe nothing"}
@@ -456,12 +482,13 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
         prof.update(commit=sha, committed_at=at,
                     sources={k: ((doc["sections"].get(k) or {}).get("source") or "")
                              for k in prof["sections"]})
-    for key in ("ntp", "lldp"):
+    for key in ("ntp", "lldp", "management"):
         # NTP and LLDP have no connector of their own: a profile holding the section is the
         # network using it.
         if key in prof["sections"]:
             want.setdefault(key, "the monitoring profile")
     rows, covered = [], 0
+    signatures = {}                                # each template library's, once (C566)
     known = platform_facts.facts()                 # ONE stored read for the grid (C426)
     for _ref, dev in devices:
         host = (dev.get("hostname") or "").strip()
@@ -491,6 +518,7 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
         have["ip_sla"] = bool(text and _IP_SLA.search(text))
         have["ntp"] = bool(text and _NTP.search(text))
         have["lldp"], lldp_why = _lldp(text, platform)
+        have["management"] = bool(text and _MGMT_TFTP.search(text) and _MGMT_SSH.search(text))
         for key, words in COLUMNS:
             section = _SECTION_OF_COLUMN[key]
             # Every cell in a person's words, saying WHY (the operator,
@@ -516,6 +544,11 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
             elif key not in want:
                 cell = {"state": "unused", "words": _UNUSED_WORDS.get(key) or (
                     f"not used — this network has no {_CONNECTOR_OF[key]} connector")}
+            elif section in (view.get("applies") or ()) and (dropped := _not_rendered(
+                    ref, host, platform, role, intent, doc, section, signatures)):
+                # The profile supplies it and the device's template drops it (C566): missing,
+                # and not something Apply can send, so never offered as one.
+                cell = {"state": "not_rendered", "words": dropped}
             elif section in (view.get("applies") or ()):
                 cell = {"state": "gap", "words": "missing — the profile supplies it"}
                 row["supplies"].append(key)
@@ -532,7 +565,7 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
                     f"missing — the profile has no {_SECTION_WORDS.get(section, section)} section")}
             if cell["state"] == "not_reporting":
                 row["not_reporting"].append(key)
-            if cell["state"] in ("gap", "gap_open"):
+            if cell["state"] in ("gap", "gap_open", "not_rendered"):
                 row["gaps"].append(key)
             row["cells"][key] = cell
         if text is not None and not row["gaps"]:
@@ -569,6 +602,8 @@ def fleet(ref, devices=None, golden=None, get=None, profile=None, report=None) -
                                       ""),
             # The devices running no IP SLA probe, each a link to the IP SLA
             # page, where the policy suggests probes (P.9 d4).
+            "not_rendered": sum(1 for r in rows for c in r["cells"].values()
+                                if c["state"] == "not_rendered"),
             "ip_sla_missing": [r["host"] for r in rows
                                if (r["cells"].get("ip_sla") or {}).get("state") == "unused"]}
 
@@ -587,7 +622,7 @@ def _nothing_to_apply(row: dict, doc: dict) -> str:
             # A policy suggests probes; they are reviewed and sent from the IP
             # SLA page, never by the profile's Apply (P.9 d4).
             missing.append("IP SLA: its probes are suggested and sent from the IP SLA page")
-        elif cell.get("state") == "gap_open":
+        elif cell.get("state") in ("gap_open", "not_rendered"):
             missing.append(f"{words}: {cell['words'].split(' — ', 1)[-1]}")
     if missing:
         return "nothing for Apply to send: " + "; ".join(missing)

@@ -201,10 +201,6 @@ def test_every_render_of_intent_merges_the_profile_first():
         # difference. `render` is its nested renderer, used by both.
         ("routes/deploy.py", "_profile_scope"),
         ("routes/deploy.py", "render"),
-        # C565: whether the template renders a section is measured by rendering the
-        # device's intent WITHOUT the section (`profile.without`) and WITH it merged
-        # through `profile.effective()` inside `profile_apply.unrendered`.
-        ("routes/deploy.py", "_unrendered"),
     }
     found, bad = [], []
     for rel in ("routes/deploy.py", "routes/templatize.py", "modules/nsot/intent_match.py",

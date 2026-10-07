@@ -128,6 +128,31 @@ def unrendered(sections: dict, own: dict, render, platform: str, role: str,
     return out
 
 
+def unrendered_for_device(list_name: str, repo: str, hostname: str, platform: str, role: str,
+                          own: dict, sections: dict, signatures: dict = None) -> tuple:
+    """``(sections its template renders none of, the template's path)`` for one device, through
+    its BOUND template in the network's library (`templates_repo.render_source`): the one home
+    for the plan's "not sent" item and Coverage's "not rendered" cell (C565, C566). Renders only
+    on a cache miss, so a fleet costs a render pair per template library, not per device.
+    *signatures* ``{root: signature}`` lets a caller compute each library's signature once."""
+    from modules.nsot import hostvars, templates_repo
+    from modules.nsot.deploy import render_for_deploy
+
+    if own is None or hostvars.is_bootstrap_only(own) or not sections:
+        return [], ""
+    src = templates_repo.render_source(repo, hostname, platform)
+
+    def render(intent):
+        return render_for_deploy(hostvars.hydrate_secrets(intent, hostname, list_name),
+                                 platform, template_root=src["root"], template_name=src["name"])
+
+    signatures = {} if signatures is None else signatures
+    if src["root"] not in signatures:
+        signatures[src["root"]] = templates_repo.library_signature(src["root"])
+    key = "|".join([src["root"], src["name"], platform, signatures[src["root"]]])
+    return unrendered(sections, own, render, platform, role, library_key=key), src["template"]
+
+
 def by_section(sections: dict, render_with, own_render: str) -> dict:
     """``{section: [(chain, line), ...]}``: which of the profile's sections
     supplies each line, measured by rendering the device's intent with that

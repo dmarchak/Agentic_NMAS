@@ -690,6 +690,8 @@ input[type="checkbox"]:disabled + label, input[type="radio"]:disabled + label { 
 .m-ok { color: var(--ok); }
 .m-ok .ico, .m-unk .ico { vertical-align: -2px; }
 .m-unk { color: var(--ink-3); }
+.m-drop { color: var(--danger); }
+.m-drop .ico { vertical-align: -2px; }
 .m-no { display: inline-block; width: 9px; height: 9px; border: 1.5px solid var(--ink-3); border-radius: 50%; vertical-align: middle; }
 .m-nr { display: inline-block; width: 16px; height: 16px; line-height: 13px; border-radius: 8px; box-sizing: border-box;
   background: var(--warn-soft); border: 1.5px solid var(--warn-mark); color: var(--warn); font-size: 11px; font-weight: 700; text-align: center; }
