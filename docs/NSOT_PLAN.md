@@ -4376,6 +4376,10 @@ Software images are this item.
 
 ### P.14 — Reload, as a gated device-page operation (DECIDED 2026-10-02, the operator; NOT BUILT; one of 7.3's device actions)
 
+> **2026-10-07:** built by the charter's Phase 2, revert by reload
+> ([NSOT_REVERT_BY_RELOAD](NSOT_REVERT_BY_RELOAD.md), for sign-off): a plain Reload is that
+> operation with the running configuration as the boot file, and its gates are these six.
+
 Reload stays, as an operation on the device page, offered only once its gates pass. Each
 gate is drawn by name with what it found:
 1. **Running against startup**: unsaved changes REFUSE the reload, or offer a save first
