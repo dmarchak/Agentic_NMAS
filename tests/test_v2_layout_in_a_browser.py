@@ -135,7 +135,8 @@ PAGES = ["/v2/", "/v2/devices", "/v2/device/r2", "/v2/device/r2?tab=intent",
          "/v2/device/r2?tab=netbox", "/v2/device/r2?tab=neighbours", "/v2/history",
          "/v2/history?tab=baselines", "/v2/history?tab=authorisations", "/v2/monitoring",
          "/v2/monitoring/coverage", "/v2/help/about", "/v2/update", "/v2/settings",
-         "/v2/templates"]
+         "/v2/templates", "/v2/templates?bring=_common.j2", "/v2/monitoring/profile",
+         "/v2/monitoring/profile?propose=1"]
 
 LINKS = "a.info-link, a.how-link"
 
@@ -319,6 +320,39 @@ return [out, n];
 """
 
 
+#: C566 (the operator, 2026-10-07: board B's "What changes" ran past the table's right edge).
+#: Every drawn table cell and `pre` ends inside the card holding it, or inside a scroller
+#: (overflow-x auto or scroll) that itself ends inside the card: long template and config lines
+#: wrap or scroll in place, never past the card. Returns one line per element that does not,
+#: and the number read.
+CELLS_INSIDE_JS = """
+var out=[], n=0;
+document.querySelectorAll('td, th, pre').forEach(function(e){
+  if (!e.offsetParent) return;
+  var card=e.closest('.card, .op-card'); if (!card) return;
+  n++;
+  // A card that scrolls its own content (`.tpl-card`) keeps a wide table inside it, in place.
+  var cx=getComputedStyle(card).overflowX;
+  if (cx === 'auto' || cx === 'scroll') return;
+  var m=e, p=e.parentElement;
+  while (p && p !== card) {
+    var ox=getComputedStyle(p).overflowX;
+    if (ox === 'auto' || ox === 'scroll' || ox === 'hidden') { m=p; break; }
+    p=p.parentElement;
+  }
+  // The CONTENT's extent, not the box's: a pre's box stays inside the card while its text runs
+  // past it. A scroller ends at its own edge; anything else at its left plus its scroll width.
+  var R=card.getBoundingClientRect().right, r=m.getBoundingClientRect();
+  var own=getComputedStyle(e).overflowX;
+  var right=(m !== e || own === 'auto' || own === 'scroll') ? r.right : r.left + e.scrollWidth;
+  if (right > R + 1) out.push(e.tagName.toLowerCase()+(m !== e ? ' (in its scroller)' : '')
+    +' ends at '+Math.round(right)+', past its card at '+Math.round(R)
+    +': '+(e.textContent||'').trim().replace(/\\s+/g, ' ').slice(0, 40));
+});
+return [out, n];
+"""
+
+
 #: C505 and the operator's check (2026-10-05): every DRAWN "How does this work?" sits right after
 #: the control it documents (the nearest drawn element before it carries data-op naming the
 #: link's page), and no control has two (a drawn help link before it is a second one). A control
@@ -458,7 +492,8 @@ def measure_layout(b, page_label):
     b.js("document.querySelectorAll('details').forEach(function(d){d.open=true}); return 1")
     tables, n_tables = b.js(FIRST_COLUMN_JS)
     controls, n_controls = b.js(CONTROLS_INSIDE_JS)
-    return ([f"{page_label}: {p}" for p in tables + controls], n_tables, n_controls)
+    cells, _n_cells = b.js(CELLS_INSIDE_JS)          # C566: every cell and pre inside its card
+    return ([f"{page_label}: {p}" for p in tables + controls + cells], n_tables, n_controls)
 
 
 class TestTablesAndControlsSitInsideTheirCards:
@@ -477,3 +512,41 @@ class TestTablesAndControlsSitInsideTheirCards:
         assert not problems, "\n".join(problems)
         # Floors: the population read, so a page that drew nothing cannot pass by emptiness.
         assert tables >= 3 and controls >= 14, (tables, controls)   # measured 2026-10-06: 3, 14
+
+
+class TestCellsSitInsideTheirCards:
+    """C566 (the operator, 2026-10-07): long template and config lines in a table cell or a
+    `pre` wrap, or scroll inside their own scroller, and never run past the card."""
+
+    def test_every_cell_and_pre_ends_inside_its_card(self, served):
+        srv, b = served
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1366, "height": 1000})
+        problems, cells = [], 0
+        for page in PAGES:
+            b.go(srv.url(page))
+            b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 10)
+            b.js("document.querySelectorAll('details').forEach(function(d){d.open=true}); "
+                 "return 1")
+            got, n = b.js(CELLS_INSIDE_JS)
+            problems += [f"{page}: {p}" for p in got]
+            cells += n
+        assert not problems, "\n".join(problems)
+        assert cells >= 70, cells            # a floor; measured 2026-10-07: 77
+
+    def test_the_check_finds_a_planted_overflow(self, served):
+        """The planted case: a `pre` with one long unbreakable line, put in a card with no
+        wrapping and no scroller, is named; the same `pre` in a scroller is not."""
+        srv, b = served
+        b._call("POST", f"/session/{b.session}/window/rect", {"width": 1366, "height": 1000})
+        b.go(srv.url("/v2/monitoring/coverage"))
+        b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 10)
+        b.js("var c=document.querySelector('.card'); var p=document.createElement('pre');"
+             "p.id='planted'; p.style.whiteSpace='pre'; p.style.overflow='visible';"
+             "p.textContent='x'.repeat(600); c.appendChild(p); return 1")
+        got, _n = b.js(CELLS_INSIDE_JS)
+        assert any("pre ends at" in g and "xxxx" in g for g in got), got
+        b.js("var p=document.getElementById('planted'); var w=document.createElement('div');"
+             "w.style.overflowX='auto'; p.parentNode.insertBefore(w, p); w.appendChild(p); "
+             "return 1")
+        got, _n = b.js(CELLS_INSIDE_JS)
+        assert not any("xxxx" in g for g in got), got

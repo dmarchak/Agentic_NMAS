@@ -36,6 +36,9 @@ OPENERS = {
                       ".indexOf('r2') >= 0"),
     "deploy_plan": "document.querySelector('#deployPlanModal.show #deployPlanBody')",
     # C566 board A: Propose on v2, the card open in place on Monitoring › Profile.
+    # C566 board C: Bring in the shipped version, its card open in place on Templates.
+    "template_bring": ("document.querySelector('#tpl-card h2') && /Bring in the shipped/"
+                       ".test(document.querySelector('#tpl-card h2').textContent)"),
     "profile_propose": ("document.querySelector('#prof-card h2') && /Propose the profile/"
                         ".test(document.querySelector('#prof-card h2').textContent)"),
     # The two ways out of a rollback, on the v2 device page (board 11, 2026-10-03): the card
@@ -147,6 +150,7 @@ class TestEachOpenerActsInARealBrowser:
         ("intent_editor", "open=intent_editor&device=r2&list=Lab"),
         ("deploy_plan", "open=deploy_plan&device=r2&list=Lab"),
         ("profile_propose", "/v2/monitoring/profile?propose=1"),
+        ("template_bring", "/v2/templates?bring=_common.j2"),
         # The v2 device page's cards, loaded as their links load without script.
         ("revert", "/v2/device/r2?op=revert"),
         ("retry", "/v2/device/r2?op=retry"),

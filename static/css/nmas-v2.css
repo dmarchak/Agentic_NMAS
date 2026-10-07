@@ -318,6 +318,10 @@ h1 { margin: 0; font-size: 26px; font-weight: 600; }
 .table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 8px 12px 8px 0;
   border-bottom: 1px solid var(--line); }
 .table td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line-2); vertical-align: top; overflow-wrap: anywhere; }
+/* C566 (the operator, 2026-10-07): a long template or config line never runs past its card:
+   a cell wraps (above, breaking long tokens), a pre scrolls in place.
+   tests/test_v2_layout_in_a_browser.py CELLS_INSIDE_JS measures it. */
+.card pre, .op-card pre { max-width: 100%; overflow-x: auto; }
 .table-wrap { overflow-x: auto; scrollbar-color: var(--line) transparent; }
 .u-legend { display: none; }
 /* The bar never runs past its width, at any width (the operator, 2026-10-02, on a real phone;

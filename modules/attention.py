@@ -118,6 +118,8 @@ ROW_KINDS = {
     ("remote", "publication"): ("a list's history is not on its remote",
                                 "push, acknowledge, repair the remote, or verify it"),
     ("host_steps", "owed"): ("a host step a release asked for is not done", "do it, then say so"),
+    ("templates", "behind_drops"): ("a template behind the shipped version drops a section of the profile",
+                                    "bring in the shipped version on Templates"),
     ("adjacencies", "link"): ("an adjacency intent implies is not up",
                               "check the link and both ends"),
     ("adjacencies", "unmeasured"): ("adjacencies cannot be judged", "check the Prometheus targets"),
@@ -216,6 +218,8 @@ CLEARS = {
                               "once CI passes it), or the host runs this one"),
     ("remote", "publication"): (("resolves",), "the remote holds the list's history: pushed, "
                                 "after a held push is acknowledged on the Remote card"),
+    ("templates", "behind_drops"): (("resolves",), "the template is brought to the shipped version, or "
+                                    "the profile no longer has the section it drops"),
     ("host_steps", "owed"): (("resolves", "acknowledge"), "its check finds it done, or a person "
                              "says it is done on the Update page"),
     ("adjacencies", "link"): (("resolves",), "the next read finds the adjacency up"),
@@ -2339,6 +2343,61 @@ def host_steps_source(owed=None) -> dict:
                          checked=f"the last {host_steps.HISTORY} commits of {health._COMMIT[:10]}")
 
 
+def template_behind_source(ref=None) -> dict:
+    """A template BEHIND the shipped version that drops a section of the profile (C566, board
+    C): the profile's section reaches every device's intent and no device's configuration, and
+    every plan says so only per device (C565). One row per such template, with the way out,
+    Bring in the shipped version on Templates. Measured per TEMPLATE, never per device: one
+    bound device of each template that imports it, through the cached render pair
+    (`profile_apply.unrendered_for_device`)."""
+    from modules.nsot import approve_op, hostvars, listref, profile as _p, profile_apply
+    from modules.nsot import template_bring, templates_repo
+    from modules.preview_confirm import PROFILE_SECTION_WORDS
+
+    started = time.time()
+    label = "Templates behind the shipped version"
+    try:
+        ref = ref or listref.active()
+        repo = ref.repo_dir
+        stale = [p for p, s in approve_op._shipped_states(repo).items() if s["state"] == "stale"]
+        doc = _p.read_committed(repo) if stale else None
+    except Exception as exc:                            # noqa: BLE001
+        return source_result("templates", label, read_at=started, took_ms=0,
+                             error=f"{type(exc).__name__}: {exc}")
+    rows, signatures = [], {}
+    for path in stale if doc else []:
+        dropped, devices = set(), set()
+        for template in template_bring.importers(repo, path):
+            bound = templates_repo.devices_for_template(repo, template)
+            devices |= {e["device"] for e in bound}
+            for entry in bound:
+                intent = hostvars.read_committed(repo, entry["device"])
+                if intent is None or hostvars.is_bootstrap_only(intent):
+                    continue
+                role = _p.role_of(ref.name, entry["device"])
+                sections = _p.sections_for(doc, entry["platform"], role, intent)
+                missing, _t = profile_apply.unrendered_for_device(
+                    ref.name, repo, entry["device"], entry["platform"], role, intent, sections,
+                    signatures)
+                dropped |= set(missing)
+                break                                   # one device measures the template
+        if not dropped:
+            continue
+        words = ", ".join(PROFILE_SECTION_WORDS.get(s, s) for s in sorted(dropped))
+        rows.append(row(source="templates", kind="behind_drops", key=path, level="warning",
+                        what=(f"The profile's {words} section reaches no device it applies to: "
+                              f"{ref.name}'s {path} is an older shipped version that does not "
+                              f"render it ({len(devices)} devices bound through it)"),
+                        cause=(f"templates/{path} is behind the shipped version, unedited; "
+                               "the shipped one renders it"),
+                        operands={"template": path, "sections": sorted(dropped)},
+                        action={"label": "Bring in the shipped version on Templates",
+                                "open": "template_bring", "list": ref.name, "path": path}))
+    return source_result("templates", label, read_at=started,
+                         took_ms=int((time.time() - started) * 1000), rows=rows,
+                         checked=f"{ref.name}'s templates against the shipped ones")
+
+
 def restart_source(cached=None) -> dict:
     """An UNPLANNED restart (the operator, 2026-10-02: five passed silently): one row per
     restart for `restarts.ATTENTION_DAYS` days, DANGER when the device saved a crash file,
@@ -2699,7 +2758,7 @@ SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding
            reachability_source, netbox_secrets_source, credential_health_source,
            remote_source, pushed_source,
            host_steps_source, adjacency_source, lab_startup_source, restart_source,
-           interrupted_source, dashboard_roles_source)
+           interrupted_source, dashboard_roles_source, template_behind_source)
 
 
 #: What can move each source's rows: the data keys (modules/invalidation.VOCABULARY) whose
@@ -2734,6 +2793,8 @@ SOURCE_KEYS = {
     "interrupted_source": ("deploy_job", "device_state"),
     # The reader's stored check, and a setting changed in Settings, which removes a row.
     "dashboard_roles_source": ("dashboards", "settings"),
+    # A template brought in, or a profile committed (C566).
+    "template_behind_source": ("templates", "intent"),
 }
 
 #: Every key that can move a row, and a person's acknowledgement.

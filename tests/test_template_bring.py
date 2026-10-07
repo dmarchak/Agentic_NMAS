@@ -128,3 +128,30 @@ class TestTheConfirm:
     def test_the_history_before_p1_is_the_stale_copy(self):
         """The fixture's premise: the shipped file before P1 lacks the lines (C565)."""
         assert BEFORE_P1
+
+
+class TestNeedsAttention:
+    """Board C's row: while a template is behind and drops a profile section, Needs attention
+    names it, with Bring in the shipped version; it clears once the file is brought in."""
+
+    def test_the_row_names_the_template_and_the_section(self, stale):
+        from modules import attention
+        from modules.nsot import listref
+        got = attention.template_behind_source(listref.resolve("Lab"))
+        (row,) = got["rows"]
+        assert row["id"] == "templates:_common.j2" and row["kind"] == "behind_drops"
+        assert row["operands"]["sections"] == ["management"]
+        assert row["action"]["open"] == "template_bring" and row["action"]["path"] == "_common.j2"
+        assert "older shipped version that does not render it" in row["what"]
+
+    def test_it_clears_once_the_file_is_brought_in(self, stale):
+        from modules import attention
+        from modules.nsot import listref
+        assert TestTheConfirm()._confirm(stale).status_code == 200
+        assert attention.template_behind_source(listref.resolve("Lab"))["rows"] == []
+
+    def test_a_current_template_raises_no_row(self, lab, monkeypatch):  # noqa: F811
+        from modules import attention
+        from modules.nsot import listref
+        _propose_management(lab)
+        assert attention.template_behind_source(listref.resolve("Lab"))["rows"] == []
