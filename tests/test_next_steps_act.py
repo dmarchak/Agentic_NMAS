@@ -35,7 +35,9 @@ OPENERS = {
                       "document.getElementById('intentEditorTitle').textContent"
                       ".indexOf('r2') >= 0"),
     "deploy_plan": "document.querySelector('#deployPlanModal.show #deployPlanBody')",
-    "profile_propose": "document.querySelector('.modal.show [data-profile-body]')",
+    # C566 board A: Propose on v2, the card open in place on Monitoring › Profile.
+    "profile_propose": ("document.querySelector('#prof-card h2') && /Propose the profile/"
+                        ".test(document.querySelector('#prof-card h2').textContent)"),
     # The two ways out of a rollback, on the v2 device page (board 11, 2026-10-03): the card
     # in place of the tab, naming the device.
     "revert": ("document.querySelector('#device-op h2') && /Revert a change to r2/"
@@ -144,7 +146,7 @@ class TestEachOpenerActsInARealBrowser:
         ("breakglass_export", "open=breakglass_export&list=Lab"),
         ("intent_editor", "open=intent_editor&device=r2&list=Lab"),
         ("deploy_plan", "open=deploy_plan&device=r2&list=Lab"),
-        ("profile_propose", "open=profile_propose&list=Lab"),
+        ("profile_propose", "/v2/monitoring/profile?propose=1"),
         # The v2 device page's cards, loaded as their links load without script.
         ("revert", "/v2/device/r2?op=revert"),
         ("retry", "/v2/device/r2?op=retry"),

@@ -1,5 +1,5 @@
-{#- Monitoring's tabs: the fleet dashboard (the default) and Coverage. Nothing
-    else (the operator, 2026-10-02): IP SLA and Heartbeat were built as tabs
+{#- Monitoring's tabs: the fleet dashboard (the default), Coverage, and Profile (C566, board A,
+    signed off 2026-10-07). Nothing else (the operator, 2026-10-02): IP SLA and Heartbeat were built as tabs
     with no mockup and no sign-off, and a new screen needs both first. The IP
     SLA page is reached from Coverage's IP SLA cells until it folds into the
     monitoring profile's proposal; the heartbeat re-measure only from the
@@ -7,4 +7,5 @@
 <nav class="tabs" aria-label="Monitoring">
   <a class="tab{% if monitoring_tab == 'dashboards' %} on{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if monitoring_tab == 'dashboards' %} aria-current="page"{% endif %}>Dashboards</a>
   <a class="tab{% if monitoring_tab == 'coverage' %} on{% endif %}" href="{{ url_for('v2.coverage') }}"{% if monitoring_tab == 'coverage' %} aria-current="page"{% endif %}>Coverage</a>
+  <a class="tab{% if monitoring_tab == 'profile' %} on{% endif %}" href="{{ url_for('v2.monitoring_profile') }}"{% if monitoring_tab == 'profile' %} aria-current="page"{% endif %}>Profile</a>
 </nav>

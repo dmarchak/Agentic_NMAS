@@ -1029,6 +1029,13 @@ select { max-width: 100%; }
 /* The card's own padding stays (C502): `.table`'s cells have none on the left, so a card
    without it put the first column on the border. */
 .tpl-card { overflow-x: auto; }
+/* Monitoring › Profile (C566, board A). */
+.prof-hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.prof-hd h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.prof-acts { display: inline-flex; align-items: center; gap: 6px; }
+.prof-table th[scope=row] { font-weight: 500; }
+.prof-commit { margin: 0 0 8px; }
+.prof-lib { display: flex; flex-direction: column; gap: 12px; }
 .tpl-table td { vertical-align: top; }
 .tpl-table .tpl-act { white-space: nowrap; text-align: right; }
 .tpl-bound summary { cursor: pointer; color: var(--accent); }

@@ -169,6 +169,10 @@ STAGES = {
         "n/a: approve it again", "modules.nsot.approve_op.revoke"),
     # C566, board B: the diff and every bound device's measured change are the preview; the
     # confirm is bound to both blobs it showed (the network's copy and the shipped file).
+    # C566, board A: Propose on v2, the preview card bound by the proposal's hash.
+    "v2.profile_propose_commit": Stages(
+        "v2.profile_propose_form", "hash", NO_DEVICE, FORWARD,
+        "modules.nsot.profile_propose.apply"),
     "templates_v2.bring": Stages(
         "templates_v2.bring_form", "copy_blob",
         NO_DEVICE, FORWARD, "modules.nsot.template_write.commit"),
@@ -311,6 +315,7 @@ HISTORY = {
     "templates_v2.approve": TEMPLATE,
     "templates_v2.revoke": TEMPLATE,
     "templates_v2.bring": TEMPLATE,
+    "v2.profile_propose_commit": PROFILE,
     "templates.save_bindings": TEMPLATE,
     "templates.write_template": TEMPLATE,
     # ---- configure

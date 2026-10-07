@@ -1,0 +1,7 @@
+{#- Monitoring › Profile's region (C566, board A): the sections table, re-read on its own when
+    intent, goldens or templates move, and the Propose card below it, in place. Cancel, Close and
+    the confirm redraw the whole region, so the table says the new state. -#}
+<div id="profile-region" class="prof-lib">
+{% include "v2/_profile_table.html" %}
+<div id="prof-op" aria-live="polite">{% if op %}{% include "v2/_profile_op.html" %}{% endif %}</div>
+</div>

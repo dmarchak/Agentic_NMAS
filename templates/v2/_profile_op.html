@@ -1,0 +1,64 @@
+{%- from "v2/_macros.html" import icon, badge, how -%}
+{#- C566, board A: Propose from the connectors on v2, its preview and its result, in #prof-op.
+    modules/monitoring_profile_page.proposal / commit; profile_propose's code throughout. -#}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ url_for('v2.monitoring_profile_table') }}" hx-target="#profile-region" hx-swap="outerHTML">{{ words }}</button>
+{%- endmacro -%}
+{%- if op.state == 'propose' %}{% set q = op.q %}
+<section class="op-card" id="prof-card" aria-labelledby="prof-h">
+  <div class="op-hd"><h2 id="prof-h">Propose the profile from the connectors</h2>
+    <div class="op-hd-actions">{{ how('monitoring-templates', 'propose') }}{{ close_button('Cancel') }}</div></div>
+  {%- if op.refused %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ op.refused }}</p></div>
+  {%- endif %}
+  <div class="op-part"><h3>What changes</h3><div>
+    <p>{% if q.changes %}{{ q.changes | length }} section{{ '' if q.changes | length == 1 else 's' }} change{{ 's' if q.changes | length == 1 else '' }}; {% endif %}{{ q.rows | selectattr('state', 'equalto', 'as committed') | list | length }} as committed. Reads only until you commit.</p>
+    <div class="table-wrap"><table class="table prof-table">
+      <thead><tr><th scope="col">Section</th><th scope="col">Proposed</th><th scope="col">Why</th></tr></thead>
+      <tbody>
+      {%- for r in q.rows %}
+      <tr><th scope="row">{{ r.words[:1] | upper }}{{ r.words[1:] }}</th>
+        <td>{%- if r.state == 'new' %}{{ badge('new', 'info') }}{% elif r.state == 'changed' %}{{ badge('changed', 'warn') }}{% elif r.state == 'as committed' %}{{ badge('as committed', 'muted') }}{% else %}{{ badge('not proposed', 'muted') }}{% endif %}</td>
+        <td class="muted small">{{ r.why }}{% if r.variants %} ({{ r.variants }} versions across the fleet: choosing between them is not on v2 yet){% endif %}</td></tr>
+      {%- endfor %}
+      </tbody>
+    </table></div></div></div>
+  <div class="op-part"><h3>On the devices</h3><div>
+    <p>The effective intent of {{ q.effect }} device{{ '' if q.effect == 1 else 's' }} changes.
+      {%- if q.dropped %} <strong>{{ q.dropped | length }} of them would not receive {{ 'it' if q.changes | length == 1 else 'every change' }} yet:</strong> {{ 'its template renders' if q.dropped | length == 1 else 'their templates render' }} none of {% for r in q.changes if r.dropped %}the {{ r.words }} section{{ ', ' if not loop.last }}{% endfor %}. <a href="{{ url_for('templates_v2.page', list=q.list) }}">Bring in the shipped version on Templates</a>.{% endif %}</p>
+    <p class="muted">Committing records the profile; Coverage then shows each section missing on the devices that lack it, and Apply sends it. Nothing is sent to a device from here.</p></div></div>
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      <li>{{ badge('pass', 'ok') }}<span>each section's connector is configured, or the section is kept as committed</span></li>
+      <li>{{ badge('fail' if q.variants else 'pass', 'danger' if q.variants else 'ok') }}<span>no device holds another version of a shared value{% if q.variants %}: {{ q.variants | map(attribute='words') | join(', ') }}{% endif %}</span></li>
+      <li>{{ badge('note' if q.dropped else 'pass', 'warn' if q.dropped else 'ok') }}<span>{% if q.dropped %}a changed section the network's templates do not render (see above){% else %}every changed section is rendered by the devices' templates{% endif %}</span></li>
+      <li>{{ badge('at commit', 'muted') }}<span>the profile has not moved since this preview</span></li>
+    </ul></div></div>
+  <div class="op-ft">
+    {%- if q.changed and op.may.may %}
+    <p class="op-note">{{ op.may.statement }} Bound to this proposal and the committed profile. One commit, "profile: …", as you.</p>
+    <form class="op-act" method="post" action="{{ url_for('v2.profile_propose_commit') }}" hx-post="{{ url_for('v2.profile_propose_commit') }}" hx-target="#profile-region" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ q.list }}"><input type="hidden" name="hash" value="{{ q.hash }}">
+      <button type="submit" class="btn btn-primary op-confirm" data-op="monitoring-templates" hx-disabled-elt="this"><span class="op-idle">Commit the profile ({{ q.changes | length }} section{{ '' if q.changes | length == 1 else 's' }} {{ 'changed' if q.changes | selectattr('state', 'equalto', 'changed') | list else 'added' }})</span><span class="op-busy">Committing…</span></button>{{ how('monitoring-templates', 'propose', compact=True, op='proposing the profile') }}
+    </form>
+    {%- elif q.changed %}
+    <p class="op-note">{{ op.may.statement }} Nothing can be committed from here.</p>
+    {%- else %}
+    <p class="op-note">Nothing to commit: the connectors propose the profile as it is committed.</p>
+    {%- endif %}
+  </div>
+</section>
+{%- elif op.state == 'committed' %}
+<section class="op-card op-ok" id="prof-card" aria-labelledby="prof-h">
+  <div class="op-hd"><h2 id="prof-h">The profile is committed {{ badge('committed', 'ok') }}</h2>
+    <div class="op-hd-actions">{{ how('monitoring-templates', 'propose') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>Next</h3><div>
+    <p>Commit <span class="mono">{{ (op.r.commit or '')[:10] }}</span>, as {{ op.actor }}. Nothing was sent to any device.</p>
+    <p class="muted">Coverage shows what each device lacks, and Apply sends it: <a href="{{ url_for('v2.coverage') }}">Open Coverage</a>.</p></div></div>
+</section>
+{%- else %}
+<section class="op-card op-danger" id="prof-card" aria-labelledby="prof-h">
+  <div class="op-hd"><h2 id="prof-h">Not committed</h2><div class="op-hd-actions">{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>Why</h3><div><p>{{ op.why }}</p></div></div>
+</section>
+{%- endif %}

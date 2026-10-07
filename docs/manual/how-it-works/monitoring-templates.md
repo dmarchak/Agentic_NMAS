@@ -149,6 +149,26 @@ action opens the re-measure, which writes new rules as you and names the one hos
 installs them in Grafana. That host step is still a person's: an automatic re-measure and
 install is decided, and not built.
 
+## Propose the profile {#propose}
+
+On Monitoring › Profile, **Propose from the connectors…** derives each section from the tool
+that consumes it, and the fleet's committed intent is the cross-check. Nothing is sent to a
+device.
+
+1. **Derive.** Read: the connectors in Settings, every device's committed intent, the committed
+   profile. Sent: nothing. Recorded: nothing. Each section is new, changed, as committed, or not
+   proposed with why (its connector not configured; two versions across the fleet, whose choice
+   is not on v2 yet).
+2. **Measure what reaches the devices.** For each new or changed section, each device it applies
+   to is rendered through its own template with and without it: a template that renders none
+   of it is named, since the section would reach that device's intent and never its
+   configuration (bring in the shipped template on Templates).
+3. **Confirm.** You commit as yourself, bound to the proposal's hash: if intent, a stored value or
+   the committed profile moved since the card showed it, nothing is committed and the card is
+   drawn again, saying what moved.
+4. **Commit.** The profile, one commit, `profile: proposed: …`, as you. Then Coverage shows each
+   section missing where it is, and Apply sends it.
+
 ## Changing (awaiting the operator's sign-off, 2026-10-02) {#changing}
 
 Each section becomes a template with its own settings (Settings > Monitoring templates),

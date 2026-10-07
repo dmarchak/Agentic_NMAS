@@ -56,6 +56,7 @@ SIGNED_OFF = {
                                  "set\"), signed off 2026-10-02, with the rollout order decided "
                                  "at the 2026-09-29 review. 7.4's selection may change it; then "
                                  "it needs a new mockup"),
+    "monitoring_profile.html": ("2026-10-07", "C566 board A, Monitoring › Profile and Propose on v2, canvas v80 page C566"),
     "coverage.html": ("2026-10-02", "the REDRAW, artboards A (the grid) and A2 (Deploy missing "
                                     "templates), signed off 2026-10-02: row checkboxes only, no "
                                     "box on a fully covered device; icons only with the why on "

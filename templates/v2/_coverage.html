@@ -35,7 +35,7 @@
   {%- elif c.profile.committed %}
   <p class="muted cov-profile">The monitoring profile: commit <code>{{ c.profile.commit }}</code>, {{ stamp(c.profile.committed_at) }}. Sections: {% for s in c.profile.sections %}{{ s }}{% if c.profile.sources[s] %} (from {{ c.profile.sources[s] }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.</p>
   {%- else %}
-  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ c.list }} has no monitoring profile yet, so nothing can be deployed: propose one from the network's connectors first. <a href="{{ url_for('index', open='profile_propose', list=c.list) }}">Propose on today's page</a></p></div>
+  <div class="notice notice-warn">{{ icon('warn') }}<p>{{ c.list }} has no monitoring profile yet, so nothing can be deployed: propose one from the network's connectors first. <a href="{{ url_for('v2.monitoring_profile', propose=1) }}">Propose on Monitoring › Profile</a></p></div>
   {%- endif %}
 
 

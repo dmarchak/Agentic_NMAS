@@ -1,0 +1,37 @@
+{%- from "v2/_macros.html" import icon, badge, how, stamp -%}
+{#- Monitoring › Profile (C566, board A, signed off 2026-10-07): the committed profile, section by
+    section, with how many devices hold each (Coverage's own cells), and Propose from the
+    connectors. modules/monitoring_profile_page.py. -#}
+<section class="card prof" id="profile" hx-get="{{ url_for('v2.monitoring_profile_rows') }}"
+         hx-trigger="nmas:intent from:body, nmas:goldens from:body, nmas:templates from:body, nmas:job_health from:body" hx-swap="outerHTML">
+  <div class="prof-hd">
+    <h2>The network's profile
+      {%- if p.not_rendered %} {{ badge(p.not_rendered ~ ' device' ~ ('' if p.not_rendered == 1 else 's') ~ ' cannot receive a section', 'danger') }}{% endif %}</h2>
+    <span class="prof-acts"><a class="btn btn-primary" data-op="monitoring-templates" href="{{ url_for('v2.monitoring_profile', propose=1) }}" hx-get="{{ url_for('v2.profile_propose_form', list=p.list) }}" hx-target="#prof-op" hx-swap="innerHTML"><span class="op-idle">Propose from the connectors…</span><span class="op-busy">Proposing…</span></a>{{ how('monitoring-templates', 'propose', compact=True, op='proposing the profile') }}</span>
+  </div>
+  {%- if not p.ok %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Couldn't load the profile:</strong> {{ p.error }}. Nothing can be deployed from it until it reads.</p></div>
+  {%- elif not p.committed %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<p>{{ p.list }} has no profile yet: propose one from the connectors.</p></div>
+  {%- else %}
+  <p class="muted prof-commit">What every device inherits, its own value winning where it has one. Commit <span class="mono">{{ p.commit }}</span>{% if p.committed_at %}, {{ stamp(p.committed_at) }}{% endif %}.</p>
+  <div class="table-wrap"><table class="table prof-table">
+    <thead><tr><th scope="col">Section</th><th scope="col">Derived from</th><th scope="col">Applies to</th><th scope="col">On the devices</th></tr></thead>
+    <tbody>
+    {%- for r in p.rows %}{% set h = r.held %}
+    <tr data-section="{{ r.section }}">
+      <th scope="row">{{ r.words[:1] | upper }}{{ r.words[1:] }}</th>
+      <td class="muted small">{{ r.basis }}</td>
+      <td class="muted small">{{ r.applies }}</td>
+      <td>{%- if not h.measured %}<span class="muted small">not measured on Coverage</span>
+        {%- elif h.not_rendered %}{{ badge(h.hold ~ ' of ' ~ h.of ~ ': not rendered', 'danger') }} <span class="muted small">the device's template renders none of it ({{ h.not_rendered | length }} device{{ '' if h.not_rendered | length == 1 else 's' }}). <a href="{{ url_for('templates_v2.page', list=p.list) }}">Bring in the shipped version on Templates</a></span>
+        {%- elif h.missing %}{{ badge(h.hold ~ ' of ' ~ h.of ~ ' hold it', 'warn') }} <span class="muted small">{% if h.missing | length <= 3 %}{{ h.missing | join(', ') }} lack{{ 's' if h.missing | length == 1 else '' }} it{% else %}{{ h.missing | length }} devices lack it{% endif %}: <a href="{{ url_for('v2.coverage') }}">Coverage</a> offers it, and Apply sends it</span>
+        {%- elif h.of %}{{ badge(h.hold ~ ' of ' ~ h.of ~ ' hold it', 'ok') }}
+        {%- else %}<span class="muted small">no device it applies to</span>{% endif %}</td>
+    </tr>
+    {%- endfor %}
+    </tbody>
+  </table></div>
+  <p class="faint small">"Hold it" is Coverage's reading of each device's committed golden. A device that lacks a section is offered on Coverage, where Apply sends it.</p>
+  {%- endif %}
+</section>

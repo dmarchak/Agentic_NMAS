@@ -13,7 +13,7 @@ import os
 import re
 import subprocess
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 from html import escape
 
 from routes.device_v2 import _strict, _who
@@ -631,6 +631,86 @@ def coverage_table():
             if row.get("selectable"):
                 row["checked"] = row["host"] in kept
     return _strict(render_template("v2/_coverage.html", c=c))
+
+
+# ── Monitoring › Profile (C566, board A, signed off 2026-10-07) ──────────────────────────────
+
+def _profile_ctx(op: dict = None) -> dict:
+    from modules import monitoring_profile_page as MP
+    from modules.nsot import listref
+
+    return {"p": MP.sections(listref.active()), "op": op}
+
+
+def _profile_op(list_name: str, refused: str = "") -> dict:
+    from modules import monitoring_profile_page as MP, preview_confirm
+    from modules.nsot import profile as _p
+
+    try:
+        q = MP.proposal(list_name)
+    except _p.ProfileRefused as exc:
+        return {"state": "refused", "why": (f"{list_name}'s committed profile cannot be read, so "
+                                            f"nothing is proposed: {exc}")}
+    return {"state": "propose", "q": q, "may": preview_confirm.confirm_part(request, "approve"),
+            "refused": refused}
+
+
+@bp.route("/monitoring/profile", methods=["GET"])
+def monitoring_profile():
+    """Monitoring › Profile: the committed profile, section by section, with how many devices
+    hold each; ``propose=1`` opens Propose's card in place (the button's link, and a deep link)."""
+    from modules.nsot import listref
+
+    op = _profile_op(listref.active().name) if request.args.get("propose") == "1" else None
+    return _page("v2/monitoring_profile.html", active_nav="monitoring",
+                 monitoring_tab="profile", **_profile_ctx(op))
+
+
+@bp.route("/monitoring/profile/table", methods=["GET"])
+def monitoring_profile_table():
+    """The region (the table, no card): what Cancel and Close put back."""
+    return _strict(render_template("v2/_profile.html", **_profile_ctx()))
+
+
+@bp.route("/monitoring/profile/rows", methods=["GET"])
+def monitoring_profile_rows():
+    """The table alone, re-read when intent, goldens or templates move; the card below is left
+    as it is. Writes nothing."""
+    return _strict(render_template("v2/_profile_table.html", **_profile_ctx()))
+
+
+@bp.route("/monitoring/profile/propose", methods=["GET"])
+def profile_propose_form():
+    """Propose from the connectors: the preview, `profile_propose.propose`, with whether the
+    network's templates render each changed section. Writes nothing."""
+    from modules.nsot import listref
+
+    name = (request.args.get("list") or "").strip() or listref.active().name
+    return _strict(render_template("v2/_profile_op.html", op=_profile_op(name)))
+
+
+@bp.route("/monitoring/profile/propose", methods=["POST"])
+def profile_propose_commit():
+    """The confirm: the proposal recomputed and refused when it moved, else committed as the
+    verified person; the region redrawn with the result. The list is CARRIED from the card."""
+    from modules import identity, monitoring_profile_page as MP
+
+    name = (request.form.get("list") or "").strip()
+    confirmed = (request.form.get("hash") or "").strip()
+    if not name or not confirmed:
+        op = {"state": "refused", "why": "No list or no proposal was named: nothing committed."}
+        return _strict(render_template("v2/_profile.html", **_profile_ctx(op)), 400)
+    actor = identity.request_actor()
+    out = MP.commit(name, confirmed, actor)
+    if out.get("outcome") == "committed":
+        op = {"state": "committed", "r": out, "actor": actor}
+        code = 200
+    elif out.get("outcome") == "moved":
+        op, code = _profile_op(name, refused=out.get("reason", "")), 409
+    else:
+        op = {"state": "refused", "why": out.get("reason") or out.get("why") or out.get("outcome")}
+        code = 409 if out.get("outcome") != "nothing" else 200
+    return _strict(render_template("v2/_profile.html", **_profile_ctx(op)), code)
 
 
 def _monitoring_network() -> str:

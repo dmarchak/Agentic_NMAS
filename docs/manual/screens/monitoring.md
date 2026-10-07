@@ -104,3 +104,24 @@ with one query per source for the whole fleet:
 Hover a configured cell to see when its data last arrived. If the reader has no current
 reading, or could not ask a source, the page says so once. The affected cells stay
 "configured" and accuse no device of the reader's failure.
+
+## Profile {#profile}
+
+The network's profile: what every device inherits, its own value winning where it has one.
+One row per committed section:
+
+- **Derived from**: the connector or setting the section comes from (the SNMP exporter's
+  community, never shown; the syslog receiver; the NTP servers; the interface syslog leaves
+  from, for the management sources), or IP SLA's policy.
+- **Applies to**: every device, or the platforms or roles the section is scoped to.
+- **On the devices**: how many of the devices it applies to hold it, read from Coverage's
+  cells, so the two pages agree. A device that lacks it is offered on Coverage, where Apply
+  sends it. **Not rendered** means the device's template renders none of the section, so
+  nothing can send it until the shipped template is brought in on Templates (see
+  [Bring in a shipped template](bring-template)).
+
+**Propose from the connectors…** opens the proposal below the table: each section new, changed,
+as committed or not proposed with why, how many devices' effective intent changes, and which
+of them would not receive a change yet because their template does not render it. Committing it
+records the profile as you; nothing is sent to a device. See
+[Apply a monitoring template](monitoring-templates#propose).

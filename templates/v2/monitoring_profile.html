@@ -1,0 +1,15 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
+{% block title %}Profile · Monitoring · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Monitoring · {{ p.list }} {{ info('monitoring', 'profile') }}</h1>
+    <p class="sub">What every device inherits from the network's profile, its own value winning where it has one, and how many devices hold each section.</p>
+  </div>
+</div>
+{% include "v2/_monitoring_tabs.html" %}
+<div class="tab-body">
+{% include "v2/_profile.html" %}
+</div>
+{% endblock %}

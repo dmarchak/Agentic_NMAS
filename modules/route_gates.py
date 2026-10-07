@@ -121,6 +121,7 @@ GATES = {
     "templatize.edit_committed": _g(A, "commits an edit to intent"),
     "templates_v2.approve": _g(A, "approves a template (7.6, board B), bound to the fingerprint and the check shown"),
     "templates_v2.revoke": _g(A, "withdraws a template approval with the person's reason (7.6, board C)"),
+    "v2.profile_propose_commit": _g(A, "commits the network's profile proposed from the connectors on v2 (C566, board A), bound to the proposal shown"),
     "templates_v2.bring": _g(A, "commits the shipped template over the network's stale copy and revokes every approval over it (C566, board B)"),
     "intent_v2.commit": _g(A,"commits an edit to a device's intent (board H), bound to the version opened"),
     "templatize.revert_apply": _g(A, "commits the inverse of one intent commit's change"),

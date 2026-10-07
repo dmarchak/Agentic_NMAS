@@ -243,18 +243,21 @@ class TestTheTabsAndTheSidebar:
     def test_monitoring_has_exactly_the_signed_off_tabs(self, lab):
         """The operator, 2026-10-02: a new screen needs a mockup and a sign-off
         BEFORE it is built. IP SLA and Heartbeat were tabs that had neither;
-        Monitoring holds the two that were signed off, and a third is a change
+        Monitoring holds the tabs that were signed off (Profile: C566 board A, signed off
+        2026-10-07); another is a change
         to this test, made with the operator's sign-off."""
         tabs = "templates/v2/_monitoring_tabs.html"
         labels = re.findall(r'class="tab[^"]*"[^>]*>([^<]+)</a>', open(tabs, encoding="utf-8").read())
-        assert labels == ["Dashboards", "Coverage"]
+        assert labels == ["Dashboards", "Coverage", "Profile"]
         _r, html = _get(lab, "/v2/monitoring")
         nav = html.split('aria-label="Monitoring">', 1)[1].split("</nav>", 1)[0]
-        assert re.findall(r">([^<]+)</a>", nav) == ["Dashboards", "Coverage"]
+        assert re.findall(r">([^<]+)</a>", nav) == ["Dashboards", "Coverage", "Profile"]
 
     def test_every_monitoring_url_carries_the_strict_policy(self, lab):
         from modules import csp
-        for url in ("/v2/monitoring", "/v2/monitoring/dashboard"):
+        for url in ("/v2/monitoring", "/v2/monitoring/dashboard", "/v2/monitoring/profile",
+                    "/v2/monitoring/profile/table", "/v2/monitoring/profile/rows",
+                    "/v2/monitoring/profile/propose", "/v2/monitoring/profile?propose=1"):
             r, html = _get(lab, url)
             assert r.headers.get("Content-Security-Policy") == csp.STRICT_POLICY, url
             assert not re.search(r"\sstyle=|\son[a-z]+=", html), url

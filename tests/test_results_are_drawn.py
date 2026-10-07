@@ -167,6 +167,11 @@ PAGE_RECORD = {
                             "templates_v2.page"),
     # C566, board B: the shipped file brought in, drawn in place (the commit, as whom, the
     # approvals revoked), and the row's state read back from the library by the page.
+    # C566, board A: the profile committed on v2, drawn in place (the commit, as whom), the
+    # table read back from the committed profile by the page.
+    "v2.profile_propose_commit": ("templates/v2/_profile_op.html",
+                                  ("op.state == 'committed'", "op.r.commit", "op.actor"),
+                                  "v2.monitoring_profile"),
     "templates_v2.bring": ("templates/v2/_template_op.html",
                            ("op.state == 'brought'", "r.commit", "r.revoked"),
                             "templates_v2.page"),
