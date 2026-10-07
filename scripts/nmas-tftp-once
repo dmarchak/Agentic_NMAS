@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Serve one harmless test file, once, to one device, by TFTP (Phase 2's M1, the DATA half).
+
+docs/NSOT_REVERT_BY_RELOAD.md, section 9a: the host's refusals never reached r2 and s1 as an
+answer, so whether a DATA transfer arrives is measured with a real one. This serves a small
+text file of comment lines (nothing a device acts on), generated in memory, under one name, to
+the addresses named, then exits after ONE complete transfer or at the deadline. Every request
+is printed: who asked, which of the host's addresses it asked, which address the reply left
+from, the verdict. Nothing is written anywhere.
+
+    sudo scripts/nmas-tftp-once --client <device address> --name mercury-m1-data.txt
+    sudo scripts/nmas-tftp-once --client <device address> --name mercury-m1-data.txt \\
+        --reply-from routed        # the behaviour before C563, for the comparison
+
+UDP 69 is the ZTP responder's while its socket runs: stop it for the test and start it after
+(`sudo systemctl stop nmas-ztp-responder.socket nmas-ztp-responder.service`, then
+`sudo systemctl start nmas-ztp-responder.socket`). Binding port 69 needs root; the process drops
+to the invoking user (SUDO_UID) as soon as the port is bound.
+
+From the device: `more tftp://<host address>/mercury-m1-data.txt`, or
+`copy tftp://<host address>/mercury-m1-data.txt null:`. Another name gets ERROR 1 (file not
+found) from the address asked, so the device's own words for an ERROR can be read too.
+
+Exit 0: served once; 1: no complete transfer by the deadline; 2: could not start (named).
+"""
+
+import argparse
+import os
+import socket
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+
+def _drop_privileges() -> str:
+    """After the bind: back to the person who ran sudo. Returns who the process runs as."""
+    uid, gid = os.environ.get("SUDO_UID"), os.environ.get("SUDO_GID")
+    if os.geteuid() == 0 and uid and gid:
+        os.setgroups([])
+        os.setgid(int(gid))
+        os.setuid(int(uid))
+    return str(os.geteuid())
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--client", action="append", required=True,
+                    help="an address the file is served to (repeat for several)")
+    ap.add_argument("--name", required=True, help="the file name the device must ask for")
+    ap.add_argument("--bytes", type=int, default=1300,
+                    help="about how large the test file is (default 1300: three blocks)")
+    ap.add_argument("--reply-from", choices=("asked", "routed"), default="asked",
+                    help="answer from the address asked (default) or the routed one")
+    ap.add_argument("--port", type=int, default=69)
+    ap.add_argument("--for", dest="seconds", type=float, default=300.0,
+                    help="give up after this many seconds (default 300)")
+    args = ap.parse_args(argv)
+
+    from modules.nsot import tftp_once
+
+    listener = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+    try:
+        listener.bind(("::", args.port))
+    except PermissionError:
+        print(f"REFUSED: binding udp/{args.port} needs root: run it with sudo.", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print(f"REFUSED: udp/{args.port} could not be bound ({exc}). If the ZTP responder's "
+              "socket holds it: sudo systemctl stop nmas-ztp-responder.socket "
+              "nmas-ztp-responder.service, and start the socket again after.", file=sys.stderr)
+        return 2
+    who = _drop_privileges()
+    payload = tftp_once.test_payload(args.name, args.bytes)
+    print(f"serving {args.name} ({len(payload)} bytes) once to {', '.join(args.client)} on "
+          f"udp/{args.port}, replying from the {args.reply_from} address, for "
+          f"{args.seconds:.0f} s; running as uid {who}")
+    out = tftp_once.serve_once(listener, payload=payload, filename=args.name,
+                               clients=args.client, reply_from=args.reply_from,
+                               deadline_s=args.seconds)
+    listener.close()
+    print(("SERVED once to " + out["to"] + ", asked on " + (out["asked"] or "?") + ": "
+           if out["served"] else "NOT SERVED: ") + out["detail"]
+          + f"; requests seen {len(out['requests'])}; sha256 {out['sha256'][:16]}")
+    return 0 if out["served"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -146,8 +146,8 @@ def server():
     listener.bind(("127.0.0.1", 0))
     stop = threading.Event()
     t = threading.Thread(target=r.serve, args=(listener,), daemon=True,
-                         kwargs={"stop": stop, "handle_fn": lambda p, peer: r.handle(
-                             p, peer, decide_fn=decide_fn, audit=audit)})
+                         kwargs={"stop": stop, "handle_fn": lambda p, peer, **kw: r.handle(
+                             p, peer, decide_fn=decide_fn, audit=audit, **kw)})
     t.start()
     yield listener.getsockname(), state, audit
     stop.set()
@@ -319,8 +319,8 @@ class TestTheSocketSystemdActuallyHandsOver:
         port = listener.getsockname()[1]
         stop = threading.Event()
         t = threading.Thread(target=r.serve, args=(listener,), daemon=True,
-                             kwargs={"stop": stop, "handle_fn": lambda p, peer: r.handle(
-                                 p, peer, decide_fn=decide_fn, audit=audit)})
+                             kwargs={"stop": stop, "handle_fn": lambda p, peer, **kw: r.handle(
+                                 p, peer, decide_fn=decide_fn, audit=audit, **kw)})
         t.start()
         yield ("127.0.0.1", port), state, audit, seen
         stop.set()

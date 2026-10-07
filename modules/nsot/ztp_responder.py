@@ -255,12 +255,15 @@ def handle(packet: bytes, peer: tuple, **kw) -> dict:
 
 
 def _handle(packet: bytes, peer: tuple, *, transfer_socket=None, decide_fn=decide,
-            audit=None) -> dict:
+            audit=None, asked: str = "") -> dict:
     host, peer, family = normalise_peer(peer)
     make = transfer_socket or (lambda: socket.socket(family, socket.SOCK_DGRAM))
     sock = make()
     try:
-        sock.bind(("", 0))
+        # FROM THE ADDRESS THE DEVICE ASKED (C563): bound to ("", 0) the kernel chose the
+        # source by route, and a client that asked another of the host's addresses ignored
+        # every reply (M1, 2026-10-07: r2 asked the logging address, heard the lab-facing one).
+        sock.bind((reply_address(asked, family), 0))
         try:
             op, filename, mode = parse_request(packet)
         # Every refusal is RECORDED, THEN SENT (C169): the serve path writes its
@@ -299,20 +302,77 @@ def _handle(packet: bytes, peer: tuple, *, transfer_socket=None, decide_fn=decid
         sock.close()
 
 
+def ask_for_destination(listener) -> None:
+    """Have *listener* report, with each datagram, which of this host's addresses it was sent
+    to (C563). Both options are set where the socket takes them: systemd's socket is dual-stack
+    IPv6, so an IPv4 device arrives v4-mapped, and Linux reports its destination either way."""
+    options = ((socket.IPPROTO_IP, getattr(socket, "IP_PKTINFO", None)),
+               (socket.IPPROTO_IPV6, getattr(socket, "IPV6_RECVPKTINFO", None)))
+    for level, option in options:
+        if option is None:
+            continue
+        try:
+            listener.setsockopt(level, option, 1)
+        except OSError:
+            pass                                   # not this socket's family
+
+
+def asked_address(ancdata) -> str:
+    """The destination address a datagram carried, from `recvmsg`'s ancillary data, or "".
+    ``in_pktinfo``: ifindex (4), spec_dst (4), addr (4), the header's destination last;
+    ``in6_pktinfo``: addr (16) first. A v4-mapped IPv6 address is returned as IPv4."""
+    import ipaddress
+
+    for level, kind, data in ancdata or ():
+        try:
+            if kind == getattr(socket, "IP_PKTINFO", -1) and len(data) >= 12:
+                return socket.inet_ntop(socket.AF_INET, data[8:12])
+            if kind == getattr(socket, "IPV6_PKTINFO", -1) and len(data) >= 16:
+                ip = ipaddress.ip_address(data[:16])
+                return str(ip.ipv4_mapped or ip)
+        except (OSError, ValueError):
+            continue
+    return ""
+
+
+def reply_address(asked: str, family: int) -> str:
+    """The local address a reply is sent FROM: the one the request was sent to, when known and
+    of the reply's family; otherwise "" (the kernel's routed choice, as before C563)."""
+    if not asked:
+        return ""
+    is_v6 = ":" in asked
+    return asked if (family == socket.AF_INET6) == is_v6 else ""
+
+
+def receive(listener, size: int = 1024) -> tuple:
+    """``(packet, peer, asked)`` for one datagram; *asked* is "" when the socket cannot say."""
+    try:
+        packet, ancdata, _flags, peer = listener.recvmsg(size, socket.CMSG_SPACE(64))
+        return packet, peer, asked_address(ancdata)
+    except (AttributeError, OSError) as exc:
+        if isinstance(exc, socket.timeout):
+            raise
+        packet, peer = listener.recvfrom(size)
+        return packet, peer, ""
+
+
 def serve(listener, *, stop=None, handle_fn=handle, threads=True):
     """Answer requests on *listener* until *stop* is set. Each request is
-    handled on its own thread and its own socket (its TFTP transfer ID)."""
+    handled on its own thread and its own socket (its TFTP transfer ID), sending
+    from the address the request was sent to (C563)."""
     stop = stop or threading.Event()
+    ask_for_destination(listener)
     listener.settimeout(0.5)
     while not stop.is_set():
         try:
-            packet, peer = listener.recvfrom(1024)
+            packet, peer, asked = receive(listener)
         except socket.timeout:
             continue
         if threads:
-            threading.Thread(target=handle_fn, args=(packet, peer), daemon=True).start()
+            threading.Thread(target=handle_fn, args=(packet, peer), kwargs={"asked": asked},
+                             daemon=True).start()
         else:
-            handle_fn(packet, peer)
+            handle_fn(packet, peer, asked=asked)
 
 
 def systemd_socket():

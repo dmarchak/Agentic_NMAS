@@ -236,8 +236,13 @@ it boots, and r2 makes RIP reconverge. In order, the two with no reload first:
   address, not the logging address the device asked. A TFTP client ignores a reply from an
   address it did not ask. Reverse-path filtering is loose (2) on every interface, and ufw
   (enabled) passed every request in. ZTP works because its reservations name the lab-facing
-  address itself. The decisive check is still to run: the same request to the lab-facing
-  address, which this predicts is refused at once.
+  address itself. The operator's capture on r2's own interface then showed every refusal
+  arriving intact (checksums good, one hop through s3), and r2 still reporting "Timed out"
+  (C564): C563 if r2 had asked the logging address, an IOS quirk with errors only if it
+  ignores an ERROR from the very address it asked. What Phase 2 needs is a DATA transfer, so
+  the next measurement is a real one: `scripts/nmas-tftp-once` serves a small file of comment
+  lines once to one device, from the address asked (or `--reply-from routed`, the old way),
+  and answers another name with ERROR 1 from the address asked.
 - **Pinning the source does not by itself cure the timeout,** nor does curing the reply
   remove the need to pin: they are two separate things, and Phase 2 needs both.
 
@@ -254,7 +259,9 @@ it boots, and r2 makes RIP reconverge. In order, the two with no reload first:
   modelled line. Whether it is a sibling document or a section of the monitoring profile is
   settled with its mockup (the Coverage and Apply screens already draw a profile).
 - **P2, the transfer answers from the address it was asked on (C563),** in the code ZTP's
-  responder and the revert's one-shot transfer share, re-measured by M1 once built.
+  responder and the revert's one-shot transfer share. BUILT 2026-10-07
+  (`ztp_responder.receive` and `reply_address`, `modules/nsot/tftp_once.py`); measured on the
+  host by the one-shot DATA test.
 - **Then M1 again,** with the profile deployed to r2 and s1: the request leaves from
   `Loopback0`, is refused at once, and the audit row names the loopback.
 
