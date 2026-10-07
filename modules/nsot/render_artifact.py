@@ -34,7 +34,9 @@ MASK = "•" * 8
 
 #: Any of these appearing in text bound for a device means a masked artifact
 #: leaked into the deploy path.
-MASK_MARKERS = (MASK, "••••", "<masked>", "<missing-secret:")
+#: An unresolved `__secret__:<ref>` marker (C477): a template that did not resolve it (a
+#: network's own older copy) would otherwise send the marker text to the device.
+MASK_MARKERS = (MASK, "••••", "<masked>", "<missing-secret:", "__secret__:")
 
 
 class MaskedContentError(RuntimeError):

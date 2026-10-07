@@ -123,7 +123,7 @@ interface {{ i.name }}
 {% endif %}
 {%- if i.no_shutdown %} no shutdown
 {% endif %}
-{%- for line in i.unmodeled or [] %} {{ line }}
+{%- for line in i.unmodeled or [] %} {{ line | resolve_secrets }}
 {% endfor %}
 {%- endmacro -%}
 
@@ -250,8 +250,8 @@ interface {{ i.name }}
 {%- endmacro -%}
 
 {%- macro unmodeled_block(v) -%}
-{% for u in v.unmodeled %}{{ u.line }}
-{% for c in u.children %}{{ c }}
+{% for u in v.unmodeled %}{{ u.line | resolve_secrets }}
+{% for c in u.children %}{{ c | resolve_secrets }}
 {% endfor %}
 {%- endfor %}
 {%- endmacro -%}

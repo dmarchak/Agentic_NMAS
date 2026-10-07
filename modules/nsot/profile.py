@@ -216,7 +216,8 @@ def secret_refs(data) -> set:
         for v in data:
             out |= secret_refs(v)
     elif isinstance(data, str):
-        out |= set(re.findall(r"__secret__:(\S+)", data))
+        # The reference's own characters only: a marker inside a URL is followed by `@host`.
+        out |= set(re.findall(r"__secret__:([A-Za-z0-9_]+)", data))
     return out
 
 

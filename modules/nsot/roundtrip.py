@@ -180,7 +180,9 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     def _resolve_markers(text):
         """Expand ``__secret__:ref`` markers inside an otherwise opaque string."""
         import re as _re
-        return _re.sub(r"__secret__:(\S+)", lambda m: _secret(m.group(1)), str(text))
+        # The reference's own characters only (C477): a marker inside a URL is followed by
+        # `@host/…`, which `\S+` swallowed into the name, so the line rendered wrong.
+        return _re.sub(r"__secret__:([A-Za-z0-9_]+)", lambda m: _secret(m.group(1)), str(text))
 
     env.globals["secret"] = _secret
     env.filters["resolve_secrets"] = _resolve_markers

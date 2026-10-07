@@ -199,7 +199,7 @@ class BaseParser:
                 })
 
         out = self._apply_schema_defaults(out)
-        return self._redact_secret_echoes(out)
+        return self._ref_unmodeled_secrets(self._redact_secret_echoes(out))
 
     #: Optional top-level keys and their empty values. Emitted even when absent
     #: so host_vars has a stable schema: templates render with StrictUndefined,
@@ -257,6 +257,37 @@ class BaseParser:
         for host in out.get("snmp", {}).get("hosts", []):
             host["options"] = _redact(host.get("options", ""))
         out["snmp"]["settings"] = [_redact(x) for x in out["snmp"].get("settings", [])]
+        return out
+
+    def _ref_unmodeled_secrets(self, out: dict) -> dict:
+        """Every value in a secret position inside an UNMODELLED line becomes a reference
+        (C477, 2026-10-07): a line no handler claims is kept verbatim, so an `archive path`
+        URL's password, an EEM environment URL's or `ip http client password` reached intent,
+        and so the repository, in plain text. The positions are `redact`'s own, the ones every
+        mask uses. The reference's name is the position's label and a hash of the line's
+        context without the value, so a re-extraction of the same line keeps its name; the
+        value goes to `secrets`, which the extraction moves into the credential store."""
+        import hashlib
+
+        from modules.redact import replace_positional_values
+
+        secrets = out.setdefault("secrets", {})
+
+        def _refs(text: str, context: str) -> str:
+            def _one(label, value, prefix):
+                digest = hashlib.sha256(f"{context}\n{prefix}".encode()).hexdigest()[:10]
+                ref = f"unmodeled_{label}_{digest}"
+                secrets[ref] = value
+                return f"{self.SECRET_MARKER}{ref}"
+            return replace_positional_values(text, _one)
+
+        for entry in out.get("unmodeled") or []:
+            head = entry.get("line", "")
+            entry["line"] = _refs(head, head)
+            entry["children"] = [_refs(c, head) for c in entry.get("children") or []]
+        for iface in out.get("interfaces") or []:
+            iface["unmodeled"] = [_refs(line, f"interface {iface.get('name', '')}")
+                                  for line in iface.get("unmodeled") or []]
         return out
 
     def _apply_schema_defaults(self, out: dict) -> dict:
@@ -363,6 +394,10 @@ class BaseParser:
 
     def _h_http(self, block, out, m):
         setting = m.group(2).strip()
+        if re.match(r"(?i)client\s+password\b", setting):
+            # A secret would become part of the setting's KEY (C477): left unmodelled, where
+            # `_ref_unmodeled_secrets` turns the value into a reference.
+            return False
         out.setdefault("http", {})[setting.replace("-", "_")] = not bool(m.group(1))
 
     def _h_forward_protocol(self, block, out, m):

@@ -118,6 +118,10 @@ _POSITIONAL = (
         r"(?i)\b((?:tacacs-server|radius-server)\s+key\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     ("line_password", re.compile(
         r"(?i)^(\s*password\s+(?:\d+\s+)?)" + _VALUE + r"()", re.M)),
+    # `ip http client password [0|7] <secret>` (C477, 2026-10-07): the password `line_password`
+    # names only at a line's start, so this one passed every mask and reached intent verbatim.
+    ("http_client_password", re.compile(
+        r"(?i)\b(ip\s+http\s+client\s+password\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     ("ppp_password", re.compile(
         r"(?i)\b(ppp\s+(?:chap|pap)\s+(?:password|sent-username\s+\S+\s+password)\s+(?:\d+\s+)?)" + _VALUE + r"()")),
     # A URL's user part (C476, 2026-10-05: `https://<user>:<secret>@<host>` in an error left
@@ -150,6 +154,27 @@ def redact_positional(text: str) -> str:
             if _ALREADY.match(token):
                 return match.group(0)
             return match.group(1) + PLACEHOLDER.format(label=label) + match.group(3)
+        return _replace
+
+    for label, pattern in _POSITIONAL:
+        text = pattern.sub(_sub(label), text)
+    return text
+
+
+def replace_positional_values(text: str, replace) -> str:
+    """Each value in a secret position replaced by ``replace(label, value, prefix)``: the same
+    positions `redact_positional` masks, for a caller that keeps the value elsewhere (the
+    parsers turn it into a secret reference, C477). A placeholder, or a `__secret__:` marker
+    already in the position, is left alone."""
+    if not text:
+        return text
+
+    def _sub(label):
+        def _replace(match):
+            token = match.group(2)
+            if _ALREADY.match(token) or token.startswith("__secret__:"):
+                return match.group(0)
+            return match.group(1) + replace(label, token, match.group(1)) + match.group(3)
         return _replace
 
     for label, pattern in _POSITIONAL:
