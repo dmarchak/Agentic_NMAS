@@ -158,6 +158,76 @@ EXEMPLARS = {
         {"setup": ["ip sla 9902", " icmp-echo 192.0.2.14", " frequency 60"],
          "unit": {"chain": [], "line": "ip sla 9902"},
          "teardown": []}],
+    # C531 part 1: the lines a change commonly adds (a drain first). OSPF allows several
+    # processes, so each form gets a SCRATCH process (9199) with its own router id and no
+    # network statement: it forms no adjacency and advertises nothing. IOS may display the
+    # options in another order, so the read-back matches the same words in any order.
+    "ospf.max-metric": [
+        {"setup": ["router ospf 9199", " router-id 192.0.2.199", " " + form],
+         "unit": {"chain": ["router ospf 9199"], "line": " " + form, "any_order": True},
+         "teardown": ["no router ospf 9199"]}
+        for form in ("max-metric router-lsa", "max-metric router-lsa on-startup 300",
+                     "max-metric router-lsa external-lsa",
+                     "max-metric router-lsa include-stub summary-lsa external-lsa")],
+    "ospfv3.max-metric": [
+        {"needs": "ipv6 unicast-routing",
+         "setup": ["ipv6 router ospf 9199", " router-id 192.0.2.199", " " + form],
+         "unit": {"chain": ["ipv6 router ospf 9199"], "line": " " + form, "any_order": True},
+         "teardown": ["no ipv6 router ospf 9199"]}
+        for form in ("max-metric router-lsa", "max-metric router-lsa external-lsa")],
+    # IOS allows ONE `router rip`. On a device without one, a scratch process with no
+    # network statement; on a device with one, its LIVE process, only when asked for by
+    # name (--allow-live-rip), and only the per-interface form on Loopback199, which RIP
+    # does not run on, so no metric the device advertises changes.
+    "rip.offset-list": [
+        {"absent": "router rip",
+         "setup": [LOOP, "router rip", " offset-list 0 out 10 Loopback199"],
+         "unit": {"chain": ["router rip"], "line": " offset-list 0 out 10 Loopback199"},
+         "teardown": ["no router rip", "no " + LOOP]},
+        {"absent": "router rip",
+         "setup": ["router rip", " offset-list 0 out 10"],
+         "unit": {"chain": ["router rip"], "line": " offset-list 0 out 10"},
+         "teardown": ["no router rip"]},
+        {"needs": "router rip", "live": "rip",
+         "setup": [LOOP, "router rip", " offset-list 0 out 10 Loopback199"],
+         "unit": {"chain": ["router rip"], "line": " offset-list 0 out 10 Loopback199"},
+         "teardown": ["router rip", " no offset-list 0 out 10 Loopback199", "no " + LOOP]}],
+    "interface.ospf-cost": [
+        {"setup": [LOOP, " ip ospf cost 199"],
+         "unit": {"chain": [LOOP], "line": " ip ospf cost 199"},
+         "teardown": ["no " + LOOP]},
+        {"needs": "ipv6 unicast-routing",
+         "setup": [LOOP, " ipv6 enable", " ipv6 ospf cost 199"],
+         "unit": {"chain": [LOOP], "line": " ipv6 ospf cost 199"},
+         "teardown": ["no " + LOOP]}],
+    # The interface line names a RIPng process, which IOS creates if it is missing; the
+    # teardown removes the scratch process with the loopback.
+    "interface.ipv6-rip-default-originate": [
+        {"needs": "ipv6 unicast-routing",
+         "setup": [LOOP, " ipv6 enable", " ipv6 rip NMASPROBE enable",
+                   " ipv6 rip NMASPROBE default-information originate" + metric],
+         "unit": {"chain": [LOOP],
+                  "line": " ipv6 rip NMASPROBE default-information originate" + metric},
+         "teardown": ["no " + LOOP, "no ipv6 router rip NMASPROBE"]}
+        for metric in ("", " metric 10")],
+    "interface.shutdown": [{
+        "setup": [LOOP, " shutdown"],
+        "unit": {"chain": [LOOP], "line": " shutdown"},
+        "teardown": ["no " + LOOP]}],
+    # Routes to Null0 for documentation prefixes: nothing is sent anywhere. Refused on a
+    # device that redistributes static routes, where the scratch would be advertised.
+    "global.ip-route": [
+        {"not_with": r"^\s*redistribute static\b",
+         "setup": ["ip route 192.0.2.128 255.255.255.192 Null0" + distance],
+         "unit": {"chain": [], "line": "ip route 192.0.2.128 255.255.255.192 Null0" + distance},
+         "teardown": []}
+        for distance in ("", " 250")],
+    "global.ipv6-route": [
+        {"needs": "ipv6 unicast-routing", "not_with": r"^\s*redistribute static\b",
+         "setup": ["ipv6 route 2001:DB8:FFFF::/48 Null0" + distance],
+         "unit": {"chain": [], "line": "ipv6 route 2001:DB8:FFFF::/48 Null0" + distance},
+         "teardown": []}
+        for distance in ("", " 250")],
     "bgp.neighbor-remote-as": [{
         "needs": "router bgp", "live": True,
         "setup": ["{bgp}", " neighbor 192.0.2.99 remote-as 64999",
@@ -223,6 +293,13 @@ def _locate(unit: dict, config: str):
     for line, c in entries:
         if list(c) == chain and line.strip() == typed:
             return {"chain": chain, "line": line}
+    if unit.get("any_order"):
+        # The same words in another order (IOS orders `max-metric router-lsa`'s options its
+        # own way): the line as displayed is the one measured.
+        words = sorted(typed.split())
+        for line, c in entries:
+            if list(c) == chain and sorted(line.split()) == words:
+                return {"chain": chain, "line": line}
     if not unit.get("match_in_readback"):
         return None
     for line, c in entries:
@@ -256,12 +333,32 @@ def located_key(unit: dict, config: str) -> str:
     return shape.key if shape else ""
 
 
-def skip_reason(ex: dict, bgp: str, allow_live_bgp: bool) -> str:
+def _has(config: str, header: str) -> bool:
+    """Does *config* hold the global line *header*, exactly?"""
+    return any(line.rstrip() == header for line in (config or "").splitlines())
+
+
+def skip_reason(ex: dict, bgp: str, allow_live_bgp: bool, config: str = "",
+                allow_live_rip: bool = False) -> str:
     """Why this exemplar is NOT MEASURED on this device, or "". Never a
     result about the platform."""
-    if ex.get("needs") == "router bgp" and not bgp:
+    import re
+    needs, absent = ex.get("needs"), ex.get("absent")
+    if needs == "router bgp" and not bgp:
         return "not measured: this device runs no BGP, and IOS allows only one process"
-    if ex.get("live") and not allow_live_bgp:
+    if needs and needs != "router bgp" and not _has(config, needs):
+        return f"not measured: this device has no `{needs}`"
+    if absent and _has(config, absent):
+        return (f"not measured here: this device has `{absent}`, and IOS allows only one, so "
+                "no scratch process can be made (its live exemplar measures it)")
+    if ex.get("not_with") and re.search(ex["not_with"], config or "", re.M):
+        return ("not measured: this device redistributes static routes, so the scratch route "
+                "would be advertised")
+    if ex.get("live") == "rip" and not allow_live_rip:
+        return ("not measured: it adds an offset-list to this device's LIVE RIP process (on "
+                "Loopback199, which RIP does not run on), which this run was not allowed to "
+                "do (--allow-live-rip)")
+    if ex.get("live") is True and not allow_live_bgp:
         return ("not measured: it adds a neighbour to this device's LIVE BGP process "
                 f"({bgp}), which this run was not allowed to do (--allow-live-bgp)")
     return ""
@@ -318,12 +415,14 @@ def plan_for(key: str, bgp: str = LIVE_BGP) -> list:
     for ex in EXEMPLARS[key]:
         unit = {"chain": _fill(ex["unit"]["chain"], bgp), "line": ex["unit"]["line"],
                 **({"match_in_readback": True} if ex["unit"].get("match_in_readback") else {}),
+                **({"any_order": True} if ex["unit"].get("any_order") else {}),
                 **({"companions": list(ex["unit"]["companions"])}
                    if ex["unit"].get("companions") else {})}
         out.append({"setup": _fill(ex["setup"], bgp), "unit": unit,
                     "program": negation_program([unit]),
                     "teardown": _fill(ex["teardown"], bgp), "needs": ex.get("needs", ""),
-                    "live": bool(ex.get("live"))})
+                    "absent": ex.get("absent", ""), "not_with": ex.get("not_with", ""),
+                    "live": ex.get("live") or False})
     return out
 
 
@@ -375,6 +474,9 @@ def main() -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--allow-live-bgp", action="store_true",
                     help="measure the BGP shape in the device's own live process")
+    ap.add_argument("--allow-live-rip", action="store_true",
+                    help="measure the RIP offset-list in the device's own live process (on "
+                         "Loopback199, which RIP does not run on)")
     args = ap.parse_args()
 
     from modules.nsot.removal import SHAPES
@@ -389,7 +491,8 @@ def main() -> int:
               "would send, and the teardown:\n")
         for key in keys:
             for ex in plan_for(key):
-                print(f"{key}" + ("  (LIVE: runs only with --allow-live-bgp)" if ex["live"]
+                print(f"{key}" + (f"  (LIVE: runs only with --allow-live-{'rip' if ex['live'] == 'rip' else 'bgp'})"
+                                  if ex["live"]
                                   else f"  (needs {ex['needs']})" if ex["needs"] else ""))
                 print("  add:      " + " / ".join(ex["setup"]))
                 print("  remove:   " + " / ".join(ex["program"])
@@ -443,7 +546,7 @@ def main() -> int:
                 device_ops.note(f"probe {key}")
                 rows = []
                 for ex in plan_for(key, bgp or LIVE_BGP):
-                    why = skip_reason(ex, bgp, args.allow_live_bgp)
+                    why = skip_reason(ex, bgp, args.allow_live_bgp, start, args.allow_live_rip)
                     if why:
                         rows.append({"result": "unmeasured", "detail": why})
                         continue

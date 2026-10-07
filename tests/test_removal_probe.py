@@ -110,6 +110,67 @@ class TestTheScriptItself:
         assert "save_config" not in body and "write memory" not in body
 
 
+class TestTheChangeShapes:
+    """C531 part 1 (the operator, 2026-10-06): the lines a change commonly adds, so undoing
+    it is one action. Each is measured before anything is allowed; r2's real golden is the
+    device config the preconditions read (it runs RIP and IPv6, and redistributes no static
+    route)."""
+
+    KEYS = ("ospf.max-metric", "ospfv3.max-metric", "rip.offset-list", "interface.ospf-cost",
+            "interface.ipv6-rip-default-originate", "interface.shutdown", "global.ip-route",
+            "global.ipv6-route")
+
+    def test_each_shape_is_probed_and_allows_nothing_until_measured(self):
+        for key in self.KEYS:
+            assert key in P.EXEMPLARS and P.plan_for(key), key
+            dialects = RM.measured()["by_dialect"]
+            assert all(key not in rows for rows in dialects.values()), key
+
+    def test_every_max_metric_form_is_its_shape(self):
+        for form in ("max-metric router-lsa", "max-metric router-lsa on-startup 300",
+                     "max-metric router-lsa external-lsa include-stub summary-lsa"):
+            shape = RM.shape_for(["router ospf 1"], " " + form, "leaf")
+            assert shape is not None and shape.key == "ospf.max-metric", form
+        assert RM.shape_for(["ipv6 router ospf 1"], " max-metric router-lsa",
+                            "leaf").key == "ospfv3.max-metric"
+        assert RM.shape_for(["router rip"], " offset-list 0 out 10 GigabitEthernet3",
+                            "leaf").key == "rip.offset-list"
+
+    def test_a_live_rip_is_measured_only_when_asked_and_a_scratch_only_without_one(self):
+        live, = [x for x in P.plan_for("rip.offset-list") if x["live"] == "rip"]
+        scratch = [x for x in P.plan_for("rip.offset-list") if x["absent"]]
+        why = P.skip_reason(live, "", False, R2, allow_live_rip=False)
+        assert "LIVE RIP process" in why and "--allow-live-rip" in why
+        assert P.skip_reason(live, "", False, R2, allow_live_rip=True) == ""
+        for ex in scratch:
+            assert "IOS allows only one" in P.skip_reason(ex, "", False, R2)
+            assert P.skip_reason(ex, "", False, "hostname x\n") == ""
+        # The live form never offsets a route the device advertises: only Loopback199.
+        assert all("Loopback199" in line for line in live["setup"] if "offset-list" in line)
+
+    def test_a_static_route_is_not_added_where_statics_are_redistributed(self):
+        for ex in P.plan_for("global.ip-route"):
+            assert P.skip_reason(ex, "", False, R2) == ""
+            redistributing = R2 + "router ospf 1\n redistribute static subnets\n"
+            assert "redistributes static routes" in P.skip_reason(ex, "", False, redistributing)
+            assert " Null0" in ex["setup"][0] and "192.0.2." in ex["setup"][0]
+
+    def test_a_needed_feature_missing_is_not_measured(self):
+        ex = P.plan_for("global.ipv6-route")[0]
+        assert P.skip_reason(ex, "", False, "hostname x\n") == \
+            "not measured: this device has no `ipv6 unicast-routing`"
+
+    def test_options_displayed_in_another_order_are_found_as_displayed(self):
+        config = R2 + ("router ospf 9199\n router-id 192.0.2.199\n"
+                       " max-metric router-lsa external-lsa include-stub summary-lsa\n")
+        unit = {"chain": ["router ospf 9199"],
+                "line": " max-metric router-lsa include-stub summary-lsa external-lsa",
+                "any_order": True}
+        assert P._locate(unit, config)["line"] == \
+            " max-metric router-lsa external-lsa include-stub summary-lsa"
+        assert P._locate(dict(unit, any_order=False), config) is None
+
+
 class TestALiveProcessIsNotAScratch:
     """The operator (2026-09-28): IOS allows one `router bgp`, so the BGP
     shape either adds a neighbour to the device's LIVE process or cannot be

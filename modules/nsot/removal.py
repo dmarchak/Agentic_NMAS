@@ -149,6 +149,22 @@ SHAPES = (
     # it (the probe declares that line a companion), and nothing else: exact
     # means exactly the operation and its schedule.
     Shape("global.ip-sla-operation", "global", "stanza", r"^ip sla \d+$"),
+    # The lines a change commonly ADDS, so that undoing it is one action (C531 part 1, the
+    # operator 2026-10-06: undoing r2's and s2's drain took four hand edits). The drain lines
+    # first: OSPF's stub-router advertisement in every form, a RIP offset, an OSPF cost, a
+    # RIPng default origination; then a static route and `shutdown`.
+    Shape("ospf.max-metric", "router ospf", "leaf", r"^max-metric router-lsa( .+)?$"),
+    Shape("ospfv3.max-metric", "ipv6 router ospf", "leaf", r"^max-metric router-lsa( .+)?$"),
+    Shape("rip.offset-list", "router rip", "leaf", r"^offset-list \S+ (in|out) \d+( \S+)?$"),
+    Shape("interface.ospf-cost", "interface", "leaf", r"^(ip|ipv6) ospf cost \d+$"),
+    Shape("interface.ipv6-rip-default-originate", "interface", "leaf",
+          r"^ipv6 rip \S+ default-information (originate|only)( metric \d+)?$"),
+    Shape("interface.shutdown", "interface", "leaf", r"^shutdown$"),
+    # Measured like every shape; a static route stays REFUSED by the repair-path class
+    # (`MANAGEMENT_GLOBAL`: it may be the manager's path) until that refusal is narrowed to the
+    # routes that can be (C531 part 2).
+    Shape("global.ip-route", "global", "leaf", r"^ip route .+$"),
+    Shape("global.ipv6-route", "global", "leaf", r"^ipv6 route .+$"),
 )
 
 #: What a measurement found, in words.
@@ -188,7 +204,9 @@ def _in_context(context: str, chain: tuple) -> bool:
     if len(chain) != 1:
         return False
     return chain[0].startswith({"interface": "interface ", "ip access-list": "ip access-list ",
-                                "router bgp": "router bgp "}.get(context, "\0"))
+                                "router bgp": "router bgp ", "router ospf": "router ospf ",
+                                "ipv6 router ospf": "ipv6 router ospf ",
+                                "router rip": "router rip"}.get(context, "\0"))
 
 
 def shape_for(chain, line: str, kind: str):
