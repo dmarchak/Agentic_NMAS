@@ -157,17 +157,16 @@ def build(*, action: str, summary: str, targets: list, what_not: list,
             "confirm": confirm}
 
 
-#: What the apply compares, stated exactly (register C78). This gate read
-#: "device unchanged since capture: re-read at apply", and the apply re-reads
-#: the STORED capture, never the device: the pipeline reads the device at its
-#: pre-change snapshot and compares it with nothing. A sentence claiming a
-#: check the code does not make is the finding, so it says what is checked
-#: and what is not.
-CAPTURE_GATE = "capture unchanged since this preview"
+#: What the apply compares, stated exactly (register C78). This gate once read
+#: "device unchanged since capture: re-read at apply" while the apply re-read
+#: only the STORED capture; it then said the device was not compared. Since C78
+#: (2026-10-07) both are: the stored capture's hash, and the device's running
+#: config, read before anything is sent, against that capture.
+CAPTURE_GATE = "device and capture unchanged since this preview"
 CAPTURE_GATE_DETAIL = ("the stored capture is re-read at apply, and a change to it "
-                       "refuses this device. The DEVICE is not compared with it: a "
-                       "change made on the device since its capture is not detected "
-                       "here, so save its golden first")
+                       "refuses this device. The device's running config, read before "
+                       "anything is sent, is compared with that capture: a device changed "
+                       "since its capture is skipped as drifted, with nothing sent")
 
 
 BUSY_GATE = "no other operation holds this device"

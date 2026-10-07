@@ -265,6 +265,19 @@ def configs_equivalent(left: str, right: str) -> dict:
             "only_left": only_left, "only_right": only_right}
 
 
+def stored_is_device(stored: str, read: str) -> dict:
+    """Is a STORED config (a golden, a capture) the state a device was READ in?
+
+    :func:`configs_equivalent` over both sides with their provenance comments out, the one
+    comparison for this question: the freshness check asks it of Oxidized's copy, and the
+    deploy asks it of the running config read at apply (C78). ``only_left`` is the stored
+    side's, ``only_right`` the device's. Each store stamps its own provenance comment (a
+    golden's header, Oxidized's metadata), and `strip_for_diff` keeps every comment but
+    NMAS's own, so without this the two sides differ on a comment on every device."""
+    return configs_equivalent("\n".join(normalize.strip_provenance_comments(stored or "")),
+                              "\n".join(normalize.strip_provenance_comments(read or "")))
+
+
 def canonical_lines(text: str) -> list:
     """A config as path-qualified lines, for a diff a PERSON reads.
 

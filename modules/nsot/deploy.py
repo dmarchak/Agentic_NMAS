@@ -1559,8 +1559,9 @@ class CircuitBreaker:
         self.tripped_after = None
 
     def counts(self, outcome: dict) -> bool:
-        """Whether *outcome* (one device's result) is a failure this breaker counts."""
-        return (outcome.get("outcome") != DEPLOYED
+        """Whether *outcome* (one device's result) is a failure this breaker counts. A
+        device found drifted at apply (C78) is someone touching a box, with nothing sent."""
+        return (outcome.get("outcome") not in (DEPLOYED, SKIPPED_DRIFTED)
                 or (outcome.get("verify") or {}).get("ok") is False)
 
     def record_failure(self, device: str) -> bool:
@@ -1609,6 +1610,40 @@ SKIPPED_NOT_SELECTED = "skipped_not_selected"
 REFUSED = "refused"
 FAILED = "failed"
 UNATTEMPTED = "unattempted"
+
+
+class DeviceMoved(Exception):
+    """A device read at apply is not the capture its program was computed against (C78);
+    the message is `device_moved_reason`'s."""
+
+
+def device_moved_reason(capture: str, running: str) -> str:
+    """Why a device read at apply is not the capture its program was computed against, or
+    ``""`` when it is (C78).
+
+    The apply's "fresh" capture is the STORED one the preview used, so its hash check
+    catches a golden that moved and nothing else; a change made on the device since its
+    capture would get a program computed against a stale capture (merge-only can omit a
+    line the device has lost; a restore at HEAD sends nothing by construction). The
+    running config the pipeline reads before anything is sent (stage 4), or the read of
+    a device with nothing to send, is compared with it by `roundtrip.stored_is_device`,
+    the freshness check's comparison. Both operands are named by the lines that differ,
+    a few of each, masked: the raw texts' hashes would differ on volatile lines alone."""
+    from modules.nsot import roundtrip
+    from modules.redact import redact_text
+
+    result = roundtrip.stored_is_device(capture, running)
+    if result["equal"]:
+        return ""
+
+    def few(lines):
+        # A top-level line is its section's child under an empty header (" :: line").
+        shown = "; ".join(redact_text(line.removeprefix(" :: ")) for line in lines[:3])
+        return f"{len(lines)} ({shown}{' …' if len(lines) > 3 else ''})" if lines else "0"
+    return ("the device is not the capture this program was computed against: lines only "
+            f"in the capture {few(result['only_left'])}, only on the device "
+            f"{few(result['only_right'])}. Nothing was sent. Capture the device (its "
+            "golden becomes what it runs now), then preview again")
 
 
 def plan_batch(artifacts: list, confirmed: dict, fresh_captures: dict) -> dict:

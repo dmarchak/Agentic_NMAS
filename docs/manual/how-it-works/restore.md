@@ -58,19 +58,21 @@ answers from git and the credential store. The preview opens no device session:
    unchanged (a line that would rewrite an account the device holds now refuses the device); no
    secret re-added (a credential or community the moment had and the device no longer holds
    waits for your reason, with its program shown); no other operation holds the device; and,
-   at apply, the stored capture unchanged. A baseline older than a rotation would otherwise put
+   at apply, the device and its stored capture unchanged. A baseline older than a rotation would otherwise put
    back a password the rotation retired.
 7. **State the intent half.** Read: the moment's intent and today's committed intent at HEAD.
    Sent: nothing. Recorded: nothing. Each device says whether its intent is unchanged, will be
    set back to the moment's by a forward commit, or will be removed (un-onboarding).
 
-**The device itself is not compared.** The program is the difference between the moment's
-golden and today's golden, never the device as it runs now. So restoring a device to its golden
-now (HEAD) sends nothing by construction, and a device with nothing to send is still read and
-its running configuration recorded as its golden (see [The run](#the-run)): a hand change on it is
-recorded, not undone. To undo a hand change, capture the device first (see
-[Capture and Save All](capture)), then restore from the point before the change; a line the
-hand change added is residue, which only a [removal](removal) takes away.
+**The program comes from the goldens; the device is compared before anything is sent.** The
+program is the difference between the moment's golden and today's golden, never the device as it
+runs now. At apply the device's running configuration is read and compared with today's golden
+(as a deploy's `pre_snapshot` does, and on the read a device with nothing to send already gets):
+a device changed by hand since its capture is skipped as drifted with nothing sent, its result
+naming the lines that differ, rather than restored over a program that does not know about the
+change. To undo a hand change, capture the device first (see [Capture and Save All](capture)),
+then restore from the point before the change; a line the hand change added is residue, which
+only a [removal](removal) takes away.
 
 ## The run
 
@@ -150,7 +152,7 @@ why.
 
 - It removes nothing: residue stays. Removal is chosen on a deploy, line by line (Mode B).
 - It does not read the device to compute the program, so it does not undo a change made on the
-  device since its last capture.
+  device since its last capture: that device is skipped as drifted, with nothing sent.
 - It never rolls back templates, bindings or approvals, and never rewrites an account's
   credential.
 - It does not re-apply certificate chains, licence UDI or banners.

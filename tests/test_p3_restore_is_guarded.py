@@ -201,7 +201,7 @@ class TestTheRestoresOwnGates:
             "no secret re-added": "pass",                               # C79
             "this ref's intent usable today": "not_applicable",
             "lines needing an authorisation (dangerous, or a secret re-added)": "pass",
-            "capture unchanged since this preview": "at_apply",
+            "device and capture unchanged since this preview": "at_apply",
             "no other operation holds this device": "at_apply"}      # C99
 
     def test_a_device_with_no_stored_config_reached_nothing_else(self, monkeypatch):

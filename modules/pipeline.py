@@ -258,6 +258,12 @@ class PipelineContext:
     #: rollback undoes them by re-adding the device's own lines, never by
     #: `rollback_commands`, which would read a `no X` as never applied.
     removals:            dict = None
+    #: ip -> the STORED capture the confirmed program was computed against (C78), or
+    #: ``None`` when the caller computed against nothing stored. Stage 4 compares the
+    #: running config it reads with it and sends nothing to a device that differs.
+    confirmed_capture:   dict = None
+    #: ip -> why stage 4 found the device is not that capture (`deploy.device_moved_reason`).
+    drifted:             dict = field(default_factory=dict)
 
     # ---- Bookkeeping -----------------------------------------------------
     stages_completed: list[str] = field(default_factory=list)
@@ -731,6 +737,23 @@ def _stage_pre_snapshot(ctx: PipelineContext) -> None:
                 _record_pre_change(ctx, dev, running_cfg)
             else:
                 log.warning("pipeline[4/pre_snapshot]: could not fetch running-config for %s", hostname)
+
+            # THE DEVICE AGAINST THE CAPTURE THE PROGRAM WAS COMPUTED FROM (C78). The
+            # confirm hash covers the stored capture only; a device changed by hand since
+            # would get a program computed against a stale one. Unreadable is not a match.
+            capture = (ctx.confirmed_capture or {}).get(ip)
+            if capture is not None:
+                if not running_cfg:
+                    errors.append(f"{hostname} ({ip}): its running config could not be read, "
+                                  "so it could not be compared with the capture the program "
+                                  "was computed against; nothing was sent")
+                    continue
+                from modules.nsot.deploy import device_moved_reason
+                moved = device_moved_reason(capture, running_cfg)
+                if moved:
+                    ctx.drifted[ip] = moved
+                    errors.append(f"{hostname} ({ip}): {moved}")
+                    continue
 
             ctx.pre_snapshots[ip] = snap
             nbr = snap.get("routing_neighbors", {})

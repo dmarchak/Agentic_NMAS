@@ -1103,7 +1103,7 @@ def run_targets(list_name: str, targets: list, data: dict,
 
 
 def _measure_unchanged(list_name: str, device: dict, hostname: str,
-                       target_config: str) -> list:
+                       target_config: str, capture: str = None) -> list:
     """Read a device that needs no changes, so its state is measured.
 
     Returns a ``golden_pending`` entry shaped exactly like the one stage 8.5
@@ -1111,6 +1111,10 @@ def _measure_unchanged(list_name: str, device: dict, hostname: str,
     deploy — nothing was sent — but it does mean this device contributes no
     measurement, and :func:`_baseline_earned` then declines the tag rather than
     assuming.
+
+    "No changes" was decided against *capture*, the stored one: a read that is not
+    that capture raises `DeviceMoved` before anything is staged (C78), since a restore
+    at HEAD of a device changed by hand otherwise sends nothing and reads as done.
 
     The capture is staged the same way stage 8.5 stages its own, so a crash
     between here and the batch commit does not lose it.
@@ -1135,6 +1139,11 @@ def _measure_unchanged(list_name: str, device: dict, hostname: str,
         return []
     if not config:
         return []
+    if capture is not None:
+        from modules.nsot.deploy import DeviceMoved, device_moved_reason
+        moved = device_moved_reason(capture, config)
+        if moved:
+            raise DeviceMoved(moved)
 
     repo = _os.path.join(get_list_data_dir(list_name), "config_repo")
     netbox_id = device.get("_netbox_id")
@@ -1184,8 +1193,8 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
     """Run the pipeline for a single device. The only path that connects."""
     import threading
 
-    from modules.nsot.deploy import (DEPLOYED, FAILED, assert_merge_only,
-                                     merge_commands, prepare_for_deploy)
+    from modules.nsot.deploy import (DEPLOYED, FAILED, SKIPPED_DRIFTED, DeviceMoved,
+                                     assert_merge_only, merge_commands, prepare_for_deploy)
     from modules.pipeline import PipelineContext, PipelineRunner
 
     artifact = entry["artifact"]
@@ -1239,15 +1248,21 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
         # baseline tag is a claim about the device now, so the device is read
         # once here and the capture handed to the batch like any other. Without
         # it this device is *inferred* to match and contributes no measurement,
-        # which is the distinction the tag rule turns on.
+        # which is the distinction the tag rule turns on. A read that is not that
+        # capture is the device changed by hand since (C78): skipped as drifted.
+        try:
+            measured = _measure_unchanged(list_name, device, hostname, prepared["config"],
+                                          capture=captured)
+        except DeviceMoved as moved:
+            return {"device": hostname, "outcome": SKIPPED_DRIFTED, "stage": "read",
+                    "reason": str(moved)}
         return {"device": hostname, "outcome": DEPLOYED, "stage": "",
                 "reason": "nothing to change", "commands": [],
                 "ref_intent": getattr(artifact, "ref_intent", None),
                 "ref_intent_text": getattr(artifact, "ref_intent_text", ""),
                 "un_onboard": getattr(artifact, "un_onboard", False),
                 "device_changed": False,
-                "golden_pending": _measure_unchanged(
-                    list_name, device, hostname, prepared["config"])}
+                "golden_pending": measured}
     try:
         # The ADDITIONS are merge-only against intent; the removals are held to
         # their own provenance (each is a selected unit on the capture, measured
@@ -1321,6 +1336,9 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
                 "reason": "a declared effect no longer fits the program: "
                           + "; ".join(declare_problems)}
     ctx.expected_effects = {device.get("ip", ""): effects}
+    # The capture the program was computed against, for stage 4 to compare the device
+    # with before anything is sent (C78).
+    ctx.confirmed_capture = {device.get("ip", ""): captured}
 
     try:
         result = PipelineRunner(ctx).run()
@@ -1337,6 +1355,12 @@ def _deploy_one(entry, list_name: str, device_rows: dict,
             close_persistent_connection(ip, ctx.connections_pool, ctx.pool_lock)
 
     from modules.nsot.deploy import command_fingerprint
+
+    drifted = (result.drifted or {}).get(device.get("ip", ""))
+    if drifted:
+        # Stopped at stage 4, before any session sent anything: someone touched the box.
+        return {"device": hostname, "outcome": SKIPPED_DRIFTED, "stage": "pre_snapshot",
+                "reason": drifted}
 
     failed_stage = result.stages_failed[-1] if result.stages_failed else ""
     # What actually landed. A failed push does not mean an unchanged device.

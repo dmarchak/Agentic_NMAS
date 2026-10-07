@@ -54,7 +54,9 @@ device session:
    `no router ospf|bgp|eigrp|isis`, `reload`, `erase nvram`, `crypto key zeroize`), each
    authorised by its exact text with your reason; blocked change (the program does not re-send
    a change that was rolled back); and no other operation holds the device. Two more are
-   checked at apply: the stored capture is unchanged, and no credential changes.
+   checked at apply: the device and its stored capture are unchanged since the preview (the
+   capture by its hash, the device by reading it before anything is sent; see `pre_snapshot`
+   below), and no credential changes.
 
 To authorise a dangerous line you tick its box and type a reason (at least three words, not a
 copy of the line); the device is planned again so its hash covers the reason. The confirm is
@@ -83,7 +85,9 @@ peer. That person is the actor recorded everywhere below.
    nothing. Recorded: nothing. The mask and credential checks run again, every selected removal
    must carry a reason of the right shape, and every addition must be a line of the render
    (merge-only). A device with nothing to send is read once over SSH (`show running-config`)
-   so it counts as measured, and its pipeline does not run.
+   so it counts as measured, and its pipeline does not run; that read is compared with the
+   stored capture as `pre_snapshot` compares its own, and a device that differs is skipped as
+   drifted.
 
 ## The run, stage by stage
 
@@ -105,11 +109,16 @@ the run ends. Its stages, in the order the code declares them:
    device answers for (`show bgp all summary`, `show ip ospf neighbor`,
    `show ospfv3 neighbor`, `show ip protocols` for RIP and others), the interface states,
    `show ip route summary`, and `show running-config`. Sent: nothing. Recorded: the running
-   configuration as the pre-change snapshot, for a rollback. A device that cannot be read
-   reliably here is refused with nothing sent. If the running configuration alone cannot be
-   read, the run continues without it, and a rollback then has nothing to build from. Known
-   gap: the snapshot is read through, and stored in the `pre_change/` folder of, the list the
-   server has selected, not the list the deploy carries.
+   configuration as the pre-change snapshot, for a rollback, kept on the run and written to
+   the `pre_change/` folder of the list the deploy carries. A device that cannot be read
+   reliably here is refused with nothing sent. **The running configuration is then compared
+   with the stored capture the program was computed against** (section by section, the
+   golden's header, the device's banner and its self-signed certificate left out; the same
+   comparison the drift check makes of Oxidized's copy). A device that differs was changed
+   since its capture: it is skipped as drifted with nothing sent, and its result names how
+   many lines are only in the capture and only on the device, the first few of each, masked.
+   Capture it, then preview again. A running configuration that cannot be read cannot be
+   compared, so that device is refused with nothing sent.
 5. `config_diff`. Read: the program and the pre-change running configuration. Sent: nothing.
    Recorded: the counts, in the audit entry. It compares each program line's text with the
    running configuration's lines (by text, not by section) and refuses a program whose every
@@ -241,8 +250,9 @@ proceed. After `deploy_verify_failure_limit` failed devices (default 2) the circ
 trips and the remaining devices are not attempted, each saying so. A failed device is one that
 did not end deployed with its verify passed: a push the device rejected, a refusal on the way to
 the device, a verify that raised, or a verify that did not pass (intent unmet, unreadable after
-the change, a sent line not read back). A drifted device is skipped before the batch starts and
-does not count. Sequential on purpose: a bad
+the change, a sent line not read back). A drifted device (its stored capture moved since the
+preview, or the device changed since its capture) is skipped with nothing sent and does not
+count. Sequential on purpose: a bad
 change stops after the first devices it breaks, instead of reaching the whole fleet at once.
 Today's wizard waits for the whole batch in one request, with the in-flight panel showing what
 runs; the v2 Apply runs as a job, answering at once and drawing each device's start and finish

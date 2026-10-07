@@ -293,32 +293,64 @@ class TestTheRefusalNamesWhatItCompared:
 
 
 class TestOnlyOneConditionProducesThisOutcome:
-    """Asked directly: is `skipped_drifted` reused for a second condition, so
-    that its reason text is attached to the wrong one?
+    """Asked directly: is `skipped_drifted` reused for a condition that is not
+    drift, so that its reason text is attached to the wrong one?
 
-    **No.** One producer. The command-fingerprint mismatch in `/deploy/apply`
-    produces `outcome: "refused"` with its own reason and `continue`s, so the
-    device never reaches `plan_batch` and cannot appear as drifted.
+    **No.** Its producers are the two comparisons that mean "the device is not
+    what was confirmed", each with its own reason: the stored capture's hash in
+    `plan_batch`, and since C78 (2026-10-07) the device read at apply against
+    that capture in `_deploy_one` (stage 4's read, and a device with nothing to
+    send's read), whose reason is `device_moved_reason`'s. The command-fingerprint
+    mismatch in `/deploy/apply` produces `outcome: "refused"` with its own reason
+    and `continue`s, so the device never reaches `plan_batch` and cannot appear
+    as drifted.
     """
 
-    def test_exactly_one_site_produces_it(self):
+    def test_exactly_the_drift_comparisons_produce_it(self):
         import ast
         import os
 
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        sites = []
+        producers, literals = [], []
         for rel in ("modules/nsot/deploy.py", "routes/deploy.py",
                     "modules/pipeline.py"):
             tree = ast.parse(open(os.path.join(root, rel), encoding="utf-8").read())
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Name) and node.id == "SKIPPED_DRIFTED":
-                    sites.append(f"{rel}:{node.lineno}")
-                if (isinstance(node, ast.Constant)
-                        and node.value == "skipped_drifted"):
-                    sites.append(f"{rel}:{node.lineno} (literal)")
-        producers = [s for s in sites if "(literal)" not in s]
-        assert len(producers) == 2, (
-            f"expected the definition and one use, found {producers}")
+            for fn in ast.walk(tree):
+                if not isinstance(fn, ast.FunctionDef):
+                    continue
+                for node in ast.walk(fn):
+                    if isinstance(node, ast.Dict) and any(
+                            isinstance(k, ast.Constant) and k.value == "outcome"
+                            and isinstance(v, ast.Name) and v.id == "SKIPPED_DRIFTED"
+                            for k, v in zip(node.keys, node.values)):
+                        reason = next((v for k, v in zip(node.keys, node.values)
+                                       if isinstance(k, ast.Constant) and k.value == "reason"),
+                                      None)
+                        said = ast.unparse(reason).lstrip("f").strip("'\"")
+                        producers.append((rel, fn.name, said[:30]))
+            literals += [f"{rel}:{n.lineno}" for n in ast.walk(tree)
+                         if isinstance(n, ast.Constant) and n.value == "skipped_drifted"]
+        assert sorted(producers) == [
+            ("modules/nsot/deploy.py", "plan_batch",
+             "the capture you confirmed agai"),
+            ("routes/deploy.py", "_deploy_one", "drifted"),
+            ("routes/deploy.py", "_deploy_one", "str(moved)")], producers
+        # The constant's own definition is the one place the string is spelled out.
+        assert len(literals) == 1 and literals[0].startswith("modules/nsot/deploy.py:"), (
+            f"the outcome spelled out rather than named: {literals}")
+
+    def test_the_device_comparisons_reason_is_the_drift_reason(self):
+        """`drifted` is `ctx.drifted`, which stage 4 fills from `device_moved_reason` only,
+        and `moved` is the `DeviceMoved` that `_measure_unchanged` raises with it."""
+        import inspect
+
+        import modules.pipeline as P
+        import routes.deploy as rd
+
+        stage = inspect.getsource(P._stage_pre_snapshot)
+        assert "moved = device_moved_reason(capture, running_cfg)" in stage
+        assert "ctx.drifted[ip] = moved" in stage
+        assert "raise DeviceMoved(moved)" in inspect.getsource(rd._measure_unchanged)
 
     def test_a_command_hash_mismatch_is_refused_not_drifted(self):
         """So a stale `command_hash` can never surface wearing this name."""

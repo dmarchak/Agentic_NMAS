@@ -143,7 +143,7 @@ class TestTheDeployScreen:
     def test_the_apply_time_checks_are_never_drawn_as_passed(self, monkeypatch):
         plan = P.deploy_plan(monkeypatch)
         gates = {g["name"]: g["state"] for g in plan["preview"]["targets"][0]["gates"]}
-        assert gates["capture unchanged since this preview"] == "at_apply"
+        assert gates["device and capture unchanged since this preview"] == "at_apply"
         assert gates["credential unchanged"] == "at_apply"
 
     def test_every_blocking_condition_has_a_gate_by_name(self, monkeypatch):
@@ -169,16 +169,17 @@ class TestTheDeployScreen:
 
 class TestTheCaptureGateSaysWhatItCompares:
     """C78. The gate read "device unchanged since capture: re-read at apply",
-    and the apply re-reads the STORED capture, never the device. Both
-    previews and the deploy wizard's summary said so. The sentence now names
-    what is compared and what is not."""
+    and the apply re-read the STORED capture, never the device. Both
+    previews and the deploy wizard's summary said so. The sentence then named
+    what was compared and what was not; since C78 was built (2026-10-07) the
+    device is compared too (tests/test_device_compared_at_apply.py)."""
 
-    def test_the_gate_names_the_stored_capture_and_the_limit(self, monkeypatch):
+    def test_the_gate_names_the_stored_capture_and_the_device(self, monkeypatch):
         plan = P.deploy_plan(monkeypatch)
         gate = {g["name"]: g for g in plan["preview"]["targets"][0]["gates"]}[
-            "capture unchanged since this preview"]
+            "device and capture unchanged since this preview"]
         assert "stored capture is re-read" in gate["detail"]
-        assert "not detected" in gate["detail"]
+        assert "skipped as drifted, with nothing sent" in gate["detail"]
 
     def test_no_screen_claims_the_device_is_re_read(self):
         for f in ("partials__deploy_wizard.1.js", "partials__golden_repo.3.js"):

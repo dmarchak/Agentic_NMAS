@@ -327,7 +327,7 @@ def compare_device(list_name: str, hostname: str, golden_text, golden_at,
         return row
 
     try:
-        from modules.nsot import normalize, roundtrip
+        from modules.nsot import roundtrip
 
         # PROVENANCE COMMENTS OUT, BOTH SIDES, BEFORE THE COMPARATOR.
         # Measured: `strip_for_diff` drops NMAS's OWN header (that prefix is
@@ -335,10 +335,9 @@ def compare_device(list_name: str, hostname: str, golden_text, golden_at,
         # metadata header survives it and the gate would differ on Oxidized's
         # first line for every device on every run. The noise floor arriving
         # in the artefact chosen to avoid it, on the side nobody checked:
-        # the store this project does not write.
-        result = roundtrip.configs_equivalent(
-            "\n".join(normalize.strip_provenance_comments(golden_text)),
-            "\n".join(normalize.strip_provenance_comments(oxidized_text)))
+        # the store this project does not write. One comparison, shared with
+        # the deploy's at apply (C78).
+        result = roundtrip.stored_is_device(golden_text, oxidized_text)
     except Exception as exc:                   # noqa: BLE001
         row["reason"] = f"the comparison itself failed: {exc}"
         log.exception("freshness: comparison failed for %s", hostname)

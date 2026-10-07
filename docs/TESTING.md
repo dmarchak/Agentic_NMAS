@@ -333,7 +333,8 @@ from the repo root. (Before Phase 0 only the latter did.)
 | `test_codemirror_assets.py` | vendored asset paths, load order, no CDN |
 | `test_deploy_contract.py` | refuse → real secrets → mask check, before any socket; route→wire seam |
 | `test_deploy_safety.py` | merge-only, transport short-circuit, breaker, settle windows |
-| `test_deploy_batch.py` | drift skip, breaker, every device accounted for |
+| `test_deploy_batch.py` | drift skip, breaker (C10: every failed device counts, a rejected push included), every device accounted for |
+| `test_device_compared_at_apply.py` | C78: the device is compared at apply with the capture its program came from. The comparison is freshness's (`stored_is_device`, the golden's header and the device's banner left out); the reason names both sides, masked; the real stage 4 stops a drifted device before anything is sent, refuses an unreadable one, and compares nothing for a run with no capture; a device with nothing to send raises before anything is staged; the breaker does not count a drifted device; the route hands the pipeline the stored capture and reports a drifted device as drifted; the gate and the wizard say the device is compared |
 | `test_rip_verify.py` | RIP neighbours; a RIP device never passes vacuously |
 | `test_oxidized_freshness.py` | (C319: the clab sync no longer blocks on the gate; its lifted `case $gate_rc` tests went with the block.) the raw config is the artefact; the gate can reach its own finding; an authorisation covers one divergence; only exit 1 is drift |
 | `test_credential_never_changes_on_deploy.py` | a deploy adds an account and never changes one; the refusal names the form, never the value |
