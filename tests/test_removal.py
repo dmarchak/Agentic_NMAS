@@ -302,7 +302,16 @@ class TestTheCommittedRecord:
             "interface.load-interval", "interface.description",
             "global.snmp-server-community", "global.logging-host",
             "global.route-map-sequence", "global.event-manager-applet",
-            "global.ip-prefix-list-entry", "named-acl.entry"}
+            "global.ip-prefix-list-entry", "named-acl.entry",
+            # C531 part 1, s1, 2026-10-07 (the operator's run):
+            "global.ip-route", "global.ipv6-route", "interface.ipv6-rip-default-originate",
+            "interface.shutdown", "interface.ospf-cost"}
+        # vIOS-L2 rejects the IPv6 forms themselves: a fact about the platform, recorded.
+        assert rows["interface.ipv6-ospf-cost"]["result"] == "unsupported"
+        assert rows["ospfv3.max-metric"]["result"] == "unsupported"
+        # Redefined after `no <line>` measured DIFFERENT: not a platform fact until re-measured.
+        assert "ospf.max-metric" not in rows
+        assert "REDEFINED" in rec["unmeasured"]["cisco_ios"]["ospf.max-metric"]["reason"]
         assert rows["global.numbered-acl-entry"]["result"] == "broader"
         assert "access-list 97 permit 192.0.2.2" in rows["global.numbered-acl-entry"]["detail"]
         assert rows["global.logging-buffered"]["result"] == "overrides_default"

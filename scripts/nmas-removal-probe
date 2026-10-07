@@ -195,7 +195,8 @@ EXEMPLARS = {
     "interface.ospf-cost": [
         {"setup": [LOOP, " ip ospf cost 199"],
          "unit": {"chain": [LOOP], "line": " ip ospf cost 199"},
-         "teardown": ["no " + LOOP]},
+         "teardown": ["no " + LOOP]}],
+    "interface.ipv6-ospf-cost": [
         {"needs": "ipv6 unicast-routing",
          "setup": [LOOP, " ipv6 enable", " ipv6 ospf cost 199"],
          "unit": {"chain": [LOOP], "line": " ipv6 ospf cost 199"},
@@ -240,11 +241,34 @@ EXEMPLARS = {
 #: `exact` only if EVERY example was exact: an unmeasured example cannot let
 #: an exact one speak for the shape.
 WORST = ("failed", "refused", "broader", "overrides_default", "different", "incomplete",
-         "unmeasured", "exact")
+         "unsupported", "unmeasured", "exact")
 
-#: What the platform record may hold: what `no` DID. `failed` (the scratch did
-#: not land) and `unmeasured` are facts about the run, kept in `full` only.
-RECORDED = ("exact", "broader", "overrides_default", "different", "incomplete", "refused")
+#: What the platform record may hold: what `no` DID, or that the platform rejects the line
+#: itself (`unsupported`, a fact about the PLATFORM: the operator, 2026-10-07, vIOS-L2 rejecting
+#: `ipv6 router ospf`). `failed` (the scratch did not land for another reason) and
+#: `unmeasured` are facts about the run, kept in `full` only.
+RECORDED = ("exact", "broader", "overrides_default", "different", "incomplete", "refused",
+            "unsupported")
+
+#: What a device answers when it rejects a command as not its own (IOS's parser).
+UNSUPPORTED_ERROR = "Invalid input detected"
+
+
+def setup_result(err: str) -> str:
+    """A scratch that did not land: `unsupported` when the device REJECTED the command (its
+    parser does not know it), `failed` for any other cause, which says nothing about the
+    platform."""
+    return "unsupported" if UNSUPPORTED_ERROR in (err or "") else "failed"
+
+
+def unsafe_teardown(teardown: list, before: str) -> list:
+    """The teardown lines that would remove a global stanza the device HAD before the
+    exemplar (`no router rip` on a device running RIP). A teardown removes only what its own
+    setup created; these are refused before anything is sent, whatever skipped or did not
+    skip the exemplar (the operator's question, 2026-10-07)."""
+    had = {line.rstrip() for line in (before or "").splitlines() if line and not line[0].isspace()}
+    return [line for line in teardown
+            if line.startswith("no ") and line[3:].rstrip() in had]
 
 
 def fold(rows: list) -> str:
@@ -557,10 +581,13 @@ def main() -> int:
                     if unit is not None and ex["unit"].get("companions"):
                         unit["companions"] = list(ex["unit"]["companions"])
                     if unit is None:
-                        rows.append({"result": "failed", "sent_as": key,
-                                     "detail": "the scratch did not land: "
-                                     + (err or "not found in the read-back in any form looked "
-                                               "for"),
+                        result = setup_result(err)
+                        rows.append({"result": result, "sent_as": key,
+                                     "detail": ("the platform rejects the command: " + err
+                                                if result == "unsupported" else
+                                                "the scratch did not land: "
+                                                + (err or "not found in the read-back in any "
+                                                          "form looked for")),
                                      "setup_added": setup_added(before, with_scratch)})
                     else:
                         shown_as = located_key(unit, with_scratch)
@@ -572,6 +599,13 @@ def main() -> int:
                     # Back to BEFORE: the scratch away, anything lost put back,
                     # and WHAT EACH STEP SENT recorded, so a clean end says
                     # whether the repair was needed (C194).
+                    unsafe = unsafe_teardown(ex["teardown"], before)
+                    if unsafe:
+                        # Never sent: the device had this stanza before the exemplar.
+                        damaged = {"shape": key, "only_before": [], "only_now": [],
+                                   "refused_teardown": unsafe}
+                        rows[-1]["restore"] = {"teardown_refused": unsafe}
+                        break
                     restore = {"teardown": list(ex["teardown"]),
                                "teardown_error": send(ex["teardown"]) if ex["teardown"] else ""}
                     now = read()
@@ -596,7 +630,13 @@ def main() -> int:
             conn.disconnect()
 
     record = report(results, dialect)
-    if damaged:
+    if damaged and damaged.get("refused_teardown"):
+        print(f"NOT RESTORED: {args.device}: shape {damaged['shape']}'s teardown would have "
+              "removed " + ", ".join(f"`{x[3:]}`" for x in damaged["refused_teardown"])
+              + ", which the device had BEFORE this exemplar, so it was NOT sent and the run "
+              "stopped. The exemplar's own scratch lines are still on the device, in the "
+              "RUNNING config only (nothing was saved); remove them by hand or reload.")
+    elif damaged:
         print(f"NOT RESTORED: {args.device} differs from its state before the probe, after "
               f"shape {damaged['shape']}. It changed the RUNNING config only and saved nothing, "
               "so a reload returns it. What differs:")

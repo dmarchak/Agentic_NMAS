@@ -14,6 +14,18 @@
         "device": "s4",
         "result": "exact"
       },
+      "global.ip-route": {
+        "at": "2026-10-07T03:39:48Z",
+        "detail": "",
+        "device": "s1",
+        "result": "exact"
+      },
+      "global.ipv6-route": {
+        "at": "2026-10-07T03:39:48Z",
+        "detail": "",
+        "device": "s1",
+        "result": "exact"
+      },
       "global.logging-buffered": {
         "at": "2026-09-29T04:17:53Z",
         "detail": "appeared: no logging buffered. Recorded by the run as `different`; the probe now names this result `overrides_default`. Retired from the probe; refused by name in removal.UNREMOVABLE",
@@ -50,10 +62,34 @@
         "device": "s4",
         "result": "exact"
       },
+      "interface.ipv6-ospf-cost": {
+        "at": "2026-10-07T03:39:48Z",
+        "detail": "the platform rejects the command: ConfigInvalidException: Invalid input detected at command:  ipv6 ospf cost 199",
+        "device": "s1",
+        "result": "unsupported"
+      },
+      "interface.ipv6-rip-default-originate": {
+        "at": "2026-10-07T03:39:48Z",
+        "detail": "",
+        "device": "s1",
+        "result": "exact"
+      },
       "interface.load-interval": {
         "at": "2026-09-29T04:17:53Z",
         "detail": "",
         "device": "s4",
+        "result": "exact"
+      },
+      "interface.ospf-cost": {
+        "at": "2026-10-07T03:39:48Z",
+        "detail": "",
+        "device": "s1",
+        "result": "exact"
+      },
+      "interface.shutdown": {
+        "at": "2026-10-07T03:39:48Z",
+        "detail": "",
+        "device": "s1",
         "result": "exact"
       },
       "named-acl.entry": {
@@ -61,6 +97,12 @@
         "detail": "",
         "device": "s4",
         "result": "exact"
+      },
+      "ospfv3.max-metric": {
+        "at": "2026-10-07T03:39:48Z",
+        "detail": "the platform rejects the command: ConfigInvalidException: Invalid input detected at command: ipv6 router ospf 9199",
+        "device": "s1",
+        "result": "unsupported"
       }
     },
     "cisco_iosxe": {
@@ -80,6 +122,18 @@
         "at": "2026-09-29T04:48:57Z",
         "detail": "",
         "device": "r3",
+        "result": "exact"
+      },
+      "global.ip-route": {
+        "at": "2026-10-07T03:33:56Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
+      },
+      "global.ipv6-route": {
+        "at": "2026-10-07T03:33:56Z",
+        "detail": "",
+        "device": "r2",
         "result": "exact"
       },
       "global.logging-host": {
@@ -106,10 +160,34 @@
         "device": "r3",
         "result": "exact"
       },
+      "interface.ipv6-ospf-cost": {
+        "at": "2026-10-07T03:33:56Z",
+        "detail": "measured as interface.ospf-cost's IPv6 case, before the shape was split",
+        "device": "r2",
+        "result": "exact"
+      },
+      "interface.ipv6-rip-default-originate": {
+        "at": "2026-10-07T03:33:56Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
+      },
       "interface.load-interval": {
         "at": "2026-09-29T04:48:57Z",
         "detail": "",
         "device": "r3",
+        "result": "exact"
+      },
+      "interface.ospf-cost": {
+        "at": "2026-10-07T03:33:56Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
+      },
+      "interface.shutdown": {
+        "at": "2026-10-07T03:33:56Z",
+        "detail": "",
+        "device": "r2",
         "result": "exact"
       },
       "named-acl.entry": {
@@ -123,15 +201,43 @@
         "detail": "",
         "device": "r3",
         "result": "exact"
+      },
+      "ospfv3.max-metric": {
+        "at": "2026-10-07T03:33:56Z",
+        "detail": "",
+        "device": "r2",
+        "result": "exact"
       }
     }
   },
   "unmeasured": {
+    "cisco_ios": {
+      "ospf.max-metric": {
+        "at": "2026-10-07T03:39:48Z",
+        "device": "s1",
+        "reason": "REDEFINED 2026-10-07: `no <line>` was measured here, exact for the bare form and DIFFERENT for every form with options (it removed only the options and left `max-metric router-lsa`: IOS treats them as modifiers of one setting); the shape now removes every form with the bare `no max-metric router-lsa`, which awaits its measurement"
+      },
+      "rip.offset-list": {
+        "at": "2026-10-07T03:39:48Z",
+        "device": "s1",
+        "reason": "not run (the operator, 2026-10-07)"
+      }
+    },
     "cisco_iosxe": {
       "global.numbered-acl-entry": {
         "at": "2026-09-29T05:08:24Z",
         "device": "r3",
         "reason": "IOS-XE never DISPLAYS this form: `access-list 97 permit X` is shown as `ip access-list standard 97` / ` 10 permit X`, measured exact as `numbered-acl.list-entry`. A golden on this platform does not hold this form, so Mode B never builds it here"
+      },
+      "ospf.max-metric": {
+        "at": "2026-10-07T03:33:56Z",
+        "device": "r2",
+        "reason": "REDEFINED 2026-10-07: `no <line>` was measured here, exact for the bare form and DIFFERENT for every form with options (it removed only the options and left `max-metric router-lsa`: IOS treats them as modifiers of one setting); the shape now removes every form with the bare `no max-metric router-lsa`, which awaits its measurement"
+      },
+      "rip.offset-list": {
+        "at": "2026-10-07T03:33:56Z",
+        "device": "r2",
+        "reason": "not run (the operator, 2026-10-07)"
       }
     }
   }

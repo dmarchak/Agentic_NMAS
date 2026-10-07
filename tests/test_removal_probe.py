@@ -117,14 +117,55 @@ class TestTheChangeShapes:
     route)."""
 
     KEYS = ("ospf.max-metric", "ospfv3.max-metric", "rip.offset-list", "interface.ospf-cost",
-            "interface.ipv6-rip-default-originate", "interface.shutdown", "global.ip-route",
-            "global.ipv6-route")
+            "interface.ipv6-ospf-cost", "interface.ipv6-rip-default-originate",
+            "interface.shutdown", "global.ip-route", "global.ipv6-route")
 
-    def test_each_shape_is_probed_and_allows_nothing_until_measured(self):
+    def test_each_shape_is_probed_and_recorded_or_said_unmeasured(self):
+        """After the operator's runs (r2, s1, 2026-10-07): every shape is probed, and on each
+        platform it is either RECORDED from a run or listed unmeasured with its reason."""
+        rec = RM.measured()
         for key in self.KEYS:
             assert key in P.EXEMPLARS and P.plan_for(key), key
-            dialects = RM.measured()["by_dialect"]
-            assert all(key not in rows for rows in dialects.values()), key
+            for dialect in ("cisco_iosxe", "cisco_ios"):
+                row = rec["by_dialect"].get(dialect, {}).get(key)
+                why = rec["unmeasured"].get(dialect, {}).get(key)
+                assert (row and row["device"] and row["at"]) or (why and why["reason"]), \
+                    (dialect, key)
+
+    def test_every_max_metric_form_is_removed_by_its_bare_negation(self):
+        """Measured on r2 and s1 (2026-10-07): `no max-metric router-lsa external-lsa` removes
+        only the option and leaves `max-metric router-lsa`. So every form is removed by the
+        bare `no max-metric router-lsa`; OSPFv3's own record (exact as `no <line>`) keeps
+        its form."""
+        for form in ("max-metric router-lsa", "max-metric router-lsa on-startup 300",
+                     "max-metric router-lsa external-lsa include-stub summary-lsa"):
+            assert RM.negation_program([{"chain": ["router ospf 1"], "line": " " + form}]) == \
+                ["router ospf 1", " no max-metric router-lsa", "exit"], form
+        assert RM.negation_program([{"chain": ["ipv6 router ospf 1"],
+                                     "line": " max-metric router-lsa external-lsa"}]) == \
+            ["ipv6 router ospf 1", " no max-metric router-lsa external-lsa", "exit"]
+
+    def test_a_rejected_command_is_unsupported_and_any_other_failure_is_failed(self):
+        assert P.setup_result("ConfigInvalidException: Invalid input detected at command: "
+                              "ipv6 router ospf 9199") == "unsupported"
+        assert P.setup_result("ReadTimeout: no prompt") == "failed"
+        assert P.setup_result("") == "failed"
+        assert "unsupported" in P.RECORDED and "failed" not in P.RECORDED
+
+    def test_a_teardown_never_removes_a_stanza_the_device_had(self):
+        """The operator's question (2026-10-07): the scratch RIP cases tear down with `no
+        router rip`. They run only where the start config has no `router rip`; independently,
+        a teardown line removing a global stanza the device had BEFORE the exemplar is
+        refused, never sent."""
+        scratch = [x for x in P.plan_for("rip.offset-list") if x["absent"]]
+        assert scratch and all("no router rip" in x["teardown"] for x in scratch)
+        for ex in scratch:
+            assert P.unsafe_teardown(ex["teardown"], R2) == ["no router rip"]
+            assert P.unsafe_teardown(ex["teardown"], "hostname x\n") == []
+        live, = [x for x in P.plan_for("rip.offset-list") if x["live"] == "rip"]
+        assert P.unsafe_teardown(live["teardown"], R2) == []
+        loop = P.plan_for("interface.shutdown")[0]
+        assert P.unsafe_teardown(loop["teardown"], R2) == [], "Loopback199 is the probe's own"
 
     def test_every_max_metric_form_is_its_shape(self):
         for form in ("max-metric router-lsa", "max-metric router-lsa on-startup 300",

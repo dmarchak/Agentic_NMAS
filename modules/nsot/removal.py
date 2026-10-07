@@ -109,6 +109,11 @@ class Shape(NamedTuple):
     kind: str
     pattern: str
     header: str = ""
+    #: The command whose `no` removes every form of the line, where IOS treats the line's
+    #: options as modifiers of one setting: `no max-metric router-lsa external-lsa` removes
+    #: only the option and leaves `max-metric router-lsa` (measured on r2 and s1, 2026-10-07),
+    #: so the whole setting is removed by its bare form. Empty: `no` plus the line itself.
+    negation: str = ""
 
 
 #: Every shape the probe measures, including the ones SUSPECTED of removing
@@ -153,10 +158,14 @@ SHAPES = (
     # operator 2026-10-06: undoing r2's and s2's drain took four hand edits). The drain lines
     # first: OSPF's stub-router advertisement in every form, a RIP offset, an OSPF cost, a
     # RIPng default origination; then a static route and `shutdown`.
-    Shape("ospf.max-metric", "router ospf", "leaf", r"^max-metric router-lsa( .+)?$"),
+    Shape("ospf.max-metric", "router ospf", "leaf", r"^max-metric router-lsa( .+)?$",
+          negation="max-metric router-lsa"),
     Shape("ospfv3.max-metric", "ipv6 router ospf", "leaf", r"^max-metric router-lsa( .+)?$"),
     Shape("rip.offset-list", "router rip", "leaf", r"^offset-list \S+ (in|out) \d+( \S+)?$"),
-    Shape("interface.ospf-cost", "interface", "leaf", r"^(ip|ipv6) ospf cost \d+$"),
+    # One shape per address family, so each is recorded on its own: vIOS-L2 rejects the IPv6
+    # form and takes the IPv4 one (s1, 2026-10-07).
+    Shape("interface.ospf-cost", "interface", "leaf", r"^ip ospf cost \d+$"),
+    Shape("interface.ipv6-ospf-cost", "interface", "leaf", r"^ipv6 ospf cost \d+$"),
     Shape("interface.ipv6-rip-default-originate", "interface", "leaf",
           r"^ipv6 rip \S+ default-information (originate|only)( metric \d+)?$"),
     Shape("interface.shutdown", "interface", "leaf", r"^shutdown$"),
@@ -176,6 +185,8 @@ RESULT_WORDS = {
     "overrides_default": ("leaves the device OFF its default: `no` turns the feature off "
                           "instead of restoring the default, and leaves a `no` line"),
     "refused": "is rejected by the device",
+    "unsupported": ("is not a command this platform takes: it rejected the line itself, so "
+                    "there is nothing to remove"),
     "failed": "could not be measured",
 }
 
@@ -465,7 +476,12 @@ def negation_program(units: list) -> list:
             _close()
             commands.extend(chain)
             open_chain.extend(chain)
-        commands.append(_negate(u["line"]))
+        shape = shape_for(chain, u["line"], "leaf")
+        if shape is not None and shape.negation:
+            indent = u["line"][:len(u["line"]) - len(u["line"].lstrip())]
+            commands.append(f"{indent}no {shape.negation}")
+        else:
+            commands.append(_negate(u["line"]))
     _close()
     assert_sendable(commands)
     return commands
