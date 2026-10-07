@@ -1184,13 +1184,15 @@ class TestASecondSyncOfAnUnchangedDeviceIsSilent:
         assert netbox_guard.changed_fields(existing, sent) == {}
 
     def test_a_sync_never_rewrites_what_netbox_owns(self, monkeypatch):
-        """The operator's ownership decision (2026-10-07): NetBox owns a device's platform and
+        """The operator's ownership decision (2026-10-07): NetBox owns a device's platform, type and
         status. The import guessed the platform from config text, so every IOS-XE router was
         written `ios` on every sync; a person's correction in NetBox would have been
         overwritten by the next one. An update sends neither field, whatever the facts say."""
         _, sent = self._sent(monkeypatch, facts={"platform": "IOS", "version": "17.6",
                                                  "serial": "9ABCD", "model": "C8000v"})
         assert "platform" not in sent and "status" not in sent and "site" not in sent
+        # C559: the type was written "Unknown" on every sync (the import never knows the model).
+        assert "device_type" not in sent
 
     def test_the_alias_the_server_does_not_use_is_not_sent(self, monkeypatch):
         """`role` and `device_role` are one field under two names. The server

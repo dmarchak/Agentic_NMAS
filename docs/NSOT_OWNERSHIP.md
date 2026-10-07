@@ -126,12 +126,20 @@ operator's NetBox fixes:
   device reads `ios`. It stops with `a3685bc` (C557): an update no longer sends it.
 - **Status:** create-only since 2026-09-24.
 - **Tags:** a union with the device's own; a tag a person adds is never removed.
-- **Still rewritten on every sync:** `name`, `role`, `device_type`, `serial`, `comments`,
-  `primary_ip4`/`primary_ip6` and the config context. These are Phase 1's to stop (Part 4).
+- **Device type:** was rewritten on every sync as "Unknown" (the import from goldens never
+  knows the model). It stops with the C559 commit: an update no longer sends it.
+- **Still rewritten on every sync:** `name`, `role`, `serial`, `comments`,
+  `primary_ip4`/`primary_ip6`, `config_template` and `local_context_data` (the config context:
+  the sanitised running config and facts). These are Phase 1's to stop (Part 4).
+- **The primary IPv4 is set to the management address**, measured 2026-10-07: every Default
+  device's `primary_ip4` is its 10.255.x management address. NetBox's `primary_ip` showed the
+  IPv6 loopback only because `PREFER_IPV4` is off (C560; the host step is in
+  [NSOT_DRAINED_DESIGN](NSOT_DRAINED_DESIGN.md) section 8).
 
-**Until Phase 1, people must not edit a managed device's name, role, device type, serial,
-comments or primary IP addresses in NetBox:** the next sync overwrites each of them. Platform,
-status, site and tags are safe to edit now.
+**Until Phase 1, people must not edit a managed device's name, role, serial, comments,
+primary IP addresses, config template or config context in NetBox:** the next sync overwrites
+each of them. Platform, status, site and tags are safe to edit now, and device type once the
+C559 commit is on the host.
 
 ## Part 4. The direction of data (APPROVED 2026-10-07)
 
@@ -145,7 +153,7 @@ old writes for the fields it moves, in the same change that moves them.
 |---|---|---|---|---|
 | **Bootstrap** (done) | everything the import knew | filled by Mercury's import from the devices | wrote them | nothing yet |
 | **Review** (now) | identity | made correct by a person, from the census (part 3: r5's status, the platforms, the network tag) | reads the census, read-only | the platform rewrite (`a3685bc`) |
-| **Phase 1, identity** | existence, name, role, site, platform, status, management address | owns them | READS them: the NetBox-sourced inventory (part 2) | every sync write of those fields (`name`, `role`, `device_type`, `primary_ip4`/`primary_ip6`; site, status and platform already off) |
+| **Phase 1, identity** | existence, name, role, site, platform, status, management address | owns them | READS them: the NetBox-sourced inventory (part 2) | every sync write of those fields (`name`, `role`, `primary_ip4`/`primary_ip6`; site, status, platform and device type already off) |
 | **Phase 2, design data** (decision 3, deferred) | interfaces, addresses, VLANs, VRFs | owns them, once decided | GENERATES that part of intent from NetBox's data (the style of Nautobot's Golden Config and NetBox's config templates), and compares the device against it | the interface and address import, which until then continues, marked "documentation, derived from the devices" |
 | **Phase 3, discovery as proposal** | what Mercury finds on a device that NetBox lacks (a new interface, a neighbour, a serial) | receives a PROPOSED change, approved by a person (Diode-style ingestion into a branch or changeset) | proposes, never writes directly | any remaining direct write from discovery |
 

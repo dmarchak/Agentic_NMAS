@@ -175,14 +175,22 @@ FIELD_CHOICES = {
         ("drained", "Drained", "orange"),
     ),
 }
+
+# Mercury (C560): a device's primary IP is its IPv4 management address, the one Mercury
+# manages it on; NetBox prefers IPv6 by default, and env/netbox.env does not set this.
+PREFER_IPV4 = True
 EOF
 python3 -c "import ast; ast.parse(open('configuration/extra.py').read())" \
   && docker compose restart netbox netbox-worker
 ```
 
-It is proved by its result, a read the agent may make: the device endpoint's OPTIONS then
-lists `drained` among the status choices. On 2026-10-07 it listed the stock seven: offline,
-active, planned, staged, failed, inventory, decommissioning.
+It is proved by its result, reads the agent may make:
+- the device endpoint's OPTIONS lists `drained` among the status choices (on 2026-10-07 it
+  listed the stock seven: offline, active, planned, staged, failed, inventory,
+  decommissioning);
+- each managed device's `primary_ip` is its IPv4 management address (on 2026-10-07 it was the
+  IPv6 loopback for eight of the nine, while `primary_ip4` already held the right IPv4
+  address).
 
 **What Mercury's `nmas` account needs.** NetBox has no field-level permissions: a `change`
 permission on `dcim.device` covers every field, status included, limited only by its
