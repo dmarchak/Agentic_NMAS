@@ -1,5 +1,11 @@
 # Mercury against industry practice: a gap analysis (APPROVED 2026-10-07)
 
+> **Re-labelled by the charter (2026-10-07, [MERCURY_CHARTER](MERCURY_CHARTER.md)):** the
+> order in section 4 now follows the charter's roadmap: Phase 2 revert by reload, Phase 3
+> retire Oxidized, Phase 4 Mercury's records, Stage 7's cutover, NetBox Phase 1, P.22, then
+> this order. Restore by replace (3b′) and replace-for-deploy (3b) are PARKED (FUTURE, C561),
+> later options for no-reload reverts; their measurements are kept.
+
 The operator, 2026-10-07: Mercury should follow proven industry practice; this analysis and its
 order were APPROVED the same day, with four gaps added (section 3f). This is a GAP
 ANALYSIS, not a rewrite: it maps what Mercury is onto a published reference, says where it

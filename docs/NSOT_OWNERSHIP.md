@@ -1,5 +1,13 @@
 # Ownership: every piece of device state, its one owner, and who may write it
 
+> **Re-labelled by the charter (2026-10-07, [MERCURY_CHARTER](MERCURY_CHARTER.md)):**
+> - **Credentials:** NetBox holds WHICH credential applies (a credential-profile name on the
+>   device, role or site); Mercury holds the secret values, behind a secrets-backend interface.
+> - **Oxidized's copy:** Oxidized is to be retired (Phase 3); GitHub owns configurations.
+> - **Mercury's records:** consolidated into one store (Phase 4).
+> - **New devices:** two entry points, a Planned device picked from NetBox, or one created in
+>   Mercury and written into NetBox first as Planned.
+
 The operator's decision, 2026-10-07: **NetBox is the source of truth for DEVICES**: their
 existence, role, site and status (Active, Drained, Planned, …). Mercury owns intent and the
 record of what was done. Measurements own what is observed. Each piece below has exactly ONE

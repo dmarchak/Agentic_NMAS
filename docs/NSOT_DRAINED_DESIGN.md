@@ -1,5 +1,10 @@
 # Drained: intended in NetBox, observed by measurement, done by a runbook (design)
 
+> **Re-labelled by the charter (2026-10-07, [MERCURY_CHARTER](MERCURY_CHARTER.md)):** NetBox's
+> Drained status is the fact, shown with its source and age. The customer-traffic measurement
+> (sections 6 and 10, the counting ACL) is DEFERRED (FUTURE, C551). The drain runbook stays
+> with P.22, after Stage 7.
+
 The operator, 2026-10-06 and 07, after the class challenge (C550 to C552). Status: **the
 design APPROVED in shape and its mockup APPROVED (canvas v71, page "C551 Drained"), both
 2026-10-07; next, the measurements in section 10, then the build.** Nothing here is built. Register: C551 (the measurement), C552 (the interface-counter version,
