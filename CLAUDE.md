@@ -416,6 +416,7 @@ NSoT config repository), `<account>` (the GitHub account).
   measurement taken then measures the backup. [not mechanised]
 - **Staged runs and probes never run on s3:** it is CPU-starved and carries the management path
   for the fleet (C93). Use s1 for IOS and r2 for IOS-XE. [not mechanised]
+- **The `homelab` Cloudflare tunnel is LOCALLY managed:** its ingress rules live in `/etc/cloudflared/config.yml` on the cloudflared LXC (`<tunnel-host>`), not in the Zero Trust dashboard. A public hostname is added or removed there, together with its CNAME and any Access application in the dashboard, and then cloudflared is restarted. Removed 2026-10-07: `oxidized.<domain>` and `topology.<domain>` (C143, C231). [not mechanised]
 
 **Grafana's dashboard ROLES (the operator, 2026-10-01; they had drifted twice).** Two roles,
 each named by a setting, by UID, never hard-coded and never defaulted in code (both
