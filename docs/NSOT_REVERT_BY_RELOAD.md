@@ -256,8 +256,11 @@ it boots, and r2 makes RIP reconverge. In order, the two with no reload first:
   `ip scp server enable` (C562). Previewed and deployed like any change, never a side script.
   The interface is the network's data (this lab's is `Loopback0`), never written into code.
   The parsers and templates gain the lines it carries, measured round-trip like every other
-  modelled line. Whether it is a sibling document or a section of the monitoring profile is
-  settled with its mockup (the Coverage and Apply screens already draw a profile).
+  modelled line. BUILT 2026-10-07 as a SECTION of the profile, `management`, not a second
+  document, so no new screen: Propose commits it, Monitoring › Apply and Plan a deploy send
+  it ([MONITORING_PROFILE](MONITORING_PROFILE.md), section 10). Its interface is derived from
+  `syslog_source_interface`, where `syslog_host` is configured, so the network declares it
+  once. Walked by Propose on the host, then an Apply to r2 and s1.
 - **P2, the transfer answers from the address it was asked on (C563),** in the code ZTP's
   responder and the revert's one-shot transfer share. BUILT 2026-10-07
   (`ztp_responder.receive` and `reply_address`, `modules/nsot/tftp_once.py`); measured on the

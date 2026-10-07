@@ -47,6 +47,10 @@ DERIVED = {
     "snmp": ("prometheus", "prometheus_url"),
     "syslog": ("loki", "loki_url"),
     "ntp": ("fleet", ""),
+    # Management protocols leave from the management interface (the operator, 2026-10-07,
+    # Phase 2's P1): TFTP and the SSH client, from the interface syslog and SNMP traps
+    # already leave from (`syslog_source_interface`), so the network declares it once.
+    "management": ("setting", ""),
     "telemetry": ("fleet", ""),
     "lldp": ("fleet", ""),
     "cdp": ("fleet", ""),
@@ -81,6 +85,10 @@ def section_value(name: str, intent: dict):
         v = intent.get("ntp_servers")
         if v:
             return {"ntp_servers": v}
+    elif name == "management":
+        v = {k: x for k, x in (intent.get("source_interfaces") or {}).items() if x}
+        if v:
+            return {"source_interfaces": v}
     elif name == "telemetry":
         v = intent.get("telemetry")
         if v:
@@ -207,6 +215,17 @@ def connector_value(name: str, get) -> dict:
         return {"value": {"logging": {"syslog": block}},
                 "basis": ("the syslog settings: the receiver feeding Loki at syslog_host, and the "
                           "heartbeat the alert rules are generated from")}
+    if name == "management":
+        # Declared by the syslog block, so only where that block is: its interface has a
+        # default (Loopback0), and a network that never configured syslog never chose it.
+        if not s("syslog_host"):
+            return {"why": "syslog_host is not configured: the management interface is the one "
+                           "syslog leaves from, and this network does not send syslog yet"}
+        iface = s("syslog_source_interface") or "Loopback0"
+        return {"value": {"source_interfaces": {"tftp": iface, "ssh": iface}},
+                "basis": (f"syslog_source_interface ({iface}): the interface syslog and SNMP "
+                          "traps already leave from, so TFTP and the SSH client leave from it "
+                          "too, and a transfer is served to the address Mercury knows")}
     if name == "ntp":
         servers = [str(x).strip() for x in (s("ntp_servers") or []) if str(x).strip()] \
             if isinstance(s("ntp_servers"), list) else []

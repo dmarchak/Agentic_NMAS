@@ -293,3 +293,25 @@ installation's, which is the one network today.
 Built in the four steps of section 8: the model; existing devices, r6 first ("Apply
 monitoring profile" clears its warning); onboarding and adopt; then its screens inside the
 redesign's step 4.
+
+## 10. The management section (the operator, 2026-10-07; Phase 2's P1)
+
+Management protocols leave from the management interface, through intent: a section of this
+document, `management`, beside the monitoring ones, rather than a second document (the
+profile's reader, merge, Propose, Apply and screens all take a section as it comes, and a
+second document would duplicate each). It holds `source_interfaces: {tftp, ssh}` (`ip tftp
+source-interface`, `ip ssh source-interface`; later `ip scp server enable`, C562), a scalar
+each, so a device's own value overrides it key by key. Carried in the `ssh` list, as the
+parser held `ip ssh source-interface` before, a device's own list replaced the profile's
+whole list and the line was lost.
+
+- **Derived, not declared again:** from `syslog_source_interface`, the interface syslog and SNMP
+  traps already leave from, and only where `syslog_host` is configured: the setting has a
+  default (`Loopback0`), and a network that never configured syslog never chose it.
+- **Why it exists:** M1 (2026-10-07) measured TFTP leaving r2 and s1 from data interfaces,
+  while Mercury knows each by its loopback; Phase 2's one-shot transfer is served to that
+  address only ([NSOT_REVERT_BY_RELOAD](NSOT_REVERT_BY_RELOAD.md), 9b).
+- **Verify:** quick. The lines change what the device sends from, never what it routes or how
+  Mercury reaches it (`verify_scope.MANAGEMENT`, "management sources").
+- **Known wording:** Monitoring › Apply still calls the whole document "the monitoring profile";
+  its preview names the section ("From the profile's management sources section").

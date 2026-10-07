@@ -283,7 +283,9 @@ FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
 #: or the detector under test (the control's expectation must not share their source).
 MARKER = {"snmp": r"^snmp-server ", "syslog": r"^logging host ", "ntp": r"^ntp server ",
           "telemetry": r"^telemetry ietf subscription ", "lldp": r"^lldp run$",
-          "cdp": r"^cdp run$"}
+          "cdp": r"^cdp run$", "management": r"^ip (tftp|ssh) source-interface "}
+#: Sections no real capture holds yet, each with why; each is planted below instead.
+NOT_YET_ON_A_DEVICE = {"management": "the management profile (Phase 2, P1) is not deployed yet"}
 
 
 class TestEveryDetectorReadsWhatTheParserWrites:
@@ -306,9 +308,29 @@ class TestEveryDetectorReadsWhatTheParserWrites:
                 if has != (section_value(sec, intent) is not None):
                     bad.append((name, sec, has))
         assert bad == []
-        # The floor: every section is on some real device, so none passes vacuously.
-        assert all(n >= 1 for n in seen.values()), seen
+        # The floor: every section is on some real device, so none passes vacuously; a
+        # section no device holds yet is named, with why, and planted in the next test.
+        assert all(n >= 1 for s, n in seen.items() if s not in NOT_YET_ON_A_DEVICE), seen
+        assert all(seen[s] == 0 for s in NOT_YET_ON_A_DEVICE), "now on a device: drop it"
         assert seen["lldp"] == 9 and seen["cdp"] == 5          # r1-r5 and s1-s4; r1-r5
+
+    @pytest.mark.parametrize("name, dialect", [("r1.cfg", "cisco_iosxe"), ("s1.cfg", "cisco_ios")])
+    def test_the_management_detector_finds_the_lines_planted_in_a_real_capture(self, name,
+                                                                               dialect):
+        """The planted case for a section no device holds yet: a real capture with the two
+        lines added (the minimal edit), parsed as a scalar each, never in the `ssh` list."""
+        from modules.nsot.parsers import get_parser
+        from modules.nsot.profile_propose import section_value
+        text = open(os.path.join(FLEET, name), encoding="utf-8").read()
+        assert not re.search(MARKER["management"], text, re.M)
+        planted = text.replace("\nend", "\nip ssh source-interface Loopback0\n"
+                                        "ip tftp source-interface Loopback0\nend", 1)
+        intent = get_parser(dialect).parse(planted)
+        assert intent["source_interfaces"] == {"ssh": "Loopback0", "tftp": "Loopback0"}
+        assert not any(s.startswith("source-interface") for s in intent["ssh"])
+        assert section_value("management", intent) == {
+            "source_interfaces": {"ssh": "Loopback0", "tftp": "Loopback0"}}
+        assert section_value("management", get_parser(dialect).parse(text)) is None
 
     def test_an_explicit_no_is_its_own_version(self):
         from modules.nsot.profile_propose import section_value

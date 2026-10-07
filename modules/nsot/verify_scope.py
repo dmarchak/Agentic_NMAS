@@ -35,6 +35,9 @@ MANAGEMENT = (
     ("NTP", re.compile(r"^(no )?ntp ")),
     ("banners", re.compile(r"^(no )?banner ")),
     ("users", re.compile(r"^(no )?username ")),
+    # Where TFTP and the SSH client leave from (the management profile, P1): what the device
+    # sends from, never what it routes or how Mercury reaches it.
+    ("management sources", re.compile(r"^(no )?ip (tftp|ssh) source-interface ")),
 )
 
 QUICK, FULL = "quick", "full"

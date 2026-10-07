@@ -64,7 +64,7 @@ def dump(doc: dict) -> str:
     return yaml.safe_dump(doc, sort_keys=True, default_flow_style=False)
 VERSION = 1
 #: Every section the profile knows, in the order a preview draws them.
-SECTIONS = ("snmp", "syslog", "ntp", "lldp", "cdp", "telemetry", "ip_sla")
+SECTIONS = ("snmp", "syslog", "ntp", "management", "lldp", "cdp", "telemetry", "ip_sla")
 IP_SLA_POLICIES = ("gateway", "peers", "none")
 
 

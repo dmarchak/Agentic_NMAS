@@ -277,6 +277,7 @@ def _removal_words(rm: dict) -> str:
 
 #: What each profile section is, in words, for the scoped plan's groups.
 PROFILE_SECTION_WORDS = {"snmp": "SNMP", "syslog": "syslog and the heartbeat", "ntp": "NTP",
+                         "management": "management sources (TFTP and the SSH client)",
                          "lldp": "LLDP", "cdp": "CDP", "telemetry": "model-driven telemetry",
                          "ip_sla": "IP SLA"}
 

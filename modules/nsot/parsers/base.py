@@ -127,6 +127,9 @@ class BaseParser:
             # Present on both reference platforms, so modelled per the
             # 2-or-more-devices rule rather than left to `unmodeled`.
             (re.compile(r"^ip ssh\s+(.*)$"),                 self._h_ssh),
+            # The management profile's lines (Phase 2, P1): where TFTP and the SSH client
+            # leave from, a scalar each under `source_interfaces`, so a profile value merges.
+            (re.compile(r"^ip tftp source-interface\s+(\S+)\s*$"), self._h_tftp_source),
             (re.compile(r"^(no )?ip http\s+(.*)$"),          self._h_http),
             (re.compile(r"^ip forward-protocol\s+(.*)$"),    self._h_forward_protocol),
             (re.compile(r"^control-plane\s*$"),              self._h_control_plane),
@@ -211,6 +214,7 @@ class BaseParser:
         "vtp": [], "platform_settings": [], "license_settings": [],
         "vrfs": [], "pki_trustpoints": [], "ip_sla": [], "ip_sla_schedules": [],
         "netconf_settings": [], "telemetry": [], "ssh": [], "http": {},
+        "source_interfaces": {},
         "forward_protocol": [], "mgcp": [], "control_plane": None,
         "ip_nat": [], "prefix_lists": [], "login": [], "subscriber": [],
         "multilink": [], "diagnostic": [], "memory": [],
@@ -389,8 +393,21 @@ class BaseParser:
 
     def _h_ssh(self, block, out, m):
         """``ip ssh …`` settings. Semi-structured: the key is modelled, the
-        value is carried opaquely so a template can emit and an operator edit."""
-        out.setdefault("ssh", []).append(m.group(1).strip())
+        value is carried opaquely so a template can emit and an operator edit.
+        Except ``source-interface``: a scalar under `source_interfaces`, the management
+        profile's (P1). In the opaque list a device's own `ssh` (every device has one)
+        replaced the profile's whole list, so the profile's line was lost."""
+        value = m.group(1).strip()
+        sm = re.match(r"source-interface\s+(\S+)$", value)
+        if sm:
+            out.setdefault("source_interfaces", {})["ssh"] = sm.group(1)
+            return
+        out.setdefault("ssh", []).append(value)
+
+    def _h_tftp_source(self, block, out, m):
+        """``ip tftp source-interface <if>``: where TFTP leaves from (the management profile,
+        P1; M1 measured TFTP leaving from a data interface without it)."""
+        out.setdefault("source_interfaces", {})["tftp"] = m.group(1)
 
     def _h_http(self, block, out, m):
         setting = m.group(2).strip()

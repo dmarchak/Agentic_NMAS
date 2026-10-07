@@ -2,10 +2,12 @@
 
 Monitoring is configured the same way on every device by the network's monitoring profile:
 one committed document with a section each for SNMP, syslog (the heartbeat is part of it),
-NTP, LLDP, CDP, telemetry and IP SLA. Each section is derived from the monitoring tools
-themselves (the connectors in Settings), and each device inherits it, its own value winning
-where it has one. Applying the profile sends a device the profile's lines it lacks, and
-nothing else.
+NTP, LLDP, CDP, telemetry and IP SLA, and one beside them for the management sources: TFTP
+and the SSH client leave from the interface syslog and SNMP traps leave from
+(`syslog_source_interface`), so a file Mercury serves a device reaches the address Mercury
+knows it by. Each section is derived from the monitoring tools themselves (the connectors in
+Settings), and each device inherits it, its own value winning where it has one. Applying the
+profile sends a device the profile's lines it lacks, and nothing else.
 
 ![Applying the monitoring profile: Coverage reads each device's committed golden; the preview plans each ticked device's profile-only program from its stored capture and sends nothing; one confirm starts a batch that deploys one device after another, each through the deploy pipeline, and records one golden commit and a receipt per device.](diagrams/monitoring-templates.svg)
 
@@ -72,7 +74,7 @@ Each device runs the deploy's pipeline, its stages in the order the code declare
 8. **Verify** (`verify`). Read: the two snapshots and the new lines read back. Sent:
    nothing, unless verify fails and the rollback sends the undo. Recorded: the verdict. A
    program that touches only management sections (logging, SNMP, NTP, users, terminal
-   lines, banners) gets the quick verify: each new line read back, no wait for BGP's hold
+   lines, banners, the TFTP and SSH source interfaces) gets the quick verify: each new line read back, no wait for BGP's hold
    time. LLDP, CDP, telemetry or the heartbeat's applet get the full one.
 9. **Save** (`save_startup`). Sent: `write memory`, only once verify passed. Recorded: whether
    it saved.

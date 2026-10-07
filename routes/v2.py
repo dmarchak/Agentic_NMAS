@@ -784,6 +784,7 @@ def _apply_args(req) -> dict:
 
 #: A template's name in Coverage's words, for a section of the program (CDP has no column).
 _TEMPLATE_WORDS = {"snmp": "SNMP", "syslog": "Syslog", "heartbeat": "Heartbeat", "ntp": "NTP",
+                   "management": "Management sources",
                    "lldp": "LLDP", "telemetry": "Telemetry", "ip_sla": "IP SLA", "cdp": "CDP"}
 
 

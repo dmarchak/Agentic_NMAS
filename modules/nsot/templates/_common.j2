@@ -170,6 +170,11 @@ interface {{ i.name }}
 {%- macro services_block(v) -%}
 {% for s in v.ssh or [] %}ip ssh {{ s }}
 {% endfor %}
+{%- set si = v.source_interfaces or {} %}
+{%- if si.get('ssh') %}ip ssh source-interface {{ si.get('ssh') }}
+{% endif %}
+{%- if si.get('tftp') %}ip tftp source-interface {{ si.get('tftp') }}
+{% endif %}
 {%- for key, on in (v.http or {}).items() %}{{ '' if on else 'no ' }}ip http {{ key.replace('_', '-') }}
 {% endfor %}
 {%- for f in v.forward_protocol or [] %}ip forward-protocol {{ f }}
