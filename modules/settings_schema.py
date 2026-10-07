@@ -494,8 +494,9 @@ DEFAULTS: dict = {
     # drift checker, the ping worker and a nine-device batch can all want the
     # same device at once.
     "deploy_max_workers": 1,
-    # Stop attempting after this many VERIFY failures. One drifted device means
-    # someone touched a box; three verify failures means something systemic.
+    # Stop attempting after this many failed devices: a rejected push, a refusal,
+    # or a verify that did not pass (C10). One drifted device means someone
+    # touched a box and does not count; repeated failures mean something systemic.
     "deploy_verify_failure_limit": 2,
 
     # ── NSoT repo tag retention ─────────────────────────────────────────────

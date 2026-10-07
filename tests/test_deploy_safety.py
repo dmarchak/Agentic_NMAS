@@ -126,18 +126,18 @@ class TestTransportShortCircuit:
 class TestCircuitBreaker:
     def test_does_not_trip_below_the_limit(self):
         breaker = CircuitBreaker(limit=2)
-        assert breaker.record_verify_failure("r1") is False
+        assert breaker.record_failure("r1") is False
         assert breaker.is_tripped is False
 
     def test_trips_at_the_limit(self):
         breaker = CircuitBreaker(limit=2)
-        breaker.record_verify_failure("r1")
-        assert breaker.record_verify_failure("r2") is True
+        breaker.record_failure("r1")
+        assert breaker.record_failure("r2") is True
         assert breaker.tripped_after == "r2"
 
     def test_reason_explains_and_names_the_device(self):
         breaker = CircuitBreaker(limit=1)
-        breaker.record_verify_failure("r3")
+        breaker.record_failure("r3")
         reason = breaker.reason()
         assert "not attempted" in reason and "r3" in reason
 
@@ -150,26 +150,28 @@ class TestCircuitBreaker:
         """One drifted device is someone touching a box; it must not trip."""
         breaker = CircuitBreaker(limit=2)
         assert breaker.is_tripped is False      # skipping a drifted device
-        assert breaker.verify_failures == 0     # records nothing
+        assert breaker.failures == 0            # records nothing
 
     @pytest.mark.parametrize("outcome", [
         {"outcome": "failed", "stage": "push"},
+        {"outcome": "failed", "stage": "prepare"},
+        {"outcome": "deployed", "verify": {"ok": False, "unreadable": ["show ip ospf"]}},
         {"outcome": "refused", "reason": "the program moved"},
         {"outcome": "deployed", "verify": {"ok": False, "intent_unmet": ["ospf"]}},
         {"outcome": "failed", "stage": "verify"}])
-    def test_the_combined_deploy_counts_every_failure(self, outcome):
-        """Artboard A2: any device not deployed, or whose verify did not pass, counts."""
-        assert CircuitBreaker(limit=1, any_failure=True).counts(dict(outcome, device="r7"))
+    @pytest.mark.parametrize("limit", [1, 2])
+    def test_every_breaker_counts_every_failure(self, outcome, limit):
+        """C10: any device not deployed, or whose verify did not pass, counts, at the
+        combined deploy's limit of 1 (artboard A2) and at the list's limit alike; a push
+        the device rejected is the most systemic failure there is."""
+        assert CircuitBreaker(limit=limit).counts(dict(outcome, device="r7"))
 
-    def test_the_default_still_counts_only_a_verify_that_raised(self):
-        """C10's open shape, kept for every other scope until it is decided; the combined
-        deploy alone leaves it."""
-        b = CircuitBreaker(limit=2)
-        assert b.counts({"outcome": "failed", "stage": "verify"})
-        assert not b.counts({"outcome": "failed", "stage": "push"})
-        assert not b.counts({"outcome": "deployed", "verify": {"ok": False}})
-        assert not CircuitBreaker(limit=1, any_failure=True).counts(
-            {"outcome": "deployed", "verify": {"ok": True}})
+    @pytest.mark.parametrize("outcome", [
+        {"outcome": "deployed", "verify": {"ok": True}},
+        {"outcome": "deployed", "reason": "nothing to change", "commands": []}])
+    def test_a_device_deployed_and_verified_does_not_count(self, outcome):
+        """Nothing to change carries no verify, and is not a failure."""
+        assert not CircuitBreaker(limit=2).counts(dict(outcome, device="r7"))
 
     def test_a_sequential_batch_stops_at_its_first_failure_whatever_the_workers(
             self, monkeypatch):
@@ -183,7 +185,7 @@ class TestCircuitBreaker:
         def one(entry):
             ran.append(entry["artifact"].device)
             return {"device": entry["artifact"].device, "outcome": "failed", "stage": "push"}
-        report = run_batch(plan, one, CircuitBreaker(limit=1, any_failure=True), sequential=True)
+        report = run_batch(plan, one, CircuitBreaker(limit=1), sequential=True)
         assert ran == ["r7"] and report["workers"] == 1
         left = {r["device"]: r for r in report["results"] if r["outcome"] == "unattempted"}
         assert set(left) == {"s5", "s6"}

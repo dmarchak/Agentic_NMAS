@@ -690,7 +690,7 @@ def monitoring_panel(uid, panel_id):
 # and the result, drawn server-side from the six-part contract (today's
 # renderer emits inline handlers, which the strict policy refuses). The
 # devices are applied in the ROLLOUT ORDER the preview shows and sets:
-# sequential, the circuit breaker stopping after repeated verify failures.
+# sequential, the circuit breaker stopping after repeated failed devices.
 # ---------------------------------------------------------------------------
 
 #: The scopes this page applies, each with its words: the network's

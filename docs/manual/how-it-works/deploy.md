@@ -237,8 +237,12 @@ After the last device, in this order:
 A batch deploys one device after another (`deploy_max_workers`, default 1), in the order the
 confirm lists them: on today's wizard, the order of the plan; on Monitoring > Coverage's Apply,
 the order you set with Earlier and Later. A device refused at apply is skipped and the rest
-proceed. After `deploy_verify_failure_limit` verify failures (default 2) the circuit breaker
-trips and the remaining devices are not attempted, each saying so. Sequential on purpose: a bad
+proceed. After `deploy_verify_failure_limit` failed devices (default 2) the circuit breaker
+trips and the remaining devices are not attempted, each saying so. A failed device is one that
+did not end deployed with its verify passed: a push the device rejected, a refusal on the way to
+the device, a verify that raised, or a verify that did not pass (intent unmet, unreadable after
+the change, a sent line not read back). A drifted device is skipped before the batch starts and
+does not count. Sequential on purpose: a bad
 change stops after the first devices it breaks, instead of reaching the whole fleet at once.
 Today's wizard waits for the whole batch in one request, with the in-flight panel showing what
 runs; the v2 Apply runs as a job, answering at once and drawing each device's start and finish

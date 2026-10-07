@@ -1660,8 +1660,9 @@ The only part of the NSoT work that reaches a device.
   captures: `tests/test_pipeline_reads_real_output.py`.
 - **Stage 8.5 saves golden** after verify, on partial success, from the
   post-deploy config stage 7 now captures.
-- **Batch**: sequential by default, circuit breaker on repeated *verify*
-  failures, drift skips rather than aborts, every device accounted for.
+- **Batch**: sequential by default, circuit breaker on repeated failed devices
+  (a rejected push, a refusal, a verify that did not pass; C10), drift
+  skips rather than aborts, every device accounted for.
 - **Each path's baseline is keyed on the claim its tag makes.** A *deploy*
   baseline says "this commit's goldens are the network" — the goldens are the
   post-deploy captures, so it is true by construction for devices that

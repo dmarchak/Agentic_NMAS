@@ -167,19 +167,45 @@ class TestCircuitBreakerInBatch:
         report = run_batch(self._plan(5),
                            lambda e: {"device": e["artifact"].device,
                                       "outcome": FAILED, "stage": "verify"},
-                           CircuitBreaker(limit=1))
-        unattempted = [r for r in report["results"] if r["outcome"] == UNATTEMPTED]
-        assert unattempted
-        assert all("verify failure" in r["reason"] for r in unattempted)
-
-    def test_deploy_failures_do_not_trip_it(self):
-        """The breaker counts VERIFY failures. A push failure is not systemic."""
-        report = run_batch(self._plan(5),
-                           lambda e: {"device": e["artifact"].device,
-                                      "outcome": FAILED, "stage": "deploy"},
                            CircuitBreaker(limit=2))
+        unattempted = [r for r in report["results"] if r["outcome"] == UNATTEMPTED]
+        assert len(unattempted) == 3
+        assert all(r["reason"] == ("not attempted — stopped after 2 failed devices (the "
+                                   "limit is 2), last on R2") for r in unattempted)
+
+    def test_a_push_rejected_on_every_device_stops_at_the_limit(self):
+        """C10: a command the image does not accept is rejected on every device. Counting
+        only a verify that raised tried it, and rolled it back, on all nine."""
+        calls = []
+
+        def _deploy(entry):
+            calls.append(entry["artifact"].device)
+            return {"device": entry["artifact"].device, "outcome": FAILED, "stage": "push",
+                    "reason": "% Invalid input detected", "rolled_back": True}
+        report = run_batch(self._plan(9), _deploy, CircuitBreaker(limit=2))
+        assert calls == ["R1", "R2"], calls
+        assert report["breaker_tripped"] is True
+        assert len(report["by_outcome"][UNATTEMPTED]) == 7
+
+    def test_a_verify_that_did_not_pass_without_raising_counts(self):
+        """C10: intent unmet ends `deployed` with verify not ok; it counts all the same."""
+        calls = []
+
+        def _deploy(entry):
+            calls.append(entry["artifact"].device)
+            return {"device": entry["artifact"].device, "outcome": DEPLOYED,
+                    "verify": {"ok": False, "intent_unmet": ["ospf"]}}
+        report = run_batch(self._plan(5), _deploy, CircuitBreaker(limit=2))
+        assert calls == ["R1", "R2"], calls
+        assert report["breaker_tripped"] is True
+
+    def test_deployed_and_verified_devices_never_trip_it(self):
+        report = run_batch(self._plan(5),
+                           lambda e: {"device": e["artifact"].device, "outcome": DEPLOYED,
+                                      "verify": {"ok": True}},
+                           CircuitBreaker(limit=1))
         assert report["breaker_tripped"] is False
-        assert len(report["by_outcome"][FAILED]) == 5
+        assert len(report["by_outcome"][DEPLOYED]) == 5
 
     def test_drift_does_not_trip_it(self):
         """One drifted device means someone touched a box, not a systemic fault."""

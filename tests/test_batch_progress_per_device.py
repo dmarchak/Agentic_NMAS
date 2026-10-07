@@ -61,7 +61,7 @@ def test_a_device_the_breaker_stopped_says_so(held, monkeypatch):
 
     breaker = DEP.CircuitBreaker(list_name="Lab")
     monkeypatch.setattr(breaker, "counts", lambda outcome: True)
-    monkeypatch.setattr(breaker, "record_verify_failure", lambda device: None)
+    monkeypatch.setattr(breaker, "record_failure", lambda device: None)
     monkeypatch.setattr(type(breaker), "is_tripped", property(lambda self: True))
     DEP.run_batch(_plan("s4", "s3"), deploy_one, breaker=breaker, sequential=True,
                   list_name="Lab")

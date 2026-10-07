@@ -29,7 +29,7 @@
 
   {%- if sending %}
   <h2 class="apply-h">Rollout order</h2>
-  <p class="muted apply-why">One device at a time, in this order. The batch stops after repeated verify failures, so the first devices are the ones a bad change would reach; put the one you would most like to learn from first.</p>
+  <p class="muted apply-why">One device at a time, in this order. The batch stops after repeated failures (a push, a verify or a refusal), so the first devices are the ones a bad change would reach; put the one you would most like to learn from first.</p>
   <ol class="rollout" id="rollout">
     {%- for r in sending %}
     <li class="rollout-item">

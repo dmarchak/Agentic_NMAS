@@ -90,7 +90,7 @@ Each with a reason. These are settable by editing
 | `cf_access_service_labels` | A mapping of service Client ID → human label, edited when a service token is issued, which is already a host-side operation. |
 | `cf_access_jwks_ttl` | Cache lifetime for Cloudflare's signing keys. A wrong value degrades verification silently; the default is correct and there is no operational reason to change it. |
 | `deploy_max_workers` | Deploy concurrency, default 1. Raising it changes the blast radius of a bad plan. Deliberately awkward. |
-| `deploy_verify_failure_limit` | Circuit-breaker threshold. Same reasoning. |
+| `deploy_verify_failure_limit` | Circuit-breaker threshold: the failed devices (a rejected push, a refusal, or a verify that did not pass; C10) after which a batch stops. The key keeps its older name. Same reasoning. |
 | `nsot_config_read_timeout` | Measured against real device behaviour (5.5s idle, >16s after `write memory`). Tuned from evidence, not preference. |
 | `nsot_device_tag_retention` | Tag pruning depth. Housekeeping; no operational decision attached. |
 | `platform_default_netmiko_type` | Trades a platform **skip** for a warning. Setting it makes unknown platforms deploy with a guessed driver — an explicit, considered risk, and an easy one to click past in a form. |

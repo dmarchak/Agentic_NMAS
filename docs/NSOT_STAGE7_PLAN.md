@@ -3036,7 +3036,8 @@ writeup. "Accepted" means a run on the host by the operator, with its date.
      the program, and a not-reporting one is named beside it with its Diagnose link, as
      drawn.
    - **The batch stops at the first device that fails, of any kind.** Today's breaker stops
-     after 2 verify failures and counts nothing else (C10).
+     after 2 verify failures and counts nothing else (C10; since 2026-10-07 every breaker
+     counts every failed device, and every other scope stops at the list's limit).
    - **Every line of the program is read back,** quick or full, and a line that did not land
      rolls the device's program back as one.
    - **DECIDED (the operator, 2026-10-03): arrival is WATCHED for 15 minutes after the

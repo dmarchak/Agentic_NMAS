@@ -644,7 +644,7 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
                 declare: dict = None) -> dict:
     """Deploy the confirmed devices, in the ORDER of *confirmations* (the
     rollout order: sequential, the circuit breaker stopping after repeated
-    verify failures). THE apply, for `/deploy/apply` and the v2 batch confirm
+    failed devices). THE apply, for `/deploy/apply` and the v2 batch confirm
     (P.9 d2), which runs it as a job: the actor and how it was verified come
     in as arguments, since a job's thread has no request to read them from."""
     from modules.nsot import profile as _profile, profile_apply
@@ -799,10 +799,10 @@ def apply_batch(list_name: str, confirmations: dict, command_hashes: dict, *,
             return result
 
         # Coverage's combined deploy stops at its FIRST failure of any kind, one device at a
-        # time (artboard A2); every other scope keeps the setting's limit on verify failures.
+        # time (artboard A2); every other scope keeps the setting's limit on failed devices.
         templates = scope == profile_apply.TEMPLATES
         report = run_batch(batch, _one,
-                           CircuitBreaker(limit=1, any_failure=True) if templates
+                           CircuitBreaker(limit=1) if templates
                            else CircuitBreaker(list_name=list_name), sequential=templates,
                            list_name=list_name)
         if refused:

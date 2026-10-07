@@ -119,8 +119,8 @@ class TestOneProgram:
 
 class TestOneChangeRolledBackAsOne:
     """A2: the first device that fails stops the rest, and every sent line is read back, a
-    line not read back rolling the program back as one (C10: the batch otherwise stops only
-    after 2 verify failures that raised)."""
+    line not read back rolling the program back as one (every other scope stops after the
+    list's limit of failed devices, C10)."""
 
     def _conf(self, lab):
         (d,) = _plan(lab, "templates")["devices"]
@@ -133,20 +133,20 @@ class TestOneChangeRolledBackAsOne:
         seen = []
 
         def run_batch(plan, one, breaker=None, sequential=False, list_name=""):
-            seen.append((breaker.limit, breaker.any_failure, sequential, list_name))
+            seen.append((breaker.limit, sequential, list_name))
             return {"results": [], "by_outcome": {}, "deployed": [], "breaker_tripped": False,
                     "breaker_reason": "", "total": 0, "workers": 1}
         monkeypatch.setattr("modules.nsot.deploy.run_batch", run_batch)
         monkeypatch.setattr(rd, "_commit_batch_golden", lambda *a, **k: {})
         monkeypatch.setattr(rd, "_write_receipts", lambda *a, **k: {})
         lab["client"].post("/deploy/apply", json=dict(self._conf(lab), scope="templates"))
-        assert seen == [(1, True, True, "Lab")], "the batch carries its list (P.8)"
+        assert seen == [(1, True, "Lab")], "the batch carries its list (P.8)"
         (p,) = _plan(lab, "profile")["devices"]
         lab["client"].post("/deploy/apply", json={
             "confirmations": {"r6": p["capture_hash"]}, "command_hashes": {"r6": p["command_hash"]},
             "list_name": "Lab", "scope": "profile"})
-        assert seen[-1][1] is False and seen[-1][2] is False, "every other scope as before"
-        assert seen[-1][3] == "Lab"
+        assert seen[-1][0] == 2 and seen[-1][1] is False, "every other scope: the list's limit"
+        assert seen[-1][2] == "Lab"
 
     def test_the_device_path_reads_every_line_back(self, lab, monkeypatch, r6_probe_unsent):
         import routes.deploy as rd

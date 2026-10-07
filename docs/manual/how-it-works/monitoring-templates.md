@@ -113,7 +113,7 @@ is removed. It is the deploy above with scope `templates`:
      one, never a device left with part of its templates.
    - **The first device that fails stops the rest,** whatever failed: its push, its verify,
      or a program that moved since the preview. The devices after it are not attempted, and
-     the result says so. (Other deploys stop after repeated verify failures.)
+     the result says so. (Other deploys stop after repeated failures.)
 5. **The arrival watch.** Read: Coverage's stored reading, each minute (it reads Prometheus
    and Loki itself; the watch asks nothing of its own). Sent: nothing. Recorded: nothing; the
    watch is in memory with the job. For 15 minutes after the batch, each template a deployed

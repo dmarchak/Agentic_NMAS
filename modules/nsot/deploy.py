@@ -1532,40 +1532,44 @@ def transport_for(platform_slug: str) -> str:
 # ---------------------------------------------------------------------------
 
 class CircuitBreaker:
-    """Stop attempting after N verify failures.
+    """Stop attempting after N failed devices.
 
     Distinct from drift. One drifted device means someone touched a box, and
-    the batch carries on without it. Repeated *verify* failures mean something
-    systemic — a bad template, a broken assumption — and continuing turns one
-    mistake into nine.
+    the batch carries on without it (a drifted device is skipped before the
+    batch runs, so it never reaches the breaker). Repeated failures mean
+    something systemic — a bad template, a command the image rejects, a broken
+    assumption — and continuing turns one mistake into nine.
+
+    A failure is any device the batch attempted that did not end deployed with
+    its verify passed (C10): a push the device rejected, a refusal on the path
+    that connects, a verify that raised, and a verify that did not pass without
+    raising (intent unmet, unreadable after the change, a sent line not read
+    back). Counting only a verify that raised let a push rejected on every
+    device be tried, and rolled back, on every device.
     """
 
-    def __init__(self, limit: int = None, any_failure: bool = False, list_name: str = ""):
-        """*any_failure* (Coverage's combined deploy, artboard A2): every device that was
-        not deployed, or whose verify did not pass, counts, not only a verify that raised
-        (C10); with *limit* 1 the batch stops at its first failure of any kind."""
+    def __init__(self, limit: int = None, list_name: str = ""):
+        """*limit* 1 (Coverage's combined deploy, artboard A2) stops the batch at its
+        first failure; otherwise the list's `deploy_verify_failure_limit`."""
         if limit is None:
             from modules.list_settings import value as list_value   # the batch's network
             limit = list_value(list_name, "deploy_verify_failure_limit", 2)
         self.limit = max(1, int(limit))
-        self.any_failure = any_failure
-        self.verify_failures = 0
+        self.failures = 0
         self.tripped_after = None
 
     def counts(self, outcome: dict) -> bool:
         """Whether *outcome* (one device's result) is a failure this breaker counts."""
-        if self.any_failure:
-            return (outcome.get("outcome") != DEPLOYED
-                    or (outcome.get("verify") or {}).get("ok") is False)
-        return outcome.get("outcome") == FAILED and outcome.get("stage") == "verify"
+        return (outcome.get("outcome") != DEPLOYED
+                or (outcome.get("verify") or {}).get("ok") is False)
 
-    def record_verify_failure(self, device: str) -> bool:
-        self.verify_failures += 1
-        if self.verify_failures >= self.limit and self.tripped_after is None:
+    def record_failure(self, device: str) -> bool:
+        self.failures += 1
+        if self.failures >= self.limit and self.tripped_after is None:
             self.tripped_after = device
-            log.error("deploy: circuit breaker tripped after %d verify failure(s) "
+            log.error("deploy: circuit breaker tripped after %d failed device(s) "
                       "(last: %s) — remaining devices will not be attempted",
-                      self.verify_failures, device)
+                      self.failures, device)
         return self.is_tripped
 
     @property
@@ -1573,12 +1577,11 @@ class CircuitBreaker:
         return self.tripped_after is not None
 
     def reason(self) -> str:
-        if self.any_failure and self.limit == 1:
+        if self.limit == 1:
             return (f"not attempted — the deploy stops at its first failure, which was on "
                     f"{self.tripped_after}")
-        return (f"not attempted — stopped after {self.verify_failures} "
-                f"{'failure(s)' if self.any_failure else 'verify failure(s)'}, last on "
-                f"{self.tripped_after}")
+        return (f"not attempted — stopped after {self.failures} failed devices "
+                f"(the limit is {self.limit}), last on {self.tripped_after}")
 
 
 def max_workers(list_name: str) -> int:
@@ -1721,7 +1724,7 @@ def run_batch(plan: dict, deploy_one, breaker: CircuitBreaker = None,
         results.append(outcome)
         device_ops.note(f"done: {outcome.get('outcome', '?')}", device=outcome["device"])
         if breaker.counts(outcome):
-            breaker.record_verify_failure(outcome["device"])
+            breaker.record_failure(outcome["device"])
 
     if workers <= 1:
         for entry in queue:
