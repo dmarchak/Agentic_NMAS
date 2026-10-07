@@ -1,0 +1,491 @@
+acls: []
+call_home: null
+control_plane:
+  settings: []
+diagnostic: []
+domain_name: rcn.lab
+enable_secret_keyword: ''
+enable_secret_ref: ''
+fhrp_version_vrrp: v3
+flags:
+  aaa new-model: false
+  ip cef: true
+  ipv6 cef: true
+  ipv6 unicast-routing: true
+  lldp run: true
+  netconf-yang: true
+forward_protocol:
+- nd
+hostname: s1
+http:
+  server: true
+interfaces:
+- channel_group: ''
+  description: mgmt identity
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: 10.255.1.21 255.255.255.255
+  ipv6:
+  - 2001:DB8:1::21/128
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  name: Loopback0
+  negotiation: ''
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: clab-mgmt
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: dhcp
+  ipv6: []
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  name: GigabitEthernet0/0
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: true
+  ospf: []
+  ospfv3: []
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: ''
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: ''
+  ipv6: []
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  name: GigabitEthernet0/1
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: P2P to r1 Gi3 - RIPng
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: 10.255.2.11 255.255.255.254
+  ipv6:
+  - 2001:DB8:2:A::2/64
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  name: GigabitEthernet0/2
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: true
+  ospf: []
+  ospfv3: []
+  ripng:
+  - RCN enable
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: trunk to s2 Gi0/3 - VRRP rides this
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: ''
+  ipv6: []
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  name: GigabitEthernet0/3
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: trunk
+  switchport_trunk_encapsulation: dot1q
+  switchport_trunk_vlans:
+  - 10,20,30
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: h1 - VLAN 10
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: ''
+  ipv6: []
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  name: GigabitEthernet1/0
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: '10'
+  switchport_mode: access
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: h2 - VLAN 20
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: ''
+  ipv6: []
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  name: GigabitEthernet1/1
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: '20'
+  switchport_mode: access
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: ''
+  dhcpv6_relay:
+  - 2001:DB8:255::10
+  encapsulation: ''
+  helper_addresses:
+  - 10.255.0.10
+  ip_nat: []
+  ipv4: 10.10.10.2 255.255.255.0
+  ipv6:
+  - 2001:DB8:10::2/64
+  ipv6_enable: true
+  ipv6_nd:
+  - prefix 2001:DB8:10::/64 2592000 604800 no-autoconfig
+  - managed-config-flag
+  - other-config-flag
+  mop: []
+  mtu: ''
+  name: Vlan10
+  negotiation: ''
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng:
+  - RCN enable
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups:
+  - family: ipv4
+    group: '10'
+    settings:
+    - priority 110
+    - track 1 decrement 20
+    - address 10.10.10.1 primary
+    terminator: exit-vrrp
+  - family: ipv6
+    group: '10'
+    settings:
+    - priority 110
+    - track 1 decrement 20
+    - address FE80::A primary
+    terminator: exit-vrrp
+- channel_group: ''
+  description: ''
+  dhcpv6_relay:
+  - 2001:DB8:255::10
+  encapsulation: ''
+  helper_addresses:
+  - 10.255.0.10
+  ip_nat: []
+  ipv4: 10.10.20.2 255.255.255.0
+  ipv6:
+  - 2001:DB8:20::2/64
+  ipv6_enable: true
+  ipv6_nd:
+  - prefix 2001:DB8:20::/64 2592000 604800 no-autoconfig
+  - managed-config-flag
+  - other-config-flag
+  mop: []
+  mtu: ''
+  name: Vlan20
+  negotiation: ''
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng:
+  - RCN enable
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups:
+  - family: ipv4
+    group: '20'
+    settings:
+    - track 1 decrement 20
+    - address 10.10.20.1 primary
+    terminator: exit-vrrp
+  - family: ipv6
+    group: '20'
+    settings:
+    - track 1 decrement 20
+    - address FE80::14 primary
+    terminator: exit-vrrp
+- channel_group: ''
+  description: ''
+  dhcpv6_relay:
+  - 2001:DB8:255::10
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: ''
+  ipv6:
+  - 2001:DB8:30::2/64
+  ipv6_enable: true
+  ipv6_nd:
+  - prefix 2001:DB8:30::/64 2592000 604800 no-autoconfig
+  - managed-config-flag
+  - other-config-flag
+  mop: []
+  mtu: ''
+  name: Vlan30
+  negotiation: ''
+  no_ip_address: true
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng:
+  - RCN enable
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups:
+  - family: ipv6
+    group: '30'
+    settings:
+    - priority 110
+    - address FE80::1 primary
+    terminator: exit-vrrp
+ip_nat: []
+ip_sla: []
+ip_sla_schedules: []
+license_settings: []
+lines:
+- settings: []
+  spec: con 0
+- settings: []
+  spec: aux 0
+- settings:
+  - login local
+  - transport input telnet ssh
+  spec: vty 0 4
+- settings:
+  - login local
+  - transport input telnet ssh
+  spec: vty 5 15
+logging:
+  console: false
+  hosts: []
+  settings: []
+  syslog:
+    heartbeat: 300
+    hosts:
+    - 10.255.1.10
+    origin_id: hostname
+    source_interface: Loopback0
+    trap: notifications
+login: []
+memory: []
+mgcp: []
+multilink: []
+netconf_settings: []
+ntp_servers:
+- 10.255.1.10
+pki_trustpoints: []
+platform: cisco_ios
+platform_settings: []
+prefix_lists: []
+redundancy: null
+routing:
+  bgp: null
+  ospf: []
+  ospfv3: []
+  rip:
+    neighbors: []
+    networks:
+    - network 192.0.2.0
+    settings:
+    - version 2
+    - passive-interface Loopback0
+    - passive-interface Vlan10
+    - passive-interface Vlan20
+    - no auto-summary
+  ripng:
+  - name: RCN
+    raw: []
+secret_refs:
+- snmp_community_ro
+- user_admin_secret
+services:
+- service timestamps debug datetime msec
+- service timestamps log datetime msec show-timezone
+- no service password-encryption
+- service compress-config
+snmp:
+  communities:
+  - access: RO
+    ref: snmp_community_ro
+  hosts:
+  - address: 10.255.1.10
+    options: version 2c __secret__:snmp_community_ro
+  settings:
+  - trap-source Loopback0
+  - location containerlab-rcn-lab1
+  - contact noc
+  - enable traps snmp linkdown linkup
+  - snmp ifmib ifindex persist
+spanning_tree:
+  lines:
+  - spanning-tree mode pvst
+  - spanning-tree extend system-id
+ssh:
+- time-out 60
+- version 2
+- server algorithm encryption aes128-ctr aes192-ctr aes256-ctr
+- client algorithm encryption aes128-ctr aes192-ctr aes256-ctr
+static_routes: []
+subscriber: []
+telemetry: []
+tracks:
+- id: 1
+  spec: interface GigabitEthernet0/2 line-protocol
+unmodeled: []
+users:
+- name: admin
+  privilege: 15
+  secret_kind: secret
+  secret_ref: user_admin_secret
+vlans:
+- extra: []
+  id: '10'
+  name: ''
+- extra: []
+  id: '20'
+  name: USERS
+- extra: []
+  id: '30'
+  name: IPV6
+vrfs: []
+vtp:
+- vtp mode transparent
+vtp_mode: ''

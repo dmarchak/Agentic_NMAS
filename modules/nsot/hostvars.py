@@ -26,6 +26,7 @@ verbatim. Storing plaintext there would make those lines fail every round trip,
 permanently.
 """
 
+import copy
 import logging
 import os
 import re
@@ -373,6 +374,30 @@ def complete_interfaces(host_vars: dict) -> dict:
         merged.update(entry)
         filled.append(merged)
     return {**host_vars, "interfaces": filled}
+
+
+def complete_schema(host_vars: dict) -> dict:
+    """*host_vars* with every absent TOP-LEVEL key the parsers emit filled with its empty
+    value (`BaseParser.SCHEMA_DEFAULTS`, the one list), then every absent interface key
+    (`complete_interfaces`). Returns a copy.
+
+    AN INTENT COMMITTED BEFORE ITS KEY EXISTED (C568, the operator's walk, 2026-10-07): P1
+    added `source_interfaces` to the schema and to the shipped `_common.j2`; every intent on
+    the host was committed before P1, without it, and the render of a device's own intent
+    (Apply's measure of what the profile adds) raised on `v.source_interfaces` for all nine,
+    so nothing could be deployed. A key the schema gains must not break an intent committed
+    before it: absent is the key's empty value, which renders what a parser emitting it
+    renders. A bootstrap intent stays one: its sections (`interfaces`, `routing`, ...) are not
+    schema defaults, and the plan refuses it before any render."""
+    if not isinstance(host_vars, dict):
+        return host_vars
+    from modules.nsot.parsers.base import BaseParser
+
+    out = dict(host_vars)
+    for key, default in BaseParser.SCHEMA_DEFAULTS.items():
+        if key not in out:
+            out[key] = copy.deepcopy(default)
+    return complete_interfaces(out)
 
 
 def unknown_interface_keys(host_vars: dict) -> list:

@@ -174,7 +174,7 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
 
     env = Environment(
         loader=FileSystemLoader([os.path.join(template_root, platform), template_root]),
-        undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=False,
+        undefined=_named_undefined(StrictUndefined), trim_blocks=True, lstrip_blocks=False,
         keep_trailing_newline=True,
     )
     def _resolve_markers(text):
@@ -188,26 +188,109 @@ def render(host_vars: dict, platform: str, secret_lookup=None,
     env.filters["resolve_secrets"] = _resolve_markers
     template = env.get_template(template_name)
 
-    # ABSENT INTERFACE KEYS FILLED FIRST. `StrictUndefined` is right about a
+    # ABSENT SCHEMA KEYS FILLED FIRST. `StrictUndefined` is right about a
     # key the template needs and cannot exist, and wrong about one a person
     # had no reason to write: a parser emits all thirty, so hand-authored
     # intent -- the whole point of an intent editor -- was the first document
-    # ever to omit one. Filling changes no output, since the macro's
-    # `{% if i.x %}` emits nothing for a falsy value either way.
-    from modules.nsot.hostvars import complete_interfaces
+    # ever to omit one. Nor one the schema gained after the intent was
+    # committed (C568: `source_interfaces`, every intent on the host). Filling
+    # changes no output, since `{% if x %}` emits nothing for a falsy value.
+    from modules.nsot.hostvars import complete_schema
 
-    prepared = complete_interfaces(host_vars)
+    prepared = complete_schema(host_vars)
     try:
         return template.render(vars=prepared, secret=_secret)
     except UndefinedError as exc:
-        # NAME WHAT TO DO, not only what is missing. "missing no_switchport"
-        # sends a person hand-copying thirty lines they do not need.
-        raise UndefinedError(
-            f"{exc}. Known interface keys default to falsy and omitted ones "
-            "are filled automatically, so this names a section that is not "
-            "an interface — check the top-level keys of the document "
-            "(routing, vlans, lines, snmp, logging) against a device the "
-            "parser has already produced.") from exc
+        raise UndefinedError(undefined_words(exc, prepared, template_root, platform)) from exc
+
+
+def _named_undefined(base):
+    """*base* (StrictUndefined), whose failure carries what was read and from which object,
+    so the refusal names the path and what the data holds there (C568: the words were a
+    guess about interface keys and routing, for a top-level key the schema had gained)."""
+    from jinja2.runtime import Undefined
+
+    def fail(self, *args, **kwargs):
+        try:
+            return Undefined._fail_with_undefined_error(self, *args, **kwargs)
+        except Exception as exc:          # noqa: BLE001 (re-raised, annotated)
+            exc.nmas_missing = (self._undefined_obj, self._undefined_name)
+            raise
+
+    named = type("NamedUndefined", (base,), {"__slots__": ()})
+    # Every operation the base fails on fails through `fail`: they are bound to the base's
+    # function by value at class creation, so each is rebound by name.
+    for cls in (Undefined, base):
+        for attr, value in vars(cls).items():
+            if value is Undefined._fail_with_undefined_error:
+                setattr(named, attr, fail)
+    return named
+
+
+def _path_to(root, target, path="the intent's top level"):
+    """Where *target* sits inside *root*, by identity, in words; ``""`` when it is not there."""
+    if root is target:
+        return path
+    if isinstance(root, dict):
+        for k, v in root.items():
+            if isinstance(v, (dict, list)):
+                inner = k if path == "the intent's top level" else f"{path}.{k}"
+                got = _path_to(v, target, inner)
+                if got:
+                    return got
+    elif isinstance(root, list):
+        for i, v in enumerate(root):
+            if isinstance(v, (dict, list)):
+                name = v.get("name") if isinstance(v, dict) else None
+                got = _path_to(v, target, f"{path}[{i}]" + (f" ({name})" if name else ""))
+                if got:
+                    return got
+    return ""
+
+
+def _template_line(exc, template_root: str, platform: str) -> str:
+    """``<file> line <n>: <the line>``, the innermost template frame the failure passed
+    through; ``""`` when none did."""
+    tb, where = exc.__traceback__, None
+    while tb is not None:
+        name = tb.tb_frame.f_code.co_filename
+        if name.endswith(".j2"):
+            where = (name, tb.tb_lineno)
+        tb = tb.tb_next
+    if not where:
+        return ""
+    name, n = where
+    rel = os.path.relpath(name, template_root) if template_root else os.path.basename(name)
+    try:
+        with open(name, encoding="utf-8") as fh:
+            text = fh.read().splitlines()[n - 1].strip()
+    except (OSError, IndexError):
+        text = ""
+    return f"templates/{rel} line {n}" + (f": {text}" if text else "")
+
+
+def undefined_words(exc, prepared: dict, template_root: str = TEMPLATE_ROOT,
+                    platform: str = "") -> str:
+    """A render's refusal for a value the template reads and the intent does not hold: the
+    template line, the exact path read, and what the intent holds at that place, measured
+    (C568). Never a guess at the cause: the comparison and both operands."""
+    obj, name = getattr(exc, "nmas_missing", (None, None))
+    at = _template_line(exc, template_root, platform)
+    reads = f"The template ({at}) reads" if at else "The template reads"
+    if name is None:
+        return f"{reads} a value the intent does not hold ({exc})."
+    if obj is None:
+        return f"{reads} `{name}`, a name the render does not define ({exc})."
+    where = _path_to(prepared, obj)
+    if isinstance(obj, dict):
+        keys = sorted(str(k) for k in obj)
+        holds = (f"it holds {len(keys)} key{'s' if len(keys) != 1 else ''}: {', '.join(keys)}"
+                 if keys else "it holds no keys")
+    else:
+        holds = f"it is a {type(obj).__name__}, not a mapping"
+    path = f"{where}.{name}" if where and where != "the intent's top level" else name
+    return (f"{reads} `{path}`, and the intent does not hold it: at "
+            f"{where or 'the value read'}, {holds}.")
 
 
 def configs_equivalent(left: str, right: str) -> dict:

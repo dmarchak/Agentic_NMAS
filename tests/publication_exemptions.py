@@ -105,6 +105,11 @@ EXEMPT = {
     ('tests/fixtures/configs/fleet/r1.cfg', '1ef15544fd6e'): ('CAPTURE', ('address',)),
     ('tests/fixtures/configs/fleet/r1.cfg', 'a5b73e35b275'): ('VENDOR', ('email',)),
     ('tests/fixtures/configs/fleet/r1.cfg', 'f1eeba711c88'): ('VENDOR', ('email',)),
+    # tests/fixtures/committed/ (C568: the host's committed r2 golden and intent)
+    ('tests/fixtures/committed/r2.cfg', 'a5b73e35b275'): ('VENDOR', ('email',)),
+    ('tests/fixtures/committed/r2.cfg', 'f1eeba711c88'): ('VENDOR', ('email',)),
+    ('tests/fixtures/committed/r2.yml', 'a06dd1db1909'): ('VENDOR', ('email',)),
+    ('tests/fixtures/committed/r2.yml', '54baf374ac60'): ('VENDOR', ('email',)),
     # tests/fixtures/transcripts/r1/ (C281: r1's real channel transcripts)
     ('tests/fixtures/transcripts/r1/show_running-config.txt', 'a5b73e35b275'): ('VENDOR', ('email',)),
     ('tests/fixtures/transcripts/r1/show_running-config.txt', 'f1eeba711c88'): ('VENDOR', ('email',)),

@@ -1,0 +1,337 @@
+acls: []
+call_home:
+  body:
+  - ' ! If contact email address in call-home is configured as sch-smart-licensing@cisco.com'
+  - ' ! the email address configured in Cisco Smart License Portal will be used as contact email address to send SCH notifications.'
+  - ' contact-email-addr sch-smart-licensing@cisco.com'
+  - ' profile "CiscoTAC-1"'
+  - '  active'
+  - '  destination transport-method http'
+control_plane:
+  settings: []
+diagnostic:
+- bootup level minimal
+domain_name: example.com
+enable_secret_keyword: ''
+enable_secret_ref: ''
+fhrp_version_vrrp: ''
+flags:
+  aaa new-model: false
+  cdp run: true
+  ipv6 unicast-routing: true
+  lldp run: true
+  netconf-yang: true
+  restconf: true
+forward_protocol:
+- nd
+hostname: r2
+http:
+  secure_server: true
+  server: false
+interfaces:
+- channel_group: ''
+  description: mgmt identity
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: 10.255.1.12 255.255.255.255
+  ipv6:
+  - 2001:DB8:1::12/128
+  ipv6_enable: false
+  ipv6_nd: []
+  mop: []
+  mtu: ''
+  name: Loopback0
+  negotiation: ''
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3:
+  - 1 area 0
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: Containerlab management interface
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: 192.0.2.15 255.255.255.0
+  ipv6:
+  - 2001:DB8::2/64
+  ipv6_enable: false
+  ipv6_nd: []
+  mop:
+  - no mop enabled
+  - no mop sysid
+  mtu: ''
+  name: GigabitEthernet1
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: clab-mgmt
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: s4 Gi1/0 - VLAN 100 CORE
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: 10.255.3.12 255.255.255.0
+  ipv6:
+  - 2001:DB8:3::12/64
+  ipv6_enable: false
+  ipv6_nd: []
+  mop:
+  - no mop enabled
+  - no mop sysid
+  mtu: ''
+  name: GigabitEthernet2
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf:
+  - priority 100
+  ospfv3:
+  - 1 area 0
+  ripng: []
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+- channel_group: ''
+  description: P2P to s2 Gi0/2 - RIPng
+  dhcpv6_relay: []
+  encapsulation: ''
+  helper_addresses: []
+  ip_nat: []
+  ipv4: 10.255.2.12 255.255.255.254
+  ipv6:
+  - 2001:DB8:2:C::1/64
+  ipv6_enable: false
+  ipv6_nd: []
+  mop:
+  - no mop enabled
+  - no mop sysid
+  mtu: ''
+  name: GigabitEthernet3
+  negotiation: auto
+  no_ip_address: false
+  no_shutdown: false
+  no_switchport: false
+  ospf: []
+  ospfv3: []
+  ripng:
+  - RCN enable
+  - RCN default-information originate
+  shutdown: false
+  switchport: []
+  switchport_access_vlan: ''
+  switchport_mode: ''
+  switchport_trunk_encapsulation: ''
+  switchport_trunk_vlans: []
+  unmodeled: []
+  vrf: ''
+  vrrp: []
+  vrrp_groups: []
+ip_nat: []
+ip_sla:
+- id: '1'
+  settings:
+  - ' icmp-echo 10.255.1.13 source-interface Loopback0'
+  - '  frequency 10'
+ip_sla_schedules:
+- 1 life forever start-time now
+license_settings:
+- license boot level network-premier addon dna-premier
+lines:
+- settings:
+  - logging synchronous
+  - stopbits 1
+  - login local
+  spec: con 0
+- settings: []
+  spec: aux 0
+- settings:
+  - logging synchronous
+  - login local
+  - length 0
+  - transport input all
+  spec: vty 0 4
+logging:
+  hosts: []
+  settings: []
+  syslog:
+    heartbeat: 300
+    hosts:
+    - 10.255.1.10
+    origin_id: hostname
+    source_interface: Loopback0
+    trap: notifications
+login:
+- on-success log
+memory:
+- free low-watermark processor 68484
+mgcp:
+- mgcp behavior rsip-range tgcp-only
+- mgcp behavior comedia-role none
+- mgcp behavior comedia-check-media-src disable
+- mgcp behavior comedia-sdp-force disable
+- mgcp profile default
+multilink:
+- bundle-name authenticated
+netconf_settings:
+- detailed-error
+- max-sessions 16
+ntp_servers:
+- 10.255.1.10
+pki_trustpoints:
+- name: TP-self-signed-2968666059
+  settings:
+  - enrollment selfsigned
+  - subject-name cn=IOS-Self-Signed-Certificate-2968666059
+  - revocation-check none
+  - rsakeypair TP-self-signed-2968666059
+- name: SLA-TrustPoint
+  settings:
+  - enrollment pkcs12
+  - revocation-check crl
+platform: cisco_iosxe
+platform_settings:
+- platform qfp utilization monitor load 80
+- platform punt-keepalive disable-kernel-core
+- platform console serial
+prefix_lists: []
+redundancy:
+  settings: []
+routing:
+  bgp: null
+  ospf:
+  - neighbors: []
+    networks:
+    - network 10.255.1.12 0.0.0.0 area 0
+    - network 10.255.3.0 0.0.0.255 area 0
+    process: '1'
+    settings:
+    - router-id 10.255.1.12
+    - redistribute rip
+    - passive-interface Loopback0
+    - max-metric router-lsa external-lsa on-startup 5
+  ospfv3:
+  - process: '1'
+    raw:
+    - router-id 10.255.1.12
+    - redistribute rip RCN include-connected
+    - max-metric router-lsa on-startup 5
+  rip:
+    neighbors: []
+    networks:
+    - network 192.0.2.0
+    settings:
+    - version 2
+    - passive-interface default
+    - no passive-interface GigabitEthernet3
+    - default-information originate
+    - no auto-summary
+  ripng:
+  - name: RCN
+    raw: []
+secret_refs:
+- snmp_community_ro
+- user_admin_secret
+services:
+- service timestamps debug datetime msec
+- service timestamps log datetime msec show-timezone
+- service call-home
+snmp:
+  communities:
+  - access: RO
+    ref: snmp_community_ro
+  hosts:
+  - address: 10.255.1.10
+    options: version 2c __secret__:snmp_community_ro
+  settings:
+  - trap-source Loopback0
+  - location containerlab-rcn-lab1
+  - contact noc
+  - enable traps snmp linkdown linkup
+  - snmp ifmib ifindex persist
+spanning_tree:
+  lines:
+  - spanning-tree extend system-id
+ssh:
+- maxstartups 128
+- server algorithm mac hmac-sha2-512
+static_routes:
+- family: ipv4
+  spec: vrf clab-mgmt 0.0.0.0 0.0.0.0 192.0.2.2
+- family: ipv6
+  spec: vrf clab-mgmt ::/0 2001:DB8::1
+subscriber:
+- templating
+telemetry:
+- settings:
+  - encoding encode-kvgpb
+  - filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization
+  - stream yang-push
+  - update-policy periodic 1000
+  - receiver ip address 10.255.1.10 57000 protocol grpc-tcp
+  subscription: '101'
+- settings:
+  - encoding encode-kvgpb
+  - filter xpath /interfaces-ios-xe-oper:interfaces/interface/statistics
+  - stream yang-push
+  - update-policy periodic 1000
+  - receiver ip address 10.255.1.10 57000 protocol grpc-tcp
+  subscription: '102'
+tracks: []
+unmodeled: []
+users:
+- name: admin
+  privilege: 15
+  secret_kind: secret
+  secret_ref: user_admin_secret
+vlans: []
+vrfs:
+- address_families:
+  - family: ipv4
+    settings: []
+    terminator: exit-address-family
+  - family: ipv6
+    settings: []
+    terminator: exit-address-family
+  name: clab-mgmt
+  settings:
+  - description Containerlab management VRF (DO NOT DELETE)
+vtp: []
+vtp_mode: ''

@@ -1,0 +1,66 @@
+sections:
+  ip_sla:
+    frequency: 60
+    policy: gateway
+  lldp:
+    data:
+      flags:
+        lldp run: true
+    source: connector
+  management:
+    data:
+      source_interfaces:
+        ssh: Loopback0
+        tftp: Loopback0
+    source: connector
+  ntp:
+    data:
+      ntp_servers:
+      - 10.255.1.10
+    source: connector
+  snmp:
+    data:
+      snmp:
+        communities:
+        - access: RO
+          ref: snmp_community_ro
+        hosts:
+        - address: 10.255.1.10
+          options: version 2c __secret__:snmp_community_ro
+        settings:
+        - trap-source Loopback0
+        - enable traps snmp linkdown linkup
+        - snmp ifmib ifindex persist
+    source: connector
+  syslog:
+    data:
+      logging:
+        syslog:
+          heartbeat: 300
+          hosts:
+          - 10.255.1.10
+          origin_id: hostname
+          source_interface: Loopback0
+          trap: notifications
+    source: connector
+  telemetry:
+    data:
+      telemetry:
+      - settings:
+        - encoding encode-kvgpb
+        - filter xpath /process-cpu-ios-xe-oper:cpu-usage/cpu-utilization
+        - stream yang-push
+        - update-policy periodic 1000
+        - receiver ip address 10.255.1.10 57000 protocol grpc-tcp
+        subscription: '101'
+      - settings:
+        - encoding encode-kvgpb
+        - filter xpath /interfaces-ios-xe-oper:interfaces/interface/statistics
+        - stream yang-push
+        - update-policy periodic 1000
+        - receiver ip address 10.255.1.10 57000 protocol grpc-tcp
+        subscription: '102'
+    platforms:
+    - cisco_iosxe
+    source: connector
+version: 1

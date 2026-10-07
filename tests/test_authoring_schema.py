@@ -108,7 +108,8 @@ class TestOmittingAKeyIsFine:
 
     def test_a_missing_NON_interface_key_still_raises_and_says_what_to_do(self):
         """The guard is narrowed, not removed — and the message names the
-        action rather than only the absence."""
+        exact path read and what the intent holds there (C568: the words had
+        been a guess about interface keys, for a top-level key)."""
         _n, _p, host_vars = next(iter(_fleet()))
         document = copy.deepcopy(host_vars)
         del document["logging"]
@@ -116,9 +117,10 @@ class TestOmittingAKeyIsFine:
             roundtrip.render(document, "cisco_iosxe",
                              secret_lookup=lambda _n: "x")
         message = str(exc.value)
-        assert "logging" in message
-        assert "filled automatically" in message, \
-            "the message does not tell the author that omitting is fine"
+        assert "reads `logging`, and the intent does not hold it: at the intent's top " \
+               "level, it holds " in message, message
+        assert "interfaces" in message.split("it holds", 1)[1], \
+            "the message does not say what the intent holds"
 
 
 class TestMisspellingAKeyIsNot:
