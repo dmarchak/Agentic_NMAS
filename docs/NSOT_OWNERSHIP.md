@@ -129,6 +129,10 @@ operator's NetBox fixes:
 - **Still rewritten on every sync:** `name`, `role`, `device_type`, `serial`, `comments`,
   `primary_ip4`/`primary_ip6` and the config context. These are Phase 1's to stop (Part 4).
 
+**Until Phase 1, people must not edit a managed device's name, role, device type, serial,
+comments or primary IP addresses in NetBox:** the next sync overwrites each of them. Platform,
+status, site and tags are safe to edit now.
+
 ## Part 4. The direction of data (APPROVED 2026-10-07)
 
 NetBox becomes the source of truth by a deliberate migration, never by a switch. Each field has
@@ -152,10 +156,11 @@ after-the-fact sync:
 
 1. **The preview shows both sides:** the NetBox change (field, before, after) and the device
    program. The confirm's hash covers both.
-2. **On confirm, the NetBox change is made first,** in a NetBox Branching branch where the
-   plugin is installed (`netbox-branching`, NetBox Labs; it requires NetBox 4.1 or later, and
-   ours is 4.6.9). Without the plugin, the write goes direct and its before is recorded
-   (today's provenance).
+2. **On confirm, the NetBox change is made first,** in a NetBox Branching branch
+   (`netbox-branching`, NetBox Labs; it requires NetBox 4.1 or later, and ours is 4.6.9).
+   **Branching is REQUIRED for design-data writes** (Phase 2). A direct write, with its before
+   recorded (today's provenance), is acceptable only for a single-field status transition:
+   Drained, Active, Decommissioning, and Planned → Active.
 3. **The devices change from it**, with verify and rollback, as every operation does.
 4. **On success the change becomes official** (the branch merged). **On failure it is undone**
    (the branch abandoned, or the before restored), so NetBox never claims what is not true.

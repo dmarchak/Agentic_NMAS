@@ -1,6 +1,7 @@
-# Mercury against industry practice: a gap analysis (for the operator's decision)
+# Mercury against industry practice: a gap analysis (APPROVED 2026-10-07)
 
-The operator, 2026-10-07: Mercury should follow proven industry practice. This is a GAP
+The operator, 2026-10-07: Mercury should follow proven industry practice; this analysis and its
+order were APPROVED the same day, with four gaps added (section 3f). This is a GAP
 ANALYSIS, not a rewrite: it maps what Mercury is onto a published reference, says where it
 aligns, where it differs and why, and where it should consider shifting, with a recommended
 order. **Stage 7's cutover finishes on the current architecture meanwhile; nothing here
@@ -127,6 +128,25 @@ measurement, as a baseline is earned, never by a setting.
   optional integration, off unless configured.
 - **Change windows:** the planned-restart windows generalise to change windows a runbook
   checks before acting.
+- **Peer review ("four eyes"), an OPTIONAL per-network policy, OFF by default** (the operator,
+  2026-10-07). Today one person uses Mercury, so enforcing it would block every change, and
+  preview, confirm, verify, rollback and record already cover the solo case. When it is ON
+  for a network:
+  - a production change needs a second person's approval, separate from its author (with
+    Stage 9's roles);
+  - an EMERGENCY path stays open: the author may approve their own change with a stated
+    reason, recorded and flagged for review afterwards, so the policy can never lock a team
+    out during an outage.
+- **External secrets management:** an optional integration (HashiCorp Vault, CyberArk) beside
+  Mercury's own store, off unless configured. It belongs to Stage 10's enterprise review.
+- **High availability:** Mercury runs on one host, a known gap for Stage 10. The stores'
+  locks, atomic writes and the one-operation-per-device rule already assume several
+  processes, which an active/standby pair would build on.
+
+The configure-replace spike (3b) also measures its **PREREQUISITES**, each a configuration
+change on every device:
+- getting the candidate onto the device (SCP, or Mercury's TFTP);
+- the archive feature that `configure replace … time` needs for its timed rollback.
 
 ## 4. Recommended order
 
@@ -134,9 +154,10 @@ measurement, as a baseline is earned, never by a setting.
 |---|---|---|
 | **Before cutover** | nothing new; finish Stage 7, with the queued fixes (C553, C555, C557, C558, C531 part 1's measurements) | no rewrites mid-flight |
 | **After cutover, first** | Phase 1 (identity from NetBox), then P.22 Runbooks with Event Rules starting planning | they unblock the drain runbook, onboarding from Planned and retire's Decommissioning; small, on existing pieces |
-| **Then** | the `configure replace` spike and the per-device fidelity metric; Genie's parsers in verify | evidence before any executor change |
+| **Then** | the `configure replace` spike, including its prerequisites (the candidate's transfer by SCP or TFTP, the archive for the timed rollback), and the per-device fidelity metric; Genie's parsers in verify | evidence before any executor change |
 | **Then** | the NetBox Branching spike, then Phase 2 (design data generated from NetBox) | the largest change, after its spike |
-| **Then** | API-first Presentation and ITSM hooks; Batfish in P.10 | they build on stable operations |
+| **Then** | API-first Presentation and ITSM hooks; Batfish in P.10; peer review as an optional per-network policy, off by default, with the emergency path (needs Stage 9's roles) | they build on stable operations |
+| **Stage 10** | external secrets management (Vault, CyberArk) as an optional integration; high availability | the enterprise review and the release |
 | **Later** | Phase 3 (discovery as proposals) | needs Phase 2's ownership |
 | **Stays** | the preview, confirm by hash, verify, rollback and record lifecycle; measured removals until replace is earned; receipts and records; template approval; masked secrets; intent in git | the parts already ahead of common practice |
 
