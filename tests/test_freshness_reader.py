@@ -130,7 +130,7 @@ class TestTheSource:
         assert "nobody approved" in rows["freshness:Lab:r2"]["what"]
         assert "Pl4ntedSecret" not in rows["freshness:Lab:r2"]["cause"]
         assert rows["freshness:Lab:s3"]["level"] == "unknown"
-        assert "1 approved, 1 poll race, 1 authorised" in res["checked"]
+        assert "1 approved, 1 not fetched by Oxidized since their change, 1 authorised" in res["checked"]
         assert res["value_at"] == R._iso(T0) and res["stale_after_seconds"] == 900
 
     def test_a_list_that_could_not_be_compared_is_one_unknown_row(self, monkeypatch):

@@ -306,7 +306,7 @@ def _active_authorisation(list_name: str, hostname: str, fingerprint: str):
 # ---------------------------------------------------------------------------
 
 def compare_device(list_name: str, hostname: str, golden_text, golden_at,
-                   oxidized_text, oxidized_at) -> dict:
+                   oxidized_text, oxidized_at, fetch_failed_at: str = "") -> dict:
     """One device's verdict. Never raises; an unreadable side is inconclusive.
 
     ``golden_text`` / ``oxidized_text`` of ``None`` mean *could not be read*,
@@ -315,7 +315,8 @@ def compare_device(list_name: str, hostname: str, golden_text, golden_at,
     row = {"device": hostname, "verdict": INCONCLUSIVE, "reason": "",
            "only_left": [], "only_right": [],
            "golden_at": golden_at or "", "oxidized_at": oxidized_at or "",
-           "fingerprint": "", "time_assumed_utc": False}
+           "fingerprint": "", "time_assumed_utc": False,
+           "oxidized_fetch_failed_at": fetch_failed_at or ""}
 
     if golden_text is None:
         row["reason"] = ("no golden config — nothing to compare against, so "
@@ -372,10 +373,17 @@ def compare_device(list_name: str, hostname: str, golden_text, golden_at,
         return row
 
     if g_time > o_time:
+        # Oxidized's copy predates the approved change: it has not fetched since, so it is
+        # never "a change nobody approved" (C555), and nothing for a person to do but wait for
+        # the fetch the change asked for. Its last fetch's failure, if any, is named.
         row["verdict"] = POLL_RACE
-        row["reason"] = ("the approved state has moved and Oxidized has not "
-                         "polled yet — writing this now gives the device a "
-                         "startup config that predates the approved change")
+        row["reason"] = (f"Oxidized hasn't fetched {hostname} since the change: its copy is "
+                         f"the device as of {oxidized_at}, the approved state is from "
+                         f"{golden_at}"
+                         + (f"; its last fetch, at {fetch_failed_at}, failed"
+                            if fetch_failed_at else "")
+                         + ". Writing this copy now would give the device a startup config "
+                           "that predates the approved change")
         return row
 
     row["verdict"] = UNAPPROVED
@@ -452,7 +460,7 @@ def check(list_name: str, supplied: dict = None, timeout: float = 15.0) -> dict:
               "errors": [], "checked": 0, "population": 0}
 
     goldens = _goldens(list_name)
-    oxidized_times, population, nodes = {}, [], {}
+    oxidized_times, oxidized_failed, population, nodes = {}, {}, [], {}
 
     # THE DEVICE -> OXIDIZED NODE MAP, IN BOTH PATHS. `sync_targets()` is the
     # one producer of it, and the gate needs it as much as the signal: the
@@ -518,6 +526,7 @@ def check(list_name: str, supplied: dict = None, timeout: float = 15.0) -> dict:
                 f"Oxidized's index could not be read: {times.get('error')} — "
                 "every differing device is therefore inconclusive")
         oxidized_times = times.get("times", {})
+        oxidized_failed = times.get("failed", {})
 
     # Every Oxidized copy fetched AT ONCE, before the comparisons (the
     # concurrency rule, C199): one GET per device, each 4 ms on the host
@@ -538,6 +547,7 @@ def check(list_name: str, supplied: dict = None, timeout: float = 15.0) -> dict:
 
         node = nodes.get(hostname, hostname)
         oxidized_at = oxidized_times.get(node) or oxidized_times.get(hostname, "")
+        fetch_failed_at = oxidized_failed.get(node) or oxidized_failed.get(hostname, "")
 
         if supplied is not None:
             oxidized_text = supplied.get(hostname)
@@ -556,7 +566,7 @@ def check(list_name: str, supplied: dict = None, timeout: float = 15.0) -> dict:
 
         try:
             row = compare_device(list_name, hostname, golden_text, golden_at,
-                                 oxidized_text, oxidized_at)
+                                 oxidized_text, oxidized_at, fetch_failed_at)
         except Exception as exc:               # noqa: BLE001
             # A device that raised is INCONCLUSIVE, which blocks. It must not
             # vanish from the population: a device checked by nothing and

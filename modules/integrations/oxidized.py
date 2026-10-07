@@ -122,10 +122,24 @@ class OxidizedIntegration(IntegrationClient):
             nodes = r["response"].json()
         except Exception as exc:               # noqa: BLE001
             return {"ok": False, "error": f"unreadable response: {exc}"}
-        times = {}
+        times, failed = {}, {}
         for node in nodes if isinstance(nodes, list) else []:
             name = node.get("name") or node.get("ip") or ""
-            stamp = (node.get("time") or "").strip()
+            last = node.get("last") or {}
+            if last:
+                # The CONTENT's time, never the last job's (C555): a failed fetch moves `time`
+                # and leaves the stored copy as it was, so `time` dated s2's stale copy after
+                # the deploy and freshness called it "newer than the approved one". A copy is
+                # the device as of its last SUCCESSFUL fetch; after a failure, as of when it
+                # was stored (`mtime`), and the failure is named.
+                if (last.get("status") or "") == "success":
+                    stamp = (last.get("end") or "").strip()
+                else:
+                    stamp = (node.get("mtime") or "").strip()
+                    if name:
+                        failed[name] = (last.get("end") or last.get("start") or "").strip()
+            else:
+                stamp = (node.get("time") or "").strip()
             if name and stamp:
                 times[name] = stamp
-        return {"ok": True, "times": times}
+        return {"ok": True, "times": times, "failed": failed}

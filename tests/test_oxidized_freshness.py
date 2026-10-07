@@ -173,6 +173,71 @@ class TestContentDecidesAndTimeIsContext:
         assert "predates the approved change" in row["reason"]
 
 
+class TestTheCopyIsDatedByItsContent:
+    """C555 (the operator, 2026-10-07 ~00:16 UTC): freshness accused s2 of "a change nobody
+    approved". Its golden was the restore's deploy (00:00:51 UTC); Oxidized was asked to
+    fetch at 00:00:59 and stored no copy until 00:16:20, so a failed job in between dated
+    the 22:00 copy after the deploy. Measured read-only on the host: s2's versions 22:00:14
+    then 00:16:20; r2, asked at 23:58:46, fetched 23:58:47 to 23:58:52."""
+
+    DEPLOY = "2026-10-07T00:00:51+00:00"
+
+    @staticmethod
+    def _times(payload, monkeypatch):
+        from modules.integrations.oxidized import OxidizedIntegration
+        client = OxidizedIntegration()
+        monkeypatch.setattr(client, "_get", lambda *_a, **_k: {
+            "ok": True, "response": type("R", (), {"json": lambda self: payload})()})
+        return client.node_times()
+
+    def test_a_success_dates_the_copy_by_its_end_and_a_failure_by_when_it_was_stored(
+            self, monkeypatch):
+        payload = [
+            {"name": "r2", "time": "2026-10-06 23:58:52 UTC", "mtime": "2026-10-06 23:58:53 UTC",
+             "last": {"start": "2026-10-06 23:58:47 UTC", "end": "2026-10-06 23:58:52 UTC",
+                      "status": "success"}},
+            {"name": "s2", "time": "2026-10-07 00:06:10 UTC", "mtime": "2026-10-06 22:00:14 UTC",
+             "last": {"start": "2026-10-07 00:01:00 UTC", "end": "2026-10-07 00:06:10 UTC",
+                      "status": "no_connection"}}]
+        got = self._times(payload, monkeypatch)
+        assert got["times"] == {"r2": "2026-10-06 23:58:52 UTC", "s2": "2026-10-06 22:00:14 UTC"}
+        assert got["failed"] == {"s2": "2026-10-07 00:06:10 UTC"}
+
+    def test_the_control_the_job_time_would_date_the_stale_copy_after_the_deploy(self):
+        """What the old reading did with s2's record: the failed job's time is after the
+        deploy, so the stale copy read as newer, and a difference as unapproved."""
+        changed = BASE.replace("area 0", "area 1")
+        row = freshness.compare_device("l", "s2", changed, self.DEPLOY, BASE,
+                                       "2026-10-07 00:06:10 UTC")
+        assert row["verdict"] == freshness.UNAPPROVED
+
+    def test_s2s_stale_copy_is_not_fetched_since_never_unapproved(self, monkeypatch):
+        payload = [{"name": "s2", "time": "2026-10-07 00:06:10 UTC",
+                    "mtime": "2026-10-06 22:00:14 UTC",
+                    "last": {"end": "2026-10-07 00:06:10 UTC", "status": "no_connection"}}]
+        got = self._times(payload, monkeypatch)
+        changed = BASE.replace("area 0", "area 1")
+        row = freshness.compare_device("l", "s2", changed, self.DEPLOY, BASE,
+                                       got["times"]["s2"], got.get("failed", {}).get("s2", ""))
+        assert row["verdict"] == freshness.POLL_RACE
+        assert row["verdict"] not in freshness.BLOCKING
+        assert "Oxidized hasn't fetched s2 since the change" in row["reason"]
+        assert "its last fetch, at 2026-10-07 00:06:10 UTC, failed" in row["reason"]
+        assert "nobody approved" not in row["reason"]
+        assert row["oxidized_fetch_failed_at"] == "2026-10-07 00:06:10 UTC"
+
+    def test_a_copy_fetched_after_the_change_that_differs_is_still_unapproved(
+            self, monkeypatch):
+        payload = [{"name": "s2", "time": "2026-10-07 00:16:20 UTC",
+                    "mtime": "2026-10-07 00:16:20 UTC",
+                    "last": {"end": "2026-10-07 00:16:20 UTC", "status": "success"}}]
+        got = self._times(payload, monkeypatch)
+        changed = BASE.replace("area 0", "area 1")
+        row = freshness.compare_device("l", "s2", BASE, self.DEPLOY, changed,
+                                       got["times"]["s2"])
+        assert row["verdict"] == freshness.UNAPPROVED
+
+
 class TestTheComparisonCouldNotRunIsARefusal:
     """Named before the code was written. Five causes, five refusals."""
 

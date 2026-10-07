@@ -69,6 +69,9 @@ def request(list_name: str, devices, why: str, client=None, clock=time.time) -> 
     Not configured asks nothing and records nothing, and says so."""
     from modules.filestore import PathLock, read_json_for_write, write_atomic
 
+    # The real client waits for the fetches it asked for and then re-reads freshness (C555); a
+    # caller's own client (a test, a rotation that confirms its own fetch) waits for nothing.
+    waits = client is None
     if client is None:
         from modules.integrations.oxidized import OxidizedIntegration
         client = OxidizedIntegration(timeout=10)
@@ -102,7 +105,59 @@ def request(list_name: str, devices, why: str, client=None, clock=time.time) -> 
         log.warning("oxidized fetch: %s could not be asked for: %s", f["device"], f["error"])
     if asked:
         log.info("oxidized fetch: asked for %s (%s)", ", ".join(asked), why)
+        if waits:
+            import threading
+            threading.Thread(target=await_fetches, name="oxidized-await",
+                             args=([rows[h]["node"] for h in asked], clock(), client),
+                             daemon=True).start()
     return {"ok": not failed, "asked": asked, "failed": failed, "skipped": skipped}
+
+
+#: How long a request waits for Oxidized's fetch: about 2.5x the slowest measured (s2, vIOS, a
+#: 15.7 s fetch after its queueing; r2 was fetched 1 s after being asked and took 5 s;
+#: 2026-10-07), rounded to a minute. Past it the freshness check runs anyway and says what it
+#: found; the fetch is Oxidized's to finish.
+AWAIT_FETCH_S = 60
+
+
+def await_fetches(nodes, asked_at: float, client, sleep=time.sleep, clock=time.time,
+                  wake=None) -> dict:
+    """Wait, bounded, until Oxidized has FINISHED a fetch of each of *nodes* that started at or
+    after *asked_at*, then re-run the freshness check at once (C555, the C553 rule: an
+    operation that creates work for a job starts it, and what reads its result re-reads).
+    ``{node: the fetch's status, or "not fetched within 60 s"}``. Never raises."""
+    from modules.nsot.freshness import parse_time
+
+    pending, outcome = set(nodes), {}
+    deadline = clock() + AWAIT_FETCH_S
+    while pending and clock() < deadline:
+        try:
+            got = client._get("nodes.json")                  # noqa: SLF001 - the client's API
+            rows = got["response"].json() if got.get("ok") else []
+        except Exception as exc:                             # noqa: BLE001
+            log.warning("oxidized fetch: nodes.json unreadable while waiting: %s", exc)
+            rows = []
+        for node in rows if isinstance(rows, list) else []:
+            name, last = node.get("name") or "", node.get("last") or {}
+            started = parse_time(last.get("start") or "")
+            if name in pending and started is not None and last.get("end") \
+                    and started.timestamp() >= asked_at - 1:
+                outcome[name] = last.get("status") or "unknown"
+                pending.discard(name)
+        if pending:
+            sleep(3)
+    for name in pending:
+        outcome[name] = f"not fetched within {AWAIT_FETCH_S} s"
+    try:
+        if wake is None:
+            from modules import reader_wakes
+            reader_wakes.wake(("freshness",), "oxidized-fetch")
+        else:
+            wake()
+    except Exception as exc:                                 # noqa: BLE001
+        log.warning("oxidized fetch: the freshness re-read did not start: %s", exc)
+    log.info("oxidized fetch: %s", ", ".join(f"{n} {s}" for n, s in sorted(outcome.items())))
+    return outcome
 
 
 def golden_hook(context: dict, run=None, ask=None) -> dict:

@@ -112,3 +112,80 @@ class TestAChangedGoldenAsksOxidized:
         from modules.nsot import hooks
         assert "oxidized-fetch" in hooks.ensure_default_hooks()
 
+
+class TestItWaitsForTheFetchAndReReadsFreshness:
+    """C555 (the operator, 2026-10-07): asking is not enough. s2 was asked for at 00:00:59 and
+    its next stored copy was 00:16:20; meanwhile freshness accused it. The request now waits,
+    bounded, for a fetch that STARTED after it, then re-reads freshness at once."""
+
+    ASKED = 1_791_331_259.0          # 2026-10-07T00:00:59Z
+
+    class Nodes:
+        """nodes.json over time: each read returns the next snapshot (the last one repeats)."""
+
+        def __init__(self, snapshots):
+            self.snapshots, self.reads = list(snapshots), 0
+
+        def _get(self, path):
+            assert path == "nodes.json"
+            snap = self.snapshots[min(self.reads, len(self.snapshots) - 1)]
+            self.reads += 1
+            return {"ok": True, "response": SimpleNamespace(json=lambda: snap)}
+
+    @staticmethod
+    def _node(name, start, end, status):
+        return {"name": name, "last": {"start": start, "end": end, "status": status}}
+
+    def _run(self, snapshots, now=None):
+        from modules import oxidized_fetch as F
+        clock = {"t": self.ASKED}
+        woke = []
+
+        def sleep(s):
+            clock["t"] += s
+        out = F.await_fetches(["192.0.2.22"], self.ASKED, self.Nodes(snapshots), sleep=sleep,
+                              clock=lambda: clock["t"], wake=lambda: woke.append(clock["t"]))
+        return out, woke, clock["t"] - self.ASKED
+
+    def test_a_fetch_that_started_after_the_request_ends_the_wait_and_wakes_freshness(self):
+        before = self._node("192.0.2.22", "2026-10-06 22:00:00 UTC", "2026-10-06 22:00:14 UTC",
+                            "success")
+        after = self._node("192.0.2.22", "2026-10-07 00:01:02 UTC", "2026-10-07 00:01:18 UTC",
+                           "success")
+        out, woke, waited = self._run([[before], [before], [after]])
+        assert out == {"192.0.2.22": "success"}
+        assert len(woke) == 1 and waited == 6, "two 3 s polls, then the fetch, then the wake"
+
+    def test_a_failed_fetch_is_named_and_still_wakes_freshness(self):
+        failed = self._node("192.0.2.22", "2026-10-07 00:01:02 UTC", "2026-10-07 00:06:10 UTC",
+                            "no_connection")
+        out, woke, _w = self._run([[failed]])
+        assert out == {"192.0.2.22": "no_connection"} and len(woke) == 1
+
+    def test_no_fetch_within_the_bound_is_said_and_still_wakes_freshness(self):
+        from modules import oxidized_fetch as F
+        stale = self._node("192.0.2.22", "2026-10-06 22:00:00 UTC", "2026-10-06 22:00:14 UTC",
+                           "success")
+        out, woke, waited = self._run([[stale]])
+        assert out == {"192.0.2.22": f"not fetched within {F.AWAIT_FETCH_S} s"}
+        assert len(woke) == 1 and F.AWAIT_FETCH_S <= waited < F.AWAIT_FETCH_S + 3
+
+    def test_only_the_real_client_waits(self, monkeypatch):
+        """A caller's own client (a test, the rotation that confirms its own fetch) spawns no
+        wait; the real one does."""
+        from modules import oxidized_fetch as F
+        spawned = []
+        monkeypatch.setattr("threading.Thread", lambda **kw: SimpleNamespace(
+            start=lambda: spawned.append(kw["name"])))
+        monkeypatch.setattr(F, "_record_path", lambda name: "/dev/null/never")
+        F.request("Lab", [("r2", "192.0.2.12")], "t", client=FakeOxidized())
+        assert spawned == []
+
+        class Real(FakeOxidized):
+            def __init__(self, timeout=10):
+                super().__init__()
+        monkeypatch.setattr("modules.integrations.oxidized.OxidizedIntegration", Real)
+        monkeypatch.setattr("modules.oxidized_fetch.node_for", lambda h, ip: ip)
+        F.request("Lab", [("r2", "192.0.2.12")], "t")
+        assert spawned == ["oxidized-await"]
+

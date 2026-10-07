@@ -1562,7 +1562,8 @@ def freshness_source(cached=None) -> dict:
         "freshness", "Freshness", read_at=started, took_ms=took, rows=rows,
         value_at=value_at, stale_after_seconds=promise, reader="freshness",
         checked=(f"list {lst}: {report.get('checked', 0)} of {report.get('population', 0)} "
-                 f"compared; {c.get('match', 0)} approved, {c.get('poll_race', 0)} poll race, "
+                 f"compared; {c.get('match', 0)} approved, {c.get('poll_race', 0)} not fetched by "
+                 f"Oxidized since their change, "
                  f"{c.get('authorised', 0)} authorised"))
 
 
