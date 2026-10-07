@@ -84,6 +84,42 @@ first (a dry run), and roll back automatically unless confirmed:
 replace … list` on r2 and s1 against their goldens. A device then EARNS replace eligibility by
 measurement, as a baseline is earned, never by a setting.
 
+### (b′) Restore by replace: the FIRST use of configure replace (the operator, 2026-10-07)
+
+Restoring a golden or a baseline is the textbook use of IOS archive and replace, and it does
+NOT need intent fidelity: a golden IS the device's complete configuration. The drain's revert
+on 2026-10-06 would have been one replace per device. So this comes before replace-for-deploy
+(3b):
+
+1. **Measure first, read-only.** For each device, the platform's own contextual diff of its
+   current golden against its running configuration: `show archive config differences
+   <golden> system:running-config`. Expected: nothing. What it lists are the volatile lines a
+   replace must handle. **`configure replace <file> list` is NOT read-only:** `list` shows the
+   commands the parser applies *while* replacing. The diff is the read-only form, the one
+   NAPALM's IOS driver uses for `compare_config`.
+2. **The candidate** = the golden + the device's CURRENT credential lines (Restore's rule: a
+   restore never changes an account) − the device-generated blocks (certificates, keys,
+   licence lines), handled as today's Restore excludes them.
+3. **Prerequisites, each a one-time configuration change per device, through the pipeline:**
+   - the candidate's transfer to the device (SCP, or Mercury's TFTP for the seconds it takes,
+     since the file carries the device's secrets);
+   - the `archive` feature, for `configure replace … time <s>` and `configure confirm`, the
+     automatic rollback when confirm does not follow.
+4. **The operation.**
+   - **Preview:** the device's own diff of the candidate against its running configuration
+     is the previewed program, with the candidate's hash, confirmed by hash.
+   - **Apply:** the candidate transferred, then `configure replace <candidate> list time
+     <s>`, the applied commands recorded.
+   - **Verify:** as every operation, then `configure confirm`.
+   - **Failure:** no confirm, and the timer rolls the device back.
+   - **Record:** the receipt holds the diff, the applied list and the confirm.
+5. **Earned per device by measurement**, as a baseline is: a device whose diff against its
+   golden is empty, and whose prerequisites are in place, may be restored by replace.
+   Merge-only and Mode B stay for everything else. vIOS and vIOS-L2 are measured separately
+   (the diff, the archive, the timer).
+
+Its v2 Restore card gains a "by replace" mode, drawn as a mockup before it is built.
+
 ### (c) Pre-change validation and operational tests
 
 - **Batfish** models the network from configurations and answers reachability, routing and
@@ -152,7 +188,8 @@ change on every device:
 
 | When | What | Why |
 |---|---|---|
-| **Before cutover** | nothing new; finish Stage 7, with the queued fixes (C553, C555, C557, C558, C531 part 1's measurements) | no rewrites mid-flight |
+| **Before cutover** | finish Stage 7, with the queued fixes (C553, C555, C557, C558, C531 part 1's measurements) | no rewrites mid-flight |
+| **Alongside Stage 7, independent of it** | **Restore by replace** (3b′, C561): the read-only diff measured now, then the prerequisites, then the Restore card's "by replace" mode after its mockup | the operator, 2026-10-07: it changes the Restore operation's apply path and its existing v2 card, not the cutover's retirement of v1 pages, and it makes a revert one replace per device |
 | **After cutover, first** | Phase 1 (identity from NetBox), then P.22 Runbooks with Event Rules starting planning | they unblock the drain runbook, onboarding from Planned and retire's Decommissioning; small, on existing pieces |
 | **Then** | the `configure replace` spike, including its prerequisites (the candidate's transfer by SCP or TFTP, the archive for the timed rollback), and the per-device fidelity metric; Genie's parsers in verify | evidence before any executor change |
 | **Then** | the NetBox Branching spike, then Phase 2 (design data generated from NetBox) | the largest change, after its spike |
