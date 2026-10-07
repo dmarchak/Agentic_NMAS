@@ -169,7 +169,8 @@ class TestTheOrphanKeysAreDeclared:
         for flag, previous in nmas._WF_DEFAULTS.items():
             assert DEFAULTS[flag] is previous, flag
         assert DEFAULTS["ai_enabled"] is True
-        assert DEFAULTS["background_agent_enabled"] is True
+        # The one deliberate exception (C497): the background agent is OFF until Stage 8.
+        assert DEFAULTS["background_agent_enabled"] is False
 
     def test_declaring_them_seeds_nothing(self, store):
         """Adding a key to DEFAULTS must not write it to any install."""

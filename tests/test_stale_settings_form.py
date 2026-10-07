@@ -40,18 +40,20 @@ def _stored(key):
 
 class TestTheSettingsModal:
     def test_a_field_another_person_moved_is_refused_and_the_rest_saved(self, client):
+        # The agent starts OFF (C497, 2026-10-07), so the other person turns it ON.
         stale = client.get("/settings").get_json()               # this tab opens Settings
-        assert client.post("/settings", json={                   # another person turns the agent off
-            "background_agent_enabled": False,
+        assert stale["background_agent_enabled"] is False
+        assert client.post("/settings", json={                   # another person turns the agent on
+            "background_agent_enabled": True,
             "loaded": client.get("/settings").get_json()}).status_code == 200
-        r = client.post("/settings", json={"background_agent_enabled": True,
+        r = client.post("/settings", json={"background_agent_enabled": False,
                                            "wf_read_first": False, "loaded": stale})
         body = r.get_json()
         assert r.status_code == 207 and body["status"] == "partial"
         assert any(e.startswith("background_agent_enabled: not saved, because it changed after "
-                                "you opened Settings: it was True when you opened it and is "
-                                "False now") for e in body["errors"]), body
-        assert _stored("background_agent_enabled") is False      # their decision stands
+                                "you opened Settings: it was False when you opened it and is "
+                                "True now") for e in body["errors"]), body
+        assert _stored("background_agent_enabled") is True       # their decision stands
         assert _stored("wf_read_first") is False                 # this person's change saved
 
     def test_a_field_this_person_did_not_change_is_never_sent_so_never_reverts(self, client):

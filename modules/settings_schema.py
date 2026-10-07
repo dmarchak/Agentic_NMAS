@@ -118,7 +118,11 @@ DEFAULTS: dict = {
     # per the standing rule that a new default reproduces the behaviour that
     # predates the setting.
     "ai_enabled":               True,
-    "background_agent_enabled": True,
+    # The one deliberate exception (C497, 2026-10-07): the background agent is OFF until Stage
+    # 8 (MERCURY_CHARTER: the agent proposes, never confirms), as ARCHITECTURE.md and CLAUDE.md
+    # always said, where it once defaulted on for a fresh install. An install that set it keeps
+    # its value; the host's is already False.
+    "background_agent_enabled": False,
     "wf_read_first":            True,
     "wf_auto_backup":           True,
     "wf_run_jenkins":           True,

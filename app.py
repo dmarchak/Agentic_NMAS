@@ -1176,6 +1176,7 @@ def _settings_payload() -> dict:
     # step 6). This returned the Anthropic key and both Jenkins secrets in
     # cleartext, ungated, to every opening of the Settings modal since
     # e729267 (2026-04-12). The NetBox token beside them was always a flag.
+    from modules.settings_schema import DEFAULTS as _SETTING_DEFAULTS
     payload = {
         "anthropic_api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY", "")),
         "tftp_server_ip":    TFTP_SERVER_IP,
@@ -1186,7 +1187,8 @@ def _settings_payload() -> dict:
         "netbox_auth_scheme": nbcfg.get("auth_scheme", "Bearer"),
         "netbox_allow_writes": bool(nbcfg.get("allow_writes", False)),
         "ai_enabled":              _ai_enabled(),
-        "background_agent_enabled": bool(load_user_settings().get("background_agent_enabled", True)),
+        "background_agent_enabled": bool(load_user_settings().get(
+            "background_agent_enabled", _SETTING_DEFAULTS["background_agent_enabled"])),
     }
     payload.update(_load_workflow_flags())
     return payload

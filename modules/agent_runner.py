@@ -32,6 +32,14 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
+
+def _agent_default() -> bool:
+    """The switch's declared default, from its one owner (`settings_schema.DEFAULTS`): OFF
+    until Stage 8 (the charter, C497), where each read once carried its own `True`."""
+    from modules.settings_schema import DEFAULTS
+    return bool(DEFAULTS["background_agent_enabled"])
+
+
 MAX_LOG_ENTRIES    = 100
 _POLL_INTERVAL     = 30        # seconds between event-queue drains
 _DRIFT_CHECK_INTERVAL = 4 * 3600   # run drift check every 4 hours
@@ -233,9 +241,10 @@ def get_status() -> dict:
     # or a thread that died. Paused is a third and is already here.
     try:
         from modules.config import get_user_setting
-        status["enabled"] = bool(get_user_setting("background_agent_enabled", True))
+        status["enabled"] = bool(get_user_setting("background_agent_enabled", _agent_default()))
     except Exception:                          # noqa: BLE001
-        status["enabled"] = True
+        # Unreadable: reported as the switch acts, off (start_agent_loop fails closed).
+        status["enabled"] = False
     status["health"] = failure_health()
     # Two independent switches, and "not running" has a different answer and a
     # different fix for each. Reported separately rather than collapsed into
@@ -330,11 +339,14 @@ def start_agent_loop(
     # When false the thread is never started so no Haiku API calls are made.
     try:
         from modules.config import get_user_setting
-        if not get_user_setting("background_agent_enabled", True):
+        if not get_user_setting("background_agent_enabled", _agent_default()):
             log.info("agent_runner: background agent disabled by settings — not starting")
             return
-    except Exception:
-        pass
+    except Exception as exc:                   # noqa: BLE001
+        # Fail closed (C497): a switch that cannot be read does not start the agent.
+        log.warning("agent_runner: the background agent switch could not be read (%s) — "
+                    "not starting", exc)
+        return
 
     _stop_event.clear()
     _paused.clear()
@@ -385,11 +397,14 @@ def run_background_task(task: str, trigger_event: Optional[dict] = None) -> dict
         if not get_user_setting("ai_enabled", True):
             log.info("run_background_task: AI disabled — dropping task: %s", task[:80])
             return {"error": "AI disabled", "task": task[:80]}
-        if not get_user_setting("background_agent_enabled", True):
+        if not get_user_setting("background_agent_enabled", _agent_default()):
             log.debug("run_background_task: background agent disabled — dropping: %s", task[:80])
             return {"error": "Background agent disabled", "task": task[:80]}
-    except Exception:
-        pass
+    except Exception as exc:                   # noqa: BLE001
+        # Fail closed (C497): a switch that cannot be read runs nothing.
+        log.warning("run_background_task: the switches could not be read (%s) — dropping: %s",
+                    exc, task[:80])
+        return {"error": "the AI switches could not be read", "task": task[:80]}
 
     if not _devices_loader:
         return {"error": "agent_runner not initialized"}

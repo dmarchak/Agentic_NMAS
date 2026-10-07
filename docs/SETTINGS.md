@@ -54,7 +54,10 @@ page waits on P.8.
 
 `background_agent_enabled` was added to the form in 3.2d. It had **no control
 at all**: `/settings` accepted it and nothing ever sent it. See the warning
-below.
+below. **It defaults to OFF since 2026-10-07 (C497):** the background agent is off until Stage 8
+(the charter: the agent proposes, never confirms), as ARCHITECTURE.md and CLAUDE.md said, where
+a fresh install once started it. An install that set it keeps its value, and a switch that
+cannot be read leaves the agent off.
 
 ---
 
