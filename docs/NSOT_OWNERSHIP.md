@@ -113,6 +113,13 @@ move after cutover starts from a known list of mismatches. Read on the host on 2
 The census is repeated read-only before the move; the move refuses while any row above
 still needs something.
 
+**Repeated 2026-10-07, after the operator's NetBox fixes (with `a3685bc` on the host): NetBox
+matches.** All nine devices match by name and address, are Active, and carry
+`nmas-network-default`. Their platforms resolve through Mercury's one mapping table to the
+dialect Mercury holds: `cisco-ios-xe` → `cisco_iosxe` for r1 to r4 and r6, `cisco-ios` →
+`cisco_ios` for s1 to s4. r5 is in NetBox only, Decommissioning and untagged. Left to watch:
+that the next NetBox sync leaves the platforms as they are (C557).
+
 **What Mercury's sync writes on a device today**, read in the code on 2026-10-07 before the
 operator's NetBox fixes:
 - **Platform:** was rewritten on every sync from a config-text guess, which is why every
@@ -122,7 +129,7 @@ operator's NetBox fixes:
 - **Still rewritten on every sync:** `name`, `role`, `device_type`, `serial`, `comments`,
   `primary_ip4`/`primary_ip6` and the config context. These are Phase 1's to stop (Part 4).
 
-## Part 4. The direction of data (for the operator's sign-off)
+## Part 4. The direction of data (APPROVED 2026-10-07)
 
 NetBox becomes the source of truth by a deliberate migration, never by a switch. Each field has
 ONE owner and ONE writer, and data flows NetBox → Mercury → devices. Each phase turns off the
@@ -180,9 +187,15 @@ Before design data moves, a spike on a copy of this NetBox measures:
 
 Each finding is recorded, and the design is revised from it.
 
-**Questions for the operator:**
-1. Phase 1 before or after cutover?
-2. Branching as a requirement for Phase 2, or optional with the direct write and its recorded
-   before as the fallback?
-3. Event Rules: which NetBox changes should start planning (a status set to Drained, a new
-   device in Planned, an interface edit after Phase 2)?
+**Decided (the operator, 2026-10-07):**
+1. **Phase 1 comes after cutover.**
+2. **Branching is REQUIRED for Phase 2's design-data writes.** A direct write with its recorded
+   before is acceptable for single-field status transitions: Drained, Active,
+   Decommissioning, and Planned → Active.
+3. **Event Rules start planning for:**
+   - a managed device's status change: Drained → a drain plan; Active after Drained → a
+     return plan;
+   - a device created as Planned → an onboarding plan;
+   - in Phase 2, design-data changes on managed devices.
+
+   Each always ends in a preview a person confirms, never an apply.
