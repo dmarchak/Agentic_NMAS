@@ -2110,9 +2110,14 @@ def _upsert_device(session, base: str, hostname: str, ip: str, facts: dict,
         # device* rather than *it answered a ping*. Liveness lives in the
         # app's own online/offline badge, which is live when it is read and
         # which nobody mistakes for a stored fact.
+        # `platform` IS ABSENT TOO (the operator's ownership decision, 2026-10-07: NetBox owns a
+        # device's identity, platform included). The import guessed it from config text, which
+        # never says "IOS XE", so every IOS-XE router was written `ios` on every sync, and a
+        # person's correction in NetBox would have been overwritten by the next one. A create
+        # still sets it; an update never does.
         update = {k: v for k, v in payload.items()
                   if k in ("name", "serial", "comments", "device_type",
-                            "role", "device_role", "platform",
+                            "role", "device_role",
                             "local_context_data", "config_template",
                             "custom_fields")}
 

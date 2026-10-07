@@ -1157,7 +1157,9 @@ class TestASecondSyncOfAnUnchangedDeviceIsSilent:
         monkeypatch.setattr(nc, "_nb_get", lambda *a, **k: [existing])
         monkeypatch.setattr(nc, "_ensure_device_type",
                             lambda *a, **k: {"id": 3})
-        monkeypatch.setattr(nc, "_ensure_platform", lambda *a, **k: 5)
+        # A record shaped as NetBox returns it: the code reads its ["id"], and a bare 5 made
+        # every payload platform-less, so no test could see the platform being sent.
+        monkeypatch.setattr(nc, "_ensure_platform", lambda *a, **k: {"id": 5})
         monkeypatch.setattr(nc, "_ensure_custom_field", lambda *a, **k: True)
         monkeypatch.setattr(nc, "_sync_interfaces", lambda *a, **k: None,
                             raising=False)
@@ -1180,6 +1182,15 @@ class TestASecondSyncOfAnUnchangedDeviceIsSilent:
         existing, sent = self._sent(monkeypatch)
         assert sent, "the spy captured no PATCH at all"
         assert netbox_guard.changed_fields(existing, sent) == {}
+
+    def test_a_sync_never_rewrites_what_netbox_owns(self, monkeypatch):
+        """The operator's ownership decision (2026-10-07): NetBox owns a device's platform and
+        status. The import guessed the platform from config text, so every IOS-XE router was
+        written `ios` on every sync; a person's correction in NetBox would have been
+        overwritten by the next one. An update sends neither field, whatever the facts say."""
+        _, sent = self._sent(monkeypatch, facts={"platform": "IOS", "version": "17.6",
+                                                 "serial": "9ABCD", "model": "C8000v"})
+        assert "platform" not in sent and "status" not in sent and "site" not in sent
 
     def test_the_alias_the_server_does_not_use_is_not_sent(self, monkeypatch):
         """`role` and `device_role` are one field under two names. The server
