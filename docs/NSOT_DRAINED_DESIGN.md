@@ -192,6 +192,10 @@ It is proved by its result, reads the agent may make:
   IPv6 loopback for eight of the nine, while `primary_ip4` already held the right IPv4
   address).
 
+**Done 2026-10-07:** the operator ran the host step, and the read-back the same day found
+`drained` among the status choices and every Default device's `primary_ip` equal to its IPv4
+management address.
+
 **What Mercury's `nmas` account needs.** NetBox has no field-level permissions: a `change`
 permission on `dcim.device` covers every field, status included, limited only by its
 constraints. Measured read-only on 2026-10-07:

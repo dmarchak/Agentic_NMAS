@@ -138,8 +138,8 @@ operator's NetBox fixes:
 
 **Until Phase 1, people must not edit a managed device's name, role, serial, comments,
 primary IP addresses, config template or config context in NetBox:** the next sync overwrites
-each of them. Platform, status, site and tags are safe to edit now, and device type once the
-C559 commit is on the host.
+each of them. Platform, status, site, tags and device type are safe to edit (device type since
+`5fa7983`, on the host 2026-10-07).
 
 ## Part 4. The direction of data (APPROVED 2026-10-07)
 
