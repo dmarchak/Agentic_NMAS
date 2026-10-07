@@ -180,6 +180,7 @@ def library(list_name: str) -> dict:
         return {"ok": False, "error": str(exc), "rows": [], "counts": {}, "shared": 0}
     paths = committed_templates(repo)
     shared = [p for p in paths if p.split("/")[-1].startswith("_")]
+    shipped = _shipped_states(repo)
     rows = []
     for path in paths:
         if path in shared:
@@ -192,7 +193,48 @@ def library(list_name: str) -> dict:
                      "imports": len(approval.template_closure(repo, path)) - 1,
                      "bound": [d["device"] for d in
                                templates_repo.devices_for_template(repo, path)],
-                     "status": status, "state": state})
+                     "status": status, "state": state, "kind": "template",
+                     "shipped": shipped.get(path) or _NOT_SHIPPED})
     counts = {s: sum(1 for r in rows if r["state"] == s)
               for s in ("approved", "not approved", "revoked")}
-    return {"ok": True, "rows": rows, "counts": counts, "shared": len(shared)}
+    # A SHARED macro file is a row too (C566, board B): it has no approval or binding of its
+    # own, and it is the file that falls behind the shipped version (`_common.j2`, C565).
+    for path in shared:
+        users = [r for r in rows if path in approval.template_closure(repo, r["path"])]
+        rows.append({"path": path, "platform": "shared", "imports": 0,
+                     "bound": sorted({d for r in users for d in r["bound"]}),
+                     "status": {}, "state": "shared", "kind": "shared",
+                     "importers": [r["path"] for r in users],
+                     "shipped": shipped.get(path) or _NOT_SHIPPED})
+    return {"ok": True, "rows": rows, "counts": counts, "shared": len(shared),
+            "behind": sum(1 for r in rows if r["shipped"]["state"] == "stale")}
+
+
+#: A template the application does not ship (the network's own): nothing to compare.
+_NOT_SHIPPED = {"state": "not_shipped", "words": "not a shipped template: the network's own"}
+#: Each state against the shipped version, in a person's words (`templates_repo.seed_status`).
+SHIPPED_WORDS = {
+    "current": "current",
+    "stale": "behind: an older shipped version, unedited; the shipped one has changed since",
+    "edited": "edited here, on purpose; the shipped file has not moved since",
+    "edited_and_stale": ("edited here AND the shipped file has moved since: a merge a person "
+                         "makes, not offered as one action"),
+}
+
+
+def _shipped_states(repo: str) -> dict:
+    """``{path: {"state", "words"}}`` against the shipped version, from ONE `seed_status` read
+    for the page; a file it could not classify says why, never guessed into a state."""
+    from modules.nsot import templates_repo
+
+    try:
+        report = templates_repo.seed_status(repo)
+    except Exception as exc:                            # noqa: BLE001
+        log.warning("templates: the shipped versions could not be compared: %s", exc)
+        return {}
+    out = {f["path"]: {"state": f["state"], "words": SHIPPED_WORDS.get(f["state"], f["state"])}
+           for f in report.get("files") or []}
+    for f in report.get("unclassified") or []:
+        out[f["path"]] = {"state": "unclassified",
+                          "words": f"not compared: {f.get('reason') or f['state']}"}
+    return out

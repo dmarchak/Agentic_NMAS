@@ -17,11 +17,17 @@ a device the template cannot reproduce is blocked there alone, with the lines na
 
 ## The table {#table}
 
-The counts come first: approved, not approved, revoked. Then one row per template:
+The counts come first: approved, not approved, revoked, and how many files are behind the
+shipped version. Then one row per template:
 
-- **Template**: its path, and how many files it imports. A shared macro file is not a row: it
-  has no approval of its own and is counted in the imports of each template that uses it.
+- **Template**: its path, and how many files it imports. A shared macro file (`_common.j2`) has
+  a row of its own too, since it is the file a shipped fix most often changes; it has no
+  approval of its own, and the templates that import it carry the approval that covers it.
 - **Devices bound**: the devices it renders, each a link to its page; more than three collapse.
+- **Against the shipped version**: current; behind (an older shipped version, unedited), with
+  **Bring in the shipped version…** on its row (see
+  [Bring in a shipped template](bring-template)); edited here on purpose; or edited and
+  behind, a merge a person makes. A file the tool does not ship is the network's own.
 - **Approval**: approved (by whom, when); revoked (the reason, and who); or not approved, with
   why: never approved, stale because the template was edited, or approved in the record but
   not yet committed. A template no device is bound to cannot be approved: nothing can validate

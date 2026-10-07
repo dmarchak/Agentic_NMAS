@@ -169,6 +169,7 @@ DECLARED = {
     "intent_v2.commit": ("intent", "remote"),
     "templates_v2.approve": ("templates", "remote"),
     "templates_v2.revoke": ("templates", "remote"),
+    "templates_v2.bring": ("templates", "remote"),
     "templatize.revert_apply": ("intent", "remote", "rolled_back"),
     "templatize.bulk_apply": ("intent", "remote"),
     "templatize.retry_apply": ("rolled_back",),

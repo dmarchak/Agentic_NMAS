@@ -62,6 +62,7 @@ PAGES = (
     ("update", "Update the app", H, "how-it-works/update.md"),
     ("edit-intent", "Edit a device's intent", H, "how-it-works/edit-intent.md"),
     ("approve-template", "Approve a template", H, "how-it-works/approve-template.md"),
+    ("bring-template", "Bring in a shipped template", H, "how-it-works/bring-template.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
      "how-it-works/settings-switch.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
@@ -136,6 +137,7 @@ OPERATIONS = {
     "settings-switch": ("modules.list_settings", "SWITCH_STEPS"),
     "edit-intent": ("modules.nsot.intent_edit", "STEPS"),
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
+    "bring-template": ("modules.nsot.template_bring", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).

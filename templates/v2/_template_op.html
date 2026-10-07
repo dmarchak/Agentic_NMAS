@@ -134,6 +134,77 @@
     <p>Revoked by {{ r.actor }}: "{{ r.reason }}", commit <span class="mono">{{ (r.commit or '')[:10] }}</span>{% if not r.was_approved %} (it was not approved: the revocation is recorded all the same){% endif %}.</p>
     <p class="muted">Every deploy through {{ op.path }} is refused until it is approved again: Approve… on its row. Nothing was sent to any device.</p></div></div>
 </section>
+{%- elif op.state == 'bring' %}
+{#- C566, board B (signed off 2026-10-07): the shipped file over the network's stale copy,
+    previewed with the diff and what each bound device's render gains; template_bring. -#}
+{%- set b = op.b %}
+<section class="op-card{{ ' op-danger' if not b.offered }}" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h">Bring in the shipped <span class="mono">{{ b.path }}</span></h2>
+    <div class="op-hd-actions">{{ how('bring-template') }}{{ close_button('Cancel') }}</div></div>
+  {%- if op.refused %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p>{{ op.refused }}</p></div>
+  {%- endif %}
+  {%- if b.why %}
+  <div class="op-part"><h3>Not offered</h3><div><p>{{ b.why }}.</p></div></div>
+  {%- endif %}
+  {%- if b.diff %}
+  <div class="op-part"><h3>What changes</h3><div>
+    <p>The network's copy becomes the shipped file. It adds {{ b.added }} line{{ '' if b.added == 1 else 's' }} and removes {{ b.removed }}:</p>
+    <pre class="op-diff tpl-lines">{% for l in b.diff %}{{ l }}
+{% endfor %}</pre></div></div>
+  {%- endif %}
+  {%- if b.offered %}
+  <div class="op-part"><h3>On the devices</h3><div>
+    <p>Measured by rendering every device bound to a template that imports it, through the library as it is and with the shipped file in its place:
+      <strong>{{ b.devices | length }} device{{ '' if b.devices | length == 1 else 's' }}</strong> change{{ 's' if b.devices | length == 1 else '' }}, {{ b.unchanged }} do{{ 'es' if b.unchanged == 1 else '' }} not.</p>
+    {%- if b.devices %}
+    <details class="tpl-effect" data-keep="tpl-effect-{{ b.path }}"{% if b.devices | length <= 3 %} open{% endif %}><summary>What each device's render gains and loses</summary>
+    {%- for d in b.devices %}
+      <p><a href="{{ url_for('device_v2.device', name=d.device) }}">{{ d.device }}</a>: gains {{ d.gains }}, loses {{ d.loses }}</p>
+      {%- if d.gain_lines or d.lose_lines %}
+      <pre class="op-diff tpl-lines">{% for l in d.gain_lines %}+ {{ l }}
+{% endfor %}{% for l in d.lose_lines %}- {{ l }}
+{% endfor %}</pre>
+      {%- endif %}
+    {%- endfor %}
+    </details>
+    {%- endif %}
+    {%- if b.not_measured %}
+    <p class="muted">Not measured: {% for n in b.not_measured %}{{ n.device }} ({{ n.why }}){{ '; ' if not loop.last }}{% endfor %}.</p>
+    {%- endif %}
+    <p class="muted">Nothing is sent here: the commit changes what the devices are planned against. Coverage then shows what is missing, and Apply sends it.</p></div></div>
+  <div class="op-part"><h3>Approval</h3><div>
+    <p>The file's content changes, so the approval of every template importing it is revoked with the commit{% if b.importers %} ({% for t in b.importers %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %}){% endif %}: no deploy renders through them until a person approves again, with Approve… on each row.</p></div></div>
+  {%- endif %}
+  <div class="op-part"><h3>Checks</h3><div>
+    <ul class="op-gates">
+      <li>{{ badge('pass' if b.offered else 'fail', 'ok' if b.offered else 'danger') }}<span>the network's copy is an older shipped version, unedited, so nothing local is lost</span></li>
+      <li>{{ badge('at commit', 'muted') }}<span>neither the network's copy nor the shipped file has moved since this preview</span></li>
+    </ul></div></div>
+  <div class="op-ft">
+    {%- if b.offered and op.may.may %}
+    <p class="op-note">{{ op.may.statement }} One commit, as you. Bound to the network's copy <span class="mono" title="{{ b.copy_blob }}">{{ b.copy_blob[:10] }}</span> and the shipped file <span class="mono" title="{{ b.shipped_blob }}">{{ b.shipped_blob[:10] }}</span>.</p>
+    <form class="op-act" method="post" action="{{ url_for('templates_v2.bring') }}" hx-post="{{ url_for('templates_v2.bring') }}" hx-target="#templates" hx-swap="outerHTML">
+      <input type="hidden" name="list" value="{{ b.list }}"><input type="hidden" name="path" value="{{ b.path }}">
+      <input type="hidden" name="copy_blob" value="{{ b.copy_blob }}"><input type="hidden" name="shipped_blob" value="{{ b.shipped_blob }}">
+      <button type="submit" class="btn btn-primary op-confirm" data-op="bring-template" hx-disabled-elt="this"><span class="op-idle">Commit the shipped {{ b.path }}</span><span class="op-busy">Committing…</span></button>{{ how('bring-template', compact=True, op='bringing in a shipped template') }}
+    </form>
+    {%- elif b.offered %}
+    <p class="op-note">{{ op.may.statement }} Nothing can be committed from here.</p>
+    {%- else %}
+    <p class="op-note">Nothing is written.</p>
+    {%- endif %}
+  </div>
+</section>
+{%- elif op.state == 'brought' %}
+{%- set r = op.r %}
+<section class="op-card op-ok" id="tpl-card" aria-labelledby="tpl-h">
+  <div class="op-hd"><h2 id="tpl-h"><span class="mono">{{ op.path }}</span> is the shipped version {{ badge('committed', 'ok') }}</h2>
+    <div class="op-hd-actions">{{ how('bring-template') }}{{ close_button('Close') }}</div></div>
+  <div class="op-part"><h3>Next</h3><div>
+    <p>Commit <span class="mono">{{ (r.commit or '')[:10] }}</span>, as {{ op.actor }}.{% if r.revoked %} Approval revoked over {% for t in r.revoked %}<span class="mono">{{ t }}</span>{{ ', ' if not loop.last }}{% endfor %}: approve each again with Approve… on its row before a deploy renders through it.{% endif %}</p>
+    <p class="muted">Then Coverage shows what each device lacks: <a href="{{ url_for('v2.coverage', list=op.list) }}">Open Coverage</a>. Nothing was sent to any device.</p></div></div>
+</section>
 {%- else %}
 <section class="op-card op-danger" id="tpl-card" aria-labelledby="tpl-h">
   <div class="op-hd"><h2 id="tpl-h">Not done</h2><div class="op-hd-actions">{{ close_button('Close') }}</div></div>

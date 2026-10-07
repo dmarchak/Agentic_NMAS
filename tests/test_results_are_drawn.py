@@ -165,6 +165,11 @@ PAGE_RECORD = {
     "templates_v2.revoke": ("templates/v2/_template_op.html",
                             ("op.state == 'revoked'", "r.commit", "r.reason"),
                             "templates_v2.page"),
+    # C566, board B: the shipped file brought in, drawn in place (the commit, as whom, the
+    # approvals revoked), and the row's state read back from the library by the page.
+    "templates_v2.bring": ("templates/v2/_template_op.html",
+                           ("op.state == 'brought'", "r.commit", "r.revoked"),
+                            "templates_v2.page"),
     "device_v2.revert_confirm": ("templates/v2/_revert.html",
                                  ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     # Retire on v2 (board 12): the result in place; its record is what the device's address

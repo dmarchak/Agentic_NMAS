@@ -366,46 +366,14 @@ def write_template(rel_path):
 
 def _write_template_locked(repo: str, list_name: str, rel_path: str, content: str,
                            data: dict):
-    from modules.nsot import approval, repo as repo_service, templates_repo
+    """The edit, its revocations and their commit: `template_write.commit`, the one path
+    v2's Bring in the shipped version shares (C566)."""
+    from modules.nsot import template_write
 
-    result = templates_repo.write_template(repo, rel_path, content)
-    if not result["ok"]:
-        return jsonify(result), 400
-
-    # Editing changes the content hash, so the stored approval no longer
-    # matches its fingerprint. Recording WHY makes that explicit — an edit is
-    # a reason, and "unapproved" on its own does not say an edit caused it.
-    #
-    # Every approval whose import closure contains this file, not just this
-    # file's own. `_common.j2` holds the routing, interface and service macros
-    # for BOTH platforms: editing it changes what every base.j2 renders, and
-    # revoking only `_common.j2` (which has no approval of its own) would leave
-    # them all standing.
-    revoked, not_revoked = [], []
-    for stored_path in approval.approved_templates(repo):
-        if rel_path in approval.template_closure(repo, stored_path):
-            done = approval.revoke(
-                repo, stored_path,
-                reason=(f"'{rel_path}' was edited, and this template imports "
-                        "it; re-approval must validate the new content "
-                        "against every bound device"),
-                actor=request_actor())
-            (revoked if done.get("ok") else not_revoked).append(stored_path)
-
-    # The revocations are COMMITTED WITH THE EDIT (CONCURRENCY_AUDIT R13): they were left in
-    # the working record, out of history, and the commit staged the template alone.
-    commit = repo_service.save_templates(
-        list_name, [rel_path] + ([".approvals.json"] if revoked else []),
-        actor=request_actor(), message=data.get("message", ""))
-    if not commit.get("ok"):
-        return jsonify({"ok": False, "path": rel_path, "revoked": revoked,
-                        "error": (f"The template is written but its commit failed "
-                                  f"({commit.get('error')}): it is not in the repository's "
-                                  "history. The deploy gate already counts the edited "
-                                  "template as unapproved.")}), 500
-    return jsonify({"ok": True, "path": rel_path, "commit": commit.get("commit", ""),
-                    "approval_revoked": bool(revoked), "revoked": revoked,
-                    "not_revoked": not_revoked})
+    got = template_write.commit(list_name, repo, rel_path, content, actor=request_actor(),
+                                message=data.get("message", ""))
+    status = got.pop("status", 200)
+    return jsonify(got), status
 
 
 @bp.route("/revoke/<path:rel_path>", methods=["POST"])

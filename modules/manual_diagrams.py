@@ -898,6 +898,29 @@ def approve_template():
     ])
 
 
+def bring_template():
+    return svg(440, (
+        "Bringing in a shipped template. The network's copy is compared with the shipped file, "
+        "and offered only when it is an older shipped version, unedited, so nothing local is "
+        "lost. Every device bound to a template that imports it is rendered through the library "
+        "as it is and with the shipped file in its place, and what each device's render gains "
+        "and loses is shown. You confirm, bound to both files; the shipped file is written, "
+        "every approval over it is revoked, and both are committed as you. Approve each "
+        "template again before a deploy renders through it. No device is contacted."), [
+        lanes(20, 434),
+        repo(14, 40, 186, 40, "The network's copy", "against the shipped file"), num(14, 40, 1),
+        _down(107, 82, 102),
+        doc("box", 14, 104, 186, 40, "Every bound device", "rendered both ways"), num(14, 104, 2),
+        person(14, 160, 186, 30, "You confirm, as you"), num(14, 160, 3),
+        _down(107, 192, 212),
+        repo(14, 214, 186, 40, "One commit", "the file, approvals revoked"), num(14, 214, 4),
+        t(14, 284, "Approve… on each template's row,", "sm"),
+        t(14, 297, "then Coverage and Apply send it.", "sm"),
+        device(240, 60, 140, 44, "The devices", "not contacted", off=True),
+        nosend(310, 200, ("nothing is sent", "Apply does that")),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -1085,6 +1108,7 @@ DIAGRAMS = {
     "settings-switch": settings_switch,
     "edit-intent": edit_intent,
     "approve-template": approve_template,
+    "bring-template": bring_template,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

@@ -72,6 +72,41 @@ def _revoke_op(name: str, path: str) -> dict:
             "status": approval.approval_status(approve_op.repo_for(name), path)}
 
 
+def _bring_op(name: str, path: str) -> dict:
+    from modules.nsot import template_bring
+    b = template_bring.preview(name, path)
+    return {"state": "bring", "list": name, "b": b, "may": _may()}
+
+
+@bp.route("/bring", methods=["GET"])
+def bring_form():
+    """C566, board B: Bring in the shipped version…'s preview, `template_bring.preview`: the
+    diff, and what each bound device's render gains and loses. Writes nothing."""
+    name, path = _list_name(), (request.args.get("path") or "").strip()
+    if not path:
+        return _card({"state": "refused", "list": name,
+                      "why": "No template was named, so there is nothing to bring in."}, 400)
+    return _card(_bring_op(name, path))
+
+
+@bp.route("/bring", methods=["POST"])
+def bring():
+    """The confirm: the shipped file committed over the network's stale copy as the verified
+    person, bound to both blobs previewed; its approvals revoked with it; the result in place."""
+    from modules import identity
+    from modules.nsot import template_bring
+
+    name, path = _list_name(), (request.form.get("path") or "").strip()
+    actor = identity.request_actor()
+    got = template_bring.bring(name, path, request.form.get("copy_blob") or "",
+                               request.form.get("shipped_blob") or "", actor)
+    if got.get("ok"):
+        op = {"state": "brought", "list": name, "path": path, "r": got, "actor": actor}
+    else:
+        op = dict(_bring_op(name, path), refused=got.get("error", "not brought in"))
+    return _region(name, op, got.get("status", 200))
+
+
 @bp.route("", methods=["GET"])
 def page():
     """A: the network's configuration templates and their approvals; ``approve=<path>`` or
@@ -84,8 +119,10 @@ def page():
                      known=False)
     approve_path = (request.args.get("approve") or "").strip()
     revoke_path = (request.args.get("revoke") or "").strip()
+    bring_path = (request.args.get("bring") or "").strip()
     op = _check_op(name, approve_path) if approve_path else \
-        _revoke_op(name, revoke_path) if revoke_path else None
+        _revoke_op(name, revoke_path) if revoke_path else \
+        _bring_op(name, bring_path) if bring_path else None
     return _page("v2/templates.html", active_nav="templates", known=True,
                  **_lib_ctx(name, op))
 

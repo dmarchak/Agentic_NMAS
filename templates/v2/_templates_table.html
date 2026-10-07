@@ -7,9 +7,9 @@
 {%- elif not lib.rows %}
 <div class="notice notice-warn">{{ icon('warn', 16) }}<p>{{ list_name }} has no committed configuration template. The library is seeded into the network's repository when its first template is opened on today's Templates page; a file nobody committed is never drawn here.</p></div>
 {%- else %}
-<p class="tpl-counts">{% for s, n in lib.counts.items() %}<span>{{ s }} <strong>{{ n }}</strong></span>{{ ' · ' if not loop.last }}{% endfor %}{% if lib.shared %} <span class="faint">({{ lib.shared }} shared macro file{{ '' if lib.shared == 1 else 's' }}, counted in each template's imports)</span>{% endif %}</p>
+<p class="tpl-counts">{% for s, n in lib.counts.items() %}<span>{{ s }} <strong>{{ n }}</strong></span>{{ ' · ' if not loop.last }}{% endfor %}{% if lib.shared %} <span class="faint">({{ lib.shared }} shared macro file{{ '' if lib.shared == 1 else 's' }}, counted in each template's imports)</span>{% endif %}{% if lib.behind %} · <strong class="tpl-behind">{{ lib.behind }} behind the shipped version</strong>{% endif %}</p>
 <div class="card tpl-card"><table class="table tpl-table">
-  <thead><tr><th scope="col">Template</th><th scope="col">Platform</th><th scope="col">Devices bound</th><th scope="col">Approval</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+  <thead><tr><th scope="col">Template</th><th scope="col">Platform</th><th scope="col">Devices bound</th><th scope="col">Against the shipped version</th><th scope="col">Approval</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
   <tbody>
   {%- for r in lib.rows %}
   {%- set st = r.status %}
@@ -17,11 +17,19 @@
     <td class="mono">{{ r.path }}{% if r.imports %} <span class="faint">+ {{ r.imports }} import{{ '' if r.imports == 1 else 's' }}</span>{% endif %}</td>
     <td>{{ r.platform }}</td>
     <td>{%- if not r.bound %}0{% elif r.bound | length <= 3 %}{{ r.bound | length }}: {% for d in r.bound %}<a href="{{ url_for('device_v2.device', name=d) }}">{{ d }}</a>{{ ', ' if not loop.last }}{% endfor %}{% else %}<details class="tpl-bound" data-keep="tpl-bound-{{ r.path }}"><summary>{{ r.bound | length }} devices</summary>{% for d in r.bound %}<a href="{{ url_for('device_v2.device', name=d) }}">{{ d }}</a>{{ ', ' if not loop.last }}{% endfor %}</details>{% endif %}</td>
-    <td>{%- if r.state == 'approved' %}{{ badge('approved', 'ok') }} <span class="muted small">by {{ st.actor }}{% if st.approved_at %}, {{ stamp(st.approved_at) }}{% endif %}</span>
+    <td class="tpl-shipped" data-shipped="{{ r.shipped.state }}">{%- if r.shipped.state == 'current' %}{{ badge('current', 'ok') }}{% elif r.shipped.state == 'stale' %}{{ badge('behind', 'warn') }} <span class="muted small">{{ r.shipped.words }}</span>{% elif r.shipped.state == 'edited_and_stale' %}{{ badge('edited and behind', 'warn') }} <span class="muted small">{{ r.shipped.words }}</span>{% else %}<span class="muted small">{{ r.shipped.words }}</span>{% endif %}</td>
+    <td>{%- if r.state == 'shared' %}<span class="muted small">no approval of its own: imported by {{ r.importers | length }} template{{ '' if r.importers | length == 1 else 's' }}, whose approval{{ '' if r.importers | length == 1 else 's' }} cover{{ 's' if r.importers | length == 1 else '' }} it</span>
+        {%- elif r.state == 'approved' %}{{ badge('approved', 'ok') }} <span class="muted small">by {{ st.actor }}{% if st.approved_at %}, {{ stamp(st.approved_at) }}{% endif %}</span>
         {%- elif r.state == 'revoked' %}{{ badge('revoked', 'danger') }} <span class="muted small">{{ (st.reason or '')[9:] if (st.reason or '').startswith('REVOKED: ') else st.reason }}{% if st.actor %} ({{ st.actor }}){% endif %}</span>
         {%- else %}{{ badge('not approved', 'warn' if r.bound else 'muted') }} <span class="muted small">{% if not r.bound %}nothing bound to validate it{% else %}{{ st.reason }}{% endif %}</span>{% endif %}</td>
     <td class="tpl-act">
-      {%- if r.state == 'approved' %}
+      {%- if r.shipped.state == 'stale' %}
+      {#- C566, board B: an older shipped version, unedited, is brought in as one action;
+          nothing local is lost. Its approvals are then revoked, and Approve… comes back. -#}
+      <a class="btn btn-small btn-primary" data-op="bring-template" href="{{ url_for('templates_v2.page', list=list_name, bring=r.path) }}" hx-get="{{ url_for('templates_v2.bring_form', list=list_name, path=r.path) }}" hx-target="#tpl-op" hx-swap="innerHTML"><span class="op-idle">Bring in the shipped version…</span><span class="op-busy">Measuring…</span></a>{{ how('bring-template', compact=True, op='bringing in a shipped template') }}
+      {%- elif r.state == 'shared' %}
+      <span class="sr-only">No action: a shared file is approved through the templates that import it</span>
+      {%- elif r.state == 'approved' %}
       <a class="btn btn-small" data-op="approve-template" href="{{ url_for('templates_v2.page', list=list_name, revoke=r.path) }}" hx-get="{{ url_for('templates_v2.revoke_form', list=list_name, path=r.path) }}" hx-target="#tpl-op" hx-swap="innerHTML"><span class="op-idle">Revoke…</span><span class="op-busy">Opening…</span></a>{{ how('approve-template', 'revoke', compact=True, op='revoking an approval') }}
       {%- elif r.bound %}
       <a class="btn btn-small btn-primary" data-op="approve-template" href="{{ url_for('templates_v2.page', list=list_name, approve=r.path) }}" hx-get="{{ url_for('templates_v2.check', list=list_name, path=r.path) }}" hx-target="#tpl-op" hx-swap="innerHTML"><span class="op-idle">Approve…</span><span class="op-busy">Checking…</span></a>{{ how('approve-template', compact=True, op='approving a template') }}

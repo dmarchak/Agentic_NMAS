@@ -167,6 +167,11 @@ STAGES = {
     "templates_v2.revoke": Stages(
         "n/a: a withdrawal, recorded with its reason", "n/a: nothing is previewed", NO_DEVICE,
         "n/a: approve it again", "modules.nsot.approve_op.revoke"),
+    # C566, board B: the diff and every bound device's measured change are the preview; the
+    # confirm is bound to both blobs it showed (the network's copy and the shipped file).
+    "templates_v2.bring": Stages(
+        "templates_v2.bring_form", "copy_blob",
+        NO_DEVICE, FORWARD, "modules.nsot.template_write.commit"),
     "templates.save_bindings": Stages(
         "MISSING: bindings are saved with no preview", "MISSING: no hash is bound", NO_DEVICE, FORWARD,
         "modules.nsot.repo.save_templates"),
@@ -305,6 +310,7 @@ HISTORY = {
     "templates.revoke_approval": TEMPLATE,
     "templates_v2.approve": TEMPLATE,
     "templates_v2.revoke": TEMPLATE,
+    "templates_v2.bring": TEMPLATE,
     "templates.save_bindings": TEMPLATE,
     "templates.write_template": TEMPLATE,
     # ---- configure
