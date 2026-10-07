@@ -1,7 +1,8 @@
-# Mercury's charter (for the operator's sign-off)
+# Mercury's charter (APPROVED 2026-10-07)
 
-The governing definition, written 2026-10-07 when the operator re-anchored the project. Where
-another document disagrees with this page, this page governs, and the other is re-labelled.
+The governing definition, written 2026-10-07 when the operator re-anchored the project, and
+approved the same day. Where another document disagrees with this page, this page governs, and
+the other is re-labelled.
 
 ## What Mercury is
 
@@ -53,6 +54,11 @@ Receipts, acknowledgements, approvals, rollback blocks, restart windows, runbook
 readers' stored values are the audit trail of Mercury's actions. Mercury owns them, and they
 are consolidated into ONE store (a database of its own, archived to MinIO past retention).
 
+## The test for every feature
+
+It must make a network engineer's life easier than the CLI alone, or they will go around it.
+Simple first; cleverness later.
+
 ## AI-assisted actions
 
 The Actions menu distinguishes two kinds:
@@ -63,8 +69,8 @@ The Actions menu distinguishes two kinds:
 
 **An AI-assisted action produces only a PROPOSAL:** the change set across the devices involved,
 its expected effects, how success is verified, and its reasoning. It starts from a known
-pattern (the platform's drain profile, for example) and fills in what is specific to this
-network (on 2026-10-06, s2's static route).
+pattern (the platform's drain profile, for example) and fills in what is specific (a
+neighbour's static route, for example).
 - **A person reviews, edits and confirms it.** It runs through the same pipeline as every
   operation, and is recorded as "proposed by the agent, confirmed by <person>".
 - **The safety floor applies:** never the management path; success judged by measurement.
@@ -72,11 +78,6 @@ network (on 2026-10-06, s2's static route).
   edits. Nothing is possible ONLY with AI.
 
 This is Stage 8's recorded authority: the agent proposes, never confirms.
-
-## The test for every feature
-
-It must make a network engineer's life easier than the CLI alone, or they will go around it.
-Simple first; cleverness later.
 
 ## New findings
 

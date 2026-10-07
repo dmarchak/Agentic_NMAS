@@ -4629,15 +4629,25 @@ job templates). Mercury's shape, in order:
    approved 2026-10-07: [NSOT_DRAINED_DESIGN](NSOT_DRAINED_DESIGN.md), canvas v71):
    - per-platform drain profiles, and neighbour-side steps from topology or declared;
    - NetBox's custom `drained` status set as the intended state;
-   - success only when the measured state agrees.
+   - success judged by measurement once the drained measurement exists (deferred by the
+     charter, C551); until then by verify and the person reading the result.
+
+   **Drain is AI-ASSISTED on top of the built-in runbook** (the charter, 2026-10-07; 8.17).
+   The built-in runbook is the deterministic floor: the platform's profile, the declared
+   neighbour steps. With the agent on, it PROPOSES the change set for this topology from that
+   pattern (a neighbour's static route the profile does not know), with its expected effects,
+   its verification and its reasoning; a person reviews, edits and confirms, and the same
+   pipeline runs it. With the agent off, the built-in runbook alone, or manual intent edits.
 3. **Custom runbooks per network**: declarative YAML of those steps, versioned in the
    network's repository and approved before use as templates are. Stage 8's agent may draft
    one for approval. Arbitrary scripts come later if ever, and only through the pipeline.
 
 **Prerequisites:**
-- C531: measured removal shapes, Revert this change, change sets.
-- C553: a job starts when an operation creates its work.
-- The drained measurement's section 10 measurements.
+- Change sets across devices (C531 part 3); return to service by revert, through Phase 2's
+  revert by reload until a no-reload revert exists (the removal-shape work is parked by the
+  charter, its measurements kept).
+- C553, folded into Phase 3: a job starts when an operation creates its work.
+- The drained measurement is deferred (C551): NetBox's Drained status is the fact.
 
 **Beside:** P.16 decides the machinery a run survives a restart on; the operations stay
 Mercury's.
@@ -6114,6 +6124,27 @@ operator; the screen is C548's, a board to draw).**
   its own.
 - **The agent's reads are a person's reads:** the same allowlist, the same device holds while
   reading, the same masked answers, recorded the same way, so what it saw can be read again.
+
+**8.17 AI-assisted actions in the Actions menu (DECIDED 2026-10-07, the operator; in
+[MERCURY_CHARTER](MERCURY_CHARTER.md)).**
+- **Two kinds of action:**
+  - **Standard** actions are deterministic, the same for every device: capture, deploy intent,
+    revert by reload, rotate, onboard.
+  - **AI-assisted** actions are reasoned per device and topology: drain and return to service,
+    a revert without a reload, link moves, troubleshooting.
+- **An AI-assisted action produces only a PROPOSAL:**
+  - the change set across the devices involved;
+  - its expected effects (8.13);
+  - how success is verified;
+  - its reasoning.
+
+  It starts from a known pattern (the platform's drain profile) and fills in what is specific
+  (a neighbour's static route), with 8.16's engine as its evidence.
+- **A person reviews, edits and confirms.** The same pipeline runs it, recorded as "proposed by
+  the agent, confirmed by <person>" (8.14's authority: the agent proposes, never confirms).
+- **The safety floor applies:** never the management path; success judged by measurement.
+- **With the agent off,** the action falls back to its built-in runbook (P.22) or to manual
+  intent edits. Nothing is possible ONLY with AI.
 
 ---
 

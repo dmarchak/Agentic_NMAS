@@ -16,6 +16,7 @@ the Anthropic API, NetBox, Grafana/Prometheus/Loki, Oxidized, Kea. The v2 interf
 cutover. Jenkins was removed in P.4.
 
 **Governing documents** (read the one for the area before starting work there):
+[MERCURY_CHARTER](docs/MERCURY_CHARTER.md) (the governing definition: what Mercury is, its sources of truth; read it first, and where another document disagrees, the charter governs) ·
 [NSOT_PLAN](docs/NSOT_PLAN.md) (the spec, P-items, Stages 8 and 9) ·
 [NSOT_STAGE7_PLAN](docs/NSOT_STAGE7_PLAN.md) (the interface; tasks in
 [NSOT_TASKS](docs/NSOT_TASKS.md), design in [NSOT_GUI_BRIEF](docs/NSOT_GUI_BRIEF.md), retirement
@@ -38,6 +39,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 
 ### Working method
 
+- **Every new finding is judged against the charter as CORE, LAB or FUTURE before any design work; only CORE is active.** [not mechanised]
 - **Walk the path for real:** a path never run fails on first use, and the suite cannot say so.
   Every operation gets a real run on the host; watch what else moves. [not mechanised] [why](docs/LESSONS.md#walk-the-path-for-real)
 - **Read-only measurement of lab services is the agent's to run**, through `scripts/nmas-host`,
