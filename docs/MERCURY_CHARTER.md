@@ -53,6 +53,26 @@ Receipts, acknowledgements, approvals, rollback blocks, restart windows, runbook
 readers' stored values are the audit trail of Mercury's actions. Mercury owns them, and they
 are consolidated into ONE store (a database of its own, archived to MinIO past retention).
 
+## AI-assisted actions
+
+The Actions menu distinguishes two kinds:
+- **Standard actions** are deterministic, the same for every device: capture, deploy intent,
+  revert by reload, rotate, onboard.
+- **AI-assisted actions** are reasoned per device and topology, not one size for all: drain and
+  return to service, a revert without a reload, link moves, troubleshooting.
+
+**An AI-assisted action produces only a PROPOSAL:** the change set across the devices involved,
+its expected effects, how success is verified, and its reasoning. It starts from a known
+pattern (the platform's drain profile, for example) and fills in what is specific to this
+network (on 2026-10-06, s2's static route).
+- **A person reviews, edits and confirms it.** It runs through the same pipeline as every
+  operation, and is recorded as "proposed by the agent, confirmed by <person>".
+- **The safety floor applies:** never the management path; success judged by measurement.
+- **With the agent off,** the action falls back to its built-in runbook or to manual intent
+  edits. Nothing is possible ONLY with AI.
+
+This is Stage 8's recorded authority: the agent proposes, never confirms.
+
 ## The test for every feature
 
 It must make a network engineer's life easier than the CLI alone, or they will go around it.
