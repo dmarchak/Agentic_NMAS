@@ -1,10 +1,12 @@
 # Revert by reload: boot a device from a moment in its history (design)
 
 The charter's roadmap, Phase 2 (the operator, 2026-10-07): the simple revert, a standard action
-([MERCURY_CHARTER](MERCURY_CHARTER.md), "AI-assisted actions"). Status: **FOR SIGN-OFF, with
-its mockup (canvas v76, page "Phase 2: Revert by reload", boards A to C).** Nothing here is
-built.
-Register: C325 (a restore at HEAD cannot undo a hand change; this does), C531 (revert as one
+([MERCURY_CHARTER](MERCURY_CHARTER.md), "AI-assisted actions"). Status: **the design and its
+mockup (canvas v76, page "Phase 2: Revert by reload", boards A to C) APPROVED in shape by the
+operator, 2026-10-07, with the decisions in section 12 (board A redrawn for D2 in v77);
+next, the measurements in section 9,
+then the build.** Nothing here is built.
+Register: C562 (SCP, the later secure transfer), C325 (a restore at HEAD cannot undo a hand change; this does), C531 (revert as one
 action by measured removal: parked, the later no-reload option), C334 and C484 (what the
 chooser offers), C396 (the write path carries its list). It builds P.14 (Reload, a gated
 device-page operation, decided 2026-10-02 and not built) along the way: a plain Reload is this
@@ -48,7 +50,23 @@ built by one product module, `modules/nsot/boot_file.py`, from three inputs:
    `startup_source.compose`, which already does exactly this for the lab's startup files,
    given the running configuration in place of the current golden. A credential the moment
    holds and the device does not is not added: the preview lists it, as Restore does for a
-   re-added secret, and a person may add it back only with a stated reason.
+   re-added secret, and a person may add it back only with a stated reason. **The running
+   configuration's credential lines are compared with the credential Mercury holds for the
+   device** (the operator, D2): if they differ, the credential was changed outside Mercury,
+   and the preview refuses, saying so with both sides named (masked), before anything else
+   is computed. Booting a credential Mercury does not hold would lock Mercury out. How each
+   is compared, with nothing new to hold:
+   - **The account Mercury signs in with, and `enable`:** the preview's own read signed in
+     and entered enable with the credential Mercury holds, against the RUNNING
+     configuration, and the line it matched is the line the boot file carries. Established
+     only when the device authenticates that login locally; when `aaa authentication login`
+     puts a server group first, the sign-in proves the server's answer, not the line, and
+     the check reads "not established", which refuses.
+   - **The SNMP community:** plaintext in the running configuration, compared with the one
+     Mercury holds for the device.
+   - **Any other account** (a break-glass account): compared with the break-glass record's
+     currency (`breakglass_page.record`); an account Mercury holds nothing for is shown as
+     "kept as the device has it, not compared", which is distinct from a difference.
 3. **`no shutdown` on every interface the moment has up.** A running configuration records
    `shutdown` on a down interface and nothing on an up one, so a golden booted as-is brings
    every interface up in it back admin-down, the management interface included (it cost a
@@ -91,8 +109,9 @@ configuration read at the preview.
 - **What is lost.** The running configuration's unsaved changes (running against startup,
   P.14's gate 1) are listed: the reload discards them along with everything else the moment
   lacks. Nothing is lost without being shown.
-- **Checks, by name:** a golden at this moment; the boot file is printable ASCII; no
-  credential changes; no secret re-added (or each has a reason); the management-path
+- **Checks, by name:** a golden at this moment; the device's credential lines are the ones
+  Mercury holds (D2: refused otherwise, "changed outside Mercury"); the boot file is printable
+  ASCII; no credential changes; no secret re-added (or each has a reason); the management-path
   differences each have a reason; the boot image exists and the boot variable points at it
   (P.14, gate 4); at the confirm, no other operation holds the device, and the device is
   unchanged since the preview.
@@ -170,25 +189,42 @@ its reason declared** in `operation_stages.STAGES`, record.
 | The restart reads as unplanned on Needs attention | The window is declared before step 1 sends anything, and kept open while the device is away |
 | An old password boots | The credential lines are the device's current ones; "no credential changes" is a check, and the receipt says so |
 
-## 9. To measure first (the operator's runs, on the throwaway, then r2 and s1; never s3)
+## 9. To measure first (the operator's runs on r2 and s1, at a quiet time; never s3)
 
-- **M1, the transfer path:** whether the device reaches the host for the transfer chosen in
-  D1 (TFTP: UDP 69 from the device's management address to the host), on both platforms.
-- **M2, how long a reload takes**, per platform (C8000v, vIOS-L2): from the reload to SSH
-  answering, and to adjacencies settled, three runs each. The wait's bound is 2.5 times the
-  longest, written beside it.
-- **M3, a golden booted as startup:** copy a boot file built from the current golden to
-  startup, reload, compare what it runs with the file. This proves `no shutdown`, and shows
-  what the platform does with the self-signed certificate, the RSA key (kept in private NVRAM
-  across a reload on IOS, measured here), the licence and the banners. If M3 differs on
-  anything, the difference becomes a rule in `boot_file.py` before any build.
-- **M4, the prompts:** what `copy <source> startup-config` asks on each platform
-  (destination filename, overwrite), so the run sends, reads and decides.
+There is no throwaway now (the operator, 2026-10-07), so the runs are on r2 (IOS-XE) and s1
+(IOS), outside the backup window, with their short outages accepted: s1 cuts h1 and h2 while
+it boots, and r2 makes RIP reconverge. In order, the two with no reload first:
 
-The agent's read-only reads go alongside: the device's boot variable and image (`show boot`,
-`show version` through the tool's read-only path), and the transfer configuration in Settings.
+- **M1, the transfer path (no reload, nothing written on the device):** the device asks the
+  host's existing TFTP responder (the ZTP one, bound to the lab-facing interface) for a file
+  it will refuse. The device's error proves the round trip; the responder's audit row records
+  the requesting address. It answers whether the device reaches the host on UDP 69, and
+  whether TFTP leaves from the address Mercury knows the device by: the devices source
+  logging and traps from `Loopback0` and carry no `ip tftp source-interface`, so TFTP leaves
+  from the egress interface. If the recorded address is not the device's management address,
+  the boot file and intent need `ip tftp source-interface Loopback0` (a line, delivered
+  through intent before the first revert), or the transfer accepts any address the device's
+  golden holds; decided on the result.
+- **M4, the prompts (no reload, startup untouched):** `copy tftp://… startup-config` asked of
+  the same refusing responder (it fails on opening the source, before startup is written; the
+  NVRAM timestamp is read before and after to prove it), `copy running-config flash:…`,
+  `verify /md5` on a flash file and on `nvram:startup-config` (the read-back), `delete`, and
+  the boot image (`show boot`, `show version`). Each prompt's exact text, so the run sends,
+  reads and decides.
+- **M3, a golden booted as startup (one reload each):** a boot file built by
+  `boot_file.py` from the device's current golden (built and tested before this run, with the
+  one-shot transfer M1 decides), copied to startup, read back by `verify /md5`, then a reload
+  under a declared window. The comparison is the freshness reader's on the next copy of the
+  running configuration (the golden against what it runs: `match` is M3 passing), and the
+  device's interfaces. It proves `no shutdown`, and shows what each platform does with the
+  self-signed certificate, the RSA key, the licence and the banners. A difference becomes a
+  rule in `boot_file.py` before the build. The break-glass record is ready before it runs.
+- **M2, how long a reload takes:** M3's reload is the first run; two plain reloads follow,
+  each under its own window. From the reload to SSH answering, and to adjacencies settled,
+  timed by the syslog's receive times (never the device's clock). The wait's bound is 2.5
+  times the longest, written beside it.
 
-## 10. Decisions for the operator
+## 10. Decisions for the operator (as put, 2026-10-07; decided in section 12)
 
 - **D1, the transfer.** No device has `ip scp server enable` or an `archive` stanza (the nine
   goldens, read masked through `nmas-config-read`, 2026-10-07 19:50 UTC), so pushing over SCP
@@ -233,3 +269,19 @@ Timings in the boards are placeholders named `[M2]` until M2 is measured.
 
 The manual gets a How it works page, `revert-reload`, naming each step the code declares,
 with its diagram, and the Actions menu's "How does this work?" opens it.
+
+## 12. Decisions (the operator, 2026-10-07: the design and mockup v76 approved in shape)
+
+- **D1:** the one-shot TFTP pull (served once, to that device's address only, for the run),
+  for now. SCP, with `ip scp server enable` delivered through intent, is recorded as the
+  later secure option (C562).
+- **D2:** credentials from the running configuration read at the preview, AND compared with
+  the credential Mercury holds; a difference (changed outside Mercury) refuses, saying so
+  (section 3 says how each is compared). Board A's credentials row draws this check.
+- **D3:** intent set back to the moment's.
+- **D4:** rollback offered as one previewed action, never automatic.
+- **D5:** each management-path difference needs a stated reason.
+- **D6:** one device at a time.
+- **The measurements** run on r2 and s1 at a quiet time (no throwaway now), M1 and M4 first,
+  then M3 and M2 (section 9); M1 says whether a TFTP source-interface is needed. The operator
+  has the break-glass record ready before M3.
