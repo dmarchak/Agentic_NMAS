@@ -112,3 +112,77 @@ move after cutover starts from a known list of mismatches. Read on the host on 2
 
 The census is repeated read-only before the move; the move refuses while any row above
 still needs something.
+
+**What Mercury's sync writes on a device today**, read in the code on 2026-10-07 before the
+operator's NetBox fixes:
+- **Platform:** was rewritten on every sync from a config-text guess, which is why every
+  device reads `ios`. It stops with `a3685bc` (C557): an update no longer sends it.
+- **Status:** create-only since 2026-09-24.
+- **Tags:** a union with the device's own; a tag a person adds is never removed.
+- **Still rewritten on every sync:** `name`, `role`, `device_type`, `serial`, `comments`,
+  `primary_ip4`/`primary_ip6` and the config context. These are Phase 1's to stop (Part 4).
+
+## Part 4. The direction of data (for the operator's sign-off)
+
+NetBox becomes the source of truth by a deliberate migration, never by a switch. Each field has
+ONE owner and ONE writer, and data flows NetBox → Mercury → devices. Each phase turns off the
+old writes for the fields it moves, in the same change that moves them.
+
+### The phases
+
+| Phase | Fields | NetBox | Mercury | Turns off |
+|---|---|---|---|---|
+| **Bootstrap** (done) | everything the import knew | filled by Mercury's import from the devices | wrote them | nothing yet |
+| **Review** (now) | identity | made correct by a person, from the census (part 3: r5's status, the platforms, the network tag) | reads the census, read-only | the platform rewrite (`a3685bc`) |
+| **Phase 1, identity** | existence, name, role, site, platform, status, management address | owns them | READS them: the NetBox-sourced inventory (part 2) | every sync write of those fields (`name`, `role`, `device_type`, `primary_ip4`/`primary_ip6`; site, status and platform already off) |
+| **Phase 2, design data** (decision 3, deferred) | interfaces, addresses, VLANs, VRFs | owns them, once decided | GENERATES that part of intent from NetBox's data (the style of Nautobot's Golden Config and NetBox's config templates), and compares the device against it | the interface and address import, which until then continues, marked "documentation, derived from the devices" |
+| **Phase 3, discovery as proposal** | what Mercury finds on a device that NetBox lacks (a new interface, a neighbour, a serial) | receives a PROPOSED change, approved by a person (Diode-style ingestion into a branch or changeset) | proposes, never writes directly | any remaining direct write from discovery |
+
+### The write pattern: the source of truth leads
+
+Mercury writes to NetBox **only as the FIRST step of a confirmed operation**, never as an
+after-the-fact sync:
+
+1. **The preview shows both sides:** the NetBox change (field, before, after) and the device
+   program. The confirm's hash covers both.
+2. **On confirm, the NetBox change is made first,** in a NetBox Branching branch where the
+   plugin is installed (`netbox-branching`, NetBox Labs; it requires NetBox 4.1 or later, and
+   ours is 4.6.9). Without the plugin, the write goes direct and its before is recorded
+   (today's provenance).
+3. **The devices change from it**, with verify and rollback, as every operation does.
+4. **On success the change becomes official** (the branch merged). **On failure it is undone**
+   (the branch abandoned, or the before restored), so NetBox never claims what is not true.
+5. **NetBox's change-log entry and Mercury's receipt link to each other:** the receipt names
+   the change-log entry or branch, and the change's comment names the receipt.
+
+It applies to:
+- retire (Decommissioning);
+- drain and return to service (Drained, Active);
+- onboarding (Planned → Active);
+- after Phase 2, intent edits of NetBox-owned design data.
+
+**Observed against intended differences are rows,** as NetBox Assurance reports deviations:
+NetBox says Drained while traffic flows, NetBox's platform against what the device reports, an
+interface in NetBox the device lacks. They are never fixed silently, in either direction.
+
+**NetBox may START Mercury's planning:** an Event Rule (a webhook on a device's or interface's
+change) asks Mercury to prepare the operation's preview for a person. It never applies
+anything.
+
+### Before Phase 2: a measured spike of the branching plugin
+
+Before design data moves, a spike on a copy of this NetBox measures:
+- the install (the plugin, its database schemas, the upgrade path with netbox-docker);
+- the API (creating a branch, writing in it with its header, reading main and branch);
+- merge and revert (what a merge conflicts on, whether a merged branch can be reverted, and
+  what each leaves in the change log);
+- the cost (a branch per operation at fleet scale).
+
+Each finding is recorded, and the design is revised from it.
+
+**Questions for the operator:**
+1. Phase 1 before or after cutover?
+2. Branching as a requirement for Phase 2, or optional with the direct write and its recorded
+   before as the fallback?
+3. Event Rules: which NetBox changes should start planning (a status set to Drained, a new
+   device in Planned, an interface edit after Phase 2)?
