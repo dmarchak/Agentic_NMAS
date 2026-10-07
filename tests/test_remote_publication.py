@@ -147,7 +147,7 @@ class TestEachStateFromRealRepositories:
         out = P.judge(lab["repo"], lab["dir"])
         assert out["state"] == "not_asked" and f"within {P.LS_REMOTE_TIMEOUT_S} s" in out["reason"]
 
-    def test_an_unreadable_record_still_compares_through_origin_and_says_c172(self, lab):
+    def test_an_unreadable_record_still_compares_through_origin_and_says_so(self, lab):
         _commit(lab["repo"], "a")
         _push(lab)
         _commit(lab["repo"], "b")
@@ -156,7 +156,8 @@ class TestEachStateFromRealRepositories:
         out = P.judge(lab["repo"], lab["dir"])
         assert (out["state"], out["ahead"], out["record"]) == ("ahead", 1, "unreadable")
         said = P.describe(out)
-        assert said["level"] == "danger" and "C172" in said["clause"]
+        assert said["level"] == "danger" and ("cannot be read, so the push hook refuses every "
+                                              "push until it is repaired") in said["clause"]
 
     def test_no_origin_and_no_record_is_no_remote(self, lab):
         _commit(lab["repo"], "a")

@@ -89,16 +89,14 @@ def push_hook(context: dict) -> dict:
     # The setting key is not deleted (settings keys never are); it is simply
     # no longer read here.
     list_name = context.get("list_name", "")
-    config = R.load_remote(list_name) if list_name else None
+    config, unreadable = R.config_or_refusal(list_name) if list_name else (None, "")
     if config is None:
-        # Absent and unreadable are different states (R18): an unreadable record answered
-        # "no remote configured" with ok, and publication stopped behind a success message.
-        unreadable = R.unreadable_why(list_name) if list_name else ""
+        # Absent and unreadable are different states (R18, C172): an unreadable record
+        # answered "no remote configured" with ok, and publication stopped behind a success
+        # message. The refusal names the file and that nothing is pushed until it is repaired.
         if unreadable:
             log.error("archive: auto-push for '%s' stopped: %s", list_name, unreadable)
-            return {"ok": False, "error": (
-                f"{unreadable}, so this list's remote is unknown and nothing was pushed; "
-                f"repair {R.remote_path(list_name)}")}
+            return {"ok": False, "error": unreadable}
         return {"ok": True, "message": (
             f"no remote configured for '{list_name or '(unknown list)'}' — "
             f"nothing pushed")}

@@ -231,11 +231,10 @@ def _history_remote(ref) -> dict:
     # 2026-10-05): a push's answer announces `remote`, which redraws this card, so an answer
     # held only in the browser vanished as it arrived. Drawn from the store, any redraw keeps
     # it. A successful push clears the failure (`record_push`). Masked on the way out.
-    try:
-        rec = NR.load_remote(ref.name) or {}
-    except Exception as exc:                          # noqa: BLE001
-        log.warning("v2 history: the remote record could not be read: %s", exc)
-        rec = {}
+    # An unreadable record is drawn as itself (C172): read as nothing, the card lost the last
+    # failure and said nothing of why pushes stopped.
+    rec, out["record_unreadable"] = NR.config_or_refusal(ref.name)
+    rec = rec or {}
     failure = rec.get("last_push_failure") or None
     if failure:
         failure = dict(failure, reason=redact_text(str(failure.get("reason") or "")))

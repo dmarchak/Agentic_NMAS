@@ -36,11 +36,13 @@ def status():
 
     list_name = _list_name()
     # Whether the history is ON the remote, measured by asking it (C223), on
-    # both branches: an unreadable remote.json reads as "no remote" below
-    # (C172), and the comparison still says what the repository's own origin
-    # holds.
+    # every branch: an unreadable remote.json is its own answer below (C172),
+    # and the comparison still says what the repository's own origin holds.
     published = publication(list_name)
-    config = R.load_remote(list_name)
+    config, unreadable = R.config_or_refusal(list_name)
+    if unreadable:
+        return jsonify({"ok": False, "list": list_name, "configured": None,
+                        "error": unreadable, "publication": published})
     if not config:
         return jsonify({"ok": True, "list": list_name, "configured": False,
                         "publication": published})

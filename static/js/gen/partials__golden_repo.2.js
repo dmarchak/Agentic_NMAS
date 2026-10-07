@@ -28,6 +28,14 @@ async function loadRemotePanel() {
   try {
     const s = await (await fetch('/remote/status')).json();
     const pub = remotePublicationHtml(s.publication);
+    if (s.configured === null && s.error) {
+      // C172: an unreadable record is not "no remote"; nothing is pushed until it is repaired.
+      host.innerHTML = pub + `
+        <div class="alert alert-danger py-2 px-3 mb-2">
+          <strong>The remote record cannot be read.</strong> ${_gEsc(s.error)}
+        </div>`;
+      return true;
+    }
     if (!s.configured) {
       const state = (s.publication || {}).state;
       host.innerHTML = (state && state !== 'no_remote' && state !== 'not_read') ? pub : `

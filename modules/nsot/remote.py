@@ -54,22 +54,53 @@ SECRET_SHAPES = [
 # ---------------------------------------------------------------------------
 
 def remote_path(list_name: str) -> str:
+    """Where this list's record lives. Resolved through `get_list_data_dir`, which creates
+    the list's folder; a GET naming a list that does not exist is refused before any view
+    resolves a path (C51's boundary, `routes/list_param.py`)."""
     from modules.config import get_list_data_dir
 
     return os.path.join(get_list_data_dir(list_name), REMOTE_FILE)
 
 
+class RemoteUnreadable(RuntimeError):
+    """This list's remote.json EXISTS and could not be read (C172). Not "no remote": the
+    list may well have one, so nothing may be pushed, adopted or verified as if it had none.
+    The message names the file and why, and that the file was left as it is."""
+
+
 def load_remote(list_name: str):
-    """This list's remote config, or ``None``. Absent means no remote."""
+    """This list's remote config, or ``None`` when it has none (no remote.json). A record
+    that exists and cannot be read raises `RemoteUnreadable` (C172): it read as ``None``,
+    the same answer as an absent file, and a list with no remote is quiet by design, so a
+    damaged record read as a list nobody gave a remote, on every screen and every push."""
     path = remote_path(list_name)
     if not os.path.exists(path):
         return None
     try:
         with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
+            config = json.load(fh)
     except Exception as exc:                   # noqa: BLE001
         log.error("remote: unreadable %s: %s", path, exc)
-        return None
+        raise RemoteUnreadable(
+            f"{os.path.basename(path)} could not be read ({type(exc).__name__}), so this "
+            f"list's remote is unknown and nothing is pushed until {path} is repaired; the "
+            "file is left as it is") from exc
+    if not isinstance(config, dict):
+        raise RemoteUnreadable(
+            f"{os.path.basename(path)} holds a {type(config).__name__}, not a record, so this "
+            f"list's remote is unknown and nothing is pushed until {path} is repaired; the "
+            "file is left as it is")
+    return config
+
+
+def config_or_refusal(list_name: str) -> tuple:
+    """``(config, "")``, ``(None, "")`` for no remote, or ``(None, why)`` when the record is
+    unreadable: the one way the operations below read it, so each refuses an unreadable
+    record by its own words and never as "no remote configured"."""
+    try:
+        return load_remote(list_name), ""
+    except RemoteUnreadable as exc:
+        return None, str(exc)
 
 
 def save_remote(list_name: str, config: dict) -> dict:
@@ -87,15 +118,7 @@ def unreadable_why(list_name: str) -> str:
     """Why this list's remote.json, which EXISTS, could not be read, or "" (R18: an
     unreadable file read as "no remote", and the push hook answered "nothing pushed" with ok).
     Absent and unreadable are different states."""
-    path = remote_path(list_name)
-    if not os.path.exists(path):
-        return ""
-    try:
-        with open(path, encoding="utf-8") as fh:
-            json.load(fh)
-        return ""
-    except Exception as exc:                   # noqa: BLE001
-        return f"{os.path.basename(path)} could not be read ({type(exc).__name__})"
+    return config_or_refusal(list_name)[1]
 
 
 def update_remote(list_name: str, change) -> tuple:
@@ -378,7 +401,12 @@ def check_right_repository(config: dict, list_name: str, repo_dir: str) -> dict:
     for slug in sorted(os.listdir(lists_dir)):
         if mine.matches(slug):
             continue
-        other = load_remote(slug)
+        other, unreadable = config_or_refusal(slug)
+        if unreadable:
+            # Whether that list already pushes here is unknown, so this one is not cleared.
+            return {"ok": False, "name": "not_another_lists_repo", "detail": slug,
+                    "fix": f"list '{slug}': {unreadable}. Whether it already pushes to "
+                           f"{target} cannot be told until then."}
         if other and f"{other.get('owner')}/{other.get('repo')}".lower() == target:
             return {"ok": False, "name": "not_another_lists_repo", "detail": slug,
                     "fix": f"list '{slug}' already pushes to {target}. Two "
@@ -528,7 +556,9 @@ def verify(list_name: str, repo_dir: str = "", actor: str = "",
 
     from modules.config import get_list_data_dir
 
-    config = load_remote(list_name)
+    config, unreadable = config_or_refusal(list_name)
+    if unreadable:
+        return {"ok": False, "error": unreadable}
     if not config:
         return {"ok": False, "error": f"'{list_name}' has no remote configured"}
     repo_dir = repo_dir or os.path.join(get_list_data_dir(list_name),
@@ -646,7 +676,9 @@ def ack_salt(list_name: str) -> str:
     shown on a screen cannot be checked against a guessed community offline."""
     import secrets as _secrets
 
-    config = load_remote(list_name)
+    config, unreadable = config_or_refusal(list_name)
+    if unreadable:
+        return ""
     if not config:
         return ""
     if not config.get("ack_salt"):
@@ -795,7 +827,9 @@ def first_push_preview(list_name: str, repo_dir: str = "") -> dict:
     """Counts and liveness. **Never values.**"""
     from modules.config import get_list_data_dir
 
-    config = load_remote(list_name)
+    config, unreadable = config_or_refusal(list_name)
+    if unreadable:
+        return {"ok": False, "error": unreadable}
     if not config:
         return {"ok": False, "error": f"'{list_name}' has no remote configured"}
     repo_dir = repo_dir or os.path.join(get_list_data_dir(list_name),
@@ -870,7 +904,9 @@ def acknowledge(list_name: str, *, actor: str, actor_kind: str,
 
     from modules.config import get_list_data_dir
 
-    config = load_remote(list_name)
+    config, unreadable = config_or_refusal(list_name)
+    if unreadable:
+        return {"ok": False, "error": unreadable}
     if not config:
         return {"ok": False, "error": f"'{list_name}' has no remote configured"}
     repo_dir = repo_dir or os.path.join(get_list_data_dir(list_name),
@@ -938,7 +974,9 @@ def acknowledgement_covers(list_name: str, repo_dir: str = "") -> dict:
     """
     from modules.config import get_list_data_dir
 
-    config = load_remote(list_name)
+    config, unreadable = config_or_refusal(list_name)
+    if unreadable:
+        return {"ok": False, "reason": unreadable}
     if not config:
         return {"ok": False, "reason": "no remote configured"}
     ack = config.get("acknowledged_secrets")
@@ -1108,7 +1146,9 @@ def push(list_name: str, *, actor: str, repo_dir: str = "") -> dict:
 
     from modules.config import get_list_data_dir
 
-    config = load_remote(list_name)
+    config, unreadable = config_or_refusal(list_name)
+    if unreadable:
+        return {"ok": False, "error": unreadable}
     if not config:
         return {"ok": False, "error": f"'{list_name}' has no remote configured"}
     if not config.get("verified_at"):
@@ -1207,7 +1247,9 @@ def auto_push_decision(list_name: str, repo_dir: str = "") -> dict:
     is already safe in the local repository, and nothing is lost by waiting.
     Pushing would be irreversible.
     """
-    config = load_remote(list_name)
+    config, unreadable = config_or_refusal(list_name)
+    if unreadable:
+        return {"push": False, "reason": unreadable}
     if not config:
         return {"push": False, "reason": "no remote configured"}
     if not config.get("auto_push"):

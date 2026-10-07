@@ -6,7 +6,7 @@ GitHub held `cf4d96d`, and nothing said so: the Git tab read "Everything is
 committed", the Remote card showed the last push the hook recorded, and
 Needs attention had no source for it. The hook's own record cannot answer
 this, because a commit that never reached the hook leaves no record (C223),
-and a record that cannot be read reads as no remote at all (C172). So the
+and a record that cannot be read used to read as no remote at all (C172). So the
 answer is derived from two facts nothing in NMAS writes:
 
 - the repository's HEAD, and
@@ -20,7 +20,7 @@ one's sha and commit time); `remote_ahead` (the remote holds commits this
 repository lacks); `diverged`; `no_branch` (the remote has no such branch);
 `not_asked` (the remote could not be asked, with the reason); and
 `record_unreadable` beside any of them, when `remote.json` exists and does
-not read (C172's symptom, made visible here and not fixed).
+not read (the push hook then refuses every push, naming the file; C172).
 
 A list with no `remote.json` and no `origin` has no remote, and is not a
 row: "history on this host only" is the configuration, drawn by the card.
@@ -227,8 +227,8 @@ def describe(pub: dict, now: float = None) -> dict:
     heads = (f"HEAD {str(pub.get('head', ''))[:7]}, {remote} {pub.get('branch', '')} at "
              f"{str(pub.get('remote_head', ''))[:7] or 'nothing'}")
     unreadable = pub.get("record") == "unreadable"
-    record = (" The remote record (remote.json) cannot be read, so the push hook treats "
-              f"this list as having no remote and pushes nothing (C172): {pub.get('record_detail')}."
+    record = (" The remote record (remote.json) cannot be read, so the push hook refuses "
+              f"every push until it is repaired: {pub.get('record_detail')}."
               if unreadable else "")
     if state == "no_remote":
         return {"level": "secondary", "state": state,

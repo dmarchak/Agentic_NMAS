@@ -135,7 +135,9 @@ Its one sentence is what History's header, the Remote card and
 [Needs attention](needs-attention) all draw. Commits not pushed are a warning, and danger once
 the oldest has waited ten minutes, or at once when the push is held. Remote ahead and
 diverged are danger. A remote record that cannot be read is named on every state, because
-the push treats that list as having no remote.
+the push refuses every commit of that list until the record is repaired. It is never read as
+"no remote": Verify, Push now and the acknowledgement refuse naming the file, History's header
+and the Remote card say it cannot be read, and the file is left as it is.
 
 ## What it does not do {#not-done}
 

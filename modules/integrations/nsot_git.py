@@ -72,7 +72,10 @@ class NsotGitIntegration(IntegrationClient):
                            f"({(out.stderr or 'no HEAD').strip()[:120]})")
                 continue
             head = out.stdout.strip()
-            remote = R.load_remote(name)
+            remote, unreadable = R.config_or_refusal(name)
+            if unreadable:
+                bad.append(f"{name}: HEAD {head}; {unreadable}")
+                continue
             if not remote:
                 parts.append(f"{name}: HEAD {head}, no remote")
                 continue
