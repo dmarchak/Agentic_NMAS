@@ -407,6 +407,13 @@ def deploy_preview(devices: list, request, scope: str = "") -> dict:
                     "Nothing will be sent: the device already has every line the profile "
                     "supplies." if d.get("profile_scope") else
                     "Nothing will be sent: the device already has every line.")
+            if d.get("unrendered"):
+                # Never "every line" while a profile section is dropped by the template (C565).
+                none = ("Nothing will be sent: the device already has every line its template "
+                        "renders. Not every profile section is rendered: see below.")
+        for u in d.get("unrendered") or []:
+            what_not.append({"target": name, "kind": "unrendered", "text": u["text"],
+                             "lines": []})
         # A running IP SLA operation re-created (deleted, defined from intent,
         # rescheduled), with the definition it replaces: before any other note.
         notes = list(d.get("recreates") or [])

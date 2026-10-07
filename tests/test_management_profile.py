@@ -102,6 +102,42 @@ class TestTheSection:
             "source_interfaces.tftp"]
 
 
+class TestWhetherTheTemplateRendersIt:
+    """C565: `profile_apply.unrendered` renders the device with the section and without it."""
+
+    DATA = {"source_interfaces": {"tftp": "Loopback0", "ssh": "Loopback0"}}
+
+    def _render_with(self, root):
+        return lambda intent: roundtrip.render(intent, "cisco_iosxe", template_root=root)
+
+    def test_a_device_already_holding_it_is_not_reported(self):
+        """Measured by what the section ADDS to the intent emptied of it (`profile.without`):
+        a device holding the same values renders the same with or without the profile."""
+        from modules.nsot import profile_apply
+        intent = get_parser("cisco_iosxe").parse(_planted("r1.cfg"))
+        assert profile_apply.unrendered({"management": self.DATA}, intent,
+                                        self._render_with(roundtrip.TEMPLATE_ROOT),
+                                        "cisco_iosxe", "") == []
+
+    def test_a_template_without_the_lines_is_reported(self, tmp_path):
+        import shutil
+        import subprocess
+
+        from modules.nsot import profile_apply
+        old = subprocess.run(["git", "-C", ROOT, "show",
+                              "97a4249:modules/nsot/templates/_common.j2"],
+                             capture_output=True, text=True)
+        if old.returncode != 0:
+            pytest.skip(f"no history for the shipped template here: {old.stderr.strip()}")
+        root = tmp_path / "templates"
+        shutil.copytree(roundtrip.TEMPLATE_ROOT, root)
+        (root / "_common.j2").write_text(old.stdout, encoding="utf-8")
+        intent = get_parser("cisco_iosxe").parse(_capture("r1.cfg"))
+        assert profile_apply.unrendered({"management": self.DATA}, intent,
+                                        self._render_with(str(root)),
+                                        "cisco_iosxe", "") == ["management"]
+
+
 class TestVerify:
     def test_a_program_of_only_these_lines_verifies_quickly(self):
         """What the device sends FROM, never what it routes: verify reads the lines back."""

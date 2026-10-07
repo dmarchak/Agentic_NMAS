@@ -267,6 +267,26 @@ def overrides(intent: dict, doc: dict, platform: str, role: str) -> list:
     return out
 
 
+def without(intent: dict, data: dict) -> dict:
+    """*intent* with every path a section's *data* sets emptied (the empty of the data's own
+    type), so rendering it with and without the section measures what the section adds,
+    whether or not the device already holds the same value (C565)."""
+    out = copy.deepcopy(intent or {})
+
+    def blank(pdata, node):
+        if not isinstance(pdata, dict) or not isinstance(node, dict):
+            return
+        for k, pv in pdata.items():
+            if k not in node:
+                continue
+            if isinstance(pv, dict) and isinstance(node[k], dict):
+                blank(pv, node[k])
+            else:
+                node[k] = [] if isinstance(pv, list) else ({} if isinstance(pv, dict) else "")
+    blank(data, out)
+    return out
+
+
 def strip_inherited(intent: dict, doc: dict, platform: str, role: str) -> dict:
     """ONE OWNER at seed and extraction: every device value EQUAL to the
     profile's is dropped (the device inherits it); a differing value stays,

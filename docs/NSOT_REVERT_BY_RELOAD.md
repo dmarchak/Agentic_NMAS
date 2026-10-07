@@ -260,7 +260,11 @@ it boots, and r2 makes RIP reconverge. In order, the two with no reload first:
   document, so no new screen: Propose commits it, Monitoring › Apply and Plan a deploy send
   it ([MONITORING_PROFILE](MONITORING_PROFILE.md), section 10). Its interface is derived from
   `syslog_source_interface`, where `syslog_host` is configured, so the network declares it
-  once. Walked by Propose on the host, then an Apply to r2 and s1.
+  once. **Walked by the operator 2026-10-07 and NOT delivered:** the section was committed,
+  and r2's template (`_common.j2`, an older shipped version) renders none of it, so every plan
+  said "nothing to send" (C565; the silence is fixed, the plan now names it). Delivery waits on
+  v2's builds (C566): Propose on v2, bringing a stale template to the shipped version, and the
+  section on Coverage.
 - **P2, the transfer answers from the address it was asked on (C563),** in the code ZTP's
   responder and the revert's one-shot transfer share. BUILT 2026-10-07
   (`ztp_responder.receive` and `reply_address`, `modules/nsot/tftp_once.py`); measured on the

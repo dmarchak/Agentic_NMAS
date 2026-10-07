@@ -89,6 +89,45 @@ def scoped(effective_render: str, own_render: str, captured: str, also=None) -> 
             "held_back": _rows(held)}
 
 
+#: ``{(template library key, section, data): renders?}``: whether a template renders a section
+#: is a property of the template and the section, not of a device, and a render costs about
+#: 20 ms (measured 2026-10-07), two per section per plan without it.
+_RENDERS = {}
+
+
+def unrendered(sections: dict, own: dict, render, platform: str, role: str,
+               library_key: str = "") -> list:
+    """The sections (of ``{name: data}``, as `profile.sections_for` returns) this device's
+    template renders NONE of (C565): the device's intent rendered with the section and
+    without it (`profile.without`) are the same text. A committed profile section was
+    inherited into effective intent and silently dropped by a template that does not know
+    its lines, and every plan said "nothing to send". A render that raises is not judged."""
+    import json
+
+    from modules.nsot import profile as _profile
+
+    out = []
+    for name, data in sections.items():
+        key = (library_key, name, json.dumps(data, sort_keys=True, default=str)) \
+            if library_key else None
+        if key is not None and key in _RENDERS:
+            if not _RENDERS[key]:
+                out.append(name)
+            continue
+        base = _profile.without(own, data)
+        one = {"version": _profile.VERSION, "sections": {name: {"data": data}}}
+        try:
+            renders = render(_profile.effective(base, one, platform, role)) != render(base)
+        except Exception as exc:              # noqa: BLE001
+            log.warning("profile apply: could not judge whether %s renders: %s", name, exc)
+            continue
+        if key is not None:
+            _RENDERS[key] = renders
+        if not renders:
+            out.append(name)
+    return out
+
+
 def by_section(sections: dict, render_with, own_render: str) -> dict:
     """``{section: [(chain, line), ...]}``: which of the profile's sections
     supplies each line, measured by rendering the device's intent with that

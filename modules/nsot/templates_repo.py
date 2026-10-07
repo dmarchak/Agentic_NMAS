@@ -415,6 +415,34 @@ def _shipped_files(builtin_root: str) -> list:
     return sorted(out)
 
 
+def library_signature(root: str = "") -> str:
+    """A cheap identity of a template library as it is on disk (every file's path, size and
+    modification time), for caching what its templates render (C565); "" when unreadable."""
+    import hashlib
+
+    root = root or BUILTIN_ROOT
+    parts = []
+    try:
+        for dirpath, _dirs, files in os.walk(root):
+            for f in sorted(files):
+                p = os.path.join(dirpath, f)
+                st = os.stat(p)
+                parts.append(f"{os.path.relpath(p, root)}:{st.st_size}:{st.st_mtime_ns}")
+    except OSError:
+        return ""
+    return hashlib.sha256("\n".join([root] + sorted(parts)).encode()).hexdigest()[:16]
+
+
+def behind_shipped(repo: str) -> list:
+    """The network's templates that are not today's shipped file, each ``{"path", "state"}``
+    (`seed_status`'s stale, edited_and_stale or unclassified), to say WHY a template may not
+    render what the shipped one does. ``[]`` when every seeded file is current or edited."""
+    report = seed_status(repo)
+    out = [{"path": f["path"], "state": f["state"]} for f in report.get("files") or []
+           if f["state"] in ("stale", "edited_and_stale")]
+    return out
+
+
 def seed_status(repo: str, builtin_root: str = "") -> dict:
     """Classify every seeded template in *repo* against the shipped one.
 

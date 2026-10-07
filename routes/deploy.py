@@ -329,6 +329,57 @@ def _scoped(scope: str, list_name: str, hostname: str, artifact, intended: str, 
     return _profile_scope(list_name, hostname, artifact, intended, captured, device)
 
 
+#: How a state of the network's template reads in a "not sent" item.
+_SEED_WORDS = {"stale": "an older shipped version, unedited: the shipped fix has not reached "
+                        "this network",
+               "edited_and_stale": "edited here, and the shipped file has moved since: a merge "
+                                   "a person makes"}
+
+
+def _unrendered(list_name: str, hostname: str, artifact, device: dict) -> list:
+    """The profile's sections that apply to *hostname* and that its template renders NONE of
+    (C565), each ``{"section", "text"}`` saying what is not sent and why. A committed section
+    was inherited into effective intent and dropped by the network's template, and every plan
+    said "nothing to send" while Propose said the device inherits it. ``[]`` when the profile
+    cannot be read (the plan refuses that by name elsewhere) or the device has no intent."""
+    from modules.nsot import hostvars, profile as _profile, profile_apply, templates_repo
+    from modules.nsot.deploy import render_for_deploy
+    from modules.preview_confirm import PROFILE_SECTION_WORDS
+
+    repo = _repo_for(list_name)
+    try:
+        doc = _profile.read_committed(repo)
+    except _profile.ProfileRefused:
+        return []
+    own = hostvars.read_committed(repo, hostname) if doc else None
+    if not doc or own is None or hostvars.is_bootstrap_only(own):
+        return []
+    role = ((device or {}).get("role") or "").strip()
+    sections = _profile.sections_for(doc, artifact.platform, role, own)
+    root = getattr(artifact, "template_root", "") or None
+    name = (artifact.template or "base.j2").split("/")[-1]
+
+    def render(intent):
+        return render_for_deploy(hostvars.hydrate_secrets(intent, hostname, list_name),
+                                 artifact.platform, template_root=root, template_name=name)
+
+    key = "|".join([root or "", name, artifact.platform,
+                    templates_repo.library_signature(root or "")])
+    missing = profile_apply.unrendered(sections, own, render, artifact.platform, role,
+                                       library_key=key)
+    if not missing:
+        return []
+    behind = templates_repo.behind_shipped(repo)
+    why = ("; ".join(f"templates/{b['path']} is {_SEED_WORDS.get(b['state'], b['state'])}"
+                     for b in behind)
+           or "the network's template library does not model these lines")
+    return [{"section": s,
+             "text": (f"Not sent: the profile's {PROFILE_SECTION_WORDS.get(s, s)} section. "
+                      f"{hostname}'s template ({artifact.template}) renders none of it, so "
+                      f"nothing of it reaches the program: {why}.")}
+            for s in missing]
+
+
 def _profile_scope(list_name: str, hostname: str, artifact, intended: str, captured: str,
                    device: dict, also=None) -> dict:
     """APPLY MONITORING PROFILE (P.9 step b): the intended config scoped to
@@ -454,6 +505,11 @@ def plan_devices(list_name: str, hostnames: list, *, authorise: dict = None,
         artifact, captured, _device = built
         entry = {**artifact.summary(),
                  "capture_hash": _capture_hash(captured)}
+        # A profile section this device's template cannot render (C565): named, never
+        # "nothing to send" in its place. Carried only when there is one, as `recreates` is.
+        unrendered = _unrendered(list_name, hostname, artifact, _device)
+        if unrendered:
+            entry["unrendered"] = unrendered
         selected = remove.get(hostname) or []
 
         try:
