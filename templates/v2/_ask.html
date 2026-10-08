@@ -14,9 +14,10 @@
     <div class="ask-row">
       <input id="ask-command" name="command" type="text" class="mono ask-input{{ ' ask-bad' if c.check.why }}" value="{{ c.command }}"
              placeholder="show ip route" autocomplete="off" spellcheck="false" aria-describedby="ask-check"
-             hx-get="{{ url_for('reads_v2.ask_check', name=c.host) }}" hx-trigger="input changed delay:300ms" hx-target="#ask-check" hx-swap="outerHTML" hx-include="this">
+             hx-get="{{ url_for('reads_v2.ask_check', name=c.host) }}" hx-trigger="input changed delay:300ms" hx-target="#ask-check" hx-swap="outerHTML" hx-include="closest form">
       {%- include "v2/_ask_check.html" %}
     </div>
+    {%- with oob = False %}{% include "v2/_ask_reason.html" %}{% endwith %}
   </form>
   {%- if c.state == 'idle' %}
   <div class="ask-picks">
@@ -25,7 +26,7 @@
     {%- endif %}
     <div class="ask-pickrow"><span class="ask-lbl">Common reads</span>{% for cmd in c.common %}<a class="ask-pick mono" href="{{ url_for('device_v2.device', name=c.host, tab='ask', command=cmd) }}" hx-get="{{ url_for('device_v2.ask', name=c.host, command=cmd) }}" hx-target="#ask" hx-swap="outerHTML">{{ cmd }}</a>{% endfor %}</div>
   </div>
-  <p class="faint small">Read-only: checked against Mercury's allowlist as you type, and again when it runs. Nothing here changes {{ c.host }}; every read is recorded in its History.</p>
+  <p class="faint small">Tier 1, reads and diagnostics: checked against Mercury's command policy as you type, and again when it runs. Nothing here changes {{ c.host }}'s configuration (a <span class="mono">send log</span> writes one line to its log); every read is recorded in its History.</p>
   {%- elif c.state == 'running' %}
   <p class="op-wait">Reading {{ c.host }} now: <span class="mono">{{ c.command }}</span>. The answer appears here when it arrives.</p>
   {%- elif c.state == 'refused' %}
@@ -53,6 +54,7 @@
     {%- endif %}
     <div class="ask-meta"><span title="{{ c.who }} at {{ c.at }}{% if a.took_s is not none %}, {{ a.took_s }} s{% endif %}">{{ stamp(c.at, '', 'read by ' ~ c.who) }}{% if a.took_s is not none %} · {{ a.took_s }} s{% endif %}</span>
       {%- if a.state == 'answered' %}{{ badge('answered', 'ok') }}{% endif %}
+      {%- if c.reason_recorded %}<span class="muted small">Why: {{ c.reason_recorded }}</span>{% endif %}
       {%- if a.previous and not a.archived %}<button type="button" class="btn btn-small" hx-get="{{ url_for('device_v2.ask', name=c.host, run=c.run, compare=a.command) }}" hx-target="#ask" hx-swap="outerHTML">Compare with the last answer</button>{% endif %}</div>
   </div>
   {%- endfor %}

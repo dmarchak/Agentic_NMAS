@@ -18,7 +18,7 @@
   {%- else %}
   <div class="sc-hd"><h2 id="sc-result-h">{{ r.record.commands | length }} command{{ 's' if r.record.commands | length != 1 }} on {{ r.record.total }} device{{ 's' if r.record.total != 1 }}
     {% if r.state == 'running' %}{{ badge('running', 'warn') }}{% else %}{{ badge('done', 'ok') }}{% endif %}</h2></div>
-  <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}{% if r.record.took_s is not none %}, {{ r.record.took_s }} s{% endif %}.{% if r.record.reason %} Why: {{ r.record.reason }}.{% endif %} Recorded in History.</p>
+  <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}{% if r.record.took_s is not none %}, {{ r.record.took_s }} s{% endif %}.{% if r.record.reason %}{% if r.record.urgent %} Level {{ r.record.urgent }}, allowed by the reason.{% endif %} Why: {{ r.record.reason }}.{% endif %} Recorded in History.</p>
   {%- if r.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not recorded:</strong> {{ r.error }}</p></div>{% endif %}
   {%- if r.lost %}<div class="notice notice-warn">{{ icon('warn', 16) }}<p>The server restarted while this run was reading: {{ r.record.done }} of {{ r.record.total }} devices had answered and are kept below; the others were not read.</p></div>{% endif %}
   {%- if r.state == 'running' %}

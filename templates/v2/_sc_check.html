@@ -1,6 +1,11 @@
-{#- One command row's verdict, as typed (board B): what it does, its cost, or why it is refused (its tier). -#}
-<span class="sc-check" id="sc-check-{{ i }}" aria-live="polite">
-  {%- if k.why %}<span class="sc-bad" title="{{ k.why }}">refused: {{ k.why }}</span>
+{#- One command row's verdict, as typed (board B): what it does, its cost, or why it is refused (its tier).
+    A send log at 0 to 3 (board C582): "needs a reason" until the run's reason has three words,
+    then "not a test" or "allowed, with your reason". Out of band when the reason is typed. -#}
+<span class="sc-check" id="sc-check-{{ i }}" aria-live="polite"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {%- if k.needs_reason %}<span class="sc-heavy-chip" title="Level {{ k.urgent }} can fire alert rules and page someone: give the run a reason of three words or more">needs a reason</span>
+  {%- elif k.why and k.urgent is defined and 'TEST' in k.why %}<span class="sc-bad" title="{{ k.why }}">not a test: {{ k.why }}</span>
+  {%- elif k.why %}<span class="sc-bad" title="{{ k.why }}">refused: {{ k.why }}</span>
   {%- elif k.heavy %}<span class="sc-heavy-chip" title="{{ k.heavy[0].why }}">heavy: {{ k.heavy[0].why }}</span>
+  {%- elif k.ok and k.urgent is defined %}<span class="sc-ok" title="Level {{ k.urgent }}, with the run's reason; the line says TEST">allowed, with your reason</span>
   {%- elif k.ok %}<span class="sc-ok" title="{{ k.does[1] }}">{{ k.does[0] }}</span>{% endif -%}
 </span>

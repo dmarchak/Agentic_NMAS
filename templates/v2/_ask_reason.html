@@ -1,0 +1,11 @@
+{#- Board C582, part 3 (approved 2026-10-08): Ask the device's reason, under the box while the
+    command is a send log at 0 to 3; the same rule as Show commands. Drawn out of band as the
+    command is typed (reads_v2.ask_check); its own input asks only for Run (part=run). -#}
+<div class="ask-reason" id="ask-reason"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {%- if c.reason.needed %}
+  <label class="ask-label" for="ask-reason-in">Why send at level {{ c.reason.level }}? Recorded with the read, at least three words</label>
+  <input id="ask-reason-in" type="text" name="reason" class="ask-input" value="{{ c.reason.value }}" placeholder="e.g. walk the on-call pager path" autocomplete="off"
+         hx-get="{{ url_for('reads_v2.ask_check', name=c.host, part='run') }}" hx-trigger="input changed delay:300ms" hx-target="#ask-check" hx-swap="outerHTML" hx-include="closest form">
+  <p class="muted small">Level {{ c.reason.level }} is <strong>{{ c.reason.level_words }}</strong>: it can fire alert rules and page someone. {% if c.reason.has_test %}The line says TEST, which it must.{% else %}The line must say TEST, so whoever is paged knows it was one.{% endif %}</p>
+  {%- endif %}
+</div>

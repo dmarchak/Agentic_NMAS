@@ -29,6 +29,7 @@
         {%- if p.rows | length > 1 %}<button type="button" class="btn btn-small" aria-label="Remove command {{ loop.index }}" hx-get="{{ url_for('reads_v2.show_commands_pick', remove=i) }}" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML">Remove</button>{% endif %}
       </div>
       {%- endfor %}
+      {%- with oob = False %}{% include "v2/_sc_reason.html" %}{% endwith %}
       {%- if p.rows | length < p.max_commands %}<button type="button" class="btn btn-small" hx-get="{{ url_for('reads_v2.show_commands_pick', add=1) }}" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML">Add a command</button>{% endif %}
       {%- if p.heavy %}<div class="notice notice-warn sc-heavy">{{ icon('warn', 16) }}<p>{% for h in p.heavy %}<span class="mono">{{ h.command or h.device }}</span>: {{ h.why }}. {% endfor %}</p></div>{% endif %}
     </div></div>

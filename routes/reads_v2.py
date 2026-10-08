@@ -31,8 +31,15 @@ def ask_check(name):
     found, refusal = _device_or_404(name)
     if refusal is not None:
         return refusal
-    c = {"check": reads_page.check(request.args.get("command", "")), "state": "idle"}
-    return _strict(render_template("v2/_ask_check.html", c=c))
+    command, reason = request.args.get("command", ""), request.args.get("reason", "")
+    c = {"check": reads_page.check(command, 1, reason), "state": "idle", "host": name,
+         "reason": reads_page.reason_part([command], reason)}
+    html = render_template("v2/_ask_check.html", c=c)
+    # C582: the reason field follows the command (out of band), but never redraws itself
+    # while it is the field being typed in (C573's lesson): its own input asks `part=run`.
+    if request.args.get("part") != "run":
+        html += render_template("v2/_ask_reason.html", c=c, oob=True)
+    return _strict(html)
 
 
 @bp.route("/device/<name>/ask", methods=["POST"])
@@ -46,12 +53,15 @@ def ask_run(name):
         return refusal
     ref, dev = found
     command = (request.form.get("command") or "").strip()
-    got = reads.start(ref.name, [dev["hostname"]], [command], identity.request_actor())
+    reason = (request.form.get("reason") or "").strip()
+    got = reads.start(ref.name, [dev["hostname"]], [command], identity.request_actor(),
+                      reason=reason)
     if not request.headers.get("HX-Request"):
         return redirect(url_for("device_v2.device", name=name, tab="ask", list=ref.name,
                                 job=got.get("job", ""), run=got.get("run", ""),
                                 command=command))
-    c = _card(ref, dev, command=command, job=got.get("job", ""), run_id=got.get("run", ""))
+    c = _card(ref, dev, command=command, job=got.get("job", ""), run_id=got.get("run", ""),
+              reason=reason)
     # A refusal is the card's answer (drawn in place, recorded), so it answers 200 like a run.
     return _strict(render_template("v2/_ask.html", c=c))
 
@@ -73,7 +83,8 @@ def _pick_args(src) -> dict:
     if src.get("add") and len(rows) < 10:
         rows.append("")
     return {"q": src.get("q", ""), "role": src.get("role", ""),
-            "platform": src.get("platform", ""), "site": src.get("site", ""), "commands": rows}
+            "platform": src.get("platform", ""), "site": src.get("site", ""), "commands": rows,
+            "reason": (src.get("reason") or "").strip()}
 
 
 @bp.route("/show-commands", methods=["GET"])
@@ -122,7 +133,20 @@ def show_commands_check():
     row = p["rows"][int(i)] if i.isdigit() and int(i) < len(p["rows"]) else None
     k = row["check"] if row else reads_page.check(request.args.get("command", ""), 2)
     return _strict(render_template("v2/_sc_check.html", k=k, i=i)
+                   + render_template("v2/_sc_reason.html", p=p, oob=True)
                    + render_template("v2/_sc_run.html", p=p, oob=True))
+
+
+@bp.route("/show-commands/reason", methods=["GET"])
+def show_commands_reason():
+    """C582: as the reason is typed, every command row's verdict and Run, out of band, from the
+    whole form; never the reason field itself, which is the field being typed in (asks no
+    device)."""
+    from modules import reads_page
+    p = reads_page.pick(_list(), **_pick_args(request.args))
+    html = "".join(render_template("v2/_sc_check.html", k=row["check"], i=i, oob=True)
+                   for i, row in enumerate(p["rows"]))
+    return _strict(html + render_template("v2/_sc_run.html", p=p, oob=True))
 
 
 @bp.route("/show-commands/run", methods=["POST"])
@@ -143,7 +167,8 @@ def show_commands_run():
             f"(fingerprint {shown or 'none'} then, {p['fingerprint']} now: {len(p['devices'])} "
             "device(s) now). Check the list below and Run again."))
         return _strict(render_template("v2/_sc_pick.html", p=p))      # drawn in place
-    got = reads.start(name, p["devices"], args["commands"], identity.request_actor())
+    got = reads.start(name, p["devices"], args["commands"], identity.request_actor(),
+                      reason=args["reason"])
     target = url_for("reads_v2.show_commands_result", run_id=got["run"], job=got.get("job", ""),
                      list=name)
     if request.headers.get("HX-Request"):

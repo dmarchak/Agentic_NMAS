@@ -1,0 +1,13 @@
+{#- Board C582 (approved 2026-10-08): the run's one stated reason, under the commands while any
+    typed line is a send log at 0 to 3; recorded with the run. Drawn out of band as a command is
+    typed (reads_v2.show_commands_check); its own input redraws only the verdicts and Run
+    (reads_v2.show_commands_reason, hx-swap none), never itself. -#}
+<div class="sc-reason" id="sc-reason"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {%- if p.reason.needed %}
+  <label class="sc-f" for="sc-reason-in">Why send at level {{ p.reason.level }}? Recorded with the run, at least three words
+    <input id="sc-reason-in" type="text" name="reason" value="{{ p.reason.value }}" placeholder="e.g. prove the critical alert rule fires" autocomplete="off"
+           hx-get="{{ url_for('reads_v2.show_commands_reason') }}" hx-trigger="input changed delay:300ms" hx-include="#sc-form" hx-swap="none"></label>
+  <p class="muted small">Level {{ p.reason.level }} is <strong>{{ p.reason.level_words }}</strong>: a line at 0 to 3 can fire alert rules and page someone. {% if p.reason.has_test %}The line says TEST, which it must.{% else %}A line at 0 to 3 must say TEST, so whoever is paged knows it was one.{% endif %} One reason covers every level 0 to 3 line in this run; lines at 4 to 7 need none.</p>
+  {%- elif p.reason.value %}<input type="hidden" name="reason" value="{{ p.reason.value }}">
+  {%- endif %}
+</div>

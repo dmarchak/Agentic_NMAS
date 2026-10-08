@@ -335,6 +335,21 @@ def _verify_args(args: list) -> str:
     return _file(args[0], "verify")
 
 
+def urgent_level(command: str):
+    """The level of a ``send log`` at 0 to 3 (`URGENT_LEVELS`), the one kind of Tier 1 line
+    that needs a stated reason; ``None`` for anything else (C582's field appears for these)."""
+    words = (command or "").split()
+    if ([w.lower() for w in words[:2]] == ["send", "log"] and len(words) > 2
+            and words[2].isdigit() and int(words[2]) in URGENT_LEVELS):
+        return int(words[2])
+    return None
+
+
+def says_test(command: str) -> bool:
+    """Whether a send log's line holds the word TEST, as `_send_log_args` asks it."""
+    return bool(re.search(r"\bTEST\b", command or "", re.I))
+
+
 def _send_log_args(text: str, urgent: bool = False) -> str:
     """``send log [<0-7>] <text>``: *text* is everything after ``send log``. Levels 4 to 7 run
     freely; 0 to 3 only when *urgent* (a stated reason, `URGENT_LOG`) and the line says TEST."""
@@ -354,7 +369,7 @@ def _send_log_args(text: str, urgent: bool = False) -> str:
                     "fire critical alert rules, so it needs a stated reason of three words or "
                     "more, recorded with the run, and the word TEST in its line. Levels 4 to 7 "
                     "run freely.")
-        if not re.search(r"\bTEST\b", text, re.I):
+        if not says_test(text):
             return (f"REFUSED: send log at level {level} must mark its line as a test: the "
                     "word TEST is not in it.")
     if "|" in text:

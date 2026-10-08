@@ -488,6 +488,28 @@ class TestTypedInARealBrowser:
         page.type("input[name=command]", " | redirect flash:x")
         page.wait_for(f"return {run}.disabled && " + SETTLED, 10)
 
+    def test_a_level_2_line_brings_the_reason_field_and_typing_it_keeps_it(self, page):
+        """Board C582: the field appears as the line is typed; typing the reason, a character
+        at a time, keeps the focus in it, and Run comes on at three words."""
+        import time
+        run = "document.querySelector('#sc-form button[type=submit][data-op=show-commands]')"
+        page.click("input[name=command]")
+        page.type("input[name=command]", "send log 2 MERCURY TEST alert rule check")
+        page.wait_for("return !!document.querySelector('#sc-reason-in') && " + SETTLED, 10)
+        assert page.js(f"return {run}.disabled") is True
+        page.click("#sc-reason-in")
+        for ch in "prove the rule fires":
+            page.type("#sc-reason-in", ch)
+            time.sleep(0.05)
+        time.sleep(0.5)                              # past the field's 300 ms pause
+        page.wait_for("return " + SETTLED, 10)
+        assert page.js("return document.activeElement.id") == "sc-reason-in"
+        assert page.js("return document.querySelector('#sc-reason-in').value") \
+            == "prove the rule fires"
+        page.wait_for(f"return !{run}.disabled", 10)
+        assert "allowed, with your reason" in page.js(
+            "return document.querySelector('#sc-check-0').textContent")
+
 
 class TestSavedSets:
     def test_a_set_is_committed_and_offered(self, sc):
@@ -518,3 +540,79 @@ class TestSavedSets:
             r = sc["client"].post("/v2/show-commands/sets", data={
                 "list": "Lab", "command": ["show clock"], "set_name": "Clock"})
         assert "already has a set named 'Clock'" in html_mod.unescape(r.get_data(as_text=True))
+
+
+URGENT = "send log 2 MERCURY TEST alert rule check"
+REASON = "prove the critical alert rule fires after the Grafana change"
+
+
+class TestAReasonForLevelsZeroToThree:
+    """Board C582 (approved 2026-10-08): a send log at 0 to 3 needs a stated reason, three
+    words or more, recorded with the run; the field appears under the commands, one per run."""
+
+    def test_typed_without_a_reason_it_asks_for_one_and_run_is_off(self, sc):
+        _r, html = _get(sc, f"/v2/show-commands/check?list=Lab&i=0&command={URGENT}")
+        assert ">needs a reason</span>" in html and "refused" not in html
+        assert 'id="sc-reason" hx-swap-oob="true"' in html, "the field follows the command"
+        assert "Why send at level 2? Recorded with the run, at least three words" in html
+        assert "Level 2 is <strong>critical (2)</strong>" in html
+        assert "The line says TEST, which it must." in html
+        assert re.search(r'data-op="show-commands" disabled', html), "Run stays off"
+
+    def test_typing_the_reason_redraws_the_verdicts_and_run_never_the_field(self, sc):
+        _r, html = _get(sc, f"/v2/show-commands/reason?list=Lab&command={URGENT}"
+                            f"&reason={REASON}")
+        assert 'id="sc-check-0" aria-live="polite" hx-swap-oob="true"' in html
+        assert ">allowed, with your reason</span>" in html
+        assert 'id="sc-reason"' not in html, "the field being typed in is never replaced (C573)"
+        assert not re.search(r'data-op="show-commands" disabled', html), "Run is on"
+
+    def test_two_words_are_not_a_reason(self, sc):
+        _r, html = _get(sc, f"/v2/show-commands/reason?list=Lab&command={URGENT}"
+                            "&reason=just testing")
+        assert ">needs a reason</span>" in html
+        assert re.search(r'data-op="show-commands" disabled', html)
+
+    def test_a_line_without_test_is_said_not_a_test(self, sc):
+        _r, html = _get(sc, "/v2/show-commands/reason?list=Lab&command=send log 2 MERCURY "
+                            f"alert rule check&reason={REASON}")
+        assert ">not a test: " in html
+        assert "send log at level 2 must mark its line as a test" in html
+
+    def test_levels_4_to_7_never_show_the_field(self, sc):
+        _r, html = _get(sc, "/v2/show-commands/check?list=Lab&i=0&command=send log 5 hello")
+        assert "Why send at level" not in html and ">needs a reason<" not in html
+
+    def test_the_run_sends_with_the_reason_and_records_it(self, sc):
+        _r, target = _run(sc, [URGENT], reason=REASON)
+        assert sorted(sc["fleet"].sent) == [("r3", URGENT), ("r9", URGENT)]
+        _r, html = _get(sc, target)
+        assert f"Level critical (2), allowed by the reason. Why: {REASON}." in html
+        from modules.history_sources import show_commands
+        from modules.nsot import listref
+        got = show_commands({"ref": listref.resolve("Lab"), "device": "", "limit": 50,
+                             "since": None, "members": None})
+        assert got["events"][0]["detail"] == f"Why: {REASON}"
+
+    def test_without_a_reason_the_run_is_refused_and_asks_no_device(self, sc):
+        _r, target = _run(sc, [URGENT], reason="because")
+        _r, html = _get(sc, target)
+        assert "Not run:" in html and "needs a stated reason of three words" in html
+        assert sc["fleet"].sent == []
+
+    def test_ask_the_device_takes_the_same_reason(self, sc):
+        _r, html = _get(sc, f"/v2/device/r3/ask/check?command={URGENT}")
+        assert "needs a reason of three words or more, below; Run stays off" in html
+        assert 'id="ask-reason" hx-swap-oob="true"' in html
+        assert "Why send at level 2? Recorded with the read, at least three words" in html
+        _r, html = _get(sc, f"/v2/device/r3/ask/check?command={URGENT}&reason={REASON}"
+                            "&part=run")
+        assert 'id="ask-reason"' not in html, "its own typing never redraws it"
+        assert "disabled" not in html.split('id="ask-check"', 1)[1].split("</button>", 1)[0]
+        from modules.nsot import capture_job
+        r = sc["client"].post("/v2/device/r3/ask", data={"list": "Lab", "command": URGENT,
+                                                          "reason": REASON},
+                              headers={"HX-Request": "true"})
+        job = re.search(r"job=([0-9a-f]{32})", r.get_data(as_text=True))
+        assert job and capture_job.wait(job.group(1), 30)
+        assert sc["fleet"].sent == [("r3", URGENT)]

@@ -124,7 +124,9 @@ Ask the device a Tier 1 command and read its answer here: a `show`, a bounded `p
 terminal setting ([the command policy](show-commands#tiers)). Type a command, or pick one of
 the common reads or a saved set. The command is checked as you type: a command outside Tier 1
 (`reload`, `copy`, `clear counters`, `| redirect`, anything no tier holds) says beside the box
-which tier it is in and where to go instead, and **Run** stays off; a command known to be heavy (`show tech-support`, `show logging`
+which tier it is in and where to go instead, and **Run** stays off; a `send log` at level 0 to
+3 brings a reason field under the box, and **Run** stays off until the reason has three words
+(the reason is recorded with the read and shown beside its answer); a command known to be heavy (`show tech-support`, `show logging`
 unfiltered) says what it costs. **Run** reads the device now, busy on itself until the answer
 arrives, which appears in place: masked as a golden is, with how long it took, and who and
 when on hover. An answer longer than the network's cap is kept to the cap and says it was cut.

@@ -48,7 +48,7 @@ what is not: a command in no tier is refused, naming the nearest command that ru
 | `traceroute` | `[vrf <name>] [ip\|ipv6] <target>`, then `numeric`, `timeout` 1 to 10 s, `probe` 1 to 5, `ttl <min> <max>` (1 to 30), `source`, `port` |
 | `dir`, `more` | a local file system only (`flash:`, `bootflash:`, `nvram:`, `system:`, …), never a transfer protocol (`tftp:`, `ftp:`, `http:`, `scp:`, …) |
 | `verify /md5` | a file on a local file system, and optionally the MD5 it should have |
-| `send log` | `[<level>] <one plain line>`, at most 120 characters, never piped. Levels 4 to 7 run freely; 0 to 3 (they can fire critical alert rules) need a stated reason of three words or more, recorded, and the word TEST in the line |
+| `send log` | `[<level>] <one plain line>`, at most 120 characters, never piped. Levels 4 to 7 run freely; 0 to 3 (they can fire critical alert rules) need a stated reason of three words or more, recorded, and the word TEST in the line. Typing such a line brings a reason field under the commands (one reason covers every such line in the run) or under Ask the device's box; the line says "needs a reason" and Run stays off until it has three words, then "allowed, with your reason", or "not a test" when TEST is missing. The run's result and its History row name the reason |
 | `terminal` | `length` or `width`, 0 to 512: for this session only |
 
 A ping or traceroute is bounded by its own worst case, worked out from what you typed and the

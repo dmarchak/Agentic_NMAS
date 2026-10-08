@@ -31,15 +31,40 @@ def what_it_does(command: str) -> tuple:
     return ("read-only", "Tier 1: a read")
 
 
-def check(command: str, n_devices: int = 1) -> dict:
+def check(command: str, n_devices: int = 1, reason: str = "") -> dict:
     """The command as typed: ``{"ok", "why", "heavy", "does"}``. Empty is not ok and says
-    nothing."""
+    nothing. A `send log` at 0 to 3 (C582, board C582) also carries ``urgent`` (its level):
+    with no reason of `reads.REASON_WORDS` words it is not ok and says it needs one (never
+    "refused", since a reason is all it lacks); with one, the policy's own answer stands."""
+    from modules.readonly_commands import urgent_level
     command = (command or "").strip()
     if not command:
         return {"ok": False, "why": "", "heavy": [], "does": ("", "")}
-    why = reads.refusal([command], n_devices)
-    return {"ok": not why, "why": why, "heavy": [] if why else reads.warnings([command]),
-            "does": ("", "") if why else what_it_does(command)}
+    level = urgent_level(command)
+    enough = len((reason or "").split()) >= reads.REASON_WORDS
+    if level is not None and not enough:
+        return {"ok": False, "why": "", "heavy": [], "does": ("", ""), "urgent": level,
+                "needs_reason": True}
+    why = reads.refusal([command], n_devices, "person", reason if level is not None else "")
+    out = {"ok": not why, "why": why, "heavy": [] if why else reads.warnings([command]),
+           "does": ("", "") if why else what_it_does(command)}
+    if level is not None:
+        out["urgent"] = level
+    return out
+
+
+def reason_part(rows: list, reason: str) -> dict:
+    """C582's field, one per run: shown while any typed line is a `send log` at 0 to 3, with
+    the most severe such level and whether every such line says TEST."""
+    from modules.nsot.logging_path import level_words
+    from modules.readonly_commands import says_test, urgent_level
+    urgent = [(urgent_level(c), c) for c in rows if urgent_level(c) is not None]
+    if not urgent:
+        return {"needed": False, "value": reason or ""}
+    level = min(lv for lv, _c in urgent)
+    return {"needed": True, "value": reason or "", "level": level,
+            "level_words": level_words(level),
+            "has_test": all(says_test(c) for _lv, c in urgent)}
 
 
 def _when(ts) -> str:
@@ -99,11 +124,13 @@ def answers(record: dict, host: str) -> list:
 
 
 def ask(list_name: str, host: str, *, command: str = "", job: str = "", run_id: str = "",
-        compare: str = "") -> dict:
-    """Ask the device's card, in its state (the module's docstring)."""
+        compare: str = "", reason: str = "") -> dict:
+    """Ask the device's card, in its state (the module's docstring). *reason* is C582's, for a
+    `send log` at 0 to 3."""
     from modules.nsot import capture_job
 
-    c = {"host": host, "list": list_name, "command": command, "check": check(command),
+    c = {"host": host, "list": list_name, "command": command,
+         "check": check(command, 1, reason), "reason": reason_part([command], reason),
          "common": reads.COMMON, "sets": _sets(list_name), "recent": recent(list_name, host),
          "state": "idle", "job": job, "run": run_id, "answers": [], "compare": None,
          "why": "", "at": "", "who": ""}
@@ -127,7 +154,9 @@ def ask(list_name: str, host: str, *, command: str = "", job: str = "", run_id: 
             return c
         c.update(run=run_id, at=_when(record.get("started_at")), who=reads.actor_words(record),
                  command=command or (record.get("commands") or [""])[0])
-        c["check"] = check(c["command"])
+        reason = reason or record.get("reason", "")
+        c.update(check=check(c["command"], 1, reason), reason=reason_part([c["command"]], reason),
+                 reason_recorded=record.get("reason", ""))
         if record.get("state") == "refused":
             c.update(state="refused", why=record.get("refused", ""))
             return c
@@ -189,15 +218,16 @@ def fingerprint(devices: list) -> str:
 
 
 def pick(list_name: str, *, q: str = "", role: str = "", platform: str = "", site: str = "",
-         commands=None, message: str = "", error: str = "") -> dict:
+         commands=None, reason: str = "", message: str = "", error: str = "") -> dict:
     """The pick card (board B): the filters with their choices, the devices they match (the
     run asks exactly these), the commands each checked, the saved sets, and whether Run may
-    be pressed (every command a read, at least one device)."""
+    be pressed (every command a read, at least one device). *reason* is C582's: the run's
+    one stated reason, for a `send log` at 0 to 3."""
     from modules.nsot import command_sets
     inv = _inventory(list_name)
     matched = [d for d in inv if _matches(d, q, role, platform, site)]
     rows = [c for c in (commands or []) if c is not None] or [""]
-    checks = [check(c, max(2, len(matched))) for c in rows]
+    checks = [check(c, max(2, len(matched)), reason) for c in rows]
     filled = [c.strip() for c in rows if c.strip()]
     sets = command_sets.committed(list_name)
     return {"list": list_name, "q": q, "role": role, "platform": platform, "site": site,
@@ -208,6 +238,7 @@ def pick(list_name: str, *, q: str = "", role: str = "", platform: str = "", sit
             "fingerprint": fingerprint([d["name"] for d in matched]),
             "shown": [d["name"] for d in matched[:SHOWN_DEVICES]],
             "rows": [{"command": c, "check": k} for c, k in zip(rows, checks)],
+            "reason": reason_part(filled, reason),
             "heavy": reads.warnings(filled), "can_run": bool(matched and filled) and all(
                 k["ok"] for c, k in zip(rows, checks) if c.strip()),
             "max_commands": reads.MAX_COMMANDS, "workers": reads.max_workers(list_name),
@@ -437,6 +468,9 @@ def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: 
              record={"at": _when(record.get("started_at")), "who": reads.actor_words(record),
                      "commands": record.get("commands") or [], "total": total, "done": done,
                      "refused": record.get("refused", ""), "reason": record.get("reason", ""),
+                     # Board C582, 4: the level the reason allowed, named beside it.
+                     "urgent": (reason_part(record.get("commands") or [], "")
+                                .get("level_words", "")),
                      "took_s": (round(record["finished_at"] - record["started_at"], 1)
                                 if record.get("finished_at") else None)},
              summary=summary)

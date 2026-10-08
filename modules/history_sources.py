@@ -821,7 +821,8 @@ def show_commands(ctx):
                 outcome = "watching"
         events.append(_event(r.get("started_at"), "show_commands", what,
                              hosts, who=reads.actor_words(r),
-                             detail=r.get("refused") or r.get("purpose") or "",
+                             detail=(r.get("refused") or r.get("purpose")
+                                     or (f"Why: {r['reason']}" if r.get("reason") else "")),
                              outcome=outcome,
                              record=[("Run", r.get("id")), ("Devices", len(r.get("devices") or [])),
                                      ("Outcome", outcome)]))
