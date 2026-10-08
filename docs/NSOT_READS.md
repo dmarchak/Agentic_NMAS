@@ -230,7 +230,17 @@ refused, naming the nearest allowed alternative.
 - **"Test the logging path"**: an action sending a `send log` message to chosen devices, then
   watching Loki for each, reporting per device "received after N s" or "not received within
   30 s"; on Show commands' run model, drawn on the existing boards if it needs no new screen,
-  else a mockup first.
+  else a mockup first. **The backend is BUILT 2026-10-08** (`modules/nsot/logging_path.py`,
+  `tests/test_logging_path.py`). Each device is sent `send log 6 MERCURY-LOGTEST <the run's
+  id>` through the engine. Loki is then asked once every 2 s for the whole run, for lines
+  holding the token. A line counts for a device only when the device's own name is anchored
+  in it (the Logs tab's match). "After N s" is Loki's receive time less the time the device's
+  answer arrived. A watch Mercury could not make, or one cut at its page size, is `unknown`,
+  never "not received". The result is recorded with the run (`reads.annotate`). No Loki
+  configured is a refusal before any device. **Its controls need a mockup:** it adds a button
+  to Show commands' card and a result to the run page, so boards F and G are drawn for
+  sign-off (canvas, page "reads"). Nothing of it is reachable from a page until they are
+  signed off.
 
 ## 9. Boards to draw (the mockup, for sign-off)
 

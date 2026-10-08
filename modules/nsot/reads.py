@@ -185,6 +185,18 @@ def _write(list_name: str, record: dict) -> None:
     write_atomic(_path(list_name, record["id"]), json.dumps(record, indent=1, sort_keys=True))
 
 
+def annotate(list_name: str, run_id: str, key: str, value) -> dict:
+    """Add *key* to a finished run's record: a follow-on step of the same run (the logging
+    path's watch, `logging_path`). Its one writer is the job that started the run."""
+    record = get(list_name, run_id)
+    if record is None:
+        raise ValueError(f"{list_name} holds no run {run_id}")
+    record[key] = value
+    _write(list_name, record)
+    _announce()
+    return record
+
+
 def actor_words(record: dict) -> str:
     """Who ran it, as History says it: a person, or the agent for a person."""
     if record.get("by") == "agent":
@@ -250,13 +262,13 @@ def _answer(conn, command: str, values: dict, cap: int) -> dict:
         from modules.utils import error_text
         return {"command": command, "state": FAILED,
                 "why": redact_text(error_text(exc), values)[:400],
-                "took_s": round(time.time() - started, 2)}
+                "took_s": round(time.time() - started, 2), "at": round(time.time(), 3)}
     masked = redact_text(raw, values)
     data = masked.encode("utf-8")
     kept = data[:cap].decode("utf-8", errors="ignore") if len(data) > cap else masked
     return {"command": command, "state": ANSWERED, "answer": kept, "bytes": len(data),
             "cut": len(data) > cap, "sha256": hashlib.sha256(data).hexdigest(),
-            "took_s": round(time.time() - started, 2)}
+            "took_s": round(time.time() - started, 2), "at": round(time.time(), 3)}
 
 
 def new_id(now: float = None) -> str:
