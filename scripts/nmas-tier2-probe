@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+"""Measure, on a real device, what each Tier 2 command asks and does, before Tier 2 is built.
+
+Tier 2 ("Run a privileged command…", docs/NSOT_TIER2_PRIVILEGED.md, approved 2026-10-08) sends
+recoverable exec commands with a preview, a confirm and a record. Its build waits for three
+measurements on one device of each platform (section 5): the exact confirm prompt each command
+asks (so the operation answers only that prompt: send, read, decide), whether a soft BGP refresh
+resets anything, and how long ARP takes to come back after it is cleared (verify's settle
+window, about 2.5 times that). Nothing is assumed from documentation: each is asked of the
+device.
+
+For each step, on the named device, holding it (C98) for the whole run:
+
+  1. read the BEFORE (the read Tier 2's preview will take), masked, kept in the record;
+  2. send the command, once, and read what comes back WITHOUT answering anything;
+  3. if it ends in exactly ``[confirm]``, answer it with Enter, once, and read again; any other
+     question is NOT answered: the run stops, the session is closed (which abandons the
+     command), and the record names the question;
+  4. read the AFTER, masked, and say what moved;
+  5. clear arp-cache only: read the interface's ARP entries every second, up to `ARP_WAIT`, until
+     as many are back as before, and record the seconds.
+
+Each step is RECOVERABLE by design (Tier 2): counters count again, ARP relearns, a soft refresh
+re-sends routes, a cleared buffer fills again, and undebug turns debugs off. The log buffer and
+the counters it clears are KEPT in the record first (T2-4), masked and capped. Nothing is
+configured or saved.
+
+**What it touches is chosen narrowly, and refused otherwise:**
+- ``clear counters`` on ONE interface (``--interface``, Loopback0 by default), never all;
+- ``clear arp-cache interface`` only on an interface the operator names (``--arp-interface``),
+  and never the one carrying the device's management address (read from
+  ``show ip interface brief``): clearing it could cut the session the probe runs on;
+- ``clear ip bgp <peer> soft`` only with ``--allow-live-bgp``: it acts on a live session. The
+  peer is the first Established one in ``show ip bgp summary`` unless ``--bgp-peer`` names one;
+  the verdict compares the peer's Up/Down before and after (a reset starts it again);
+- never inside the hypervisor's nightly backup window, 08:30 to 09:10 UTC (a measurement taken
+  then measures the backup), refused naming the window.
+
+A step that cannot be measured (no BGP, a flag not given, no ARP interface named) is recorded as
+NOT MEASURED with the reason, never as a result.
+
+    nmas-tier2-probe                                                   # dry run: the plan
+    nmas-tier2-probe --list Default --device <device> --apply --actor you@example.com \\
+        --arp-interface GigabitEthernet2 --allow-live-bgp --out /dev/shm/tier2-<device>.json
+
+Run it on one device of each platform (cisco_iosxe, cisco_ios). Exit 0 measured (whatever the
+results), 1 refused before touching the device, 2 stopped on a question it would not answer.
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+#: The steps, in the order they run. ``{interface}``, ``{arp_interface}`` and ``{peer}`` are
+#: filled from the arguments (each one token of its shape).
+STEPS = (
+    {"key": "clear-counters", "command": "clear counters {interface}",
+     "before": "show interfaces {interface}", "after": "show interfaces {interface}"},
+    {"key": "clear-arp", "command": "clear arp-cache interface {arp_interface}",
+     "before": "show ip arp {arp_interface}", "after": "show ip arp {arp_interface}",
+     "needs": "arp_interface"},
+    {"key": "clear-logging", "command": "clear logging",
+     "before": "show logging", "after": "show logging"},
+    {"key": "undebug-all", "command": "undebug all",
+     "before": "show debugging", "after": "show debugging"},
+    {"key": "bgp-soft", "command": "clear ip bgp {peer} soft",
+     "before": "show ip bgp summary", "after": "show ip bgp summary", "needs": "peer"},
+)
+
+#: ARP's return is watched up to this long; every second. Unmeasured: the probe measures it, and
+#: a return slower than this is recorded as "not back within 120 s" with the count reached.
+ARP_WAIT = 120
+#: A kept before-state's cap, the reads engine's measured answer cap (reads.CAP_KIB).
+KEEP_BYTES = 32 * 1024
+#: The hypervisor's nightly backup, in UTC (CLAUDE.md, standing facts).
+BACKUP_WINDOW = ((8, 30), (9, 10))
+
+_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9/.:-]{0,63}\Z")
+_ADDRESS = re.compile(r"[0-9A-Fa-f.:]{3,45}\Z")
+_UPTIME = re.compile(r"(?:(\d+)y)?(?:(\d+)w)?(?:(\d+)d)?(?:(\d+)h)?\Z")
+
+
+def in_backup_window(now: float = None) -> bool:
+    t = time.gmtime(time.time() if now is None else now)
+    (h0, m0), (h1, m1) = BACKUP_WINDOW
+    minute = t.tm_hour * 60 + t.tm_min
+    return h0 * 60 + m0 <= minute < h1 * 60 + m1
+
+
+def confirm_prompt(text: str) -> str:
+    """The last line when it is a confirm Enter answers, else ``""``."""
+    last = next((ln.strip() for ln in reversed((text or "").splitlines()) if ln.strip()), "")
+    return last if last.endswith("[confirm]") else ""
+
+
+def question(text: str) -> str:
+    """The last line when it asks something other than a confirm (``[yes/no]``, ``?``, a ``]``
+    the probe does not know), else ``""``: never answered."""
+    last = next((ln.strip() for ln in reversed((text or "").splitlines()) if ln.strip()), "")
+    if not last or last.endswith("[confirm]") or re.search(r"[#>]\s*$", last):
+        return ""
+    return last if re.search(r"(\]|\?|:)\s*$", last) else ""
+
+
+def uptime_seconds(text: str):
+    """``show ip bgp summary``'s Up/Down as seconds (``01:02:03``, ``4d13h``, ``2w3d``), or
+    None for ``never`` or a form not known."""
+    text = (text or "").strip()
+    m = re.fullmatch(r"(\d+):(\d\d):(\d\d)", text)
+    if m:
+        return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+    m = _UPTIME.fullmatch(text)
+    if not m or not any(m.groups()):
+        return None
+    y, w, d, h = (int(g or 0) for g in m.groups())
+    return (((y * 365 + w * 7 + d) * 24) + h) * 3600
+
+
+def bgp_peers(summary: str) -> dict:
+    """``{peer: {"up": text, "seconds": int|None, "state": text, "established": bool}}`` from
+    ``show ip bgp summary``'s neighbour table."""
+    out, table = {}, False
+    for line in (summary or "").splitlines():
+        if line.startswith("Neighbor") and "Up/Down" in line:
+            table = True
+            continue
+        cols = line.split()
+        if not table or len(cols) < 10 or not _ADDRESS.match(cols[0]):
+            continue
+        up, state = cols[8], " ".join(cols[9:])
+        out[cols[0]] = {"up": up, "seconds": uptime_seconds(up), "state": state,
+                        "established": state.isdigit()}
+    return out
+
+
+def management_interface(brief: str, address: str) -> str:
+    """The interface ``show ip interface brief`` names with *address*, or ``""``."""
+    for line in (brief or "").splitlines():
+        cols = line.split()
+        if len(cols) >= 2 and cols[1] == address:
+            return cols[0]
+    return ""
+
+
+def arp_entries(text: str) -> int:
+    """How many entries ``show ip arp`` lists (its rows begin ``Internet``)."""
+    return sum(1 for ln in (text or "").splitlines() if ln.startswith("Internet"))
+
+
+def bgp_verdict(before: dict, after: dict) -> dict:
+    """A soft refresh resets nothing: Up/Down only grows. A session whose Up/Down fell, or that
+    is no longer Established, was reset; one whose time cannot be read decides nothing."""
+    if not before or not after:
+        return {"verdict": "unknown", "why": "the peer is missing from a summary"}
+    b, a = before.get("seconds"), after.get("seconds")
+    if not after.get("established"):
+        return {"verdict": "reset", "why": f"the peer is {after.get('state')!r} after"}
+    if b is None or a is None:
+        return {"verdict": "unknown",
+                "why": f"Up/Down {before.get('up')!r} then {after.get('up')!r} cannot be compared"}
+    if a < b:
+        return {"verdict": "reset", "why": f"Up/Down fell from {before['up']} to {after['up']}"}
+    return {"verdict": "not reset", "why": f"Up/Down {before['up']} then {after['up']}"}
+
+
+def plan(args) -> list:
+    """Each step with its arguments filled, or why it is not measured."""
+    fill = {"interface": args.interface, "arp_interface": args.arp_interface,
+            "peer": args.bgp_peer or "<the first Established peer>"}
+    out = []
+    for s in STEPS:
+        row = {k: v.format(**fill) if isinstance(v, str) else v for k, v in s.items()}
+        if s.get("needs") == "arp_interface" and not args.arp_interface:
+            row["unmeasured"] = "no --arp-interface named"
+        if s.get("needs") == "peer" and not args.allow_live_bgp:
+            row["unmeasured"] = "a soft refresh acts on a live session: --allow-live-bgp not given"
+        out.append(row)
+    return out
+
+
+def refusal(args, now: float = None) -> str:
+    for name, value in (("--interface", args.interface), ("--arp-interface", args.arp_interface)):
+        if value and not _TOKEN.match(value):
+            return f"REFUSED: {name} {value!r} is not one interface name"
+    if args.bgp_peer and not _ADDRESS.match(args.bgp_peer):
+        return f"REFUSED: --bgp-peer {args.bgp_peer!r} is not an address"
+    if args.apply:
+        if not (args.list_name and args.device and args.actor):
+            return "REFUSED: --apply needs --list, --device and --actor (who is accountable)"
+        if in_backup_window(now):
+            return ("REFUSED: it is inside the hypervisor's nightly backup window, 08:30 to 09:10 "
+                    "UTC; a measurement taken now measures the backup. Run it after 09:10 UTC.")
+    return ""
+
+
+def _session(device):
+    """The device's session (tests replace it)."""
+    from modules.connection import open_ssh, stored_connection_params
+    conn = open_ssh(stored_connection_params(device), owner="probe:tier2")
+    conn.enable()
+    return conn
+
+
+def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
+            clock=time.time) -> tuple:
+    """``(results, stopped)``: each step measured on *conn*; *stopped* names a question the
+    probe would not answer (the run ends there)."""
+    from modules.commands import run_device_command
+    from modules.redact import redact_text
+
+    def read(cmd):
+        return redact_text(run_device_command(conn, cmd, read_timeout=120) or "", values)
+
+    def raw_send(cmd):
+        return conn.send_command_timing(cmd, strip_prompt=False, strip_command=False,
+                                        read_timeout=30, last_read=2.0) or ""
+
+    results, stopped = {}, ""
+    brief = read("show ip interface brief")
+    mgmt = management_interface(brief, device.get("ip", ""))
+    for s in steps:
+        row = {"command": s["command"]}
+        if s.get("unmeasured"):
+            results[s["key"]] = {**row, "result": "not measured", "why": s["unmeasured"]}
+            continue
+        if s["key"] == "clear-arp" and mgmt and s["command"].endswith(" " + mgmt):
+            results[s["key"]] = {**row, "result": "not measured",
+                                 "why": f"{mgmt} carries the management address the probe's "
+                                        "session runs on"}
+            continue
+        before = read(s["before"])
+        peer = None
+        if s["key"] == "bgp-soft":
+            peers = bgp_peers(before)
+            peer = next((p for p, v in peers.items() if v["established"]), None) \
+                if "<the first" in s["command"] else s["command"].split()[3]
+            if not peer or peer not in peers:
+                results[s["key"]] = {**row, "result": "not measured",
+                                     "why": "no Established BGP peer in show ip bgp summary"}
+                continue
+            row["command"] = s["command"] = f"clear ip bgp {peer} soft"
+        row["before"] = before[:KEEP_BYTES]
+        row["before_cut"] = len(before.encode()) > KEEP_BYTES
+        started = clock()
+        first = raw_send(s["command"])
+        row["first_answer"] = redact_text(first, values)
+        prompt, asked = confirm_prompt(first), question(first)
+        if prompt:
+            row["prompt"] = prompt
+            row["after_enter"] = redact_text(raw_send("\n"), values)
+        elif asked:
+            row["unanswered"] = asked
+            results[s["key"]] = {**row, "result": "stopped",
+                                 "why": f"the device asked {asked!r}; it was not answered"}
+            stopped = asked
+            break
+        row["took_s"] = round(clock() - started, 2)
+        if re.search(r"^%", first, re.M):
+            row["result"] = "refused"
+        after = read(s["after"])
+        row["after"] = after[:KEEP_BYTES]
+        if s["key"] == "clear-arp":
+            want, waited, got = arp_entries(before), 0.0, arp_entries(after)
+            while got < want and waited < ARP_WAIT:
+                sleep(1.0)
+                waited += 1.0
+                got = arp_entries(read(s["after"]))
+            row["arp"] = {"before": want, "after": got,
+                          "back_after_s": waited if got >= want else None,
+                          "words": (f"{got} of {want} entries back after {waited:g} s"
+                                    if got >= want else
+                                    f"{got} of {want} entries, not back within {ARP_WAIT} s")}
+        if s["key"] == "bgp-soft":
+            row["bgp"] = bgp_verdict(bgp_peers(before).get(peer), bgp_peers(after).get(peer))
+        row.setdefault("result", "measured")
+        results[s["key"]] = row
+    return results, stopped
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--list", dest="list_name", default="")
+    ap.add_argument("--device", default="")
+    ap.add_argument("--actor", default="")
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--interface", default="Loopback0")
+    ap.add_argument("--arp-interface", default="")
+    ap.add_argument("--allow-live-bgp", action="store_true")
+    ap.add_argument("--bgp-peer", default="")
+    ap.add_argument("--out", default="")
+    args = ap.parse_args()
+
+    why = refusal(args)
+    if why:
+        print(why)
+        return 1
+    steps = plan(args)
+    if not args.apply:
+        print("DRY RUN: nothing connects. Each step: what is read before and after, and what "
+              "is sent (a [confirm] is answered with Enter; any other question stops the run):\n")
+        for s in steps:
+            print(f"{s['key']}: {s['command']}"
+                  + (f"   NOT MEASURED: {s['unmeasured']}" if s.get("unmeasured") else ""))
+            print(f"  before: {s['before']}\n  after:  {s['after']}")
+        print("\n--apply --list <list> --device <device> --actor <you> measures them.")
+        return 0
+
+    from modules.nsot import device_ops
+    from modules.nsot.platform import platform_for_device
+    from modules.nsot.restore import _devices_of
+    from modules.redact import known_secret_values
+
+    device = next((d for d in _devices_of(args.list_name)
+                   if d.get("hostname") == args.device), None)
+    if device is None:
+        print(f"REFUSED: {args.device} is not in list {args.list_name}")
+        return 1
+    record = {"device": args.device, "platform": platform_for_device(device),
+              "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "actor": args.actor}
+    with device_ops.hold(args.list_name, args.device, "probe", args.actor, detail="tier 2"):
+        conn = _session(device)
+        try:
+            record["results"], stopped = measure(conn, steps, device, known_secret_values())
+        finally:
+            conn.disconnect()
+    if stopped:
+        print(f"STOPPED: {args.device} asked {stopped!r}, which the probe does not answer; the "
+              "session was closed, abandoning the command. The steps before it are recorded.")
+    for key, row in record["results"].items():
+        extra = row.get("prompt") or row.get("why") or (row.get("arp") or {}).get("words") \
+            or (row.get("bgp") or {}).get("why") or ""
+        print(f"{key}: {row['result']}" + (f"  ({extra})" if extra else ""))
+    text = json.dumps(record, indent=2, sort_keys=True)
+    if args.out:
+        from modules.config import open_secure
+        with open_secure(args.out, "w") as fh:
+            fh.write(text + "\n")
+        print(f"written: {args.out}")
+    else:
+        print(text)
+    return 2 if stopped else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -61,6 +61,23 @@ Anything else is refused as today, naming its tier. Tier 3 stays refused.
 
 ## 5. Measurements before the build (nothing here has been sent to a device)
 
+**The probe is BUILT (2026-10-08): `scripts/nmas-tier2-probe`, the operator's to run.** It holds
+the device, reads each step's before-state (kept, masked, capped), sends the command once,
+answers exactly `[confirm]` with Enter and stops on any other question (unanswered, the session
+closed), reads the after-state, watches ARP come back, and compares the BGP peer's Up/Down. It
+refuses the hypervisor's backup window and the interface carrying the management address, and
+measures a live BGP soft refresh only with `--allow-live-bgp`. The run, on one device of each
+platform (the lab's rule: r2 for IOS-XE, s1 for IOS, never s3), outside 08:30 to 09:10 UTC:
+
+    scripts/nmas-tier2-probe --list Default --device r2 --apply --actor <operator> \
+        --arp-interface GigabitEthernet2 --allow-live-bgp --out /dev/shm/tier2-r2.json
+    scripts/nmas-tier2-probe --list Default --device s1 --apply --actor <operator> \
+        --arp-interface <an addressed interface of s1, not its management one> \
+        --out /dev/shm/tier2-s1.json
+
+The dry run (no `--apply`) prints the plan and connects nothing. Its two JSON records are what
+the build reads: the prompts it answers, the soft refresh's verdict, ARP's return time.
+
 - The confirm prompts: `clear counters` asks `Clear "show interface" counters on all
   interfaces [confirm]`, and `clear logging` asks `Clear logging buffer [confirm]`, by common
   knowledge. Each is to be MEASURED on r2 (IOS-XE) and s1 (IOS) before the build: the exact
