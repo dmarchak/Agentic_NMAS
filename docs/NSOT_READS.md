@@ -220,7 +220,8 @@ refused, naming the nearest allowed alternative.
     a `verify /md5` of a large image against the read timeout is C581.
 - **Tier 2, state-changing but recoverable** (`clear counters`, `clear arp`, `clear ip bgp
   <peer> soft`, `clear logging`, `undebug all`, …): a "Run a privileged command…" OPERATION:
-  preview (what it affects), confirm, record. A DRAFT design and mockup for sign-off first.
+  preview (what it affects), confirm, record. A DRAFT design and mockup for sign-off first:
+  [NSOT_TIER2_PRIVILEGED](NSOT_TIER2_PRIVILEGED.md) (2026-10-08) and boards T2-A to T2-D.
 - **Tier 3, destructive**: refused, each naming its own operation: `reload` → Reload or Revert by
   reload; `write erase`, `erase`, `delete`, `format`, `copy` into running or startup, `configure
   replace`, `crypto key zeroize`, `request`/`install`, `debug` (beyond `undebug`) → refused with
