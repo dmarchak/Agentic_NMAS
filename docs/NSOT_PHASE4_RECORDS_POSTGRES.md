@@ -113,4 +113,111 @@ each by one indexed query per request (the enterprise-scale rule).
   integration is not configured on the host, and the minio SDK is not installed, measured
   2026-10-08). The same connection carries the dumps and the Show commands answers past their
   30 days (folded in here by the operator's decision; `reads.expire` is the hook), so it is this
-  phase's first step.
+  phase's first step. Its draft is [NSOT_PHASE4_MINIO](NSOT_PHASE4_MINIO.md).
+
+## 6. The PostgreSQL container: the operator's host step (DRAFT, 2026-10-08)
+
+Measured read-only on the NMAS host, 2026-10-08 (via LAN): NetBox's database runs in
+`netbox-docker-postgres-1`, PostgreSQL 18.6; the host has 4 CPUs, 15 GiB of memory (10
+available) and 244 GiB free on `/`; the app's interpreter has no PostgreSQL driver (`psycopg`
+and `psycopg2` both absent).
+
+**What ships in the commit** (each a host-installed file, so the commit carries its
+`Host-Step:`, rendered into a fresh `mktemp -d` and installed by name):
+
+- `deploy/postgres/docker-compose.yml`: one service, `mercury-postgres`, image `postgres:18`
+  pinned by digest (NetBox's major, so one major to patch), its own named volume
+  `mercury-pgdata`, published on `127.0.0.1:<port>` only (never the LAN), `restart:
+  unless-stopped`, a health check (`pg_isready`). Nothing shared with NetBox: its own network,
+  volume and credentials (P4-1).
+- `deploy/systemd/nmas-records-backup.{service,timer}` and
+  `nmas-records-restore-test.{service,timer}`, templates rendered by `nmas-render-units`.
+- `scripts/nmas-records-backup` and `scripts/nmas-records-restore-test`, NetBox's pair as the
+  pattern: a dump `pg_dump -Fc` on an exported snapshot with per-table row counts taken in the
+  same snapshot, a manifest with every file's sha256, complete-or-absent (`.partial` renamed
+  last), shipped to MinIO `records/<date>.dump` (M-4's retention); the restore test restores the
+  newest dump into a scratch database in the same container, compares every table's count with
+  the manifest (both numbers named on a mismatch), reads the newest row of each table, and drops
+  the scratch database. Both run outside 08:30 to 09:10 UTC.
+- Settings: `records_db_host`, `records_db_port`, `records_db_name`, `records_db_user` and
+  `records_db_password` (a secret, in the secrets backend), defaults empty: empty means every
+  store stays on files, which is today's behaviour. A setting because no measurement can find a
+  database's address and password.
+
+**The host step** (values filled from reads made when the commit is written):
+
+```bash
+d=$(mktemp -d) && cp <checkout>/deploy/postgres/docker-compose.yml "$d/" \
+  && sudo install -d -m 0750 /opt/mercury-postgres \
+  && sudo install -m 0640 "$d/docker-compose.yml" /opt/mercury-postgres/docker-compose.yml
+# The superuser's and Mercury's passwords, generated on the host into a root-only env file;
+# Mercury's is then entered in Settings (v2), never echoed.
+sudo docker compose -f /opt/mercury-postgres/docker-compose.yml up -d
+sudo docker exec mercury-postgres pg_isready          # accepting connections
+# The driver, then the lock regenerated from the host (requirements.lock's rule).
+<venv>/bin/pip install --no-deps psycopg==<version> <its closure>
+d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/nmas-records-backup.service \
+  deploy/systemd/nmas-records-backup.timer deploy/systemd/nmas-records-restore-test.service \
+  deploy/systemd/nmas-records-restore-test.timer \
+  && sudo install -m 0644 "$d/nmas-records-backup.service" "$d/nmas-records-backup.timer" \
+     "$d/nmas-records-restore-test.service" "$d/nmas-records-restore-test.timer" /etc/systemd/system/ \
+  && sudo systemctl daemon-reload && sudo systemctl enable --now nmas-records-backup.timer \
+     nmas-records-restore-test.timer
+```
+
+**What the operator checks afterwards:** `docker ps` shows `mercury-postgres` healthy and
+NetBox's container untouched; Settings' records database Test connects and names the server
+version; the first backup run's manifest lists every table with its count; the first restore
+test reads "every table matches"; `ss -ltn` shows the port on 127.0.0.1 only.
+
+**Decisions:** **PG-1**, the port (measured 2026-10-08: NetBox's database publishes no port on the
+host, and nothing listens on 5432 or 5433; `5433` recommended, so a person's `psql` on 5432
+never reaches the wrong one); **PG-2**, the dump's
+retention locally (3 days recommended; MinIO holds the rest, M-4).
+
+## 7. The first store: deploy receipts, and its count check (DRAFT, 2026-10-08)
+
+**Measured on the host, 2026-10-08:** one network (`default`), `deploy_receipts.jsonl` 67 lines,
+of which 26 are completions (a line filling in a pending row's commit) and 41 rows, 65,013
+bytes, the first row 2026-09-27T18:53:37Z, mode 0600.
+
+**The table keeps the file's shape exactly**, so the merge (`receipts._merged`) runs unchanged on
+either backend and the comparison is line for line:
+
+- `audit.receipt_lines (seq bigserial, network text, kind text ('row'|'completion'), id text,
+  completes text, at timestamptz, body jsonb, line_sha256 bytea, source_line int NULL)`, unique
+  on `(network, source_line)` for migrated lines (two identical lines in a file stay two lines);
+  new lines have no `source_line`. `receipts.read` selects a network's lines in `seq` order and
+  merges them as today; `receipts.write` inserts one line per row in one transaction (R32's
+  several-rows-per-handle shape cannot recur).
+
+**The switch is per store (P4-2):** a setting `records_store_receipts`, `file` (the default,
+today's behaviour) or `postgres`, read at each call, so every process changes together.
+
+**The migration, `nmas-records-migrate receipts`:**
+
+1. `--dry-run`: reads every network's file and prints, per network, lines, rows and completions
+   (today: default 67 = 41 + 26). Writes nothing.
+2. `--apply`: inserts each file line with its `source_line`; a line already there (same network
+   and line number, same sha256) is skipped, and one there with a DIFFERENT sha256 refuses,
+   naming the network, the line and both hashes. Safe to run again.
+3. The switch to `postgres` (a Mercury settings write, recorded as you).
+4. `--apply` again: catches any line a deploy appended between steps 2 and 3.
+5. `--check`, and the same check as a job-health row each cycle for the release that follows:
+   per network, the file's line count against the table's migrated-line count (by line number),
+   every line's sha256 equal, and `receipts.read(network, limit=all)` from each backend equal
+   row for row. A mismatch is a Needs attention row naming the network, both counts and the
+   first differing line; a match reads "receipts: file 67 lines, table 67, merged 41 = 41".
+6. The file is made read-only (0400) for one release (P4-4); a line appended to it after the
+   switch is itself a mismatch (the file's count moved), so a writer still on files is seen.
+7. The release after: the files are deleted by a host step, only after the check has read
+   "matches" since the switch.
+
+**Rollback:** the switch back to `file` restores the old behaviour at once, but receipts written
+to the table since the switch are not in the file; `nmas-records-migrate receipts --export`
+appends them, so a rollback loses nothing. That is why the file stays for a release.
+
+**Tests the build brings:** the merge equal on both backends over the real 67-line file's shape
+(a fixture from a real capture, masked); two identical lines kept as two; a differing line
+refused naming both hashes; the check failing on a moved count, a changed line and a merged
+difference (each shown able to fail); `write` on PostgreSQL inserting a batch atomically.

@@ -97,13 +97,60 @@ rewritten; churn is a stated cost (CLAUDE.md).
 
 ## 5. The operator's host steps (after the build, as a commit's Host-Step)
 
-- Stop and remove the `oxidized` container; keep `/opt/oxidized/rcn-lab.git` read-only until its
-  bundle is in MinIO and verified to open (P3-1), then delete it.
-- Remove the root helper `/usr/local/sbin/nmas-oxidized-cred`, its pin
-  `/etc/nmas/oxidized-cred.conf` and its sudoers line.
-- Repoint `~/bin/clab-sync` and `clab-sync.service` at the renamed script; install the path unit
-  for the marker.
-- `oxidized.<domain>` is already removed (C143).
+**Prepared 2026-10-08, not run.** Measured read-only on the NMAS host that day (via LAN):
+
+- Containers: `oxidized` (image `oxidized/oxidized:latest`, up, restart `unless-stopped`, started
+  by `docker run`, no compose project) and `oxidized-pre-c143` (exited), both mounting
+  `/opt/oxidized` as Oxidized's config folder. No systemd unit or crontab line names Oxidized.
+- `/opt/oxidized` holds `config` (and two older copies), `router.db` and four backups of it,
+  `crash`, `logs`, `pid`, and `rcn-lab.git` (4.3 MiB, 233 commits).
+- The helper `/usr/local/sbin/nmas-oxidized-cred`, its pin `/etc/nmas/oxidized-cred.conf` and
+  `/etc/sudoers.d/nmas-oxidized-cred` are present; `sudo -n -l` lists the helper once.
+- `~/bin/clab-sync` is a script (not a link) that calls `oxidized-to-config.sh`, now a link to
+  `clab-startup-sync.sh` (kept one release); `clab-sync.service` runs `~/bin/clab-sync`;
+  `clab-sync.path` is installed and active.
+
+**The steps, in order, each checked before the next:**
+
+1. **Stop Oxidized and keep its store read-only** (P3-1: the bundle waits for MinIO), only once
+   the release with step 2b runs on the host (before it, every golden commit's fetch hook asks
+   Oxidized and fails):
+   ```bash
+   sudo docker stop oxidized && sudo docker update --restart=no oxidized
+   sudo chmod -R a-w /opt/oxidized/rcn-lab.git
+   ```
+   Check: `docker ps` no longer lists `oxidized`; a Save All on v2 still commits and the lab
+   sync still starts (nothing in Mercury asks Oxidized after step 2b).
+2. **Remove the helper, its pin and its sudoers entry:**
+   ```bash
+   sudo visudo -c && sudo rm /etc/sudoers.d/nmas-oxidized-cred && sudo visudo -c
+   sudo rm /usr/local/sbin/nmas-oxidized-cred /etc/nmas/oxidized-cred.conf
+   ```
+   Check: `sudo -n -l | grep -c oxidized-cred` prints 0; Needs attention shows no helper row.
+3. **Repoint the clab sync at its new name:** edit `~/bin/clab-sync` so it calls
+   `clab-startup-sync.sh`, then `sudo systemctl start clab-sync.service` once.
+   Check: `journalctl -u clab-sync.service -n 20` shows a run naming no Oxidized and writing
+   the lab's startup files; the lab startup row on Needs attention reads current.
+4. **Remove the containers** (after a week with Oxidized stopped and nothing missed):
+   ```bash
+   sudo docker rm oxidized oxidized-pre-c143 && sudo docker image rm oxidized/oxidized:latest
+   ```
+5. **The archive, then the delete** (after Phase 4's MinIO connection, P3-1):
+   ```bash
+   d=$(mktemp -d) && git -C /opt/oxidized/rcn-lab.git bundle create "$d/oxidized-rcn-lab.bundle" --all \
+     && git bundle verify "$d/oxidized-rcn-lab.bundle"
+   mc cp "$d/oxidized-rcn-lab.bundle" lab/mercury/archive/oxidized/oxidized-rcn-lab.bundle
+   e=$(mktemp -d) && mc cp lab/mercury/archive/oxidized/oxidized-rcn-lab.bundle "$e/" \
+     && git clone -q "$e/oxidized-rcn-lab.bundle" "$e/clone" \
+     && git -C "$e/clone" rev-list --all --count          # 233, as measured
+   ```
+   Only when the clone's count matches the store's: `sudo rm -r /opt/oxidized`.
+6. **The settings keys** go in the release after this one (P3-3), by a settings version bump that
+   records them dropped.
+
+`oxidized.<domain>` is already removed (C143). The helper's source `scripts/nmas-oxidized-cred`,
+its registry entry (`host_helpers.py`) and its host-step checks are removed in the commit after
+step 2 is done, so no older commit's step reopens.
 
 ## 6. Decisions (APPROVED by the operator, 2026-10-08)
 
