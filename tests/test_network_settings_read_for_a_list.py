@@ -32,7 +32,6 @@ INVENTORY = {
     "modules/readers/credential_health.py": (2, "a reader of one global integration (step 5)"),
     "routes/topology_view.py": (2, "paired with the topology client built for no list (step 8)"),
     "modules/netbox_client.py": (1, "the sync that asks carries no list down to here yet"),
-    "modules/host_steps.py": (2, "one Oxidized helper on the host"),
     "modules/oxidized_fetch.py": (1, "one router.db names every list's devices (P.7)"),
     "modules/nsot/credential_rotation.py": (3, "one router.db and its helper on the host (P.7)"),
     "modules/prometheus_targets.py": (1, "one targets directory serves every list (P.7)"),

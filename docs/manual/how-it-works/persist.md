@@ -28,21 +28,20 @@ The apply holds the device, so no other operation runs on it meanwhile, and the 
 `credential_rotation.persist()` is what a rotation runs after it records the new password, and what `nmas-persist-credential` runs to finish a rotation whose persistence stopped. `nmas-persist-credential` first checks that the inventory's credential still signs in (a fresh login) and that committed intent carries the device's type 9 secret, and refuses otherwise. Each stage gates the next, and every stage may find its work already done:
 
 1. **The device's own save** (`device_startup_config`). Read, Sent and Recorded: as steps 1 and 2 above. Done first because a reload boots the device's own startup configuration, whatever happens to the lab's copy.
-2. **Oxidized's row** (`oxidized_row`, lab integration). Read: nothing from the device. Sent: nothing to the device. Recorded: the device's row in Oxidized's router.db, written by a root-owned helper run through `sudo -n`, the password passed on standard input. The helper edits only the router.db pinned in its root-owned `/etc/nmas/oxidized-cred.conf`, and keeps the newest three owner-only backups. Oxidized signs in with the new password from now on.
-3. **Oxidized re-reads it** (`oxidized_reload`, lab integration). Read: Oxidized's node list, until it is served again. Sent: `GET /reload` to Oxidized. Recorded: nothing. Writing the file is not enough on its own.
-4. **A fresh fetch** (`fetch_confirmed`, lab integration). Read: Oxidized's node list, until a successful fetch of the device ends after the chain began. Sent: Oxidized's "fetch this node next" request; Oxidized then signs in to the device and reads it. Recorded: nothing. "Requested" and "succeeded" are different events.
-5. **Which lab** (lab integration). Read: the device's lab from the lab map (host, startup-file folder, launch script). Sent: nothing. Recorded: nothing. A lab that names no folder or no launch script is refused rather than reading another lab's.
-6. **The lab sync** (lab integration). Read: nothing directly. Sent: nothing to the device. Recorded: the sync script runs, and writes each lab device's startup file on the lab host from the list's newest earned baseline, with every credential taken from the current golden (which the rotation's commit just updated).
-7. **The new hash is in the file** (`startup_file`, lab integration). Read: a search of the device's startup file on the lab host for the new hash, over SSH. Sent: nothing. Recorded: nothing.
-8. **The file would apply** (`startup_applies`, lab integration). Read: the lab's launch script, for the skip that stops the emulator injecting its own user ahead of the file. Sent: nothing. Recorded: nothing. A file can carry the right hash and still not be what the device ends up holding.
-9. **The checker's verdict** (`startup_safe`, lab integration). Read: the startup file's account line against the device's current golden, and the applicability again. Sent: nothing. Recorded: the chain's row in the rotation record, state rotated and persisted only when this reads SAFE. It is the same judgement as `nmas-check-startup-applies`, so the two cannot disagree.
+2. **Which lab** (lab integration). Read: the device's lab from the lab map (host, startup-file folder, launch script). Sent: nothing. Recorded: nothing. A lab that names no folder or no launch script is refused rather than reading another lab's.
+3. **The lab sync** (lab integration). Read: nothing directly. Sent: nothing to the device. Recorded: the sync script runs, and writes each lab device's startup file on the lab host from the list's newest earned baseline, with every credential taken from the current golden (which the rotation's commit just updated).
+4. **The new hash is in the file** (`startup_file`, lab integration). Read: a search of the device's startup file on the lab host for the new hash, over SSH. Sent: nothing. Recorded: nothing.
+5. **The file would apply** (`startup_applies`, lab integration). Read: the lab's launch script, for the skip that stops the emulator injecting its own user ahead of the file. Sent: nothing. Recorded: nothing. A file can carry the right hash and still not be what the device ends up holding.
+6. **The checker's verdict** (`startup_safe`, lab integration). Read: the startup file's account line against the device's current golden, and the applicability again. Sent: nothing. Recorded: the chain's row in the rotation record, state rotated and persisted only when this reads SAFE. It is the same judgement as `nmas-check-startup-applies`, so the two cannot disagree.
 
-On an installation without the lab, stage 1 still saves the device, and stage 2 fails (no helper), so a rotation ends "rotated, persistence unverified" and job health keeps the device in front of you. Persist… on the device's page is then the way to record the device's own save.
+The chain asks nothing of Oxidized: its router list, reload and fetch stages went with Oxidized's retirement (2026-10-08). The rotation's own commit is the record of the new credential.
+
+On an installation without the lab, stage 1 still saves the device, and stage 2 is refused (no lab names the device), so a rotation ends "rotated, persistence unverified" and job health keeps the device in front of you. Persist… on the device's page is then the way to record the device's own save.
 
 ## What persist does not do
 
 - It changes no configuration: the save carries the running configuration exactly as it is, including anything not yet recorded as a golden.
 - It rotates no credential.
-- From the device's page, it writes neither the lab host's startup file nor Oxidized's router.db; the host chain above does.
+- From the device's page, it does not write the lab host's startup file; the host chain above does.
 - It commits no golden: the running configuration is not captured into the record.
 - Nothing re-reads the device's startup configuration until the hourly startup check runs; that check is what notices a later change.

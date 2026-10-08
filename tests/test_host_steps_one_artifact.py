@@ -114,14 +114,15 @@ class TestAStepIsCheckedByWhatItDid:
         assert pin["check"] == "oxidized-pin" and "pinned the helper" in pin["check_corrected"]
         assert host_steps.check(pin)["state"] == "done"
 
-    def test_a_pin_naming_another_router_db_is_owed_by_its_own_step(self, world):
+    def test_with_oxidized_retired_the_pin_step_is_done_whatever_it_names(self, world):
+        """Phase 3 step 2 (2026-10-08): nothing runs the helper, so its pin owes nothing."""
         from modules import host_steps
 
         world["pin"].write_text("/srv/elsewhere/router.db\n", encoding="utf-8")
         steps = host_steps.owed(_full(REINSTALLS[1]), log_text=_text())["steps"]
-        (pin,) = [s for s in steps if s["check"] == "oxidized-pin"]
-        assert pin["shas"] == [PIN_STEP] and pin["check_state"] == "not_done"
-        assert "names /srv/elsewhere/router.db" in pin["check_detail"]
+        assert [s for s in steps if s["check"] == "oxidized-pin"] == [], "done: not owed"
+        got = host_steps.check({"check": "oxidized-pin"})
+        assert got["state"] == "done" and "Oxidized is retired" in got["detail"]
 
     def test_no_oxidized_configured_has_nothing_to_pin(self, world):
         from modules import host_steps

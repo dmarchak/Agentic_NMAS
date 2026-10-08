@@ -149,7 +149,6 @@ GATES = {
     "device_v2.retry_confirm": _g(A, "lifts a blocked change so it may be sent again, with a stated reason, from the v2 device page (7.3, board 11; the same apply as templatize.retry_apply, in the list its card carries)"),
     "device_v2.seed_confirm": _g(A, "commits a device's first full intent, parsed from its committed golden, from the v2 device page (7.3, board 8; the same apply as templatize.seed_apply, in the list its card carries)"),
     "device_v2.retire_confirm": _g(A, "retires a device from the v2 device page (7.3, board 12; the same apply as retire.apply, in the list its card carries): removes its intent and golden in a commit, declares its startup unmapped, clears its override and deletes its CSV row against the export log"),
-    "device_v2.retire_finish": _g(A, "removes a retired device's row from Oxidized's router.db through the root helper's REMOVE mode, read back (C398); the address is the retire commit's, the list carried"),
     "templatize.retry_apply": _g(A, "lifts a blocked change (the lines a rollback undid) so it may be sent again"),
     "freshness.authorise": _g(A, "authorises one divergence past the freshness gate"),
     # Capture (7.1 step 4, C82, C89): Save All is its whole-fleet form, and

@@ -9,18 +9,17 @@ check of the same helper is asked live: two owners of one fact, minutes apart.
 
 Now a stored job-health row about a root-installed file (`host_helpers.INSTALL_UNITS`) that
 reads not-ok is asked again at the read of the page, so an install clears it at once and never
-shows the reading from before it. A stored ok row is not asked again: the Oxidized row's check
-runs `sudo -n -l`, which would be a sudo query per page view, and the rotation preflight asks
-the helper itself live (`credential_rotation.preflight`), so a correct install is never
-refused on a stored value. Every job-health row says when its reading was taken.
+shows the reading from before it. A stored ok row is not asked again (a check per page view).
+Every job-health row says when its reading was taken.
 
-The helper's real comparison runs (this release's `scripts/nmas-oxidized-cred` against a copy in
-a temporary folder); only root ownership, the pin and sudo are stood in for, since a test can
-make none of them.
+Since Phase 3 step 2 (2026-10-08) the Oxidized helper has no row (nothing runs it), so the
+class is held on the topology renderer, the other root-installed helper with a row: its real
+check runs against a symlink in a temporary folder; only the service's start time is stood in
+for, since a test cannot read systemd.
 """
 
+import functools
 import os
-import shutil
 
 import pytest
 
@@ -29,34 +28,28 @@ from modules import config
 from modules import reader_job as R
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HELPER = os.path.join(ROOT, "scripts", "nmas-oxidized-cred")
+SOURCE = os.path.join(ROOT, "deploy", "topology", "rcn-topology.py")
 T0 = 1_790_000_000.0
-ROW = "job_health:helper:oxidized-cred"
+ROW = "job_health:helper:topology-renderer"
 
 
 @pytest.fixture
 def helper(tmp_path, monkeypatch):
-    """A drifted installed copy, read as root-owned, pinned and runnable by sudo."""
-    from modules.nsot import credential_rotation as cr
+    """The renderer's link, pointing at an older copy, its service started long after."""
+    from modules import host_steps
 
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
-    installed = tmp_path / "nmas-oxidized-cred"
-    installed.write_bytes(open(HELPER, "rb").read() + b"# an older release\n")
-    os.chmod(installed, 0o755)
-    real = os.stat
-
-    def stat(p, *a, **k):
-        st = real(p, *a, **k)
-        if str(p) != str(installed):
-            return st
-        fields = list(st)
-        fields[4] = 0                                   # st_uid: root's
-        return os.stat_result(fields)
-    monkeypatch.setattr(os, "stat", stat)
-    monkeypatch.setattr(cr, "HELPER_INSTALLED", str(installed))
-    monkeypatch.setattr(cr, "helper_pin_status", lambda **kw: {"ok": True})
-    monkeypatch.setattr(cr, "helper_sudo_status", lambda **kw: {"ok": True, "reason": ""})
-    return installed
+    old = tmp_path / "rcn-topology.older.py"
+    old.write_text("# an older release\n")
+    link = tmp_path / "rcn-topology.py"
+    link.symlink_to(old)
+    monkeypatch.setattr(host_steps, "TOPOLOGY_LINK", str(link))
+    monkeypatch.setattr(host_steps, "_service_started", lambda unit, run=None: 2 ** 40)
+    monkeypatch.setattr(host_steps, "check_topology_renderer", functools.partial(
+        host_steps.check_topology_renderer.__wrapped__
+        if hasattr(host_steps.check_topology_renderer, "__wrapped__")
+        else host_steps.check_topology_renderer, link=str(link)))
+    return link
 
 
 def _store_a_reading(monkeypatch):
@@ -65,14 +58,14 @@ def _store_a_reading(monkeypatch):
     from modules import job_health as J
     from modules.readers import job_health_reader as JHR
 
-    monkeypatch.setattr(J, "health", lambda **kw: {"jobs": [host_helpers.oxidized_row()]})
+    monkeypatch.setattr(J, "health", lambda **kw: {"jobs": [host_helpers.topology_row()]})
     return R.run_once(JHR.READER, clock=lambda: T0)
 
 
-def _install(installed):
-    """The operator's install, `install -m 0755` of this release's copy."""
-    shutil.copy(HELPER, installed)
-    os.chmod(installed, 0o755)
+def _install(link):
+    """The operator's install: the link pointed at this release's copy."""
+    os.remove(link)
+    os.symlink(SOURCE, link)
 
 
 def _rows(res):
@@ -82,7 +75,7 @@ def _rows(res):
 def test_a_correct_install_clears_the_row_at_the_next_read_of_the_page(helper, monkeypatch):
     _store_a_reading(monkeypatch)
     before = _rows(A.job_health_source(readers_now=[]))
-    assert ROW in before, "the drifted helper drew no row"
+    assert ROW in before, "the drifted renderer drew no row"
     assert "differs" in before[ROW]["what"] or "differs" in before[ROW]["cause"], before[ROW]
     _install(helper)
     after = _rows(A.job_health_source(readers_now=[]))
@@ -105,10 +98,10 @@ def test_a_stored_ok_row_is_not_asked_again(helper, monkeypatch):
     _install(helper)
     _store_a_reading(monkeypatch)
     calls = []
-    real = host_helpers.oxidized_row
-    monkeypatch.setattr(host_helpers, "oxidized_row", lambda: calls.append(1) or real())
+    real = host_helpers.topology_row
+    monkeypatch.setattr(host_helpers, "topology_row", lambda: calls.append(1) or real())
     res = A.job_health_source(readers_now=[])
-    assert ROW not in _rows(res) and calls == [], "an ok row asked sudo again on a page view"
+    assert ROW not in _rows(res) and calls == [], "an ok row asked again on a page view"
 
 
 def test_every_stored_row_says_when_its_reading_was_taken(monkeypatch, tmp_path):
@@ -164,4 +157,6 @@ def test_every_installed_file_s_row_is_asked_again():
     added to the registry cannot keep a stale row."""
     from modules import host_helpers
 
-    assert set(host_helpers.INSTALL_UNITS) == {h["unit"] for h in host_helpers.registry()}
+    # A registry entry with no unit (the retired Oxidized helper, Phase 3 step 2) has no row.
+    assert set(host_helpers.INSTALL_UNITS) == {h["unit"] for h in host_helpers.registry()
+                                               if h["unit"]}

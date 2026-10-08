@@ -1110,13 +1110,9 @@ def preflight(list_name: str, hostname: str, *, device: dict = None,
         out["checks"].append({"name": name, "ok": bool(ok), "detail": detail})
         return bool(ok)
 
-    helper = helper_status()
-    _check("helper_installed_and_matching", helper["ok"],
-           helper.get("reason") or f"sha {helper.get('installed_sha','')}")
-    # The persist chain runs the helper through `sudo -n`: can it, NOW,
-    # before the device changes? (C106: asked only after, it failed silently.)
-    sudo = helper_sudo_status()
-    _check("helper_runs_without_a_password", sudo["ok"], sudo["reason"])
+    # The Oxidized helper's two checks (installed and matching; runs under sudo) went with the
+    # persist chain's Oxidized stages (Phase 3 step 2, 2026-10-08): nothing a rotation does runs
+    # the helper now, so its state cannot refuse one.
 
     if device is None:
         # THIS list's inventory (C496: the active list's was read, so Rotate on a device of
@@ -3040,16 +3036,10 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
     re-running was refused at the FIRST stage because that row was already
     correct.
 
-    Per stage:
+    Per stage (Oxidized's three, its router.db row, its reload and a confirmed fetch, were
+    removed with Oxidized in Phase 3 step 2, 2026-10-08; *after_iso* is kept for the callers):
 
-    ``oxidized_row``     the helper reports ``already_current`` and writes
-                         nothing when the row already holds the intended
-                         credential. Any *other* row differing is still a
-                         refusal.
-    ``oxidized_reload``  a GET. No state, nothing to repeat wrongly.
-    ``fetch_confirmed``  asks for a fresh fetch and requires one that succeeds
-                         after *after_iso*. Re-running asks again; a device
-                         that is reachable satisfies it every time.
+    ``device_startup_config``  the device's own save, read back.
     ``clab_sync``        a harvest into the startup files. Re-running copies
                          the same content.
     ``startup_file``     a grep. Pure read.
@@ -3075,28 +3065,16 @@ def _persist(result: dict, *, mgmt_ip: str, username: str, password: str,
         return outcome.get("ok")
 
     result["persistence"] = chain
-    # THE DEVICE FIRST (C53): its own boot state must not wait on Oxidized or
-    # the containerlab sync, and a guest reload boots NVRAM, not the file.
+    # THE DEVICE FIRST (C53): its own boot state must not wait on the containerlab sync, and a
+    # guest reload boots NVRAM, not the file.
     if not _stage("device_startup_config",
                   save_on_device(mgmt_ip, username, password, platform,
                                  **{k: kw[k] for k in ("secret",) if k in kw})):
         return result
+    # Oxidized's three stages (its router.db row, its reload, a confirmed fetch) are gone with
+    # Oxidized (Phase 3 step 2, the operator's decision, 2026-10-08; C333): the rotation's own
+    # commit is the record GitHub keeps, and the chain goes straight to the boot file.
     # Each stage gates the next; every one of them may find its work done.
-    if not _stage("oxidized_row",
-                  update_oxidized_row(mgmt_ip, username, password,
-                                      **{k: kw[k] for k in ("router_db",)
-                                         if k in kw})):
-        return result
-    if not _stage("oxidized_reload",
-                  reload_oxidized(**{k: kw[k] for k in ("rest", "sleep")
-                                     if k in kw})):
-        return result
-    if not _stage("fetch_confirmed",
-                  confirm_fetch(mgmt_ip, after_iso,
-                                **{k: kw[k] for k in ("attempts", "base_delay",
-                                                      "rest", "sleep")
-                                   if k in kw})):
-        return result
     # RESOLVED ONCE, and passed to every stage below. Reading the settings
     # separately in each is how `configs_dir` and `launch_patch` come to
     # describe different labs, which is the combination that makes the

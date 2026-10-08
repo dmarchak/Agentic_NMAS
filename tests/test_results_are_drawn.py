@@ -179,10 +179,6 @@ PAGE_RECORD = {
                                  ('id="device-op"', "c.summary", "c.record"), "device_v2.history"),
     # Retire on v2 (board 12): the result in place; its record is what the device's address
     # then shows, read from the retire commit (C185).
-    # Finish a retirement (C398): the result in place on the retired record, which reads the
-    # row's state again when opened.
-    "device_v2.retire_finish": ("templates/v2/_retire_finish.html",
-                                ('id="retire-finish"', "f.state", "f.error"), "device_v2.device"),
     "device_v2.retire_confirm": ("templates/v2/_retire.html",
                                  ('id="device-op"', "c.summary", "c.record"), "device_v2.device"),
     "device_v2.seed_confirm": ("templates/v2/_seed.html",

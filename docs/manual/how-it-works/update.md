@@ -72,11 +72,10 @@ can check it, it does so itself (done needs no tick; not done refuses, saying wh
 otherwise you tick it as done. A `Host-Step-After:` never blocks: once the release runs, it
 is a Needs attention row until it is checked done or you say **It is done**.
 
-One artifact is one row. Steps checked by the same check (three re-installs of the Oxidized
-helper, say) are one row naming every commit: the newest step's words lead, and the older
-steps are superseded by it, since doing the newest does each. A step is checked by what it
-did: the helper's pin is checked by the pin file (its owner, mode and the router.db it names),
-never by the helper's hash, so a new helper release does not reopen it.
+One artifact is one row. Steps checked by the same check (three re-links of the topology
+renderer, say) are one row naming every commit: the newest step's words lead, and the older
+steps are superseded by it, since doing the newest does each. A step whose artifact is retired (the Oxidized helper and its pin, since 2026-10-08) reads
+done: nothing runs it, and its removal is a host step of its own.
 
 The confirm is bound to a hash of the running commit, the target, its CI state and the
 before-steps; if any moved, nothing is requested and the new preview is shown.

@@ -325,20 +325,18 @@ class TestTheAppReadsThePin:
         assert "absent.conf is absent" in got["reason"]
         assert "oxidized-cred.conf" in got["reinstall"]
 
-    def test_unpinned_is_job_healths_row_with_the_pin_command(self, monkeypatch):
-        from modules import host_helpers
-        from modules.nsot import credential_rotation as cr
-        monkeypatch.setattr(cr, "helper_status", lambda: {
-            "ok": False, "state": "unpinned", "reason": "/etc/nmas/oxidized-cred.conf is absent",
-            "reinstall": cr.pin_command("/srv/ox/router.db")})
-        row = host_helpers.oxidized_row()
-        assert row["state"] == "differs" and row["action"]["label"].startswith("Pin the helper")
-        assert "/etc/nmas/oxidized-cred.conf" in row["action"]["command"]
-
-    def test_unpinned_is_not_done_for_the_host_step(self, monkeypatch):
-        from modules import host_steps
+    def test_with_oxidized_retired_its_steps_are_done_and_it_has_no_row(self, monkeypatch):
+        """Phase 3 step 2 (2026-10-08): nothing runs the helper, so an unpinned helper owes no
+        host step and draws no job-health row (the host steps remove it)."""
+        from modules import host_helpers, host_steps
         from modules.nsot import credential_rotation as cr
         monkeypatch.setattr(cr, "helper_status", lambda: {
             "ok": False, "state": "unpinned", "reason": "/etc/nmas/oxidized-cred.conf is absent"})
-        got = host_steps.check({"check": "oxidized-cred"})
-        assert got == {"state": "not_done", "detail": "/etc/nmas/oxidized-cred.conf is absent"}
+        for check in ("oxidized-cred", "oxidized-pin"):
+            got = host_steps.check({"check": check})
+            assert got["state"] == "done" and "Oxidized is retired" in got["detail"], got
+        assert all("oxidized" not in r["unit"] for r in host_helpers.helper_rows())
+        assert all(not h["unit"] for h in host_helpers.registry()
+                   if h["check"] in ("oxidized-cred", "oxidized-pin")), "no row, no fold"
+        assert "oxidized-cred" not in host_helpers.folds()
+

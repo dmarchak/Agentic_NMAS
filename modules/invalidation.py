@@ -191,7 +191,6 @@ DECLARED = {
     "device_v2.retry_confirm": ("rolled_back",),
     "device_v2.seed_confirm": ("intent", "remote"),
     "device_v2.retire_confirm": ("inventory", "goldens", "intent", "credentials", "settings", "remote"),
-    "device_v2.retire_finish": ("job_health",),
     "templates.write_template": ("templates", "remote"),
     "templates.approve": ("templates", "remote"),
     "templates.revoke_approval": ("templates", "remote"),

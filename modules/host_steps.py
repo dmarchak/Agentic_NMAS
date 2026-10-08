@@ -116,40 +116,23 @@ def check_updater(root: str = ROOT) -> dict:
                                               if st.get("differs") else "")}
 
 
-def check_oxidized_helper(root: str = ROOT) -> dict:
-    """Done when the installed Oxidized credential helper is this release's copy, root-owned
-    and writable by no one else: the helper's own check (`credential_rotation.helper_status`,
-    C375), so a person never vouches for what it measures (C416). No helper installed and no
-    Oxidized configured: nothing to re-install."""
-    from modules.nsot import credential_rotation as cr
-    from modules.list_settings import default_layer      # one Oxidized helper on the host
+#: Oxidized retired (Phase 3 step 2, the operator's decision, 2026-10-08): nothing runs its
+#: credential helper now, and the host steps remove the helper, its pin and its sudoers line
+#: (docs/NSOT_PHASE3_RETIRE_OXIDIZED.md section 5). A step a past commit owes for it, by
+#: `[oxidized-cred]` or `[oxidized-pin]`, is therefore done: re-installing a helper nothing
+#: calls would be work for nothing, and a row asking for it would be a fact nobody acts on.
+OXIDIZED_RETIRED = ("Oxidized is retired (Phase 3): nothing runs its helper, and the host "
+                    "steps remove it, so there is nothing to re-install or pin")
 
-    st = cr.helper_status()
-    if st["state"] == "ok":
-        return {"state": "done", "detail": f"{cr.HELPER_INSTALLED} is this release's "
-                                           f"{cr.HELPER_SOURCE_REL} ({st.get('source_sha')})"}
-    if st["state"] == "not_installed" and not str(default_layer("oxidized_url", "") or "").strip():
-        return {"state": "done", "detail": "no helper is installed and no Oxidized is "
-                                           "configured: nothing to re-install"}
-    return {"state": "not_done", "detail": (st.get("reason") or st["state"]) + (
-        f" (installed {st['installed_sha']}, this release {st['source_sha']})"
-        if st.get("installed_sha") else "")}
+
+def check_oxidized_helper(root: str = ROOT) -> dict:
+    """Done: Oxidized is retired (`OXIDIZED_RETIRED`)."""
+    return {"state": "done", "detail": OXIDIZED_RETIRED}
 
 
 def check_oxidized_pin(root: str = ROOT) -> dict:
-    """Done when the helper's pin (`/etc/nmas/oxidized-cred.conf`) is a root-owned file
-    writable by no one else naming the router.db this tool is configured with: what a pin
-    step DID (C443), never the helper's hash, which every helper release changes. No Oxidized
-    configured: nothing to pin."""
-    from modules.nsot import credential_rotation as cr
-    from modules.list_settings import default_layer      # one Oxidized helper on the host
-
-    pin = cr.helper_pin_status()
-    if pin["ok"]:
-        return {"state": "done", "detail": pin["reason"]}
-    if not str(default_layer("oxidized_url", "") or "").strip():
-        return {"state": "done", "detail": "no Oxidized is configured: nothing to pin"}
-    return {"state": "not_done", "detail": pin["reason"]}
+    """Done: Oxidized is retired (`OXIDIZED_RETIRED`)."""
+    return {"state": "done", "detail": OXIDIZED_RETIRED}
 
 
 CHECKS = {"topology-renderer": check_topology_renderer, "updater": check_updater,

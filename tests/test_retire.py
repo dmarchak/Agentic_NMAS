@@ -90,7 +90,7 @@ def test_the_plan_names_every_step_and_everything_it_will_not_do(world):
     assert ("the approval of cisco_iosxe/base.j2 is not withdrawn" in joined
             and "names r5, as history" in joined), joined
     for claim in ("NetBox device 9 is KEPT", "Remove cannot touch it",
-                  "Oxidized is not configured here", "freezes at its last sync",
+                  "freezes at its last sync",
                   "running configuration is not changed"):
         assert claim in joined, claim
     assert any("NMAS-HEARTBEAT" in a for a in p["advisories"])

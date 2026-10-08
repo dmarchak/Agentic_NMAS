@@ -302,7 +302,7 @@ class TestWhatStillWatchesIt:
     def test_what_survives_is_named_with_how_it_is_removed(self, world):  # noqa: F811
         p = RT.plan("Lab", "r5", "x y z")
         survives = {w["what"]: w["how"] for w in p["survives"]}
-        assert "remove r5 where Oxidized is configured" in survives["Oxidized's polling"]
+        assert "Oxidized's polling" not in survives, "Oxidized is retired (Phase 3): nothing of it survives"
         assert "removed in Grafana" in survives["a hand-built Grafana dashboard panel naming it"]
         netbox = [h for w, h in survives.items() if w.startswith("the NetBox device")]
         assert netbox and "delete it in NetBox if it is gone for good" in netbox[0]

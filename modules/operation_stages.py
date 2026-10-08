@@ -132,12 +132,6 @@ STAGES = {
         "device_v2.retire", "hash",
         "n/a: retirement changes no device; the NetBox mask is read back inside the apply",
         "n/a: one commit; a failed commit restores the tree", "modules.nsot.repo.commit"),
-    "device_v2.retire_finish": Stages(
-        "device_v2.device",
-        "n/a: one row, named by the server from the retire commit, never by the form",
-        "modules.nsot.retire.remove_oxidized",
-        "n/a: the helper keeps an owner-only backup of router.db beside it",
-        "n/a: a host file, not the repository; the app's log names who and the result"),
     "device_v2.seed_confirm": Stages(
         "device_v2.seed", "hash", NO_DEVICE,
         "n/a: a failed commit puts the file back; a seeded intent is corrected forward",
@@ -305,7 +299,6 @@ HISTORY = {
     "device_v2.retry_confirm": ("retries",),
     "device_v2.seed_confirm": ("intent",),
     "device_v2.retire_confirm": ("n/a: a retired device has no History tab; its address shows its retired record, read from the retire commit (C185)"),
-    "device_v2.retire_finish": ("n/a: a host file, not a device record; the retired record redraws its state from the helper (C398)"),
     "v2.ip_sla_commit": ("intent",),
     "retire.apply": ("n/a: a retired device has no page to hold a History tab; its record is "
                      "the retire commit, read by the legacy golden history (C185)"),

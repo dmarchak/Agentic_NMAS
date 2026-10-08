@@ -121,7 +121,7 @@ class TestEveryStepIsReportedAndOkMeansAllOfIt:
         assert out["ok"] is False
         assert out["reason"] == "the device refused"
         not_run = {r["step"] for r in out["steps"] if r["detail"] == "did not run"}
-        assert not_run == {"remove_rw", "profile", "persist", "golden", "netbox", "promote", "oxidized"}, not_run
+        assert not_run == {"remove_rw", "profile", "persist", "golden", "netbox", "promote"}, not_run
         assert {r["step"] for r in out["remaining"]} == not_run
 
     def test_ok_is_false_if_any_step_is_false(self, world):
@@ -189,7 +189,7 @@ class TestAPartialRunLeavesTheDevicePending:
     def test_promotion_is_last_in_the_declared_order(self):
         from modules.nsot.onboard import PHASE_TWO_STEPS
 
-        assert PHASE_TWO_STEPS[-2:] == ("promote", "oxidized")   # C512: Oxidized reports after
+        assert PHASE_TWO_STEPS[-1] == "promote"   # the last (its `oxidized` step went in Phase 3)
 
     def test_nothing_before_promotion_writes_verified_at(self, world):
         """**The control you cannot get from the order alone.**
@@ -627,7 +627,7 @@ class TestPhaseTwoWaitsForIt:
     def test_the_step_sits_after_both_device_changes_and_before_the_golden(self):
         from modules.nsot.onboard import PHASE_TWO_STEPS as S
         assert S.index("rotate") < S.index("persist") and S.index("remove_rw") < S.index("persist")
-        assert S.index("persist") < S.index("golden") and S[-2:] == ("promote", "oxidized")
+        assert S.index("persist") < S.index("golden") and S[-1] == "promote"
 
     def test_an_unpersisted_device_is_never_promoted(self, world):
         from modules.nsot.onboard import run_phase_two

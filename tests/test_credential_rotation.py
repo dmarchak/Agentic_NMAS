@@ -1448,41 +1448,6 @@ class TestTheChainMakesOxidizedRereadRouterDb:
                 hostname="r2", new_hash="9 $9$salt$hash",
                 after_iso="2026-09-21 08:00:00", platform="cisco_ios", list_name="Default")
 
-    def test_the_reload_stage_runs_between_the_write_and_the_fetch(self, monkeypatch):
-        order = []
-        monkeypatch.setattr(cr, "update_oxidized_row",
-                            lambda *a, **k: order.append("write") or {"ok": True})
-        monkeypatch.setattr(cr, "reload_oxidized",
-                            lambda **k: order.append("reload") or {"ok": True})
-        monkeypatch.setattr(cr, "confirm_fetch",
-                            lambda *a, **k: order.append("fetch") or {"ok": True})
-        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
-        monkeypatch.setattr(cr, "verify_startup_file",
-                            lambda *a, **k: {"ok": True, "matches": 1})
-        monkeypatch.setattr(cr, "verify_startup_carries_current",
-                            lambda *a, **k: {"ok": True})
-
-        cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []},
-                   **self.BASE)
-        assert order == ["write", "reload", "fetch"], (
-            "a fetch before the reload polls an Oxidized holding the old "
-            "credential")
-
-    def test_a_failed_reload_stops_before_the_fetch(self, monkeypatch):
-        """Otherwise the fetch fails for a reason that looks nothing like it."""
-        monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
-        monkeypatch.setattr(cr, "reload_oxidized",
-                            lambda **k: {"ok": False, "error": "no such container"})
-        called = []
-        monkeypatch.setattr(cr, "confirm_fetch",
-                            lambda *a, **k: called.append(1) or {"ok": True})
-
-        out = cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED,
-                          "steps": []}, **self.BASE)
-        assert called == []
-        assert out["state"] == cr.ROTATED_UNVERIFIED
-        assert [s["name"] for s in out["persistence"]][-1] == "oxidized_reload"
-
     def test_the_reload_never_runs_a_subprocess(self, monkeypatch):
         """The app must not drive Docker. Structural, not a promise.
 
@@ -1548,6 +1513,31 @@ class TestTheChainMakesOxidizedRereadRouterDb:
         out = cr.reload_oxidized()
         assert out["ok"] is False
         assert "/reload failed" in out["error"]
+
+
+class TestTheChainAsksNoOxidized:
+    """Phase 3 step 2 (the operator, 2026-10-08; C333): the chain's three Oxidized stages
+    (router.db row, reload, confirmed fetch) are gone; after the device's own save it goes
+    straight to the boot file, and nothing in it reaches Oxidized."""
+
+    def test_the_stages_and_no_oxidized_call(self, monkeypatch):
+        def never(*a, **k):
+            raise AssertionError("the chain asked Oxidized")
+        for name in ("update_oxidized_row", "reload_oxidized", "confirm_fetch"):
+            monkeypatch.setattr(cr, name, never)
+        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
+        monkeypatch.setattr(cr, "verify_startup_file", lambda *a, **k: {"ok": True, "matches": 1})
+        monkeypatch.setattr(cr, "verify_startup_carries_current", lambda *a, **k: {"ok": True})
+        out = cr.persist({"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []},
+                         mgmt_ip="203.0.113.12", username="admin", password="pw",
+                         hostname="r2", new_hash="9 $9$salt$hash", after_iso=cr.utc_now(),
+                         platform="cisco_ios", list_name="Default")
+        names = [s["name"] for s in out["persistence"]]
+        assert names[:2] == ["device_startup_config", "clab_sync"], names
+        assert not {"oxidized_row", "oxidized_reload", "fetch_confirmed"} & set(names)
+        from modules.nsot import rotate_op
+        persist = next(s for s in rotate_op.STEPS if s[0] == "persist")
+        assert not {"oxidized_row", "oxidized_reload", "fetch_confirmed"} & set(persist[3])
 
 
 class TestEveryPersistStageIsIdempotent:
@@ -1620,35 +1610,13 @@ class TestEveryPersistStageIsIdempotent:
         assert second["state"] == cr.ROTATED_PERSISTED, second.get("persistence")
         assert all(st["ok"] for st in second["persistence"])
 
-    def test_the_second_run_reports_the_row_as_already_current(self, world):
-        self._run()
-        second = self._run()
-
-        row = next(st for st in second["persistence"] if st["name"] == "oxidized_row")
-        assert row["ok"] is True
-        assert row.get("already_current") is True
-        assert row.get("changed") == 0
-
-    def test_the_second_run_rewrites_nothing(self, world):
-        self._run()
-        before = world["db"].read_text(encoding="utf-8")
-        self._run()
-        assert world["db"].read_text(encoding="utf-8") == before
-
     def test_every_stage_still_runs_on_the_second_pass(self, world):
         """Idempotent is not 'skipped'. The outcome is re-established."""
         self._run()
         self._run()
-        assert world["calls"] == {"reload": 2, "fetch": 2, "sync": 2,
-                                  "startup": 2}
+        assert world["calls"] == {"reload": 0, "fetch": 0, "sync": 2,
+                                  "startup": 2}, "Oxidized's stages are gone (Phase 3)"
 
-    def test_the_first_run_actually_changed_the_row(self, world):
-        """Otherwise 'already current' could be hiding a write that never was."""
-        first = self._run()
-        row = next(st for st in first["persistence"] if st["name"] == "oxidized_row")
-        assert row.get("changed") == 1
-        assert row.get("already_current") is not True
-        assert "Fresh9Value" in world["db"].read_text(encoding="utf-8")
 
 
 class TestTimestampsAreTimezoneAware:
@@ -1780,8 +1748,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
 
     def test_failure_wording_appears_only_after_persistence_actually_failed(
             self, monkeypatch):
-        monkeypatch.setattr(cr, "update_oxidized_row",
-                            lambda *a, **k: {"ok": False, "error": "no sudo"})
+        monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": False, "error": "exit 2"})
         out = cr.persist({"device": "r2", "state": cr.ROTATED_PENDING_PERSIST,
                           "steps": []},
                          mgmt_ip="203.0.113.12", username="admin",
@@ -1793,7 +1760,7 @@ class TestNoFailureWordingDuringASuccessfulRun:
         summary = cr.summarise(out)
         assert "FAILED" in summary
         assert "Nothing is retrying" in summary
-        assert "oxidized_row" in summary, "it must name the stage"
+        assert "clab_sync" in summary, "it must name the stage"
 
     def test_entering_persist_is_what_makes_attempted_true(self, monkeypatch):
         """Not reaching a stage: crossing the threshold."""
@@ -1805,9 +1772,9 @@ class TestNoFailureWordingDuringASuccessfulRun:
             # The state must already say "attempted" by the time the FIRST
             # stage runs — not only once one of them has failed.
             seen["state_on_entry"] = result["state"]
-            return {"ok": False, "error": "no sudo"}
+            return {"ok": False, "error": "exit 2"}
 
-        monkeypatch.setattr(cr, "update_oxidized_row", _first_stage)
+        monkeypatch.setattr(cr, "run_sync", lambda **k: _first_stage())
         cr.persist(result, mgmt_ip="203.0.113.12", username="admin",
                    password="pw", hostname="r2", new_hash="9 $9$s$h",
                    after_iso=cr.utc_now(), platform="cisco_ios", list_name="Default")
@@ -2302,41 +2269,7 @@ class TestPersistenceNeverReverts:
     def _result(self):
         return {"device": "r2", "state": cr.ROTATED_UNVERIFIED, "steps": []}
 
-    def test_a_router_db_failure_leaves_the_device_rotated(self, monkeypatch):
-        monkeypatch.setattr(cr, "update_oxidized_row",
-                            lambda *a, **k: {"ok": False, "error": "no sudo"})
-        out = cr.persist(self._result(), **self.BASE)
-
-        assert out["state"] == cr.ROTATED_UNVERIFIED
-        # By NAME: C53 put the device stage first, so position 0 is no longer
-        # the router.db write.
-        row = [st for st in out["persistence"] if st["name"] == "oxidized_row"][0]
-        assert row["ok"] is False
-        assert "ROTATED and committed" in cr.summarise(out)
-        # The message must be TERMINAL: the process has exited by the time it
-        # is printed, so nothing is retrying and it must not say otherwise.
-        assert "Retrying" not in cr.summarise(out)
-        assert "Nothing is retrying" in cr.summarise(out)
-
-    def test_a_fetch_failure_leaves_the_device_rotated(self, monkeypatch):
-        monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
-        monkeypatch.setattr(cr, "reload_oxidized",
-                            lambda **k: {"ok": True, "mechanism": "restart",
-                                         "verified": True})
-        monkeypatch.setattr(cr, "confirm_fetch",
-                            lambda *a, **k: {"ok": False, "error": "timeout"})
-        out = cr.persist(self._result(), **self.BASE)
-
-        assert out["state"] == cr.ROTATED_UNVERIFIED
-        assert [s["name"] for s in out["persistence"]] == \
-            ["device_startup_config", "oxidized_row", "oxidized_reload", "fetch_confirmed"]
-
     def test_a_startup_file_miss_leaves_the_device_rotated(self, monkeypatch):
-        monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
-        monkeypatch.setattr(cr, "reload_oxidized",
-                            lambda **k: {"ok": True, "mechanism": "restart",
-                                         "verified": True})
-        monkeypatch.setattr(cr, "confirm_fetch", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_file",
                             lambda *a, **k: {"ok": False, "matches": 0})
@@ -2346,11 +2279,6 @@ class TestPersistenceNeverReverts:
         assert "redeploy would boot the OLD password" in cr.summarise(out)
 
     def test_the_full_chain_reaches_persisted(self, monkeypatch):
-        monkeypatch.setattr(cr, "update_oxidized_row", lambda *a, **k: {"ok": True})
-        monkeypatch.setattr(cr, "reload_oxidized",
-                            lambda **k: {"ok": True, "mechanism": "restart",
-                                         "verified": True})
-        monkeypatch.setattr(cr, "confirm_fetch", lambda *a, **k: {"ok": True})
         monkeypatch.setattr(cr, "run_sync", lambda **k: {"ok": True})
         monkeypatch.setattr(cr, "verify_startup_file",
                             lambda *a, **k: {"ok": True, "matches": 1})
@@ -2996,16 +2924,6 @@ class TestSudoIsAskedBeforeTheDeviceChanges:
         assert "NOPASSWD: " + cr.HELPER_INSTALLED in st["reason"]
         assert "refused before anything changes" in st["reason"]
         assert "a password is required" in st["reason"]
-
-    def test_preflight_refuses_on_it(self, monkeypatch, tmp_path):
-        monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path))
-        monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})
-        monkeypatch.setattr(cr, "helper_sudo_status",
-                            lambda: {"ok": False, "reason": "no rule"})
-        out = cr.preflight("Lab", "nope")
-        checks = {c["name"]: c for c in out["checks"]}
-        assert checks["helper_runs_without_a_password"]["ok"] is False
-        assert out["ok"] is False
 
     def test_a_refused_run_is_named_never_an_empty_stage(self, monkeypatch):
         monkeypatch.setattr(cr, "helper_status", lambda: {"ok": True})

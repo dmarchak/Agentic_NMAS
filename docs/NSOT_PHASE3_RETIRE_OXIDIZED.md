@@ -64,10 +64,25 @@ C332, C512, C499, D9; C329 stays (the drift check is now the read-and-compare, i
      commit that earns a baseline.
    - `deploy/systemd/clab-sync.path` (lab tooling) starts the sync when the lab's network's file
      moves.
-   - Awaiting the operator's host step (the path unit) and a walk: a Save All, and the sync
-     starting within seconds.
+   - Awaiting a walk: a Save All, and the sync starting within seconds.
+   The path unit was installed by the operator (2026-10-08, active); the walk is still owed.
 2. Rotation's persist chain without its three Oxidized stages (C333), and onboarding and adopt
    without `add_to_oxidized`; retire's finish card without its router.db step.
+   **BUILT 2026-10-08:**
+   - The persist chain goes from the device's own save straight to the lab target; rotation's
+     preflight no longer checks the helper (installed, matching, sudo), so a network without
+     Oxidized can rotate.
+   - Onboarding's and adopt's last step is `promote`; `add_to_oxidized` is gone.
+   - Retire has no router.db step, and the finish card and its route
+     (`device_v2.retire_finish`) are removed: with nothing left to finish, the card had no
+     work. "Oxidized's polling" is no longer a survivor.
+   - Job health has no Oxidized helper row and no retired-devices router.db row (C398's).
+     The helper's host-step checks (`oxidized-cred`, `oxidized-pin`) read done, "retired",
+     so an old commit's step for them owes nothing; the registry keeps the helper's paths, so
+     a commit still touching it names a host step until section 5 removes it.
+   - Kept for step 3: the rotation's Oxidized functions (`update_oxidized_row`,
+     `reload_oxidized`, `confirm_fetch`) and their tests, called by nothing in the product,
+     removed with the integration.
 3. Remove the freshness modules, routes and tests, the fetch hook, the integration, the settings
    (with the version bump and its record), the host helper rows and the monitoring tile.
 4. The operator's host steps (section 5), then the walk: a rotation, an onboarding, a Save All

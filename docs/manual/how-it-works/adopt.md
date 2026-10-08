@@ -125,13 +125,9 @@ moved since the preview:
    device's row in the list's inventory, with the tool's account and its password
    (encrypted). Last, because the row is the claim "this device is managed". On a
    NetBox-sourced list no row is written; the device arrives at the next refresh.
-9. **Oxidized** (`oxidized`). Read: Oxidized's router.db addresses, through the root-owned
-   helper, and Oxidized's own node list. Sent: nothing. Recorded: when router.db does not
-   hold the device yet, its row (address, the Oxidized model for its platform, the tool's
-   account and password), added by the helper; then Oxidized reloads, and the step passes
-   only when Oxidized lists the device. A device router.db already holds (backed up before
-   the tool managed it) is left as it is: its credential is rotation's to change. With no
-   Oxidized configured the step says so and passes.
+
+Adoption adds nothing to Oxidized: its step went with Oxidized's retirement (2026-10-08). The
+first golden's commit is the device's backup.
 
 Whatever happened, the run is recorded in the list's `onboarding_runs.jsonl` as an `adopt`
 run. A finished adoption names its next step: export the break-glass record, which holds no

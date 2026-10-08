@@ -85,15 +85,7 @@ finished by running it again:
    content survives in the repository (the migration's verbatim backup or an equivalent
    committed golden), and the step says where. A file whose lines exist nowhere else is
    kept and named.
-6. **Oxidized's row** (`oxidized`), where Oxidized is configured in the tool. Read: the
-   addresses in Oxidized's device list (`router.db`), through the root-owned helper, which
-   never hands the tool a credential. Sent: nothing to the device. Recorded: the device's one
-   row removed from `router.db` by the helper (it keeps owner-only backups beside it, the newest three), then
-   the addresses read again to prove it gone. Before the inventory row, so a failure leaves a
-   retirement that is finished by running it again. A device retired before this step existed
-   shows **Finish this retirement** on its retired record while its row remains; the address it
-   removes is the one the retire commit released, never one typed.
-7. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
+6. **The inventory row** (`row`). Read: the break-glass basis again. Sent: nothing.
    Recorded: the device's row deleted from the list's inventory. LAST, and only against a
    break-glass record holding this device's current credential, because the row is the
    only stored copy. Deleting it also tells the app's Prometheus target keeper the
@@ -135,13 +127,6 @@ drops at its next regeneration, and the card says when:
 **What survives**, each with how it is removed:
 
 - The NetBox device, its credential masked: delete it in NetBox if it is gone for good.
-- Oxidized's row in its device list (`router.db`), only where Oxidized is not configured in
-  the tool: its device list is then not the tool's, and the device is removed where Oxidized
-  is configured. Where it is configured, retiring removes the row itself (step 6 of the apply).
-  A row left behind (a device retired before Oxidized was configured, or a step that failed)
-  is a Needs attention row from job health, which compares router.db's addresses with the
-  managed devices each cycle and names the retired device; its record's **Finish this
-  retirement** removes the row. An address the tool never managed is counted, never raised.
 - A Grafana dashboard panel built by hand that names it: removed in Grafana by hand; the tool
   does not edit dashboards.
 - A template's approval: it stays, because an approval is of the template.

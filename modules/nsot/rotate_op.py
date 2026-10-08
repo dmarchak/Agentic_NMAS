@@ -60,9 +60,8 @@ STEPS = (
      ("post_capture", "golden_capture", "commit")),
     ("persist", "Persist",
      "the device's own save read back, then the boot-file chain",
-     ("persisting", "device_startup_config", "oxidized_row", "oxidized_reload",
-      "fetch_confirmed", "clab_target", "clab_sync", "startup_file", "startup_applies",
-      "startup_safe")),
+     ("persisting", "device_startup_config", "clab_target", "clab_sync", "startup_file",
+      "startup_applies", "startup_safe")),
 )
 #: Steps the code takes off the path (a failed verify puts the old line back), drawn on the
 #: step they belong to.

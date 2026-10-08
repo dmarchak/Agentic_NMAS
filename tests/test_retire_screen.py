@@ -74,13 +74,13 @@ class TestThePreview:
         assert any(l.startswith("one commit: remove host_vars/r5.yml, golden/r5.cfg") for l in lines)
         assert lines[-1].startswith("delete the CSV row"), "the row goes last"
         said = " ".join(i["text"] for i in p["what_not"]["items"])
-        for claim in ("NetBox device 9 is KEPT", "Oxidized is not configured here",
+        for claim in ("NetBox device 9 is KEPT",
                       "freezes at its last sync", "running configuration is not changed",
                       "backups are kept", "is not withdrawn", "Advisory: its golden shows the "
                       "NMAS-HEARTBEAT applet"):
             assert claim in said, claim
         html = render_preview(p)
-        assert "Oxidized is not configured here" in html and "is not withdrawn" in html
+        assert "Oxidized" not in html and "is not withdrawn" in html
 
     def test_it_says_which_basis_it_trusts_and_what_that_cannot_show(self, screen):
         _export(screen)
@@ -191,18 +191,14 @@ class TestTheApply:
             screen["R"].git(screen["repo"], "rev-parse", "HEAD")[1]
         html = render_result(res)
         # The Not-Done list drawn again, after the fact.
-        assert "Oxidized may still poll it" in html and "NetBox device 9 is KEPT" in html
+        assert "Oxidized" not in html and "NetBox device 9 is KEPT" in html
 
-    def test_a_row_the_plan_found_absent_is_not_said_to_be_polled(self):
-        """C513 (the throwaway session's STOP 8): the plan read no router.db row ("already
-        done") and the result said "Oxidized may still poll it"."""
+    def test_the_result_says_nothing_of_oxidized(self):
+        """C513 was about the result's Oxidized line; Oxidized is retired (Phase 3 step 2,
+        2026-10-08), so the result names only what still watches it."""
         from modules.preview_confirm import retire_result
-        plan = {"hostname": "tw-a", "steps": [{"key": "oxidized", "what": "remove", "done": True}]}
-        res = retire_result({"ok": True, "done": ["commit", "csv"]}, plan)
-        assert "Oxidized does not poll it" in res["not_watched"]
-        assert "may still poll it" not in res["not_watched"]
-        removed = retire_result({"ok": True, "done": ["oxidized"]}, {"hostname": "tw-a"})
-        assert "no longer polls it" in removed["not_watched"]
+        res = retire_result({"ok": True, "done": ["commit", "row"]}, {"hostname": "tw-a"})
+        assert "Oxidized" not in res["not_watched"] and "NetBox still records it" in res["not_watched"]
 
     def test_where_an_export_went_reads_as_english(self):
         """C514 (STOP 8): an export the browser downloaded read "to downloaded by …"."""

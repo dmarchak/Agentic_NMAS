@@ -506,15 +506,15 @@ def merge_and_mode_b():
 
 
 def credentials_lifecycle():
-    return svg(530, (
+    return svg(470, (
         "Every place a device's credential lives, and what keeps each current. The device runs "
         "it and boots from its startup configuration; the tool holds it, encrypted, in the "
         "inventory or its override store; a person keeps the break-glass record on their own "
-        "machine. On the lab, the lab startup file and Oxidized's copy hold it too. Rotate "
+        "machine. On the lab, the lab startup file holds it too. Rotate "
         "changes the device and the tool's copy together, proven by a fresh login. Persist "
         "saves it to startup and reads it back. A new break-glass export follows every "
         "rotation."), [
-        lanes(20, 524, left="THE TOOL AND PEOPLE", right="THE DEVICE"),
+        lanes(20, 464, left="THE TOOL AND PEOPLE", right="THE DEVICE"),
         band(20, 216, "Rotate · one operation"),
         store(14, 46, 186, 40, "Inventory or override", "encrypted, the one copy"), num(14, 46, 1),
         device(240, 46, 140, 40, "Running config", "what it runs"),
@@ -529,9 +529,8 @@ def credentials_lifecycle():
         t(36, 282, "Save, then read the startup", "tb"), num(22, 278, 3),
         t(36, 296, "config back: every account line.", "sm"),
         t(14, 336, "The hourly startup check keeps asking.", "sm"),
-        band(376, 148, "On the lab only"),
+        band(376, 88, "On the lab only"),
         labfile(14, 404, 186, 40, "Lab startup file", "a redeploy boots it"),
-        svc(14, 462, 186, 40, "Oxidized's copy", "replayed by a redeploy", lab=True),
         t(214, 426, "Built by the lab sync,", "sm"), t(214, 439, "not by the product.", "sm"),
     ])
 
@@ -658,8 +657,8 @@ def rotate():
         "apply generates a password and stages it before anything is sent, holds one session, "
         "sends the change, and proves it on a fresh login before trusting it, putting the old "
         "line back on the held session if the login fails. Then it records the new credential, "
-        "clears the staged copy and persists. On the lab, persist also updates Oxidized and the "
-        "lab startup file."), [
+        "clears the staged copy and persists. On the lab, persist also updates the lab startup "
+        "file."), [
         lanes(20, 554),
         band(20, 110, "Preview"),
         device(262, 40, 118, 60, "The device", "", top=True),
@@ -677,21 +676,19 @@ def rotate():
             (414, "send", 13, "Persist", "save and read back"),
         ]),
         band(442, 112, "On the lab only"),
-        svc(14, 466, 186, 34, "Oxidized's row and fetch", "", lab=True),
-        labfile(214, 466, 166, 40, "Lab startup file", "re-synced"),
+        labfile(14, 466, 186, 40, "Lab startup file", "re-synced"),
         t(14, 534, "Without the lab, persistence reads unverified.", "sm"),
     ])
 
 
 def persist():
-    return svg(420, (
+    return svg(370, (
         "Persist. The device runs one configuration and boots from another. From the device "
         "page, persist saves the running configuration to startup on a held session, reads the "
         "startup configuration back and checks every account line is there verbatim, then "
         "records the outcome where job health reads it. The host chain after a rotation also "
-        "updates Oxidized's copy and the lab's startup file: lab integrations, off the "
-        "product's path."), [
-        lanes(20, 414),
+        "updates the lab's startup file: a lab integration, off the product's path."), [
+        lanes(20, 364),
         band(20, 210, "From the device page"),
         device(262, 44, 118, 150, "The device", "", top=True),
         *rows([
@@ -699,12 +696,11 @@ def persist():
             (124, "read", 2, "Read startup back", "every account line"),
         ]),
         store(14, 158, 186, 36, "Recorded", "where job health reads it"), num(14, 158, 3),
-        band(236, 178, "The host chain, after a rotation"),
+        band(236, 128, "The host chain, after a rotation"),
         t(14, 270, "The device's own save first, then:", "sm"),
-        svc(14, 284, 186, 34, "Oxidized's copy", "row, reload, fetch", lab=True),
-        labfile(14, 332, 186, 40, "Lab startup file", "synced, hash checked"),
-        t(214, 290, "A redeploy boots", "sm"), t(214, 303, "these, not NVRAM.", "sm"),
-        t(14, 392, "Without the lab, these stages cannot pass.", "sm"),
+        labfile(14, 284, 186, 40, "Lab startup file", "synced, hash checked"),
+        t(214, 300, "A redeploy boots", "sm"), t(214, 313, "this, not NVRAM.", "sm"),
+        t(14, 344, "Without the lab, these stages cannot pass.", "sm"),
     ])
 
 
@@ -769,7 +765,7 @@ def retire():
         "holds in its context where the tool wrote them, clears the credential override, "
         "declares its lab startup file unmapped, commits the exit as you, removes its legacy "
         "file only if its content survives, and deletes its inventory row last. NetBox keeps "
-        "the device, Oxidized keeps polling, history is kept."), [
+        "the device and history is kept."), [
         lanes(20, 464),
         band(20, 70, "Preview"),
         store(14, 40, 186, 36, "Break-glass export", "holds the current credential?"),
@@ -783,7 +779,7 @@ def retire():
         store(14, 350, 186, 34, "Inventory row", "deleted last"), num(14, 350, 6),
         nosend(310, 240, ("nothing is sent", "to the device")),
         band(402, 62, "Kept, by design"),
-        t(14, 434, "NetBox's record, Oxidized polling, history,", "sm"),
+        t(14, 434, "NetBox's record, history,", "sm"),
         t(14, 447, "backups: each named in the commit.", "sm"),
     ])
 

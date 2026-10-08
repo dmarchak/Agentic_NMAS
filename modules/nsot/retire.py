@@ -57,11 +57,11 @@ Either way an export taken before the last rotation does not count.
 
 **What retire does NOT do, stated every time**, because each is correct and
 each looks like an omission unless it is named: the NetBox device stays
-(NetBox records what exists, not what NMAS manages); Oxidized keeps polling
-(nothing regenerates ``router.db``, C398) so config history continues; the
+(NetBox records what exists, not what NMAS manages); the
 startup config freezes at its last sync; the device's running configuration
 is not changed; backups are kept; and a session the app has pooled is not
-closed by a command that runs outside it.
+closed by a command that runs outside it. (Oxidized's polling was named here until
+Oxidized was retired, Phase 3, 2026-10-08.)
 
 **What watches it afterwards, in two kinds** (board 12, the operator,
 2026-10-03; `_watchers`): GENERATED, dropped at the next regeneration and
@@ -69,7 +69,7 @@ said with when (Prometheus's scrape targets, generated from the inventory
 when a target directory is set, drop a device with no golden at the
 keeper's next run; the heartbeat rule, generated from committed intent, is
 named EXTRA by the hourly check until the windows are re-measured), and
-SURVIVES, named with how it is removed (the NetBox device, Oxidized's row,
+SURVIVES, named with how it is removed (the NetBox device,
 a hand-built dashboard panel, the template's approval).
 """
 
@@ -229,15 +229,8 @@ def plan(list_name: str, hostname: str, reason: str = "") -> dict:
     legacy = _legacy_facts(list_name, list_dir, hostname, ip)
     if legacy.get("step"):
         step("legacy", legacy["step"], legacy["done"])
-    # C398 (the operator, 2026-10-04): Oxidized's row leaves through the root helper's REMOVE
-    # mode, read back; before the CSV row, so a failure leaves the retirement to run again.
-    ox = oxidized_row(ip)
-    if ox["managed"]:
-        step("oxidized", f"remove {ip}'s row from Oxidized's router.db (through the root "
-             "helper, one row, read back)"
-             + (f" -- whether it holds one could not be read now ({ox['error']}); the apply "
-                "asks again" if ox["held"] is None else ""),
-             ox["held"] is False)
+    # Oxidized's router.db row (C398) is no longer a step: Oxidized is retired (Phase 3 step 2,
+    # 2026-10-08), and its store goes with it (Phase 3 section 5's host steps).
     step("row", f"delete the CSV row for {ip} -- the only stored copy of its "
          "credential, so a break-glass record holding it is required",
          row is None)
@@ -479,11 +472,6 @@ def _watchers(hostname: str, ip: str) -> list:
                          "nothing to remove")
     except Exception as exc:                   # noqa: BLE001
         item("survives", "Prometheus's scrape targets", f"could not be checked ({exc})")
-    from modules.nsot import credential_rotation as CR
-    if not CR.oxidized_managed():
-        item("survives", "Oxidized's polling",
-             f"Oxidized is not configured here, so its device list is not the tool's: remove "
-             f"{hostname} where Oxidized is configured")
     item("survives", "a hand-built Grafana dashboard panel naming it",
          "stays until removed in Grafana: Mercury does not edit dashboards")
     return out
@@ -553,30 +541,6 @@ def retired_record(repo: str, hostname: str):
     return None
 
 
-def retired_addresses(repo: str) -> dict:
-    """``{management address: hostname}`` for every device retired in *repo*, each from its
-    newest retire commit (`retired_record`): what job health matches Oxidized's router.db
-    against (C398). A read of git only; an unreadable history is ``{}``."""
-    from modules.nsot import repo as R
-
-    rc, out, _err = R.git(repo, "log", "--format=%B%x1e", "--fixed-strings",
-                          "--grep=Retired-Device: ")
-    if rc != 0:
-        return {}
-    names = []
-    for body in out.split("\x1e"):
-        for line in body.splitlines():
-            key, sep, value = line.partition(": ")
-            if sep and key == "Retired-Device" and value.strip() not in names:
-                names.append(value.strip())
-    out = {}
-    for name in names:
-        rec = retired_record(repo, name)
-        if rec and rec.get("ip"):
-            out.setdefault(rec["ip"], name)
-    return out
-
-
 def _address_before(repo: str, sha: str, hostname: str) -> str:
     """The device's management address as the manifest held it just before its retire commit
     (the commit releases it), or "" when it cannot be read. A read of git only."""
@@ -593,48 +557,6 @@ def _address_before(repo: str, sha: str, hostname: str) -> str:
         if (entry.get("name") or "").lower() == hostname.lower():
             return entry.get("mgmt_ip") or ""
     return ""
-
-
-def remove_oxidized(ip: str) -> dict:
-    """Remove *ip*'s row from Oxidized's router.db through the helper's REMOVE mode, then READ
-    IT BACK through the address list: ``{"ok", "error", "removed", "backups_removed",
-    "prune_error"}``. One home for retire's step and a retired record's "Finish this
-    retirement" (C398). The helper's pruning of its older backups (C415) is carried, so the
-    result can say it (C430: the first real Finish could not)."""
-    from modules.nsot import credential_rotation as CR
-
-    if not ip:
-        return {"ok": False, "error": "no management address is recorded for it",
-                "removed": False}
-    got = CR.remove_oxidized_row(ip)
-    if not got.get("ok"):
-        return {"ok": False, "error": got.get("error") or "the helper did not say ok",
-                "removed": False}
-    back = oxidized_row(ip)
-    if back["held"] is None:
-        return {"ok": False, "removed": bool(got.get("removed")),
-                "error": f"removed, and the read-back could not be made ({back['error']})"}
-    if back["held"]:
-        return {"ok": False, "removed": False,
-                "error": f"the helper said done and router.db still holds {ip}"}
-    return {"ok": True, "error": "", "removed": bool(got.get("removed")),
-            "backups_removed": int(got.get("backups_removed") or 0),
-            "prune_error": got.get("prune_error") or ""}
-
-
-def oxidized_row(ip: str) -> dict:
-    """Whether Oxidized's router.db still holds *ip*, through the helper's address list (C398),
-    never the file: ``{"managed", "held", "error"}``. Not managed (no Oxidized configured) is said
-    apart from unreadable."""
-    from modules.nsot import credential_rotation as CR
-
-    if not CR.oxidized_managed():
-        return {"managed": False, "held": False, "error": ""}
-    got = CR.oxidized_addresses()
-    if not got.get("ok"):
-        return {"managed": True, "held": None, "error": got.get("error") or "no answer"}
-    return {"managed": True, "held": bool(ip) and ip in (got.get("addresses") or []),
-            "error": ""}
 
 
 def _blob(path: str) -> str:
@@ -914,15 +836,6 @@ def apply(list_name: str, hostname: str, *, reason: str, actor: str,
         except Exception as exc:               # noqa: BLE001
             return fail("legacy", exc)
         done.append("legacy")
-
-    if "oxidized" in pending:
-        try:
-            finished = remove_oxidized(p["ip"])
-            if not finished["ok"]:
-                raise RuntimeError(finished["error"])
-            done.append("oxidized")
-        except Exception as exc:               # noqa: BLE001
-            return fail("oxidized", exc)
 
     if "row" in pending:
         try:

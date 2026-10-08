@@ -64,7 +64,8 @@ def test_an_owed_step_of_another_check_does_not_absorb_it(page):
 
 # C419 (the operator, 2026-10-04): the Oxidized helper's drift was two rows again, the host
 # step's and job health's "helper:oxidized-cred differs". Every root-installed helper folds,
-# by the registry (modules/host_helpers.py), not the updater alone.
+# by the registry (modules/host_helpers.py), not the updater alone. (The Oxidized helper has no
+# row since Phase 3 step 2, 2026-10-08: the topology renderer and the updater hold the class.)
 
 def _helper(unit, state):
     return {"jobs": [{"unit": unit, "state": state, "what": "a root-installed helper",
@@ -85,8 +86,6 @@ def helper_page(monkeypatch):
 
 
 @pytest.mark.parametrize("check,unit,state", [
-    ("oxidized-cred", "helper:oxidized-cred", "differs"),
-    ("oxidized-cred", "helper:oxidized-cred", "not_installed"),
     ("topology-renderer", "helper:topology-renderer", "differs")])
 def test_every_helpers_drift_folds_into_its_host_step(helper_page, check, unit, state):
     rows = helper_page(check, unit, state)
@@ -97,10 +96,10 @@ def test_every_helpers_drift_folds_into_its_host_step(helper_page, check, unit, 
 
 @pytest.mark.parametrize("state", ["writable", "cannot_run", "unknown"])
 def test_a_helper_state_one_install_does_not_clear_stays_its_own_row(helper_page, state):
-    rows = helper_page("oxidized-cred", "helper:oxidized-cred", state)
+    rows = helper_page("topology-renderer", "helper:topology-renderer", state)
     assert sorted(r["source"] for r in rows) == ["host_steps", "job_health"]
 
 
 def test_a_helpers_step_does_not_absorb_another_helpers_row(helper_page):
-    rows = helper_page("topology-renderer", "helper:oxidized-cred", "differs")
+    rows = helper_page("updater", "helper:topology-renderer", "differs")
     assert sorted(r["source"] for r in rows) == ["host_steps", "job_health"]

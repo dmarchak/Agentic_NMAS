@@ -36,8 +36,6 @@ Away from the tool:
 - **The break-glass record**: a file sealed with a passphrase, kept on a person's laptop,
   holding each device's credential and the application's key. It is how a person reaches a
   device when the tool cannot. It is current only until the next rotation.
-- **Oxidized's copy** (lab integration): the account Oxidized polls with, in its router
-  list, and the configuration it last fetched.
 - **The lab startup file** (lab integration): the file a lab redeploy boots, built from the
   newest earned baseline with every credential line taken from the device's current golden,
   so a redeploy never boots a retired password.
@@ -66,10 +64,9 @@ Rotation is one operation, run as a job that holds the device from start to fini
    Sent: the device's own save. Recorded: the outcome, in the rotation record that job
    health reads. A rotation that is not persisted is a row until a later persist reads back
    correctly.
-7. **The lab copies** (`oxidized_row`, `oxidized_reload`, `fetch_confirmed`, the lab sync,
-   `startup_file`, `startup_applies`, `startup_safe`) (lab integration). Read: Oxidized's
-   fetch and the lab startup file. Sent: nothing to the device. Recorded: Oxidized's router
-   row and the lab startup files. Each stage gates the next.
+7. **The lab copies** (which lab, the lab sync, `startup_file`, `startup_applies`,
+   `startup_safe`) (lab integration). Read: the lab startup file. Sent: nothing to the
+   device. Recorded: the lab startup files. Each stage gates the next.
 
 A failure after step 5 never reverts the device: the rotation has happened and is recorded,
 and only a copy is behind. The result names that state and its next step.
