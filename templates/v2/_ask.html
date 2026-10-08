@@ -1,0 +1,88 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how, info -%}
+{#- Ask the device (C547; board A, signed off 2026-10-08, NSOT_READS.md section 3): the device
+    page's tab. One card, its state from modules/reads_page.ask(): the command box checked as
+    typed, the common reads and saved sets to pick, Run (a job: busy on itself until the run's
+    `reads` announcement), the answer in place, the recent reads, and the comparison with the
+    last answer. Every read goes through the reads engine: allowlist first, the device held
+    while read, masked, capped, recorded. Nothing here changes the device. -#}
+<section class="card ask" id="ask" aria-labelledby="ask-h"
+  {%- if c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('device_v2.ask', name=c.host, job=c.job, run=c.run, command=c.command) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="ask-hd"><h2 id="ask-h">Ask {{ c.host }}</h2>{{ info('device-page', 'ask-the-device', label='How Ask the device works') }}</div>
+  <form class="ask-form" method="post" action="{{ url_for('reads_v2.ask_run', name=c.host) }}" hx-post="{{ url_for('reads_v2.ask_run', name=c.host) }}" hx-target="#ask" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ c.list }}">
+    <label class="ask-label" for="ask-command">A read-only command</label>
+    <div class="ask-row">
+      <input id="ask-command" name="command" type="text" class="mono ask-input{{ ' ask-bad' if c.check.why }}" value="{{ c.command }}"
+             placeholder="show ip route" autocomplete="off" spellcheck="false" aria-describedby="ask-check"
+             hx-get="{{ url_for('reads_v2.ask_check', name=c.host) }}" hx-trigger="input changed delay:300ms" hx-target="#ask-check" hx-swap="outerHTML" hx-include="this">
+      {%- include "v2/_ask_check.html" %}
+    </div>
+  </form>
+  {%- if c.state == 'idle' %}
+  <div class="ask-picks">
+    {%- if c.sets %}
+    <div class="ask-pickrow"><span class="ask-lbl">Saved sets</span>{% for s in c.sets %}<a class="ask-pick ask-set" href="{{ url_for('device_v2.device', name=c.host, tab='ask', command=s.commands[0]) }}" hx-get="{{ url_for('device_v2.ask', name=c.host, command=s.commands[0]) }}" hx-target="#ask" hx-swap="outerHTML" title="{{ s.commands | join('; ') }}">{{ s.name }} ({{ s.commands | length }})</a>{% endfor %}</div>
+    {%- endif %}
+    <div class="ask-pickrow"><span class="ask-lbl">Common reads</span>{% for cmd in c.common %}<a class="ask-pick mono" href="{{ url_for('device_v2.device', name=c.host, tab='ask', command=cmd) }}" hx-get="{{ url_for('device_v2.ask', name=c.host, command=cmd) }}" hx-target="#ask" hx-swap="outerHTML">{{ cmd }}</a>{% endfor %}</div>
+  </div>
+  <p class="faint small">Read-only: checked against Mercury's allowlist as you type, and again when it runs. Nothing here changes {{ c.host }}; every read is recorded in its History.</p>
+  {%- elif c.state == 'running' %}
+  <p class="op-wait">Reading {{ c.host }} now: <span class="mono">{{ c.command }}</span>. The answer appears here when it arrives.</p>
+  {%- elif c.state == 'refused' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ c.why }} Nothing was sent to {{ c.host }}.</p></div>
+  {%- elif c.state == 'failed' %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The run failed:</strong> {{ c.why }}</p></div>
+  {%- elif c.state == 'unknown' %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<p>This server has no record of that run{% if c.run %} ({{ c.run }}){% endif %}: it finished long ago or the server restarted. Run it again to read {{ c.host }} now.</p></div>
+  {%- elif c.state == 'done' %}
+  {%- if c.outcome.state == 'skipped' %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<p><strong>Not read:</strong> {{ c.outcome.words[9:] }} A read holds the device while it reads, so it waits for no operation and is never queued: Run again once that ends.</p></div>
+  {%- elif c.outcome.state not in ('answered', 'cut') %}
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>{{ c.host }} did not answer:</strong> {{ c.outcome.words }}</p></div>
+  {%- endif %}
+  {%- for a in c.answers %}
+  <div class="ask-answer" id="ask-answer-{{ loop.index }}">
+    {%- if c.answers | length > 1 %}<h3 class="mono ask-cmd">{{ a.command }}</h3>{% endif %}
+    {%- if a.state == 'answered' and a.archived %}
+    <p class="muted">Answered ({{ a.bytes }} bytes); the answer was moved to the archive after the network's retention. Who, when and what stay here.</p>
+    {%- elif a.state == 'answered' %}
+    <pre class="ask-pre">{{ a.answer }}</pre>
+    {%- if a.cut %}<p class="ask-cut">{{ badge('cut at the cap', 'warn') }} The answer is {{ a.bytes }} bytes, longer than one answer's cap, so this is its start, never the whole. Narrow it with <span class="mono">| include</span> or <span class="mono">| begin</span>.</p>{% endif %}
+    {%- elif a.state %}
+    <p class="ask-cut">{{ badge('failed', 'danger') }} {{ a.why }}</p>
+    {%- endif %}
+    <div class="ask-meta"><span title="{{ c.who }} at {{ c.at }}{% if a.took_s is not none %}, {{ a.took_s }} s{% endif %}">{{ stamp(c.at, '', 'read by ' ~ c.who) }}{% if a.took_s is not none %} · {{ a.took_s }} s{% endif %}</span>
+      {%- if a.state == 'answered' %}{{ badge('answered', 'ok') }}{% endif %}
+      {%- if a.previous and not a.archived %}<button type="button" class="btn btn-small" hx-get="{{ url_for('device_v2.ask', name=c.host, run=c.run, compare=a.command) }}" hx-target="#ask" hx-swap="outerHTML">Compare with the last answer</button>{% endif %}</div>
+  </div>
+  {%- endfor %}
+  {%- if c.compare %}
+  <div class="ask-compare" id="ask-compare">
+    <h3><span class="mono">{{ c.compare.command }}</span>: now against {% if c.compare.previous %}{{ stamp(c.compare.previous.at, '', 'read by ' ~ c.compare.previous.who) }}{% else %}nothing earlier{% endif %}</h3>
+    {%- if not c.compare.previous %}<p class="muted">No earlier answer to this command from {{ c.host }} is kept.</p>
+    {%- elif not c.compare.lines %}<p>No line changed.</p>
+    {%- else %}
+    <pre class="ask-pre op-diff">{% for kind, line in c.compare.lines %}<span class="{{ 'op-add' if kind == 'add' else 'op-del' if kind == 'del' else 'op-ctx' }}">{{ '+ ' if kind == 'add' else '- ' if kind == 'del' else '  ' }}{{ line }}</span>
+{% endfor %}</pre>
+    {%- endif %}
+  </div>
+  {%- endif %}
+  {%- endif %}
+  {%- if c.state != 'running' %}
+  <details class="ask-recent" data-keep="ask-recent-{{ c.host }}"{% if c.state == 'done' %} open{% endif %}>
+    <summary>Recent reads on {{ c.host }} ({{ c.recent.rows | length }}{% if c.recent.rows | length >= 10 %}, the latest 10{% endif %})</summary>
+    {%- if c.recent.unreadable %}<p class="muted">{{ c.recent.unreadable | length }} recorded run{{ 's' if c.recent.unreadable | length != 1 }} could not be read: {{ c.recent.unreadable | join(', ') }}.</p>{% endif %}
+    {%- if c.recent.rows %}
+    <div class="table-wrap"><table class="table ask-table">
+      <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Command</th><th scope="col">Outcome</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
+      <tbody>
+      {%- for r in c.recent.rows %}
+      <tr><td>{{ stamp(r.at) }}</td><td>{{ r.who }}</td><td class="mono">{{ r.commands | join('; ') }}{% if r.devices > 1 %} <span class="muted">(with {{ r.devices - 1 }} other device{{ 's' if r.devices != 2 }})</span>{% endif %}</td>
+        <td>{{ badge(r.words if r.state in ('answered', 'cut') else r.state, 'ok' if r.state == 'answered' else 'warn' if r.state in ('cut', 'skipped', 'running') else 'danger', title=r.words) }}</td>
+        <td><a href="{{ url_for('device_v2.device', name=c.host, tab='ask', run=r.id) }}" hx-get="{{ url_for('device_v2.ask', name=c.host, run=r.id) }}" hx-target="#ask" hx-swap="outerHTML">Open</a></td></tr>
+      {%- endfor %}
+      </tbody></table></div>
+    {%- else %}<p class="muted">None yet.</p>{% endif %}
+  </details>
+  {%- endif %}
+</section>

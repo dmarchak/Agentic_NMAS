@@ -277,9 +277,11 @@ class TestThePage:
         assert 'hx-get="/v2/device/r3/overview?list=Lab"' in html and 'hx-get="/v2/device/r3/monitoring?list=Lab"' in html
         assert text.count("Not in the spike") == 0          # a title, not text
         # Overview, Intent, History, Logs, NetBox and Neighbours (step 4,
-        # 2026-10-01) and Monitoring are built; Ask the device is not.
+        # 2026-10-01) and Monitoring are built, and Ask the device (C547, 2026-10-08): no
+        # tab is drawn disabled.
         tabs = html[html.index('role="tablist"'):html.index('id="tab-body"')]
-        assert tabs.count('aria-disabled="true"') == 1
+        assert tabs.count('aria-disabled="true"') == 0
+        assert 'hx-get="/v2/device/r3/ask?list=Lab"' in tabs
 
     def test_an_unknown_device_is_a_404_naming_it_and_the_list(self, lab):
         r, html = _get(lab, "/v2/device/nope")
@@ -636,6 +638,7 @@ class TestTheShippedScripts:
                                                     "/v2/monitoring/apply/job/x",
                                                     "/v2/device/r3/capture/job/x",
                                                     "/v2/device/r3/rotate/job/x",
+                                                    "/v2/device/r3/ask?job=x",
                                                     "/v2/templates?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
@@ -654,7 +657,8 @@ class TestTheShippedScripts:
         # attention); +1 coverage_reporting (Coverage's not-reporting reader).
         # +1 2026-10-06: templates (C516: the Templates table, heard on its page).
         # -1 2026-10-08: freshness (switched off, reader_job.RETIRED: nothing announces it).
-        assert len(keys) == 30
+        # +1 2026-10-08: reads (Show commands runs, Ask the device listens for its run's end).
+        assert len(keys) == 31
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

@@ -39,6 +39,9 @@ import uuid
 
 log = logging.getLogger(__name__)
 
+#: The run's steps, in order, as the manual names them (how-it-works/show-commands.md).
+STEPS = ("refuse", "hold", "read", "mask", "cap", "record")
+
 #: Commands in one run: a person's list, or a saved set's. A longer list is a script, not a read.
 MAX_COMMANDS = 10
 
@@ -153,7 +156,7 @@ def _dir(list_name: str) -> str:
 
 
 def _path(list_name: str, run_id: str) -> str:
-    if not re.fullmatch(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{32}", run_id or ""):
+    if not re.fullmatch(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{32}", run_id or ""):
         raise ValueError(f"not a run id: {run_id!r}")
     return os.path.join(_dir(list_name), f"{run_id}.json")
 
@@ -229,8 +232,17 @@ def _answer(conn, command: str, values: dict, cap: int) -> dict:
             "took_s": round(time.time() - started, 2)}
 
 
+def new_id(now: float = None) -> str:
+    """A run's id: its UTC start to the microsecond, then 32 hex characters, so ids sort by
+    time even for two runs in one second (the random part decided their order before)."""
+    now = time.time() if now is None else now
+    micro = min(999999, int((now - int(now)) * 1e6))      # truncated: never wraps the second
+    return (time.strftime("%Y%m%dT%H%M%S", time.gmtime(now)) + f"{micro:06d}Z-"
+            + uuid.uuid4().hex)
+
+
 def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
-        purpose: str = "", progress=None, session=None) -> dict:
+        purpose: str = "", progress=None, session=None, run_id: str = "") -> dict:
     """Ask *hosts* of *list_name* each of *commands*; the run's record (also written).
 
     *by* is ``person`` or ``agent`` (*actor* is then the person it acts for). *progress* is
@@ -244,7 +256,7 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     hosts = list(dict.fromkeys(h for h in (hosts or []) if h))
     commands = [c.strip() for c in (commands or []) if c and c.strip()]
     started = time.time()
-    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(started)) + "-" + uuid.uuid4().hex
+    run_id = run_id or new_id(started)
     record = {"id": run_id, "list": list_name, "actor": actor, "by": by, "purpose": purpose,
               "started_at": started, "finished_at": None, "state": "running",
               "commands": commands, "devices": hosts, "results": {}, "refused": "",
@@ -396,3 +408,78 @@ def _s3_put(list_name: str):
         full = "/".join(filter(None, [prefix, key]))
         client.put_object(bucket, full, io.BytesIO(data), len(data))
     return put, ""
+
+
+# --------------------------------------------------------------------------- as a job
+
+#: The announcement a finished run makes (`invalidation.ANNOUNCERS`): every page showing a
+#: run in progress re-reads it by id, never by a timer.
+ANNOUNCE_KEYS = ("reads",)
+ANNOUNCER = "show-commands"
+
+
+def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
+          purpose: str = "") -> dict:
+    """Refuse now, or start the run as a job: {"refused": why} (recorded, nothing asked)
+    or {"job": id, "run": id}. A run of one device is a job too: one device's read is
+    bounded by the read timeout (120 s), past the edge proxy's 100 s limit on a request."""
+    from modules.nsot import capture_job
+
+    hosts = list(dict.fromkeys(h for h in (hosts or []) if h))
+    commands = [c.strip() for c in (commands or []) if c and c.strip()]
+    run_id = new_id()
+    why = refusal(commands, len(hosts)) or ("" if hosts else "Refused: no device to ask.")
+    if why:
+        try:
+            run(list_name, hosts, commands, actor, by=by, purpose=purpose, run_id=run_id)
+        except Refused:
+            pass
+        return {"refused": why, "run": run_id}
+    label = (f"{len(commands)} command(s) on " +
+             (hosts[0] if len(hosts) == 1 else f"{len(hosts)} devices"))
+    job = capture_job.start(list_name, label, actor,
+                            lambda job_id: {"run": run(list_name, hosts, commands, actor,
+                                                        by=by, purpose=purpose,
+                                                        run_id=run_id)["id"]},
+                            kind="show commands", announce_keys=ANNOUNCE_KEYS,
+                            announcer=ANNOUNCER)
+    return {"job": job, "run": run_id}
+
+
+# --------------------------------------------------------------------------- the device's reads
+
+#: Common reads, offered to pick on Ask the device (board A), the same on IOS and IOS-XE.
+COMMON = ("show ip interface brief", "show ip route", "show ip ospf neighbor",
+          "show ip bgp summary", "show vrrp brief", "show ntp associations",
+          "show archive config differences", "show logging | include %")
+
+
+def answer_of(record: dict, host: str, command: str):
+    """*host*'s answer to *command* in *record*, or None."""
+    r = (record or {}).get("results", {}).get(host) or {}
+    return next((a for a in r.get("answers") or [] if a.get("command") == command), None)
+
+
+def previous(list_name: str, host: str, command: str, before_id: str):
+    """The latest run before *before_id* in which *host* answered *command*, or None."""
+    for r in runs(list_name, device=host, limit=500)["runs"]:
+        if r["id"] >= before_id:
+            continue
+        a = answer_of(r, host, command)
+        if a and a.get("state") == ANSWERED and "answer" in a:
+            return r
+    return None
+
+
+def compare(old: str, new: str) -> list:
+    """[("ctx"|"del"|"add", line)]: the lines that changed between two answers, with
+    one line of context, in the answers' order."""
+    import difflib
+    out = []
+    for line in difflib.unified_diff((old or "").splitlines(), (new or "").splitlines(),
+                                     lineterm="", n=1):
+        if line.startswith(("---", "+++", "@@")):
+            continue
+        kind = {"-": "del", "+": "add"}.get(line[:1], "ctx")
+        out.append((kind, line[1:] if line[:1] in "+- " else line))
+    return out

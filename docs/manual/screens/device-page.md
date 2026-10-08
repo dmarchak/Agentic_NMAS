@@ -119,4 +119,21 @@ measured. It opens no session to the device.
 
 ## Ask the device {#ask-the-device}
 
-Not built yet (plan 7.3): an allowlisted, read-only command box.
+Ask the device a read-only command and read its answer here. Type a command, or pick one of
+the common reads or a saved set. The command is checked as you type: a command that is not a
+read (`reload`, `copy`, `| redirect`, anything the allowlist does not hold) says why beside the
+box, and **Run** stays off; a command known to be heavy (`show tech-support`, `show logging`
+unfiltered) says what it costs. **Run** reads the device now, busy on itself until the answer
+arrives, which appears in place: masked as a golden is, with how long it took, and who and
+when on hover. An answer longer than the network's cap is kept to the cap and says it was cut.
+
+The device is held while it is read, so a read and another operation never touch it at once:
+a device another operation holds is not read (the card says who holds it; run it again once
+that ends), and while a read holds it, a deploy is refused naming the read.
+
+**Recent reads** lists the device's latest runs, yours and others' (and the agent's, for the
+person it acted for), each with its outcome; **Open** draws one again. **Compare with the last
+answer** shows the lines that changed since the device last answered the same command.
+
+Nothing here changes the device: there is no configuration mode and no free-form session. Every
+read is recorded. How it works: [Show commands](show-commands).

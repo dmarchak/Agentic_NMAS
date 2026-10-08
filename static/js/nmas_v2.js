@@ -14,7 +14,7 @@
 
   /* The data keys a v2 fragment can listen for (modules/invalidation.py's
      vocabulary; the readers that announce them). */
-  var KEYS = ['reachability', 'integration_health', 'alerts', 'drift', 'dashboards',
+  var KEYS = ['reachability', 'integration_health', 'alerts', 'drift', 'dashboards', 'reads',
               'job_health', 'ci_verdict', 'app_version', 'netbox', 'remote', 'baselines',
               // A batch deploy run as a job (P.9 d2), and the goldens it commits.
               'deploy_job', 'goldens',
@@ -269,6 +269,7 @@
   function relayCoverageReporting() { relay('coverage_reporting'); }
   function relayAlerts() { relay('alerts'); }
   function relayDrift() { relay('drift'); }
+  function relayReads() { relay('reads'); }
   function relayDashboards() { relay('dashboards'); }
   function relaySettings() { relay('settings'); }
   function relayJobHealth() { relay('job_health'); }
@@ -346,6 +347,7 @@
     NMAS.subscribe('coverage_reporting', 'v2CoverageReporting', relayCoverageReporting);
     NMAS.subscribe('alerts', 'v2Alerts', relayAlerts);
     NMAS.subscribe('drift', 'v2Drift', relayDrift);
+    NMAS.subscribe('reads', 'v2Reads', relayReads);
     NMAS.subscribe('dashboards', 'v2Dashboards', relayDashboards);
     NMAS.subscribe('settings', 'v2Settings', relaySettings);
     NMAS.subscribe('job_health', 'v2JobHealth', relayJobHealth);

@@ -1051,3 +1051,33 @@ select { max-width: 100%; }
 .tpl-why { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--ink-2); max-width: 640px; }
 .tpl-why input { font: inherit; font-size: 13.5px; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--r);
   color: var(--ink); background: var(--surface); }
+
+/* Ask the device (C547, board A, signed off 2026-10-08). */
+.ask { display: flex; flex-direction: column; gap: 12px; }
+.ask-hd { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ask-hd h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.ask-form { display: flex; flex-direction: column; gap: 4px; }
+.ask-label { font-size: 12px; color: var(--ink-3); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.ask-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.ask-input { flex: 1 1 360px; min-width: 0; font-size: 13.5px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: var(--r); background: var(--surface); color: var(--ink); }
+.ask-input.ask-bad { border-color: var(--danger); background: var(--danger-soft); }
+.ask-check { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex: 1 1 260px; }
+.ask-check p { margin: 0; font-size: 13px; }
+.ask-why { color: var(--danger); }
+.ask-heavy { color: var(--warn); }
+.ask-ok { color: var(--ok); }
+.ask-picks { display: flex; flex-direction: column; gap: 8px; }
+.ask-pickrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ask-lbl { font-size: 12px; color: var(--ink-3); min-width: 110px; }
+.ask-pick { border: 1px solid var(--line); background: var(--surface-2); border-radius: 14px; padding: 3px 10px;
+  font-size: 12.5px; color: var(--ink); text-decoration: none; }
+.ask-pick:hover { background: var(--hover); }
+.ask-set { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--accent-ink); }
+.ask-pre { margin: 0; max-width: 100%; overflow-x: auto; white-space: pre; background: var(--surface-2);
+  border: 1px solid var(--line-2); border-radius: var(--r); padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; }
+.ask-answer, .ask-compare { display: flex; flex-direction: column; gap: 6px; }
+.ask-cmd, .ask-compare h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.ask-cut { margin: 0; font-size: 13px; color: var(--ink-2); }
+.ask-meta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+.ask-recent > summary { cursor: pointer; color: var(--ink-2); }

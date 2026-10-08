@@ -31,6 +31,6 @@
   {% endfor %}
 </div>
 <div id="tab-body" class="tab-body">
-  {% if op_card %}{% with c=op_card %}{% include "v2/_" ~ op_card.op ~ ".html" %}{% endwith %}{% elif tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% elif tab == 'history' %}{% include "v2/_history.html" %}{% elif tab == 'intent' and ed %}{% with c=ed %}{% include "v2/_intent_edit.html" %}{% endwith %}{% elif tab == 'intent' %}{% include "v2/_intent.html" %}{% elif tab == 'neighbours' %}{% include "v2/_neighbours.html" %}{% elif tab == 'logs' %}{% include "v2/_logs.html" %}{% elif tab == 'netbox' %}{% include "v2/_netbox.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
+  {% if op_card %}{% with c=op_card %}{% include "v2/_" ~ op_card.op ~ ".html" %}{% endwith %}{% elif tab == 'monitoring' %}{% include "v2/_monitoring.html" %}{% elif tab == 'history' %}{% include "v2/_history.html" %}{% elif tab == 'intent' and ed %}{% with c=ed %}{% include "v2/_intent_edit.html" %}{% endwith %}{% elif tab == 'intent' %}{% include "v2/_intent.html" %}{% elif tab == 'neighbours' %}{% include "v2/_neighbours.html" %}{% elif tab == 'ask' %}{% with c=ask %}{% include "v2/_ask.html" %}{% endwith %}{% elif tab == 'logs' %}{% include "v2/_logs.html" %}{% elif tab == 'netbox' %}{% include "v2/_netbox.html" %}{% else %}{% include "v2/_overview.html" %}{% endif %}
 </div>
 {% endblock %}

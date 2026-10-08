@@ -102,6 +102,7 @@ VOCABULARY = {
     "app_version": "whether the running commit is what is pushed (origin/main), as the "
                    "app-pushed reader last stored it",
     "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",
+    "reads": "a Show commands run (Ask the device, Show commands): finished, its answers ready by id",
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
     "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
     "device_progress": "an operation the app ran on a held device reached its next step: a running card redraws its stepper (C370)",
@@ -114,6 +115,7 @@ VOCABULARY = {
 #: they send are senders to `keys_in_use`, exactly as a reader's are.
 ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
+    "show-commands": ("reads",),               # modules/nsot/reads.py: a run's end
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
     # modules/deploy_job.py: each device finishing, and at the end what a
@@ -167,6 +169,8 @@ DECLARED = {
     "v2.heartbeat_apply": Nothing("writes the generated heartbeat rules file, which no panel reads; the page redraws itself, and nothing alerts differently until a person installs it on the host"),
     "templatize.edit_committed": ("intent", "remote"),
     "intent_v2.commit": ("intent", "remote"),
+    # A read writes only its run's record; its end is the job's announcement (`reads`).
+    "reads_v2.ask_run": ("reads",),
     "templates_v2.approve": ("templates", "remote"),
     "templates_v2.revoke": ("templates", "remote"),
     "templates_v2.bring": ("templates", "remote"),

@@ -80,6 +80,9 @@ NOT_AN_OPERATION = {
     ("_coverage_deploy_preview.html", "Back"): "returns to Coverage, sending nothing",
     ("_timeline.html", "Show the change"): "reads one commit's masked change",
     ("_actions_menu.html", "Actions"): "opens the actions menu; each row carries its own link",
+    ("_ask.html", "Compare with the last answer"): ("redraws the card with the lines that "
+                                                    "changed since the device's last answer; "
+                                                    "reads only the kept runs"),
     ("_capture.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_capture.html", "Edit intent…"): ("opens the device's Intent tab editor on v2 (C569); "
                                         "editing intent has no How it works page of its own"),

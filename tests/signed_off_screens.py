@@ -101,8 +101,9 @@ SIGNED_OFF = {
                                   "timeline filtered to the device, the same reader and drawing. "
                                   "Before it: NSOT_STAGE7_PLAN 1g, step (a)"),
     "tab:neighbours": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the device tabs approved, step (a)"),
-    "tab:ask": ("2026-09-30", "NSOT_STAGE7_PLAN 1g: the device tabs approved, step (a); not "
-                              "built (drawn disabled)"),
+    "tab:ask": ("2026-10-08", "C547, board A (canvas page 'reads'), signed off 2026-10-08 with "
+                              "the design NSOT_READS.md and R1 to R5; the tab's name approved "
+                              "2026-09-30 (NSOT_STAGE7_PLAN 1g)"),
     "retired.html": ("2026-10-03", "the device-actions canvas, board 12 (Retire), its last card: "
                                    "a retired device's address shows its retired record (C185); "
                                    "NSOT_STAGE7_PLAN, the boards 8 to 12 sign-off"),

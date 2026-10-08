@@ -26,7 +26,7 @@ bp = Blueprint("device_v2", __name__, url_prefix="/v2")
 TABS = [("overview", "Overview"), ("intent", "Intent"), ("history", "History"),
         ("monitoring", "Monitoring"), ("logs", "Logs"), ("netbox", "NetBox"),
         ("neighbours", "Neighbours"), ("ask", "Ask the device")]
-BUILT = ("overview", "intent", "history", "monitoring", "logs", "netbox", "neighbours")
+BUILT = ("overview", "intent", "history", "monitoring", "logs", "netbox", "neighbours", "ask")
 
 
 def _strict(resp, code=200):
@@ -122,6 +122,16 @@ def _netbox_ctx(ref, dev):
 def _logs_ctx(ref, dev):
     from modules import device_logs
     return {"device": dev, "list_name": ref.name, "g": device_logs.for_device(dev)}
+
+
+def _ask_ctx(ref, dev):
+    """Ask the device (C547, board A): the card in the state the address names."""
+    from modules import reads_page
+    return {"ask": reads_page.ask(ref.name, dev["hostname"],
+                                  command=request.args.get("command", ""),
+                                  job=request.args.get("job", ""),
+                                  run_id=request.args.get("run", ""),
+                                  compare=request.args.get("compare", ""))}
 
 
 def _neighbours_ctx(ref, dev):
@@ -222,6 +232,7 @@ def device(name):
            # Drained by a person (modules/drained.py): the header's badge, the menu's row.
            "drained": _drained_now(ref, dev)}
     ctx.update(_overview_ctx(ref, dev) if tab == "overview" else
+               _ask_ctx(ref, dev) if tab == "ask" else
                _intent_ctx(ref, dev) if tab == "intent" else
                _history_ctx(ref, dev) if tab == "history" else
                _neighbours_ctx(ref, dev) if tab == "neighbours" else
@@ -428,6 +439,18 @@ def intent(name):
         return refusal
     ref, dev = found
     return _strict(render_template("v2/_intent.html", **_intent_ctx(ref, dev)))
+
+
+@bp.route("/device/<name>/ask", methods=["GET"])
+def ask(name):
+    """Ask the device's card alone (C547, board A), in the state its query names: a picked
+    command, a run's job, a run by id, a comparison. Asks no device: Run is a POST
+    (`reads_v2.ask_run`)."""
+    found, refusal = _device_or_404(name)
+    if refusal is not None:
+        return refusal
+    ref, dev = found
+    return _strict(render_template("v2/_ask.html", c=_ask_ctx(ref, dev)["ask"]))
 
 
 @bp.route("/device/<name>/neighbours", methods=["GET"])
