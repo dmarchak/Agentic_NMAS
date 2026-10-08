@@ -45,6 +45,7 @@ import tempfile
 import pytest
 
 from tests.js_source import with_loaded_scripts
+from tests.source_index import tracked
 
 TEMPLATES = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "templates")
@@ -56,10 +57,7 @@ REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%<>~^")
 
 
 def _templates():
-    for root, _dirs, files in os.walk(TEMPLATES):
-        for name in sorted(files):
-            if name.endswith(".html"):
-                yield os.path.join(root, name)
+    yield from tracked(TEMPLATES, suffix=".html")
 
 
 def _scripts(path):

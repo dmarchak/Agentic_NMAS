@@ -13,17 +13,18 @@ class body, in the program, its scripts and its tests. A property's
 """
 
 import ast
-import glob
 import os
+
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ACCESSORS = ("setter", "getter", "deleter")
 
 
 def _files():
-    out = [f for f in glob.glob(os.path.join(ROOT, "**", "*.py"), recursive=True)
+    out = [f for f in tracked(suffix=".py")
            if "node_modules" not in f and os.sep + "." not in f[len(ROOT):]]
-    for f in glob.glob(os.path.join(ROOT, "scripts", "*")):
+    for f in tracked("scripts", recursive=False):
         if os.path.isfile(f) and not f.endswith(".py"):
             with open(f, encoding="utf-8", errors="ignore") as fh:
                 first = fh.readline()
@@ -65,7 +66,7 @@ def test_no_name_is_defined_twice():
                 found += duplicates(fh.read(), os.path.relpath(f, ROOT))
             except SyntaxError:
                 continue
-    assert len(files) >= 300, f"only {len(files)} files scanned: the glob found too little"
+    assert len(files) >= 300, f"only {len(files)} files scanned: the listing found too little"
     assert found == [], found
 
 

@@ -16,6 +16,8 @@ import re
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 CUT = [
@@ -65,12 +67,7 @@ def test_the_404_check_can_see_a_route_that_exists():
 
 
 def _shipped_files():
-    out = []
-    for base in ("templates", "static/js/gen", "scripts"):
-        for dirpath, _dirs, names in os.walk(os.path.join(ROOT, base)):
-            for n in names:
-                out.append(os.path.join(dirpath, n))
-    return out
+    return tracked("templates", "static/js/gen", "scripts")
 
 
 def test_nothing_shipped_refers_to_a_cut_path():

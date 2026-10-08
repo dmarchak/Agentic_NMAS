@@ -21,15 +21,14 @@ REMOVED_MODULES = ("jenkins_runner", "check_runner", "jenkins_shell", "pipeline_
 def _python_files():
     out = [os.path.join(ROOT, "app.py")]
     for sub in ("modules", "routes", "scripts", "tests"):
-        for dirpath, _dirs, files in os.walk(os.path.join(ROOT, sub)):
-            for name in files:
-                path = os.path.join(dirpath, name)
-                if name.endswith(".py"):
-                    out.append(path)
-                elif sub == "scripts" and "." not in name:
-                    with open(path, "rb") as fh:
-                        if b"python" in fh.read(64):
-                            out.append(path)
+        for path in source_index.tracked(sub):
+            name = os.path.basename(path)
+            if name.endswith(".py"):
+                out.append(path)
+            elif sub == "scripts" and "." not in name:
+                with open(path, "rb") as fh:
+                    if b"python" in fh.read(64):
+                        out.append(path)
     return out
 
 

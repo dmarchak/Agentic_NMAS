@@ -215,11 +215,15 @@ def screen_strings_naming_nmas(paths=None) -> list:
     """``[(file, text)]``: every non-docstring string literal in app.py, modules/ and routes/
     naming the product "NMAS" as a word, outside KEPT_STRINGS. Parsed, never grepped."""
     import ast
+    import os
     import pathlib
 
-    root = pathlib.Path(".")
-    paths = paths or ([root / "app.py"] + sorted((root / "modules").rglob("*.py"))
-                      + sorted((root / "routes").rglob("*.py")))
+    from tests.source_index import tracked
+
+    # Relative to the working directory (the checkout), as KEPT_STRINGS names them.
+    paths = paths or [pathlib.Path(os.path.relpath(p))
+                      for p in tracked("app.py", "modules", "routes", suffix=".py",
+                                       root=".")]
     out = []
     for p in paths:
         if "__pycache__" in p.parts:

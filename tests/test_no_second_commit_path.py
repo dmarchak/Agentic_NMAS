@@ -19,6 +19,7 @@ import dukpy
 import pytest
 
 from modules.nsot import repo as R
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -203,8 +204,7 @@ class TestTheSourceIsRecordedAsGiven:
         """A coercion is invisible at the call site, so the population is every
         save_golden call in the program, with a floor."""
         found = []
-        files = ["app.py"] + [os.path.join(d, f) for base in ("modules", "routes", "scripts")
-                              for d, _s, fs in os.walk(os.path.join(ROOT, base)) for f in fs]
+        files = ["app.py"] + tracked("modules", "routes", "scripts")
         for path in files:
             full = path if os.path.isabs(path) else os.path.join(ROOT, path)
             try:

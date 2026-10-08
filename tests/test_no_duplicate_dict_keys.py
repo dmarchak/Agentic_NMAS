@@ -12,17 +12,17 @@ may repeat one, anywhere in the program or its tests.
 
 import ast
 import collections
-import glob
 import os
+
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _python_files():
     out = [os.path.join(ROOT, "app.py")]
-    for d in ("modules", "routes", "tests"):
-        out += glob.glob(os.path.join(ROOT, d, "**", "*.py"), recursive=True)
-    for f in glob.glob(os.path.join(ROOT, "scripts", "*")):
+    out += tracked("modules", "routes", "tests", suffix=".py")
+    for f in tracked("scripts", recursive=False):
         if os.path.isfile(f):
             with open(f, encoding="utf-8", errors="ignore") as fh:
                 first = fh.readline()

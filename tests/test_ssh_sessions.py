@@ -20,6 +20,7 @@ import threading
 import pytest
 
 from modules import connection as C
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IP = "192.0.2.12"
@@ -252,22 +253,20 @@ class TestThereIsOneOpener:
     def _calls(self):
         found = {}
         for base in ("modules", "routes", "scripts"):
-            for dirpath, _dirs, files in os.walk(os.path.join(ROOT, base)):
-                for name in files:
-                    path = os.path.join(dirpath, name)
-                    if not (name.endswith(".py") or base == "scripts"):
-                        continue
-                    try:
-                        tree = ast.parse(open(path, encoding="utf-8").read())
-                    except (SyntaxError, UnicodeDecodeError):
-                        continue
-                    rel = os.path.relpath(path, ROOT)
-                    for node in ast.walk(tree):
-                        if isinstance(node, ast.Call):
-                            f = node.func
-                            name_ = getattr(f, "id", getattr(f, "attr", ""))
-                            if name_ in ("ConnectHandler", "open_ssh"):
-                                found.setdefault(name_, []).append(rel)
+            for path in tracked(base):
+                if not (path.endswith(".py") or base == "scripts"):
+                    continue
+                try:
+                    tree = ast.parse(open(path, encoding="utf-8").read())
+                except (SyntaxError, UnicodeDecodeError):
+                    continue
+                rel = os.path.relpath(path, ROOT)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Call):
+                        f = node.func
+                        name_ = getattr(f, "id", getattr(f, "attr", ""))
+                        if name_ in ("ConnectHandler", "open_ssh"):
+                            found.setdefault(name_, []).append(rel)
         app = ast.parse(open(os.path.join(ROOT, "app.py"), encoding="utf-8").read())
         for node in ast.walk(app):
             if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "ConnectHandler":

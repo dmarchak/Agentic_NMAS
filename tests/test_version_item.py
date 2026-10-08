@@ -7,7 +7,6 @@ Nothing here computes any of the three again."""
 
 import ast
 import dataclasses
-import glob
 import os
 
 import dukpy
@@ -18,6 +17,7 @@ from modules import config
 from modules import reader_job as R
 from modules.readers import ci_verdict as CV
 from routes import health as H
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 T0 = 1_790_000_000.0
@@ -52,8 +52,8 @@ class TestOneImplementation:
         """AST, over the program: the verdict logic lives in the script alone."""
         names = {"ci_verdict", "verdict_of_runs"}
         found = []
-        for path in glob.glob(os.path.join(ROOT, "modules", "**", "*.py"), recursive=True) + \
-                glob.glob(os.path.join(ROOT, "routes", "*.py")) + [os.path.join(ROOT, "app.py")]:
+        for path in tracked("modules", suffix=".py") + \
+                tracked("routes", suffix=".py", recursive=False) + [os.path.join(ROOT, "app.py")]:
             tree = ast.parse(open(path, encoding="utf-8").read())
             found += [f"{os.path.relpath(path, ROOT)}:{n.name}" for n in ast.walk(tree)
                       if isinstance(n, ast.FunctionDef) and n.name in names]

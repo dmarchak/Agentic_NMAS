@@ -14,6 +14,8 @@ import os
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -71,8 +73,8 @@ def _for_list_calls_missing_authority():
     for base in ("modules", "routes", "scripts", "app.py"):
         path = os.path.join(ROOT, base)
         files = [path] if os.path.isfile(path) else [
-            os.path.join(d, f) for d, _s, fs in os.walk(path) for f in fs
-            if f.endswith(".py") or (base == "scripts" and "." not in f)]
+            p for p in tracked(path)
+            if p.endswith(".py") or (base == "scripts" and "." not in os.path.basename(p))]
         for p in files:
             try:
                 tree = ast.parse(open(p, encoding="utf-8").read())

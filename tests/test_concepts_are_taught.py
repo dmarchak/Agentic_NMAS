@@ -27,6 +27,7 @@ import dukpy
 import pytest
 
 from tests import payload_providers as P
+from tests.source_index import tracked
 from tests.payload_render import lift, shipped
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -171,9 +172,8 @@ def _marked_names() -> set:
     which the one renderer marks the same way."""
     text = "\n".join(open(os.path.join(GEN, f), encoding="utf-8").read()
                      for f in os.listdir(GEN))
-    for root, _, files in os.walk(os.path.join(ROOT, "templates")):
-        for f in files:
-            text += open(os.path.join(root, f), encoding="utf-8").read()
+    for path in tracked("templates"):
+        text += open(path, encoding="utf-8").read()
     names = set(re.findall(r'data-concept="([a-z-]+)"', text))
     builder = open(os.path.join(ROOT, "modules", "preview_confirm.py"), encoding="utf-8").read()
     return names | set(re.findall(r'"concept":\s*"([a-z-]+)"', builder))

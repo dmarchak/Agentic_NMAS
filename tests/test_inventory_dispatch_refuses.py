@@ -110,25 +110,22 @@ class TestTheSurveyThatJustifiedTheRefusal:
         skip = {".git", "node_modules", "__pycache__", "static"}
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         found = []
-        for dirpath, dirs, files in os.walk(root):
-            dirs[:] = [d for d in dirs if d not in skip]
-            for name in files:
-                if not name.endswith(".py"):
+        for path in source_index.tracked(suffix=".py", root=root):
+            if skip & set(os.path.relpath(path, root).split(os.sep)[:-1]):
+                continue
+            try:
+                walked = source_index.nodes(path)   # one parse per file per run (C45)
+            except (OSError, SyntaxError, ValueError):
+                continue
+            for node in walked:
+                if not isinstance(node, ast.Call):
                     continue
-                path = os.path.join(dirpath, name)
-                try:
-                    walked = source_index.nodes(path)   # one parse per file per run (C45)
-                except (OSError, SyntaxError, ValueError):
+                label = (getattr(node.func, "id", None)
+                         or getattr(node.func, "attr", None))
+                if label != "load_saved_devices":
                     continue
-                for node in walked:
-                    if not isinstance(node, ast.Call):
-                        continue
-                    label = (getattr(node.func, "id", None)
-                             or getattr(node.func, "attr", None))
-                    if label != "load_saved_devices":
-                        continue
-                    rel = os.path.relpath(path, root)
-                    found.append((rel, node.lineno, node.args, node.keywords))
+                rel = os.path.relpath(path, root)
+                found.append((rel, node.lineno, node.args, node.keywords))
         return found
 
     @classmethod

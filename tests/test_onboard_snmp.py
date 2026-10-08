@@ -14,10 +14,11 @@ fleet fixtures are the test: every one of the nine carries
 removal.
 """
 
-import glob
 import os
 
 import pytest
+
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
@@ -25,8 +26,8 @@ FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
 
 @pytest.fixture(scope="module")
 def fleet():
-    paths = sorted(glob.glob(os.path.join(FLEET, "*.cfg")))
-    # Not vacuous: nine devices, measured. An empty glob would make every
+    paths = tracked(FLEET, suffix=".cfg", recursive=False)
+    # Not vacuous: nine devices, measured. An empty listing would make every
     # "nothing was touched" assertion below trivially true -- the
     # set-difference rule, applied to a directory listing.
     assert len(paths) == 9, f"expected the nine reference devices, got {len(paths)}"

@@ -26,6 +26,8 @@ import subprocess
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #: The one function allowed to name "commit" to git.
@@ -49,17 +51,16 @@ OTHER_REPOSITORY = {
 def _program_files():
     out = []
     for top in ("modules", "routes", "scripts"):
-        for base, _dirs, files in os.walk(os.path.join(ROOT, top)):
-            if "__pycache__" in base:
+        for path in tracked(top):
+            if "__pycache__" in path:
                 continue
-            for f in files:
-                path = os.path.join(base, f)
-                if f.endswith(".py"):
-                    out.append(path)
-                elif top == "scripts" and "." not in f:
-                    with open(path, "rb") as fh:
-                        if b"python" in fh.readline():
-                            out.append(path)
+            f = os.path.basename(path)
+            if f.endswith(".py"):
+                out.append(path)
+            elif top == "scripts" and "." not in f:
+                with open(path, "rb") as fh:
+                    if b"python" in fh.readline():
+                        out.append(path)
     out.append(os.path.join(ROOT, "app.py"))
     return out
 

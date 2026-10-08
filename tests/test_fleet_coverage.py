@@ -6,16 +6,18 @@ telemetry; S3/S4 run OSPF rather than RIP/VRRP. Running the whole fleet is how
 parser gaps surface before 3b builds a template library on the schema.
 """
 
-import glob
 import os
 
 import pytest
+
+from tests.source_index import tracked
 
 from modules.nsot import roundtrip
 from modules.nsot.roundtrip import rank_unmodeled, validate_device
 
 FLEET = os.path.join(os.path.dirname(__file__), "fixtures", "configs", "fleet")
-DEVICES = sorted(os.path.basename(p)[:-4] for p in glob.glob(f"{FLEET}/*.cfg"))
+DEVICES = sorted(os.path.basename(p)[:-4] for p in tracked(FLEET, suffix=".cfg",
+                                                            recursive=False))
 
 
 def _platform(name):

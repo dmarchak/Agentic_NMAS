@@ -347,12 +347,12 @@ class TestEveryFileTheCodeWritesIsClassified:
     }
 
     def _writers(self):
-        import glob
+        from tests.source_index import tracked
 
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         names = {}
-        files = (glob.glob(os.path.join(root, "modules", "**", "*.py"), recursive=True)
-                 + glob.glob(os.path.join(root, "routes", "*.py"))
+        files = (tracked("modules", suffix=".py", root=root)
+                 + tracked("routes", suffix=".py", recursive=False, root=root)
                  + [os.path.join(root, "app.py")])
         for f in files:
             text = open(f, encoding="utf-8").read()

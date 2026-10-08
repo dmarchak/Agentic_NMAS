@@ -11,14 +11,16 @@ The second, independent layer is Actions disabled in the config repository's
 own settings, so nothing can run THERE on a GitHub-hosted runner at all.
 """
 
-import glob
 import os
 
 import pytest
 import yaml
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORKFLOWS = sorted(glob.glob(os.path.join(ROOT, ".github", "workflows", "*.y*ml")))
+WORKFLOWS = tracked(os.path.join(ROOT, ".github", "workflows"), suffix=(".yml", ".yaml"),
+                    recursive=False)
 
 
 def _load(path):
@@ -52,7 +54,7 @@ def _steps(doc):
 
 
 def test_the_scan_finds_a_workflow_and_a_checkout():
-    """Floor: an empty glob would pass every test below."""
+    """Floor: an empty listing would pass every test below."""
     assert WORKFLOWS, "no workflow found"
     checkouts = [s for path in WORKFLOWS for s in _steps(_load(path)[0])
                  if str(s.get("uses", "")).startswith("actions/checkout")]

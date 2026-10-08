@@ -15,6 +15,7 @@ import os
 import re
 
 from tests import manual_actions as M
+from tests.source_index import track_all, tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -48,21 +49,16 @@ _FN = re.compile(r"^\s*(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(|^\s*root\.\
 
 
 def v1_templates() -> list:
-    out = []
-    for dirpath, _dirs, files in os.walk(TEMPLATES):
-        if os.path.relpath(dirpath, TEMPLATES).split(os.sep)[0] == "v2":
-            continue
-        out += [os.path.join(dirpath, f) for f in files if f.endswith(".html")]
-    return sorted(out)
+    return [p for p in tracked(TEMPLATES, suffix=".html", root=os.path.dirname(TEMPLATES))
+            if os.path.relpath(p, TEMPLATES).split(os.sep)[0] != "v2"]
 
 
 def v2_scripts() -> set:
     """Every script a v2 template loads: v2's own, free to grow."""
     found = set()
-    for dirpath, _dirs, files in os.walk(os.path.join(TEMPLATES, "v2")):
-        for f in files:
-            text = open(os.path.join(dirpath, f), encoding="utf-8").read()
-            found |= set(re.findall(r"js/(nmas_\w+\.js)", text))
+    for path in tracked(os.path.join(TEMPLATES, "v2"), root=os.path.dirname(TEMPLATES)):
+        text = open(path, encoding="utf-8").read()
+        found |= set(re.findall(r"js/(nmas_\w+\.js)", text))
     return found
 
 
@@ -129,6 +125,7 @@ class TestTodaysInterfaceOnlyShrinks:
         planted = tmp_path / "templates"
         (planted / "v2").mkdir(parents=True)
         (planted / "page.html").write_text('<button class="btn">Do a new thing…</button>')
+        track_all(tmp_path)
         monkeypatch.setattr(__import__(__name__), "TEMPLATES", str(planted))
         assert len(v1_templates()) == 1
         assert sum(len(M.controls(_read(p))) for p in v1_templates()) == 1

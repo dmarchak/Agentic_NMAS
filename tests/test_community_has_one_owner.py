@@ -14,6 +14,8 @@ import os
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIST = "Lab"
 
@@ -117,10 +119,7 @@ class TestNoDefaultAnywhere:
             if os.path.isfile(path):
                 yield path
                 continue
-            for d, _dirs, files in os.walk(path):
-                for f in files:
-                    if f.endswith(".py"):
-                        yield os.path.join(d, f)
+            yield from tracked(path, suffix=".py")
 
     def test_no_parameter_named_community_has_a_default(self):
         found, scanned = [], 0

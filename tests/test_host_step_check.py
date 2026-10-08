@@ -17,6 +17,8 @@ import re
 import pytest
 import yaml
 
+from tests.source_index import tracked
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "nmas-host-step-check"
 
@@ -261,20 +263,18 @@ def _recipe_lines():
     rendered: the docs, the unit headers, the scripts, and the Update button's
     commands (modules/update_op.py)."""
     out = []
-    roots = [ROOT / "docs", ROOT / "deploy", ROOT / "scripts", ROOT / "modules"]
-    for base in roots:
-        for p in base.rglob("*"):
-            if not p.is_file() or p.suffix in (".pyc", ".json", ".png") or "__pycache__" in p.parts:
-                continue
-            if p.relative_to(ROOT).as_posix() in HISTORY:
-                continue
-            try:
-                text = p.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                continue
-            for i, line in enumerate(text.splitlines(), 1):
-                if "nmas-render-units --out" in line or re.search(r"\binstall\b.*(/tmp/|\$d)", line):
-                    out.append((f"{p.relative_to(ROOT)}:{i}", line))
+    for p in map(Path, tracked("docs", "deploy", "scripts", "modules", root=ROOT)):
+        if not p.is_file() or p.suffix in (".pyc", ".json", ".png") or "__pycache__" in p.parts:
+            continue
+        if p.relative_to(ROOT).as_posix() in HISTORY:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            if "nmas-render-units --out" in line or re.search(r"\binstall\b.*(/tmp/|\$d)", line):
+                out.append((f"{p.relative_to(ROOT)}:{i}", line))
     return out
 
 

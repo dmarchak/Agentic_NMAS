@@ -73,13 +73,13 @@ def test_nothing_reads_the_retired_setting():
     import os
     import re
 
+    from tests.source_index import tracked
+
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     readers = []
     for base in ("modules", "routes", "app.py", "templates", "static/js/gen"):
         path = os.path.join(root, base)
-        files = [path] if os.path.isfile(path) else [
-            os.path.join(d, f) for d, _s, fs in os.walk(path) for f in fs
-            if f.endswith((".py", ".html", ".js"))]
+        files = [path] if os.path.isfile(path) else tracked(path, suffix=(".py", ".html", ".js"))
         for p in files:
             text = open(p, encoding="utf-8", errors="replace").read()
             if re.search(r"\bnetbox_remove_on_list_delete\b", text):

@@ -508,10 +508,10 @@ class TestTheWriteSurfaceIsStillThree:
         """C465 (2026-10-05): Refresh Hostnames renamed a NetBox device by its own PATCH in
         app.py, outside the gate, the authority and the record; the test above scanned
         netbox_client.py alone and could not see it. Every program file is scanned now."""
-        import glob
+        from tests.source_index import tracked
 
-        files = ["app.py"] + glob.glob("routes/**/*.py", recursive=True) + \
-            glob.glob("modules/**/*.py", recursive=True)
+        files = ["app.py"] + [os.path.relpath(p) for p in tracked("routes", "modules",
+                                                                   suffix=".py", root=".")]
         files = [f for f in files if not f.endswith("modules/netbox_client.py")]
         assert len(files) >= 100, f"the scan found only {len(files)} files"
         hits = []

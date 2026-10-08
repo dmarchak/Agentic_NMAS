@@ -184,11 +184,13 @@ class TestThePageGrowsWithTheInventory:
         Pinned as a number for the same reason the page cost is: a later
         change that quietly inlines a block again must update this line
         rather than pass."""
-        import glob
         import os as _os
 
+        from tests.source_index import tracked
+
         total = sum(_os.path.getsize(f)
-                    for f in glob.glob("static/js/gen/*.js"))
+                    for f in tracked("static/js/gen", suffix=".js", recursive=False,
+                                     root="."))
         assert total > 200_000, (
             f"only {total} bytes are extracted — the inline script has "
             "returned to the templates")

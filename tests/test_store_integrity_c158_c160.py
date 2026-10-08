@@ -234,10 +234,13 @@ def test_every_devices_csv_write_goes_through_the_one_writer():
     """No second writer: a CSV writer anywhere in the program is the atomic
     one. A floor, so a scan that found nothing cannot pass."""
     import pathlib
-    roots = [pathlib.Path("modules"), pathlib.Path("routes"), pathlib.Path("app.py"),
-             pathlib.Path("scripts")]
-    files = [p for r in roots for p in ([r] if r.is_file() else r.rglob("*"))
-             if p.is_file() and (p.suffix == ".py" or p.parent.name == "scripts")]
+
+    from tests.source_index import tracked
+
+    # Relative to the working directory (the checkout), as the assertion names them.
+    files = [pathlib.Path(os.path.relpath(p))
+             for p in tracked("modules", "routes", "app.py", "scripts", root=".")]
+    files = [p for p in files if p.suffix == ".py" or p.parent.name == "scripts"]
     assert len(files) > 100
     writers = [str(p) for p in files
                if "csv.DictWriter(" in p.read_text(errors="replace")]

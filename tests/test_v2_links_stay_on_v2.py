@@ -12,11 +12,12 @@ is `test_page_requests_resolve`'s). A target is v1 when it resolves to a route o
 and is not a static file; an external URL (Grafana, a documentation link) is neither.
 """
 
-import glob
 import os
 import re
 
 import pytest
+
+from tests.source_index import tracked
 
 from tests import todays_page_links as T
 
@@ -75,8 +76,7 @@ def scan(text: str, rules: dict, path: str = "") -> list:
 
 
 def _templates():
-    return sorted(glob.glob(os.path.join(ROOT, "templates", "v2", "**", "*.html"),
-                            recursive=True))
+    return tracked("templates/v2", suffix=".html")
 
 
 class TestEveryV2Template:

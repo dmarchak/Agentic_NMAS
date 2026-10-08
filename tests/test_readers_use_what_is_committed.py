@@ -24,6 +24,7 @@ import pytest
 
 from modules.nsot import repo as R
 from tests.intent_fixture import commit_intent
+from tests.source_index import tracked
 from tests.test_no_get_returns_a_stored_secret import DEVICE
 
 HEAD_LINE = "hostname r1"
@@ -228,8 +229,7 @@ def _trees():
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     out = {}
-    paths = [os.path.join(d, f) for base in ("modules", "routes")
-             for d, _s, fs in os.walk(os.path.join(root, base)) for f in fs if f.endswith(".py")]
+    paths = tracked("modules", "routes", suffix=".py", root=root)
     paths.append(os.path.join(root, "app.py"))
     scripts = os.path.join(root, "scripts")
     paths += [os.path.join(scripts, f) for f in os.listdir(scripts)

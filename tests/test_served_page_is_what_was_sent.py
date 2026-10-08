@@ -14,7 +14,6 @@ defences, either enough alone:
 The live dot's served word (C390): before any script runs it says "Connecting", never "Live";
 the live state is the script's to draw.
 """
-import glob
 import json
 import os
 import re
@@ -22,6 +21,7 @@ import re
 import dukpy
 import pytest
 
+from tests.source_index import tracked
 from tests.test_breakglass_export import lab  # noqa: F401
 from tests.test_credentials_v2 import page  # noqa: F401  (the lab with a list and its record)
 
@@ -67,8 +67,7 @@ class TestThePremise:
         """What the check assumes stays true: no v2 template loads a script from anywhere but
         /static/ (inline ones would be refused by the strict policy anyway)."""
         found, scripts = [], 0
-        for path in sorted(glob.glob(os.path.join(ROOT, "templates", "v2", "**", "*.html"),
-                                     recursive=True)):
+        for path in tracked("templates/v2", suffix=".html"):
             for m in re.finditer(r"<script\b[^>]*>", open(path, encoding="utf-8").read()):
                 scripts += 1
                 if not re.search(r"""src="\{\{ url_for\('static', filename='[^']+'\) \}\}\"""",

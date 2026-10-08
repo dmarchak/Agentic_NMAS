@@ -37,9 +37,10 @@ from pieces (``'/templates/' + action``) references only its literal
 prefix.
 """
 
-import glob
 import os
 import re
+
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -136,7 +137,7 @@ def path_references(corpus: str, rule: str, has_args: bool) -> set:
 def template_sources() -> dict:
     """{relative path: text} for every template."""
     out = {}
-    for path in glob.glob(os.path.join(TEMPLATES, "**", "*.html"), recursive=True):
+    for path in tracked(TEMPLATES, suffix=".html"):
         out[os.path.relpath(path, TEMPLATES)] = open(path, encoding="utf-8").read()
     return out
 

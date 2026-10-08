@@ -15,7 +15,6 @@ occurrence of the shape (C338 was History's Baselines card). Two checks end the 
   answer each say "Couldn't load: <why>" in place, keeping what the target showed; a drawn
   refusal (an HTML fragment, whatever its status) is the server's answer and is drawn.
 """
-import glob
 import json
 import os
 import re
@@ -24,6 +23,7 @@ from html.parser import HTMLParser
 import dukpy
 import pytest
 
+from tests.source_index import tracked
 from tests.test_credentials_v2 import page  # noqa: F401  (the lab with a list and its record)
 from tests.test_breakglass_export import lab  # noqa: F401
 
@@ -104,7 +104,7 @@ def scan(src):
 
 
 def _templates():
-    return sorted(glob.glob(os.path.join(V2, "**", "*.html"), recursive=True))
+    return tracked(V2, suffix=".html")
 
 
 class TestTheScanFindsTheShape:

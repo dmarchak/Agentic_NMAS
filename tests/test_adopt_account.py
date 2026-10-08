@@ -10,12 +10,13 @@ local account is refused before anything is sent, naming why, judged against
 the real fleet's configs.
 """
 
-import glob
 import json
 import os
 import re
 
 import pytest
+
+from tests.source_index import tracked
 
 from modules.nsot import adopt as A
 from modules.nsot import credential_rotation as CR
@@ -293,8 +294,8 @@ def _reads(config_text):
 
 
 class TestTheVerdictOnRealConfigs:
-    FLEET = sorted(glob.glob(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet", "*.cfg"))
-                   + glob.glob(os.path.join(ROOT, "tests", "fixtures", "configs", "*.cfg")))
+    FLEET = sorted(tracked("tests/fixtures/configs/fleet", "tests/fixtures/configs",
+                           suffix=".cfg", recursive=False))
 
     def test_every_fleet_device_logs_in_locally(self):
         assert len(self.FLEET) >= 9

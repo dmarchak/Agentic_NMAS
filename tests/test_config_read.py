@@ -16,9 +16,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = Path(__file__).resolve().parent.parent
 R2 = ROOT / "tests" / "fixtures" / "configs" / "fleet" / "r2.cfg"
-FLEET = sorted((ROOT / "tests" / "fixtures" / "configs" / "fleet").glob("*.cfg"))
+FLEET = [Path(p) for p in tracked("tests/fixtures/configs/fleet", suffix=".cfg",
+                                  recursive=False, root=ROOT)]
 
 
 def _r2():

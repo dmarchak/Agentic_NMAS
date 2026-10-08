@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.source_index import tracked
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Packages introduced by the NSoT work. modules/nsot/ arrives in later phases;
@@ -59,7 +61,7 @@ def _python_files():
         root = REPO_ROOT / package
         if not root.is_dir():
             continue
-        for path in sorted(root.rglob("*.py")):
+        for path in map(Path, tracked(root, suffix=".py", root=REPO_ROOT)):
             if "__pycache__" in path.parts:
                 continue
             yield path

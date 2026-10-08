@@ -11,6 +11,8 @@ every NMAS write there is the operator's token (C100).
 import ast
 import os
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #: The functions that write to NetBox on a person's behalf, and the guard
@@ -25,11 +27,10 @@ def _sources():
         if os.path.isfile(path):
             yield path
             continue
-        for d, _dirs, files in os.walk(path):
-            for f in files:
-                p = os.path.join(d, f)
-                if f.endswith(".py") or (base == "scripts" and "." not in f):
-                    yield p
+        for p in tracked(path):
+            f = os.path.basename(p)
+            if f.endswith(".py") or (base == "scripts" and "." not in f):
+                yield p
 
 
 def _calls(tree, names):

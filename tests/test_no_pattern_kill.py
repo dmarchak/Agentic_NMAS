@@ -15,6 +15,8 @@ import socket
 import stat
 import subprocess
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PATTERN_KILL = re.compile(
     r"\b(pkill|killall)\b|\bpgrep\s+(-\w*\s+)*-\w*f\b")
@@ -37,20 +39,18 @@ def _offenders_in(text: str, fenced_only: bool) -> list:
 def _scan():
     found, scanned = [], 0
     for top, fenced in (("scripts", False), ("deploy", False), ("docs", True)):
-        for base, _dirs, files in os.walk(os.path.join(ROOT, top)):
-            if "__pycache__" in base:
+        for path in tracked(top):
+            if "__pycache__" in path:
                 continue
-            for f in files:
-                if fenced and not f.endswith(".md"):
-                    continue
-                path = os.path.join(base, f)
-                try:
-                    text = open(path, encoding="utf-8").read()
-                except (UnicodeDecodeError, OSError):
-                    continue
-                scanned += 1
-                found += [(os.path.relpath(path, ROOT), n, l)
-                          for n, l in _offenders_in(text, fenced)]
+            if fenced and not path.endswith(".md"):
+                continue
+            try:
+                text = open(path, encoding="utf-8").read()
+            except (UnicodeDecodeError, OSError):
+                continue
+            scanned += 1
+            found += [(os.path.relpath(path, ROOT), n, l)
+                      for n, l in _offenders_in(text, fenced)]
     return found, scanned
 
 

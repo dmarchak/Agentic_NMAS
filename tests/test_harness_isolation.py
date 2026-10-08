@@ -16,6 +16,8 @@ import types
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -111,9 +113,7 @@ def _data_literal_joins(path):
 
 def _python_sources():
     out = [os.path.join(ROOT, "app.py")]
-    for sub in ("modules", "routes"):
-        for dirpath, _d, files in os.walk(os.path.join(ROOT, sub)):
-            out += [os.path.join(dirpath, f) for f in files if f.endswith(".py")]
+    out += tracked("modules", "routes", suffix=".py")
     return out
 
 

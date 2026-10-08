@@ -28,10 +28,11 @@ Scope: `docs/bootstrap-probe/` only. These are throwaway measurement labs in
 this repository; `rcn-lab1` is not here and is not this suite's business.
 """
 
-import glob
 import os
 
 import pytest
+
+from tests.source_index import tracked
 
 yaml = pytest.importorskip("yaml")
 
@@ -51,13 +52,13 @@ LAUNCH_TARGET = "/launch.py"
 #: scan found nothing at all, so both the file count and the node count are
 #: pinned as numbers. Measured 2026-09-23: 6 topologies, 4 c8000v nodes.
 #: These are deliberately lower than the real figures -- the failure being
-#: guarded is the glob matching NOTHING, not the directory growing.
+#: guarded is the listing matching NOTHING, not the directory growing.
 MIN_TOPOLOGIES = 4
 MIN_C8000V_NODES = 3
 
 
 def _topologies():
-    return sorted(glob.glob(os.path.join(PROBE_DIR, "*.clab.yml")))
+    return tracked(PROBE_DIR, suffix=".clab.yml", recursive=False)
 
 
 def _nodes(path):
@@ -109,7 +110,7 @@ def unpatched_c8000v_nodes(paths):
 def test_the_scan_finds_something():
     paths = _topologies()
     assert len(paths) >= MIN_TOPOLOGIES, (
-        f"found {len(paths)} topologies under {PROBE_DIR} -- the glob is "
+        f"found {len(paths)} topologies under {PROBE_DIR} -- the listing is "
         f"matching almost nothing and every check below would pass vacuously")
 
     c8000v = [n for p in paths for n in _nodes(p)

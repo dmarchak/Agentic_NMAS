@@ -17,10 +17,11 @@ including single-instance settings whose replacement pairing matters
 (`logging trap`), where this change moves only what C193 names.
 """
 
-import glob
 import os
 
 import pytest
+
+from tests.source_index import tracked
 
 from modules.nsot.deploy import (RollbackNotInverse, assert_rollback_provenance,
                                  classify_diff, landed_between, rollback_commands)
@@ -200,12 +201,12 @@ class TestASharedKeyIsNamedNotHidden:
 
 
 class TestTheFleet:
-    CONFIGS = sorted(glob.glob(os.path.join(FLEET, "*.cfg")))
+    CONFIGS = tracked(FLEET, suffix=".cfg", recursive=False)
 
     def test_the_scan_finds_the_fleet(self):
         assert len(self.CONFIGS) >= 9
 
-    @pytest.mark.parametrize("path", sorted(glob.glob(os.path.join(FLEET, "*.cfg"))),
+    @pytest.mark.parametrize("path", tracked(FLEET, suffix=".cfg", recursive=False),
                              ids=os.path.basename)
     def test_every_device_is_equal_to_itself(self, path):
         text = open(path, encoding="utf-8").read()

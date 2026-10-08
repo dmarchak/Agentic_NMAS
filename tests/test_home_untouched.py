@@ -14,6 +14,7 @@ import sys
 import pytest
 
 from tests import browser, home_guard
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -195,11 +196,9 @@ def names_the_download_folder(path: str) -> list:
 
 
 def _python_files():
-    import glob
     out = [os.path.join(ROOT, "app.py")]
-    for folder in ("modules", "routes", "tests", "lab"):
-        out += glob.glob(os.path.join(ROOT, folder, "**", "*.py"), recursive=True)
-    for path in glob.glob(os.path.join(ROOT, "scripts", "**", "*"), recursive=True):
+    out += tracked("modules", "routes", "tests", "lab", suffix=".py")
+    for path in tracked("scripts"):
         if os.path.isfile(path) and not path.endswith(".py"):
             with open(path, "rb") as fh:
                 if b"python" in fh.readline():

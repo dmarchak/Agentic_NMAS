@@ -49,6 +49,7 @@ import os
 import pytest
 
 from modules.route_gates import GATES
+from tests import source_index
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KINDS = ("confirm", "approve", "publish_remote")
@@ -394,24 +395,22 @@ class TestEveryGreenToastIsDeclared:
     def _calls(self, root=ROOT):
         import re
         out = []
-        for top in self.FILES:
-            for dirpath, _d, files in os.walk(os.path.join(root, top)):
-                for f in files:
-                    if not f.endswith((".js", ".html")) or ".min." in f or "bootstrap" in f:
-                        continue
-                    path = os.path.join(dirpath, f)
-                    rel = os.path.relpath(path, root)
-                    text = open(path, encoding="utf-8").read()
-                    for m in re.finditer(r"showToast\(", text):
-                        depth, i = 0, m.end() - 1
-                        while i < len(text):
-                            depth += {"(": 1, ")": -1}.get(text[i], 0)
-                            if depth == 0:
-                                break
-                            i += 1
-                        call = text[m.start():i + 1]
-                        if "'success'" in call:
-                            out.append((rel, call))
+        for path in source_index.tracked(*self.FILES, root=root):
+            f = os.path.basename(path)
+            if not f.endswith((".js", ".html")) or ".min." in f or "bootstrap" in f:
+                continue
+            rel = os.path.relpath(path, root)
+            text = open(path, encoding="utf-8").read()
+            for m in re.finditer(r"showToast\(", text):
+                depth, i = 0, m.end() - 1
+                while i < len(text):
+                    depth += {"(": 1, ")": -1}.get(text[i], 0)
+                    if depth == 0:
+                        break
+                    i += 1
+                call = text[m.start():i + 1]
+                if "'success'" in call:
+                    out.append((rel, call))
         return out
 
     def test_every_green_toast_is_declared_and_no_declaration_is_a_ghost(self):
@@ -430,7 +429,8 @@ class TestEveryGreenToastIsDeclared:
         (tmp_path / "templates").mkdir()
         (tmp_path / "static" / "js" / "x.js").write_text(
             "showToast(`done ${n}`,\n    'success');\nshowToast('no', 'danger');")
-        assert [c[0] for c in self._calls(str(tmp_path))] == ["static/js/x.js"]
+        assert [c[0] for c in self._calls(source_index.track_all(tmp_path))] == \
+            ["static/js/x.js"]
 
 
 class TestTheComponentDrawsTheseResults:

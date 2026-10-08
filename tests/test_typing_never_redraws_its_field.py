@@ -8,10 +8,11 @@ element that ENCLOSES it (or itself, swapped whole): its answer goes beside it. 
 template's element nesting, ids included; a planted case is found.
 """
 
-import glob
 import os
 import re
 from html.parser import HTMLParser
+
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TYPING = re.compile(r"\b(input|keyup|keydown)\b")
@@ -55,8 +56,7 @@ def scan(text: str):
 
 def test_no_v2_field_is_redrawn_by_its_own_typing():
     problems, fields = [], 0
-    for path in sorted(glob.glob(os.path.join(ROOT, "templates", "v2", "**", "*.html"),
-                                 recursive=True)):
+    for path in tracked("templates/v2", suffix=".html"):
         found, n = scan(open(path, encoding="utf-8").read())
         fields += n
         problems += [f"{os.path.relpath(path, ROOT)}: {f}" for f in found]

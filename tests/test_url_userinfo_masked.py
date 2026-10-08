@@ -24,6 +24,7 @@ import pathlib
 import pytest
 
 from modules import redact
+from tests.source_index import track_all, tracked
 
 PLANTED = "fatal: https://x-access-token:SeCrEt-Tok3n@example.invalid/o/r.git denied"
 SECRET = "SeCrEt-Tok3n"
@@ -143,9 +144,11 @@ def test_every_masking_entry_point_masks_a_url_s_user_part(name):
 
 
 def _masking_functions() -> set:
-    root = pathlib.Path(".")
-    files = [root / "app.py"] + sorted((root / "modules").rglob("*.py")) + sorted(
-        (root / "routes").rglob("*.py"))
+    import os
+
+    # Relative to the working directory (the checkout), as the names below are.
+    files = [pathlib.Path(os.path.relpath(p))
+             for p in tracked("app.py", "modules", "routes", suffix=".py", root=".")]
     out = set()
     for p in files:
         if "__pycache__" in p.parts:
@@ -171,5 +174,6 @@ def test_a_planted_masking_function_is_found(tmp_path, monkeypatch):
     (tmp_path / "modules").mkdir()
     (tmp_path / "routes").mkdir()
     (tmp_path / "app.py").write_text("def scrub_errors(t):\n    return t\n", encoding="utf-8")
+    track_all(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert _masking_functions() == {"app.py:scrub_errors"}

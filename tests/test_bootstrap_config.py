@@ -27,6 +27,8 @@ import os
 
 import pytest
 
+from tests.source_index import tracked
+
 from modules.nsot.bootstrap_config import (CONSOLE_REPLAYED,
                                            VRNETLAB_INJECTS_USER,
                                            UnsupportedPlatform,
@@ -243,9 +245,7 @@ class TestEveryProbeFileIsAscii:
     """
 
     def _files(self):
-        for base, _dirs, names in os.walk(os.path.join(PROBE, "configs")):
-            for name in names:
-                yield os.path.join(base, name)
+        yield from tracked(os.path.join(PROBE, "configs"))
 
     def test_every_config_fed_to_a_node_is_ascii(self):
         offenders = []

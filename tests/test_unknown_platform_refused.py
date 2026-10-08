@@ -28,6 +28,7 @@ import pathlib
 
 import pytest
 
+from tests.source_index import tracked
 from tests.test_onboard_pending import repo  # noqa: F401  (the fixture)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -184,8 +185,8 @@ def _fallbacks(path: pathlib.Path, source: str):
 
 
 def _population():
-    files = [ROOT / "app.py"] + sorted((ROOT / "modules").rglob("*.py")) + sorted(
-        (ROOT / "routes").rglob("*.py"))
+    files = [ROOT / "app.py"] + [pathlib.Path(p) for p in tracked("modules", "routes",
+                                                                  suffix=".py", root=ROOT)]
     return [p for p in files if "__pycache__" not in p.parts]
 
 

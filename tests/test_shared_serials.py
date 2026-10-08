@@ -17,6 +17,7 @@ import os
 import pytest
 
 from modules import device_serials as DS
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FLEET = os.path.join(ROOT, "tests", "fixtures", "configs", "fleet")
@@ -92,20 +93,15 @@ def test_nothing_else_looks_a_device_up_by_serial():
     lives only in the one guarded matcher."""
     allowed = {("modules/netbox_client.py", "_existing_device")}
     found = []
-    for top in ("modules", "routes"):
-        for d, _s, files in os.walk(os.path.join(ROOT, top)):
-            for f in files:
-                if not f.endswith(".py"):
-                    continue
-                path = os.path.join(d, f)
-                rel = os.path.relpath(path, ROOT)
-                tree = ast.parse(open(path, encoding="utf-8").read())
-                for fn in ast.walk(tree):
-                    if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        continue
-                    for node in ast.walk(fn):
-                        if isinstance(node, ast.Call) and any(
-                                k.arg == "serial" for k in node.keywords):
-                            if (rel, fn.name) not in allowed:
-                                found.append(f"{rel}:{node.lineno} in {fn.name}")
+    for path in tracked("modules", "routes", suffix=".py"):
+        rel = os.path.relpath(path, ROOT)
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for node in ast.walk(fn):
+                if isinstance(node, ast.Call) and any(
+                        k.arg == "serial" for k in node.keywords):
+                    if (rel, fn.name) not in allowed:
+                        found.append(f"{rel}:{node.lineno} in {fn.name}")
     assert found == [], f"a device looked up by serial outside the guarded matcher: {found}"

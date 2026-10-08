@@ -12,6 +12,7 @@ import os
 import re
 
 from modules import csp
+from tests import source_index
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -20,15 +21,12 @@ def _external_loads(root=ROOT):
     """(kind, url) for every external script src and stylesheet href in the
     templates."""
     out = []
-    for dp, _d, fs in os.walk(os.path.join(root, "templates")):
-        for f in fs:
-            if not f.endswith(".html"):
-                continue
-            text = open(os.path.join(dp, f), encoding="utf-8").read()
-            out += [("script", u) for u in re.findall(
-                r"<script[^>]*\bsrc=[\"'](https?://[^\"']+)", text)]
-            out += [("style", u) for u in re.findall(
-                r"<link[^>]*\bhref=[\"'](https?://[^\"']+)", text)]
+    for path in source_index.tracked("templates", suffix=".html", root=root):
+        text = open(path, encoding="utf-8").read()
+        out += [("script", u) for u in re.findall(
+            r"<script[^>]*\bsrc=[\"'](https?://[^\"']+)", text)]
+        out += [("style", u) for u in re.findall(
+            r"<link[^>]*\bhref=[\"'](https?://[^\"']+)", text)]
     return out
 
 
@@ -64,7 +62,8 @@ class TestNothingLoadsFromOffTheHost:
         (tmp_path / "templates" / "x.html").write_text(
             '<script src="https://cdn.example.invalid/lib.js"></script>'
             '<link rel="stylesheet" href="https://cdn.example.invalid/a.css">')
-        assert [k for k, _u in _external_loads(str(tmp_path))] == ["script", "style"]
+        assert [k for k, _u in _external_loads(source_index.track_all(tmp_path))] == \
+            ["script", "style"]
 
     def test_every_vendored_file_is_what_the_manifest_says(self):
         import hashlib

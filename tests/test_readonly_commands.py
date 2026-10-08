@@ -17,6 +17,7 @@ import os
 import pytest
 
 from modules import readonly_commands as rc
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -131,12 +132,7 @@ class TestOneList:
         that holds the read verbs anywhere else in modules/, routes/ or app.py
         is a second copy."""
         verbs = set(rc.READ_ONLY_VERBS)
-        found = []
-        for base in ("modules", "routes"):
-            for dirpath, _, files in os.walk(os.path.join(ROOT, base)):
-                for f in files:
-                    if f.endswith(".py"):
-                        found.append(os.path.join(dirpath, f))
+        found = tracked("modules", "routes", suffix=".py")
         found.append(os.path.join(ROOT, "app.py"))
         copies, scanned = [], 0
         for path in found:

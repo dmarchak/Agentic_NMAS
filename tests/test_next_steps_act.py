@@ -19,6 +19,8 @@ import re
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES = os.path.join(ROOT, "templates", "v2")
 
@@ -115,12 +117,9 @@ class TestEveryNextStepNamesWhatItOpens:
 
     def test_every_open_the_server_emits_has_its_own_control(self):
         emitted = set()
-        for folder in ("modules", "routes"):
-            for dirpath, _dirs, files in os.walk(os.path.join(ROOT, folder)):
-                for f in files:
-                    if f.endswith(".py"):
-                        text = open(os.path.join(dirpath, f), encoding="utf-8").read()
-                        emitted |= set(re.findall(r'"open": "(\w+)"', text))
+        for path in tracked("modules", "routes", suffix=".py"):
+            text = open(path, encoding="utf-8").read()
+            emitted |= set(re.findall(r'"open": "(\w+)"', text))
         assert {"breakglass_export", "app_update", "profile_apply", "profile_propose"} <= emitted
         att = _read("_attention.html")
         branches = set(re.findall(r"r\.action\.open == '(\w+)'", att))

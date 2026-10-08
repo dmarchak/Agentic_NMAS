@@ -36,6 +36,7 @@ import re
 import pytest
 
 from tests.js_source import read_shipped
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATES = os.path.join(ROOT, "templates")
@@ -56,12 +57,7 @@ _ALLOWED = {
 
 
 def _template_files() -> list:
-    out = []
-    for base, _dirs, names in os.walk(TEMPLATES):
-        for n in sorted(names):
-            if n.endswith(".html"):
-                out.append(os.path.join(base, n))
-    return sorted(out)
+    return tracked(TEMPLATES, suffix=".html")
 
 
 def _all_text() -> str:

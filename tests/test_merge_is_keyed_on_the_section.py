@@ -20,16 +20,16 @@ the fixture rule).
 """
 
 import collections
-import glob
 import os
 
 import pytest
 
+from tests.source_index import tracked
+
 from modules.nsot.deploy import classify_diff, merge_commands, merge_diff
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FLEET = sorted(glob.glob(os.path.join(ROOT, "tests", "fixtures", "configs", "fleet",
-                                      "*.cfg")))
+FLEET = tracked("tests/fixtures/configs/fleet", suffix=".cfg", recursive=False)
 
 
 def _shared_child_cases():

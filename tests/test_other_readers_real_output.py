@@ -28,6 +28,7 @@ import os
 import re
 
 from modules import topology
+from tests.source_index import tracked
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "fixtures", "operational")
@@ -119,14 +120,10 @@ class TestOneBgpReader:
         """Every function whose name says it reads a BGP summary, across the
         program. The deploy's delegates; topology's is the reader."""
         found = []
-        for base in ("modules", "routes"):
-            for dirpath, _, files in os.walk(os.path.join(ROOT, base)):
-                for f in files:
-                    if f.endswith(".py"):
-                        path = os.path.join(dirpath, f)
-                        for n in ast.walk(ast.parse(open(path, encoding="utf-8").read())):
-                            if isinstance(n, ast.FunctionDef) and "bgp_summary" in n.name:
-                                found.append((os.path.relpath(path, ROOT), n.name))
+        for path in tracked("modules", "routes", suffix=".py"):
+            for n in ast.walk(ast.parse(open(path, encoding="utf-8").read())):
+                if isinstance(n, ast.FunctionDef) and "bgp_summary" in n.name:
+                    found.append((os.path.relpath(path, ROOT), n.name))
         assert sorted(found) == [("modules/pipeline.py", "_parse_bgp_summary"),
                                  ("modules/topology.py", "parse_bgp_summary")], found
 

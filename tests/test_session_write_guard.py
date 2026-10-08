@@ -21,6 +21,7 @@ import pytest
 
 from modules import connection as C
 from modules.nsot import device_ops as D
+from tests.source_index import tracked
 
 IP, HOST, LIST = "192.0.2.12", "r2", "Default"
 
@@ -325,9 +326,7 @@ def _writer_sites():
     # counted `send_command*` only, so a `send_config_set` was invisible).
     config_writes = {"send_config_set", "send_config_from_file", "save_config"}
     out = []
-    files = ["app.py"] + [os.path.join(dp, f) for base in ("modules", "routes")
-                          for dp, _d, fs in os.walk(os.path.join(root, base))
-                          for f in fs if f.endswith(".py")]
+    files = ["app.py"] + tracked("modules", "routes", suffix=".py", root=root)
     # The host scripts too (C191): a new script that changed a device passed
     # the whole suite unnamed. A script that is not Python is not scanned.
     scripts = os.path.join(root, "scripts")

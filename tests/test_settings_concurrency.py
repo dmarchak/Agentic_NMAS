@@ -159,9 +159,7 @@ class TestEveryReadModifyWriteHoldsTheLock:
 
         found = {}
         paths = ["app.py"]
-        for top in ("modules", "routes", "scripts"):
-            for root, _, files in os.walk(os.path.join(REPO, top)):
-                paths += [os.path.join(root, f) for f in files if f.endswith(".py")]
+        paths += source_index.tracked("modules", "routes", "scripts", suffix=".py", root=REPO)
         for path in paths:
             full = path if os.path.isabs(path) else os.path.join(REPO, path)
             for node in source_index.nodes(full):  # one parse per file per run (C45)

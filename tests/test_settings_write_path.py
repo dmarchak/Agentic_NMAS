@@ -300,6 +300,8 @@ class TestEverySchemaKeyHasADecision:
         import io
         import os
 
+        from tests.source_index import tracked
+
         parts = []
         # `static/js/gen` too: Stage 7 0b moved the script that
         # names these keys out of the templates, and a scan of
@@ -309,13 +311,9 @@ class TestEverySchemaKeyHasADecision:
         # row or a plan counted as its "stated reason" (C155: the removed
         # `netbox_remove_on_list_delete` passed on its own finding's row, and
         # `clab_labs` had never been decided at all).
-        for base in ("templates", "static/js/gen"):
-            for root, _d, files in os.walk(base):
-                for f in files:
-                    if f.endswith((".html", ".js")):
-                        parts.append(io.open(os.path.join(root, f),
-                                             encoding="utf-8",
-                                             errors="replace").read())
+        for path in tracked("templates", "static/js/gen", suffix=(".html", ".js"),
+                                root="."):
+            parts.append(io.open(path, encoding="utf-8", errors="replace").read())
         parts.append(io.open(os.path.join("docs", "SETTINGS.md"),
                              encoding="utf-8").read())
         return "\n".join(parts)

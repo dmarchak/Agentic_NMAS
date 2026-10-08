@@ -19,6 +19,7 @@ import subprocess
 
 import pytest
 
+from tests.source_index import tracked
 from tests.test_intent_match import R2
 from tests.test_seed_intent import LIST, build_seed_lab
 
@@ -215,17 +216,16 @@ def _tree_staging(src: str) -> list:
 
 def _sources():
     for top in ("modules", "routes", "scripts"):
-        for dirpath, _dirs, files in os.walk(os.path.join(ROOT, top)):
-            for f in files:
-                path = os.path.join(dirpath, f)
-                rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
-                if f.endswith(".py") or (top == "scripts" and "." not in f):
-                    try:
-                        text = open(path, encoding="utf-8").read()
-                        ast.parse(text)
-                    except (SyntaxError, UnicodeDecodeError, ValueError):
-                        continue
-                    yield rel, text
+        for path in tracked(top):
+            f = os.path.basename(path)
+            rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+            if f.endswith(".py") or (top == "scripts" and "." not in f):
+                try:
+                    text = open(path, encoding="utf-8").read()
+                    ast.parse(text)
+                except (SyntaxError, UnicodeDecodeError, ValueError):
+                    continue
+                yield rel, text
     yield "app.py", open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
 
 

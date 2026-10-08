@@ -170,7 +170,8 @@ class TestNoWriterGoesAround:
     EXEMPT = {}
 
     def _all(self):
-        files = list((ROOT / "modules").rglob("*.py")) + [
+        files = [pathlib.Path(p) for p in source_index.tracked("modules", suffix=".py",
+                                                                 root=ROOT)] + [
             p for p in (ROOT / "scripts").iterdir()
             if p.is_file() and (p.suffix == ".py" or b"python" in p.read_bytes()[:40])]
         for p in files:

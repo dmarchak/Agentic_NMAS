@@ -29,6 +29,8 @@ import re
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SLUGS = ("cisco-ios", "cisco-ios-xe")
@@ -85,16 +87,12 @@ def _literals(path):
 
 def _files_with_platform_literals():
     out = []
-    for base in ("modules", "routes", "scripts"):
-        for root, _d, files in os.walk(os.path.join(ROOT, base)):
-            if "__pycache__" in root:
-                continue
-            for name in sorted(files):
-                if not name.endswith(".py"):
-                    continue
-                rel = os.path.relpath(os.path.join(root, name), ROOT)
-                if any(_literals(rel).values()):
-                    out.append(rel.replace(os.sep, "/"))
+    for path in tracked("modules", "routes", "scripts", suffix=".py"):
+        if "__pycache__" in path:
+            continue
+        rel = os.path.relpath(path, ROOT)
+        if any(_literals(rel).values()):
+            out.append(rel.replace(os.sep, "/"))
     return sorted(out)
 
 
@@ -175,16 +173,11 @@ class TestTheBoundaryRefusesTheWrongNamespace:
         import io
 
         hits = []
-        for base in ("modules", "routes"):
-            for root, _d, files in os.walk(os.path.join(ROOT, base)):
-                if "__pycache__" in root:
-                    continue
-                for name in files:
-                    if not name.endswith(".py"):
-                        continue
-                    path = os.path.join(root, name)
-                    text = io.open(path, encoding="utf-8",
-                                   errors="replace").read()
-                    if re.search(r'"cisco-ios-xe"\s*:\s*"cisco_iosxe"', text):
-                        hits.append(os.path.relpath(path, ROOT))
+        for path in tracked("modules", "routes", suffix=".py"):
+            if "__pycache__" in path:
+                continue
+            text = io.open(path, encoding="utf-8",
+                           errors="replace").read()
+            if re.search(r'"cisco-ios-xe"\s*:\s*"cisco_iosxe"', text):
+                hits.append(os.path.relpath(path, ROOT))
         assert hits == [os.path.join("modules", "nsot", "platform.py")], hits

@@ -20,6 +20,8 @@ import os
 
 import pytest
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_READERS = {"default_layer", "default_layer_secret"}
 
@@ -111,11 +113,9 @@ def default_layer_calls(paths) -> dict:
 
 
 def _program_files():
-    for top in ("modules", "routes"):
-        for d, _subdirs, files in os.walk(os.path.join(ROOT, top)):
-            for f in files:
-                if f.endswith(".py") and not f == "list_settings.py":
-                    yield os.path.join(d, f)
+    for path in tracked("modules", "routes", suffix=".py"):
+        if not os.path.basename(path) == "list_settings.py":
+            yield path
 
 
 #: The global readers. Called with a NETWORK key, they answer the global file, which is only

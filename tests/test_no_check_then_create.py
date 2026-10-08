@@ -8,15 +8,17 @@ with exist_ok, never check first."""
 import ast
 import os
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _sources():
     for top in ("modules", "routes", "scripts"):
-        for d, _dirs, files in os.walk(os.path.join(ROOT, top)):
-            for f in files:
-                if f.endswith(".py") or (top == "scripts" and "." not in f):
-                    yield os.path.join(d, f)
+        for path in tracked(top):
+            f = os.path.basename(path)
+            if f.endswith(".py") or (top == "scripts" and "." not in f):
+                yield path
     yield os.path.join(ROOT, "app.py")
 
 

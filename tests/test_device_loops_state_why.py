@@ -28,6 +28,8 @@ What is mechanised, and what cannot be:
 import ast
 import os
 
+from tests.source_index import tracked
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #: A call to one of these opens a session to a device or sends it a command.
@@ -117,11 +119,7 @@ SURVEYED = {
 
 
 def _files():
-    for d in ("modules", "routes"):
-        for base, _dirs, names in os.walk(os.path.join(ROOT, d)):
-            for f in sorted(names):
-                if f.endswith(".py"):
-                    yield os.path.join(base, f)
+    yield from tracked("modules", "routes", suffix=".py")
     yield os.path.join(ROOT, "app.py")
     scripts = os.path.join(ROOT, "scripts")
     for f in sorted(os.listdir(scripts)):
