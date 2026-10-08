@@ -2833,9 +2833,15 @@ def run_chat(
     attached_files: Optional[list] = None,
     workflow_flags: Optional[dict] = None,
     force_provider: Optional[str] = None,
+    actor: str = "",
+    list_name: str = "",
 ) -> Iterator[dict]:
     """
     Run one chat turn with the active AI provider.
+
+    *actor* is the person the turn acts for and *list_name* their network: the read tools ask
+    the reads engine (C548, R5), recorded as "the agent, for <actor>" in that network's History,
+    with the device held while read, the answer masked and capped like a person's read.
 
     Yields SSE-ready event dicts:
         {"type": "text",           "content": "..."}
@@ -3321,6 +3327,37 @@ def run_chat(
     def _find_device(ip, devices):
         return next((d for d in devices if d.get("ip") == ip), None)
 
+    def _engine_read(targets, commands, tool):
+        """``{"<host> (<ip>)": text}``: the read tools through the reads engine (C548, R5), as
+        the agent for *actor*: refused by the allowlist before any device, each device held
+        while read (a held one is named, never queued), every answer masked and capped, the run
+        recorded in History. Never a session of the agent's own (NSOT_PLAN 8.16)."""
+        from modules.config import get_current_list_name
+        from modules.nsot import reads
+        hosts = [d.get("hostname", d.get("ip", "")) for d in targets]
+        try:
+            record = reads.run(list_name or get_current_list_name(), hosts, commands,
+                               actor or "", by="agent", purpose=f"the AI assistant's {tool}")
+        except reads.Refused as exc:
+            return {f"{h} ({d.get('ip', '')})": f"REFUSED: {exc}" for h, d in zip(hosts, targets)}
+        out = {}
+        for h, d in zip(hosts, targets):
+            r = record["results"].get(h) or {}
+            key = f"{h} ({d.get('ip', '')})"
+            if r.get("state") not in (reads.ANSWERED, reads.FAILED) or not r.get("answers"):
+                out[key] = f"ERROR: {r.get('why') or r.get('state') or 'no outcome'}"
+                continue
+            parts = []
+            for a in r["answers"]:
+                text = (a.get("answer", "") if a.get("state") == reads.ANSWERED
+                        else f"ERROR: {a.get('why', '')}")
+                if a.get("cut"):
+                    text += (f"\n...[cut at the network's cap; the whole answer is "
+                             f"{a.get('bytes')} bytes: narrow it with | include]")
+                parts.append(f"[{a['command']}]\n{text}" if len(commands) > 1 else text)
+            out[key] = "\n\n".join(parts) or "(no output)"
+        return out
+
     def execute_tool(name: str, args: dict) -> str:
         cached = _cache_get(name, args)
         if cached is not None:
@@ -3345,46 +3382,22 @@ def run_chat(
                 if _refused:
                     return _refused
                 ip      = args["ip"]
-                command = args["command"]
                 device  = _find_device(ip, devices_loader())
                 if not device:
                     return _device_unavailable_message(ip)
-                _attempts = 0
-                while True:
-                    conn = _conn(device) if _attempts == 0 else _fresh_conn(device)
-                    try:
-                        out = run_device_command(conn, command)
-                        break
-                    except OSError as _e:
-                        if _attempts == 0 and "Socket is closed" in str(_e):
-                            _attempts += 1
-                            continue
-                        raise
-                return out or "(no output)"
+                got = _engine_read([device], [args["command"]], name)
+                return got.get(f"{device.get('hostname', ip)} ({ip})", "(no output)")
 
             elif name == "execute_commands_on_device":
                 _refused = _read_only_refusal(list(args.get("commands") or []), args.get("mode", ""))
                 if _refused:
                     return _refused
                 ip       = args["ip"]
-                commands = args["commands"]
                 device   = _find_device(ip, devices_loader())
                 if not device:
                     return _device_unavailable_message(ip)
-                _attempts = 0
-                while True:
-                    conn    = _conn(device) if _attempts == 0 else _fresh_conn(device)
-                    outputs = []
-                    try:
-                        for cmd in commands:
-                            outputs.append(f"[{cmd}]\n{run_device_command(conn, cmd)}")
-                        break
-                    except OSError as _e:
-                        if _attempts == 0 and "Socket is closed" in str(_e):
-                            _attempts += 1
-                            continue
-                        raise
-                return "\n\n".join(outputs)
+                got = _engine_read([device], list(args["commands"]), name)
+                return got.get(f"{device.get('hostname', ip)} ({ip})", "(no output)")
 
             elif name == "execute_command_on_multiple_devices":
                 _refused = _read_only_refusal([args.get("command", "")], args.get("mode", ""))
@@ -3400,21 +3413,7 @@ def run_chat(
                 )
                 if not targets:
                     return "No matching online devices found"
-
-                def run_one(dev):
-                    hostname = dev.get("hostname", dev["ip"])
-                    try:
-                        conn = get_persistent_connection(dev, connections_pool, pool_lock)
-                        out = run_device_command(conn, command)
-                        return hostname, dev["ip"], out, None
-                    except Exception as exc:
-                        return hostname, dev["ip"], None, str(exc)
-
-                results = {}
-                from concurrent.futures import ThreadPoolExecutor as _TPEX_multi
-                with _TPEX_multi(max_workers=5) as ex:
-                    for h, ip, out, err in ex.map(run_one, targets):
-                        results[f"{h} ({ip})"] = f"ERROR: {err}" if err else (out or "")
+                results = _engine_read(targets, [command], name)
 
                 # Fair-share per-device truncation: every device gets an equal
                 # slice of the limit so later devices aren't dropped entirely

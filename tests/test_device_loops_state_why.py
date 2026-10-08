@@ -43,9 +43,8 @@ _ONE_RUN = ("one device per run: `routes/deploy.py` `_deploy_one` hands the pipe
 
 #: (file, function) -> (kind, why). Exact both ways against the scan.
 SCANNED = {
-    ("modules/ai_assistant.py", "run_chat.execute_tool"): (
-        "one_device", "the `execute_command*` tools retry one device's session once and "
-                      "run a list of commands on it"),
+    # (run_chat.execute_tool's loop left 2026-10-08: the `execute_command*` tools read through
+    # the reads engine, concurrent across devices by `fanout.read_each`; C548, R5.)
     ("modules/bulk_ops.py", "_run_single_enable_command"): (
         "one_device", "answers one device's interactive prompts"),
     ("modules/bulk_ops.py", "BulkOperationManager._execute_worker.worker"): (

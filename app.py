@@ -2909,6 +2909,11 @@ def ai_chat():
         # preventing browsers from closing the connection on long-running tasks.
         _SENTINEL = object()
         event_queue = _queue.Queue()
+        # The person the turn acts for and their network, read HERE in the request: the read
+        # tools ask the reads engine as "the agent, for <person>" (C548, R5).
+        from modules import identity as _identity
+        from modules.config import get_current_list_name as _current_list
+        _chat_actor, _chat_list = _identity.request_actor(), _current_list()
 
         def _agent_thread():
             try:
@@ -2929,6 +2934,8 @@ def ai_chat():
                     topology_context=topology_context,
                     attached_files=attached_files if attached_files else None,
                     workflow_flags=_load_workflow_flags(),
+                    actor=_chat_actor,
+                    list_name=_chat_list,
                 )
                 for event in gen:
                     event_queue.put(event)
