@@ -49,6 +49,7 @@ OPERATION_WORDS = {
     "reload": "reloaded",
     "file": "changed by a file action",
     "probe": "probed for removal shapes (scratch config added and removed, never saved)",
+    "read": "read (show commands)",
 }
 
 #: An operation whose RESULT differs from its kind's usual one, in words

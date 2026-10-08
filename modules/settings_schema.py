@@ -512,6 +512,13 @@ DEFAULTS: dict = {
     # on one lab is the kind of assumption this project keeps out of the code,
     # so it is a setting with a wide default rather than a constant.
     "nsot_config_read_timeout": 120,
+    # The reads engine (modules/nsot/reads.py, C547/C548), each default its measurement:
+    # an answer kept up to 32 KiB (about 3x the largest measured, a 9,972-byte running
+    # config); six devices read at once (the drift check's measured load: nine full configs
+    # in 47-55 s, s3 included); answers kept 30 days, then moved to the S3/MinIO archive (R2).
+    "reads_answer_cap_kib": 32,
+    "reads_max_workers": 6,
+    "reads_retention_days": 30,
 
     # ── Jenkins ─────────────────────────────────────────────────────────────
     # Every generated pipeline emitted Windows `bat` steps; that stays the
@@ -818,6 +825,9 @@ SCHEMA: dict = {
 
         "nsot_device_tag_retention": {"type": "integer", "minimum": 0},
         "nsot_config_read_timeout": {"type": "integer", "minimum": 5},
+        "reads_answer_cap_kib": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "reads_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
+        "reads_retention_days": {"type": "integer", "minimum": 1},
         "deploy_max_workers": {"type": "integer", "minimum": 1, "maximum": 16},
         "deploy_verify_failure_limit": {"type": "integer", "minimum": 1},
         "verify_settle_windows": {
