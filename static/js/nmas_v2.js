@@ -34,6 +34,8 @@
               // An operation the app ran released a device: a card refused because it was
               // held reads again (modules/nsot/device_ops.py); and a rotation's job finished.
               'device_holds', 'rotation', 'credential_health',
+              // A Tier 2 run finished (modules/nsot/privileged.py): its card reads its record.
+              'privileged',
               // Coverage's not-reporting cells: when each device's data last arrived.
               'coverage_reporting',
               // A held device's operation reached its next step: a running card redraws its
@@ -295,6 +297,7 @@
   function relayCapturePreview() { relay('capture_preview'); }
   function relayDeviceHolds() { relay('device_holds'); }
   function relayRotation() { relay('rotation'); }
+  function relayPrivileged() { relay('privileged'); }
   function relayDeviceProgress() { relay('device_progress'); }
   function relayTemplates() { relay('templates'); }
 
@@ -371,6 +374,7 @@
     NMAS.subscribe('capture_preview', 'v2CapturePreview', relayCapturePreview);
     NMAS.subscribe('device_holds', 'v2DeviceHolds', relayDeviceHolds);
     NMAS.subscribe('rotation', 'v2Rotation', relayRotation);
+    NMAS.subscribe('privileged', 'v2Privileged', relayPrivileged);
     NMAS.subscribe('device_progress', 'v2DeviceProgress', relayDeviceProgress);
     NMAS.subscribe('templates', 'v2Templates', relayTemplates);
   }

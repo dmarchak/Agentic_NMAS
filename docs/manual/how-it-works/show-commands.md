@@ -61,9 +61,10 @@ The agent runs the reads and `verify /md5`. A line in a device's log and the ses
 settings are a person's to send.
 
 **Tier 2, changes the device's state, recoverably: not here.** `clear counters`,
-`clear arp-cache`, `clear ip bgp <peer> soft`, `clear logging`, `undebug all`. These will be the
-"Run a privileged command" operation: a preview of what it affects, a confirm, and a record. It
-is drafted and not built yet, and the refusal says so.
+`clear arp-cache`, `clear logging`, `undebug all` (and `clear ip bgp <peer> soft`, not yet
+measured). Each is the operation [Run a privileged command](privileged), one device at a time
+from its page's Actions menu: a preview of what it affects, a confirm with a reason, and a
+record. The refusal here says so.
 
 **Tier 3, destructive: refused.** Each refusal names the operation that does it properly, or
 says that none does:

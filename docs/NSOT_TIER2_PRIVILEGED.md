@@ -1,4 +1,4 @@
-# Tier 2: "Run a privileged command…" (APPROVED by the operator, 2026-10-08; decisions in section 4; built after the measurements in section 5)
+# Tier 2: "Run a privileged command…" (APPROVED 2026-10-08; BUILT the same day from the measurements in section 5, except the soft BGP refresh)
 
 The command policy (NSOT_READS.md section 11, the operator, 2026-10-08) puts the exec commands
 that change a device's state recoverably in Tier 2: refused by the reads engine today, naming

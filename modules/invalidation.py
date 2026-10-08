@@ -104,6 +104,7 @@ VOCABULARY = {
     "capture_preview": "a capture preview's device reads: finished, and its preview ready to read by id",
     "reads": "a Show commands run (Ask the device, Show commands): finished, its answers ready by id",
     "rotation": "a credential rotation run from the Device page: finished, its result ready to read by id",
+    "privileged": "a Tier 2 command run from the Device page (Run a privileged command…): finished, its record ready to read by id",
     "device_holds": "an operation the app ran released a device: a card refused because it was held reads again",
     "device_progress": "an operation the app ran on a held device reached its next step: a running card redraws its stepper (C370)",
     "deploy_job": "a batch deploy run as a job (the v2 profile Apply): a device finished, or the batch, "
@@ -117,6 +118,7 @@ ANNOUNCERS = {
     "capture-preview": ("capture_preview",),   # modules/nsot/capture_job.py
     "show-commands": ("reads",),               # modules/nsot/reads.py: a run's end
     "rotation": ("rotation",),                 # modules/nsot/rotate_op.py
+    "privileged": ("privileged",),             # modules/nsot/privileged.py: a Tier 2 run's end
     "device-ops": ("device_holds", "device_progress"),  # modules/nsot/device_ops.py: each release, each step
     # modules/deploy_job.py: each device finishing, and at the end what a
     # deploy changes (as /deploy/apply declares).
@@ -174,6 +176,8 @@ DECLARED = {
     "reads_v2.show_commands_run": ("reads",),
     # A saved set is drawn by Show commands' pick card, which the response redraws itself.
     "reads_v2.logging_path_run": ("reads",),
+    "privileged_v2.preview": ("reads",),
+    "privileged_v2.confirm": ("privileged",),
     "reads_v2.show_commands_ignore": ("reads",),
     "reads_v2.show_commands_save_set": ("reads",),
     "templates_v2.approve": ("templates", "remote"),

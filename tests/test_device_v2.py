@@ -639,6 +639,9 @@ class TestTheShippedScripts:
                                                     "/v2/device/r3/capture/job/x",
                                                     "/v2/device/r3/rotate/job/x",
                                                     "/v2/device/r3/ask?job=x",
+                                                    # Tier 2's card while its command runs.
+                                                    "/v2/device/r3/privileged?job=x&result="
+                                                    "20261008T000000000000Z-" + "0" * 32,
                                                     "/v2/templates?list=Lab"))
         from modules import device_page
         from modules.nsot import rotate_op
@@ -658,7 +661,8 @@ class TestTheShippedScripts:
         # +1 2026-10-06: templates (C516: the Templates table, heard on its page).
         # -1 2026-10-08: freshness (switched off, reader_job.RETIRED: nothing announces it).
         # +1 2026-10-08: reads (Show commands runs, Ask the device listens for its run's end).
-        assert len(keys) == 31
+        # +1 2026-10-08: privileged (Tier 2's card listens for its run's end).
+        assert len(keys) == 32
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

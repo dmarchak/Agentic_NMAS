@@ -821,6 +821,31 @@ def show_commands(ctx):
     return _out(events, errors)
 
 
+def privileged(ctx):
+    """Each Tier 2 run (Run a privileged command…, modules/nsot/privileged.py): who, why, the
+    command, and its verdict. Its kept before-state stays in the record."""
+    from modules.nsot import privileged as P
+    got = P.runs(ctx["ref"].name, device=ctx["device"], limit=ctx["limit"],
+                 data_dir=getattr(ctx["ref"], "data_dir", ""))
+    errors = ([f"{len(got['unreadable'])} Tier 2 record(s) could not be read: "
+               f"{', '.join(got['unreadable'][:5])}"] if got["unreadable"] else [])
+    events = []
+    for r in got["runs"]:
+        host = r.get("device", "")
+        if not _mine(ctx, host) or not _recent(ctx, r.get("started_at")):
+            continue
+        state = r.get("state", "")
+        outcome = {"done": "done, verified", "unverified": "done, not verified",
+                   "refused": "not sent", "failed": "failed", "running": "running"}.get(state, state)
+        events.append(_event(r.get("started_at"), "privileged",
+                             f"Privileged: {r.get('command', '')}", [host], who=r.get("actor", ""),
+                             detail=r.get("reason", ""), outcome=outcome,
+                             record=[("Run", r.get("id")), ("Reason", r.get("reason")),
+                                     ("Verify", (r.get("verify") or {}).get("words")),
+                                     ("Why", r.get("why"))]))
+    return _out(events, errors)
+
+
 #: Every store History reads, in the order it asks them. A source absent here is read nowhere;
 #: `operation_stages.HISTORY` names one per operation, `WRITTEN_ELSEWHERE` the rest.
 SOURCES = {
@@ -829,7 +854,7 @@ SOURCES = {
     "restart_windows": restart_windows, "rotation": rotation, "retries": retries,
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
     "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
-    "updates": updates, "show_commands": show_commands,
+    "updates": updates, "show_commands": show_commands, "privileged": privileged,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -839,6 +864,7 @@ KIND_GROUPS = (
     ("What ran on a device", (("receipts", "Deploys and restores", ("receipt",)),
                               ("rotations", "Rotations", ("rotation",)),
                               ("persists", "Persists", ("persist",)),
+                              ("privileged", "Privileged commands (Tier 2)", ("privileged",)),
                               ("onboarding", "Onboarding and adopt", ("onboarding",)),
                               ("interrupted", "Cut off mid-run", ("interrupted",)),
                               ("retries", "Retries authorised", ("retry",)))),

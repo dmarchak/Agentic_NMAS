@@ -1,0 +1,89 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Tier 2, "Run a privileged command…" (boards T2-A to T2-D, approved 2026-10-08;
+    routes/privileged_v2.card, modules/nsot/privileged.py): the card in place of the tab. Choose
+    a command and, for one that takes it, one of the device's own interfaces (its committed
+    golden; the management one left out); the preview reads the before-state through the reads
+    engine (a recorded run); the confirm needs a reason and is bound to the plan's hash; the
+    result is read back and recorded. Cancel and Close put back the tab it replaced. -#}
+{%- set back_url = url_for('device_v2.' ~ (c.back or 'overview'), name=c.host) -%}
+{%- set p = c.plan -%}
+{%- set spec = p.commands | selectattr('key', 'equalto', c.key) | first if c.key else none -%}
+{%- macro close_button(words) -%}
+<button type="button" class="btn" hx-get="{{ back_url }}" hx-target="#tab-body" hx-swap="innerHTML">{{ words }}</button>
+{%- endmacro -%}
+<section class="op-card{% if c.state == 'result' %} op-{{ {'done': 'ok', 'unverified': 'warn'}.get(c.record.state, 'danger') }}{% endif %}" id="device-op" aria-labelledby="op-title"
+  {%- if c.state == 'reading' %} aria-busy="true" hx-get="{{ url_for('privileged_v2.privileged', name=c.host, list=c.list, key=c.key, arg=c.arg, run=c.run, job=c.job, back=c.back) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"
+  {%- elif c.state == 'running' %} aria-busy="true" hx-get="{{ url_for('privileged_v2.privileged', name=c.host, list=c.list, key=c.key, arg=c.arg, result=c.run, job=c.job, back=c.back) }}" hx-trigger="nmas:privileged from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="op-hd"><h2 id="op-title">{% if c.state in ('choose', 'read_failed') or not p.ok %}Run a privileged command on {{ c.host }}{% else %}<span class="mono">{{ p.command }}</span> on {{ c.host }}{% endif %}
+    {%- if c.state == 'result' %} {{ badge({'done': 'done, verified', 'unverified': 'done, not verified', 'refused': 'not sent', 'failed': 'failed'}.get(c.record.state, c.record.state), {'done': 'ok', 'unverified': 'warn'}.get(c.record.state, 'danger')) }}{% elif c.state in ('reading', 'running') %} {{ badge('running', 'warn') }}{% endif %}</h2>
+    <div class="op-hd-actions">{{ how('privileged') }}{{ close_button('Close' if c.state == 'result' else 'Cancel') }}</div></div>
+  {%- if c.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Refused:</strong> {{ c.error }}</p></div>{% endif %}
+
+  {%- if c.state in ('choose', 'read_failed') %}
+  <form class="op-form" hx-post="{{ url_for('privileged_v2.preview', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="back" value="{{ c.back }}">
+    <div class="op-part"><h3>Command</h3><div class="op-radios">
+      {%- for k in p.commands %}
+      <label><input type="radio" name="key" value="{{ k.key }}"{% if k.key == (c.key or 'clear-counters') %} checked{% endif %}> <span><span class="mono">{{ k.label }}</span>{% if k.arg %} <span class="muted">· one interface</span>{% endif %}</span></label>
+      {%- endfor %}
+      {%- for k, why in p.not_measured.items() %}
+      <label class="op-off"><input type="radio" name="key" value="{{ k }}" disabled> <span><span class="mono">clear ip bgp &lt;peer&gt; soft</span> <span class="muted">· {{ why }}</span></span></label>
+      {%- endfor %}
+    </div></div>
+    <div class="op-part"><h3>On</h3><div>
+      <label class="sc-f">Interface (for clear counters and clear arp-cache)<select name="arg">
+        <option value="">(none: for clear logging and undebug all)</option>
+        {%- for n in p.interfaces %}<option{% if n == c.arg %} selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select></label>
+      <p class="faint small">{{ c.host }}'s own interfaces, from its committed golden.{% if p.management %} {{ p.management }} carries the address Mercury reaches it on, and is never offered.{% endif %}</p>
+    </div></div>
+    {%- if c.state == 'read_failed' %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>The before-state could not be read:</strong> {{ c.why }} Nothing was sent.</p></div>{% endif %}
+    <div class="op-ft"><p class="op-note">Reads what it would affect, through the reads engine (recorded); changes nothing yet.</p>
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="privileged" hx-disabled-elt="this"><span class="op-idle">Preview</span><span class="op-busy">Starting the read…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
+  </form>
+
+  {%- elif c.state == 'reading' %}
+  <div class="op-part"><h3>Reading</h3><div><p>Reading <span class="mono">{{ p.read }}</span> from {{ c.host }} (the reads engine, recorded). This card updates when the answer arrives.</p></div></div>
+
+  {%- elif c.state == 'confirm' %}
+  <div class="op-part"><h3>Read now</h3><div>
+    {%- if c.before %}<pre class="ask-pre">{{ c.before }}</pre>{% else %}<p class="sc-empty">No output (empty answer).</p>{% endif %}
+    <p class="faint small">Read {{ stamp(c.read_at) }} through the reads engine, masked{% if c.cut %}, and cut at the cap{% endif %}.{% if p.keep %} Read again and KEPT in the record just before the command is sent.{% endif %}</p></div></div>
+  <div class="op-part"><h3>What it affects</h3><div>
+    {%- if c.changes_nothing %}<p><strong>This changes nothing: no debug is on on {{ c.host }}</strong> (show debugging is a form measured as nothing on). Running it only records that you checked.</p>
+    {%- else %}<p>{{ p.affects }}</p>{% endif %}
+    <p class="muted">Not: {{ p.not_doing }}.</p></div></div>
+  <div class="op-part"><h3>Rollback</h3><div><p class="muted">Does not apply: {{ p.rollback }}.</p></div></div>
+  {%- if p.prompt %}<div class="op-part"><h3>The device asks</h3><div><p><span class="mono">{{ p.prompt }}</span>, answered with Enter (measured on both platforms). Any other question is not answered, and nothing more is sent.</p></div></div>{% endif %}
+  <form class="op-form" hx-post="{{ url_for('privileged_v2.confirm', name=c.host) }}" hx-target="#device-op" hx-swap="outerHTML">
+    <input type="hidden" name="list" value="{{ c.list }}"><input type="hidden" name="back" value="{{ c.back }}">
+    <input type="hidden" name="key" value="{{ c.key }}"><input type="hidden" name="arg" value="{{ c.arg }}">
+    <input type="hidden" name="hash" value="{{ p.hash }}"><input type="hidden" name="run" value="{{ c.run }}">
+    <div class="op-part"><h3>Reason</h3><div><label class="sc-f">Why (three words or more, recorded with the change)<input type="text" name="reason" required minlength="5" autocomplete="off"></label></div></div>
+    <div class="op-ft"><p class="op-note">Bound to plan {{ p.hash }}: if {{ c.host }}'s address or the command moves before you confirm, nothing is sent. The device is held while it runs.</p>
+      {%- if c.changes_nothing %}
+      <span class="op-act"><button type="submit" class="btn" data-op="privileged" hx-disabled-elt="this"><span class="op-idle">Run undebug all anyway (records it)</span><span class="op-busy">Sending…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
+      {%- else %}
+      <span class="op-act"><button type="submit" class="btn btn-primary" data-op="privileged" hx-disabled-elt="this"><span class="op-idle">Run <span class="mono">{{ p.command }}</span> on {{ c.host }}</span><span class="op-busy">Sending…</span></button>{{ how('privileged', compact=True, op='privileged') }}</span></div>
+      {%- endif %}
+  </form>
+
+  {%- elif c.state == 'running' %}
+  <div class="op-part"><h3>Running</h3><div><p>Sending <span class="mono">{{ p.command }}</span> to {{ c.host }}, holding it. This card updates when it ends.</p></div></div>
+
+  {%- elif c.state == 'result' %}
+  {%- set r = c.record %}
+  <div class="op-part"><h3>What happened</h3><div>
+    <p>{% if r.state == 'done' %}Sent, answered{% if r.answered %} the device's <span class="mono">{{ r.answered }}</span> with Enter{% endif %}, and verified: {{ r.verify.words }}.
+       {%- elif r.state == 'unverified' %}Sent; not verified: {{ r.verify.words }}.
+       {%- elif r.state == 'refused' %}Not sent: {{ r.why }}
+       {%- else %}Failed: {{ r.why or (r.verify or {}).get('words', '') }}{% endif %}</p>
+    {%- if r.changed_nothing %}<p class="muted">No debug was on before it ran: it changed nothing.</p>{% endif %}</div></div>
+  {%- if r.before or r.after %}
+  <div class="op-part"><h3>Before and after</h3><div class="sc-two">
+    <div><h4>Before{% if r.before %} (kept){% endif %}</h4>{% if r.before %}<pre class="ask-pre">{{ r.before }}</pre>{% else %}<p class="muted">Not kept for this command.</p>{% endif %}</div>
+    <div><h4>After</h4><pre class="ask-pre">{{ r.after }}</pre></div></div></div>
+  {%- endif %}
+  <div class="op-part"><h3>Recorded</h3><div><p>By {{ r.actor }}, {{ stamp(r.at) }}: "{{ r.reason }}". In History.</p></div></div>
+  {%- endif %}
+</section>

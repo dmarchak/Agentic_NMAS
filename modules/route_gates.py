@@ -99,6 +99,7 @@ GATES = {
     "v2.profile_apply_confirm": _g(C, "deploys the monitoring profile's confirmed programs to the chosen devices, one after another (P.9 d2)"),
     "persist.apply": _g(C, "saves the running config to startup on a device and reads it back: changes what the device boots"),
     "device_v2.persist_confirm": _g(C, "saves the running config to startup on a device and reads it back, from the v2 device page (7.3; the same apply as persist.apply)"),
+    "privileged_v2.confirm": _g(C, "sends one Tier 2 command (Run a privileged command…, NSOT_TIER2_PRIVILEGED) to a device, holding it, bound to the previewed plan and a stated reason; verified and recorded"),
     "update.apply": _g(C, "requests the Update: the root-owned updater moves the app to a CI-passed commit and restarts it"),
     "ai_chat": _g(C, "the assistant holds tools that push config until P.3 step 8 removes them"),
     "ai_agent_run": _g(C, "runs the background agent, which holds device tools until P.3 step 8"),
@@ -131,6 +132,8 @@ GATES = {
     "reads_v2.show_commands_run": _g(R, "reads many devices through the reads engine (C548): "
                                         "allowlisted commands only, their answers shown to the "
                                         "person, every run recorded"),
+    "privileged_v2.preview": _g(R, "reads a device's before-state for a Tier 2 command through the "
+                                 "reads engine (board T2-B); every run recorded"),
     "reads_v2.logging_path_run": _g(R, "tests the logging path (board F): one send log line "
                                      "to each device through the reads engine, then Loki "
                                      "watched; every run recorded"),

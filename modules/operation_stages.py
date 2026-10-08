@@ -47,6 +47,13 @@ STAGES = {
         "n/a: a save cannot be undone; the preview says it carries the running config as it is",
         "modules.nsot.persist_op.apply"),
     # The v2 device page's Persist (7.3): the same plan and apply, drawn as a card.
+    # Tier 2, "Run a privileged command…" (boards T2-A to T2-D; NSOT_TIER2_PRIVILEGED): one
+    # recoverable command on one device, its before-state read and kept, verified by the
+    # measured rule.
+    "privileged_v2.confirm": Stages(
+        "privileged_v2.preview", "hash", "modules.nsot.privileged.verify",
+        "n/a: what Tier 2 clears cannot be put back; the device rebuilds it (counters, ARP, "
+        "the log buffer), and the preview says so", "modules.nsot.privileged.record"),
     "device_v2.persist_confirm": Stages(
         "device_v2.persist", "hash", "modules.nsot.onboard.persist_on_device",
         "n/a: a save cannot be undone; the preview says it carries the running config as it is",
@@ -323,6 +330,7 @@ HISTORY = {
     "reads_v2.show_commands_save_set": ("commits",),
     # The columns ignored when grouping a run (C580): recorded on that run, drawn on its row.
     "reads_v2.show_commands_ignore": ("show_commands",),
+    "privileged_v2.confirm": ("privileged",),
     "attention.acknowledge": ("acknowledgements", "restarts"),
     "restarts.planned": ("restart_windows",),
     "golden.migrate_apply": ("golden",),

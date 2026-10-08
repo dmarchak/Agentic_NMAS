@@ -195,6 +195,8 @@ PAGE_RECORD = {
                                  ('id="device-op"', "c.words", "c.record"), "device_v2.history"),
     "device_v2.rotate_confirm": ("templates/v2/_rotate.html",
                                  ('id="device-op"', "c.summary", "c.record"), "jobs.jobs_health"),
+    "privileged_v2.confirm": ("templates/v2/_privileged.html",
+                              ('id="device-op"', "c.record", "r.verify"), "device_v2.history"),
     "device_v2.persist_confirm": ("templates/v2/_persist.html",
                                   ('id="device-op"', "c.outcome", "c.record"), "jobs.jobs_health"),
     "device_v2.capture_confirm": ("templates/v2/_capture.html",

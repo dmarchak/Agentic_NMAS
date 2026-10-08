@@ -34,6 +34,8 @@ DECLARED_DYNAMIC = {
     ("modules/commands.py", "_run"): ("typed",),
     ("modules/bulk_ops.py", "_run_single_enable_command"): ("typed",),
     ("modules/nsot/credential_rotation.py", "push_rotation"): ("rotation",),
+    # Tier 2: the confirmed command from COMMANDS, sent once (modules/nsot/privileged.py).
+    ("modules/nsot/privileged.py", "apply"): ("tier 2",),
     # The Tier 2 probe sends each measured command once (scripts/nmas-tier2-probe, STEPS).
     ("scripts/nmas-tier2-probe", "measure"): ("tier 2 probe",),
 }

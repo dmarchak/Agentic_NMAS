@@ -1125,6 +1125,11 @@ select { max-width: 100%; }
 .sc-two > * { min-width: 0; }
 .sc-two h4 { margin: 0 0 6px; font-size: 13px; }
 .sc-only { background: var(--warn-soft); display: inline-block; min-width: 100%; }
+/* Tier 2 (boards T2-A to T2-D): the command chosen, one not yet measured greyed. */
+.op-form { display: contents; }
+.op-radios { display: flex; flex-direction: column; gap: 6px; }
+.op-radios label { display: flex; gap: 8px; align-items: baseline; font-size: 13.5px; }
+.op-radios .op-off { color: var(--ink-3); }
 /* Board F: Test the logging path beside Run, and its result's rows. */
 .sc-run { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .lp-row { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line-2); }

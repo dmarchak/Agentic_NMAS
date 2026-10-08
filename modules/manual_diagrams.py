@@ -969,6 +969,33 @@ def logging_path():
     ])
 
 
+def privileged():
+    return svg(520, (
+        "Run a privileged command: the plan refuses a command that is not offered or not yet "
+        "measured, an interface the device's committed golden does not hold, or the one "
+        "carrying the address Mercury reaches it on, before anything is read; the preview reads "
+        "the before-state through the reads engine, recorded; you confirm with a reason, bound "
+        "to the plan; holding the device, the before-state is read again and kept, the command "
+        "is sent once and only its measured prompt is answered; the after-state is read back "
+        "and judged; the run is recorded, and History shows it. Rollback does not apply."), [
+        lanes(20, 514),
+        doc("box", 14, 40, 186, 36, "The plan", "offered, measured, its own"), num(14, 40, 1),
+        t(14, 92, "refused: nothing read or sent", "sm"),
+        doc("box", 14, 110, 186, 36, "The preview", "the before-state, read"), num(14, 110, 2),
+        person(14, 160, 186, 30, "You confirm, with a reason"), num(14, 160, 3),
+        band(206, 150, "The run · a job, the device held"),
+        device(262, 226, 118, 120, "The device", "one command", top=True),
+        *rows([
+            (240, None, 4, "Before kept, then sent", "only its prompt answered"),
+            (290, "read", 5, "Verified", "the measured rule"),
+        ]),
+        store(14, 380, 186, 40, "The run's record", "who, why, before, verdict"), num(14, 380, 6),
+        t(14, 444, "History shows it.", "sm"),
+        t(14, 470, "Rollback does not apply: what is cleared", "sm"),
+        t(14, 483, "cannot be put back.", "sm"),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -1159,6 +1186,7 @@ DIAGRAMS = {
     "bring-template": bring_template,
     "show-commands": show_commands,
     "logging-path": logging_path,
+    "privileged": privileged,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

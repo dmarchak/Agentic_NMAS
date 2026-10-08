@@ -250,7 +250,8 @@ def device(name):
                       _revert_card(ref, dev, tab, request.args) if op == "revert" else
                       _retry_card(ref, dev, tab, request.args) if op == "retry" else
                       _seed_card(ref, dev, tab) if op == "seed" else
-                      _retire_card(ref, dev, tab, request.args) if op == "retire" else None)
+                      _retire_card(ref, dev, tab, request.args) if op == "retire" else
+                      _privileged_card(ref, dev, tab, request.args) if op == "privileged" else None)
     return _strict(render_template("v2/device.html", **ctx))
 
 
@@ -618,6 +619,13 @@ def persist(name):
     ref, dev = found
     return _strict(render_template("v2/_persist.html",
                                    c=_persist_card(ref, dev, _back(request.args))))
+
+
+def _privileged_card(ref, dev, back, args):
+    """Tier 2's card (routes/privileged_v2.py), drawn in place of the tab when the page opens
+    with ``op=privileged`` (the menu row's href, without script)."""
+    from routes.privileged_v2 import card
+    return dict(card(ref, dev, args, back), op="privileged")
 
 
 def _persist_card(ref, dev, back):

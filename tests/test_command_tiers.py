@@ -240,7 +240,7 @@ class TestTheOtherTiersAreRefusedByName:
     def test_tier_2_names_its_operation(self, cmd):
         why = _refused(cmd)
         assert "Tier 2" in why and "Run a privileged command" in why, why
-        assert "not built yet" in why and "Nothing was sent" in why, why
+        assert "device page's Actions menu" in why and "Nothing was sent" in why, why
 
     @pytest.mark.parametrize("cmd, words", TIER3)
     def test_tier_3_names_where_to_go(self, cmd, words):
