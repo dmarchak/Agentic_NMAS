@@ -139,6 +139,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
   that the mockup drew every control: not mechanised]
 - **No new capability on a v1 page: today's interface only shrinks until cutover; a v1 control,
   handler or function count may fall and never rise.** [tests/test_no_new_v1_capability.py]
+- **Never send the operator to today's (v1) pages for an operation: no v1/v2 mixing in instructions.** If v2 cannot do what the operator needs, say so plainly and treat it as a Stage 7 cutover gap to build first. A v2 link to a v1 route says "today's" and names its gap. [tests/test_v2_links_stay_on_v2.py; tests/todays_page_links.py; instructions: not mechanised]
 - **An element carrying `hx-select` disinherits it; a v2 action that cannot draw its answer says
   "Couldn't load: <why>" in place.** [tests/test_v2_swaps_never_silent.py]
 - **Built for large fleets: a screen listing devices or results leads with a summary (counts by
@@ -203,6 +204,7 @@ Each rule ends with where it is enforced; `[not mechanised]` means only this fil
 - **Rollback undoes what LANDED and says what it achieved per device.** [tests/test_pipeline.py] [why](docs/LESSONS.md#rollback-undoes-what-landed)
 - **A change to the path the tool reaches a device on needs a repair route independent of that
   path** (management address, vty, credential, route to the manager). [not mechanised] [why](docs/LESSONS.md#changing-the-path-to-the-device)
+- **No terminal steps: a read goes through Mercury's read-only paths; anything else that touches a device is a Mercury operation or a measured probe, with preview and record.** Request text reaches a device only as an allowlisted read; a field spliced into a command is one token of its shape. [routes: tests/test_device_text_is_refused.py; instructions: not mechanised]
 - **Every mutating route and socket event is declared in `modules/route_gates.py`**, gated before
   input, recording `identity.request_actor()`; reveal, approve and confirm need a person.
   [tests/test_route_gates.py; tests/test_identity.py] [why](docs/LESSONS.md#route-gates-and-verified-identity)
