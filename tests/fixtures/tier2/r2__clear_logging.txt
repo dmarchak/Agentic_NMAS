@@ -1,0 +1,2 @@
+clear logging
+Clear logging buffer [confirm]

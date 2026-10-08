@@ -1,0 +1,21 @@
+IOSXE Conditional Debug Configs:
+
+Conditional Debug Global State: Stop
+
+
+IOSXE Packet Tracing Configs: 
+
+
+
+
+
+Packet Infra debugs:
+
+Ip Address                                               Port
+------------------------------------------------------|----------
+
+
+
+
+
+

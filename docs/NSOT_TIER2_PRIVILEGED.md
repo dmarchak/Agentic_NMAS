@@ -59,7 +59,7 @@ Anything else is refused as today, naming its tier. Tier 3 stays refused.
 - **Order:** the build comes after the measurements in section 5, made as a Mercury probe (no
   terminal steps), after boards C2, F and G are built and after Phase 3's clab sync rewrite.
 
-## 5. Measurements before the build (nothing here has been sent to a device)
+## 5. Measurements before the build (made 2026-10-08 on r2 and s1; the soft BGP refresh not yet)
 
 **The probe is BUILT (2026-10-08): `scripts/nmas-tier2-probe`, the operator's to run.** It holds
 the device, reads each step's before-state (kept, masked, capped), sends the command once,
@@ -70,20 +70,48 @@ measures a live BGP soft refresh only with `--allow-live-bgp`. The run, on one d
 platform (the lab's rule: r2 for IOS-XE, s1 for IOS, never s3), outside 08:30 to 09:10 UTC:
 
     scripts/nmas-tier2-probe --list Default --device r2 --apply --actor <operator> \
-        --arp-interface GigabitEthernet2 --allow-live-bgp --out /dev/shm/tier2-r2.json
-    scripts/nmas-tier2-probe --list Default --device s1 --apply --actor <operator> \
-        --arp-interface <an addressed interface of s1, not its management one> \
-        --out /dev/shm/tier2-s1.json
+        --interface <a data interface> --arp-interface GigabitEthernet3 --out /dev/shm/tier2-r2.json
 
-The dry run (no `--apply`) prints the plan and connects nothing. Its two JSON records are what
-the build reads: the prompts it answers, the soft refresh's verdict, ARP's return time.
+The dry run (no `--apply`) prints the plan and connects nothing; `--step` limits a run to the
+steps named.
 
-- The confirm prompts: `clear counters` asks `Clear "show interface" counters on all
-  interfaces [confirm]`, and `clear logging` asks `Clear logging buffer [confirm]`, by common
-  knowledge. Each is to be MEASURED on r2 (IOS-XE) and s1 (IOS) before the build: the exact
-  prompt, so the operation answers only that prompt (send, read, decide), and refuses anything
-  else it sees.
-- Whether `clear ip bgp <peer> soft` resets anything on these platforms: the session's uptime
-  before and after, on r2.
-- How long ARP takes to come back after `clear arp-cache` on a lab segment, which sets verify's
-  settle window (about 2.5 times the measured time).
+**MEASURED 2026-10-08** (the operator ran it on r2 at 17:42 and s1 at 17:43 UTC; the reads are
+in `tests/fixtures/operational/`, its README's "Tier 2 probe" section):
+
+| Step | r2 (IOS-XE) | s1 (IOS) |
+|---|---|---|
+| `clear counters <interface>` | asks `Clear "show interface" counters on this interface [confirm]`; after Enter the counters read 0 and `Last clearing of "show interface" counters` reads `00:00:05` (was `never`) | the same prompt; `00:00:02` |
+| `clear arp-cache interface <i>` (Gi3; Vlan20) | asks nothing; 2 of 2 entries back at the first read (0 s at one-second resolution) | asks nothing; 3 of 3 back, 0 s |
+| `clear logging` | asks `Clear logging buffer [confirm]`; the buffer is EMPTY after (nothing after `Log Buffer (… bytes):`); `messages logged` is NOT reset (4596 after) | the same prompt and outcome |
+| `undebug all` | asks nothing; prints `All possible debugging has been turned off`; `show debugging` with nothing on prints IOS-XE's conditional-debug headers | the same answer; `show debugging` prints nothing |
+| `clear ip bgp <peer> soft` | NOT MEASURED (`--allow-live-bgp` not given) | NOT MEASURED |
+
+Two things the run showed about the probe itself:
+- **C583:** the first version cleared counters on Loopback0 by default. In this lab that interface
+  carries the management address, while the docstring said the probe never used the
+  management interface. Harmless for counters, and a loopback's counters barely move. Fixed:
+  `--interface` names a data interface, there is no default, and the management interface is
+  refused for every step that names one.
+- `--step` was added, so the BGP measurement runs alone. r4's peers, from its committed golden:
+  198.51.100.3 (IPv4, AS 65002) and 2001:DB8:51:1::2 (IPv6). Its dry run sends exactly
+  `clear ip bgp 198.51.100.3 soft` and reads `show ip bgp summary` before and after; the
+  operator decides whether to run it:
+
+      scripts/nmas-tier2-probe --list Default --device r4 --apply --actor <operator> \
+          --step bgp-soft --allow-live-bgp --bgp-peer 198.51.100.3 --out /dev/shm/tier2-r4.json
+
+**What the build takes from it:**
+- the two prompts, answered with Enter only when the device's last line is exactly one of
+  them;
+- counters verified by `Last clearing of "show interface" counters` reading under a minute;
+- logging verified by an empty buffer, never by `messages logged`;
+- ARP verified at the first read (0 s measured), polled up to 3 s (about 2.5 times the
+  probe's one-second resolution);
+- `undebug all` saying "changes nothing" only when `show debugging` is EXACTLY a measured
+  nothing-on form (s1's empty, r2's headers), and otherwise just running;
+- `clear ip bgp <peer> soft` refused, "not measured", until r4's run.
+
+The three questions this section began with (2026-10-08, before the run): the exact prompts
+(measured above, and `clear counters <interface>` asks about "this interface", not "all
+interfaces" as written from memory here); whether a soft refresh resets anything (r4's run);
+how long ARP takes to return (measured, 0 s).

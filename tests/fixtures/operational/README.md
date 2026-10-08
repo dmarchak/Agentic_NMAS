@@ -33,3 +33,27 @@ Measured with them, beyond the parsers:
 (OSPF detail, CDP, LLDP, `show ip ospf`, connected routes, `show ip
 interface`) were added the same day by a probe that also ran each module's
 own parser on the host.
+
+## The Tier 2 probe's captures (2026-10-08)
+
+`scripts/nmas-tier2-probe`, run by the operator on r2 (IOS-XE) and s1 (vIOS-L2) at 17:42 and
+17:43 UTC, SENT Tier 2 commands (docs/NSOT_TIER2_PRIVILEGED.md section 5): `clear counters
+Loopback0`, `clear arp-cache interface <a data interface>`, `clear logging`, `undebug all`, each
+`[confirm]` answered with Enter. Every read passed through `redact_text` on the host. Copied from
+its records byte for byte:
+
+- `<host>__show_debugging.txt`: `show debugging` with no debug on. s1 prints nothing; r2 prints
+  IOS-XE's conditional-debug and packet-tracing headers, which are not debugs;
+- `<host>__show_interfaces_Loopback0.txt` and `…__after_clear_counters.txt`: the counters, and
+  `Last clearing of "show interface" counters` going from `never` to `00:00:05` (r2), `00:00:02`
+  (s1);
+- `<host>__show_logging__after_clear_logging.txt`: the buffer EMPTY after the clear (nothing
+  after `Log Buffer (… bytes):`), while `messages logged` keeps counting: it is not reset;
+- `../tier2/r2__clear_counters_Loopback0.txt`, `r2__clear_logging.txt`, `r2__undebug_all.txt`: what each
+  command printed before any answer (in `tests/fixtures/tier2/`: a send's output echoes the command
+  and ends at the prompt, so it is not a read, which every file here is). Both platforms asked the same two prompts,
+  `Clear "show interface" counters on this interface [confirm]` and
+  `Clear logging buffer [confirm]`; `clear arp-cache interface` and `undebug all` asked nothing.
+
+Measured beside them: the ARP entries were all back at the first read after the clear (2 of 2,
+3 of 3: "back after 0 s" at the probe's one-second resolution).

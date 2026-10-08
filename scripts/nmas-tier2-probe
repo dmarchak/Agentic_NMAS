@@ -26,10 +26,12 @@ the counters it clears are KEPT in the record first (T2-4), masked and capped. N
 configured or saved.
 
 **What it touches is chosen narrowly, and refused otherwise:**
-- ``clear counters`` on ONE interface (``--interface``, Loopback0 by default), never all;
-- ``clear arp-cache interface`` only on an interface the operator names (``--arp-interface``),
-  and never the one carrying the device's management address (read from
-  ``show ip interface brief``): clearing it could cut the session the probe runs on;
+- ``clear counters`` on ONE data interface the operator names (``--interface``), never all;
+- ``clear arp-cache interface`` only on an interface the operator names (``--arp-interface``);
+- NEITHER on the interface carrying the device's management address (read from
+  ``show ip interface brief``, the address Mercury reaches it on): clearing its ARP could cut
+  the session the probe runs on, and its counters are not a data interface's (C583: the first
+  version defaulted counters to Loopback0, which carries that address in this lab);
 - ``clear ip bgp <peer> soft`` only with ``--allow-live-bgp``: it acts on a live session. The
   peer is the first Established one in ``show ip bgp summary`` unless ``--bgp-peer`` names one;
   the verdict compares the peer's Up/Down before and after (a reset starts it again);
@@ -41,7 +43,8 @@ NOT MEASURED with the reason, never as a result.
 
     nmas-tier2-probe                                                   # dry run: the plan
     nmas-tier2-probe --list Default --device <device> --apply --actor you@example.com \\
-        --arp-interface GigabitEthernet2 --allow-live-bgp --out /dev/shm/tier2-<device>.json
+        --interface GigabitEthernet2 --arp-interface GigabitEthernet2 --allow-live-bgp \\
+        --out /dev/shm/tier2-<device>.json
 
 Run it on one device of each platform (cisco_iosxe, cisco_ios). Exit 0 measured (whatever the
 results), 1 refused before touching the device, 2 stopped on a question it would not answer.
@@ -60,7 +63,7 @@ sys.path.insert(0, ROOT)
 #: The steps, in the order they run. ``{interface}``, ``{arp_interface}`` and ``{peer}`` are
 #: filled from the arguments (each one token of its shape).
 STEPS = (
-    {"key": "clear-counters", "command": "clear counters {interface}",
+    {"key": "clear-counters", "command": "clear counters {interface}", "needs": "interface",
      "before": "show interfaces {interface}", "after": "show interfaces {interface}"},
     {"key": "clear-arp", "command": "clear arp-cache interface {arp_interface}",
      "before": "show ip arp {arp_interface}", "after": "show ip arp {arp_interface}",
@@ -174,8 +177,11 @@ def plan(args) -> list:
     fill = {"interface": args.interface, "arp_interface": args.arp_interface,
             "peer": args.bgp_peer or "<the first Established peer>"}
     out = []
-    for s in STEPS:
+    chosen = getattr(args, "step", None) or [s["key"] for s in STEPS]
+    for s in (s for s in STEPS if s["key"] in chosen):
         row = {k: v.format(**fill) if isinstance(v, str) else v for k, v in s.items()}
+        if s.get("needs") == "interface" and not args.interface:
+            row["unmeasured"] = "no --interface named (a data interface)"
         if s.get("needs") == "arp_interface" and not args.arp_interface:
             row["unmeasured"] = "no --arp-interface named"
         if s.get("needs") == "peer" and not args.allow_live_bgp:
@@ -185,6 +191,10 @@ def plan(args) -> list:
 
 
 def refusal(args, now: float = None) -> str:
+    unknown = sorted(set(getattr(args, "step", None) or []) - {s["key"] for s in STEPS})
+    if unknown:
+        return (f"REFUSED: no such step: {', '.join(unknown)} (the steps: "
+                f"{', '.join(s['key'] for s in STEPS)})")
     for name, value in (("--interface", args.interface), ("--arp-interface", args.arp_interface)):
         if value and not _TOKEN.match(value):
             return f"REFUSED: {name} {value!r} is not one interface name"
@@ -229,7 +239,8 @@ def measure(conn, steps: list, device: dict, values: dict, sleep=time.sleep,
         if s.get("unmeasured"):
             results[s["key"]] = {**row, "result": "not measured", "why": s["unmeasured"]}
             continue
-        if s["key"] == "clear-arp" and mgmt and s["command"].endswith(" " + mgmt):
+        if s.get("needs") in ("interface", "arp_interface") and mgmt \
+                and s["command"].split()[-1] == mgmt:
             results[s["key"]] = {**row, "result": "not measured",
                                  "why": f"{mgmt} carries the management address the probe's "
                                         "session runs on"}
@@ -290,10 +301,12 @@ def main() -> int:
     ap.add_argument("--device", default="")
     ap.add_argument("--actor", default="")
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--interface", default="Loopback0")
+    ap.add_argument("--interface", default="")
     ap.add_argument("--arp-interface", default="")
     ap.add_argument("--allow-live-bgp", action="store_true")
     ap.add_argument("--bgp-peer", default="")
+    ap.add_argument("--step", action="append", default=[],
+                    help="measure only this step (repeatable): " + ", ".join(s["key"] for s in STEPS))
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 

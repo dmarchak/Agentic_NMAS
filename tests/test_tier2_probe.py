@@ -41,8 +41,8 @@ BRIEF = _cap("r1__show_ip_interface_brief.txt")
 
 def _args(**kw):
     base = {"list_name": "Lab", "device": "r2", "actor": "op@example.invalid", "apply": False,
-            "interface": "Loopback0", "arp_interface": "", "allow_live_bgp": False,
-            "bgp_peer": "", "out": ""}
+            "interface": "", "arp_interface": "", "allow_live_bgp": False,
+            "bgp_peer": "", "out": "", "step": []}
     return types.SimpleNamespace(**{**base, **kw})
 
 
@@ -106,11 +106,22 @@ class TestRefusedBeforeTouching:
     def test_an_argument_out_of_shape(self, kw, words):
         assert words in P.refusal(_args(**kw), now=_utc(12, 0))
 
+    def test_only_the_steps_named_run(self):
+        """A BGP-only run on r4 must not also clear its log buffer and counters."""
+        rows = P.plan(_args(step=["bgp-soft"], allow_live_bgp=True, bgp_peer="198.51.100.3"))
+        assert [(s["key"], s["command"]) for s in rows] == [
+            ("bgp-soft", "clear ip bgp 198.51.100.3 soft")]
+        assert "no such step: clear-everything" in P.refusal(_args(step=["clear-everything"]),
+                                                             now=_utc(12, 0))
+
     def test_steps_not_asked_for_are_not_measured(self):
         rows = {s["key"]: s for s in P.plan(_args())}
         assert rows["clear-arp"]["unmeasured"] == "no --arp-interface named"
         assert "--allow-live-bgp" in rows["bgp-soft"]["unmeasured"]
-        assert rows["clear-counters"]["command"] == "clear counters Loopback0"
+        assert rows["clear-counters"]["unmeasured"] == "no --interface named (a data interface)"
+        named = {s["key"]: s for s in P.plan(_args(interface="Loopback0"))}
+        assert named["clear-counters"]["command"] == "clear counters Loopback0"
+        assert "unmeasured" not in named["clear-counters"]
 
 
 class Conn:
@@ -161,7 +172,8 @@ SENDS = {"clear counters Loopback0": 'Clear "show interface" counters on this in
 class TestMeasuring:
     def test_each_step_measured_a_confirm_answered_once(self, device):
         conn = Conn(_reads(), SENDS)
-        steps = P.plan(_args(arp_interface="GigabitEthernet2", allow_live_bgp=True))
+        steps = P.plan(_args(interface="Loopback0", arp_interface="GigabitEthernet2",
+                             allow_live_bgp=True))
         results, stopped = P.measure(conn, steps, device, {}, sleep=lambda s: None)
         assert stopped == ""
         assert results["clear-counters"]["prompt"].endswith("[confirm]")
@@ -176,18 +188,23 @@ class TestMeasuring:
     def test_another_question_stops_the_run_unanswered(self, device):
         sends = {**SENDS, "clear counters Loopback0": "Proceed with this? [yes/no]:"}
         conn = Conn(_reads(), sends)
-        results, stopped = P.measure(conn, P.plan(_args()), device, {}, sleep=lambda s: None)
+        results, stopped = P.measure(conn, P.plan(_args(interface="Loopback0")), device, {},
+                                     sleep=lambda s: None)
         assert stopped == "Proceed with this? [yes/no]:"
         assert results["clear-counters"]["result"] == "stopped"
         assert "\n" not in conn.sent and "clear logging" not in conn.sent, conn.sent
 
     def test_the_management_interface_is_never_cleared(self, device):
+        """C583 (the operator, 2026-10-08): the first version cleared counters on Loopback0, the
+        interface carrying the management address in this lab, while saying it never used it."""
         conn = Conn(_reads(), SENDS)
-        steps = P.plan(_args(arp_interface=device["mgmt"]))
+        steps = P.plan(_args(interface=device["mgmt"], arp_interface=device["mgmt"]))
         results, _s = P.measure(conn, steps, device, {}, sleep=lambda s: None)
-        assert results["clear-arp"]["result"] == "not measured"
-        assert "management address" in results["clear-arp"]["why"]
-        assert not any(c.startswith("clear arp") for c in conn.sent)
+        for key in ("clear-counters", "clear-arp"):
+            assert results[key]["result"] == "not measured", key
+            assert "management address" in results[key]["why"], key
+        assert not any(c.startswith("clear counters") or c.startswith("clear arp")
+                       for c in conn.sent), conn.sent
 
     def test_arp_not_back_in_time_is_said_with_the_count(self, device, monkeypatch):
         monkeypatch.setattr(P, "ARP_WAIT", 3)

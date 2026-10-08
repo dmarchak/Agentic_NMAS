@@ -1,0 +1,2 @@
+clear counters Loopback0
+Clear "show interface" counters on this interface [confirm]
