@@ -182,15 +182,17 @@ class TestEveryWriterNowHoldsTheDevice:
                             headers={"X-Requested-With": "XMLHttpRequest"})
         assert r.status_code == 200 and "show clock" in FakeConn.sent
 
-    def test_run_command_a_write_is_refused_while_held_and_runs_when_free(self, client):
+    def test_run_command_a_write_is_refused_held_or_free(self, client):
+        """C570 (2026-10-08): the route reads only. A write is refused by the allowlist,
+        whether or not another operation holds the device, and is never sent."""
         with Holder():
-            client.post(f"/run_command/{IP}", data={"command": "clear counters"},
+            r = client.post(f"/run_command/{IP}", data={"command": "clear counters"},
+                            headers={"X-Requested-With": "XMLHttpRequest"})
+        assert r.status_code == 400 and "Not run on r2" in r.get_json()["error"]
+        r = client.post(f"/run_command/{IP}", data={"command": "clear counters"},
                         headers={"X-Requested-With": "XMLHttpRequest"})
+        assert r.status_code == 400
         assert "clear counters" not in FakeConn.sent
-        assert "r2 is being deployed to by other@example.invalid" in _flashes(client)
-        client.post(f"/run_command/{IP}", data={"command": "clear counters"},
-                    headers={"X-Requested-With": "XMLHttpRequest"})
-        assert "clear counters" in FakeConn.sent
 
     def _bulk(self, client, command):
         from modules.bulk_ops import bulk_manager
@@ -205,10 +207,11 @@ class TestEveryWriterNowHoldsTheDevice:
             time.sleep(0.05)
         raise AssertionError("the bulk operation never reported")
 
-    def test_a_bulk_write_on_a_held_device_fails_that_device_by_name(self, client):
-        with Holder():
-            result = self._bulk(client, "clear counters")
-        assert result["status"] == "failed" and "r2 is being deployed to" in result["error"]
+    def test_a_bulk_write_is_refused_before_any_device(self, client):
+        """C570: enable mode reads only; a write is refused for every device at once."""
+        r = client.post("/bulk_execute", data={"device_ips[]": [IP], "command": "clear counters",
+                                               "command_mode": "enable"})
+        assert r.status_code == 400 and "Not run on any device" in r.get_json()["message"]
         assert "clear counters" not in FakeConn.sent
 
     def test_a_bulk_read_on_a_held_device_runs(self, client):

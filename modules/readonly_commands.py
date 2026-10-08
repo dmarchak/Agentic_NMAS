@@ -42,8 +42,10 @@ state (``clear ip ospf process`` drops adjacencies, ``clear counters`` erases
 the evidence a diagnosis reads, ``debug`` loads the device) and are NOT here
 (NSOT_FEATURE_AUDIT 3a).
 
-Used by the agent's ``execute_*`` tools today; the terminal lens,
-``/run_command`` and ``bulk_execute`` adopt it in 7.3 (committed 2026-09-27).
+Used by the agent's ``execute_*`` tools, and as a REFUSAL by ``/run_command`` and
+``bulk_execute`` (C570, 2026-10-08: they had used it only to decide whether to hold the device,
+and then ran anything; ``tests/test_device_text_is_refused.py``). The connection layer's guard
+(``connection._guard_writes``) refuses any unheld non-read on every session besides.
 """
 
 import logging

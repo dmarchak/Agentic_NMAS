@@ -1,4 +1,4 @@
-# Reads: Ask the device and the fleet-wide reads (C547, C548; design for sign-off)
+# Show commands: Ask the device and fleet-wide show commands (C547, C548; APPROVED 2026-10-08)
 
 The operator, 2026-10-08: "no more command line or terminals". A person reads a device through
 Mercury, never a console: one device on its page (C547, the "Ask the device" tab, signed off
@@ -49,7 +49,7 @@ So three paths read devices, none records a read, and one of them refuses nothin
   <person>"), when, the network, the devices, each command, each device's outcome (answered,
   refused and why, failed and why, busy and who) and the masked answer with its SHA-256. A
   per-network append-only record, locked and replaced atomically, read by History as a new
-  kind, "Reads", filterable by device and person. Kept 30 days, then the answers are dropped
+  kind, "Show commands", filterable by device and person. Kept 30 days, then the answers move to MinIO
   and the who-when-what kept (decision R2).
 - **The agent** (Stage 8) calls `run()` with its purpose; it opens no session of its own, and
   its reads are a person's reads in History.
@@ -75,7 +75,7 @@ v2 screens replace them), and the AI tools call `run()`.
 
 ## 4. Fleet-wide reads (C548, many devices, its own screen)
 
-Where: OBSERVE in the sidebar, a new item "Reads" (decision R4), replacing today's Bulk Operation.
+Where: OBSERVE in the sidebar, a new item "Show commands" (decision R4), replacing today's Bulk Operation.
 
 - **Pick devices** by name (search), role, platform, site or network, with the count shown
   ("31 devices"); a device in no reachable state is named before the run.
@@ -133,14 +133,23 @@ that the device's configuration did not change (the drift check's next read, cle
   ("ignored: uptime, last input"), per platform, and "show the raw answers" turns it off.
 - A refused command never runs on some devices and not others: all pass, or none runs.
 
-## 8. Decisions for the operator
+## 8. Decisions (the operator, 2026-10-08: the design and boards A to E APPROVED)
 
+- **First, before the build (C570, bucket A, done the same day):** the device page's command
+  route and Bulk Operation refuse anything the allowlist refuses, before any device is
+  contacted, and the file routes take each spliced field as one token.
 - **R1, the allowlist review:** `show tech-support` refused fleet-wide, allowed on one device;
-  answers capped per device (the cap measured).
-- **R2, retention:** answers kept 30 days; who, when and what kept for good.
+  each answer capped at a MEASURED size. Added by the operator: a CONCURRENCY LIMIT for fleet
+  reads (fewer than `fanout`'s 16 at once, measured against the lab's slowest device), and a
+  HEAVY COMMAND warning before a run (s3 is CPU-starved): a command the engine knows to be
+  heavy, or a device it knows to be weak, is named at the confirm.
+- **R2, retention:** answers kept 30 days, then MOVED to MinIO (the charter's queryable archive
+  past retention, `modules/nsot/archive.py`), never deleted, on a retention SETTING; who, when
+  and what kept for good.
 - **R3, saved sets:** committed in the network's repository (history, reviewable), not a setting.
-- **R4, the fleet screen's place:** OBSERVE › Reads in the sidebar.
-- **R5, order:** the engine, then Ask the device (its tab), then the fleet screen, then the
+- **R4, the fleet screen:** under OBSERVE, named **"Show commands"** (what engineers call it),
+  not "Reads"; the History kind follows it.
+- **R5, order:** the engine, then Ask the device (its tab), then Show commands, then the
   agent's tools onto the engine; `/run_command` and Bulk Operation retire at cutover.
 
 ## 9. Boards to draw (the mockup, for sign-off)

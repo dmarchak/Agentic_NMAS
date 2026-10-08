@@ -563,31 +563,29 @@ def run_command(ip):
         flash("No command provided.", "warning")
         return redirect(url_for("manage_device", ip=ip))
 
+    # READS ONLY (C570, the operator, 2026-10-08): this route ran ANY exec command (reload,
+    # write erase, delete, copy), holding the device first so the session guard let it
+    # through. A change to a device is an operation with a preview, a confirm and a record,
+    # never free text here: anything the read-only allowlist refuses is refused, naming why,
+    # before any device is asked.
+    from modules.readonly_commands import refusal as _read_refusal
+    _why = _read_refusal(command)
+    if _why:
+        app.logger.warning("run_command: refused for %s: %s", dev["hostname"], _why)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": False, "error": f"Not run on {dev['hostname']}: {_why}"}), 400
+        flash(f"Not run on {dev['hostname']}: {_why}", "danger")
+        return redirect(url_for("manage_device", ip=ip))
+
     try:
         output = None
-        # A command that is not a read changes the device, so it holds the
-        # device first (C98, C101); a read never waits on another operation.
-        import contextlib as _contextlib
-
-        from modules import identity as _identity
-        from modules.nsot import device_ops as _device_ops
-        from modules.readonly_commands import refusal as _read_refusal
-        _list_name, _ = get_current_device_list()
-        _hold = (_device_ops.hold(_list_name, dev["hostname"], "command",
-                                  _identity.request_actor(),
-                                  detail=(command.split() or ["?"])[0], ip=ip)
-                 if _read_refusal(command) else _contextlib.nullcontext())
-
-        with _hold:
-            # Attempt persistent connection first
-            try:
-                conn = get_persistent_connection(dev, connections, lock)
-                output = run_device_command(conn, command)
-            except _device_ops.DeviceBusy:
-                raise
-            except Exception:
-                # Fallback to temporary connection
-                output = with_temp_connection(dev, lambda conn: run_device_command(conn, command))
+        # Attempt persistent connection first
+        try:
+            conn = get_persistent_connection(dev, connections, lock)
+            output = run_device_command(conn, command)
+        except Exception:
+            # Fallback to temporary connection
+            output = with_temp_connection(dev, lambda conn: run_device_command(conn, command))
 
         # Save output for download
         session["last_output"] = output
@@ -661,6 +659,15 @@ def upload_file(ip):
 
     if not file:
         flash("No file selected", "danger")
+        return redirect(url_for("manage_device", ip=ip))
+    # C570: the name is spliced into the copy's prompts and joined to the TFTP root, so it is
+    # one token (no path: "../x" wrote outside the root); the filesystem and server likewise.
+    from modules.cli_tokens import first_refusal as _token_refusal
+    _why = _token_refusal(filename=(file.filename, "filename"),
+                          filesystem=(filesystem, "filesystem"),
+                          tftp_server=(tftp_server, "server"))
+    if _why:
+        flash(_why, "danger")
         return redirect(url_for("manage_device", ip=ip))
 
     try:
@@ -777,6 +784,12 @@ def delete_file(ip):
     if not filename:
         flash("No filename provided", "warning")
         return redirect(url_for("manage_device", ip=ip))
+    # C570: each field is spliced into the command, so each is one token of its shape.
+    from modules.cli_tokens import first_refusal as _token_refusal
+    _why = _token_refusal(filename=(filename, "filename"), filesystem=(filesystem, "filesystem"))
+    if _why:
+        flash(_why, "danger")
+        return redirect(url_for("manage_device", ip=ip))
 
     try:
 
@@ -830,6 +843,13 @@ def download_device_file(ip):
 
     if not filename:
         flash("No filename provided", "warning")
+        return redirect(url_for("manage_device", ip=ip))
+    # C570: each field is spliced into the copy and its prompts, so each is one token.
+    from modules.cli_tokens import first_refusal as _token_refusal
+    _why = _token_refusal(filename=(filename, "filename"), filesystem=(filesystem, "filesystem"),
+                          tftp_server=(tftp_server, "server"))
+    if _why:
+        flash(_why, "danger")
         return redirect(url_for("manage_device", ip=ip))
 
     try:
@@ -2278,6 +2298,14 @@ def bulk_execute():
                 "available and needs a person.")}), 400
         if command_mode != "enable":
             command_mode = "enable"
+        # READS ONLY (C570): enable mode ran any command on every selected device, holding
+        # each so the session guard let it through, and answered `reload`'s and `write
+        # erase`'s prompts itself. Every `;`-separated command must pass the read-only
+        # allowlist, or none runs on any device.
+        from modules.readonly_commands import refusal_for as _reads_refusal
+        _why = _reads_refusal([c.strip() for c in command.split(";") if c.strip()])
+        if _why:
+            return jsonify({"status": "error", "message": f"Not run on any device: {_why}"}), 400
 
         # Load devices from current list
         _, current_list_file = get_current_device_list()
@@ -2481,6 +2509,11 @@ def bulk_tftp_upload():
 
         if not file or not file.filename:
             return jsonify({"status": "error", "message": "No file selected"}), 400
+        # C570: the name joins the TFTP root and the copy's prompts; one token each.
+        from modules.cli_tokens import first_refusal as _token_refusal
+        _why = _token_refusal(filename=(file.filename, "filename"), tftp_server=(tftp_server, "server"))
+        if _why:
+            return jsonify({"status": "error", "message": _why}), 400
 
         # Save file to TFTP root (created on first use)
         local_path = os.path.join(ensure_tftp_root(), file.filename)
@@ -2535,6 +2568,11 @@ def bulk_tftp_download():
 
         if not filename:
             return jsonify({"status": "error", "message": "No filename provided"}), 400
+        # C570: spliced into the copy and its prompts; one token each.
+        from modules.cli_tokens import first_refusal as _token_refusal
+        _why = _token_refusal(filename=(filename, "filename"), tftp_server=(tftp_server, "server"))
+        if _why:
+            return jsonify({"status": "error", "message": _why}), 400
 
         # Load devices from current list
         _, current_list_file = get_current_device_list()
@@ -2584,6 +2622,11 @@ def bulk_download_config():
 
         if config_type not in ("startup", "running"):
             config_type = "startup"
+        # C570: the server answers the copy's prompt; one token.
+        from modules.cli_tokens import first_refusal as _token_refusal
+        _why = _token_refusal(tftp_server=(tftp_server, "server"))
+        if _why:
+            return jsonify({"status": "error", "message": _why}), 400
 
         # Load devices from current list
         _, current_list_file = get_current_device_list()
@@ -2635,6 +2678,11 @@ def bulk_delete_file():
 
         if not filename:
             return jsonify({"status": "error", "message": "No filename provided"}), 400
+        # C570: spliced into `delete flash:<name>`; one token.
+        from modules.cli_tokens import first_refusal as _token_refusal
+        _why = _token_refusal(filename=(filename, "filename"))
+        if _why:
+            return jsonify({"status": "error", "message": _why}), 400
 
         # Load devices from current list
         _, current_list_file = get_current_device_list()

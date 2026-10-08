@@ -374,7 +374,12 @@
       credentials: 'same-origin',
     })
       .then(async (resp) => {
-        if (!resp.ok) throw new Error('Network response not ok');
+        if (!resp.ok) {
+          // C570: a command that is not a read is refused; say the server's reason.
+          let why = '';
+          try { why = (await resp.json()).error || ''; } catch (_) { why = ''; }
+          throw new Error(why || ('refused (HTTP ' + resp.status + ')'));
+        }
         const data = await resp.json();
         showQuickActionOutput(data.output, data.filename);
       })

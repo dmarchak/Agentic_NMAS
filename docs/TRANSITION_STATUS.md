@@ -23,8 +23,8 @@ v1's own size is pinned by `tests/test_no_new_v1_capability.py` (202 controls, 1
 |---|---|
 | 1 Proven | **16** |
 | 2 Built, not yet run | **10** |
-| 3 Signed off, not built | **17** |
-| 4 Awaiting sign-off | **1** (fleet-wide reads, C548, 2026-10-08) |
+| 3 Signed off, not built | **18** |
+| 4 Awaiting sign-off | **0** |
 | 5 No design | **14** (11 with a decided home, 3 without) |
 | 6 Retired | **26** (4 removed, the server restart among them; 21 REMOVE at 7.8; 1 CLI only) |
 
@@ -51,7 +51,7 @@ Counted from the rows below (the first survey had 86; three Installation rows, N
 | Save All, capture the uncaptured | partials/device_toolbar.html | 3 | board C (2026-10-04) | |
 | Batch deploy | partials/deploy_wizard.html | 3 | boards A, B, K (2026-10-04) | |
 | Bulk intent (CLI today) | (no v1 control) | 3 | board D (2026-10-04) | |
-| Bulk read-only commands | device_table.html, `/bulk_execute` | 4 | REPLACED by a v2 screen, OBSERVE › Reads (decided 2026-10-06, C548; designed in NSOT_READS.md, boards to sign off); the writes stay cut | |
+| Bulk read-only commands | device_table.html, `/bulk_execute` | 3 | REPLACED by a v2 screen, OBSERVE › Show commands (decided 2026-10-06, C548; designed in NSOT_READS.md, signed off 2026-10-08); the writes stay cut | |
 | Bulk restore at HEAD | device_table.html | 6 REMOVE | cut 2026-10-05 | |
 | Reload devices | partials/device_toolbar.html, `/bulk_reload` | 5 | P.14, a gated device operation with its planned restart built in (decided 2026-10-05, to draw) | |
 | Bulk file transfer, config downloads | device_table.html | 6 REMOVE | P.13 and ZTP delivery | CUTOVER |
@@ -78,7 +78,7 @@ Counted from the rows below (the first survey had 86; three Installation rows, N
 | Retire | device.html | 1 | Actions › Retire… | r5, 2026-10-04 |
 | Intent editor | partials/intent_editor.html | 2 | the Intent tab's Edit, board H's Document mode with acknowledging an unmodelled line (built 2026-10-05; Fields mode, board J, not built) | C444, C481; first real run: THROWAWAY Part 5 |
 | Template render preview | template_editor.html | 5 | Templates, through the intent editor H (decided 2026-10-05) | |
-| Custom command | device.html, Utilities | 3 | the Ask the device tab (drawn disabled; designed in NSOT_READS.md, C547) | signed_off_screens `tab:ask` |
+| Custom command | device.html, Utilities | 3 | the Ask the device tab (drawn disabled; designed in NSOT_READS.md, signed off 2026-10-08, C547) | signed_off_screens `tab:ask` |
 | Quick actions | device.html | 6 REMOVE | | CUTOVER |
 | File Management | device.html | 6 REMOVE | P.13 and ZTP | CUTOVER (the ZTP TFTP path checked first) |
 | Backups | device.html | 6 REMOVE | captures | CUTOVER (after section 6a's prerequisite) |

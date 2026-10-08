@@ -348,8 +348,9 @@ def get_device_context(dev: dict, filesystem: str | None = None):
         # Filesystems, the default first (C101: a read the allowlist knows).
         filesystems = parse_file_systems(conn.send_command("show file systems"))
 
-        # Default to first filesystem
-        fs = filesystem or (filesystems[0] if filesystems else "")
+        # Default to first filesystem. A requested one is used only when the device listed it
+        # (C570: it is spliced into `dir`, so a request's text never reaches the device).
+        fs = filesystem if filesystem in filesystems else (filesystems[0] if filesystems else "")
 
         # Files in selected filesystem
         file_list: list[str] = []
