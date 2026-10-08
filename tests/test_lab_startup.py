@@ -30,7 +30,7 @@ def _golden(h):
 
 
 def _synced(h, golden=None):
-    """What the clab sync writes for *h* from Oxidized's copy (here the golden)."""
+    """What the clab sync writes for *h* from the baseline's golden (here the golden)."""
     script = (_function("kind_for") + _function("sanitise") + _function("render_device")
               + f'\nrender_device {h} "$(kind_for {DIALECT[h]})" "$(cat)"\n')
     out = subprocess.run(["bash", "-c", script], input=golden or _golden(h),

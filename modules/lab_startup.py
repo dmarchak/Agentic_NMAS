@@ -3,7 +3,7 @@
 plan item 4, the same night).
 
 A containerlab node boots the file in its lab's ``configs/`` directory, which
-the clab sync writes through the sanitiser (``scripts/oxidized-to-config.sh``)
+the clab sync writes through the sanitiser (``scripts/clab-startup-sync.sh``)
 from the list's newest EARNED baseline, every credential taken from the
 device's current golden (``modules/nsot/startup_source.py``, the sync's own
 helper's computation). So a redeploy boots that file, and this asks two
@@ -38,7 +38,7 @@ import subprocess
 log = logging.getLogger(__name__)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SANITISER = os.path.join(ROOT, "scripts", "oxidized-to-config.sh")
+SANITISER = os.path.join(ROOT, "scripts", "clab-startup-sync.sh")
 #: Separates the files in one lab's read: a control character no config holds.
 SEP = "\x1e"
 #: How many differing lines a result carries per side (the count is always whole).
@@ -195,7 +195,7 @@ def check(population=None, golden=None, reader=None, target=None, source=None) -
     Each compared device also carries ``since_baseline``: its current golden
     against the baseline's, through the same sanitiser. A difference is a
     device a redeploy returns to the baseline (the sync's cross-check, from
-    the record rather than from Oxidized)."""
+    the record, never from Oxidized)."""
     from modules.nsot.credential_rotation import clab_target_for
     from modules.nsot.platform import platform_for_device
     from modules.prometheus_targets import inventory, read_golden

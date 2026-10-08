@@ -317,6 +317,10 @@ def register_default_hooks() -> None:
     # target group: wake the targets keeper (a no-op where it does not run).
     from modules.prometheus_targets import golden_hook
     register("prometheus-targets", golden_hook, timeout=15)
+    # A commit that earned a baseline writes an event a host service may wait on (C553,
+    # Phase 3), rather than polling for the newest baseline on a timer.
+    from modules.nsot.baseline_event import hook as baseline_event_hook
+    register("baseline-event", baseline_event_hook, timeout=10)
     # A commit that changed a golden asks Oxidized to fetch those devices now,
     # never at its next hourly poll (C314).
     from modules.oxidized_fetch import golden_hook as oxidized_fetch_hook

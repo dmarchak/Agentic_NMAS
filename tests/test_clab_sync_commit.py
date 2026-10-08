@@ -1,6 +1,7 @@
 """The sanitiser's commit and reconcile steps, EXECUTED: the shipped blocks
-lifted out of scripts/oxidized-to-config.sh and run under bash, with ssh
-replaced by a local shell and real git repositories on both sides.
+lifted out of scripts/clab-startup-sync.sh (oxidized-to-config.sh until Phase 3)
+and run under bash, with ssh replaced by a local shell and real git
+repositories on the lab's side. Oxidized is not read (Phase 3, 2026-10-08).
 
 Measured 2026-09-25:
 * labs/r6 was a repository whose commit failed for want of a user.email, and
@@ -16,7 +17,7 @@ import os
 import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "scripts", "oxidized-to-config.sh")
+SCRIPT = os.path.join(ROOT, "scripts", "clab-startup-sync.sh")
 TEXT = open(SCRIPT, encoding="utf-8").read()
 
 
@@ -48,22 +49,20 @@ def _git(env, *args, check=True):
                           capture_output=True, text=True)
 
 
-def _harness(tmp_path, devices: dict, body: str, oxidized: str = ""):
-    """*devices* is {name: configs_dir}. The Oxidized repo, if given, is what
-    GIT reads; every device's Oxidized node is its own name, kind router."""
+def _harness(tmp_path, devices: dict, body: str):
+    """*devices* is {name: configs_dir}, each kind router; this run's output is
+    whatever the test put in ``out/``."""
     out = tmp_path / "out"
     out.mkdir(exist_ok=True)
-    decl = "\n".join(f"DEVICES+=({n!r}); CFGDIR[{n}]={str(d)!r}; "
-                     f"NODE[{n}]={n!r}; PLATFORM[{n}]=cisco_iosxe"
+    decl = "\n".join(f"DEVICES+=({n!r}); CFGDIR[{n}]={str(d)!r}; PLATFORM[{n}]=cisco_iosxe"
                      for n, d in devices.items())
     script = f"""
 set -uo pipefail
-ts=now; CLAB=clab; SRC_SHA=abc1234; REF=HEAD; BASE_TAG={BASE_TAG}; OUT={str(out)!r}
+ts=now; CLAB=clab; BASE_TAG={BASE_TAG}; OUT={str(out)!r}
 ssh() {{ bash -c "${{@: -1}}"; }}
-declare -A NODE CFGDIR PLATFORM
+declare -A CFGDIR PLATFORM
 DEVICES=()
 {decl}
-GIT=(git -C {oxidized!r})
 {GIT_ID}
 {_function("kind_for")}
 {_function("sanitise")}
@@ -90,25 +89,23 @@ def _lab(tmp_path, name, content="v1\n"):
     return lab / "configs"
 
 
-def _oxidized(tmp_path, name, config):
-    env = _env(tmp_path)
-    ox = tmp_path / "oxidized"
-    if not ox.exists():
-        _git(env, "init", "-q", str(ox))
-    (ox / name).write_text(config)
-    _git(env, "-C", str(ox), "add", "-A")
-    _git(env, "-C", str(ox), "-c", "user.name=o", "-c", "user.email=o@o",
-         "commit", "-q", "-m", "poll")
-    return ox, _git(env, "-C", str(ox), "rev-parse", "--short", "HEAD").stdout.strip()
+RUNNING = "hostname r6\ninterface Loopback0\n ip address 192.0.2.16 255.255.255.255\n!\nend\n"
 
 
-RUNNING = "hostname r6\ninterface Loopback0\n ip address 10.255.1.16 255.255.255.255\n!\nend\n"
-
-
-def _job_output(tmp_path, name, ox, sha):
-    r = _harness(tmp_path, {}, f'raw="$(git -C {str(ox)!r} show {sha}:{name})"; '
-                               f'render_device {name} router "$raw"')
+def _job_output(tmp_path, name, config):
+    """What the job renders for *config* (a baseline's golden), through the shipped renderer."""
+    src = tmp_path / f"{name}-source.cfg"
+    src.write_text(config)
+    r = _harness(tmp_path, {}, f'render_device {name} router "$(cat {str(src)!r})"')
     return r.stdout
+
+
+def _this_run_built(tmp_path, name, config=RUNNING):
+    """This run's output for *name*: the file the job wrote to ``out/`` from the baseline."""
+    built = _job_output(tmp_path, name, config)
+    (tmp_path / "out").mkdir(exist_ok=True)
+    (tmp_path / "out" / f"{name}.cfg").write_text(built)
+    return built
 
 
 # ---------------------------------------------------------------------------
@@ -180,101 +177,77 @@ def test_the_commit_takes_only_the_jobs_own_files(tmp_path):
 # Reconcile (C15)
 # ---------------------------------------------------------------------------
 
-def test_a_stranded_write_of_the_jobs_own_is_recorded_late(tmp_path):
-    ox, sha = _oxidized(tmp_path, "r6", RUNNING)
-    d = _lab(tmp_path, "r6")
-    (d / "r6.cfg").write_text(_job_output(tmp_path, "r6", ox, sha))
-    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
-                 'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
-    assert f"RECORDED LATE" in r.stdout and "refused=0" in r.stdout, r.stdout + r.stderr
-    log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1",
-               "--format=%s|%an").stdout.strip()
-    assert log == (f"harvest from oxidized {sha} (recorded late: an earlier run wrote it and "
-                   "its commit failed): r6|clab-sync")
-
-
-def _moved_on(tmp_path):
-    """Oxidized moved on since the stranded write. A change the SANITISER
-    KEEPS: the first version added a `! comment`, which sanitise() strips, so
-    both versions rendered identically and a reproduction from HEAD instead of
-    the file's own version passed."""
-    ox, old = _oxidized(tmp_path, "r6", RUNNING)
-    newer = RUNNING.replace(" ip address", " description added later\n ip address", 1)
-    _, new = _oxidized(tmp_path, "r6", newer)
-    assert _job_output(tmp_path, "r6", ox, new) != _job_output(tmp_path, "r6", ox, old), \
-        "floor: the two versions must render differently"
-    return ox, old, new
-
-
-def test_a_stranded_write_from_an_older_oxidized_version_is_found_by_the_search(tmp_path):
-    """C313: a file names no version, so the device's recent versions are tried."""
-    ox, old, _new = _moved_on(tmp_path)
-    d = _lab(tmp_path, "r6")
-    (d / "r6.cfg").write_text(_job_output(tmp_path, "r6", ox, old))
-    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
-                 'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
-    assert f"own output for Oxidized {old}" in r.stdout and "refused=0" in r.stdout, r.stdout
-
-
-def test_a_pre_c313_file_is_reproduced_for_the_version_its_header_names(tmp_path):
-    ox, old, _new = _moved_on(tmp_path)
-    d = _lab(tmp_path, "r6")
-    (d / "r6.cfg").write_text(f"!\n! r6 - from Oxidized HEAD {old}\n!\n"
-                              + _job_output(tmp_path, "r6", ox, old))
-    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
-                 'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
-    assert f"own output for Oxidized {old}" in r.stdout and "refused=0" in r.stdout, r.stdout
+def _reconcile(tmp_path, d, tail='echo "refused=${#REFUSED_DIRTY[@]}"'):
+    return _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n" + tail)
 
 
 def test_a_stranded_write_of_this_runs_own_baseline_build_is_recorded_late(tmp_path):
     """Plan item 4: the file the run would write from the baseline is the job's own."""
-    ox, _sha = _oxidized(tmp_path, "r6", RUNNING)
     d = _lab(tmp_path, "r6")
-    built = _job_output(tmp_path, "r6", ox, _sha).replace("ip address", "description b\n ip address")
-    (tmp_path / "out").mkdir(exist_ok=True)
-    (tmp_path / "out" / "r6.cfg").write_text(built)
-    (d / "r6.cfg").write_text(built)
-    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
-                 'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
+    (d / "r6.cfg").write_text(_this_run_built(tmp_path, "r6"))
+    r = _reconcile(tmp_path, d)
     assert f"own output for {BASE_TAG}" in r.stdout and "refused=0" in r.stdout, r.stdout + r.stderr
-    log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1", "--format=%s").stdout.strip()
+    log = _git(_env(tmp_path), "-C", str(d.parent), "log", "-1", "--format=%s|%an").stdout.strip()
     assert log == (f"startup from {BASE_TAG} (recorded late: an earlier run wrote it and its "
-                   "commit failed): r6")
+                   "commit failed): r6|clab-sync")
+
+
+def test_a_pre_c313_file_of_this_runs_build_is_recorded_late(tmp_path):
+    """A file written before C313 carries a provenance header; its configuration is compared."""
+    d = _lab(tmp_path, "r6")
+    (d / "r6.cfg").write_text("!\n! r6 - from Oxidized HEAD abc1234\n!\n"
+                              + _this_run_built(tmp_path, "r6"))
+    r = _reconcile(tmp_path, d)
+    assert f"own output for {BASE_TAG}" in r.stdout and "refused=0" in r.stdout, r.stdout
+
+
+def test_a_stranded_write_from_an_earlier_baseline_is_refused_and_named(tmp_path):
+    """Phase 3: Oxidized's history is not walked, so a write that is not this run's build is
+    left as found and named, never guessed at. A change the SANITISER KEEPS (a `! comment`
+    would be stripped and render identically, so the floor checks the two differ)."""
+    d = _lab(tmp_path, "r6")
+    earlier = _job_output(tmp_path, "r6", RUNNING)
+    now = _this_run_built(tmp_path, "r6",
+                          RUNNING.replace(" ip address", " description added later\n ip address", 1))
+    assert earlier != now, "floor: the two baselines must render differently"
+    (d / "r6.cfg").write_text(earlier)
+    r = _reconcile(tmp_path, d, 'echo "${REFUSED_DIRTY[r6]:-none}"')
+    assert (f"uncommitted changes this run did not produce (they differ from what {BASE_TAG} "
+            "builds for r6)") in r.stdout, r.stdout + r.stderr
+    assert (d / "r6.cfg").read_text() == earlier, "not overwritten"
 
 
 def test_a_hand_edit_is_refused_neither_committed_nor_overwritten(tmp_path):
-    ox, sha = _oxidized(tmp_path, "r6", RUNNING)
     d = _lab(tmp_path, "r6")
-    edited = f"!\n! r6 - from Oxidized HEAD {sha}\n!\n" + _job_output(tmp_path, "r6", ox, sha).replace(
+    edited = _this_run_built(tmp_path, "r6").replace(
         "interface Loopback0", "interface Loopback0\n description by hand")
     (d / "r6.cfg").write_text(edited)
     before = _git(_env(tmp_path), "-C", str(d.parent), "rev-parse", "HEAD").stdout
-    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
-                 'echo "refused=${!REFUSED_DIRTY[*]}: ${REFUSED_DIRTY[r6]:-}"',
-                 oxidized=str(ox))
+    r = _reconcile(tmp_path, d, 'echo "refused=${!REFUSED_DIRTY[*]}: ${REFUSED_DIRTY[r6]:-}"')
     assert "refused=r6:" in r.stdout, r.stdout + r.stderr
-    assert f"the file says Oxidized {sha}; sanitising {sha} gives different content" in r.stdout
+    assert f"they differ from what {BASE_TAG} builds for r6" in r.stdout
     assert (d / "r6.cfg").read_text() == edited, "not overwritten"
     assert _git(_env(tmp_path), "-C", str(d.parent), "rev-parse", "HEAD").stdout == before
 
 
-def test_a_hand_edit_with_no_header_matches_no_version_and_is_refused(tmp_path):
-    ox, _old, _new = _moved_on(tmp_path)
-    d = _lab(tmp_path, "r6")
-    (d / "r6.cfg").write_text("hostname r6\n! typed by hand\n")
-    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
-                 'echo "${REFUSED_DIRTY[r6]:-none}"', oxidized=str(ox))
-    assert ("sanitising each of the last 20 Oxidized versions of r6 gives different content"
-            in r.stdout), r.stdout + r.stderr
-    assert (d / "r6.cfg").read_text() == "hostname r6\n! typed by hand\n"
-
-
 def test_a_clean_destination_is_left_alone(tmp_path):
-    ox, _sha = _oxidized(tmp_path, "r6", RUNNING)
+    _this_run_built(tmp_path, "r6")
     d = _lab(tmp_path, "r6")
-    r = _harness(tmp_path, {"r6": d}, RECONCILE + "\nreconcile\n"
-                 'echo "refused=${#REFUSED_DIRTY[@]}"', oxidized=str(ox))
+    r = _reconcile(tmp_path, d)
     assert "refused=0" in r.stdout and "RECORDED LATE" not in r.stdout
+
+
+def test_the_script_reads_no_oxidized_store():
+    """Phase 3 (the operator, 2026-10-08): GitHub owns configurations. No line of code (comments
+    aside) names Oxidized, its store, or the history walk that read it."""
+    code = [ln for ln in TEXT.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    assert len(code) >= 300, len(code)
+    hits = [ln for ln in code if "oxidized" in ln.lower() and "from Oxidized " not in ln]
+    assert hits == [], hits
+    # The one kept: config_body drops a pre-C313 file's provenance header, which names Oxidized.
+    assert sum("from Oxidized " in ln for ln in code) == 1
+    for gone in ("REPO=", "RECONCILE_DEPTH", 'show "${REF}', "NODE["):
+        assert gone not in "\n".join(code), gone
 
 
 def test_a_refusal_exits_nonzero_on_the_nothing_to_copy_path():
@@ -518,16 +491,11 @@ class TestConfigBody:
 class TestTheFilesAreBuiltFromTheBaseline:
     """Plan item 4: the SHIPPED build loop, executed under bash. The source
     helper is a stub writing what `nmas-startup-source` writes (each device's
-    file and sources.tsv); Oxidized is a real repository, read only for the
-    cross-check."""
+    file and sources.tsv). Oxidized is not read (Phase 3)."""
 
     BUILD = _between("# >>> build", "# <<< build")
-    CROSS = _between("# >>> cross-check", "# <<< cross-check")
 
-    def _run(self, tmp_path, sources: dict, oxidized: dict, tail=""):
-        ox = tmp_path / "oxidized"
-        for name, text in oxidized.items():
-            ox, _sha = _oxidized(tmp_path, name, text)
+    def _run(self, tmp_path, sources: dict, tail=""):
         src = tmp_path / "src"
         src.mkdir()
         rows = [f"# baseline\t{BASE_TAG}\tabcdef0123456789"]
@@ -544,17 +512,15 @@ class TestTheFilesAreBuiltFromTheBaseline:
         stub.chmod(0o755)
         out = tmp_path / "out"
         out.mkdir()
-        decl = "\n".join(f"DEVICES+=({n!r}); NODE[{n}]={n!r}; PLATFORM[{n}]=cisco_iosxe"
-                          for n in sources)
+        decl = "\n".join(f"DEVICES+=({n!r}); PLATFORM[{n}]=cisco_iosxe" for n in sources)
         script = f"""
 set -uo pipefail
-CLAB_LIST=Default; REF=HEAD; OUT={str(out)!r}; RAW={str(tmp_path / 'raw')!r}; SRCDIR={str(tmp_path / 'srcdir')!r}
+CLAB_LIST=Default; OUT={str(out)!r}; SRCDIR={str(tmp_path / 'srcdir')!r}
 SOURCE={str(stub)!r}
-mkdir -p "$RAW" "$SRCDIR"
-declare -A NODE PLATFORM
+mkdir -p "$SRCDIR"
+declare -A PLATFORM
 DEVICES=()
 {decl}
-GIT=(git -C {str(ox)!r})
 {_function("kind_for")}
 {_function("sanitise")}
 {_function("render_device")}
@@ -567,7 +533,7 @@ echo "NOT_BUILT_LIST=$NOT_BUILT_LIST"
                               env=_env(tmp_path), cwd=str(tmp_path))
 
     def test_each_file_is_the_baseline_s_render_and_a_device_it_lacks_is_not_built(self, tmp_path):
-        r = self._run(tmp_path, {"r6": RUNNING, "r7": None}, {"r6": RUNNING})
+        r = self._run(tmp_path, {"r6": RUNNING, "r7": None})
         assert r.returncode == 0, r.stdout + r.stderr
         assert f"Building from {BASE_TAG} (abcdef0123)" in r.stdout
         assert f"NOT BUILT - {BASE_TAG} holds no golden for r7" in r.stdout
@@ -575,32 +541,14 @@ echo "NOT_BUILT_LIST=$NOT_BUILT_LIST"
         assert (tmp_path / "out" / "r6.cfg").read_text().startswith("hostname r6")
         assert not (tmp_path / "out" / "r7.cfg").exists()
 
-    def test_the_file_comes_from_the_baseline_not_from_oxidized(self, tmp_path):
-        later = RUNNING.replace("ip address", "description changed by hand\n ip address")
-        r = self._run(tmp_path, {"r6": RUNNING}, {"r6": later})
-        assert r.returncode == 0, r.stdout + r.stderr
-        assert "description changed by hand" not in (tmp_path / "out" / "r6.cfg").read_text()
-
-    def test_the_cross_check_names_a_device_that_moved_and_never_blocks(self, tmp_path):
-        later = RUNNING.replace("ip address", "description changed by hand\n ip address")
-        r = self._run(tmp_path, {"r6": RUNNING}, {"r6": later}, tail=self.CROSS + "\necho DONE")
-        assert r.returncode == 0 and "DONE" in r.stdout, r.stdout + r.stderr
-        assert ("r6   DIFFERS from what runs now: it runs 1 line(s) the file lacks, and the "
-                "file holds 0 it") in r.stdout
-        assert f"does not. A redeploy boots {BASE_TAG}, not what r6 runs;" in r.stdout
-
-    def test_the_cross_check_says_a_device_that_runs_its_file(self, tmp_path):
-        r = self._run(tmp_path, {"r6": RUNNING}, {"r6": RUNNING}, tail=self.CROSS)
-        assert "r6   runs what its file boots" in r.stdout, r.stdout + r.stderr
-
     def test_no_source_refuses_writing_nothing(self, tmp_path):
         stub = tmp_path / "fail-stub"
         stub.write_text("#!/bin/bash\necho 'UNPROVEN: Default has no earned baseline' >&2\nexit 2\n")
         stub.chmod(0o755)
         out = tmp_path / "out"
         out.mkdir()
-        script = (f"set -uo pipefail\nCLAB_LIST=Default; REF=HEAD; OUT={str(out)!r}; SRCDIR={str(tmp_path)!r}; "
-                  f"SOURCE={str(stub)!r}; DEVICES=(r6); GIT=(git)\n" + self.BUILD)
+        script = (f"set -uo pipefail\nCLAB_LIST=Default; OUT={str(out)!r}; SRCDIR={str(tmp_path)!r}; "
+                  f"SOURCE={str(stub)!r}; DEVICES=(r6)\n" + self.BUILD)
         r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
                            env=_env(tmp_path), cwd=str(tmp_path))
         assert r.returncode == 2 and "no startup source could be built" in r.stdout

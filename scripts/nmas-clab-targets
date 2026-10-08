@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Ask the NMAS where each device's startup config belongs.
 
-For `~/bin/clab-sync` and `~/lab-configs/oxidized-to-config.sh` to call
+For `~/bin/clab-sync` and `scripts/clab-startup-sync.sh` to call
 instead of holding a device -> lab map of their own. **A second copy is how
 the two come to disagree**, and here the disagreement is invisible until a
 reboot: the file lands somewhere plausible either way, and the device comes
 back on whatever that directory held.
 
     nmas-clab-targets --url http://<nmas-host>:5000
-        -> hostname<TAB>configs_dir<TAB>lab<TAB>host<TAB>platform<TAB>oxidized_node
+        -> hostname<TAB>configs_dir<TAB>lab<TAB>host<TAB>platform
     nmas-clab-targets --url ... --device r6          # one line, or exit 3
     nmas-clab-targets --url ... --stray labs/lab/configs
 
@@ -67,7 +67,7 @@ class StrayLookupFailed(Exception):
 
 def fetch(url: str, list_name: str = "", timeout: int = 15,
           declared: dict = None) -> list:
-    """``[(hostname, configs_dir, lab, host, platform, oxidized_node)]``.
+    """``[(hostname, configs_dir, lab, host, platform)]``.
     Raises on anything else. *declared*, if given, is filled with the list's
     DECLARED-UNMAPPED entries ``{hostname: "reason (by, at)"}``."""
     endpoint = url.rstrip("/") + "/clab/sync_targets"
@@ -94,11 +94,11 @@ def fetch(url: str, list_name: str = "", timeout: int = 15,
         if not line.strip():
             continue
         parts = line.split("\t") + ["", "", "", ""]
-        # hostname, configs_dir, lab, host, platform, oxidized_node --
-        # columns are appended
+        # hostname, configs_dir, lab, host, platform; the NMAS's sixth column (Oxidized's
+        # node, until Phase 3 removes it) is not read. Columns are appended
         # by the NMAS and never reordered, so a short row from an older one
         # simply carries blanks in the later fields.
-        rows.append(tuple(parts[:6]))
+        rows.append(tuple(parts[:5]))
     if problems:
         # Printed, never silently dropped: a device the NMAS could not place
         # is a device nobody should write.
@@ -229,14 +229,14 @@ def main() -> int:
         # a failure becomes "this lab was not updated", which is a statement
         # the per-device checker can then confirm.
         groups = {}
-        for host, cfg, _lab, clab, _plat, _ox in rows:
+        for host, cfg, _lab, clab, _plat in rows:
             groups.setdefault((cfg, clab), []).append(host)
         for (cfg, clab), hosts in sorted(groups.items()):
             print(f"{cfg}\t{clab}\t{' '.join(sorted(hosts))}")
         return EXIT_OK
 
     if args.device:
-        # Six columns since the platform and Oxidized node were added; this
+        # Five columns since the platform was added (six while Oxidized's node was); this
         # unpacked three, so `--device` raised on the first row.
         for host, cfg, lab, *_rest in rows:
             if host == args.device:
@@ -265,8 +265,8 @@ def _reconcile(directory: str, rows: list, strict: bool = False,
     Three buckets, every device and every file in exactly one:
 
     * **produced** -- in the map and a file exists;
-    * **no file** -- in the map, the sanitizer produced nothing. Oxidized
-      may not have it, or the sanitizer skipped it. Either way this device
+    * **no file** -- in the map, the sanitizer produced nothing. The baseline
+      may not hold it, or the sanitizer skipped it. Either way this device
       is **not going to be reboot-safe** and nothing else will say so;
     * **unmapped** -- a file the map does not account for. Not necessarily
       wrong, and not something to delete from here, but it is a device the

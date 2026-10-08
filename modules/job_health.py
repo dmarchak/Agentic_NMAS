@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 #: here is invisible -- adding it is part of installing it.
 JOBS = (
     {"unit": "clab-sync", "max_age_minutes": 90,
-     "what": "Oxidized configs into containerlab startup files, every 30 min"},
+     "what": "the newest earned baseline into the lab's startup files, when a baseline is earned and every 30 min"},
     {"unit": "nmas-netbox-backup", "max_age_minutes": 180,
      "what": "NetBox dump + config, hourly (NSOT_PLAN P.2)"},
     {"unit": "nmas-netbox-restore-test", "max_age_minutes": 50 * 60,

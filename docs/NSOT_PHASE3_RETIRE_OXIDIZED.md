@@ -55,6 +55,17 @@ C332, C512, C499, D9; C329 stays (the drift check is now the read-and-compare, i
 ## 4. Order
 
 1. The clab sync rewrite and its marker (lab tooling, `lab/` and `scripts/`), with C553.
+   **BUILT 2026-10-08:**
+   - `scripts/clab-startup-sync.sh` reads no Oxidized store: no cross-check, and its reconcile
+     no longer walks Oxidized's history (a write that is not this run's build is refused, named).
+     The old name stays a link for one release.
+   - `nmas-clab-targets` reads five columns.
+   - `modules/nsot/baseline_event.py` writes `data/events/baseline-earned/<network>` on every
+     commit that earns a baseline.
+   - `deploy/systemd/clab-sync.path` (lab tooling) starts the sync when the lab's network's file
+     moves.
+   - Awaiting the operator's host step (the path unit) and a walk: a Save All, and the sync
+     starting within seconds.
 2. Rotation's persist chain without its three Oxidized stages (C333), and onboarding and adopt
    without `add_to_oxidized`; retire's finish card without its router.db step.
 3. Remove the freshness modules, routes and tests, the fetch hook, the integration, the settings

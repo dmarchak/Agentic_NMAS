@@ -38,7 +38,7 @@ renderer uses the user's home directory and the checkout it runs from. Three
 things read the file, and each REFUSES naming it when it is missing:
 
 - `scripts/nmas-host` (the laptop's way to the hosts);
-- `scripts/oxidized-to-config.sh` (the clab sync, on this host), for
+- `scripts/clab-startup-sync.sh` (the clab sync, on this host; `oxidized-to-config.sh` until Phase 3, still a link to it for one release), for
   `NMAS_URL` and `CLAB` when neither the environment nor the map sets them.
   **The host's `clab-sync` job sets neither, so it needs this file on the host;**
   without it every run refuses and job health names it;

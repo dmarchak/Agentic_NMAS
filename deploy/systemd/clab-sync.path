@@ -1,0 +1,19 @@
+# TEMPLATE (2026-10-08): LAB TOOLING, not the product. The repository is public, so the host's
+# paths are placeholders. Render it, never copy it:
+#   d=$(mktemp -d) && scripts/nmas-render-units --out "$d" deploy/systemd/clab-sync.path && sudo install -o root -g root -m 0644 "$d/clab-sync.path" /etc/systemd/system/clab-sync.path && sudo systemctl daemon-reload && sudo systemctl enable --now clab-sync.path
+# C553 (Phase 3, the operator's decision P3-2): the app writes
+# data/events/baseline-earned/<network> whenever a commit earns that network's baseline
+# (modules/nsot/baseline_event.py, naming no lab tool). This unit watches the lab's network's
+# file (Default, the network the lab boots: the sync's CLAB_LIST) and starts the existing
+# clab-sync.service, so the lab's startup files follow a baseline at once rather than at the
+# next 30-minute timer, which stays as the fallback. A sync already running holds its lock;
+# a start while it runs waits for it (scripts/clab-startup-sync.sh, the sync lock).
+[Unit]
+Description=Lab: start the clab startup sync when the lab's network earns a baseline
+
+[Path]
+PathChanged=@NMAS_CHECKOUT@/data/events/baseline-earned/Default
+Unit=clab-sync.service
+
+[Install]
+WantedBy=multi-user.target

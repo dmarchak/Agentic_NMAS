@@ -124,7 +124,7 @@ def test_a_hung_holder_is_waited_for_a_bounded_time_then_named(tmp_path):
 
 
 def test_the_sync_script_holds_one_lock_before_any_work():
-    src = open(os.path.join(ROOT, "scripts", "oxidized-to-config.sh"), encoding="utf-8").read()
+    src = open(os.path.join(ROOT, "scripts", "clab-startup-sync.sh"), encoding="utf-8").read()
     lock = src.index('flock -w 600 8')
-    assert lock < src.index('RAW="$(mktemp -d)"'), "the sync works before it holds its lock"
+    assert lock < src.index('SRCDIR="$(mktemp -d)"'), "the sync works before it holds its lock"
     assert 'exec 8<"$SYNC_LOCK"' in src

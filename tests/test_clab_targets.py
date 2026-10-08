@@ -544,7 +544,9 @@ class TestThePlatformIsCarriedNotInferred:
         assert "{r['platform']}" in src
         assert "never reordered" in src
 
-    def test_the_helper_reads_six_columns_and_survives_three(self, ):
+    def test_the_helper_reads_five_columns_ignores_a_sixth_and_survives_three(self, ):
+        """Phase 3: the NMAS still serves Oxidized's node as a sixth column until step 3
+        removes it; the helper reads five."""
         import importlib.util
         import os as _os
         from importlib.machinery import SourceFileLoader
@@ -575,8 +577,8 @@ class TestThePlatformIsCarriedNotInferred:
             urllib.request.urlopen = orig
 
         assert rows[0] == ("r6", "labs/r6/configs", "r6", "user@clab",
-                           "cisco_iosxe", "r6")
-        assert rows[1] == ("old", "labs/lab/configs", "default", "", "", ""), \
+                           "cisco_iosxe")
+        assert rows[1] == ("old", "labs/lab/configs", "default", "", ""), \
             "a three-column row from an older NMAS must not raise"
 
 
@@ -725,9 +727,9 @@ class TestGroupingIsByDestination:
     def test_devices_sharing_a_destination_are_one_line(self, helper,
                                                         monkeypatch, capsys):
         monkeypatch.setattr(helper, "fetch", lambda *a, **k: [
-            ("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe", "r1"),
-            ("s1", "labs/lab/configs", "default", "user@clab", "cisco_ios", "s1"),
-            ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe", "r6")])
+            ("r1", "labs/lab/configs", "default", "user@clab", "cisco_iosxe"),
+            ("s1", "labs/lab/configs", "default", "user@clab", "cisco_ios"),
+            ("r6", "labs/r6/configs", "r6", "user@clab", "cisco_iosxe")])
         monkeypatch.setattr(helper.sys, "argv",
                             ["x", "--url", "http://nmas", "--group"])
 

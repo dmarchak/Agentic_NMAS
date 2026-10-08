@@ -826,6 +826,8 @@ def test_the_clab_sync_no_longer_blocks_on_the_gate():
     it, went with it. The route and this module still answer the question for
     the freshness signal (above)."""
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                            "scripts", "oxidized-to-config.sh"), encoding="utf-8").read()
+                            "scripts", "clab-startup-sync.sh"), encoding="utf-8").read()
     assert "case $gate_rc in" not in src and '"$FRESH"' not in src
-    assert "Cross-check: does each device run what its file boots?" in src
+    # Phase 3 (2026-10-08): the cross-check that replaced the gate went too; the sync reads no
+    # Oxidized store at all (tests/test_clab_sync_commit.py).
+    assert "Cross-check: does each device run what its file boots?" not in src

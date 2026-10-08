@@ -5,12 +5,13 @@ Its first run on the baseline source found every device unchanged, printed
 `set -u` bash calls a declared-but-empty associative array unbound), ran on
 past the exit, and exited 1: the job failed on its best outcome. Every other
 test of the script lifts ONE block, so none reached that exit with every
-device built. Here the real `scripts/oxidized-to-config.sh` runs with fakes
+device built. Here the real `scripts/clab-startup-sync.sh` runs with fakes
 standing in for the network only: `ssh` runs its command here, `rsync`
 copies here, `sudo` refuses, the map and the baseline source are files, the
-two labs and Oxidized are real git repositories. Each exit path is driven:
-first sync (everything new, copied and committed), nothing to copy, some
-copied, a device not built, the cross-check reporting.
+two labs are real git repositories, and NO Oxidized store exists anywhere
+(Phase 3, 2026-10-08: the sync reads none). Each exit path is driven: first
+sync (everything new, copied and committed), nothing to copy, some copied, a
+device not built.
 """
 
 import os
@@ -20,7 +21,7 @@ import subprocess
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(ROOT, "scripts", "oxidized-to-config.sh")
+SCRIPT = os.path.join(ROOT, "scripts", "clab-startup-sync.sh")
 TAG = "baseline/20261001T235242Z"
 
 CONFIG = ("hostname {h}\ninterface Loopback0\n ip address 192.0.2.{n} 255.255.255.255\n!\n"
@@ -66,10 +67,6 @@ def world(tmp_path):
     _exe(bin_ / "ssh", FAKE_SSH)
     _exe(bin_ / "rsync", FAKE_RSYNC)
     _exe(bin_ / "sudo", "#!/bin/sh\nexit 1\n")
-    # Oxidized, a real repository holding what each device runs now.
-    ox = tmp_path / "oxidized"
-    ox.mkdir()
-    _git(tmp_path, "init", "-q", str(ox))
     # The two labs, each a repository with an empty configs/.
     for lab in ("labA", "labB"):
         d = tmp_path / lab / "configs"
@@ -78,6 +75,8 @@ def world(tmp_path):
         _git(tmp_path, "init", "-q", str(tmp_path / lab))
         _git(tmp_path, "-C", str(tmp_path / lab), "add", "-A")
         _git(tmp_path, "-C", str(tmp_path / lab), "commit", "-q", "-m", "init")
+    # The NMAS still serves Oxidized's node as a sixth column until Phase 3's step 3; the
+    # sync must not need it.
     rows = "".join(f"{h}\t{tmp_path / lab / 'configs'}\t{lab}\tclab\tcisco_iosxe\t{h}\n"
                    for h, (lab, _n) in DEVICES.items())
     (tmp_path / "map.tsv").write_text(rows)
@@ -85,9 +84,8 @@ def world(tmp_path):
                            'echo "map: reconciled"; exit 0 ;; esac\n'
                            f'cat {tmp_path / "map.tsv"}\n')
     _exe(bin_ / "source", f'#!/bin/bash\nmkdir -p "$2"\ncp {tmp_path / "src"}/* "$2"/\n')
-    world = {"tmp": tmp_path, "ox": ox}
+    world = {"tmp": tmp_path}
     set_source(world, {h: CONFIG.format(h=h, n=n) for h, (_l, n) in DEVICES.items()})
-    set_oxidized(world, {h: CONFIG.format(h=h, n=n) for h, (_l, n) in DEVICES.items()})
     return world
 
 
@@ -106,17 +104,10 @@ def set_source(world, configs: dict, refused=()):
     (src / "sources.tsv").write_text("\n".join(rows) + "\n")
 
 
-def set_oxidized(world, configs: dict):
-    for h, text in configs.items():
-        (world["ox"] / h).write_text(text)
-    _git(world["tmp"], "-C", str(world["ox"]), "add", "-A")
-    _git(world["tmp"], "-C", str(world["ox"]), "commit", "-q", "--allow-empty", "-m", "poll")
-
-
 def run(world):
     tmp = world["tmp"]
-    env = {**_env(tmp), "CLAB": "clab", "NMAS_URL": "http://127.0.0.1:9", "REF": "HEAD",
-           "REPO": str(world["ox"]), "OUT": str(tmp / "out"), "STAGE": str(tmp / "stage"),
+    env = {**_env(tmp), "CLAB": "clab", "NMAS_URL": "http://127.0.0.1:9",
+           "OUT": str(tmp / "out"), "STAGE": str(tmp / "stage"),
            "TARGETS": str(tmp / "bin" / "targets"), "SOURCE": str(tmp / "bin" / "source")}
     p = subprocess.run(["bash", SCRIPT, "--yes"], env=env, capture_output=True, text=True,
                        cwd=str(tmp), timeout=120)
@@ -181,15 +172,11 @@ def test_not_built_on_the_nothing_to_copy_path_still_exits_3(world):
     assert "The lab already holds" in out and "1 device(s) NOT BUILT" in out
 
 
-def test_the_cross_check_reports_a_device_that_moved_and_never_blocks(world):
-    assert run(world)[0] == 0
-    set_oxidized(world, {"r2": CONFIG.format(h="r2", n=2).replace(
-        "interface Loopback0\n", "interface Loopback0\n description by hand\n")})
+def test_the_run_needs_and_names_no_other_store(world):
+    """Phase 3: the run above had no Oxidized store to read; it says nothing of one."""
     rc, out = run(world)
     assert rc == 0, out
-    assert "r2   DIFFERS from what runs now: it runs 1 line(s) the file lacks" in out
-    assert "r1   runs what its file boots" in out
-    assert f"Both labs already hold {TAG}; nothing to update." in out
+    assert "oxidized" not in out.lower() and "cross-check" not in out.lower(), out
 
 
 def _recording(world):
@@ -218,8 +205,8 @@ def test_the_sync_names_its_network_never_the_active_list(world):
         (tmp / f).unlink()
     env_run = subprocess.run(
         ["bash", SCRIPT, "--yes"], cwd=str(tmp), capture_output=True, text=True, timeout=120,
-        env={**_env(tmp), "CLAB": "clab", "NMAS_URL": "http://127.0.0.1:9", "REF": "HEAD",
-             "REPO": str(world["ox"]), "OUT": str(tmp / "out"), "STAGE": str(tmp / "stage"),
+        env={**_env(tmp), "CLAB": "clab", "NMAS_URL": "http://127.0.0.1:9",
+             "OUT": str(tmp / "out"), "STAGE": str(tmp / "stage"),
              "TARGETS": str(tmp / "bin" / "targets"), "SOURCE": str(tmp / "bin" / "source"),
              "CLAB_LIST": "Branch"})
     assert "--list Branch" in (tmp / "targets.args").read_text(), env_run.stdout

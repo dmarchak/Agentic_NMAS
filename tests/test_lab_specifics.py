@@ -53,15 +53,17 @@ ACCESS = "the operator's access setup"
 
 #: ``path: (lines, category, disposition, what it is)``. Measured 2026-10-02.
 INVENTORY = {
-    "scripts/oxidized-to-config.sh": (73, LAB_PLATFORM, MOVE, "clab-sync: writes containerlab startup files"),
+    "scripts/clab-startup-sync.sh": (80, LAB_PLATFORM, MOVE, "clab-sync: writes containerlab startup files"),
+    "scripts/oxidized-to-config.sh": (80, LAB_PLATFORM, MOVE, "a link to clab-startup-sync.sh, its name until Phase 3, kept one release"),
+    "deploy/systemd/clab-sync.path": (6, LAB_PLATFORM, MOVE, "starts clab-sync when the lab's network earns a baseline (C553)"),
     "scripts/nmas-clab-targets": (22, LAB_PLATFORM, MOVE, "clab-sync's map of devices to labs"),
     "routes/clab.py": (4, LAB_PLATFORM, OPTIONAL, "/clab/sync_targets, the map clab-sync asks for"),
     "routes/__init__.py": (2, LAB_PLATFORM, OPTIONAL, "registers the clab blueprint"),
     "routes/jobs.py": (2, LAB_PLATFORM, OPTIONAL, "clab-sync wakes the lab-startup reader"),
-    "modules/lab_startup.py": (14, LAB_PLATFORM, OPTIONAL, "C303: lab startup files against goldens"),
+    "modules/lab_startup.py": (15, LAB_PLATFORM, OPTIONAL, "C303: lab startup files against goldens"),
     "modules/readers/lab_startup.py": (3, LAB_PLATFORM, OPTIONAL, "its reader"),
     "modules/attention.py": (6, LAB_PLATFORM, OPTIONAL, "the lab-startup Needs attention rows"),
-    "modules/job_health.py": (21, LAB_PLATFORM, OPTIONAL, "clab-sync's job row and lab rows"),
+    "modules/job_health.py": (20, LAB_PLATFORM, OPTIONAL, "clab-sync's job row and lab rows"),
     "modules/settings_scope.py": (3, LAB_PLATFORM, OPTIONAL,
                                   "names the clab_* settings as the per-network lab group "
                                   "(P.8 step 1), and clab_declared_unmapped as host-wide "
