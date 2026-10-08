@@ -112,10 +112,13 @@ class TestARun:
             [("r3", "show clock"), ("r3", "show ip interface"),
              ("r9", "show clock"), ("r9", "show ip interface")])
 
-    def test_only_the_differences_against_the_largest_group(self, sc):
+    def test_only_the_differences_against_the_reference_chosen(self, sc):
+        """C577: no default reference; the differences are against the device a person chose."""
         _r, target = _run(sc, ["show ip interface"])
         _r, html = _get(sc, target + "&show=differences")
-        assert "against r3" in html or "against r9" in html
+        assert "Choose who to compare against first" in html and 'class="op-add"' not in html
+        _r, html = _get(sc, target + "&show=differences&against=r3")
+        assert "against r3, your choice" in html
         assert 'class="op-add"' in html and 'class="op-del"' in html
 
     def test_two_devices_side_by_side(self, sc):
@@ -151,6 +154,212 @@ class TestARun:
         assert e["devices"] == ["r3", "r9"] and e["outcome"].startswith("2 answered")
 
 
+#: r1's real `show ip ospf neighbor` (tests/fixtures/operational), and the same answer with only
+#: its Dead Time column edited: what two reads seconds apart look like (C580).
+OSPF = _cap("r1__show_ip_ospf_neighbor.txt")
+OSPF_LATER = (OSPF.replace("00:00:36", "00:00:31").replace("00:00:35", "00:00:30")
+              .replace("00:00:32", "00:00:37"))
+
+
+@pytest.fixture
+def c2(sc):
+    sc["fleet"].answers["r3"]["show ip ospf neighbor"] = OSPF
+    sc["fleet"].answers["r9"]["show ip ospf neighbor"] = OSPF_LATER
+    sc["fleet"].answers["r3"]["show ipv6 ospf neighbor"] = _cap("r3__show_ipv6_ospf_neighbor.txt")
+    sc["fleet"].answers["r9"]["show ipv6 ospf neighbor"] = ""
+    return sc
+
+
+def _groups_drawn(html):
+    return re.findall(r'<summary><span class="badge badge-([a-z]+)">([^<]+)</span>', html)
+
+
+class TestTheResultRevised:
+    """Board C2 (C577 to C580), approved 2026-10-08."""
+
+    def test_nobody_is_the_reference_until_chosen(self, c2):
+        """C577: every device got "Compare with r1" because r1 was the first group."""
+        _r, target = _run(c2, ["show ip interface"])
+        _r, html = _get(c2, target)
+        assert re.search(r'<option value="" selected>Nobody \(no reference\)</option>', html)
+        assert "Compare r3 with" in html and "Compare r9 with" in html, "each group picks its pair"
+        assert not re.search(r"Compare r\d with r\d<", html), "no pairing made for the person"
+        assert "your choice" not in html and "the reference" not in html
+        assert "differs:" not in html, "no group is described against a reference nobody chose"
+        assert re.search(r'<option value="differences"[^>]*disabled>Only the differences '
+                         r'\(choose who to compare against first\)', html)
+        _r, html = _get(c2, target + "&against=r3")
+        assert "your choice" in html and "differs:" in html, "the control: a chosen reference"
+
+    def test_the_most_common_answer_is_offered_only_when_shared(self, c2):
+        _r, target = _run(c2, ["show ip interface"])
+        _r, html = _get(c2, target)
+        assert "The most common answer</option>" not in html
+        assert "no answer is shared by two devices" in html
+        _r, target = _run(c2, ["show clock"])
+        _r, html = _get(c2, target)
+        assert "The most common answer</option>" in html
+
+    def test_groups_are_neutral_without_an_expectation(self, c2):
+        """C578: green for one group and amber for the others read as right and wrong."""
+        _r, target = _run(c2, ["show ip interface", "show clock"])
+        _r, html = _get(c2, target)
+        drawn = _groups_drawn(html)
+        assert len(drawn) >= 3, drawn
+        assert {kind for kind, _t in drawn} == {"muted"}, drawn
+
+    def test_an_empty_answer_says_so(self, c2):
+        """C579: r6's empty answer was a blank box."""
+        _r, target = _run(c2, ["show ipv6 ospf neighbor"])
+        _r, html = _get(c2, target)
+        assert "no output (empty answer)" in html and "No output (empty answer). r9 answered" in html
+        assert "(1 empty)" in html
+        assert '<pre class="ask-pre"></pre>' not in html
+
+    def test_ticked_columns_group_again_recorded_with_the_run(self, c2):
+        """C580: Dead Time ticks every second, so every device stood alone."""
+        from modules.nsot import reads
+        _r, target = _run(c2, ["show ip ospf neighbor"])
+        _r, html = _get(c2, target)
+        names = re.findall(r'name="column" value="([^"]+)"', html)
+        assert names == ["Neighbor ID", "Pri", "State", "Dead Time", "Address", "Interface"]
+        assert re.search(r"<strong>2</strong>: every device's answer is its own", html)
+        run_id = re.search(r"/run/([^?/]+)", target).group(1)
+        r = c2["client"].post(f"/v2/show-commands/run/{run_id}/ignore?list=Lab",
+                              data={"command": "show ip ospf neighbor", "column": ["Dead Time"]},
+                              headers={"HX-Request": "true"})
+        html = html_mod.unescape(r.get_data(as_text=True))
+        assert r.status_code == 200 and "2 alike" in html, html[:400]
+        assert "Ignored when grouping: <span class=\"mono\">Dead Time</span>, by" in html
+        assert "········" in html, "the ignored column is drawn as dots"
+        record = reads.get("Lab", run_id)
+        assert record["ignored"]["show ip ospf neighbor"]["columns"] == ["Dead Time"]
+        assert record["ignored"]["show ip ospf neighbor"]["by"]
+        assert c2["fleet"].sent.count(("r3", "show ip ospf neighbor")) == 1, "no device asked again"
+
+    def test_a_column_the_header_does_not_name_is_refused(self, c2):
+        from modules.nsot import reads
+        _r, target = _run(c2, ["show ip ospf neighbor"])
+        run_id = re.search(r"/run/([^?/]+)", target).group(1)
+        r = c2["client"].post(f"/v2/show-commands/run/{run_id}/ignore?list=Lab",
+                              data={"command": "show ip ospf neighbor", "column": ["Uptime"]})
+        html = html_mod.unescape(r.get_data(as_text=True))
+        assert "Not recorded:" in html and "Uptime is not a column" in html
+        assert "Dead Time" in html and not reads.get("Lab", run_id).get("ignored")
+
+
+def _loki_line(host, tok):
+    """*host*'s real heartbeat line as Loki returned it (tests/fixtures/loki), its text replaced
+    by the test's token."""
+    import json
+    with open(os.path.join(ROOT, "tests", "fixtures", "loki", "device_logs.json"),
+              encoding="utf-8") as fh:
+        body = json.load(fh)["r3"]["body"]
+    line = next(v[1] for s in body["data"]["result"] for v in s["values"]
+                if "NMAS-HEARTBEAT: NMAS-HEARTBEAT" in v[1])
+    return line.replace("NMAS-HEARTBEAT: NMAS-HEARTBEAT", tok).replace("r3", host)
+
+
+@pytest.fixture
+def lp(sc, monkeypatch):
+    """Board F: Loki configured, r3's line arriving and r9's never, the window shortened."""
+    import time as _time
+
+    from modules.nsot import logging_path as LP
+    monkeypatch.setattr(LP, "loki_configured", lambda: True)
+    monkeypatch.setattr(LP, "WAIT_SECONDS", 1)
+    monkeypatch.setattr(LP, "POLL_SECONDS", 0.1)
+    monkeypatch.setattr(LP, "_ask", lambda s, e, tok, limit: (
+        [(int(_time.time() * 1e9), _loki_line("r3", tok))], ""))
+    monkeypatch.setattr(LP, "last_lines", lambda hosts, **kw: {h: "" for h in hosts})
+
+    def answering(self, dev, fn):
+        host = dev["hostname"]
+
+        class Conn:
+            def answer(_self, command):
+                self.sent.append((host, command))
+                if command.startswith("send log "):
+                    return ""
+                return self.answers[host].get(command, f"% no capture for {command}")
+        return fn(Conn())
+
+    monkeypatch.setattr(sc["fleet"].__class__, "__call__", answering)
+    return sc
+
+
+def _test(lab, **fields):  # noqa: F811
+    from modules.nsot import capture_job
+    data = {"list": "Lab", "command": [""], **fields, "fingerprint": _fingerprint(lab)}
+    r = lab["client"].post("/v2/show-commands/logging-path", data=data,
+                           headers={"HX-Request": "true"})
+    target = r.headers.get("HX-Redirect", "")
+    job = re.search(r"job=([0-9a-f]{32})", target)
+    if job:
+        assert capture_job.wait(job.group(1), 30)
+    return r, target
+
+
+class TestTheLoggingPath:
+    """Board F, approved 2026-10-08: from Show commands' card, a line sent, Loki watched."""
+
+    def test_the_button_is_off_and_says_why_without_loki(self, sc):
+        _r, html = _get(sc, "/v2/show-commands?list=Lab")
+        assert re.search(r'<button type="submit" class="btn" data-op="logging-path"[^>]* disabled '
+                         r'title="Loki is not configured[^"]*">Test the logging path on 2 '
+                         r'devices</button>', html), html[:200]
+
+    def test_on_with_loki_on_the_card_s_devices(self, lp):
+        _r, html = _get(lp, "/v2/show-commands?list=Lab")
+        assert re.search(r'data-op="logging-path"[^>]*>Test the logging path on 2 devices</button>',
+                         html)
+        assert not re.search(r'data-op="logging-path"[^>]* disabled', html)
+
+    def test_sent_watched_and_drawn_act_first(self, lp):
+        from modules.nsot import logging_path as LP
+        from modules.nsot import reads
+        _r, target = _test(lp)
+        assert target.startswith("/v2/show-commands/run/"), target
+        sent = sorted(c for _h, c in lp["fleet"].sent)
+        assert len(sent) == 2 and all(c.startswith("send log 6 MERCURY-LOGTEST ") for c in sent)
+        _r, html = _get(lp, target)
+        assert "Logging path on 2 devices" in html
+        assert html.index("1 not received within 1 s") < html.index("1 received"), \
+            "what to act on first"
+        assert "r9</strong>: not received within 1 s" in html
+        assert "Open r9's Logs" in html and "Test r9 again" in html
+        assert "Loki holds no line from r9 in the last 24 hours" in html
+        run_id = re.search(r"/run/([^?/]+)", target).group(1)
+        lp_rec = reads.get("Lab", run_id)["logging_path"]
+        assert lp_rec["counts"] == {"received": 1, "not received": 1}
+        assert lp_rec["token"] == LP.token(run_id)
+
+    def test_the_history_row_says_what_to_act_on(self, lp):
+        _test(lp)
+        from modules.history_sources import show_commands
+        from modules.nsot import listref
+        got = show_commands({"ref": listref.resolve("Lab"), "device": "", "limit": 50,
+                             "since": None, "members": None})
+        (e,) = got["events"]
+        assert e["what"] == "Logging path on 2 devices"
+        assert e["outcome"] == "1 not received, 1 received"
+
+    def test_again_on_one_device_and_never_a_stranger(self, lp):
+        _r, target = _test(lp)
+        run_id = re.search(r"/run/([^?/]+)", target).group(1)
+        lp["fleet"].sent.clear()
+        r = lp["client"].post(f"/v2/show-commands/logging-path?list=Lab&again={run_id}&host=r9",
+                              headers={"HX-Request": "true"})
+        from modules.nsot import capture_job
+        capture_job.wait(re.search(r"job=([0-9a-f]{32})", r.headers["HX-Redirect"]).group(1), 30)
+        assert [h for h, _c in lp["fleet"].sent] == ["r9"]
+        lp["fleet"].sent.clear()
+        r = lp["client"].post(f"/v2/show-commands/logging-path?list=Lab&again={run_id}&host=r1",
+                              headers={"HX-Request": "true"})
+        html = html_mod.unescape(r.get_data(as_text=True))
+        assert "Not run:" in html and "r1 was not tested in" in html and lp["fleet"].sent == []
+
+
 @pytest.mark.parametrize("width", [1366, 390])
 def test_a_finished_run_in_a_real_browser_stays_inside_its_cards(sc, width):
     """Boards C and E: a finished run's page, every group opened, at desktop and phone width:
@@ -172,6 +381,39 @@ def test_a_finished_run_in_a_real_browser_stays_inside_its_cards(sc, width):
             got, n = b.js(CELLS_INSIDE_JS)
             assert not got, "\n".join(got)
             assert n >= 5, n
+            wide = b.js("return document.documentElement.scrollWidth - window.innerWidth")
+            assert wide <= 1, f"the page scrolls sideways by {wide}px at {width}px"
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+
+@pytest.mark.parametrize("width", [1366, 390])
+@pytest.mark.parametrize("which", ["c2", "f"])
+def test_boards_c2_and_f_in_a_real_browser_stay_inside_their_cards(lp, width, which):
+    """Board G: C2 (columns to tick, an empty answer, groups open) and F (a logging-path
+    result) at desktop and phone width: every cell ends inside its card, no sideways scroll."""
+    from tests import browser
+    from tests.test_v2_layout_in_a_browser import CELLS_INSIDE_JS
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    if which == "c2":
+        lp["fleet"].answers["r3"]["show ip ospf neighbor"] = OSPF
+        lp["fleet"].answers["r9"]["show ip ospf neighbor"] = ""
+        _r, target = _run(lp, ["show ip ospf neighbor", "show ip interface"])
+    else:
+        _r, target = _test(lp)
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": width, "height": 1000})
+            b.go(srv.url(target))
+            b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 15)
+            b.js("document.querySelectorAll('details').forEach(function(d){d.open=true}); return 1")
+            got, n = b.js(CELLS_INSIDE_JS)
+            assert not got, "\n".join(got)
+            assert n >= 3, n
             wide = b.js("return document.documentElement.scrollWidth - window.innerWidth")
             assert wide <= 1, f"the page scrolls sideways by {wide}px at {width}px"
         finally:
@@ -219,7 +461,7 @@ class TestTypedInARealBrowser:
         assert "1 device" in page.js("return document.querySelector('.sc-count').textContent")
 
     def test_a_typed_valid_command_enables_run_at_once(self, page):
-        run = "document.querySelector('#sc-form button[type=submit][data-op]')"
+        run = "document.querySelector('#sc-form button[type=submit][data-op=show-commands]')"
         assert page.js(f"return {run}.disabled") is True, "no command yet: Run is off"
         page.click("input[name=command]")
         page.type("input[name=command]", "show clock")

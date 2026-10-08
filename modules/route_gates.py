@@ -131,6 +131,12 @@ GATES = {
     "reads_v2.show_commands_run": _g(R, "reads many devices through the reads engine (C548): "
                                         "allowlisted commands only, their answers shown to the "
                                         "person, every run recorded"),
+    "reads_v2.logging_path_run": _g(R, "tests the logging path (board F): one send log line "
+                                     "to each device through the reads engine, then Loki "
+                                     "watched; every run recorded"),
+    "reads_v2.show_commands_ignore": _g(K, "records on a Show commands run the columns the "
+                                          "person ticked to ignore when grouping (C580); asks "
+                                          "no device"),
     "reads_v2.show_commands_save_set": _g(K, "commits a saved command set to the network's "
                                              "repository as the person (R3); sends nothing"),
     "intent_v2.commit": _g(A,"commits an edit to a device's intent (board H), bound to the version opened"),

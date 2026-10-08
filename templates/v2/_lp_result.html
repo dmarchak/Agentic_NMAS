@@ -1,0 +1,52 @@
+{%- from "v2/_macros.html" import icon, badge, stamp, how -%}
+{#- Board F (approved 2026-10-08): a logging-path test's region. Sending, then watching Loki
+    (re-read on `reads` as lines arrive, never a timer), then the result: what to act on first,
+    coloured because a line is expected to arrive; "unknown" (Mercury could not look) is
+    neither. modules/reads_page.logging_view. -#}
+{%- set v = r.logging_path -%}
+<section class="card sc-result lp-result" id="sc-result" aria-labelledby="sc-result-h"
+  {%- if v.state != 'done' and not v.lost %} aria-busy="true" hx-get="{{ url_for('reads_v2.show_commands_result_part', run_id=r.run, list=r.list, job=r.job) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"{% endif %}>
+  <div class="sc-hd"><h2 id="sc-result-h">Logging path on {{ v.total }} device{{ 's' if v.total != 1 }}
+    {% if v.state == 'done' %}{{ badge('done', 'ok' if v.counts | length == 1 and v.counts[0].state == 'received' else 'muted') }}{% elif v.lost %}{{ badge('stopped', 'danger') }}{% else %}{{ badge('running', 'warn') }}{% endif %}</h2>
+    <div class="sc-devs">{% if v.state == 'done' %}<button type="button" class="btn btn-small" data-op="logging-path" hx-post="{{ url_for('reads_v2.logging_path_run', list=r.list, again=r.run) }}" hx-target="#sc-result" hx-swap="outerHTML">Test again</button>{{ how('logging-path', op='logging-path') }}{% else %}{{ how('logging-path', op='logging-path') }}{% endif %}</div></div>
+  <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}. The line: <span class="mono">send log {{ v.level }} {{ v.token }}</span>. Recorded in History.</p>
+  {%- if r.error %}<div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ r.error }}</p></div>{% endif %}
+  {%- if v.lost %}
+  <div class="notice notice-warn">{{ icon('warn', 16) }}<p>The server restarted while this test was watching Loki: {{ v.received | length }} line{{ 's' if v.received | length != 1 }} had arrived; the others were not watched for. Test again.</p></div>
+  {%- elif v.state == 'sending' %}
+  <progress class="sc-bar" max="{{ v.total or 1 }}" value="{{ v.sent }}" aria-label="{{ v.sent }} of {{ v.total }} sent"></progress>
+  <p><strong>Sending: {{ v.sent }} of {{ v.total }}</strong> <span class="muted">· then Loki is watched for each line, {{ v.wait }} s after its send.</span></p>
+  {%- elif v.state == 'watching' %}
+  <progress class="sc-bar" max="{{ v.sent or 1 }}" value="{{ v.received | length }}" aria-label="{{ v.received | length }} received of {{ v.sent }} sent"></progress>
+  <p><strong>{{ v.sent }} of {{ v.total }} sent</strong> <span class="muted">· watching Loki: {{ v.received | length }} received{% if v.received %} ({% for h, s in v.received[:6] %}{{ h }} after {{ s }} s{{ ', ' if not loop.last }}{% endfor %}{% if v.received | length > 6 %}, …{% endif %}){% endif %} · {{ v.waiting }} not yet{% if v.until %}, watched until {{ stamp(v.until) }}{% endif %}</span></p>
+  <p class="faint small">The page updates as lines arrive, never on a timer of its own.</p>
+  {%- else %}
+  <div class="sc-devs" role="list" aria-label="Outcomes">{% for c in v.counts %}<span role="listitem">{{ badge(c.n ~ ' ' ~ c.state ~ (' within ' ~ v.wait ~ ' s' if c.state == 'not received' else ''), c.kind) }}</span>{% endfor %}</div>
+  {%- for g in v.groups %}
+  <details class="sc-grp" data-keep="lp-{{ g.state }}"{% if g.state != 'received' %} open{% endif %}>
+    <summary>{{ badge(g.state, g.kind) }} <span>{{ g.rows[:12] | map(attribute='host') | join(', ') }}{% if g.rows | length > 12 %} and {{ g.rows | length - 12 }} more{% endif %}</span>
+      <span class="muted">{% if g.state == 'received' %}· after {{ g.range[0] }}{% if g.range[1] != g.range[0] %} to {{ g.range[1] }}{% endif %} s{% elif g.rows | length == 1 %}· {{ g.rows[0].words }}{% endif %}</span></summary>
+    <div class="sc-in">
+      {%- if g.state == 'received' %}
+      <div class="table-wrap"><table class="table"><thead><tr><th scope="col">Device</th><th scope="col">Sent</th><th scope="col">Received by Loki</th><th scope="col">After</th></tr></thead>
+        <tbody>{% for x in g.rows %}<tr><td>{{ x.host }}</td><td>{{ stamp(x.sent_iso) }}</td><td>{{ stamp(x.at_iso) }}</td><td>{{ x.after_s }} s</td></tr>{% endfor %}</tbody></table></div>
+      <p class="faint small">Both times are this installation's: Mercury's when the device answered, Loki's when the line arrived. A device's own clock is never used.</p>
+      {%- else %}
+      {%- for x in g.rows %}
+      <div class="lp-row">
+        <p><strong>{{ x.host }}</strong>: {{ x.words }}{% if x.sent_iso and x.until_iso %} (sent at {{ stamp(x.sent_iso) }}; no line in Loki by {{ stamp(x.until_iso) }}){% endif %}.</p>
+        {%- if g.state == 'not received' %}
+        <p class="muted small">{{ x.host }} took the line (its answer came back), and Loki never received it: the path is broken after the device (its logging host, its source interface, the route to the collector, or the collector itself).
+          {% if x.last_iso %}{{ x.host }}'s last line in Loki arrived {{ stamp(x.last_iso) }}.{% elif x.last_unread %}Its last line in Loki was not read (only the first few are).{% else %}Loki holds no line from {{ x.host }} in the last 24 hours.{% endif %}</p>
+        {%- elif g.state == 'unknown' %}
+        <p class="muted small">The line was sent; whether it arrived is not known. Nothing here says the path is broken. Test again when Loki answers (Settings, Integrations, Test).</p>
+        {%- endif %}
+        <div class="sc-devs"><a class="btn btn-small" href="{{ url_for('device_v2.device', name=x.host, tab='logs', list=r.list) }}">Open {{ x.host }}'s Logs</a><button type="button" class="btn btn-small" data-op="logging-path" hx-post="{{ url_for('reads_v2.logging_path_run', list=r.list, again=r.run, host=x.host) }}" hx-target="#sc-result" hx-swap="outerHTML">Test {{ x.host }} again</button>{{ how('logging-path', compact=True, op='logging-path') }}</div>
+      </div>
+      {%- endfor %}
+      {%- endif %}
+    </div>
+  </details>
+  {%- endfor %}
+  {%- endif %}
+</section>

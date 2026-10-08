@@ -83,8 +83,10 @@ NOT_AN_OPERATION = {
     ("_sc_pick.html", "Remove"): "redraws the card without that command row; asks no device",
     ("_sc_pick.html", "Add a command"): "redraws the card with one more command row; asks no device",
     ("_sc_pick.html", "Use"): "opens Show commands with the saved set's commands filled in",
-    ("_sc_result.html", "Compare with"): ("draws two devices' answers side by side on the run's "
-                                          "page; reads only the run's record"),
+    ("_sc_result.html", "Side by side"): ("draws two devices' answers side by side on the run's "
+                                          "page, the pair the person chose; reads only the run's record"),
+    ("_lp_result.html", "Open 's Logs"): ("opens the device's Logs tab, what Loki holds from it; a "
+                                           "read"),
     ("_ask.html", "Compare with the last answer"): ("redraws the card with the lines that "
                                                     "changed since the device's last answer; "
                                                     "reads only the kept runs"),

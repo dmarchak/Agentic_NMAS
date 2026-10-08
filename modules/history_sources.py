@@ -800,8 +800,19 @@ def show_commands(ctx):
         s = r.get("summary") or {}
         outcome = ("refused" if r.get("state") == "refused" else
                    "running" if r.get("state") == "running" else s.get("words", ""))
-        events.append(_event(r.get("started_at"), "show_commands",
-                             f"Show commands: {'; '.join(r.get('commands') or [])[:120]}",
+        what = f"Show commands: {'; '.join(r.get('commands') or [])[:120]}"
+        lp = r.get("logging_path") or {}
+        if r.get("purpose") == "test the logging path":
+            # Board F's History row: what to act on first, in the test's own words.
+            n = len(r.get("devices") or [])
+            what = f"Logging path on {n} device{'s' if n != 1 else ''}"
+            if lp.get("state") == "done":
+                order = ("not received", "not sent", "unknown", "received")
+                outcome = ", ".join(f"{lp['counts'][k]} {k}" for k in order
+                                    if lp.get("counts", {}).get(k))
+            elif r.get("state") != "refused":
+                outcome = "watching"
+        events.append(_event(r.get("started_at"), "show_commands", what,
                              hosts, who=reads.actor_words(r),
                              detail=r.get("refused") or r.get("purpose") or "",
                              outcome=outcome,

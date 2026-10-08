@@ -40,6 +40,8 @@ TOKEN_WORD = "MERCURY-LOGTEST"
 STEPS = ("refuse", "send", "watch", "record")
 
 RECEIVED, NOT_RECEIVED, NOT_SENT, UNKNOWN = "received", "not received", "not sent", "unknown"
+#: The run's purpose in the reads record: how its page and History know it is this test.
+PURPOSE = "test the logging path"
 
 
 class Refused(ValueError):
@@ -60,12 +62,16 @@ def _loki():
     return LokiIntegration()
 
 
+def loki_configured() -> bool:
+    return _loki().is_configured()
+
+
 def refusal(hosts: list) -> str:
     """``""`` when the test may send, else why: nothing to watch with is a refusal before any
     device is asked, never a run of "not received"."""
     if not hosts:
         return "Refused: no device to test."
-    if not _loki().is_configured():
+    if not loki_configured():
         return ("Refused: Loki is not configured (Settings, Integrations), so nothing could "
                 "watch for the line. Nothing was sent.")
     return ""
@@ -89,14 +95,22 @@ def _ask(start_ns: int, end_ns: int, tok: str, limit: int):
     return lines, ""
 
 
-def watch(sent_at: dict, tok: str, *, wait: float = WAIT_SECONDS, poll: float = POLL_SECONDS,
-          ask=None, clock=time.time, sleep=time.sleep) -> dict:
+def _iso(ts: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+
+
+def watch(sent_at: dict, tok: str, *, wait: float = None, poll: float = None,
+          ask=None, clock=time.time, sleep=time.sleep, progress=None) -> dict:
     """``{host: result}`` for each host in *sent_at* (``{host: when its send answered}``).
 
-    *ask* is ``(start_ns, end_ns, token, limit) -> (lines, why)`` (tests); by default Loki."""
+    *ask* is ``(start_ns, end_ns, token, limit) -> (lines, why)`` (tests); by default Loki.
+    *progress* is called with ``{host: after_s}`` each time a poll finds a new line, so the
+    run's page shows the lines as they arrive (board F, 7f), never on a timer of its own."""
     from modules.device_logs import host_pattern
 
     ask = ask or _ask
+    wait = WAIT_SECONDS if wait is None else wait
+    poll = POLL_SECONDS if poll is None else poll
     if not sent_at:
         return {}
     patterns = {h: re.compile(host_pattern(h)) for h in sent_at}
@@ -107,10 +121,17 @@ def watch(sent_at: dict, tok: str, *, wait: float = WAIT_SECONDS, poll: float = 
     while True:
         now = clock()
         lines, why = ask(start_ns, int(now * 1e9), tok, limit)
+        before = len(found)
         for ns, line in lines or []:
             for host, pattern in patterns.items():
                 if host not in found and pattern.search(line):
                     found[host] = ns
+        if progress is not None and len(found) > before:
+            try:
+                progress({h: round(ns / 1e9 - sent_at[h], 1) for h, ns in found.items()},
+                         deadline)
+            except Exception:                         # noqa: BLE001 (a page's progress only)
+                log.debug("logging path: progress failed", exc_info=True)
         if len(found) == len(sent_at) or now >= deadline:
             break
         sleep(min(poll, max(0.0, deadline - now)))
@@ -120,23 +141,55 @@ def watch(sent_at: dict, tok: str, *, wait: float = WAIT_SECONDS, poll: float = 
             after = round(found[host] / 1e9 - sent, 1)
             within = after <= wait
             out[host] = {"state": RECEIVED if within else NOT_RECEIVED,
-                         "after_s": max(0.0, after),
-                         "at_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ",
-                                                 time.gmtime(found[host] / 1e9)),
+                         "after_s": max(0.0, after), "sent_iso": _iso(sent),
+                         "at_iso": _iso(found[host] / 1e9),
                          "words": (f"received after {max(0.0, after):.1f} s" if within else
                                    f"received after {after:.1f} s, past the {wait:g} s window")}
         elif why:
-            out[host] = {"state": UNKNOWN, "words": f"not known: {why}"}
+            out[host] = {"state": UNKNOWN, "words": f"not known: {why}", "sent_iso": _iso(sent)}
         else:
-            out[host] = {"state": NOT_RECEIVED, "words": f"not received within {wait:g} s"}
+            out[host] = {"state": NOT_RECEIVED, "words": f"not received within {wait:g} s",
+                         "sent_iso": _iso(sent), "until_iso": _iso(sent + wait)}
     return out
 
 
-def outcome(record: dict, *, wait: float = WAIT_SECONDS, **watch_kw) -> dict:
+#: The not-received devices whose last line in Loki is read (one query each, after the watch):
+#: what to look at first; more than this are named as not read.
+LAST_LINE_FOR = 10
+LAST_LINE_HOURS = 24
+
+
+def last_lines(hosts: list, *, now: float = None, ask=None) -> dict:
+    """``{host: iso or ""}``: when Loki last received a line from each of *hosts* (the first
+    `LAST_LINE_FOR`), within `LAST_LINE_HOURS`; ``""`` when none, absent when not read."""
+    from modules.device_logs import JOB, host_pattern
+    now = time.time() if now is None else now
+    out = {}
+    for host in hosts[:LAST_LINE_FOR]:
+        query = f'{{job="{JOB}"}} |= "{host}:" |~ `{host_pattern(host)}`'
+        if ask is not None:
+            r = ask(query)
+        else:
+            r = _loki()._get("loki/api/v1/query_range", query=query, limit=1,
+                             start=int((now - LAST_LINE_HOURS * 3600) * 1e9), end=int(now * 1e9),
+                             direction="backward")
+        if not r.get("ok"):
+            continue
+        try:
+            streams = (r["response"].json().get("data") or {}).get("result") or []
+        except (ValueError, AttributeError):
+            continue
+        stamps = [int(ns) for s in streams for ns, _l in s.get("values") or []]
+        out[host] = _iso(max(stamps) / 1e9) if stamps else ""
+    return out
+
+
+def outcome(record: dict, *, wait: float = None, **watch_kw) -> dict:
     """The test's result from the reads run *record* that sent the line: each device the send
     reached is watched; one it did not reach is "not sent", naming why."""
     from modules.nsot import reads
 
+    wait = WAIT_SECONDS if wait is None else wait
     tok = token(record["id"])
     sent_at, results = {}, {}
     for host in record.get("devices") or []:
@@ -147,11 +200,20 @@ def outcome(record: dict, *, wait: float = WAIT_SECONDS, **watch_kw) -> dict:
         else:
             why = (answer or {}).get("why") or r.get("why") or r.get("state") or "no answer"
             results[host] = {"state": NOT_SENT, "words": f"not sent: {why}"}
+    last_ask = watch_kw.pop("last_ask", None)
     results.update(watch(sent_at, tok, wait=wait, **watch_kw))
+    missing = sorted(h for h, r in results.items() if r["state"] == NOT_RECEIVED)
+    seen = last_lines(missing, ask=last_ask) if missing else {}
+    for host in missing:
+        if host in seen:
+            results[host]["last_iso"] = seen[host]
+        else:
+            results[host]["last_unread"] = True
     counts = {}
     for r in results.values():
         counts[r["state"]] = counts.get(r["state"], 0) + 1
-    return {"token": tok, "wait_s": wait, "results": results, "counts": counts}
+    return {"state": "done", "token": tok, "wait_s": wait, "results": results,
+            "counts": counts}
 
 
 def run(list_name: str, hosts: list, actor: str, *, run_id: str = "", session=None,
@@ -165,7 +227,16 @@ def run(list_name: str, hosts: list, actor: str, *, run_id: str = "", session=No
         raise Refused(why)
     run_id = run_id or reads.new_id()
     record = reads.run(list_name, hosts, [command(run_id)], actor,
-                       purpose="test the logging path", run_id=run_id, session=session)
+                       purpose=PURPOSE, run_id=run_id, session=session)
+
+    def watching(received, deadline):
+        reads.annotate(list_name, run_id, "logging_path",
+                       {"state": "watching", "token": token(run_id), "received": received,
+                        "until_iso": _iso(deadline)})
+
+    watch_kw.setdefault("progress", watching)
+    reads.annotate(list_name, run_id, "logging_path",
+                   {"state": "watching", "token": token(run_id), "received": {}})
     result = outcome(record, **watch_kw)
     reads.annotate(list_name, run_id, "logging_path", result)
     record["logging_path"] = result

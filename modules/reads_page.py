@@ -14,6 +14,7 @@ Ask the device (board A) is one card on the device page, in one of these states:
   the run's record, by its id, is the answer when it exists.
 """
 
+import re
 import time
 
 from modules.nsot import reads
@@ -210,8 +211,67 @@ def pick(list_name: str, *, q: str = "", role: str = "", platform: str = "", sit
             "heavy": reads.warnings(filled), "can_run": bool(matched and filled) and all(
                 k["ok"] for c, k in zip(rows, checks) if c.strip()),
             "max_commands": reads.MAX_COMMANDS, "workers": reads.max_workers(list_name),
+            **_logging_test(matched),
             "sets": sets["sets"], "sets_unreadable": sets["unreadable"],
             "message": message, "error": error}
+
+
+def _logging_test(matched: list) -> dict:
+    """Board F's button: on when a device matches and Loki is configured, else why."""
+    from modules.nsot import logging_path
+    loki = logging_path.loki_configured()
+    why = ("" if matched and loki else
+           "Choose at least one device" if loki else
+           "Loki is not configured (Settings, Integrations), so nothing could watch for the line")
+    return {"can_test": not why, "test_why": why, "test_command": logging_path.LEVEL,
+            "test_wait": logging_path.WAIT_SECONDS}
+
+
+#: The order a logging-path result is drawn in: what to act on first (board F, 8f), and each
+#: outcome's colour. An expectation exists here (the line arrives), so colour means something;
+#: "unknown" (Mercury could not look) is neither.
+LP_ORDER = (("not received", "danger"), ("not sent", "warn"), ("unknown", "muted"),
+            ("received", "ok"))
+
+
+def logging_view(record: dict, running: bool, lost: bool = False) -> dict:
+    """Board F's region for a logging-path run: ``sending`` (the engine is sending), ``watching``
+    (Loki asked as lines arrive) or ``done``, with each outcome's group."""
+    from modules.nsot import logging_path
+    lp = record.get("logging_path") or {}
+    hosts = record.get("devices") or []
+    sent = len(record.get("results") or {})
+    v = {"total": len(hosts), "sent": sent, "token": lp.get("token") or
+         logging_path.token(record["id"]), "level": logging_path.LEVEL,
+         "wait": logging_path.WAIT_SECONDS, "groups": [], "counts": [], "lost": False,
+         "received": []}
+    if lp.get("state") != "done" and lost:
+        # The job that sent and watched is gone (a restart): said, never drawn as running.
+        v.update(state="watching", lost=True,
+                 received=sorted((lp.get("received") or {}).items()))
+        return v
+    if running or record.get("state") == "running":
+        v["state"] = "sending"
+        return v
+    if lp.get("state") != "done":
+        received = lp.get("received") or {}
+        v.update(state="watching", received=sorted(received.items()),
+                 until=lp.get("until_iso", ""), waiting=max(0, sent - len(received)))
+        return v
+    v["state"] = "done"
+    results = lp.get("results") or {}
+    for outcome, kind in LP_ORDER:
+        rows = sorted(({"host": h, **r} for h, r in results.items() if r.get("state") == outcome),
+                      key=lambda x: x["host"])
+        if not rows:
+            continue
+        group = {"state": outcome, "kind": kind, "rows": rows}
+        if outcome == "received":
+            afters = [x.get("after_s", 0) for x in rows]
+            group["range"] = (min(afters), max(afters))
+        v["groups"].append(group)
+        v["counts"].append({"state": outcome, "kind": kind, "n": len(rows)})
+    return v
 
 
 def recent_runs(list_name: str, limit: int = 20) -> dict:
@@ -223,11 +283,69 @@ def recent_runs(list_name: str, limit: int = 20) -> dict:
             "unreadable": got["unreadable"]}
 
 
-def _groups(record: dict, command: str) -> dict:
-    """``{"groups": [{"devices", "answer", "cut", "bytes", "sha", "archived"}], "failed": [(host,
-    why)], "skipped": [(host, why)], "unknown": [(host, why)]}`` for one command, the largest
-    group first."""
-    by_sha, failed, skipped, unknown = {}, [], [], []
+#: A table's columns in its header line: names separated by two spaces or more ("Dead Time" is
+#: one name). IOS prints its tables fixed-width, so a column is the span from its name to the
+#: next one's (the last to the line's end).
+_COLUMNS = re.compile(r"\S+(?: \S+)*")
+#: What an ignored column's characters become when grouping and comparing (board C2, 8t).
+IGNORED = "·"
+#: "Compare against" offers "the most common answer" only when this many devices share it.
+COMMON_AT_LEAST = 2
+
+
+def _first_line(answer: str) -> str:
+    return next((ln for ln in (answer or "").splitlines() if ln.strip()), "")
+
+
+def columns(answers: list) -> dict:
+    """``{"header", "spans": [(name, start, end)], "names"}`` for a command's answers: the header
+    line most of them share (at least two answers, two columns), or ``{}`` when there is none
+    (C580: the columns a person may tick to ignore)."""
+    counts = {}
+    for a in answers:
+        line = _first_line(a)
+        if len(_COLUMNS.findall(line)) >= 2:
+            counts[line] = counts.get(line, 0) + 1
+    if not counts:
+        return {}
+    header, n = max(counts.items(), key=lambda kv: (kv[1], kv[0]))
+    if n < 2:
+        return {}
+    found = list(_COLUMNS.finditer(header))
+    spans = [(m.group(0), m.start(), found[i + 1].start() if i + 1 < len(found) else None)
+             for i, m in enumerate(found)]
+    return {"header": header, "spans": spans, "names": [s[0] for s in spans]}
+
+
+def normalise(answer: str, cols: dict, ignore: list) -> str:
+    """*answer* with each ignored column's characters replaced by `IGNORED`, on the lines after
+    its header; an answer without that header line is returned as it is."""
+    if not cols or not ignore or _first_line(answer) != cols["header"]:
+        return answer
+    spans = [(s, e) for name, s, e in cols["spans"] if name in ignore]
+    out, past = [], False
+    for line in answer.splitlines():
+        if past:
+            chars = list(line)
+            for s, e in spans:
+                for i in range(s, len(chars) if e is None else min(e, len(chars))):
+                    if not chars[i].isspace():
+                        chars[i] = IGNORED
+            line = "".join(chars)
+        elif line == cols["header"]:
+            past = True
+        out.append(line)
+    return "\n".join(out)
+
+
+def _groups(record: dict, command: str, ignore: list = None) -> dict:
+    """``{"groups": [{"devices", "answer", "cut", "bytes", "sha", "archived", "empty"}],
+    "failed": [(host, why)], "skipped": [(host, why)], "unknown": [(host, why)], "columns"}`` for
+    one command, the largest group first. Answers group when the whole masked answer is the same,
+    with the columns in *ignore* (recorded with the run, C580) blanked first; a cut or archived
+    answer groups by its whole answer's SHA-256 alone."""
+    import hashlib
+    found, failed, skipped, unknown = [], [], [], []
     for host in record.get("devices") or []:
         r = (record.get("results") or {}).get(host)
         if r is None:
@@ -243,12 +361,26 @@ def _groups(record: dict, command: str) -> dict:
         if not a or a.get("state") != reads.ANSWERED:
             failed.append((host, (a or {}).get("why") or r.get("why") or "no answer"))
             continue
-        g = by_sha.setdefault(a["sha256"], {"devices": [], "answer": a.get("answer", ""),
-                                            "cut": a.get("cut", False), "bytes": a.get("bytes", 0),
-                                            "sha": a["sha256"], "archived": "answer" not in a})
+        found.append((host, a))
+    cols = columns([a.get("answer", "") for _h, a in found if "answer" in a and not a.get("cut")])
+    ignore = [n for n in (ignore or []) if n in cols.get("names", [])]
+    by_key = {}
+    for host, a in found:
+        text = a.get("answer", "")
+        shown, key = text, a["sha256"]
+        if ignore and "answer" in a and not a.get("cut"):
+            shown = normalise(text, cols, ignore)
+            if shown != text:
+                key = hashlib.sha256(shown.encode("utf-8")).hexdigest()
+        g = by_key.setdefault(key, {"devices": [], "answer": shown, "cut": a.get("cut", False),
+                                    "bytes": a.get("bytes", 0), "sha": key,
+                                    "archived": "answer" not in a,
+                                    "empty": "answer" in a and not text.strip(),
+                                    "lines": len([ln for ln in text.splitlines() if ln.strip()])})
         g["devices"].append(host)
-    groups = sorted(by_sha.values(), key=lambda g: (-len(g["devices"]), g["devices"]))
-    return {"groups": groups, "failed": failed, "skipped": skipped, "unknown": unknown}
+    groups = sorted(by_key.values(), key=lambda g: (-len(g["devices"]), g["devices"]))
+    return {"groups": groups, "failed": failed, "skipped": skipped, "unknown": unknown,
+            "columns": cols, "ignore": ignore}
 
 
 def _side(answer: str, other: str) -> list:
@@ -257,17 +389,37 @@ def _side(answer: str, other: str) -> list:
     return [(line, line not in theirs) for line in (answer or "").splitlines()]
 
 
+def _against(groups: list, against: str):
+    """The reference group a person CHOSE (C577): a device's group, or the most common answer
+    when at least `COMMON_AT_LEAST` devices share it; None when nobody was chosen."""
+    if against == "@common":
+        return groups[0] if groups and len(groups[0]["devices"]) >= COMMON_AT_LEAST else None
+    if against:
+        return next((g for g in groups if against in g["devices"]), None)
+    return None
+
+
+def _vs(group: dict, ref: dict) -> dict:
+    """How *group* stands against the chosen reference, in counts of lines (never a colour)."""
+    if group is ref:
+        return {"same": True}
+    mine = set((group["answer"] or "").splitlines())
+    theirs = set((ref["answer"] or "").splitlines())
+    return {"same": False, "only_ref": len(theirs - mine), "only_here": len(mine - theirs)}
+
+
 def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: str = "",
            show: str = "grouped", left: str = "", right: str = "", command: str = "",
            against: str = "") -> dict:
-    """The run's page (boards C and D): running with its progress, or the summary and every
-    command's groups, filtered; a side-by-side of two devices; only the differences against
-    a group (by default the largest)."""
+    """The run's page (boards C, D and C2): running with its progress, or the summary and every
+    command's groups, filtered; a side-by-side of two devices; only the differences against the
+    reference a person chose (C577: never a default one)."""
     from modules.nsot import capture_job
     record = reads.get(list_name, run_id)
     c = {"list": list_name, "run": run_id, "job": job, "find": find, "text": text,
          "show": show if show in ("grouped", "differences", "failed") else "grouped",
-         "state": "unknown", "commands": [], "compare": None, "differences": None}
+         "against": against or "", "state": "unknown", "commands": [], "compare": None,
+         "differences": None, "answered_devices": []}
     if record is None:
         return c
     j = capture_job.get(job) if job else None
@@ -282,40 +434,81 @@ def result(list_name: str, run_id: str, *, job: str = "", find: str = "", text: 
              "running" if running else "done",
              record={"at": _when(record.get("started_at")), "who": reads.actor_words(record),
                      "commands": record.get("commands") or [], "total": total, "done": done,
-                     "refused": record.get("refused", ""),
+                     "refused": record.get("refused", ""), "reason": record.get("reason", ""),
                      "took_s": (round(record["finished_at"] - record["started_at"], 1)
                                 if record.get("finished_at") else None)},
              summary=summary)
     find_l, text_l = (find or "").strip().lower(), (text or "").strip()
+    ignored = record.get("ignored") or {}
+    answered = set()
     for cmd in record.get("commands") or []:
-        g = _groups(record, cmd)
+        choice = ignored.get(cmd) or {}
+        g = _groups(record, cmd, choice.get("columns"))
+        ref = _against(g["groups"], against)
+        for gr in g["groups"]:
+            answered.update(gr["devices"])
+            gr["vs"] = _vs(gr, ref) if ref else None
         groups = g["groups"]
         if find_l:
             groups = [x for x in groups if any(find_l in h.lower() for h in x["devices"])]
         if text_l:
             groups = [x for x in groups if text_l in (x["answer"] or "")]
-        c["commands"].append({"command": cmd, "groups": groups, "all_groups": g["groups"],
-                              "failed": g["failed"], "skipped": g["skipped"],
-                              "unknown": g["unknown"],
-                              "answered": sum(len(x["devices"]) for x in g["groups"]),
-                              "distinct": len(g["groups"])})
+        n_answered = sum(len(x["devices"]) for x in g["groups"])
+        c["commands"].append({
+            "command": cmd, "groups": groups, "all_groups": g["groups"],
+            "failed": g["failed"], "skipped": g["skipped"], "unknown": g["unknown"],
+            "answered": n_answered, "distinct": len(g["groups"]),
+            "empty": sum(len(x["devices"]) for x in g["groups"] if x["empty"]),
+            "columns": g["columns"].get("names", []), "ignore": g["ignore"],
+            "ignored_by": choice.get("by", ""), "ignored_at": _when(choice.get("at")),
+            "reference": ref, "common_offered": bool(
+                g["groups"] and len(g["groups"][0]["devices"]) >= COMMON_AT_LEAST)})
+    c["answered_devices"] = sorted(answered)
+    from modules.nsot import logging_path
+    if record.get("purpose") == logging_path.PURPOSE and c["state"] != "refused":
+        c["logging_path"] = logging_view(record, running, lost=bool(job and j is None))
+    c["common_offered"] = any(x["common_offered"] for x in c["commands"])
     if left and right and command:
-        a = (reads.answer_of(record, left, command) or {}).get("answer", "")
-        b = (reads.answer_of(record, right, command) or {}).get("answer", "")
+        choice = ignored.get(command) or {}
+        g = _groups(record, command, choice.get("columns"))
+        a = next((x["answer"] for x in g["groups"] if left in x["devices"]), "")
+        b = next((x["answer"] for x in g["groups"] if right in x["devices"]), "")
         c["compare"] = {"command": command, "left": left, "right": right,
                         "left_lines": _side(a, b), "right_lines": _side(b, a)}
     if c["show"] == "differences":
-        diffs = []
-        for x in c["commands"]:
-            base = next((gr for gr in x["all_groups"] if against and against in gr["devices"]),
-                        x["all_groups"][0] if x["all_groups"] else None)
-            if base is None:
-                continue
-            for gr in x["all_groups"]:
-                if gr is base:
+        if not against:
+            c["differences"] = None               # nobody chosen: the view says so
+        else:
+            diffs = []
+            for x in c["commands"]:
+                base = x["reference"]
+                if base is None:
                     continue
-                diffs.append({"command": x["command"], "devices": gr["devices"],
-                              "base": base["devices"],
-                              "lines": reads.compare(base["answer"], gr["answer"])})
-        c["differences"] = diffs
+                for gr in x["all_groups"]:
+                    if gr is base:
+                        continue
+                    diffs.append({"command": x["command"], "devices": gr["devices"],
+                                  "base": base["devices"], "empty": gr["empty"],
+                                  "lines": reads.compare(base["answer"], gr["answer"])})
+            c["differences"] = diffs
     return c
+
+
+def ignore(list_name: str, run_id: str, command: str, names: list, actor: str) -> str:
+    """Record the columns *actor* ticked to ignore when grouping *command*'s answers (C580): ``""``
+    when recorded, else why. Only a column the answers' header line names is accepted."""
+    record = reads.get(list_name, run_id)
+    if record is None:
+        return f"{list_name} holds no run {run_id}."
+    if command not in (record.get("commands") or []):
+        return f"{command!r} is not a command of this run."
+    names = list(dict.fromkeys(n for n in (names or []) if n))
+    known = _groups(record, command)["columns"].get("names", [])
+    bad = [n for n in names if n not in known]
+    if bad:
+        return (f"{', '.join(bad)} is not a column of {command}'s answers (their header names "
+                f"{', '.join(known) or 'none'}).")
+    chosen = dict(record.get("ignored") or {})
+    chosen[command] = {"columns": names, "by": actor, "at": time.time()}
+    reads.annotate(list_name, run_id, "ignored", chosen)
+    return ""

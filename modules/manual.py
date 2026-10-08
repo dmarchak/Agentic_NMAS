@@ -65,6 +65,7 @@ PAGES = (
     ("bring-template", "Bring in a shipped template", H, "how-it-works/bring-template.md"),
     ("show-commands", "Show commands: ask devices read-only commands", H,
      "how-it-works/show-commands.md"),
+    ("logging-path", "Test the logging path", H, "how-it-works/logging-path.md"),
     ("settings-switch", "Inherit or stand alone: switch a network's settings", H,
      "how-it-works/settings-switch.md"),
     ("drift", "Drift", "Concepts", "concepts/drift.md"),
@@ -142,6 +143,7 @@ OPERATIONS = {
     "approve-template": ("modules.nsot.approve_op", "STEPS"),
     "bring-template": ("modules.nsot.template_bring", "STEPS"),
     "show-commands": ("modules.nsot.reads", "STEPS"),
+    "logging-path": ("modules.nsot.logging_path", "STEPS"),
 }
 #: The page each operation's steps are named on (an operation may have two
 #: declared sequences on one page: onboarding's two phases and its ZTP form).

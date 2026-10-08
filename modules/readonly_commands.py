@@ -76,7 +76,12 @@ READ_ONLY_VERBS = ("show", "sho", "sh", "ping", "traceroute", "dir", "more")
 
 #: Tier 1's members beyond the reads, allowed only where a caller names them (`refusal`'s
 #: *extra*): the reads engine names all three for a person, `verify` for the agent.
-EXTRAS = ("verify", "send log", "terminal")
+#: send log at levels 0 to 3 (emergencies to errors) can fire critical alert rules (the operator,
+#: 2026-10-08): allowed only where a caller names this, which the reads engine does only with a
+#: stated reason of three words or more, recorded; and the line must say TEST.
+URGENT_LOG = "send log 0-3"
+URGENT_LEVELS = range(0, 4)
+EXTRAS = ("verify", "send log", "terminal", URGENT_LOG)
 
 #: Output modifiers that only filter what is displayed.
 SAFE_MODIFIERS = ("begin", "count", "exclude", "include", "section")
@@ -133,7 +138,7 @@ _EXTRA_WORDS = {"verify": "verify /md5 of a local file", "send log": "send log",
 def _tier1_words(extra=()) -> str:
     """What runs on this path, in words: the reads, and the extras *extra* names."""
     parts = ["show", "ping and traceroute (bounded)", "dir and more of a local file system"]
-    parts += [_EXTRA_WORDS[e] for e in EXTRAS if e in (extra or ())]
+    parts += [_EXTRA_WORDS[e] for e in EXTRAS if e in (extra or ()) and e in _EXTRA_WORDS]
     return ("Tier 1 (non-destructive) runs here: " + "; ".join(parts) + ". Output is filtered "
             "only by include, exclude, begin, section or count")
 
@@ -330,16 +335,28 @@ def _verify_args(args: list) -> str:
     return _file(args[0], "verify")
 
 
-def _send_log_args(text: str) -> str:
-    """``send log [<0-7>] <text>``: *text* is everything after ``send log``."""
+def _send_log_args(text: str, urgent: bool = False) -> str:
+    """``send log [<0-7>] <text>``: *text* is everything after ``send log``. Levels 4 to 7 run
+    freely; 0 to 3 only when *urgent* (a stated reason, `URGENT_LOG`) and the line says TEST."""
     words = text.split(None, 1)
+    level = None
     if words and words[0].isdigit():
         if not 0 <= int(words[0]) <= 7:
             return f"REFUSED: send log's level is {words[0]}; it must be 0 to 7."
+        level = int(words[0])
         text = words[1] if len(words) > 1 else ""
     text = text.strip()
     if not text:
         return "REFUSED: send log needs the line to write."
+    if level in URGENT_LEVELS:
+        if not urgent:
+            return (f"REFUSED: send log at level {level} (0 to 3: emergencies to errors) can "
+                    "fire critical alert rules, so it needs a stated reason of three words or "
+                    "more, recorded with the run, and the word TEST in its line. Levels 4 to 7 "
+                    "run freely.")
+        if not re.search(r"\bTEST\b", text, re.I):
+            return (f"REFUSED: send log at level {level} must mark its line as a test: the "
+                    "word TEST is not in it.")
     if "|" in text:
         return "REFUSED: send log's line holds '|'; it is one plain line, never piped."
     if len(text) > SEND_LOG_TEXT_MAX:
@@ -389,7 +406,7 @@ def refusal(command, extra=()) -> str:
             return ("REFUSED: send log is Tier 1, and runs only through the reads engine (Show "
                     "commands, Ask the device), which holds the device and records the run.")
         rest = stripped.split(None, 2)
-        return _send_log_args(rest[2] if len(rest) > 2 else "")
+        return _send_log_args(rest[2] if len(rest) > 2 else "", URGENT_LOG in extra)
     head, *modifiers = stripped.split("|")
     words = head.split()
     verb = words[0].lower() if words else ""

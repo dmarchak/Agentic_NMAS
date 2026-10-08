@@ -105,8 +105,21 @@ def matches(command: str, words: tuple) -> bool:
 #: a file; a line in a device's log and the session's settings are a person's to send.
 EXTRAS = {"person": ("verify", "send log", "terminal"), "agent": ("verify",)}
 
+#: A reason long enough to allow `send log` at levels 0 to 3 for a person (the operator,
+#: 2026-10-08: "three words minimum, like dangerous lines"); recorded with the run.
+REASON_WORDS = 3
 
-def refusal(commands: list, n_devices: int, by: str = "person") -> str:
+
+def extras(by: str, reason: str = "") -> tuple:
+    """What Tier 1 allows *by*: a person with a stated reason may also log at levels 0 to 3."""
+    from modules.readonly_commands import URGENT_LOG
+    allowed = EXTRAS.get(by, ())
+    if by == "person" and len((reason or "").split()) >= REASON_WORDS:
+        allowed = allowed + (URGENT_LOG,)
+    return allowed
+
+
+def refusal(commands: list, n_devices: int, by: str = "person", reason: str = "") -> str:
     """``""`` when the run may ask its devices, else why (the comparison and its operands)."""
     from modules.readonly_commands import refusal as one
 
@@ -117,7 +130,7 @@ def refusal(commands: list, n_devices: int, by: str = "person") -> str:
         return (f"Refused: {len(commands)} commands; a run asks at most {MAX_COMMANDS} "
                 "(a longer list is a script, not a read).")
     for c in commands:
-        why = one(c, EXTRAS.get(by, ()))
+        why = one(c, extras(by, reason))
         if why:
             return f"`{c[:120]}`: {why}"
     if n_devices > 1:
@@ -281,7 +294,8 @@ def new_id(now: float = None) -> str:
 
 
 def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
-        purpose: str = "", progress=None, session=None, run_id: str = "") -> dict:
+        purpose: str = "", progress=None, session=None, run_id: str = "",
+        reason: str = "") -> dict:
     """Ask *hosts* of *list_name* each of *commands*; the run's record (also written).
 
     *by* is ``person`` or ``agent`` (*actor* is then the person it acts for). *progress* is
@@ -297,10 +311,12 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     started = time.time()
     run_id = run_id or new_id(started)
     record = {"id": run_id, "list": list_name, "actor": actor, "by": by, "purpose": purpose,
+              "reason": (reason or "").strip(),
               "started_at": started, "finished_at": None, "state": "running",
               "commands": commands, "devices": hosts, "results": {}, "refused": "",
               "retention": {"days": retention_days(list_name), "archived": None}}
-    why = refusal(commands, len(hosts), by) or ("" if hosts else "Refused: no device to ask.")
+    why = (refusal(commands, len(hosts), by, reason)
+           or ("" if hosts else "Refused: no device to ask."))
     if why:
         record.update(state="refused", refused=why, finished_at=time.time())
         _write(list_name, record)
@@ -473,7 +489,7 @@ ANNOUNCER = "show-commands"
 
 
 def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "person",
-          purpose: str = "") -> dict:
+          purpose: str = "", reason: str = "") -> dict:
     """Refuse now, or start the run as a job: {"refused": why} (recorded, nothing asked)
     or {"job": id, "run": id}. A run of one device is a job too: one device's read is
     bounded by the read timeout (120 s), past the edge proxy's 100 s limit on a request."""
@@ -482,10 +498,12 @@ def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = 
     hosts = list(dict.fromkeys(h for h in (hosts or []) if h))
     commands = [c.strip() for c in (commands or []) if c and c.strip()]
     run_id = new_id()
-    why = refusal(commands, len(hosts), by) or ("" if hosts else "Refused: no device to ask.")
+    why = (refusal(commands, len(hosts), by, reason)
+           or ("" if hosts else "Refused: no device to ask."))
     if why:
         try:
-            run(list_name, hosts, commands, actor, by=by, purpose=purpose, run_id=run_id)
+            run(list_name, hosts, commands, actor, by=by, purpose=purpose, run_id=run_id,
+                reason=reason)
         except Refused:
             pass
         return {"refused": why, "run": run_id}
@@ -494,7 +512,7 @@ def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = 
     job = capture_job.start(list_name, label, actor,
                             lambda job_id: {"run": run(list_name, hosts, commands, actor,
                                                         by=by, purpose=purpose,
-                                                        run_id=run_id)["id"]},
+                                                        run_id=run_id, reason=reason)["id"]},
                             kind="show commands", announce_keys=ANNOUNCE_KEYS,
                             announcer=ANNOUNCER)
     return {"job": job, "run": run_id}

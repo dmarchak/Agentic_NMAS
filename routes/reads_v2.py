@@ -179,6 +179,68 @@ def show_commands_result_part(run_id):
     return _strict(render_template("v2/_sc_result.html", r=_result_ctx(name, run_id)))
 
 
+@bp.route("/show-commands/logging-path", methods=["POST"])
+def logging_path_run():
+    """Test the logging path (board F) as the verified person: on exactly the devices the card
+    showed (its fingerprint, as Run), or again on a past test's devices (`again`, with `host`
+    narrowing it to those named, each one of that test's). Refused now, drawn in place, or the
+    new run's page."""
+    from modules import identity, reads_page
+    from modules.nsot import logging_path, reads
+    name = _list()
+    again = request.args.get("again", "")
+    if again:
+        past = reads.get(name, again) or {}
+        known = past.get("devices") or []
+        hosts = request.args.getlist("host") or known
+        stray = [h for h in hosts if h not in known]
+        why = (f"{name} holds no test {again}." if not past else
+               f"{', '.join(stray)} was not tested in {again} (its devices: "
+               f"{', '.join(known)})." if stray else "")
+        got = {"refused": why} if why else logging_path.start(name, hosts,
+                                                               identity.request_actor())
+        if got.get("refused"):
+            r = _result_ctx(name, again)
+            r["error"] = got["refused"]
+            return _strict(render_template("v2/_sc_result.html", r=r))
+    else:
+        args = _pick_args(request.form)
+        p = reads_page.pick(name, **args)
+        shown = (request.form.get("fingerprint") or "").strip()
+        if shown != p["fingerprint"]:
+            p = reads_page.pick(name, **args, error=(
+                f"Not tested: the devices these filters match changed since the card was drawn "
+                f"(fingerprint {shown or 'none'} then, {p['fingerprint']} now: "
+                f"{len(p['devices'])} device(s) now). Check the list below and test again."))
+            return _strict(render_template("v2/_sc_pick.html", p=p))
+        got = logging_path.start(name, p["devices"], identity.request_actor())
+        if got.get("refused"):
+            p = reads_page.pick(name, **args, error=f"Not tested: {got['refused']}")
+            return _strict(render_template("v2/_sc_pick.html", p=p))
+    target = url_for("reads_v2.show_commands_result", run_id=got["run"], job=got.get("job", ""),
+                     list=name)
+    if request.headers.get("HX-Request"):
+        from flask import make_response
+        resp = make_response("", 204)
+        resp.headers["HX-Redirect"] = target
+        return resp
+    return redirect(target)
+
+
+@bp.route("/show-commands/run/<run_id>/ignore", methods=["POST"])
+def show_commands_ignore(run_id):
+    """Record the columns the person ticked to ignore when grouping one command's answers
+    (board C2, C580), as the verified person, then draw the run's region again. Nothing is asked
+    of any device; the answers are kept whole."""
+    from modules import identity, reads_page
+    name = _list()
+    why = reads_page.ignore(name, run_id, request.form.get("command", ""),
+                            request.form.getlist("column"), identity.request_actor())
+    r = _result_ctx(name, run_id)
+    r["error"] = why
+    return _strict(render_template("v2/_sc_result.html", r=r))
+
+
 @bp.route("/show-commands/sets", methods=["POST"])
 def show_commands_save_set():
     """Commit the card's commands as a saved set, as the verified person (R3), and redraw the

@@ -207,7 +207,10 @@ refused, naming the nearest allowed alternative.
   - **Local file systems** are those the devices print as type `disk` or `nvram` in the real
     `show file systems` captures (C8000v, vIOS), plus `system:`. Every `network` one is
     refused, and so are `null:` and `tar:`.
-  - **send log:** level 0 to 7, at most 120 printable characters, no `|`.
+  - **send log:** at most 120 printable characters, no `|`. Levels 4 to 7 run freely; 0 to 3
+    (they can fire critical alert rules) only with a stated reason of three words or more,
+    recorded with the run, and the word TEST in the line (the operator, 2026-10-08). Show
+    commands takes no reason yet (C582), so from a page only 4 to 7 run.
   - **Terminal settings:** `terminal length` and `terminal width` only (`terminal monitor`
     would interleave the log with the answers).
   - **Who may run the extras:** the reads (`show`, `ping`, `traceroute`, `dir`, `more`) run on
@@ -238,10 +241,17 @@ refused, naming the nearest allowed alternative.
   in it (the Logs tab's match). "After N s" is Loki's receive time less the time the device's
   answer arrived. A watch Mercury could not make, or one cut at its page size, is `unknown`,
   never "not received". The result is recorded with the run (`reads.annotate`). No Loki
-  configured is a refusal before any device. **Its controls need a mockup:** it adds a button
-  to Show commands' card and a result to the run page, so boards F and G are drawn for
-  sign-off (canvas, page "reads"). Nothing of it is reachable from a page until they are
-  signed off.
+  configured is a refusal before any device. **Boards F and G were APPROVED and BUILT
+  2026-10-08**, with C2 (the result revised, C577 to C580):
+  - "Test the logging path on N devices" sits beside Run in Show commands' footer, on the
+    devices the card shows (its fingerprint, as Run). It is off, saying why on hover, without
+    Loki.
+  - The run's page draws sending, then watching (re-read as lines arrive), then the result:
+    not received, not sent, unknown, received, in that order.
+  - A device not received says when Loki last received anything from it (the first 10 read),
+    with "Open its Logs" and "Test it again". A test again is held to that test's devices.
+  - History says "Logging path on N devices" with the counts.
+  - The manual's page is how-it-works/logging-path.md.
 
 ## 9. Boards to draw (the mockup, for sign-off)
 

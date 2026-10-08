@@ -169,6 +169,37 @@ class TestTheExtras:
     def test_each_has_its_shape(self, cmd, words):
         assert words in _refused(cmd), rc.refusal(cmd, PERSON)
 
+    @pytest.mark.parametrize("level", [4, 5, 6, 7])
+    def test_levels_4_to_7_run_freely(self, level):
+        assert _ok(f"send log {level} a line"), rc.refusal(f"send log {level} a line", PERSON)
+
+    @pytest.mark.parametrize("level", [0, 1, 2, 3])
+    def test_levels_0_to_3_need_a_reason_and_say_test(self, level):
+        """They can fire critical alert rules (the operator, 2026-10-08)."""
+        from modules.nsot import reads
+        cmd = f"send log {level} TEST of the alert path"
+        why = _refused(cmd, ("send log",))
+        assert "stated reason of three words" in why and "TEST" in why, why
+        assert reads.refusal([cmd], 1, "person", reason="too short").startswith("`")
+        assert reads.refusal([cmd], 1, "person", reason="checking the critical alert") == ""
+        unmarked = f"send log {level} the alert path"
+        why = reads.refusal([unmarked], 1, "person", reason="checking the critical alert")
+        assert "the word TEST is not in it" in why, why
+        assert reads.refusal([cmd], 1, "agent", reason="checking the critical alert"), \
+            "the agent never logs, reason or not"
+
+    def test_a_run_records_its_reason(self, monkeypatch, tmp_path):
+        from modules.nsot import reads
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path / n))
+        monkeypatch.setattr("modules.device.load_saved_devices",
+                            lambda path: [{"hostname": "r2", "ip": "192.0.2.12"}])
+        monkeypatch.setattr("modules.list_settings.value", lambda ln, k, d=None: d)
+        monkeypatch.setattr("modules.commands.run_device_command", lambda conn, c, **kw: "")
+        record = reads.run("Lab", ["r2"], ["send log 2 TEST critical rule"], "op@example.invalid",
+                           reason="proving the critical rule fires",
+                           session=lambda dev, fn: fn(object()))
+        assert record["state"] == "done" and record["reason"] == "proving the critical rule fires"
+
     def test_send_is_only_send_log(self):
         """`send *` messages every terminal and asks for its text interactively."""
         _refused("send *")

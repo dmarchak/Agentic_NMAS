@@ -1,4 +1,4 @@
-# Tier 2: "Run a privileged command…" (DRAFT for the operator's sign-off, 2026-10-08)
+# Tier 2: "Run a privileged command…" (APPROVED by the operator, 2026-10-08; decisions in section 4; built after the measurements in section 5)
 
 The command policy (NSOT_READS.md section 11, the operator, 2026-10-08) puts the exec commands
 that change a device's state recoverably in Tier 2: refused by the reads engine today, naming
@@ -47,15 +47,17 @@ Anything else is refused as today, naming its tier. Tier 3 stays refused.
 - **T2-D, the case that changes nothing:** `undebug all` with no debug on. "This changes
   nothing: no debug is on." The button reads "Run undebug all anyway (records it)".
 
-## 4. Decisions for the operator
+## 4. Decisions (APPROVED by the operator, 2026-10-08, with boards T2-A to T2-D and T2 phone)
 
-- **T2-1, scope:** one device at a time, from its page (proposed), or also several from Show
-  commands' result ("Run a privileged command on these…", with a per-device preview, grouped).
-- **T2-2, the reason:** required (proposed: it is the record's value), or optional.
-- **T2-3, the agent:** never runs Tier 2; it may PROPOSE one, which a person previews and
-  confirms here (proposed, Stage 8's rule).
-- **T2-4, what is kept:** the counters and the log buffer are kept in the receipt before they
-  are cleared (proposed), or not.
+- **T2-1, one device for now.** A fleet-wide `clear counters` comes later, once measured.
+- **T2-2, a reason is required**, three words at least, as a dangerous line's is.
+- **T2-3, the agent never RUNS Tier 2.** It may PROPOSE a Tier 2 command in a recommendation,
+  for a person to run here (the charter's rule).
+- **T2-4, the before-state is kept in the record**, masked and size-capped: the counters
+  before `clear counters`, the log buffer before `clear logging` (those commands destroy
+  evidence).
+- **Order:** the build comes after the measurements in section 5, made as a Mercury probe (no
+  terminal steps), after boards C2, F and G are built and after Phase 3's clab sync rewrite.
 
 ## 5. Measurements before the build (nothing here has been sent to a device)
 

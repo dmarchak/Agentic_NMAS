@@ -173,6 +173,8 @@ DECLARED = {
     "reads_v2.ask_run": ("reads",),
     "reads_v2.show_commands_run": ("reads",),
     # A saved set is drawn by Show commands' pick card, which the response redraws itself.
+    "reads_v2.logging_path_run": ("reads",),
+    "reads_v2.show_commands_ignore": ("reads",),
     "reads_v2.show_commands_save_set": ("reads",),
     "templates_v2.approve": ("templates", "remote"),
     "templates_v2.revoke": ("templates", "remote"),

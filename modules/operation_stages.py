@@ -321,6 +321,8 @@ HISTORY = {
     # ---- configure
     # A saved command set (C548, R3): a commit as the person, read as one of the fleet's commits.
     "reads_v2.show_commands_save_set": ("commits",),
+    # The columns ignored when grouping a run (C580): recorded on that run, drawn on its row.
+    "reads_v2.show_commands_ignore": ("show_commands",),
     "attention.acknowledge": ("acknowledgements", "restarts"),
     "restarts.planned": ("restart_windows",),
     "golden.migrate_apply": ("golden",),

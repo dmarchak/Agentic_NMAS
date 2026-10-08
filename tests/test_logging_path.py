@@ -71,7 +71,10 @@ class TestTheWatch:
         got, loki, clock = _watch({"r3": 1000.0, "s3": 1000.0}, Loki(arrive={"r3": 1003.4}))
         assert got["r3"]["state"] == LP.RECEIVED and got["r3"]["after_s"] == 3.4
         assert got["r3"]["words"] == "received after 3.4 s"
-        assert got["s3"] == {"state": LP.NOT_RECEIVED, "words": "not received within 30 s"}
+        assert got["s3"]["state"] == LP.NOT_RECEIVED
+        assert got["s3"]["words"] == "not received within 30 s"
+        assert got["s3"]["sent_iso"] == "1970-01-01T00:16:40Z"
+        assert got["s3"]["until_iso"] == "1970-01-01T00:17:10Z"
         assert clock.now >= 1000.0 + LP.WAIT_SECONDS, "it waited the whole window for s3"
 
     def test_it_stops_as_soon_as_every_line_is_in(self):
@@ -149,6 +152,23 @@ def lab(monkeypatch, tmp_path):
     return sent
 
 
+def _s3_body():
+    with open(os.path.join(ROOT, "tests", "fixtures", "loki", "device_logs.json"),
+              encoding="utf-8") as fh:
+        return json.load(fh)["s3"]["body"]
+
+
+def _last_line(query):
+    """Loki's answer to "s3's last line": its real capture."""
+    assert "s3:" in query
+
+    class Resp:
+        def json(self):
+            return _s3_body()
+
+    return {"ok": True, "response": Resp()}
+
+
 def _session(dev, fn):
     if dev["hostname"] == "r1":
         raise OSError("TCP connection to device failed (192.0.2.11:22)")
@@ -162,12 +182,16 @@ class TestTheTest:
         clock = Clock(time.time() + 1)
         loki = Loki(arrive={"r3": clock.now + 2.0})
         record = LP.run("Lab", ["r3", "s3", "r1"], "op@example.invalid", run_id=RUN,
-                        session=_session, ask=loki, clock=clock, sleep=clock.sleep)
+                        session=_session, ask=loki, clock=clock, sleep=clock.sleep,
+                        last_ask=_last_line)
         assert sorted(lab) == [("r3", LP.command(RUN)), ("s3", LP.command(RUN))]
         assert LP.command(RUN).startswith("send log 6 MERCURY-LOGTEST ")
         res = record["logging_path"]["results"]
         assert res["r3"]["state"] == LP.RECEIVED
         assert res["s3"]["state"] == LP.NOT_RECEIVED
+        last = max(int(v[0]) for s in _s3_body()["data"]["result"] for v in s["values"])
+        assert res["s3"]["last_iso"] == time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last / 1e9))
+        assert "last_iso" not in res["r3"], "only a device not received is looked up"
         assert res["r1"]["state"] == LP.NOT_SENT and "TCP connection" in res["r1"]["words"]
         assert record["logging_path"]["counts"] == {"received": 1, "not received": 1,
                                                     "not sent": 1}

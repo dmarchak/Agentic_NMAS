@@ -48,7 +48,7 @@ what is not: a command in no tier is refused, naming the nearest command that ru
 | `traceroute` | `[vrf <name>] [ip\|ipv6] <target>`, then `numeric`, `timeout` 1 to 10 s, `probe` 1 to 5, `ttl <min> <max>` (1 to 30), `source`, `port` |
 | `dir`, `more` | a local file system only (`flash:`, `bootflash:`, `nvram:`, `system:`, …), never a transfer protocol (`tftp:`, `ftp:`, `http:`, `scp:`, …) |
 | `verify /md5` | a file on a local file system, and optionally the MD5 it should have |
-| `send log` | `[<level 0 to 7>] <one plain line>`, at most 120 characters, never piped |
+| `send log` | `[<level>] <one plain line>`, at most 120 characters, never piped. Levels 4 to 7 run freely; 0 to 3 (they can fire critical alert rules) need a stated reason of three words or more, recorded, and the word TEST in the line |
 | `terminal` | `length` or `width`, 0 to 512: for this session only |
 
 A ping or traceroute is bounded by its own worst case, worked out from what you typed and the
@@ -82,6 +82,27 @@ says that none does:
 **Configure mode** runs only in the deploy pipeline: change the device's intent and deploy it.
 **Saving** (`write memory`, `copy running-config startup-config`) is the pipeline's last step,
 and the device page's Persist does it on its own.
+
+## How answers are grouped and compared {#grouping}
+
+- **Grouped when the answer is the same.** Devices whose whole masked answer is identical form
+  one group. A cut answer, or one moved to the archive, groups by the fingerprint of its whole
+  answer.
+- **Columns you tick are ignored.** When the answers begin with a table's header line (for
+  example `Neighbor ID  Pri  State  Dead Time ...`), its columns are offered to tick. Ticked
+  columns are blanked (drawn as `·`) before answers are compared, so a column that changes on
+  its own, such as OSPF's Dead Time, no longer keeps every device apart. Your choice is
+  recorded with the run, as you; the answers are kept whole, and no device is asked again.
+  Ignoring a column groups answers that differ only in it. It cannot make different answers
+  alike: each router lists its neighbours and never itself, so neighbour lists stay apart.
+- **Nobody is the reference until you choose one.** "Compare against" starts at nobody. You may
+  choose a device, or "the most common answer", which is offered only when at least two
+  devices share an answer. With a reference chosen, each group says whether it is the same as
+  the reference, or how many lines only one of them has; "Only the differences" shows them.
+- **No colour without an expectation.** Nothing was expected of these answers, so a group is
+  drawn neutral, named by its devices. Colour is kept for real states: a failed read is red, a
+  skipped device amber.
+- **An empty answer says so:** "No output (empty answer)", drawn apart from a read that failed.
 
 ## Saved sets {#saved-sets}
 

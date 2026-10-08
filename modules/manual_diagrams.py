@@ -947,6 +947,28 @@ def show_commands():
     ])
 
 
+def logging_path():
+    return svg(470, (
+        "Test the logging path: the line is checked against Tier 1 of the command policy and a "
+        "test is refused when Loki is not configured, before any device is asked; each device "
+        "is held and sent one line, send log 6 MERCURY-LOGTEST and the run's id, through the "
+        "reads engine; Loki is asked every 2 seconds, once for the whole run, until each "
+        "device's line arrives or 30 seconds pass after its send; the result is recorded with "
+        "the run, and History shows it."), [
+        lanes(20, 464),
+        doc("box", 14, 40, 186, 36, "Tier 1, and Loki set", "checked first"), num(14, 40, 1),
+        t(14, 92, "refused: no device asked", "sm"),
+        band(110, 90, "The run · a job, devices held while sent"),
+        device(262, 128, 118, 70, "The device", "one log line", top=True),
+        *rows([(140, "read", 2, "Held, then sent", "send log 6 MERCURY-LOGTEST")]),
+        store(14, 222, 186, 40, "Loki, every 2 s", "one question for the run"), num(14, 222, 3),
+        t(14, 284, "received after N s, or", "sm"), t(14, 297, "not received within 30 s", "sm"),
+        store(14, 330, 186, 40, "The run's record", "each device's result"), num(14, 330, 4),
+        t(14, 394, "History shows it.", "sm"),
+        t(14, 444, "No device's configuration is changed.", "sm"),
+    ])
+
+
 def settings_switch():
     return svg(470, (
         "Switching a network's settings: making it standalone or inheriting again, or one "
@@ -1136,6 +1158,7 @@ DIAGRAMS = {
     "approve-template": approve_template,
     "bring-template": bring_template,
     "show-commands": show_commands,
+    "logging-path": logging_path,
     "publish-remote": publish_remote,
     "breakglass-export": breakglass_export,
     "onboard-static": onboard_static,

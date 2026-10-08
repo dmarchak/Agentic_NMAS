@@ -23,22 +23,43 @@ repository under a name, as you; a name already taken is refused.
 
 **Run** starts the run and opens its page. It is recorded in History, as yours.
 
+**Test the logging path on N devices** sends each chosen device one line for its log and
+watches Loki for it, 30 seconds per device; it needs no command. It is off, saying why on hover,
+when Loki is not configured. How it works:
+[Test the logging path](logging-path).
+
 ## The result {#the-result}
 
-A run's page leads with the summary: per command, how many devices answered, how many distinct
-answers there were (and how many devices differ from the largest group), and which failed or
-were skipped. While it runs, it shows how many devices are done and draws the answers as they
+A run's page leads with the summary: per command, how many devices answered (and how many of
+those answers were empty), how many distinct answers there were, and which failed or were
+skipped. While it runs, it shows how many devices are done and draws the answers as they
 arrive; you can leave and come back.
 
-The answers are **grouped**: devices whose whole masked answer is the same form one group, its
-answer shown once, collapsed. A group opens to its answer and its devices; a device opens its own
-answer on its page. A device that did not answer is never inside a group: it is listed as failed
-or skipped, with why. An answer longer than the network's cap says it was cut.
+The answers are **grouped**: devices whose answer is the same form one group, its answer shown
+once, collapsed, named by its devices in a neutral colour (nothing was expected, so no group is
+"right" or "wrong"). A group opens to its answer and its devices; a device opens its own answer
+on its page. An empty answer says "No output (empty answer)". A device that did not answer is
+never inside a group: it is listed as failed (red) or skipped (amber), with why. An answer
+longer than the network's cap says it was cut.
 
-**Find a device** and **Find in the answers** narrow the groups. **Show** chooses every answer
-grouped, only the differences (each group's lines against the largest group), or the failed and
-skipped. **Compare** on a group sets one of its devices beside the largest group's, each side's
-lines the other lacks marked.
+**Ignore when grouping**: when the answers begin with a table's header line, its columns are
+offered to tick; **Group again** blanks the ticked ones and groups again. The choice is
+recorded with the run, as you, and named above the groups; no device is asked again.
+
+**Find a device** and **Find in the answers** narrow the groups. **Compare against** chooses
+the reference: nobody, until you choose a device, or "the most common answer" when at least two
+devices share one. **Show** chooses every answer grouped, only the differences (each group's
+lines against the reference you chose), or the failed and skipped. **Compare … with**, on a
+group, sets one of its devices beside a device you choose, each side's lines the other lacks
+marked. How grouping and comparing work: [How answers are grouped](show-commands#grouping).
+
+## A logging-path test's result {#logging-path}
+
+The page leads with what to act on: how many devices' lines were **not received within 30 s**
+(red), **not sent** (amber), **unknown** (Loki could not be asked: neither), and **received**
+(green, with how long each took). A device not received says when Loki last received anything
+from it, and offers **Open its Logs** and **Test it again**; **Test again** repeats the whole
+test.
 
 ## Recent runs {#recent-runs}
 
