@@ -249,15 +249,14 @@ class TestTheResultRevised:
 
 
 def _loki_line(host, tok):
-    """*host*'s real heartbeat line as Loki returned it (tests/fixtures/loki), its text replaced
-    by the test's token."""
+    """r1's real `send log` line as Loki received it (tests/fixtures/loki/userlog_r1.json,
+    C587), as *host*'s, carrying the test's token."""
     import json
-    with open(os.path.join(ROOT, "tests", "fixtures", "loki", "device_logs.json"),
+    with open(os.path.join(ROOT, "tests", "fixtures", "loki", "userlog_r1.json"),
               encoding="utf-8") as fh:
-        body = json.load(fh)["r3"]["body"]
-    line = next(v[1] for s in body["data"]["result"] for v in s["values"]
-                if "NMAS-HEARTBEAT: NMAS-HEARTBEAT" in v[1])
-    return line.replace("NMAS-HEARTBEAT: NMAS-HEARTBEAT", tok).replace("r3", host)
+        line = json.load(fh)["line"]
+    return (line.replace(" r1 3604: r1: ", f" {host} 3604: {host}: ")
+            .replace("MERCURY-LOGTEST manual-check", tok))
 
 
 @pytest.fixture
@@ -272,6 +271,10 @@ def lp(sc, monkeypatch):
     monkeypatch.setattr(LP, "_ask", lambda s, e, tok, limit: (
         [(int(_time.time() * 1e9), _loki_line("r3", tok))], ""))
     monkeypatch.setattr(LP, "last_lines", lambda hosts, **kw: {h: "" for h in hosts})
+    # The lab's r3 golden is an old capture trapping at critical (C587 would hold it back), and
+    # these tests are about the drawing: no golden, so IOS's default, informational.
+    # test_the_line_goes_at_the_level_the_goldens_forward gives them r1's real trap.
+    monkeypatch.setattr(LP, "_golden", lambda list_name, host: "")
 
     def answering(self, dev, fn):
         host = dev["hostname"]
@@ -329,6 +332,9 @@ class TestTheLoggingPath:
         assert "r9</strong>: not received within 1 s" in html
         assert "Open r9's Logs" in html and "Test r9 again" in html
         assert "Loki holds no line from r9 in the last 24 hours" in html
+        assert ("r9 forwards informational (6) and above (IOS's default: it has no committed "
+                "golden); this line was level 6, so its own filter passed it.") in html, (
+            "C587: the device's own filter is said first")
         run_id = re.search(r"/run/([^?/]+)", target).group(1)
         lp_rec = reads.get("Lab", run_id)["logging_path"]
         assert lp_rec["counts"] == {"received": 1, "not received": 1}
@@ -343,6 +349,19 @@ class TestTheLoggingPath:
         (e,) = got["events"]
         assert e["what"] == "Logging path on 2 devices"
         assert e["outcome"] == "1 not received, 1 received"
+
+    def test_the_line_goes_at_the_level_the_goldens_forward(self, lp, monkeypatch):
+        """C587, through the page: goldens carrying r1's real `logging trap notifications`
+        make the line level 5, and the result says so."""
+        from tests.test_logging_path import NOTIFICATIONS
+        from modules.nsot import logging_path as LP
+        monkeypatch.setattr(LP, "_golden", lambda list_name, host: NOTIFICATIONS)
+        _r, target = _test(lp)
+        sent = sorted(c for _h, c in lp["fleet"].sent)
+        assert len(sent) == 2 and all(c.startswith("send log 5 MERCURY-LOGTEST ") for c in sent)
+        _r, html = _get(lp, target)
+        assert "send log 5 MERCURY-LOGTEST" in html
+        assert "r9 forwards notifications (5) and above (its golden); this line was level 5" in html
 
     def test_again_on_one_device_and_never_a_stranger(self, lp):
         _r, target = _test(lp)

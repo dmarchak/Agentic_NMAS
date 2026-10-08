@@ -75,6 +75,9 @@ class TestTheTab:
         assert 'id="ask"' in html and "Ask r3" in html
         assert "show ip interface brief" in html and "None yet." in html
         assert "Nothing here changes r3" in html
+        # C588: the box is named as the policy is (Tier 1 holds send log, which writes a line).
+        assert '<label class="ask-label" for="ask-command">A read or diagnostic command ' \
+               '(Tier 1)</label>' in html
 
     def test_a_picked_command_is_filled_and_checked(self, ask):
         _r, html = _get(ask, "/v2/device/r3/ask?command=show ip route")

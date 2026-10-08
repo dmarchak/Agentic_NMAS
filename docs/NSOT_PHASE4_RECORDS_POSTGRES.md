@@ -170,7 +170,8 @@ NetBox's container untouched; Settings' records database Test connects and names
 version; the first backup run's manifest lists every table with its count; the first restore
 test reads "every table matches"; `ss -ltn` shows the port on 127.0.0.1 only.
 
-**Decisions:** **PG-1**, the port (measured 2026-10-08: NetBox's database publishes no port on the
+**Decisions (APPROVED by the operator, 2026-10-08, with the receipts migration and its count
+check in section 7):** **PG-1**, the port (measured 2026-10-08: NetBox's database publishes no port on the
 host, and nothing listens on 5432 or 5433; `5433` recommended, so a person's `psql` on 5432
 never reaches the wrong one); **PG-2**, the dump's
 retention locally (3 days recommended; MinIO holds the rest, M-4).

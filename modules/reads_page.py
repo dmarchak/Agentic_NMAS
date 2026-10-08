@@ -242,7 +242,9 @@ def logging_view(record: dict, running: bool, lost: bool = False) -> dict:
     hosts = record.get("devices") or []
     sent = len(record.get("results") or {})
     v = {"total": len(hosts), "sent": sent, "token": lp.get("token") or
-         logging_path.token(record["id"]), "level": logging_path.LEVEL,
+         logging_path.token(record["id"]),
+         # A run recorded before C587 sent at informational; its record names no level.
+         "level": lp.get("level", logging_path.LEVEL),
          "wait": logging_path.WAIT_SECONDS, "groups": [], "counts": [], "lost": False,
          "received": []}
     if lp.get("state") != "done" and lost:

@@ -1,0 +1,10 @@
+{
+  "captured": "2026-10-08, the NMAS host's Loki, read-only: the operator's `send log 5 MERCURY-LOGTEST manual-check` on r1 through Ask the device (C587); labels detected_level, filename, host, job, service_name",
+  "ns": "1791490637460428180",
+  "line": "Oct  8 20:17:17 r1 3604: r1: Oct  8 20:17:16.994 UTC: %SYS-5-USERLOG_NOTICE: Message from tty434(user id: admin): MERCURY-LOGTEST manual-check",
+  "golden_logging_lines": [
+    "logging trap notifications",
+    "logging origin-id hostname",
+    "logging source-interface Loopback0"
+  ]
+}

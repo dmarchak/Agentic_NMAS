@@ -1,10 +1,16 @@
 """Test the logging path (modules/nsot/logging_path.py; NSOT_READS.md section 11).
 
-Lines are REAL: r3's and s3's heartbeat lines as Loki returned them
-(`tests/fixtures/loki/device_logs.json`, captured 2026-10-01), the heartbeat's text replaced by
-the run's token and nothing else. No `send log` line had reached this Loki when this was
-written (0 in seven days, measured 2026-10-08), so the watch relies on nothing IOS wraps around
-one: only the device's anchored name and the token.
+Lines are REAL: the `send log 5` line r1 sent through Ask the device and Loki received
+(`tests/fixtures/loki/userlog_r1.json`, captured 2026-10-08, C587), its device name and its
+text edited to each test's device and the run's token, nothing else. A line that QUOTES the
+token without IOS's `%SYS-<n>-USERLOG_` mnemonic is r3's real heartbeat line
+(`tests/fixtures/loki/device_logs.json`, captured 2026-10-01) with the token put in its text.
+
+C587 (the operator's walk, 2026-10-08): the test sent at informational (6) to devices whose
+golden says `logging trap notifications` (5), so the device dropped the line and the test
+called the path broken. The golden below is a real capture (`tests/fixtures/configs/
+r1_c8000v.cfg`) with its `logging trap` line set to r1's real one, read on the host the same
+day through nmas-config-read.
 
 Loki and the clock are faked at the watch's seams (`ask`, `clock`, `sleep`); the send goes
 through the real reads engine with its session faked, so the refusal, the hold and the record
@@ -23,13 +29,42 @@ RUN = "20261008T161300123456Z-0123456789abcdef0123456789abcdef"
 TOKEN = LP.token(RUN)
 
 
+def _userlog() -> dict:
+    with open(os.path.join(ROOT, "tests", "fixtures", "loki", "userlog_r1.json"),
+              encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 def _real_line(host: str) -> str:
+    """r1's real `send log` line as Loki received it, as *host*'s, carrying the run's token."""
+    line = _userlog()["line"]
+    assert " r1 3604: r1: " in line and "MERCURY-LOGTEST manual-check" in line
+    return (line.replace(" r1 3604: r1: ", f" {host} 3604: {host}: ")
+            .replace("MERCURY-LOGTEST manual-check", TOKEN))
+
+
+def _heartbeat_quoting_the_token(host: str) -> str:
+    """A real line from *host* that holds the token but is no `send log` line."""
     with open(os.path.join(ROOT, "tests", "fixtures", "loki", "device_logs.json"),
               encoding="utf-8") as fh:
         body = json.load(fh)[host]["body"]
     line = next(v[1] for s in body["data"]["result"] for v in s["values"]
                 if "NMAS-HEARTBEAT: NMAS-HEARTBEAT" in v[1])
-    return line.replace("NMAS-HEARTBEAT: NMAS-HEARTBEAT", TOKEN)
+    return line.replace("NMAS-HEARTBEAT: NMAS-HEARTBEAT", "NMAS-HEARTBEAT: " + TOKEN)
+
+
+def _golden(trap_line: str = None) -> str:
+    """A real golden (r1_c8000v.cfg), its `logging trap` line set to *trap_line* (None: left
+    out)."""
+    with open(os.path.join(ROOT, "tests", "fixtures", "configs", "r1_c8000v.cfg"),
+              encoding="utf-8") as fh:
+        text = fh.read()
+    assert "\nlogging trap critical\n" in text
+    return text.replace("\nlogging trap critical\n",
+                        f"\n{trap_line}\n" if trap_line else "\n")
+
+
+NOTIFICATIONS = _golden(_userlog()["golden_logging_lines"][0])
 
 
 class Loki:
@@ -66,7 +101,53 @@ def _watch(sent_at, loki, clock=None):
     return LP.watch(sent_at, TOKEN, ask=loki, clock=clock, sleep=clock.sleep), loki, clock
 
 
+class TestTheLevelEachDeviceForwards:
+    """C587: the line goes at the most severe level every chosen device forwards."""
+
+    def test_the_real_golden_forwards_notifications(self):
+        assert LP.trap_level(NOTIFICATIONS) == {"level": 5, "from": "its golden"}
+
+    @pytest.mark.parametrize("line,level", [("logging trap informational", 6),
+                                            ("logging trap 4", 4),
+                                            ("logging trap debugging", 7)])
+    def test_names_and_numbers(self, line, level):
+        assert LP.trap_level(_golden(line))["level"] == level
+
+    def test_no_trap_line_is_ios_default_informational(self):
+        got = LP.trap_level(_golden(None))
+        assert got == {"level": 6, "from": "IOS's default: its golden sets no logging trap"}
+
+    def test_the_most_severe_forwarded_level_never_above_informational(self):
+        assert LP.choose({"r1": {"level": 5, "from": "g"}, "r3": {"level": 6, "from": "g"}}) \
+            == (5, {})
+        assert LP.choose({"r1": {"level": 7, "from": "g"}}) == (6, {})
+        level, held = LP.choose({"r1": {"level": 2, "from": "g"}, "r3": {"level": 4, "from": "g"}})
+        assert level == 4 and list(held) == ["r1"]
+
+    def test_no_golden_assumes_the_default_and_says_so(self):
+        got = LP.traps("Lab", ["r1", "r2"], golden={"r1": ""}.__getitem__)
+        assert got["r1"] == {"level": 6, "from": "IOS's default: it has no committed golden"}
+        assert got["r2"]["level"] == 6 and "could not be read" in got["r2"]["from"]
+
+    def test_the_default_reader_reads_what_is_committed(self, monkeypatch, tmp_path):
+        from modules.nsot import manifest, repo
+        monkeypatch.setattr("modules.config.get_list_data_dir", lambda n: str(tmp_path / n))
+        monkeypatch.setattr(manifest, "find_by_name", lambda r, h: ("id", {"golden": "x"}))
+        monkeypatch.setattr(repo, "committed_golden_for",
+                            lambda r, e: {"text": NOTIFICATIONS})
+        assert LP.traps("Lab", ["r1"]) == {"r1": {"level": 5, "from": "its golden"}}
+
+
 class TestTheWatch:
+    def test_a_line_quoting_the_token_without_the_mnemonic_is_not_the_line(self):
+        """A heartbeat (or a command log echoing `send log …`) holding the token is no
+        `send log` line: only `%SYS-<n>-USERLOG_` counts."""
+        loki = Loki(arrive={"r3": 1001.0}, lines={"r3": _heartbeat_quoting_the_token("r3")})
+        got, _l, _c = _watch({"r3": 1000.0}, loki)
+        assert got["r3"]["state"] == LP.NOT_RECEIVED
+        got, _l, _c = _watch({"r3": 1000.0}, Loki(arrive={"r3": 1001.0}))
+        assert got["r3"]["state"] == LP.RECEIVED, "the control: the real USERLOG line is found"
+
     def test_received_after_n_seconds_and_not_received_within_30(self):
         got, loki, clock = _watch({"r3": 1000.0, "s3": 1000.0}, Loki(arrive={"r3": 1003.4}))
         assert got["r3"]["state"] == LP.RECEIVED and got["r3"]["after_s"] == 3.4
@@ -183,12 +264,18 @@ class TestTheTest:
         loki = Loki(arrive={"r3": clock.now + 2.0})
         record = LP.run("Lab", ["r3", "s3", "r1"], "op@example.invalid", run_id=RUN,
                         session=_session, ask=loki, clock=clock, sleep=clock.sleep,
-                        last_ask=_last_line)
-        assert sorted(lab) == [("r3", LP.command(RUN)), ("s3", LP.command(RUN))]
-        assert LP.command(RUN).startswith("send log 6 MERCURY-LOGTEST ")
+                        last_ask=_last_line, golden=lambda h: NOTIFICATIONS)
+        sent = LP.command(RUN, 5)
+        assert sorted(lab) == [("r3", sent), ("s3", sent)]
+        assert sent.startswith("send log 5 MERCURY-LOGTEST "), (
+            "C587: the devices forward notifications (5) and above, so the line is level 5")
+        assert record["logging_path"]["level"] == 5
         res = record["logging_path"]["results"]
         assert res["r3"]["state"] == LP.RECEIVED
         assert res["s3"]["state"] == LP.NOT_RECEIVED
+        assert res["s3"]["filter"] == ("s3 forwards notifications (5) and above (its golden); "
+                                       "this line was level 5, so its own filter passed it")
+        assert res["s3"]["filter_passed"] is True
         last = max(int(v[0]) for s in _s3_body()["data"]["result"] for v in s["values"])
         assert res["s3"]["last_iso"] == time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last / 1e9))
         assert "last_iso" not in res["r3"], "only a device not received is looked up"
@@ -210,6 +297,26 @@ class TestTheTest:
         assert lab == []
         assert LP.start("Lab", ["r3"], "op@example.invalid")["refused"].startswith(
             "Refused: Loki is not configured")
+
+    def test_a_device_forwarding_only_0_to_3_is_not_sent_and_says_why(self, lab):
+        import time
+        clock = Clock(time.time() + 1)
+        goldens = {"r3": NOTIFICATIONS, "s3": _golden("logging trap errors"), "r1": NOTIFICATIONS}
+        record = LP.run("Lab", ["r3", "s3"], "op@example.invalid", run_id=RUN,
+                        session=_session, ask=Loki(arrive={"r3": clock.now + 1.0}),
+                        clock=clock, sleep=clock.sleep, golden=goldens.get)
+        assert [h for h, _c in lab] == ["r3"], "s3 is never asked"
+        res = record["logging_path"]["results"]
+        assert res["s3"]["state"] == LP.NOT_SENT
+        assert res["s3"]["words"] == (
+            "not sent: s3 forwards only errors (3) and above (its golden); a test line at "
+            "that level needs a stated reason, which this test does not take")
+
+    def test_every_device_held_sends_nothing(self, lab):
+        with pytest.raises(LP.Refused, match="forwards only critical"):
+            LP.run("Lab", ["r3"], "op@example.invalid", session=_session,
+                   golden=lambda h: _golden("logging trap critical"))
+        assert lab == []
 
     def test_the_token_is_the_runs_own(self):
         other = RUN[:-32] + "f" * 32

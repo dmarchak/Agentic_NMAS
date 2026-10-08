@@ -946,9 +946,10 @@ def show_commands():
 def logging_path():
     return svg(470, (
         "Test the logging path: the line is checked against Tier 1 of the command policy and a "
-        "test is refused when Loki is not configured, before any device is asked; each device "
-        "is held and sent one line, send log 6 MERCURY-LOGTEST and the run's id, through the "
-        "reads engine; Loki is asked every 2 seconds, once for the whole run, until each "
+        "test is refused when Loki is not configured, before any device is asked; each "
+        "device's logging trap level is read from its golden, and each device is held and sent "
+        "one line at the most severe level they all forward, send log <level> MERCURY-LOGTEST "
+        "and the run's id, through the reads engine; Loki is asked every 2 seconds, once for the whole run, until each "
         "device's line arrives or 30 seconds pass after its send; the result is recorded with "
         "the run, and History shows it."), [
         lanes(20, 464),
@@ -956,7 +957,7 @@ def logging_path():
         t(14, 92, "refused: no device asked", "sm"),
         band(110, 90, "The run · a job, devices held while sent"),
         device(262, 128, 118, 70, "The device", "one log line", top=True),
-        *rows([(140, "read", 2, "Held, then sent", "send log 6 MERCURY-LOGTEST")]),
+        *rows([(140, "read", 2, "Held, then sent", "at the level its trap forwards")]),
         store(14, 222, 186, 40, "Loki, every 2 s", "one question for the run"), num(14, 222, 3),
         t(14, 284, "received after N s, or", "sm"), t(14, 297, "not received within 30 s", "sm"),
         store(14, 330, 186, 40, "The run's record", "each device's result"), num(14, 330, 4),

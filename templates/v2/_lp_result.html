@@ -36,8 +36,13 @@
       <div class="lp-row">
         <p><strong>{{ x.host }}</strong>: {{ x.words }}{% if x.sent_iso and x.until_iso %} (sent at {{ stamp(x.sent_iso) }}; no line in Loki by {{ stamp(x.until_iso) }}){% endif %}.</p>
         {%- if g.state == 'not received' %}
+        {%- if x.filter %}<p class="small">{{ x.filter }}.</p>{% endif %}
+        {%- if x.filter_passed is defined and not x.filter_passed %}
+        <p class="muted small">So the device dropped the line itself: nothing says the path is broken. Its golden's logging trap and what the device runs may differ; Ask {{ x.host }} <span class="mono">show logging | include Trap</span>.</p>
+        {%- else %}
         <p class="muted small">{{ x.host }} took the line (its answer came back), and Loki never received it: the path is broken after the device (its logging host, its source interface, the route to the collector, or the collector itself).
           {% if x.last_iso %}{{ x.host }}'s last line in Loki arrived {{ stamp(x.last_iso) }}.{% elif x.last_unread %}Its last line in Loki was not read (only the first few are).{% else %}Loki holds no line from {{ x.host }} in the last 24 hours.{% endif %}</p>
+        {%- endif %}
         {%- elif g.state == 'unknown' %}
         <p class="muted small">The line was sent; whether it arrived is not known. Nothing here says the path is broken. Test again when Loki answers (Settings, Integrations, Test).</p>
         {%- endif %}

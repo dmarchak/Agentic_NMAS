@@ -50,7 +50,7 @@
       </details>
     </div></div>
     <div class="sc-ft">
-      <p class="faint small">Every command must pass before any device is asked. Recorded in History as yours. Test the logging path sends each device one line, <span class="mono">send log {{ p.test_command }} MERCURY-LOGTEST &lt;id&gt;</span>, and watches Loki for it, {{ p.test_wait }} s per device; it needs no command, and changes no configuration.</p>
+      <p class="faint small">Every command must pass before any device is asked. Recorded in History as yours. Test the logging path sends each device one line, <span class="mono">send log &lt;level&gt; MERCURY-LOGTEST &lt;id&gt;</span>, at the level every chosen device's logging trap forwards (read from its golden; {{ p.test_command }}, informational, at most), and watches Loki for it, {{ p.test_wait }} s per device; it needs no command, and changes no configuration.</p>
       {%- with oob = False %}{% include "v2/_sc_run.html" %}{% endwith %}
     </div>
   </form>

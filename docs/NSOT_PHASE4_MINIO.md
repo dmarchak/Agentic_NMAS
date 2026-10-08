@@ -1,4 +1,4 @@
-# Phase 4, step 1: Mercury's connection to MinIO (DRAFT for the operator's sign-off, 2026-10-08)
+# Phase 4, step 1: Mercury's connection to MinIO (APPROVED by the operator, 2026-10-08; decisions in section 5)
 
 The operator's decision (2026-10-08, NSOT_PHASE4_RECORDS_POSTGRES section 5): **the MinIO
 connection comes first.** It serves three things: the Oxidized archive (Phase 3's P3-1, one git
@@ -97,19 +97,23 @@ bucket `mercury`, the access key `mercury` and its secret (stored by the secrets
 Test. **What the operator checks afterwards:** Test reads four passes; `mc admin trace --path
 'mercury/*' lab` during a Test shows only `mercury`; `mc ls lab/mercury/_probe/` holds the probe.
 
-## 5. Decisions for the operator
+## 5. Decisions (APPROVED by the operator, 2026-10-08)
 
-- **M-1, one bucket `mercury` with prefixes by purpose** (recommended), or a bucket per purpose.
-  One bucket is one policy and one key; the prefixes keep purposes apart.
-- **M-2, Mercury's key cannot delete** (recommended). Nothing Mercury archives is deleted by
-  Mercury; retention is MinIO's lifecycle (a rule on `records/` only). A compromised Mercury
-  cannot erase its own archive.
-- **M-3, replicate `mercury` to `dr`** (recommended: the archive is what survives the host), or
-  not. If yes, a host step like `raw-telemetry`'s, and C454's question is measured on it first.
-- **M-4, the record dumps' retention:** 30 dailies and 12 monthlies (recommended), as a
-  lifecycle rule on `records/`.
-- **M-5, the connection's scope:** the installation's value inherited by every network
-  (recommended, no new setting), or a separate installation-only connection.
+- **M-1, one bucket `mercury` with prefixes by purpose.** One bucket is one policy and one key;
+  the prefixes keep purposes apart.
+- **M-2, Mercury's key cannot delete.** Nothing Mercury archives is deleted by Mercury;
+  expiry is MinIO's bucket lifecycle (a rule on `records/` only), never Mercury. A compromised
+  Mercury cannot erase its own archive.
+- **M-3, replicate to `dr` only if it is a separate machine; otherwise defer to Stage 10's
+  HA.** Measured 2026-10-08, read-only: `lab` and `dr` are different addresses and different
+  MinIO deployments, but the hypervisor has one node, and `dr` is its LXC 103 (`minio-dr`);
+  both servers' uptimes differ by 33 s. Same machine, so **no replication now**: deferred to
+  Stage 10.
+- **M-4, the record dumps' retention:** 30 dailies and 12 monthlies, as a lifecycle rule on
+  `records/`.
+- **M-5, the connection's scope:** the existing `s3_*` settings, their installation value
+  inherited by every network; no new setting.
+- **Before the bucket exists:** C584's host step (`loki-writer` scoped to `loki`).
 
 ## 6. Found while surveying
 

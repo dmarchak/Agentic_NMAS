@@ -139,8 +139,13 @@ rewritten; churn is a stated cost (CLAUDE.md).
    sudo rm /usr/local/sbin/nmas-oxidized-cred /etc/nmas/oxidized-cred.conf
    ```
    Check: `sudo -n -l | grep -c oxidized-cred` prints 0; Needs attention shows no helper row.
-3. **Repoint the clab sync at its new name:** edit `~/bin/clab-sync` so it calls
-   `clab-startup-sync.sh`, then `sudo systemctl start clab-sync.service` once.
+3. **Repoint the clab sync at its new name.** Measured 2026-10-08: `~/bin/clab-sync` changes
+   to `~/lab-configs` and runs `./oxidized-to-config.sh --yes`, a link there into the
+   checkout's `scripts/oxidized-to-config.sh`, itself a link to `clab-startup-sync.sh`; so the
+   sync already runs the rewritten script under its old name. A link
+   `~/lab-configs/clab-startup-sync.sh` to the checkout's script, and the wrapper's last line
+   changed to `./clab-startup-sync.sh --yes`; then `sudo systemctl start clab-sync.service`
+   once. The old link stays until the repository's old name goes (one release).
    Check: `journalctl -u clab-sync.service -n 20` shows a run naming no Oxidized and writing
    the lab's startup files; the lab startup row on Needs attention reads current.
 4. **Remove the containers** (after a week with Oxidized stopped and nothing missed):

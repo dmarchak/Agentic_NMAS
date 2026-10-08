@@ -10,7 +10,7 @@
   <div class="ask-hd"><h2 id="ask-h">Ask {{ c.host }}</h2>{{ info('device-page', 'ask-the-device', label='How Ask the device works') }}</div>
   <form class="ask-form" method="post" action="{{ url_for('reads_v2.ask_run', name=c.host) }}" hx-post="{{ url_for('reads_v2.ask_run', name=c.host) }}" hx-target="#ask" hx-swap="outerHTML">
     <input type="hidden" name="list" value="{{ c.list }}">
-    <label class="ask-label" for="ask-command">A read-only command</label>
+    <label class="ask-label" for="ask-command">A read or diagnostic command (Tier 1)</label>
     <div class="ask-row">
       <input id="ask-command" name="command" type="text" class="mono ask-input{{ ' ask-bad' if c.check.why }}" value="{{ c.command }}"
              placeholder="show ip route" autocomplete="off" spellcheck="false" aria-describedby="ask-check"
