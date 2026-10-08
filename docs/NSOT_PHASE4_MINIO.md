@@ -85,6 +85,11 @@ step; the record dumps come with PostgreSQL). Waiting on the host steps below an
 
 ## 4. The operator's host steps (when signed off; on the NMAS host, with the `lab` alias)
 
+As scripts (the operator's request, 2026-10-08): `scripts/host-steps/c584-loki-writer.sh`
+first, then `minio-4a-4b.sh`, `minio-4c.sh` (prompts for the secret, input hidden) and
+`minio-4d-4e.sh` (refuses a non-virtualenv interpreter or a dry run that changes an installed
+package; writes `/tmp/requirements.lock.new` for the session to commit).
+
 Every value below is filled when the step is written into its commit, from a read made then
 (C434); `<…>` here marks what the commit fills.
 

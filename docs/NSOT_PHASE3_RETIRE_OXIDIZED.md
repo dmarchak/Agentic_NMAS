@@ -122,6 +122,10 @@ rewritten; churn is a stated cost (CLAUDE.md).
   `clab-startup-sync.sh` (kept one release); `clab-sync.service` runs `~/bin/clab-sync`;
   `clab-sync.path` is installed and active.
 
+**Steps 1 to 3 as scripts the operator runs** (the operator's request, 2026-10-08):
+`scripts/host-steps/phase3-step1.sh`, `phase3-step2.sh`, `phase3-step3.sh`, each running its
+commands then its checks, stopping at the first failure, and ending with a PASS/FAIL summary.
+
 **The steps, in order, each checked before the next:**
 
 1. **Stop Oxidized and keep its store read-only** (P3-1: the bundle waits for MinIO), only once

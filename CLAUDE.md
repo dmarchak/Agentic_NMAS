@@ -372,7 +372,7 @@ local file (`data/` is gitignored), because the repository is public
 (2026-09-29). `scripts/nmas-host` reads it and refuses, naming the file, when it is
 absent (exit 78); `nmas-host <host> --field <user|lan|tunnel>` prints one value,
 asking nothing. The same file is read on the HOST by the clab sync
-(`oxidized-to-config.sh`, for `NMAS_URL` and `CLAB`; it refuses without it) and
+(`clab-startup-sync.sh`, `oxidized-to-config.sh` until Phase 3, for `NMAS_URL` and `CLAB`; it refuses without it) and
 by `scripts/nmas-render-units` (the unit templates), so it must exist there too
 (docs/DEPLOY_LINUX.md). Other placeholders in
 the docs: `<operator>` (the operator's email), `<home>` (a home directory),

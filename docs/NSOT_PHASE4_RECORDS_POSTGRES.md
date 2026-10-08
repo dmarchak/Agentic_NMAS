@@ -176,6 +176,11 @@ host, and nothing listens on 5432 or 5433; `5433` recommended, so a person's `ps
 never reaches the wrong one); **PG-2**, the dump's
 retention locally (3 days recommended; MinIO holds the rest, M-4).
 
+**Testing (the operator's decision, 2026-10-08, option a):** a real PostgreSQL in CI (a
+service container) and a throwaway instance started by the local suite inside its own
+namespace, skipped with a named reason when the PostgreSQL binaries are absent; never a
+stand-in database or fakes alone.
+
 ## 7. The first store: deploy receipts, and its count check (DRAFT, 2026-10-08)
 
 **Measured on the host, 2026-10-08:** one network (`default`), `deploy_receipts.jsonl` 67 lines,
