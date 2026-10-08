@@ -293,6 +293,18 @@ class Browser:
         key = next(iter(el.values()))
         self._call("POST", f"/session/{self.session}/element/{key}/click", {})
 
+    def type(self, css: str, text: str, pause: float = 0.0) -> None:
+        """Real key events into the element, one character at a time, as a person types
+        (WebDriver's element send-keys), each *pause* seconds apart. A paste is one event; a
+        bug that only typing shows (a redraw stealing focus mid-word) needs this."""
+        el = self._call("POST", f"/session/{self.session}/element",
+                        {"using": "css selector", "value": css})
+        key = next(iter(el.values()))
+        for ch in text:
+            self._call("POST", f"/session/{self.session}/element/{key}/value", {"text": ch})
+            if pause:
+                time.sleep(pause)
+
     def screenshot(self, path: str) -> None:
         import base64
 

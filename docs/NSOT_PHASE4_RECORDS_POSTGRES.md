@@ -98,5 +98,10 @@ each by one indexed query per request (the enterprise-scale rule).
 - **P4-2:** the store setting per network (move one network at a time) or installation-wide.
 - **P4-3:** the AI assistant's stores stay out of this phase (Stage 8 redesigns them).
 - **P4-4:** keep the files read-only for one release after each move, or delete them on the move.
-- **Prerequisite:** an S3/MinIO archive configured on the host (none is, measured 2026-10-08), for
-  the dumps and the Show commands answers past retention.
+- **Prerequisite: Mercury's connection to MinIO.** MinIO EXISTS (the data lake: raw telemetry,
+  `mdt/` 30 days, `syslog/` 2 years; the operator, 2026-10-08); what is missing is Mercury's
+  connection to it: its settings, its credentials and an S3 client (the per-network S3 archive
+  integration is not configured on the host, and the minio SDK is not installed, measured
+  2026-10-08). The same connection carries the dumps and the Show commands answers past their
+  30 days (folded in here by the operator's decision; `reads.expire` is the hook), so it is this
+  phase's first step.

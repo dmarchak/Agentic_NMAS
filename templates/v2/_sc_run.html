@@ -1,0 +1,5 @@
+{%- from "v2/_macros.html" import how -%}
+{#- Board B's Run, drawn from the whole form: on when every typed command is a read and at least
+    one device matches. Sent beside every filter and command check as an out-of-band part, so it
+    follows what is typed (the operator's walk, 2026-10-08: a typed valid command left it off). -#}
+<span class="sc-run" id="sc-run"{% if oob %} hx-swap-oob="true"{% endif %}><button type="submit" class="btn btn-primary" data-op="show-commands"{% if not p.can_run %} disabled title="Every command must be a read, and at least one device chosen"{% endif %}>Run on {{ p.devices | length }} device{{ 's' if p.devices | length != 1 }}</button>{{ how('show-commands', op='show-commands') }}</span>

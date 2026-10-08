@@ -12,21 +12,19 @@
     <div class="sc-part"><h3>Devices</h3><div>
       <div class="sc-filters">
         <label class="sc-f">Name<input type="search" name="q" value="{{ p.q }}" placeholder="r*, s1"
-          hx-get="{{ url_for('reads_v2.show_commands_pick') }}" hx-trigger="input changed delay:400ms, search" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML"></label>
-        <label class="sc-f">Role<select name="role" hx-get="{{ url_for('reads_v2.show_commands_pick') }}" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML"><option value="">any</option>{% for x in p.roles %}<option{% if x == p.role %} selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
-        <label class="sc-f">Platform<select name="platform" hx-get="{{ url_for('reads_v2.show_commands_pick') }}" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML"><option value="">any</option>{% for x in p.platforms %}<option{% if x == p.platform %} selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
-        <label class="sc-f">Site<select name="site" hx-get="{{ url_for('reads_v2.show_commands_pick') }}" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML"><option value="">any</option>{% for x in p.sites %}<option{% if x == p.site %} selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+          hx-get="{{ url_for('reads_v2.show_commands_devices') }}" hx-trigger="input changed delay:400ms, search" hx-include="#sc-form" hx-target="#sc-devices" hx-swap="outerHTML"></label>
+        <label class="sc-f">Role<select name="role" hx-get="{{ url_for('reads_v2.show_commands_devices') }}" hx-include="#sc-form" hx-target="#sc-devices" hx-swap="outerHTML"><option value="">any</option>{% for x in p.roles %}<option{% if x == p.role %} selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+        <label class="sc-f">Platform<select name="platform" hx-get="{{ url_for('reads_v2.show_commands_devices') }}" hx-include="#sc-form" hx-target="#sc-devices" hx-swap="outerHTML"><option value="">any</option>{% for x in p.platforms %}<option{% if x == p.platform %} selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
+        <label class="sc-f">Site<select name="site" hx-get="{{ url_for('reads_v2.show_commands_devices') }}" hx-include="#sc-form" hx-target="#sc-devices" hx-swap="outerHTML"><option value="">any</option>{% for x in p.sites %}<option{% if x == p.site %} selected{% endif %}>{{ x }}</option>{% endfor %}</select></label>
       </div>
-      <p class="sc-count"><strong>{{ p.devices | length }} device{{ 's' if p.devices | length != 1 }}</strong> <span class="muted">of {{ p.total }}{% if p.q or p.role or p.platform or p.site %}, as filtered{% endif %}</span></p>
-      <div class="sc-devs">{% for d in p.shown %}<span class="sc-dev">{{ d }}</span>{% endfor %}{% if p.devices | length > p.shown | length %}<span class="muted">and {{ p.devices | length - p.shown | length }} more</span>{% endif %}</div>
-      <input type="hidden" name="fingerprint" value="{{ p.fingerprint }}">
+      {%- include "v2/_sc_devices.html" %}
       <p class="faint small">Each device is held while it is read, {{ p.workers }} at once; one another operation holds is skipped and named.</p>
     </div></div>
     <div class="sc-part"><h3>Commands</h3><div>
       {%- for row in p.rows %}{% set i = loop.index0 %}
       <div class="sc-cmd">
         <input type="text" name="command" class="mono sc-input" value="{{ row.command }}" aria-label="Command {{ loop.index }}" placeholder="show ip ospf neighbor" autocomplete="off" spellcheck="false"
-               hx-get="{{ url_for('reads_v2.show_commands_check', i=i) }}" hx-trigger="input changed delay:300ms" hx-target="#sc-check-{{ i }}" hx-swap="outerHTML" hx-include="this">
+               hx-get="{{ url_for('reads_v2.show_commands_check', i=i) }}" hx-trigger="input changed delay:300ms" hx-target="#sc-check-{{ i }}" hx-swap="outerHTML" hx-include="#sc-form">
         {%- with k = row.check %}{% include "v2/_sc_check.html" %}{% endwith %}
         {%- if p.rows | length > 1 %}<button type="button" class="btn btn-small" aria-label="Remove command {{ loop.index }}" hx-get="{{ url_for('reads_v2.show_commands_pick', remove=i) }}" hx-include="#sc-form" hx-target="#sc-pick" hx-swap="outerHTML">Remove</button>{% endif %}
       </div>
@@ -53,7 +51,7 @@
     </div></div>
     <div class="sc-ft">
       <p class="faint small">Every command must pass before any device is asked. Recorded in History as yours.</p>
-      <span><button type="submit" class="btn btn-primary" data-op="show-commands"{% if not p.can_run %} disabled title="Every command must be a read, and at least one device chosen"{% endif %}>Run on {{ p.devices | length }} device{{ 's' if p.devices | length != 1 }}</button>{{ how('show-commands', op='show-commands') }}</span>
+      {%- with oob = False %}{% include "v2/_sc_run.html" %}{% endwith %}
     </div>
   </form>
 </section>

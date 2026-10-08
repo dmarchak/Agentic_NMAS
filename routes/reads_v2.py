@@ -102,12 +102,27 @@ def show_commands_pick():
                                                                       **_pick_args(request.args))))
 
 
+@bp.route("/show-commands/devices", methods=["GET"])
+def show_commands_devices():
+    """The devices part alone as the filters change, and Run beside it (out of band): never the
+    field being typed in (asks no device)."""
+    from modules import reads_page
+    p = reads_page.pick(_list(), **_pick_args(request.args))
+    return _strict(render_template("v2/_sc_devices.html", p=p)
+                   + render_template("v2/_sc_run.html", p=p, oob=True))
+
+
 @bp.route("/show-commands/check", methods=["GET"])
 def show_commands_check():
-    """One command row's verdict as typed (asks no device)."""
+    """One command row's verdict as typed, and Run (out of band) from the whole form, so a typed
+    valid command turns it on at once (asks no device)."""
     from modules import reads_page
-    k = reads_page.check(request.args.get("command", ""), 2)
-    return _strict(render_template("v2/_sc_check.html", k=k, i=request.args.get("i", "0")))
+    p = reads_page.pick(_list(), **_pick_args(request.args))
+    i = request.args.get("i", "0")
+    row = p["rows"][int(i)] if i.isdigit() and int(i) < len(p["rows"]) else None
+    k = row["check"] if row else reads_page.check(request.args.get("command", ""), 2)
+    return _strict(render_template("v2/_sc_check.html", k=k, i=i)
+                   + render_template("v2/_sc_run.html", p=p, oob=True))
 
 
 @bp.route("/show-commands/run", methods=["POST"])

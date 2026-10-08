@@ -179,6 +179,55 @@ def test_a_finished_run_in_a_real_browser_stays_inside_its_cards(sc, width):
             browser.close_socketio_sessions()
 
 
+@pytest.fixture
+def page(sc):
+    """The pick page in a real browser, its parts loaded."""
+    from tests import browser
+    ok, why = browser.available()
+    if not ok:
+        pytest.skip(f"no real browser here ({why})")
+    import app as A
+    with browser.Served(A.app) as srv, browser.Browser() as b:
+        try:
+            b._call("POST", f"/session/{b.session}/window/rect", {"width": 1366, "height": 1000})
+            b.go(srv.url("/v2/show-commands?list=Lab"))
+            b.wait_for("return !!window.Alpine && !document.querySelector('.htmx-request')", 15)
+            yield b
+        finally:
+            b.go("about:blank")
+            browser.close_socketio_sessions()
+
+
+SETTLED = "!document.querySelector('.htmx-request, .htmx-settling, .htmx-swapping')"
+
+
+class TestTypedInARealBrowser:
+    """The operator's walk, 2026-10-08: typing `*` in the name filter lost the field (a paste
+    worked), and Run stayed off with a valid command typed until Add a command was pressed."""
+
+    def test_typing_a_pattern_keeps_the_field_and_filters(self, page):
+        page.click("input[name=q]")
+        for ch in "r9*":                             # r9 alone; the operator typed `r*`
+            page.type("input[name=q]", ch)
+            page.wait_for("return " + SETTLED, 10)
+            import time
+            time.sleep(0.6)                          # past the filter's 400 ms pause
+            page.wait_for("return " + SETTLED, 10)
+            focused = page.js("var a = document.activeElement; return a && a.name || a.tagName")
+            assert focused == "q", f"after typing {ch!r} the focus is on {focused!r}"
+        assert page.js("return document.querySelector('input[name=q]').value") == "r9*"
+        assert "1 device" in page.js("return document.querySelector('.sc-count').textContent")
+
+    def test_a_typed_valid_command_enables_run_at_once(self, page):
+        run = "document.querySelector('#sc-form button[type=submit][data-op]')"
+        assert page.js(f"return {run}.disabled") is True, "no command yet: Run is off"
+        page.click("input[name=command]")
+        page.type("input[name=command]", "show clock")
+        page.wait_for(f"return !{run}.disabled && " + SETTLED, 10)
+        page.type("input[name=command]", " | redirect flash:x")
+        page.wait_for(f"return {run}.disabled && " + SETTLED, 10)
+
+
 class TestSavedSets:
     def test_a_set_is_committed_and_offered(self, sc):
         r = sc["client"].post("/v2/show-commands/sets", data={

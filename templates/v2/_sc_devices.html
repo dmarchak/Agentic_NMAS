@@ -1,0 +1,8 @@
+{#- Board B's devices: the count, the first names, and the fingerprint the run is checked against.
+    Redrawn alone as the filters change (reads_v2.show_commands_devices), so the field being
+    typed in is never replaced (the operator's walk, 2026-10-08: typing lost the field). -#}
+<div class="sc-devices" id="sc-devices">
+  <p class="sc-count"><strong>{{ p.devices | length }} device{{ 's' if p.devices | length != 1 }}</strong> <span class="muted">of {{ p.total }}{% if p.q or p.role or p.platform or p.site %}, as filtered{% endif %}</span></p>
+  <div class="sc-devs">{% for d in p.shown %}<span class="sc-dev">{{ d }}</span>{% endfor %}{% if p.devices | length > p.shown | length %}<span class="muted">and {{ p.devices | length - p.shown | length }} more</span>{% endif %}</div>
+  <input type="hidden" name="fingerprint" value="{{ p.fingerprint }}">
+</div>

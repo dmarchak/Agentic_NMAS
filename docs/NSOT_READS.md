@@ -154,9 +154,9 @@ that the device's configuration did not change (the drift check's next read, cle
 
 ## 10. As built (2026-10-08, overnight), and where it differs from the boards
 
-Built in four commits (the engine 2999207; Ask the device 7d0eb12; Show commands next; the
-agent's tools last), on the boards as signed off, with these differences, each for the reason
-named, for the operator to accept or redraw:
+Built in four commits (the engine 2999207; Ask the device 7d0eb12; Show commands 2bb5d83; the
+agent's tools b4df3d8), on the boards as signed off, with these differences. **The operator
+ACCEPTED all three differences (2026-10-08 morning)** and corrected two premises, below.
 
 - **The run carries the filters and a fingerprint, not the device names.** Board B lists the
   matched devices; the form carries the filters and a fingerprint of that list, and the run
@@ -166,11 +166,50 @@ named, for the operator to accept or redraw:
   "ignored when grouping" columns need a per-platform normaliser MEASURED first (which columns
   change on their own); until then the page says nothing is ignored, and no "raw answers" switch
   is drawn because there is nothing to switch off.
-- **The heavy warning names commands only.** Its device half ("a device a measurement shows is
-  loaded") needs a reader of device CPU, which Mercury does not have: a decision.
-- **Answers past retention stay live**: the host has no S3/MinIO archive configured and no
-  minio SDK (measured 2026-10-08); `reads.expire` says so and moves nothing until both exist.
-  Nothing calls `expire` on a schedule yet: a host step or a job, the operator's choice.
+- **The heavy warning names commands only** (accepted for now). The premise was wrong: Mercury
+  DOES have device CPU, through Prometheus (IOS-XE's telemetry subscription 101,
+  cpu-utilization; SNMP for the switches). A "device under load" warning reading it is FUTURE
+  (C575).
+- **Answers past retention stay on the host.** The premise was wrong: MinIO EXISTS (the data
+  lake: raw telemetry, `mdt/` 30 days, `syslog/` 2 years); what is missing is MERCURY'S
+  connection to it (settings, credentials, an S3 client; the per-network S3 archive integration
+  is not configured on the host and its SDK is not installed). The 30-day move is folded into
+  Phase 4, which needs the same connection (NSOT_PHASE4_RECORDS_POSTGRES.md); `reads.expire` is
+  its hook, and nothing calls it until then.
+- **The agent's reads (the operator's decision):** every device read is a recorded engine run,
+  the agent's included, and the agent reads a device's CONFIGURATION from GitHub's golden first,
+  asking the device only for live state. The three `execute_command*` tools are on the engine
+  (b4df3d8); `get_running_config` and the rule checks are C576.
+
+## 11. The command policy: three tiers (the operator, 2026-10-08, replacing "show only")
+
+The operator wants the enable-mode commands an engineer uses day to day, and everything that
+changes or disrupts a device kept out of silent execution. Refusing configure mode alone is not
+enough: `reload`, `write erase`, `erase startup-config`, `copy … running|startup`, `configure
+replace`, `delete`, `format`, `clear ip bgp *`, `clear ip ospf process`, `debug`, `crypto key
+zeroize` and `request`/`install` are all exec mode. So three tiers, decided by an ALLOWLIST of
+verbs with validated arguments, never a denylist (exec is an open set): anything unrecognised is
+refused, naming the nearest allowed alternative.
+
+- **Tier 1, non-destructive** (runs as a read through the engine: refused first, held, masked,
+  recorded, capped, bounded): `show` as today; `ping` and `traceroute` with a bounded repeat and
+  timeout; `dir` and `more` on LOCAL file systems only (never a URL, never `tftp:`, `http:`,
+  `scp:`); `verify /md5` of a local file; `send log [<level>] "<text>"` (one plain line, no line
+  break, length-capped); the session-only terminal settings the engine needs. Each argument one
+  token of its shape (the file-name rule, `cli_tokens`). BUILT next (section 12).
+- **Tier 2, state-changing but recoverable** (`clear counters`, `clear arp`, `clear ip bgp
+  <peer> soft`, `clear logging`, `undebug all`, …): a "Run a privileged command…" OPERATION:
+  preview (what it affects), confirm, record. A DRAFT design and mockup for sign-off first.
+- **Tier 3, destructive**: refused, each naming its own operation: `reload` → Reload or Revert by
+  reload; `write erase`, `erase`, `delete`, `format`, `copy` into running or startup, `configure
+  replace`, `crypto key zeroize`, `request`/`install`, `debug` (beyond `undebug`) → refused with
+  the reason.
+- **Configure mode** stays refused everywhere outside the deploy pipeline.
+- **The refusal says which tier, and where to go instead**, never only "not a read".
+- **"Test the logging path"**: an action sending a `send log` message to chosen devices, then
+  watching Loki for each, reporting per device "received after N s" or "not received within
+  30 s"; on Show commands' run model, drawn on the existing boards if it needs no new screen,
+  else a mockup first.
 
 ## 9. Boards to draw (the mockup, for sign-off)
 
