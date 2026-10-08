@@ -417,6 +417,9 @@ def _error_response(error, status: int, message):
         message = (f"{request.method} {request.path} failed with an unexpected "
                    f"error: {detail}")
     if _client_wants_html():
+        if request.path.startswith("/v2/"):
+            from routes.v2_failure import answer
+            return answer(message, status)
         flash(message, 'warning' if status == 404 else 'danger')
         return redirect(url_for('index'))
     return jsonify({"ok": False, "error": message, "detail": detail,

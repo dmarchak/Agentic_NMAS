@@ -20,7 +20,7 @@
   {%- elif not d.rows %}
   <p class="cov-head">{{ icon('info') }} No device of {{ d.total }} matches{% if d.q %} "{{ d.q }}"{% endif %}{% if d.state %}, state {{ d.state | replace('_', ' ') }}{% endif %}{% if d.platform %}, platform {{ d.platform }}{% endif %}.</p>
   {%- else %}
-  <form method="get" action="{{ url_for('index') }}" class="dev-form">
+  <form method="get" action="{{ url_for('index') }}" class="dev-form" data-todays-page="deploy_plan">
     <input type="hidden" name="open" value="deploy">
     <input type="hidden" name="list" value="{{ d.list }}">
     {%- if d.rows | length != d.total %}<p class="muted dev-shown">Showing {{ d.rows | length }} of {{ d.total }}.</p>{% endif %}

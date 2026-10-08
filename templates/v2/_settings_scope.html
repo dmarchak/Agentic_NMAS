@@ -14,7 +14,7 @@
 {{ bits | join(' · ') }}
 {%- endmacro -%}
 <nav class="scope" aria-label="Settings scope">
-  <a class="scope-item" href="{{ url_for('index') }}" title="Installation's settings are on today's Settings page until board F is built here"><b>Installation</b><small>every network ({{ s.networks }}) · on today's page</small></a>
+  <a class="scope-item" data-todays-page="installation_settings" href="{{ url_for('index') }}" title="Installation's settings are on today's Settings page until board F is built here"><b>Installation</b><small>every network ({{ s.networks }}) · on today's page</small></a>
   <a class="scope-item{% if s.is_default %} on{% endif %}" href="{{ url_for('settings_v2.network', list_name='Default') }}"{% if s.is_default %} aria-current="page"{% endif %}><b>Default</b><small>the base for the {{ s.inheriting }} network{{ '' if s.inheriting == 1 else 's' }} that inherit</small></a>
   <div class="scope-item scope-net{% if not s.is_default %} on{% endif %}">
     {%- if not s.is_default %}<span><b>{{ s.current }}</b><small>{{ v.mode_words or '' }}</small></span>{% else %}<span><b>A network</b><small>{{ s.others }} more · {{ s.standalone | length }} standalone · {{ s.differs | length }} with their own values</small></span>{% endif %}

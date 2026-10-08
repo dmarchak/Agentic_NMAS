@@ -72,7 +72,7 @@
       <li>{{ badge({'pass': 'pass', 'fail': 'fail', 'at_apply': 'at confirm', 'not_applicable': 'n/a', 'not_reached': 'not reached'}.get(g.state, g.state), {'pass': 'ok', 'fail': 'danger', 'at_apply': 'info'}.get(g.state, 'muted')) }}<span>{% if g.state == 'fail' %}<strong>{{ g.name }}</strong>{% else %}{{ g.name }}{% endif %}{% if g.detail %}: {{ g.detail }}{% endif %}</span></li>
       {%- endfor %}
     </ul>
-    {%- if c.acknowledge %}<p class="op-note">{{ c.acknowledge }}: give it on <a href="{{ url_for('manage_device', ip=c.ip) }}">today's device page</a>, where the reason field is built.</p>{% endif %}
+    {%- if c.acknowledge %}<p class="op-note">{{ c.acknowledge }}: give it on <a data-todays-page="acknowledge" href="{{ url_for('manage_device', ip=c.ip) }}">today's device page</a>, where the reason field is built.</p>{% endif %}
   </div></div>
   <div class="op-ft">
     {%- if c.may %}
@@ -113,8 +113,8 @@
     {%- endif %}</div></div>
   {%- if c.intent.departs %}
   <div class="op-part"><h3>What next</h3><div class="op-next">
-    <div><a class="btn" data-next-acts="intent_editor" href="{{ url_for('index', open='intent_editor', device=c.host, list=c.list) }}">Edit intent…</a><span class="muted">to make intent hold what the device holds, in today's intent editor, which this opens: the device stays as it is</span></div>
-    <div><a class="btn" data-op="removal" data-next-acts="deploy_plan" href="{{ url_for('index', open='deploy_plan', device=c.host, list=c.list) }}">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}<span class="muted">to take them off the device, in today's deploy plan, which this opens with each line to tick: intent stays as it is</span></div>
+    <div><a class="btn" data-next-acts="intent_edit" href="{{ url_for('device_v2.device', name=c.host, tab='intent', edit=1, list=c.list) }}">Edit intent…</a><span class="muted">to make intent hold what the device holds, on its Intent tab's editor, which this opens: the device stays as it is</span></div>
+    <div><a class="btn" data-op="removal" data-next-acts="deploy_card" href="{{ url_for('device_v2.device', name=c.host, tab='overview', op='deploy', focus='removal', list=c.list) }}">Remove lines (Mode B)…</a>{{ how('removal', compact=True, op='removal') }}<span class="muted">to take them off the device, in the deploy card, which this opens at each line to tick: intent stays as it is</span></div>
   </div></div>
   {%- endif %}
   <div class="op-ft"><p class="op-note">Kept in History and in the commit; this card goes when you close it or leave the page.</p>

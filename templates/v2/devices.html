@@ -8,7 +8,7 @@
     <p class="sub">{{ list_name }}: each device's status, address, platform and intent state, read from what the app already keeps.</p>
   </div>
   <div class="page-actions">
-    <a class="btn" data-op="onboard" href="{{ url_for('index') }}">Add device (today's page)…</a>{{ how('onboard') }}
+    <a class="btn" data-op="onboard" data-todays-page="onboard" href="{{ url_for('index') }}">Add device (today's page)…</a>{{ how('onboard') }}
   </div>
 </div>
 <form class="dev-filters" hx-get="{{ url_for('v2.devices_table') }}" hx-target="#devices" hx-swap="outerHTML"

@@ -81,7 +81,7 @@ NOT_AN_OPERATION = {
     ("_timeline.html", "Show the change"): "reads one commit's masked change",
     ("_actions_menu.html", "Actions"): "opens the actions menu; each row carries its own link",
     ("_capture.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
-    ("_capture.html", "Edit intent…"): ("opens today's intent editor on the device (C372); "
+    ("_capture.html", "Edit intent…"): ("opens the device's Intent tab editor on v2 (C569); "
                                         "editing intent has no How it works page of its own"),
     ("_persist.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",
     ("_rotate.html", "btn"): "Cancel and Close: put back the tab the card replaced, recording nothing",

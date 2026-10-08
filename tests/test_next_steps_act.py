@@ -50,6 +50,9 @@ OPENERS = {
     # The v2 device page's deploy card (a revert whose block still stands offers it).
     "deploy_card": ("document.querySelector('#device-op h2') && /Deploy committed intent to r2/"
                     ".test(document.querySelector('#device-op h2').textContent)"),
+    # The v2 device page's intent editor, open (C569: Capture's "Edit intent…" opened today's).
+    "intent_edit": ("document.querySelector('#intent-form #ie-text') && /Editing r2's intent/"
+                    ".test(document.getElementById('ed-h').textContent)"),
     # The v2 device page's Intent tab (a seed's next step: read what was committed).
     "intent_tab": ("document.querySelector('[role=tab].on') && /Intent/"
                    ".test(document.querySelector('[role=tab].on').textContent) && "
@@ -156,6 +159,9 @@ class TestEachOpenerActsInARealBrowser:
         ("retry", "/v2/device/r2?op=retry"),
         ("deploy_card", "/v2/device/r2?op=deploy"),
         ("intent_tab", "/v2/device/r2?tab=intent"),
+        # Capture's Remove lines, on v2 (C569); its Edit intent is opened in
+        # test_v2_links_stay_on_v2, on a lab with r2's intent committed.
+        ("deploy_card", "/v2/device/r2?tab=overview&op=deploy&focus=removal&list=Lab"),
         ("persist", "/v2/device/r2?op=persist"),
     ])
     def test_the_link_leaves_its_tool_open(self, page, name, query):

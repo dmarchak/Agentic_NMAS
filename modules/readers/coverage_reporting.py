@@ -54,6 +54,9 @@ IPSLA_FILE = "nmas-snmp-ipsla.json"
 #: Columns whose arrival nothing here reads yet, said as such, never judged (NTP's
 #: synchronisation and LLDP's neighbours are device state, not an arrival).
 NOT_READ = {"ntp": "whether it synchronises is not read here",
+            # C569: a setting on the device, with no data of its own to arrive; a configured
+            # cell asked for a rule and Coverage raised, so the page could not be drawn.
+            "management": "a setting on the device: it sends no data of its own to arrive",
             "lldp": "whether it finds neighbours is not read here"}
 
 #: Where each template's cause is looked for: the device page's tab (board A).

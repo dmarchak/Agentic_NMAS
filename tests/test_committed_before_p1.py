@@ -176,6 +176,54 @@ def test_a_real_browser_sends_only_the_ticked_devices(host):
             browser.close_socketio_sessions()
 
 
+class TestCoverageAfterTheWalk:
+    """C569 (the walk, 2026-10-08): with r2's and s1's goldens holding the two lines (measured:
+    each golden gained exactly them), a configured Mgmt sources cell asked for a reporting rule,
+    there was none, Coverage raised and the tab opened today's page."""
+
+    @pytest.fixture
+    def after(self, host, monkeypatch):
+        import time
+
+        from modules.nsot.repo import GoldenItem, save_golden
+        items = []
+        for d, dev in DEVICES.items():
+            text = _text(f"{d}.cfg").rstrip("\n") + "\n" + "\n".join(LINES) + "\n"
+            items.append(GoldenItem(d, text, dev["ip"], platform=dev["platform"]))
+        assert save_golden("Lab", items, source="deploy", actor="t", baseline=False)
+        # A fresh reading of the reporting reader, so every configured cell is judged.
+        reading = {"read_at": time.time()}
+        monkeypatch.setattr("modules.device_page._cached",
+                            lambda name, *_l: (reading, "", ""))
+        return host
+
+    def test_the_page_draws_and_the_cell_reads_configured(self, after):
+        import re
+        r = after["client"].get("/v2/monitoring/coverage", headers={"Accept": "text/html"})
+        assert r.status_code == 200, (r.status_code, r.headers.get("Location"))
+        html = r.get_data(as_text=True)
+        for d in DEVICES:
+            cell = re.search(rf'<td class="gc" data-state="(\w+)"[^>]*title="{d} · Mgmt '
+                             r'sources: ([^"]*)"', html)
+            assert cell and cell.group(1) == "ok", (d, cell and cell.groups())
+            assert "a setting on the device" in cell.group(2), cell.group(2)
+
+
+def test_every_coverage_column_has_a_reporting_rule():
+    """The shape, not the member: each column Coverage draws is judged without raising on a
+    fresh reading (the planted column below is the control)."""
+    import time
+
+    from modules.monitoring_coverage import COLUMNS
+    from modules.readers import coverage_reporting as CR
+    now = time.time()
+    value = {"read_at": now}
+    for key, _words in COLUMNS:
+        assert CR.judge(key, "r2", value, now=now)["state"], key
+    with pytest.raises(ValueError, match="no reporting rule for 'planted'"):
+        CR.judge("planted", "r2", value, now=now)
+
+
 class TestARefusalNamesThePath:
     """The render's refusal names the template line, the exact path read and what the intent
     holds there; never the old guess about interface keys and routing."""

@@ -156,7 +156,8 @@ class TestThePage:
         assert re.search(r'1 of 2 devices fully covered\s*<span class="muted">· 1 template '
                          r'missing on 1 device', html)
         assert "Lab has no monitoring profile yet" in html
-        assert "/v2/monitoring/profile?propose=1" in html and "today's page" not in html
+        cov = html[html.index('id="coverage"'):]
+        assert "/v2/monitoring/profile?propose=1" in cov and "today's page" not in cov
         assert "Deploy missing templates" not in html
         assert "Nothing to deploy: the network has no monitoring profile yet" in html
 

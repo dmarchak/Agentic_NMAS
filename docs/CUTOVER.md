@@ -131,6 +131,17 @@ The boards for 3, 5, 6 and 9 are drawn after the intent editor and Templates A t
 so they do not delay the throwaway session. The status of every v1 capability, counted, is
 [TRANSITION_STATUS.md](TRANSITION_STATUS.md).
 
+## Where v2 still sends a person to today's pages (the operator, 2026-10-08, C569)
+
+No v2 page or result links to a v1 route unless the link says "today's" and names its gap
+(`data-todays-page`). The gaps are listed in `tests/todays_page_links.py`, a list that only
+shrinks; `tests/test_v2_links_stay_on_v2.py` holds every v2 template and every rendered v2 page
+to it. On 2026-10-08 there were eight: Capture's acknowledgement reason (C486), Plan a deploy
+for several ticked devices, History's Re-apply, onboarding (Add, Verify, Abandon, the bootstrap
+config, onboard again), the installation's settings (board F), and the sidebar's Logs, DHCP and
+NetBox. A v2 request that fails says "Couldn't load" in place and never redirects to today's
+index; a designed v2 error page is a further gap, pending a mockup.
+
 ## What the manual must cover
 
 Every BUILT and PLANNED home above is a screen, and each needs its manual section before it

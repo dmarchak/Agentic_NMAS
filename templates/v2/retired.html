@@ -17,7 +17,7 @@
   <h2>Its record</h2>
   <p>Retired by {{ r.actor or 'nobody recorded' }}{% if r.verified %} ({{ r.verified }}){% endif %}{% if r.reason %}: &ldquo;{{ r.reason }}&rdquo;{% endif %}. Commit <span class="mono">{{ r.sha[:12] }}</span>; its last intent and golden are in history, the parent of that commit.</p>
   <p class="dev-actions"><a class="btn" href="{{ url_for('v2.history_page', device=name, since='') }}">Its history (the same timeline, filtered to {{ name }})</a>
-    <a class="btn" data-op="onboard" href="{{ url_for('index') }}">Onboard it again (today's page)…</a>{{ how('onboard') }}</p>
+    <a class="btn" data-op="onboard" data-todays-page="onboard" href="{{ url_for('index') }}">Onboard it again (today's page)…</a>{{ how('onboard') }}</p>
   {%- if finish %}{% with f=finish %}{% include "v2/_retire_finish.html" %}{% endwith %}{% endif %}
   <p class="muted small">To manage {{ name }} again is onboarding or adopt, not an undo: its credential survives only in the break-glass record.</p>
 </section>

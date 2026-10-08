@@ -29,7 +29,7 @@
     <div><dt>Address source</dt><dd>{{ p.address_source }}{% if p.mgmt_mac %} <span class="muted mono">· {{ p.mgmt_mac }}</span>{% endif %}</dd></div>
     <div><dt>Next</dt><dd>Boot it with its bootstrap config, then Verify: reaching it is the verification, and only then is it rotated, captured and added to the inventory.</dd></div>
   </dl>
-  <p class="dev-actions"><a class="btn btn-primary" data-op="onboard" href="{{ url_for('index') }}">Verify, Abandon or get the bootstrap config (today's page)…</a>{{ how('onboard', 'phase-two-verify') }}
+  <p class="dev-actions"><a class="btn btn-primary" data-op="onboard" data-todays-page="onboard" href="{{ url_for('index') }}">Verify, Abandon or get the bootstrap config (today's page)…</a>{{ how('onboard', 'phase-two-verify') }}
     <span class="muted">The pending banner on today's page carries all three until the redesign does.</span></p>
 </section>
 {% endblock %}
