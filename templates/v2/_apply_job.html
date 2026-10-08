@@ -22,7 +22,7 @@
       <span class="step-words">{{ s.device }}</span>
       <span class="step-note">
         {%- if s.state == 'done' %}{{ s.words }}{% if s.reason and failed %}: {{ s.reason }}{% endif %} ({{ s.took_s }} s)
-        {%- elif s.state == 'running' %}being applied: pushed, then verified, which waits out each protocol's settle window ({{ s.took_s }} s so far)
+        {%- elif s.state == 'running' %}being applied{% if s.doing %}, now {{ s.doing }}{% else %}: its program is sent, then verified as its preview said{% endif %} ({{ s.took_s }} s so far)
         {%- else %}waits its turn{% endif -%}
       </span>
     </li>

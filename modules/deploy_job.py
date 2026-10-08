@@ -161,6 +161,19 @@ def start_restore(list_name: str, ref: str, confirmations: dict, command_hashes:
     return job
 
 
+def _doing(list_name: str, host: str) -> str:
+    """What the running device's pipeline is doing NOW, in words, from the stage it noted on
+    the device's hold (a quick verify says it reads each line back; a full one, the settle
+    windows): ``""`` when nothing is noted yet."""
+    from modules import pipeline
+    from modules.nsot import device_ops
+    try:
+        step = ((device_ops.holder(list_name, host) or {}).get("progress") or {}).get("step", "")
+    except Exception:                                 # noqa: BLE001 (a running row's words)
+        return ""
+    return pipeline.stage_doing(step) if step else ""
+
+
 def state(job_id: str):
     """``{"job", "state", "order", "steps", "elapsed_s", "payload", "error"}``,
     or None when this server has no record of the job. Each step is a device
@@ -189,7 +202,8 @@ def state(job_id: str):
             steps.append({"device": name, "state": "done", **row, "words": words})
         elif name == p["current"]:
             steps.append({"device": name, "state": "running",
-                          "took_s": round(now - p["started"].get(name, now), 1)})
+                          "took_s": round(now - p["started"].get(name, now), 1),
+                          "doing": _doing(job.get("list", ""), name)})
         else:
             steps.append({"device": name, "state": ("pending" if job["state"] == "running"
                                                     else "not_reached")})

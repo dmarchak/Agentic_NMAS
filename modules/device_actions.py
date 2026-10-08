@@ -284,9 +284,14 @@ def stepper(steps, progress, *, detours=None, now=None, starts=False) -> list:
                          "took_s": round(max(0.0, end - started))})
             started = end
         elif i == current:
+            # A step whose waits depend on how it was noted (the pipeline's verify: QUICK or
+            # FULL) says the one it was noted under, never a guess.
+            noted = last if index.get(last) == i else ""
+            said = (waits.get(noted) or next(iter(waits.values()), "")
+                    if isinstance(waits, dict) else waits)
             rows.append({"key": key, "words": words, "state": "running", "since": _iso(started),
-                         "took_s": round(max(0.0, now - started)), "waits": waits,
-                         "last": last if index.get(last) == i else ""})
+                         "took_s": round(max(0.0, now - started)), "waits": said,
+                         "last": noted})
         else:
             rows.append({"key": key, "words": words, "state": "waiting"})
     return rows

@@ -130,7 +130,8 @@ class TestTheStepper:
     def test_the_deploy_steps_are_the_pipelines_stages_noted_as_they_start(self):
         from modules import pipeline
         assert [s[0] for s in pipeline.STEPS] == pipeline.STAGE_NAMES
-        assert all(len(s[1]) >= 4 and len(s[2]) > 15 for s in pipeline.STEPS)
+        assert all(len(s[1]) >= 4 and all(len(w) > 15 for w in (
+            s[2].values() if isinstance(s[2], dict) else [s[2]])) for s in pipeline.STEPS)
         assert DA.JOB_STEPPERS["deploy"][3] == "starts"
         rows = DA.stepper(pipeline.STEPS, _trail(("netbox_query", 1001), ("template_render", 1002),
                                                  ("ci_gate", 1003), ("pre_snapshot", 1004),
@@ -141,6 +142,32 @@ class TestTheStepper:
         assert [r["state"] for r in rows] == ["done"] * 7 + ["running"] + ["waiting"] * 3
         assert rows[7]["took_s"] == 30 and "settle window" in rows[7]["waits"]
         assert rows[3]["took_s"] == 5, "read before ran from its start to the compare's"
+
+    def test_a_quick_verify_says_it_reads_back_never_settle_windows(self):
+        """The operator, 2026-10-08: the words match the verify chosen. A program of management
+        lines only is QUICK, noted `verify_quick` by the pipeline (one classifier,
+        `verify_scope.classify`), and the running step says what it does."""
+        from modules import pipeline
+        rows = DA.stepper(pipeline.STEPS, _trail(("netbox_query", 1001), ("template_render", 1002),
+                                                 ("ci_gate", 1003), ("pre_snapshot", 1004),
+                                                 ("config_diff", 1009), ("deploy", 1010),
+                                                 ("post_snapshot", 1014), ("verify_quick", 1020)),
+                          now=1050.0, starts=True)
+        assert rows[7]["state"] == "running" and rows[7]["key"] == "verify"
+        assert "read back" in rows[7]["waits"] and "settle window is waited" in rows[7]["waits"]
+        assert "BGP" not in rows[7]["waits"]
+
+    def test_the_pipeline_notes_the_verify_its_programs_get(self):
+        from types import SimpleNamespace as NS
+
+        from modules import pipeline
+        quick = NS(rendered_commands={"192.0.2.12": ["ip ssh source-interface Loopback0",
+                                                     "ip tftp source-interface Loopback0"]})
+        full = NS(rendered_commands={"192.0.2.12": ["router ospf 1", " network 192.0.2.0 0.0.0.255 area 0"]})
+        assert pipeline._verify_note(quick) == "verify_quick"
+        assert pipeline._verify_note(full) == "verify"
+        assert "read back" in pipeline.stage_doing("verify_quick")
+        assert "settle window" in pipeline.stage_doing("verify")
 
     def test_the_last_stage_done_leaves_nothing_running(self):
         rows = DA.stepper(RO.STEPS, _trail(("commit", 1030), ("startup_safe", 1080)),

@@ -344,14 +344,44 @@ STAGE_WORDS = {
     "config_diff": ("Compare", "the program compared with the one you confirmed"),
     "deploy": ("Send", "the program sent to the device, merge-only"),
     "post_snapshot": ("Read after", "the running configuration read again"),
-    "verify": ("Verify", "each protocol's settle window, and BGP's hold time"),
+    # The verify the program gets, as the stage notes it (`_verify_note`): the words say what
+    # it waits on, never settle windows for a quick read-back (the operator, 2026-10-08).
+    "verify": ("Verify", {"verify": "each protocol's settle window, and BGP's hold time",
+                          "verify_quick": "each new line read back (a quick verify: the "
+                                          "change touches management sections only, so no "
+                                          "protocol settle window is waited)"}),
     "save_startup": ("Save", "the running configuration written to startup, only once verify "
                              "passed"),
     "save_golden": ("Record golden", "the golden recorded from what was sent"),
     "audit_log": ("Audit", "the receipt written"),
 }
-#: The stepper's declared steps (`device_actions.stepper`): ``(key, words, waits, names)``.
-STEPS = tuple((n, STAGE_WORDS[n][0], STAGE_WORDS[n][1], (n,)) for n in STAGE_NAMES)
+#: The stepper's declared steps (`device_actions.stepper`): ``(key, words, waits, names)``;
+#: verify answers to either name it is noted under, its waits chosen by the one noted.
+STEPS = tuple((n, STAGE_WORDS[n][0], STAGE_WORDS[n][1],
+               tuple(STAGE_WORDS[n][1]) if isinstance(STAGE_WORDS[n][1], dict) else (n,))
+              for n in STAGE_NAMES)
+
+
+def stage_doing(step: str) -> str:
+    """What a stage noted as *step* is doing, in words (the batch's running row)."""
+    for n in STAGE_NAMES:
+        words, waits = STAGE_WORDS[n]
+        if step == n or (isinstance(waits, dict) and step in waits):
+            what = waits.get(step, "") if isinstance(waits, dict) else waits
+            return f"{words.lower()}: {what}"
+    return ""
+
+
+def _verify_note(ctx) -> str:
+    """The name the verify stage is noted under: ``verify_quick`` when every program this run
+    sends is QUICK (management sections only), else ``verify``. One classifier for the
+    preview, the stage and these words (`verify_scope.classify`)."""
+    from modules.nsot import verify_scope
+    programs = [c for c in (ctx.rendered_commands or {}).values() if c]
+    if programs and all(verify_scope.classify(c)["scope"] == verify_scope.QUICK
+                        for c in programs):
+        return "verify_quick"
+    return "verify"
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +431,7 @@ class PipelineRunner:
             for idx, handler in enumerate(_handlers):
                 name, on_failure = _STAGE_TABLE[idx]
                 self._assert_order(idx)
-                device_ops.note(name)
+                device_ops.note(_verify_note(self.ctx) if name == "verify" else name)
                 try:
                     handler(self.ctx)
                     self.ctx.stages_completed.append(name)
