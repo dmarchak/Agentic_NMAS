@@ -100,7 +100,13 @@ def matches(command: str, words: tuple) -> bool:
     return all(len(g) >= 2 and w.startswith(g) or g == w for g, w in zip(got, words))
 
 
-def refusal(commands: list, n_devices: int) -> str:
+#: Tier 1's members beyond the reads (`readonly_commands.EXTRAS`) each kind of caller may run
+#: (NSOT_READS.md section 11). A person: all of them. The agent: `verify /md5` only, a read of
+#: a file; a line in a device's log and the session's settings are a person's to send.
+EXTRAS = {"person": ("verify", "send log", "terminal"), "agent": ("verify",)}
+
+
+def refusal(commands: list, n_devices: int, by: str = "person") -> str:
     """``""`` when the run may ask its devices, else why (the comparison and its operands)."""
     from modules.readonly_commands import refusal as one
 
@@ -111,7 +117,7 @@ def refusal(commands: list, n_devices: int) -> str:
         return (f"Refused: {len(commands)} commands; a run asks at most {MAX_COMMANDS} "
                 "(a longer list is a script, not a read).")
     for c in commands:
-        why = one(c)
+        why = one(c, EXTRAS.get(by, ()))
         if why:
             return f"`{c[:120]}`: {why}"
     if n_devices > 1:
@@ -231,9 +237,15 @@ def _answer(conn, command: str, values: dict, cap: int) -> dict:
     from modules.commands import run_device_command
     from modules.redact import redact_text
 
+    from modules.readonly_commands import bound_seconds
+
     started = time.time()
     try:
-        raw = run_device_command(conn, command) or ""
+        # A ping or traceroute waits its own worst case (its arguments, IOS's defaults); every
+        # other command the read timeout's bound.
+        bound = bound_seconds(command)
+        raw = (run_device_command(conn, command, read_timeout=bound) if bound
+               else run_device_command(conn, command)) or ""
     except Exception as exc:                          # noqa: BLE001 (the command's failure)
         from modules.utils import error_text
         return {"command": command, "state": FAILED,
@@ -276,7 +288,7 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
               "started_at": started, "finished_at": None, "state": "running",
               "commands": commands, "devices": hosts, "results": {}, "refused": "",
               "retention": {"days": retention_days(list_name), "archived": None}}
-    why = refusal(commands, len(hosts)) or ("" if hosts else "Refused: no device to ask.")
+    why = refusal(commands, len(hosts), by) or ("" if hosts else "Refused: no device to ask.")
     if why:
         record.update(state="refused", refused=why, finished_at=time.time())
         _write(list_name, record)
@@ -458,7 +470,7 @@ def start(list_name: str, hosts: list, commands: list, actor: str, *, by: str = 
     hosts = list(dict.fromkeys(h for h in (hosts or []) if h))
     commands = [c.strip() for c in (commands or []) if c and c.strip()]
     run_id = new_id()
-    why = refusal(commands, len(hosts)) or ("" if hosts else "Refused: no device to ask.")
+    why = refusal(commands, len(hosts), by) or ("" if hosts else "Refused: no device to ask.")
     if why:
         try:
             run(list_name, hosts, commands, actor, by=by, purpose=purpose, run_id=run_id)

@@ -1,4 +1,4 @@
-# Phase 3: retire Oxidized (DRAFT for the operator's sign-off, 2026-10-08)
+# Phase 3: retire Oxidized (APPROVED by the operator, 2026-10-08; decisions in section 6)
 
 The charter (MERCURY_CHARTER, "What goes"): **Oxidized is retired.** It is a second, redundant
 configuration history; GitHub owns configurations, and Mercury's own scheduled read-and-compare
@@ -71,17 +71,28 @@ rewritten; churn is a stated cost (CLAUDE.md).
 
 ## 5. The operator's host steps (after the build, as a commit's Host-Step)
 
-- Stop and remove the `oxidized` container; keep `/opt/oxidized/rcn-lab.git` as an archive copy
-  until the operator says otherwise (the history is GitHub's already).
+- Stop and remove the `oxidized` container; keep `/opt/oxidized/rcn-lab.git` read-only until its
+  bundle is in MinIO and verified to open (P3-1), then delete it.
 - Remove the root helper `/usr/local/sbin/nmas-oxidized-cred`, its pin
   `/etc/nmas/oxidized-cred.conf` and its sudoers line.
 - Repoint `~/bin/clab-sync` and `clab-sync.service` at the renamed script; install the path unit
   for the marker.
 - `oxidized.<domain>` is already removed (C143).
 
-## 6. Decisions for the operator
+## 6. Decisions (APPROVED by the operator, 2026-10-08)
 
-- **P3-1:** keep the Oxidized git store as an archive copy, or delete it after a month.
-- **P3-2:** the sync started by a marker Mercury touches (the updater's pattern), or by
-  Mercury calling the host (not proposed: Mercury would name lab tooling).
-- **P3-3:** the settings keys dropped by a version bump now, or left inert for one release.
+- **P3-1, archive, then delete:** Oxidized's git store stays on the host read-only until
+  Mercury's MinIO connection exists (Phase 4's first step). Then its history is exported ONCE as
+  a git bundle into MinIO, the archive is verified to open (the bundle fetched back and cloned),
+  and only then is the local copy deleted. The deletion is a host step after that verification,
+  never before it.
+- **P3-2, the marker and a path unit:** Mercury touches a marker (the updater's pattern) and a
+  systemd path unit on the host starts the sync; Mercury never calls the host or names lab
+  tooling.
+- **P3-3, inert for one release:** the Oxidized settings keys stay in the schema, read by
+  nothing, for one release (so a rollback to the previous release finds them), and are removed
+  by a version bump in the release after.
+
+**Order (the operator, 2026-10-08):** after Tier 1 of the command policy, "Test the logging
+path" and the Tier 2 draft (NSOT_READS.md section 11); before Phase 4. P3-1's export waits for
+Phase 4's MinIO connection; everything else in section 4 does not.

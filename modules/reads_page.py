@@ -19,13 +19,26 @@ import time
 from modules.nsot import reads
 
 
+def what_it_does(command: str) -> tuple:
+    """``(words, title)`` for a command Tier 1 allows: most are reads; `send log` writes a line
+    into the device's log, and a terminal setting lasts the session (NSOT_READS.md section 11)."""
+    low = command.strip().lower()
+    if low.startswith("send log"):
+        return ("writes one log line", "Tier 1: one line into the device's log, nothing else")
+    if low.startswith("term"):
+        return ("this session only", "Tier 1: a terminal setting, ended with the session")
+    return ("read-only", "Tier 1: a read")
+
+
 def check(command: str, n_devices: int = 1) -> dict:
-    """The command as typed: ``{"ok", "why", "heavy"}``. Empty is not ok and says nothing."""
+    """The command as typed: ``{"ok", "why", "heavy", "does"}``. Empty is not ok and says
+    nothing."""
     command = (command or "").strip()
     if not command:
-        return {"ok": False, "why": "", "heavy": []}
+        return {"ok": False, "why": "", "heavy": [], "does": ("", "")}
     why = reads.refusal([command], n_devices)
-    return {"ok": not why, "why": why, "heavy": [] if why else reads.warnings([command])}
+    return {"ok": not why, "why": why, "heavy": [] if why else reads.warnings([command]),
+            "does": ("", "") if why else what_it_does(command)}
 
 
 def _when(ts) -> str:

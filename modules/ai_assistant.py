@@ -2081,7 +2081,7 @@ TOOLS = [
         "name": "execute_command",
         "description": (
             "Run one read-only IOS command on a specific device. "
-            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping, traceroute, dir or more. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
+            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping and traceroute (bounded), dir and more of a local file system, or verify /md5 of a local file. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
         ),
         "input_schema": {
             "type": "object",
@@ -2096,7 +2096,7 @@ TOOLS = [
         "name": "execute_commands_on_device",
         "description": (
             "Run several read-only IOS commands on one device, in order. "
-            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping, traceroute, dir or more. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
+            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping and traceroute (bounded), dir and more of a local file system, or verify /md5 of a local file. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
         ),
         "input_schema": {
             "type": "object",
@@ -2116,7 +2116,7 @@ TOOLS = [
         "description": (
             "Run the same read-only IOS command on multiple devices in parallel. "
             "Pass device_ips=['all'] to target every online device. "
-            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping, traceroute, dir or more. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
+            "READ-ONLY (P.3 step 8): each command must be a read-only exec command -- show (sh, sho), ping and traceroute (bounded), dir and more of a local file system, or verify /md5 of a local file. Config mode and every other verb are refused; the agent proposes a change as an ordinary plan, it never sends one."
         ),
         "input_schema": {
             "type": "object",
@@ -2644,7 +2644,8 @@ def _read_only_refusal(commands: list, mode: str = "") -> str:
     if (mode or "").strip().lower() == "config":
         return ("REFUSED: config mode was removed from the agent (P.3 step 8). "
                 "Propose the change as a plan for a person to confirm.")
-    return refusal_for(commands)
+    from modules.nsot.reads import EXTRAS
+    return refusal_for(commands, EXTRAS["agent"])
 
 # ---------------------------------------------------------------------------
 # Human-readable tool labels for the UI

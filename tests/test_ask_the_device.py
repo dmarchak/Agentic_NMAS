@@ -85,12 +85,12 @@ class TestTheTab:
 
 class TestCheckedAsTyped:
     @pytest.mark.parametrize("command, words", [
-        ("reload", "Not a read:"), ("write erase", "Not a read:"),
+        ("reload", "Refused:"), ("write erase", "Refused:"),
         ("show running-config | redirect flash:x", "redirect"),
     ])
     def test_a_write_says_why_and_run_stays_off(self, ask, command, words):
         _r, html = _get(ask, f"/v2/device/r3/ask/check?command={command}")
-        assert words in html and "Nothing will be sent" in html
+        assert words in html and ("Nothing will be sent" in html or "Nothing was sent" in html)
         assert re.search(r'<button[^>]*data-op="show-commands" disabled', html), html
         assert ask["device"].sent == []
 

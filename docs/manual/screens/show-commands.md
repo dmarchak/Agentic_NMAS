@@ -1,8 +1,9 @@
 # Show commands
 
 Ask many devices the same read-only commands at once, and see where their answers differ.
-Nothing here changes a device. For one device, use **Ask the device** on its page. How a read
-runs: [Show commands: ask devices read-only commands](show-commands).
+Nothing here changes a device's configuration; only Tier 1 of
+[the command policy](show-commands#tiers) runs. For one device, use **Ask the device** on its
+page. How a read runs: [Show commands: ask devices read-only commands](show-commands).
 
 ## A new read {#new-read}
 
@@ -11,9 +12,9 @@ commas), role, platform and site. The card names how many devices match and list
 first 30, then how many more); **Run** asks exactly those. Each device is held while it is read,
 several at once up to the network's limit, and one another operation holds is skipped and named.
 
-**Commands**: one or more, each checked as you type: `read-only`, a heavy read's cost, or why it
-is not a read. **Add a command** and **Remove** change the list; up to 10 per run. Every command
-must be a read before any device is asked, and `show tech-support` is asked of one device only,
+**Commands**: one or more, each checked as you type: `read-only`, a heavy read's cost, or which
+tier it is in and where to go instead. **Add a command** and **Remove** change the list; up to 10
+per run. Every command must be in Tier 1 before any device is asked, and `show tech-support` is asked of one device only,
 on its page.
 
 **Or a saved set**: the network's saved sets, each with its commands; **Use** fills the card

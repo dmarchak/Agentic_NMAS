@@ -924,14 +924,14 @@ def bring_template():
 def show_commands():
     return svg(470, (
         "Show commands, and Ask the device its one-device form. Every command is checked "
-        "against the read-only allowlist before any device is asked; a refused run asks none "
-        "and is recorded. Then each device is held while it is read, several at once up to the "
+        "against Tier 1 of the command policy before any device is asked; a refused run asks "
+        "none and is recorded. Then each device is held while it is read, several at once up to the "
         "network's limit; a device another operation holds is skipped and named. Each answer "
         "is masked, as a golden is, and kept up to the network's cap, saying when it was cut. "
-        "The run is recorded: who, when, the commands, each device's outcome. Nothing is "
-        "changed on any device."), [
+        "The run is recorded: who, when, the commands, each device's outcome. No device's "
+        "configuration is changed."), [
         lanes(20, 464),
-        doc("box", 14, 40, 186, 36, "The allowlist", "every command, whole"), num(14, 40, 1),
+        doc("box", 14, 40, 186, 36, "Tier 1's allowlist", "every command, whole"), num(14, 40, 1),
         t(14, 92, "refused: no device asked,", "sm"), t(14, 105, "the refusal recorded", "sm"),
         band(120, 190, "The run · a job, devices held while read"),
         device(262, 144, 118, 150, "The device", "several at once", top=True),
@@ -943,7 +943,7 @@ def show_commands():
         store(14, 330, 186, 40, "The run's record", "who, when, each outcome"), num(14, 330, 5),
         t(14, 394, "History shows it; answers move to", "sm"),
         t(14, 407, "the archive after the retention.", "sm"),
-        t(14, 444, "Nothing is changed on any device.", "sm"),
+        t(14, 444, "No device's configuration is changed.", "sm"),
     ])
 
 

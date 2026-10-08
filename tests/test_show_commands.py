@@ -96,7 +96,7 @@ class TestThePick:
 
     def test_a_write_typed_says_why(self, sc):
         _r, html = _get(sc, "/v2/show-commands/check?command=reload&i=0")
-        assert "not a read" in html and 'id="sc-check-0"' in html
+        assert "refused: " in html and "Tier 3" in html and 'id="sc-check-0"' in html
 
 
 class TestARun:

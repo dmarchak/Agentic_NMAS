@@ -1,4 +1,4 @@
-# Phase 4: Mercury's records in PostgreSQL (DRAFT for the operator's sign-off, 2026-10-08)
+# Phase 4: Mercury's records in PostgreSQL (APPROVED by the operator, 2026-10-08; decisions in section 5)
 
 The charter ("Mercury's own records"): receipts, acknowledgements, approvals, rollback blocks,
 restart windows, runbook runs and the readers' stored values are the audit trail of Mercury's
@@ -70,11 +70,12 @@ each by one indexed query per request (the enterprise-scale rule).
 
 1. **The store interface first:** each writer and reader already goes through one module per
    store (receipts, acknowledgements, approval_queue, restarts, ...). Each gains a PostgreSQL
-   backend behind the same functions; the file backend stays, chosen by one setting, so a
-   network runs on files until it is moved.
+   backend behind the same functions; the file backend stays, chosen per store for the whole
+   installation (P4-2), so a store runs on files until it is moved.
 2. **One store at a time, receipts first** (it is the one unsafe today and the one History reads
    most): copy every file row into the table (idempotent, by row hash), read both and compare,
-   switch the backend, keep the file read-only for a release.
+   switch the backend, keep the file read-only for a release with the count check, then delete
+   it (P4-4).
 3. Then the approval queue (its concurrency fix), acknowledgements, restarts and windows,
    rollback blocks and retries, rotation and break-glass, the Show commands runs (answers past
    retention to MinIO as today), the readers' values, the rest.
@@ -91,13 +92,21 @@ each by one indexed query per request (the enterprise-scale rule).
   backup-and-restore-test timers are the pattern: `nmas-netbox-backup.timer`,
   `nmas-netbox-restore-test.timer`).
 
-## 5. Decisions for the operator
+## 5. Decisions (APPROVED by the operator, 2026-10-08)
 
-- **P4-1:** PostgreSQL on the NMAS host (a container or the distribution's package), or a
-  separate host.
-- **P4-2:** the store setting per network (move one network at a time) or installation-wide.
-- **P4-3:** the AI assistant's stores stay out of this phase (Stage 8 redesigns them).
-- **P4-4:** keep the files read-only for one release after each move, or delete them on the move.
+- **P4-1, a container on the NMAS host, separate from NetBox's database:** its own container,
+  its own volume and its own backup; nothing shared with NetBox's PostgreSQL. A separate host is
+  Stage 10's high-availability step.
+- **P4-2, installation-wide, store by store:** one setting for the installation, and the move
+  goes one store at a time (receipts first, section 3), never network by network. Section 3's
+  per-network backend setting is replaced by a per-store switch.
+- **P4-3, the AI assistant's stores stay out** (Stage 8 redesigns them).
+- **P4-4, read-only for one release, counted, then deleted:** after each store moves, its old
+  files stay read-only for one release; a count check shows the migration matches (rows per
+  file against rows per table, by row hash, both numbers named); then the files are deleted in
+  the release after.
+- **Order:** after Phase 3. **Mercury's connection to MinIO comes first**; it serves the
+  Oxidized archive (Phase 3's P3-1), the record dumps and the Show commands answers past 30 days.
 - **Prerequisite: Mercury's connection to MinIO.** MinIO EXISTS (the data lake: raw telemetry,
   `mdt/` 30 days, `syslog/` 2 years; the operator, 2026-10-08); what is missing is Mercury's
   connection to it: its settings, its credentials and an S3 client (the per-network S3 archive

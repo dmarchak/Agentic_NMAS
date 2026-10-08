@@ -125,6 +125,10 @@ def _run(conn, command: str, read_timeout: int) -> str:
         or cmd_lower.startswith("ping")
         or cmd_lower.startswith("traceroute")
         or cmd_lower.startswith("do show")
+        # Tier 1's other members (readonly_commands.EXTRAS): each returns to the prompt.
+        or cmd_lower.startswith("verify /md5")
+        or cmd_lower.startswith("send log ")
+        or cmd_lower.startswith("terminal ")
     )
 
     if use_prompt_based:

@@ -1,6 +1,6 @@
-{#- One command row's verdict, as typed (board B): read-only, its cost, or why it is not a read. -#}
+{#- One command row's verdict, as typed (board B): what it does, its cost, or why it is refused (its tier). -#}
 <span class="sc-check" id="sc-check-{{ i }}" aria-live="polite">
-  {%- if k.why %}<span class="sc-bad" title="{{ k.why }}">not a read: {{ k.why }}</span>
+  {%- if k.why %}<span class="sc-bad" title="{{ k.why }}">refused: {{ k.why }}</span>
   {%- elif k.heavy %}<span class="sc-heavy-chip" title="{{ k.heavy[0].why }}">heavy: {{ k.heavy[0].why }}</span>
-  {%- elif k.ok %}<span class="sc-ok" title="On the read-only allowlist">read-only</span>{% endif -%}
+  {%- elif k.ok %}<span class="sc-ok" title="{{ k.does[1] }}">{{ k.does[0] }}</span>{% endif -%}
 </span>

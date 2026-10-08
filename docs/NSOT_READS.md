@@ -196,7 +196,28 @@ refused, naming the nearest allowed alternative.
   timeout; `dir` and `more` on LOCAL file systems only (never a URL, never `tftp:`, `http:`,
   `scp:`); `verify /md5` of a local file; `send log [<level>] "<text>"` (one plain line, no line
   break, length-capped); the session-only terminal settings the engine needs. Each argument one
-  token of its shape (the file-name rule, `cli_tokens`). BUILT next (section 12).
+  token of its shape (the file-name rule, `cli_tokens`). **BUILT 2026-10-08**
+  (`modules/readonly_commands.py`, `tests/test_command_tiers.py`), with these choices:
+  - **Bounds:** ping takes `repeat` 1 to 100, `size` 36 to 1500, `timeout` 0 to 10, `source`,
+    `df-bit`; traceroute takes `numeric`, `timeout` 1 to 10, `probe` 1 to 5, `ttl <min> <max>`
+    (1 to 30), `source`, `port`. Options are written in full. The worst case (ping: repeat x
+    timeout; traceroute: probes x timeout x hops, from IOS's defaults) must be at most 300 s. A
+    plain `traceroute <target>` is 270 s and runs. The engine waits the worst case plus 30 s
+    (`bound_seconds`).
+  - **Local file systems** are those the devices print as type `disk` or `nvram` in the real
+    `show file systems` captures (C8000v, vIOS), plus `system:`. Every `network` one is
+    refused, and so are `null:` and `tar:`.
+  - **send log:** level 0 to 7, at most 120 printable characters, no `|`.
+  - **Terminal settings:** `terminal length` and `terminal width` only (`terminal monitor`
+    would interleave the log with the answers).
+  - **Who may run the extras:** the reads (`show`, `ping`, `traceroute`, `dir`, `more`) run on
+    every path. `verify /md5`, `send log` and the terminal settings run only through the
+    engine (`reads.EXTRAS`): all three for a person, `verify` alone for the agent. A line in a
+    device's log is evidence, and a person's to write. The v1 routes and the session guard keep
+    the five read verbs (no new capability on a v1 page).
+  - **Unmeasured on a device:** none of `send log`, `verify /md5` or the bounded options has been
+    sent to these devices yet; "Test the logging path" is the first real run of `send log`, and
+    a `verify /md5` of a large image against the read timeout is C581.
 - **Tier 2, state-changing but recoverable** (`clear counters`, `clear arp`, `clear ip bgp
   <peer> soft`, `clear logging`, `undebug all`, …): a "Run a privileged command…" OPERATION:
   preview (what it affects), confirm, record. A DRAFT design and mockup for sign-off first.
