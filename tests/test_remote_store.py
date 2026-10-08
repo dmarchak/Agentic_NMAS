@@ -173,11 +173,13 @@ class TestOnePublisherPushesWhatItReads:
 
 
 class _Minio:
-    """The two calls the hook makes on minio's client, recording what was uploaded."""
+    """The call the hook makes on minio's client, recording what was uploaded and how the
+    client was built."""
     uploads: dict = {}
+    built: dict = {}
 
-    def __init__(self, *_a, **_k):
-        pass
+    def __init__(self, *_a, **kw):
+        _Minio.built = dict(kw)
 
     def put_object(self, bucket, key, data, length, metadata=None):
         _Minio.uploads[key] = (data.read(), length, dict(metadata or {}))
@@ -202,25 +204,26 @@ class TestTheArchiveUploadsWhatWasCommitted:
         with open(golden, "w", encoding="utf-8") as fh:     # a later save, not yet committed
             fh.write("hostname s1\ninterface Loopback9\n")
 
-        class _S3:
-            url = "http://192.0.2.5:9000"
+        asked = []
+        values = {"s3_endpoint": "http://192.0.2.5:9000", "s3_bucket": "b",
+                  "s3_prefix": "", "s3_verify_tls": True}
 
-            def __init__(self, list_name=""):
-                assert list_name == "Default", "the archive is the commit's own network's"
-
-            def is_configured(self):
-                return True
+        def value(list_name, key, default=None):
+            asked.append(list_name)
+            return values.get(key, default)
 
         _Minio.uploads = {}
         monkeypatch.setitem(sys.modules, "minio", types.SimpleNamespace(Minio=_Minio))
-        monkeypatch.setattr("modules.integrations.s3_archive.S3ArchiveIntegration", _S3)
-        monkeypatch.setattr("modules.secrets_store.get_secret", lambda key: "x")
-        monkeypatch.setattr("modules.settings_schema.get_setting",
-                            lambda key, default=None: {"s3_bucket": "b"}.get(key, default))
+        monkeypatch.setattr("modules.list_settings.value", value)
+        monkeypatch.setattr("modules.list_settings.secret", lambda list_name, key: "x")
         out = archive.s3_archive_hook({"repo": repo, "sha": sha, "devices": ["s1"],
                                        "tags": [], "source": "t", "actor": "t",
                                        "list_name": "Default"})
         assert out["ok"] is True, out
+        assert set(asked) == {"Default"}, "the archive is the commit's own network's"
         (key, (data, length, meta)), = _Minio.uploads.items()
         assert data == b"hostname s1\n" and length == len(data)
-        assert meta["x-amz-meta-commit"] == sha and key.endswith(f"{sha[:12]}.cfg")
+        assert meta["x-amz-meta-commit"] == sha
+        # NSOT_PHASE4_MINIO M-1: goldens under their purpose and network.
+        assert key == f"goldens/default/s1/{sha[:12]}.cfg", key
+        assert _Minio.built["cert_check"] is True, "TLS verification as set (C355)"

@@ -471,6 +471,11 @@ STORE_WRITERS_EXEMPT = {
 }
 assert len(STORE_WRITERS_EXEMPT) <= 3
 
+#: Tests allowed to REWRITE or delete a file already in the store (C571), each with its reason;
+#: none today (measured 2026-10-08: 0 of 9,490). Capped as the writers are.
+STORE_REWRITERS_EXEMPT: dict = {}
+assert len(STORE_REWRITERS_EXEMPT) <= 3
+
 
 @pytest.fixture(autouse=True)
 def _no_test_writes_into_live_data(request):
@@ -535,9 +540,26 @@ def _no_test_writes_into_live_data(request):
                 found.add(os.path.join(root, name))
         return found
 
+    from tests import store_contents
+
     before = _snapshot()
+    # C571: the bytes of every file already there, so a rewrite or a deletion is seen too.
+    kept = store_contents.contents(LISTS_DIR)
     yield
     created = sorted(_snapshot() - before)
+    changed = store_contents.changes(kept)
+    # Put them back first: one offender must never become the next test's failure (CI #516).
+    store_contents.restore(kept, changed)
+    rewrote = ""
+    if request.node.nodeid in STORE_REWRITERS_EXEMPT:
+        rewrote = ("" if changed else f"{request.node.nodeid} is exempt from the store's content "
+                   "check and changed nothing: remove the exemption")
+    elif changed:
+        rewrote = (f"this test changed what was already in the store: "
+                   + "; ".join(f"{os.path.relpath(p, LISTS_DIR)} {kind}"
+                               for p, kind in changed[:5])
+                   + ". It is put back; patch `modules.config.get_list_data_dir` (or the "
+                   "store's path) before writing (C571).")
 
     # Clean up what THIS test created, then report it.
     #
@@ -560,12 +582,14 @@ def _no_test_writes_into_live_data(request):
     if exempt:
         assert created, (f"{request.node.nodeid} is exempt from the store guard "
                          f"({exempt}) and created nothing: remove the exemption")
+        assert not rewrote, rewrote
         return
     assert not created, (
         f"this test created {created[:5]} in the store "
         f"({LISTS_DIR}). Patch `modules.config.get_list_data_dir` BEFORE "
         f"anything that resolves a path through it — `get_list_data_dir()` "
         f"calls os.makedirs(), so merely resolving a path is enough.")
+    assert not rewrote, rewrote
 
 
 @pytest.fixture

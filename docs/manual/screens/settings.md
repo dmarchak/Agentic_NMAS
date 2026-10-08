@@ -6,6 +6,13 @@ The tool's configuration, in three scopes of one page: **Installation** (what ev
 
 - **Its mode**, on the banner: it inherits from Default, or it is standalone and takes nothing from Default, with who made it so and when. The banner's button opens the switch's preview (see [Inherit or stand alone](settings-switch)).
 - **One card per group**, on two tabs (Integrations: Grafana, its dashboards, Prometheus, Loki, Kea, the topology service, the monitoring profile, the S3 archive and the lab; Network: the deploy tuning, the TFTP server and NetBox's excluded VRFs). Each card says where its values come from: *set here*, *inherited from Default*, *not configured for this network*, *not applicable here*, or *unset everywhere*; and every field shows its value with where it came from. A secret shows as "set", never its value.
+- **The S3 archive** is Mercury's connection to MinIO: Default's values are every network's
+  unless a network sets its own. It holds each network's goldens at
+  `goldens/<network>/<device>/<stamp>.cfg` and Show commands answers past their retention at
+  `reads/<network>/<run>.json`, under its prefix. Its key can read and write the bucket and
+  never delete. The status bar and Needs attention ask only whether its bucket answers, and
+  write nothing; its full test writes a probe object, reads it back byte for byte and states its
+  size, naming the first step that fails with what the server answered.
 - **Each group's own choice**: inherit from Default, its own, or not applicable. Choosing another opens that switch's preview in place of the card; nothing is saved by the choice itself. A group that is its own has **Configure…**, which takes its values in the card.
 
 ## Default's page {#default}

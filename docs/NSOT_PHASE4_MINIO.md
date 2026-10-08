@@ -60,17 +60,28 @@ key needs no delete right). It says which of the four failed, with what the serv
 | Prefix | What | Written by | Retention |
 |---|---|---|---|
 | `goldens/<network>/<device>/<stamp>.cfg` | each changed golden at its commit (today's hook; its key moves under `goldens/`) | post-commit hook | kept (git is the record; this is the archive) |
-| `reads/<network>/<run>/<device>.txt` | Show commands answers past `reads_retention_days` | `reads.expire` | kept |
+| `reads/<network>/<run>.json` | Show commands answers past `reads_retention_days`, one object per run (the run's results) | `reads.expire` | kept |
 | `records/<date>.dump` | the record database's nightly `pg_dump` (Phase 4 step 2) | the backup job | a retention setting (section 5) |
 | `archive/oxidized/<name>.bundle` | Oxidized's history, once (P3-1) | the operator's host step, once | kept |
 
-**A job-health row for the connection:** the archive reader asks the Test's four steps once a
-cycle; a failure is a Needs attention row naming the step and what the server answered, cleared
-by the next good read. A network whose uploads are failing is said, not discovered at restore.
+**The connection on Needs attention:** the integrations reader (every 60 s) asks the S3
+archive's `status()`, which asks only whether the bucket answers: a read writes nothing, and
+the four-step Test every minute would leave 1,440 versions a day of its probe in a versioned
+bucket. A bucket that does not answer is the integrations source's row, naming what the server
+answered, cleared by the next good read. The four-step Test is a person's (Settings' Test).
+(Corrected 2026-10-08 while building: the draft had the reader asking all four steps.)
 
 **The SDK:** `minio` added to `requirements.lock` at the version Ubuntu or PyPI gives the host,
 by the operator's host step (section 4) and `scripts/nmas-lock-from-host`, so CI installs what
 the host runs.
+
+**BUILT 2026-10-08 (Mercury's side):** `integrations/s3_archive.py` holds the one client
+(`S3ArchiveIntegration.client`, `cert_check` from `s3_verify_tls`: C355), `key()` under the
+prefix, `put()`, the four-step `test_connection()` and the read-only `status()`; the golden
+hook and `reads.expire` use it; goldens are written at `goldens/<network>/<device>/<stamp>.cfg`;
+`deploy/minio/mercury-rw.json` is the policy section 4 installs (list, read, write and
+multipart; no delete). Not built: the installation's own uses (the Oxidized bundle is a host
+step; the record dumps come with PostgreSQL). Waiting on the host steps below and a walk.
 
 ## 4. The operator's host steps (when signed off; on the NMAS host, with the `lab` alias)
 

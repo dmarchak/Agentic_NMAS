@@ -453,30 +453,19 @@ def expire(list_name: str, now: float = None, archive=None) -> dict:
 
 def _s3_put(list_name: str):
     """``(put, "")`` for the network's S3/MinIO archive, or ``(None, why)``."""
-    from modules.integrations.s3_archive import S3ArchiveIntegration
-    integration = S3ArchiveIntegration(list_name=list_name)
+    from modules.integrations.s3_archive import Unavailable, archive
+    integration = archive(list_name)
     if not integration.is_configured():
         return None, (f"{list_name} has no S3/MinIO archive configured, so answers past "
                       "retention stay here, unmoved")
     try:
-        import io
-
-        from minio import Minio
-    except ImportError:
-        return None, "the minio SDK is not installed, so answers past retention stay here"
-    from modules import list_settings
-    endpoint = integration.url
-    client = Minio(endpoint.split("://", 1)[-1],
-                   access_key=list_settings.secret(list_name, "s3_access_key"),
-                   secret_key=list_settings.secret(list_name, "s3_secret_key"),
-                   secure=endpoint.startswith("https://"),
-                   region=list_settings.value(list_name, "s3_region", "") or None)
-    bucket = list_settings.value(list_name, "s3_bucket", "")
-    prefix = (list_settings.value(list_name, "s3_prefix", "") or "").strip("/")
+        # The archive's one client (TLS verification as set: C355).
+        client = integration.client()
+    except Unavailable as exc:
+        return None, f"{exc}, so answers past retention stay here"
 
     def put(key, data):
-        full = "/".join(filter(None, [prefix, key]))
-        client.put_object(bucket, full, io.BytesIO(data), len(data))
+        integration.put(integration.key(key), data, client=client)
     return put, ""
 
 

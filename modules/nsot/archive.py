@@ -9,7 +9,6 @@ back a commit. Git is the system of record; S3 is the archive. A failure shows
 on the integration badge and in the log.
 """
 
-import io
 import logging
 
 log = logging.getLogger(__name__)
@@ -224,9 +223,11 @@ def committed_bytes(repo: str, sha: str, rel: str):
 
 
 def s3_archive_hook(context: dict) -> dict:
-    """Upload changed golden configs to the S3-compatible archive."""
-    from modules import list_settings
-    from modules.integrations.s3_archive import S3ArchiveIntegration
+    """Upload changed golden configs to the S3-compatible archive, each at
+    ``<prefix>/goldens/<network>/<device>/<stamp>.cfg`` (NSOT_PHASE4_MINIO, M-1), through the
+    archive's one client (`S3ArchiveIntegration.client`, TLS verification as set: C355)."""
+    from modules.config import list_slug
+    from modules.integrations.s3_archive import Unavailable, archive
     from modules.nsot.repo import _safe_name
 
     # The commit's own network (the hook's context carries it): its archive, its keys.
@@ -234,36 +235,17 @@ def s3_archive_hook(context: dict) -> dict:
     if not list_name:
         return {"ok": False, "error": "the commit's context names no list, so no network's "
                                       "archive can be chosen"}
-    integration = S3ArchiveIntegration(list_name=list_name)
+    integration = archive(list_name)
     if not integration.is_configured():
         return {"ok": True, "message": "S3 not configured"}
-
     try:
-        from minio import Minio
-    except ImportError:
-        return {"ok": False, "error": "minio SDK not installed"}
-
-    def net(key, default=None):
-        return list_settings.value(list_name, key, default)
-
-    def net_secret(key):
-        return list_settings.secret(list_name, key)
-
-    endpoint = integration.url
-    host = endpoint.split("://", 1)[-1]
-    bucket = net("s3_bucket", "")
-    prefix = (net("s3_prefix", "") or "").strip("/")
-    repo = context["repo"]
-    sha = context.get("sha", "")
-
-    try:
-        client = Minio(host,
-                       access_key=net_secret("s3_access_key"),
-                       secret_key=net_secret("s3_secret_key"),
-                       secure=endpoint.startswith("https://"),
-                       region=net("s3_region", "") or None)
+        client = integration.client()
+    except Unavailable as exc:
+        return {"ok": False, "error": str(exc)}
     except Exception as exc:                  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
+    repo = context["repo"]
+    sha = context.get("sha", "")
 
     stamp = next((t.rsplit("/", 1)[-1] for t in context.get("tags", [])
                   if t.startswith("baseline/")), sha[:12])
@@ -278,10 +260,10 @@ def s3_archive_hook(context: dict) -> dict:
         data = committed_bytes(repo, sha, rel)
         if data is None:
             continue
-        key = "/".join(filter(None, [prefix, "golden", _safe_name(hostname),
-                                     f"{stamp}.cfg"]))
+        key = integration.key("goldens", list_slug(list_name), _safe_name(hostname),
+                              f"{stamp}.cfg")
         try:
-            client.put_object(bucket, key, io.BytesIO(data), len(data), metadata={
+            integration.put(key, data, client=client, metadata={
                 "x-amz-meta-commit": sha,
                 "x-amz-meta-source": context.get("source", ""),
                 "x-amz-meta-actor":  context.get("actor", ""),
