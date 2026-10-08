@@ -57,6 +57,12 @@ SIGNED_OFF = {
                                  "at the 2026-09-29 review. 7.4's selection may change it; then "
                                  "it needs a new mockup"),
     "monitoring_profile.html": ("2026-10-07", "C566 board A, Monitoring › Profile and Propose on v2, canvas v80 page C566"),
+    "show_commands.html": ("2026-10-08", "C548 boards B and E (canvas page 'reads'), signed off "
+                                         "2026-10-08 with NSOT_READS.md and R1 to R5; named "
+                                         "Show commands under OBSERVE (R4)"),
+    "show_commands_run.html": ("2026-10-08", "C548 boards C, D and E (canvas page 'reads'), "
+                                             "signed off 2026-10-08: the summary, the groups, "
+                                             "side by side and only the differences"),
     "coverage.html": ("2026-10-02", "the REDRAW, artboards A (the grid) and A2 (Deploy missing "
                                     "templates), signed off 2026-10-02: row checkboxes only, no "
                                     "box on a fully covered device; icons only with the why on "

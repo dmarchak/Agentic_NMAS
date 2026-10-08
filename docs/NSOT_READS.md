@@ -152,6 +152,26 @@ that the device's configuration did not change (the drift check's next read, cle
 - **R5, order:** the engine, then Ask the device (its tab), then Show commands, then the
   agent's tools onto the engine; `/run_command` and Bulk Operation retire at cutover.
 
+## 10. As built (2026-10-08, overnight), and where it differs from the boards
+
+Built in four commits (the engine 2999207; Ask the device 7d0eb12; Show commands next; the
+agent's tools last), on the boards as signed off, with these differences, each for the reason
+named, for the operator to accept or redraw:
+
+- **The run carries the filters and a fingerprint, not the device names.** Board B lists the
+  matched devices; the form carries the filters and a fingerprint of that list, and the run
+  computes the match again and is refused, naming both, when it moved. A form carrying 900 names
+  broke the large-fleet rule.
+- **Grouping is exact**: devices group when their whole masked answer is identical. Board C's
+  "ignored when grouping" columns need a per-platform normaliser MEASURED first (which columns
+  change on their own); until then the page says nothing is ignored, and no "raw answers" switch
+  is drawn because there is nothing to switch off.
+- **The heavy warning names commands only.** Its device half ("a device a measurement shows is
+  loaded") needs a reader of device CPU, which Mercury does not have: a decision.
+- **Answers past retention stay live**: the host has no S3/MinIO archive configured and no
+  minio SDK (measured 2026-10-08); `reads.expire` says so and moves nothing until both exist.
+  Nothing calls `expire` on a schedule yet: a host step or a job, the operator's choice.
+
 ## 9. Boards to draw (the mockup, for sign-off)
 
 Ask the device: (1) empty, with the sets and common reads; (2) a command refused as typed; (3)

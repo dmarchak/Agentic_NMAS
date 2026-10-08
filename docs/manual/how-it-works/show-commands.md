@@ -34,6 +34,14 @@ is asked.
    (`reads_retention_days`, 30 unless changed), then moved to the network's S3/MinIO archive;
    who, when and what stay for good. With no archive configured the answers stay here.
 
+## Saved sets {#saved-sets}
+
+A saved set is a name and its commands, kept in the network's repository: one file per set,
+committed as the person who saved it, so a set has a history and can be reviewed. Each command is
+checked against the allowlist when the set is saved and again whenever it runs. A name already
+taken is refused rather than overwritten. Sets are offered on Show commands and, by name, on Ask
+the device.
+
 ## Heavy commands
 
 Some reads cost the device: `show tech-support` runs for minutes, `show logging` unfiltered

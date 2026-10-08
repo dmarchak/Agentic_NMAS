@@ -319,6 +319,8 @@ HISTORY = {
     "templates.save_bindings": TEMPLATE,
     "templates.write_template": TEMPLATE,
     # ---- configure
+    # A saved command set (C548, R3): a commit as the person, read as one of the fleet's commits.
+    "reads_v2.show_commands_save_set": ("commits",),
     "attention.acknowledge": ("acknowledgements", "restarts"),
     "restarts.planned": ("restart_windows",),
     "golden.migrate_apply": ("golden",),
@@ -376,6 +378,8 @@ WRITTEN_ELSEWHERE = {
                "templates, a policy (every writer, through repo.commit())",
     "decisions": "a Save All's baseline decision, its commit's Baseline: trailer",
     "updates": "the app's updater (deploy/update), not a device",
+    "show_commands": "a Show commands run's record (modules/nsot/reads.py), written by the two "
+                     "reveal routes that read devices, Ask the device and Show commands",
 }
 
 #: The history gaps, counted: only down.

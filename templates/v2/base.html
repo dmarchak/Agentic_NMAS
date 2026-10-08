@@ -47,6 +47,7 @@
   <a class="nav-item{% if active_nav == 'history' %} active{% endif %}" href="{{ url_for('v2.history_page') }}"{% if active_nav == 'history' %} aria-current="page"{% endif %}>{{ icon('history') }}<span>History</span></a>
   <div class="nav-head">OBSERVE</div>
   <a class="nav-item{% if active_nav == 'monitoring' %} active{% endif %}" href="{{ url_for('v2.monitoring_page') }}"{% if active_nav == 'monitoring' %} aria-current="page"{% endif %}>{{ icon('monitoring') }}<span>Monitoring</span></a>
+  <a class="nav-item{% if active_nav == 'show_commands' %} active{% endif %}" href="{{ url_for('reads_v2.show_commands') }}"{% if active_nav == 'show_commands' %} aria-current="page"{% endif %}>{{ icon('show') }}<span>Show commands</span></a>
   <a class="nav-item" data-todays-page="logs" href="{{ url_for('index') }}">{{ icon('logs') }}<span>Logs</span><small class="nav-todays">today's page</small></a>
   <a class="nav-item" data-todays-page="dhcp" href="{{ url_for('index') }}">{{ icon('dhcp') }}<span>DHCP</span><small class="nav-todays">today's page</small></a>
   <div class="nav-head">SOURCE OF TRUTH</div>
@@ -54,7 +55,7 @@
   <a class="nav-item" data-todays-page="netbox" href="{{ url_for('index') }}">{{ icon('netbox') }}<span>NetBox</span><small class="nav-todays">today's page</small></a>
   <a class="nav-item{% if active_nav == 'credentials' %} active{% endif %}" href="{{ url_for('v2.credentials') }}"{% if active_nav == 'credentials' %} aria-current="page"{% endif %}>{{ icon('credentials') }}<span>Credentials</span></a>
   <div class="grow"></div>
-  <p class="spike-note">The redesign so far: Needs attention, Devices and the device page, History, Monitoring, Templates (approval), Credentials (the break-glass record), Settings per network and Help. Other items open today's screens.</p>
+  <p class="spike-note">The redesign so far: Needs attention, Devices and the device page, History, Monitoring, Show commands, Templates (approval), Credentials (the break-glass record), Settings per network and Help. Other items open today's screens.</p>
   <div class="nav-rule"></div>
   <a class="nav-item{% if active_nav == 'help' %} active{% endif %}" href="{{ url_for('v2.help_page', slug='getting-started') }}"{% if active_nav == 'help' %} aria-current="page"{% endif %}>{{ icon('help') }}<span>Help</span></a>
   <a class="nav-item{% if active_nav == 'settings' %} active{% endif %}" href="{{ url_for('settings_v2.index') }}"{% if active_nav == 'settings' %} aria-current="page"{% endif %}>{{ icon('settings') }}<span>Settings</span></a>

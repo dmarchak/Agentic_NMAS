@@ -1,0 +1,79 @@
+{%- from "v2/_macros.html" import icon, badge, stamp -%}
+{#- Boards C and D: the run's region. Running: its progress, re-read on `reads` (never a timer).
+    Done: the summary per command first; the answers grouped (identical masked answers, one
+    group) and collapsed; filters; two devices side by side; only the differences against a
+    group. A device that did not answer is never inside a group. -#}
+{%- set part = url_for('reads_v2.show_commands_result_part', run_id=r.run, list=r.list) -%}
+<section class="card sc-result" id="sc-result" aria-labelledby="sc-result-h"
+  {%- if r.state == 'running' %} aria-busy="true" hx-get="{{ url_for('reads_v2.show_commands_result_part', run_id=r.run, list=r.list, job=r.job) }}" hx-trigger="nmas:reads from:body" hx-swap="outerHTML"{% endif %}>
+  {%- if r.state == 'unknown' %}
+  <h2 id="sc-result-h" class="sc-h2">No such run</h2>
+  <p class="muted">{{ r.list }} holds no run {{ r.run }}.</p>
+  {%- elif r.state == 'refused' %}
+  <h2 id="sc-result-h" class="sc-h2">{{ r.record.commands | join('; ') }} {{ badge('refused', 'danger') }}</h2>
+  <div class="notice notice-danger" role="alert">{{ icon('warn', 16) }}<p><strong>Not run:</strong> {{ r.record.refused }} No device was asked.</p></div>
+  {%- else %}
+  <div class="sc-hd"><h2 id="sc-result-h">{{ r.record.commands | length }} command{{ 's' if r.record.commands | length != 1 }} on {{ r.record.total }} device{{ 's' if r.record.total != 1 }}
+    {% if r.state == 'running' %}{{ badge('running', 'warn') }}{% else %}{{ badge('done', 'ok') }}{% endif %}</h2></div>
+  <p class="muted">By {{ r.record.who }}, {{ stamp(r.record.at) }}{% if r.record.took_s is not none %}, {{ r.record.took_s }} s{% endif %}. Recorded in History.</p>
+  {%- if r.lost %}<div class="notice notice-warn">{{ icon('warn', 16) }}<p>The server restarted while this run was reading: {{ r.record.done }} of {{ r.record.total }} devices had answered and are kept below; the others were not read.</p></div>{% endif %}
+  {%- if r.state == 'running' %}
+  <progress class="sc-bar" max="{{ r.record.total or 1 }}" value="{{ r.record.done }}" aria-label="{{ r.record.done }} of {{ r.record.total }} devices done"></progress>
+  <p><strong>{{ r.record.done }} of {{ r.record.total }} done</strong> <span class="muted">· {{ r.summary.words }}. The answers so far are below; the summary is final when the last device is done.</span></p>
+  {%- endif %}
+  <div class="table-wrap"><table class="table sc-sum">
+    <thead><tr><th scope="col">Command</th><th scope="col">Answered</th><th scope="col">Distinct answers</th><th scope="col">Failed</th><th scope="col">Skipped</th></tr></thead>
+    <tbody>{% for c in r.commands %}<tr><td class="mono">{{ c.command }}</td><td>{{ c.answered }}</td><td><strong>{{ c.distinct }}</strong>{% if c.distinct > 1 %}: {{ c.all_groups[0].devices | length }} alike, {{ c.answered - c.all_groups[0].devices | length }} differ{% endif %}</td>
+      <td>{{ c.failed | length }}{% if c.failed %} ({{ c.failed | map('first') | join(', ') }}){% endif %}</td><td>{{ c.skipped | length }}{% if c.skipped %} ({{ c.skipped | map('first') | join(', ') }}){% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  <form class="sc-tools" hx-get="{{ part }}" hx-target="#sc-result" hx-swap="outerHTML" hx-trigger="input changed delay:400ms from:input, change from:select, search">
+    <label class="sc-f">Find a device<input type="search" name="find" value="{{ r.find }}" placeholder="s2"></label>
+    <label class="sc-f">Find in the answers<input type="search" name="text" value="{{ r.text }}" placeholder="INIT"></label>
+    <label class="sc-f">Show<select name="show"><option value="grouped"{% if r.show == 'grouped' %} selected{% endif %}>Every answer, grouped</option><option value="differences"{% if r.show == 'differences' %} selected{% endif %}>Only the differences</option><option value="failed"{% if r.show == 'failed' %} selected{% endif %}>Failed and skipped</option></select></label>
+  </form>
+  {%- if r.compare %}
+  <div class="sc-compare" id="sc-compare">
+    <h3>{{ r.compare.left }} and {{ r.compare.right }}, side by side: <span class="mono">{{ r.compare.command }}</span></h3>
+    <p class="muted small">Each side's lines the other lacks are marked.</p>
+    <div class="sc-two">
+      <div><h4>{{ r.compare.left }}</h4><pre class="ask-pre">{% for line, only in r.compare.left_lines %}<span class="{{ 'sc-only' if only else '' }}">{{ line }}</span>
+{% endfor %}</pre></div>
+      <div><h4>{{ r.compare.right }}</h4><pre class="ask-pre">{% for line, only in r.compare.right_lines %}<span class="{{ 'sc-only' if only else '' }}">{{ line }}</span>
+{% endfor %}</pre></div>
+    </div>
+  </div>
+  {%- endif %}
+  {%- if r.show == 'differences' %}
+  <div class="sc-diffs">
+    {%- if not r.differences %}<p>No device's answer differs from its command's largest group.</p>{% endif %}
+    {%- for d in r.differences %}
+    <details class="sc-grp" data-keep="diff-{{ d.command }}-{{ d.devices | join('-') }}" open><summary>{{ badge(d.devices | join(', '), 'warn') }} <span class="mono">{{ d.command }}</span> <span class="muted">against {{ d.base | join(', ') }}</span></summary>
+      <pre class="ask-pre op-diff">{% for kind, line in d.lines %}<span class="{{ 'op-add' if kind == 'add' else 'op-del' if kind == 'del' else 'op-ctx' }}">{{ '+ ' if kind == 'add' else '- ' if kind == 'del' else '  ' }}{{ line }}</span>
+{% endfor %}</pre></details>
+    {%- endfor %}
+  </div>
+  {%- else %}
+  {%- for c in r.commands %}
+  <div class="sc-cmdh"><h3 class="mono">{{ c.command }}</h3><span class="muted small">Grouped when the whole masked answer is the same: nothing is ignored.</span></div>
+  {%- if r.show == 'grouped' %}
+  {%- for g in c.groups %}
+  <details class="sc-grp" data-keep="grp-{{ c.command }}-{{ g.sha[:12] }}"{% if c.groups | length <= 2 and loop.index > 1 %} open{% endif %}>
+    <summary>{{ badge((g.devices | length) ~ (' alike' if g.devices | length > 1 else ''), 'ok' if loop.first else 'warn') }} <span>{{ g.devices[:12] | join(', ') }}{% if g.devices | length > 12 %} and {{ g.devices | length - 12 }} more{% endif %}</span>{% if g.cut %} {{ badge('cut at the cap', 'warn') }}{% endif %}</summary>
+    <div class="sc-in">
+      {%- if g.archived %}<p class="muted">The answer was moved to the archive after the network's retention.</p>
+      {%- else %}<pre class="ask-pre">{{ g.answer }}</pre>{% endif %}
+      {%- if g.cut %}<p class="muted small">{{ g.bytes }} bytes, longer than one answer's cap: this is its start, never the whole.</p>{% endif %}
+      <div class="sc-devs">{% for d in g.devices %}<a class="sc-dev" href="{{ url_for('device_v2.device', name=d, tab='ask', run=r.run, list=r.list) }}">{{ d }}</a>{% endfor %}</div>
+      {%- if c.all_groups | length > 1 and not loop.first %}
+      <p><a class="btn btn-small" href="{{ url_for('reads_v2.show_commands_result', run_id=r.run, list=r.list, left=c.all_groups[0].devices[0], right=g.devices[0], command=c.command) }}#sc-compare">Compare {{ g.devices[0] }} with {{ c.all_groups[0].devices[0] }}</a></p>
+      {%- endif %}
+    </div>
+  </details>
+  {%- endfor %}
+  {%- endif %}
+  {%- for host, why in c.failed %}<details class="sc-grp" data-keep="fail-{{ c.command }}-{{ host }}"><summary>{{ badge('failed', 'danger') }} {{ host }} <span class="muted">· {{ why }}</span></summary><div class="sc-in"><p class="muted">Nothing is drawn as {{ host }}'s answer.</p></div></details>{% endfor %}
+  {%- for host, why in c.skipped %}<details class="sc-grp" data-keep="skip-{{ c.command }}-{{ host }}"><summary>{{ badge('skipped', 'warn') }} {{ host }} <span class="muted">· {{ why }}</span></summary><div class="sc-in"><p class="muted">Read it again once that operation ends.</p></div></details>{% endfor %}
+  {%- for host, why in c.unknown %}<details class="sc-grp" data-keep="unk-{{ c.command }}-{{ host }}"><summary>{{ badge('unknown', 'danger') }} {{ host }} <span class="muted">· {{ why }}</span></summary><div class="sc-in"><p class="muted">Not a device of this network.</p></div></details>{% endfor %}
+  {%- endfor %}
+  {%- endif %}
+  {%- endif %}
+</section>

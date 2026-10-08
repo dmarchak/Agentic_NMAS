@@ -39,6 +39,18 @@ import uuid
 
 log = logging.getLogger(__name__)
 
+#: How often a running run's record is rewritten and announced as devices land.
+PROGRESS_SECONDS = 2.0
+
+
+def _announce() -> None:
+    try:
+        from modules import invalidation
+        invalidation.announce(("reads",), by="show-commands", ok=True)
+    except Exception:                                 # noqa: BLE001 (a page's progress only)
+        log.debug("reads: a progress announcement failed", exc_info=True)
+
+
 #: The run's steps, in order, as the manual names them (how-it-works/show-commands.md).
 STEPS = ("refuse", "hold", "read", "mask", "cap", "record")
 
@@ -183,19 +195,22 @@ def get(list_name: str, run_id: str):
         return None
 
 
-def runs(list_name: str, device: str = "", actor: str = "", limit: int = 50) -> dict:
+def runs(list_name: str, device: str = "", actor: str = "", limit: int = 50,
+         data_dir: str = "") -> dict:
     """``{"runs": [...newest first], "unreadable": [names]}``: an unreadable file is named,
-    never skipped in silence (a subset says so)."""
+    never skipped in silence (a subset says so). *data_dir* is the network's directory when the
+    caller holds its ref (History): read from it, nothing is created."""
     out, bad = [], []
+    folder = os.path.join(data_dir, "reads") if data_dir else _dir(list_name)
     try:
-        names = sorted(os.listdir(_dir(list_name)), reverse=True)
+        names = sorted(os.listdir(folder), reverse=True)
     except FileNotFoundError:
         names = []
     for name in names:
         if not name.endswith(".json"):
             continue
         try:
-            with open(os.path.join(_dir(list_name), name), encoding="utf-8") as fh:
+            with open(os.path.join(folder, name), encoding="utf-8") as fh:
                 r = json.load(fh)
         except (OSError, ValueError):
             bad.append(name)
@@ -276,6 +291,20 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
     if session is None:
         from modules.connection import with_temp_connection as session
     holder = actor_words(record)
+    import threading
+    mu, last = threading.Lock(), [0.0]
+
+    def landed(host, out):
+        """Each device's outcome into the run's record as it lands; the record written and
+        `reads` announced at most every `PROGRESS_SECONDS`, so a page shows "6 of 9" without
+        a timer and a fleet of 900 announces a few dozen times, not 900."""
+        with mu:
+            record["results"][host] = out
+            if time.time() - last[0] < PROGRESS_SECONDS:
+                return
+            last[0] = time.time()
+            _write(list_name, record)
+        _announce()
 
     def one(host):
         dev = inventory.get(host)
@@ -298,6 +327,7 @@ def run(list_name: str, hosts: list, commands: list, actor: str, *, by: str = "p
                 from modules.utils import error_text
                 out = {"state": FAILED, "why": redact_text(error_text(exc), values)[:400],
                        "took_s": round(time.time() - t0, 2)}
+        landed(host, out)
         if progress is not None:
             try:
                 progress(host, out)

@@ -784,6 +784,32 @@ def updates(ctx):
                  for o in got.get("rows") or []])
 
 
+def show_commands(ctx):
+    """Each Show commands run (C547, C548; board D's row): who (the agent, for a person), the
+    commands, the devices, and each one's outcome. Its answers stay on the run's own page."""
+    from modules.nsot import reads
+    got = reads.runs(ctx["ref"].name, device=ctx["device"], limit=ctx["limit"],
+                     data_dir=getattr(ctx["ref"], "data_dir", ""))
+    errors = ([f"{len(got['unreadable'])} Show commands record(s) could not be read: "
+               f"{', '.join(got['unreadable'][:5])}"] if got["unreadable"] else [])
+    events = []
+    for r in got["runs"]:
+        hosts = [h for h in r.get("devices") or [] if _mine(ctx, h)]
+        if not hosts or not _recent(ctx, r.get("started_at")):
+            continue
+        s = r.get("summary") or {}
+        outcome = ("refused" if r.get("state") == "refused" else
+                   "running" if r.get("state") == "running" else s.get("words", ""))
+        events.append(_event(r.get("started_at"), "show_commands",
+                             f"Show commands: {'; '.join(r.get('commands') or [])[:120]}",
+                             hosts, who=reads.actor_words(r),
+                             detail=r.get("refused") or r.get("purpose") or "",
+                             outcome=outcome,
+                             record=[("Run", r.get("id")), ("Devices", len(r.get("devices") or [])),
+                                     ("Outcome", outcome)]))
+    return _out(events, errors)
+
+
 #: Every store History reads, in the order it asks them. A source absent here is read nowhere;
 #: `operation_stages.HISTORY` names one per operation, `WRITTEN_ELSEWHERE` the rest.
 SOURCES = {
@@ -792,7 +818,7 @@ SOURCES = {
     "restart_windows": restart_windows, "rotation": rotation, "retries": retries,
     "onboarding": onboarding, "acknowledgements": acknowledgements, "breakglass": breakglass,
     "interrupted": interrupted, "freshness": freshness, "approvals": approvals,
-    "updates": updates,
+    "updates": updates, "show_commands": show_commands,
 }
 
 #: The kind filter (board D): each a group of event kinds, in the board's four headings.
@@ -812,7 +838,8 @@ KIND_GROUPS = (
                                ("freshness", "Freshness authorised", ("freshness",)),
                                ("breakglass", "Break-glass exports", ("breakglass",)),
                                ("decisions", "Baseline decisions", ("decision",)),
-                               ("updates", "App updates", ("update",)))),
+                               ("updates", "App updates", ("update",)),
+                               ("show_commands", "Show commands", ("show_commands",)))),
 )
 KIND_FILTERS = {key: kinds for _h, group in KIND_GROUPS for key, _w, kinds in group}
 SINCE_CHOICES = (("7", "7 days"), ("30", "30 days"), ("365", "a year"), ("", "all time"))

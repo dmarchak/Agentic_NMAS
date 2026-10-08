@@ -21,7 +21,7 @@
   {%- if c.state == 'idle' %}
   <div class="ask-picks">
     {%- if c.sets %}
-    <div class="ask-pickrow"><span class="ask-lbl">Saved sets</span>{% for s in c.sets %}<a class="ask-pick ask-set" href="{{ url_for('device_v2.device', name=c.host, tab='ask', command=s.commands[0]) }}" hx-get="{{ url_for('device_v2.ask', name=c.host, command=s.commands[0]) }}" hx-target="#ask" hx-swap="outerHTML" title="{{ s.commands | join('; ') }}">{{ s.name }} ({{ s.commands | length }})</a>{% endfor %}</div>
+    <div class="ask-pickrow"><span class="ask-lbl">Saved sets</span>{% for s in c.sets %}<a class="ask-pick ask-set" href="{{ url_for('reads_v2.show_commands', set=s.slug, q=c.host, list=c.list) }}" title="Opens Show commands with the set's {{ s.commands | length }} command(s) on {{ c.host }}: {{ s.commands | join('; ') }}">{{ s.name }} ({{ s.commands | length }})</a>{% endfor %}</div>
     {%- endif %}
     <div class="ask-pickrow"><span class="ask-lbl">Common reads</span>{% for cmd in c.common %}<a class="ask-pick mono" href="{{ url_for('device_v2.device', name=c.host, tab='ask', command=cmd) }}" hx-get="{{ url_for('device_v2.ask', name=c.host, command=cmd) }}" hx-target="#ask" hx-swap="outerHTML">{{ cmd }}</a>{% endfor %}</div>
   </div>

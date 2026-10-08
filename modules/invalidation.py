@@ -171,6 +171,9 @@ DECLARED = {
     "intent_v2.commit": ("intent", "remote"),
     # A read writes only its run's record; its end is the job's announcement (`reads`).
     "reads_v2.ask_run": ("reads",),
+    "reads_v2.show_commands_run": ("reads",),
+    # A saved set is drawn by Show commands' pick card, which the response redraws itself.
+    "reads_v2.show_commands_save_set": ("reads",),
     "templates_v2.approve": ("templates", "remote"),
     "templates_v2.revoke": ("templates", "remote"),
     "templates_v2.bring": ("templates", "remote"),

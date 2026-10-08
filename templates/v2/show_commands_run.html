@@ -1,0 +1,15 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import info -%}
+{#- A Show commands run (C548; boards C and D, signed off 2026-10-08): its region, running with
+    its progress or its result led by a summary (modules/reads_page.result). -#}
+{% block title %}Show commands · run · {{ brand.short }}{% endblock %}
+{% block main %}
+<p class="crumbs muted"><a href="{{ url_for('reads_v2.show_commands', list=list_name) }}">Show commands</a> › {{ r.record.at if r.record else r.run }}</p>
+<div class="page-head">
+  <div class="page-title">
+    <h1>Show commands {{ info('show-commands-screen', 'the-result') }}</h1>
+    <p class="sub">{{ list_name }}: one run's answers, grouped where they are the same.</p>
+  </div>
+</div>
+{% include "v2/_sc_result.html" %}
+{% endblock %}

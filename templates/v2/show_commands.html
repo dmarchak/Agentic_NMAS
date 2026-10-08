@@ -1,0 +1,31 @@
+{%- extends "v2/base.html" -%}
+{%- from "v2/_macros.html" import icon, badge, stamp, info, how -%}
+{#- OBSERVE › Show commands (C548; boards B to E, signed off 2026-10-08, NSOT_READS.md section 4):
+    ask many devices the same read-only commands, and see where their answers differ. The pick
+    card (board B) and the network's recent runs; a run opens its own page (boards C and D).
+    Nothing here changes a device. -#}
+{% block title %}Show commands · {{ brand.short }}{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div class="page-title">
+    <h1>Show commands {{ info('show-commands-screen') }}</h1>
+    <p class="sub">{{ list_name }}: ask many devices the same read-only commands, and see where their answers differ. Nothing here changes a device.</p>
+  </div>
+</div>
+{% include "v2/_sc_pick.html" %}
+<section class="card sc-runs" id="sc-runs" aria-labelledby="sc-runs-h">
+  <h2 id="sc-runs-h" class="sc-h2">Recent runs</h2>
+  {%- if runs.unreadable %}<p class="muted">{{ runs.unreadable | length }} recorded run{{ 's' if runs.unreadable | length != 1 }} could not be read: {{ runs.unreadable | join(', ') }}.</p>{% endif %}
+  {%- if runs.rows %}
+  <div class="table-wrap"><table class="table sc-table">
+    <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Commands</th><th scope="col">Devices</th><th scope="col">Outcome</th></tr></thead>
+    <tbody>
+    {%- for r in runs.rows %}
+    <tr><td><a href="{{ url_for('reads_v2.show_commands_result', run_id=r.id, list=list_name) }}">{{ stamp(r.at) }}</a></td><td>{{ r.who }}</td>
+      <td class="mono">{{ r.commands | join('; ') }}</td><td>{{ r.devices }}</td>
+      <td>{% if r.state == 'refused' %}{{ badge('refused', 'danger', title=r.refused) }}{% elif r.state == 'running' %}{{ badge('running', 'warn') }}{% else %}{{ r.words }}{% endif %}</td></tr>
+    {%- endfor %}
+    </tbody></table></div>
+  {%- else %}<p class="muted">None yet.</p>{% endif %}
+</section>
+{% endblock %}

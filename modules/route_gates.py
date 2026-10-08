@@ -128,6 +128,11 @@ GATES = {
     "reads_v2.ask_run": _g(R, "reads a device through the reads engine (C547): allowlisted "
                               "commands only, its answers shown to the person, every run "
                               "recorded"),
+    "reads_v2.show_commands_run": _g(R, "reads many devices through the reads engine (C548): "
+                                        "allowlisted commands only, their answers shown to the "
+                                        "person, every run recorded"),
+    "reads_v2.show_commands_save_set": _g(K, "commits a saved command set to the network's "
+                                             "repository as the person (R3); sends nothing"),
     "intent_v2.commit": _g(A,"commits an edit to a device's intent (board H), bound to the version opened"),
     "templatize.revert_apply": _g(A, "commits the inverse of one intent commit's change"),
     "templatize.bulk_apply": _g(A, "commits one change to many devices' intent"),

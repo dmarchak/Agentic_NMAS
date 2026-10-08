@@ -80,6 +80,11 @@ NOT_AN_OPERATION = {
     ("_coverage_deploy_preview.html", "Back"): "returns to Coverage, sending nothing",
     ("_timeline.html", "Show the change"): "reads one commit's masked change",
     ("_actions_menu.html", "Actions"): "opens the actions menu; each row carries its own link",
+    ("_sc_pick.html", "Remove"): "redraws the card without that command row; asks no device",
+    ("_sc_pick.html", "Add a command"): "redraws the card with one more command row; asks no device",
+    ("_sc_pick.html", "Use"): "opens Show commands with the saved set's commands filled in",
+    ("_sc_result.html", "Compare with"): ("draws two devices' answers side by side on the run's "
+                                          "page; reads only the run's record"),
     ("_ask.html", "Compare with the last answer"): ("redraws the card with the lines that "
                                                     "changed since the device's last answer; "
                                                     "reads only the kept runs"),
