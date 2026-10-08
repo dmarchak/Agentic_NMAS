@@ -7,7 +7,8 @@ Every fact names its source and its age, so a stale one reads as stale:
 - **intent** and **golden** are the list repository's commits (C104: what is
   COMMITTED, never the working tree);
 - **drift** is the drift checker's last run for this list;
-- **freshness** is the freshness reader's stored comparison;
+- (Oxidized freshness was switched off on 2026-10-08, ahead of Phase 3: `reader_job.RETIRED`;
+  drift covers a change made outside Mercury);
 - **reboot-safe** is the startup check's last run (C53);
 - **alerts** are the Grafana reader's stored instances naming this device.
 
@@ -267,24 +268,6 @@ def checks(ref, dev: dict) -> list:
     # are the difference plan 1c promises (the operator, 2026-09-30: r6 read
     # "Drift: clean" while carrying `cdp run` its intent no longer has).
     out.append(intent_check(ref, dev))
-
-    # Freshness: is Oxidized's copy the approved one.
-    value, at, why = _cached("freshness")
-    rows = (((value or {}).get("lists") or {}).get(ref.name) or {}).get("devices") or []
-    row = next((r for r in rows if r.get("device") == host), None)
-    if value is None or row is None:
-        out.append({"name": "Freshness", "state": "unknown",
-                    "text": why or "the freshness reader holds no row for this device"})
-    else:
-        verdict = row.get("verdict") or "?"
-        state = {"match": "ok", "poll_race": "ok", "authorised": "ok",
-                 "unapproved": "danger"}.get(verdict, "unknown")
-        words = {"match": "Oxidized's copy is the approved one",
-                 "poll_race": "Oxidized's copy predates the approved change (it corrects at the next poll)",
-                 "authorised": "a divergence a person authorised",
-                 "unapproved": "Oxidized's copy carries a change nobody approved",
-                 "inconclusive": "could not be compared"}.get(verdict, verdict)
-        out.append({"name": "Freshness", "state": state, "at": at, "text": words})
 
     # Reboot-safe: the startup check's last run.
     try:

@@ -39,7 +39,7 @@ def _registered():
 class TestTheTable:
     def test_every_registered_reader_is_woken_or_says_why_not(self):
         readers = _registered()
-        assert len(readers) >= 17, sorted(readers)                      # the floor
+        assert len(readers) >= 16, sorted(readers)   # the floor; 16 since freshness retired
         assert set(W.WOKEN_BY) | set(W.NOT_WOKEN) == set(readers), (
             "a reader missing from the table, or a name no reader has: "
             f"{sorted(set(readers) ^ (set(W.WOKEN_BY) | set(W.NOT_WOKEN)))}")
@@ -80,7 +80,6 @@ PAIRS = [
     ("golden.capture_apply", "baseline-usability"),        # Save All earns a baseline
     ("device_v2.capture_confirm", "baseline-usability"),
     ("golden.capture_apply", "lab-startup"),
-    ("golden.capture_apply", "freshness"),
     ("rotation", "job-health"),                            # a rotation job's announcement
     ("rotation", "credential-health"),
     ("rotation", "baseline-usability"),
@@ -119,7 +118,7 @@ class TestTheMechanism:
     def test_a_wake_asks_each_reader_running_here_and_no_other(self, asked):
         woke = W.wake(("goldens",), "golden.capture_apply")
         assert "lab-startup" not in woke, "not running in this process: not asked"
-        assert set(woke) == {"baseline-usability", "freshness", "remote-publication"}
+        assert set(woke) == {"baseline-usability", "remote-publication"}   # freshness retired
         assert {(n, k) for n, _b, k in asked} == {(n, "after_operation") for n in woke}
         assert {b for _n, b, _k in asked} == {"golden.capture_apply"}
 

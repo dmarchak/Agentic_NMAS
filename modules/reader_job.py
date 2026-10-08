@@ -228,7 +228,11 @@ def readers() -> list:
     for mod in DECLARED_MODULES:
         __import__(mod)
     with _REGISTRY_MU:
-        return [_REGISTRY[k] for k in sorted(_REGISTRY)]
+        # A RETIRED reader is out of the population even when something imported its module
+        # (`/freshness/report` imports the freshness reader for its name): never started,
+        # never a job-health row.
+        return [_REGISTRY[k] for k in sorted(_REGISTRY)
+                if getattr(_REGISTRY[k].read, "__module__", "") not in RETIRED]
 
 
 #: The modules that register a reader when imported. A reader module is
@@ -237,7 +241,6 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.job_health_reader",
                            "modules.readers.grafana_alerts",
                            "modules.readers.grafana_dashboards",
-                           "modules.readers.freshness_reader",
                            "modules.readers.integration_health",
                            "modules.readers.ci_verdict",
                            "modules.readers.baseline_usability",
@@ -250,6 +253,18 @@ DECLARED_MODULES: tuple = ("modules.readers.reachability",
                            "modules.readers.credential_health",
                            "modules.readers.coverage_reporting",
                            "modules.readers.platform_facts")
+
+#: Readers switched OFF, each with why: not imported, never started, no job-health row, no
+#: Needs attention source. Removed with their system (the operator decides when).
+RETIRED: dict = {
+    # The operator, 2026-10-08, ahead of Phase 3 (C329, C555, C558): freshness raised "s1:
+    # whether Oxidized's copy is approved cannot be told" right after a good deploy, noise from
+    # a system being retired. Mercury's own drift check reads each device's running config
+    # against its golden (every 30 minutes on the host, measured 2026-10-08), so a change made
+    # outside Mercury is still raised, by it, as "a device differs from its golden".
+    "modules.readers.freshness_reader": "Oxidized freshness: switched off ahead of Phase 3; "
+                                        "the drift check covers a change made outside Mercury",
+}
 
 
 # ---------------------------------------------------------------------------

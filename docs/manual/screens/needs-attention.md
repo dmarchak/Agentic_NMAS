@@ -31,9 +31,14 @@ nothing needing attention.
 
 Background readers keep each source's value: job health (the host's scheduled checks), drift,
 approvals, pending onboardings, rollback blocks, Grafana's alerts (a device's heartbeat
-stopping is one), Oxidized freshness, integrations, reachability, routing adjacencies,
+stopping is one), integrations, reachability, routing adjacencies,
 baselines, the remote's publication, the lab's startup files, unplanned device restarts (a crash file saved makes the row critical) and the app's own version. A
 reader that finishes announces it, and the page redraws in place.
+
+Oxidized freshness is switched off (2026-10-08), ahead of Oxidized's retirement: it raises no
+row. A change made on a device outside Mercury is raised by the drift check, which reads each
+device's running configuration against its golden on the interval set for it (four hours
+unless changed).
 
 **An operation re-reads what it changed, at once.** Each reader runs on its own interval, and
 an operation that changes what a reader reports runs that reader again as soon as it is done:

@@ -71,8 +71,21 @@ class TestTheRead:
         with pytest.raises(ValueError, match="no device lists"):
             FR.read(lists=[])
 
+    def test_it_is_switched_off_everywhere_a_person_reads_it(self):
+        """The operator, 2026-10-08 (C555, C558, C329, ahead of Phase 3): no Needs attention
+        row, no job-health row, no line on the device page, whatever imported it. The drift
+        check covers a change made outside Mercury."""
+        from modules import attention, reader_job
+        assert "modules.readers.freshness_reader" in reader_job.RETIRED
+        assert "drift check" in reader_job.RETIRED["modules.readers.freshness_reader"]
+        assert "modules.readers.freshness_reader" not in reader_job.DECLARED_MODULES
+        assert FR.READER not in R.readers()          # imported by this file, still out
+        assert attention.freshness_source not in attention.SOURCES
+        assert "freshness_source" not in attention.SOURCE_KEYS
+        assert not [r for r in reader_job.health_rows() if "freshness" in str(r).lower()]
+
     def test_it_is_declared_with_its_measured_basis(self):
-        assert FR.READER in R.readers() and FR.READER.interval_seconds == 300
+        assert FR.READER.interval_seconds == 300
         assert "4 ms per device" in FR.READER.interval_basis
         # Two latencies, both stated (reader_job rule 12): how fast NMAS notices,
         # and how far behind the device Oxidized's own copy can be.

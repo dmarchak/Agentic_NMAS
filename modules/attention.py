@@ -2754,7 +2754,7 @@ def unowned_words(u: dict) -> str:
 
 SOURCES = (job_health_source, drift_source, approvals_source, pending_onboarding_source,
            rollback_source, deploy_source, baseline_source, authorisation_source,
-           grafana_source, freshness_source, integrations_source, ci_source,
+           grafana_source, integrations_source, ci_source,
            reachability_source, netbox_secrets_source, credential_health_source,
            remote_source, pushed_source,
            host_steps_source, adjacency_source, lab_startup_source, restart_source,
@@ -2776,7 +2776,6 @@ SOURCE_KEYS = {
     "baseline_source": ("baselines", "goldens"),
     "authorisation_source": ("deploy_job", "goldens"),
     "grafana_source": ("alerts", "inventory"),   # inventory: a device marked drained
-    "freshness_source": ("freshness",),
     "integrations_source": ("integration_health",),
     "ci_source": ("ci_verdict",),
     "reachability_source": ("reachability",),

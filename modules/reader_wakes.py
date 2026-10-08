@@ -39,8 +39,6 @@ WOKEN_BY = {
     # the rotation record and the credential store's metadata; NetBox, Proxmox and TLS by
     # settings.
     "credential-health": ("credentials", "rotation", "settings"),
-    # the committed goldens against Oxidized's copies; Oxidized by settings.
-    "freshness": ("goldens", "freshness", "settings"),
     # the band acknowledgements it re-reads each series for (C433, C533); Grafana by settings.
     "grafana-alerts": ("acknowledgements", "settings"),
     "grafana-dashboards": ("settings",),

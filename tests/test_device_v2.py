@@ -314,8 +314,10 @@ class TestOverview:
 
     def test_each_check_is_drawn_and_an_absent_source_is_unknown_never_a_pass(self, lab):
         _, html = _get(lab, "/v2/device/r3/overview")
-        for name in ("Drift", "Freshness", "Reboot-safe", "Alerts"):
+        for name in ("Drift", "Reboot-safe", "Alerts"):
             assert f"<strong>{name}</strong>" in html
+        # Oxidized freshness was switched off (2026-10-08, reader_job.RETIRED): not drawn.
+        assert "<strong>Freshness</strong>" not in html
         assert html.count("check check-ok") == 0
         assert "no drift run recorded for this list" in html
 
@@ -333,19 +335,19 @@ class TestOverview:
         assert "the hourly check could not read it" in text
         assert "it reads it again at the next run" in text
         assert "Things you might try" not in text
-    def test_an_unapproved_copy_and_a_firing_alert_are_danger(self, lab):
+    def test_a_firing_alert_is_danger_and_a_stored_freshness_value_is_not_drawn(self, lab):
         _store("freshness", {"lists": {"Lab": {"devices": [{"device": "r3", "verdict": "unapproved"}]}}})
         _store("grafana-alerts", {"instances": [
             {"kind": "condition", "rule": "Device unreachable", "address": "10.255.1.13"},
             {"kind": "condition", "rule": "Another device's", "device": "r1"}]})
         _, html = _get(lab, "/v2/device/r3/overview")
-        assert html.count("check check-danger") == 2
-        assert "a change nobody approved" in html and "Device unreachable" in html
+        assert html.count("check check-danger") == 1
+        assert "a change nobody approved" not in html and "Device unreachable" in html
         assert "Another device" not in html
 
     def test_it_refetches_when_a_reader_it_draws_from_announces(self, lab):
         _, html = _get(lab, "/v2/device/r3/overview")
-        for key in ("reachability", "alerts", "freshness", "drift"):
+        for key in ("reachability", "alerts", "drift"):
             assert f"nmas:{key} from:body" in html
 
 
@@ -651,7 +653,8 @@ class TestTheShippedScripts:
         # (C370: a running job's stepper); +1 credential_health (P.21's reader, on Needs
         # attention); +1 coverage_reporting (Coverage's not-reporting reader).
         # +1 2026-10-06: templates (C516: the Templates table, heard on its page).
-        assert len(keys) == 31
+        # -1 2026-10-08: freshness (switched off, reader_job.RETIRED: nothing announces it).
+        assert len(keys) == 30
         for key in keys:
             assert f"nmas:{key} from:body" in heard, key
         src = _js("nmas_v2.js")

@@ -252,7 +252,7 @@ class TestTheLanding:
 
     def test_the_list_refetches_on_every_reader_it_draws_from(self, landing):
         html = _client().get("/v2/attention").get_data(as_text=True)
-        for key in ("job_health", "alerts", "freshness", "integration_health", "ci_verdict",
+        for key in ("job_health", "alerts", "integration_health", "ci_verdict",
                     "app_version", "reachability", "netbox", "remote", "baselines", "drift"):
             assert f"nmas:{key} from:body" in html, key
 

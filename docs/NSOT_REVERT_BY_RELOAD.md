@@ -214,8 +214,9 @@ it boots, and r2 makes RIP reconverge. In order, the two with no reload first:
 - **M3, a golden booted as startup (one reload each):** a boot file built by
   `boot_file.py` from the device's current golden (built and tested before this run, with the
   one-shot transfer M1 decides), copied to startup, read back by `verify /md5`, then a reload
-  under a declared window. The comparison is the freshness reader's on the next copy of the
-  running configuration (the golden against what it runs: `match` is M3 passing), and the
+  under a declared window. The comparison is the drift check's next read of the running
+  configuration (the golden against what it runs: clean is M3 passing; freshness was switched
+  off 2026-10-08), and the
   device's interfaces. It proves `no shutdown`, and shows what each platform does with the
   self-signed certificate, the RSA key, the licence and the banners. A difference becomes a
   rule in `boot_file.py` before the build. The break-glass record is ready before it runs.
@@ -271,6 +272,50 @@ it boots, and r2 makes RIP reconverge. In order, the two with no reload first:
   host by the one-shot DATA test.
 - **Then M1 again,** with the profile deployed to r2 and s1: the request leaves from
   `Loopback0`, is refused at once, and the audit row names the loopback.
+
+**P1 delivered 2026-10-08:** walked on v2 (C566), r2's and s1's goldens each gained exactly
+`ip ssh source-interface Loopback0` and `ip tftp source-interface Loopback0`, the other seven
+unchanged (read masked, before and after).
+
+### 9c. No terminal steps: the measurements become Mercury's own (the operator, 2026-10-08)
+
+"No more command line or terminals." M1 was run from r2's and s1's consoles; that is the last
+one. A read goes through Mercury's read-only paths (Ask the device and the fleet-wide reads,
+C547 and C548). Anything that is not a read (a TFTP fetch, a copy to flash, a verify, a
+delete, a reload) is a Mercury OPERATION, or a measured probe, with a preview and a record.
+The measurements of section 9 are redesigned that way, as steps of the build, never as
+instructions to a person:
+
+- **The transfer check, an operation (built first; it replaces M1 and M4's transfer and
+  prompts).** On the device page, for one device, holding it: the preview names the host
+  address the device will ask (the address the device's management sources reach), the
+  one-shot file (its name, size and MD5), and each command Mercury sends, in order. Confirmed
+  by hash as a person, it runs: (1) a REFUSED fetch, asking `tftp_once` for a name it refuses,
+  which proves the round trip and records the source address the responder saw, with nothing
+  written on the device; (2) a SERVED fetch of the one-shot file to `flash:`, read back by
+  `verify /md5` against the MD5 the preview showed; (3) the file deleted, and `dir` read to
+  show it gone. Each prompt is answered by send, read, decide, and the exact prompt text is
+  recorded (M4's question, answered by the run itself). The receipt says what the device saw,
+  what the responder saw, the MD5 on each side, and the times. Startup is never touched.
+  A failure at any step stops it, deletes what it wrote, and says which step and why.
+- **M4's startup leg moves into the revert's own run.** Asking a refusing server for
+  `startup-config` writes nothing in theory and is still a write attempt on startup, so it is
+  not a probe. The revert's preview names `copy … startup-config` as its step; its first runs
+  (below) record the prompt.
+- **M3 is the revert's first run, to the device's CURRENT golden** (a moment equal to now):
+  `boot_file.py` builds the file, the preview shows it, the person confirms, the run copies,
+  verifies and reloads under a declared window, and the drift check's next read (device against
+  golden) is the comparison: clean is M3 passing. It proves `no shutdown`, and shows what each
+  platform does with the certificate, the RSA key, the licence and the banners; a difference
+  becomes a rule in `boot_file.py`.
+- **M2 comes from those runs and from the Reload operation (P.14):** each records the reload,
+  SSH answering and adjacencies settled, by the syslog's receive times. The wait's bound is
+  2.5 times the longest, written beside it, and until then a first run's wait is the
+  generous placeholder the preview names.
+
+Order: C547 and C548 (the operator's priority), then the transfer check (its board for
+sign-off, then the build; run on r2 and s1 outside the backup window, never s3), then
+`boot_file.py`, then the revert with its first runs as M3.
 
 ## 10. Decisions for the operator (as put, 2026-10-07; decided in section 12)
 
