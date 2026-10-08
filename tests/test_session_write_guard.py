@@ -166,13 +166,25 @@ def _flashes(client) -> str:
 
 @pytest.fixture
 def client(monkeypatch):
+    """The real app with r2 in the Default list's inventory, which this fixture writes into the
+    run's shared data directory and PUTS BACK after: left behind, the row gave Default a device
+    for every later test in the process (CI #516: Needs attention's break-glass row, and a
+    script run bare connecting to 192.0.2.12; order-dependent, so #514 passed)."""
     import app as A
+    from modules import config
 
+    path = os.path.join(config.get_list_data_dir(LIST), "devices.csv")
+    before = open(path, "rb").read() if os.path.exists(path) else None
     _device_row()
     monkeypatch.setattr("modules.config.get_current_list_name", lambda: LIST)
     A.connections.clear()
     yield A.app.test_client()
     A.connections.clear()
+    if before is None:
+        os.remove(path)
+    else:
+        with open(path, "wb") as fh:
+            fh.write(before)
 
 
 class TestEveryWriterNowHoldsTheDevice:
